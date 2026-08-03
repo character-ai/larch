@@ -36,23 +36,58 @@ class ModelPinsReport:
     codex: VendorModelPinResult
 
 
-def cursor_pinned_models() -> tuple[PinnedModel, ...]:
-    """Unique Cursor implement-lane pins from CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY."""
-    by_id: dict[str, str] = {}
+def cursor_pinned_model_declarations() -> tuple[PinnedModel, ...]:
+    """All named Cursor pin declarations, retaining duplicate model IDs for diagnostics."""
+    declarations: list[PinnedModel] = []
+    seen_impl: set[str] = set()
     for model_id in config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY.values():
-        by_id[model_id] = "CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY"
+        if model_id in seen_impl:
+            continue
+        seen_impl.add(model_id)
+        declarations.append(
+            PinnedModel(constant_name="CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY", model_id=model_id)
+        )
+    declarations.append(
+        PinnedModel(constant_name="DEBATE_CURSOR_MODEL", model_id=config.DEBATE_CURSOR_MODEL)
+    )
+    return tuple(declarations)
+
+
+def cursor_pinned_models() -> tuple[PinnedModel, ...]:
+    """Unique Cursor pins from implement-lane and debate inventories."""
+    by_id: dict[str, str] = {}
+    for pin in cursor_pinned_model_declarations():
+        _ = by_id.setdefault(pin.model_id, pin.constant_name)
     return tuple(
         PinnedModel(constant_name=constant_name, model_id=model_id)
         for model_id, constant_name in sorted(by_id.items())
     )
 
 
-def codex_pinned_models() -> tuple[PinnedModel, ...]:
-    """Codex pins that /status resolves (unverifiable until a list surface exists)."""
+def codex_pinned_model_declarations() -> tuple[PinnedModel, ...]:
+    """All named Codex pin declarations, retaining duplicate model IDs for diagnostics."""
     return (
         PinnedModel(constant_name="CODEX_DEFAULT_MODEL", model_id=config.CODEX_DEFAULT_MODEL),
-        PinnedModel(constant_name="CODEX_REVIEW_MODEL_DEFAULT", model_id=config.CODEX_REVIEW_MODEL_DEFAULT),
-        PinnedModel(constant_name="CODEX_VOTE_MODEL_DEFAULT", model_id=config.CODEX_VOTE_MODEL_DEFAULT),
+        PinnedModel(
+            constant_name="CODEX_REVIEW_MODEL_DEFAULT",
+            model_id=config.CODEX_REVIEW_MODEL_DEFAULT,
+        ),
+        PinnedModel(
+            constant_name="CODEX_VOTE_MODEL_DEFAULT",
+            model_id=config.CODEX_VOTE_MODEL_DEFAULT,
+        ),
+        PinnedModel(constant_name="DEBATE_CODEX_MODEL", model_id=config.DEBATE_CODEX_MODEL),
+    )
+
+
+def codex_pinned_models() -> tuple[PinnedModel, ...]:
+    """Codex pins that /status resolves (unverifiable until a list surface exists)."""
+    by_id: dict[str, str] = {}
+    for pin in codex_pinned_model_declarations():
+        _ = by_id.setdefault(pin.model_id, pin.constant_name)
+    return tuple(
+        PinnedModel(constant_name=constant_name, model_id=model_id)
+        for model_id, constant_name in sorted(by_id.items())
     )
 
 
@@ -132,8 +167,11 @@ def resolve_cursor_model_pins(*, runner: Runner, vendor_state: str) -> VendorMod
             status=config.MODEL_PINS_STATUS_UNPARSEABLE,
             detail="cursor agent models output unparseable",
         )
-    unknown = tuple(pin for pin in cursor_pinned_models() if pin.model_id not in live_ids)
-    if unknown:
+    unknown_ids = {pin.model_id for pin in cursor_pinned_models() if pin.model_id not in live_ids}
+    if unknown_ids:
+        unknown = tuple(
+            pin for pin in cursor_pinned_model_declarations() if pin.model_id in unknown_ids
+        )
         return VendorModelPinResult(
             vendor="cursor",
             status=config.MODEL_PINS_STATUS_UNKNOWN_ID,
@@ -150,7 +188,9 @@ def resolve_codex_model_pins(*, vendor_state: str) -> VendorModelPinResult:
             status=config.MODEL_PINS_STATUS_SKIPPED,
             detail="vendor probe not ok",
         )
-    pin_summary = ", ".join(f"{pin.constant_name}={pin.model_id}" for pin in codex_pinned_models())
+    pin_summary = ", ".join(
+        f"{pin.constant_name}={pin.model_id}" for pin in codex_pinned_model_declarations()
+    )
     return VendorModelPinResult(
         vendor="codex",
         status=config.MODEL_PINS_STATUS_UNVERIFIABLE,

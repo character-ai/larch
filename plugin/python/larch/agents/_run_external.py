@@ -28,16 +28,20 @@ from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.core import redact
 from larch.core.proc import CommandResult
 
+from larch.agents import _types
 from larch.agents._types import (
     _QUOTA_RE,
     _AUTH_RE,
     _TOML_CLOSED_STRING_DELIMITER_COUNT,
     _PY_CLI,
+    _SESSION_CAPTURE_FAILED_RC,
+    ExternalAgentFailureReason,
     LauncherPaths,
     RunExternalAgentResult,
     RunExternalAgentFilePrep,
     TailReadResult,
     StartupLockState,
+    VendorSessionHandle,
     _err,
     _read_text,
     _write,
@@ -238,6 +242,74 @@ def _prepare_run_external_agent_files(prep: RunExternalAgentFilePrep) -> tuple[P
     return output_path, paths, paths.diag, paths.sentinel_done(prep.sentinel_suffix)
 
 
+_CODEX_THREAD_STARTED_TYPE = "thread.started"
+
+
+def _codex_thread_id_from_event_line(line: str) -> str | None:
+    """Return the validated ``thread_id`` when a JSONL line is a ``thread.started`` event."""
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if not stripped.startswith("{"):
+        raise ValueError("malformed codex session event")
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise ValueError("malformed codex session event") from exc
+    if type(obj) is not dict:  # pylint: disable=unidiomatic-typecheck  # JSON root must be exact object
+        raise ValueError("malformed codex session event")
+    if obj.get("type") != _CODEX_THREAD_STARTED_TYPE:
+        return None
+    thread_id = obj.get("thread_id")
+    if type(thread_id) is not str:  # pylint: disable=unidiomatic-typecheck  # event field must be exact str
+        raise ValueError("codex thread.started event missing string thread_id")
+    try:
+        return VendorSessionHandle.create(vendor="codex", session_id=thread_id).session_id
+    except ValueError as exc:
+        raise ValueError("codex thread.started event has invalid thread_id") from exc
+
+
+def parse_codex_session_id(events_file: str | Path) -> str:
+    """Return the Codex session UUID from exactly one structured ``thread.started`` event.
+
+    Parses JSONL by structured ``type`` / ``thread_id`` fields only. Never substring-scans
+    aggregated text. Rejects malformed JSON, missing fields, invalid UUIDs, duplicates, and
+    conflicting IDs.
+    """
+    path = Path(events_file)
+    if not path.is_file():
+        raise ValueError("codex session events file missing")
+    found: str | None = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        thread_id = _codex_thread_id_from_event_line(line)
+        if thread_id is None:
+            continue
+        if found is None:
+            found = thread_id
+            continue
+        if found != thread_id:
+            raise ValueError("conflicting codex thread.started thread_id values")
+        raise ValueError("duplicate codex thread.started events")
+    if found is None:
+        raise ValueError("codex thread.started event missing")
+    return found
+
+
+def _session_capture_failure_result(
+    *,
+    output_path: Path,
+    diag: Path,
+    message: str,
+) -> RunExternalAgentResult:
+    _append(path=diag, text=f"{message}\n")
+    reason: ExternalAgentFailureReason = _types.EXTERNAL_AGENT_FAILURE_REASON_SESSION_CAPTURE_FAILED
+    return RunExternalAgentResult(
+        _SESSION_CAPTURE_FAILED_RC,
+        output_path,
+        failure_reason=reason,
+    )
+
+
 def run_external_agent(
     *,
     tool: str,
@@ -256,6 +328,7 @@ def run_external_agent(
     ctx: Ctx | None = None,
     inner_sentinel_suffix: str | None = None,
     poll_interval: float | None = None,
+    capture_session_handle: bool = False,
 ) -> RunExternalAgentResult:
     suffix = inner_sentinel_suffix
     if suffix is None:
@@ -279,6 +352,21 @@ def run_external_agent(
     proc_obj: subprocess.Popen[bytes] | None = None
     _old_sigterm: object = None
     try:
+        if capture_session_handle:
+            if tool != "codex":
+                exit_code = _SESSION_CAPTURE_FAILED_RC
+                return _session_capture_failure_result(
+                    output_path=output_path,
+                    diag=diag,
+                    message="session capture requires tool=codex",
+                )
+            if stdout_path is None:
+                exit_code = _SESSION_CAPTURE_FAILED_RC
+                return _session_capture_failure_result(
+                    output_path=output_path,
+                    diag=diag,
+                    message="session capture requires Codex JSONL stdout_path",
+                )
         stdin = subprocess.DEVNULL if tool == "codex" else None
         stdout_target = None
         stderr_target = None
@@ -426,11 +514,24 @@ def run_external_agent(
             )
             if source:
                 _write_stderr_tail(source=source, output=output_path)
-        elif size == 0:
+            return RunExternalAgentResult(exit_code, output_path)
+        if size == 0:
             _err(f"⚠ {tool} agent: completed but OUTPUT IS EMPTY (exit code 0)")
             _append(path=diag, text="Process exited successfully (code 0) but produced no output.\n")
         else:
             _err(f"✓ {tool} agent: completed (exit code 0, output {size} bytes)")
+        if capture_session_handle:
+            try:
+                session_id = parse_codex_session_id(Path(stdout_path) if stdout_path is not None else Path())
+                handle = VendorSessionHandle.create(vendor="codex", session_id=session_id)
+            except ValueError as exc:
+                exit_code = _SESSION_CAPTURE_FAILED_RC
+                return _session_capture_failure_result(
+                    output_path=output_path,
+                    diag=diag,
+                    message=f"session-capture-failed: {exc}",
+                )
+            return RunExternalAgentResult(exit_code, output_path, session_handle=handle)
         return RunExternalAgentResult(exit_code, output_path)
     finally:
         if _old_sigterm is not None:
@@ -1179,6 +1280,7 @@ def _run_external_agent_with_auth_retries(
     stderr_path: Path | None = None,
     stall_channel: str = "",
     stall_threshold_seconds: int = 0,
+    capture_session_handle: bool = False,
 ) -> RunExternalAgentResult:
     result: RunExternalAgentResult | None = None
     max_auth = _auth_retry_limit()
@@ -1200,8 +1302,14 @@ def _run_external_agent_with_auth_retries(
                 stderr_path=stderr_path,
                 stall_channel=stall_channel,
                 stall_threshold_seconds=stall_threshold_seconds,
+                capture_session_handle=capture_session_handle,
             )
         if result.exit_code == 0:
+            return result
+        if (
+            result.failure_reason is not None
+            and result.failure_reason in _types.TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS
+        ):
             return result
         if _policy_rejection_marker_present(output):
             return result

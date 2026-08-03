@@ -547,9 +547,19 @@
     "file": "larch/agents/_run_external.py",
     "code": "C901",
     "qualified_symbol": "run_external_agent",
-    "metric": 29,
+    "metric": 34,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 34
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher",
+    "operator_override": {
+      "reason": "Issue #8030 threads persistent Codex session capture through the existing run_external_agent launcher; the capture preflight and post-run session parse must bracket the same Popen lifecycle, so the same-day multi-metric growth lands together rather than splitting that launcher mid-flight.",
+      "issue": 8030
+    }
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -566,6 +576,24 @@
     "metric": 7,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_external_agent",
+    "metric": 8,
+    "added_at": "2026-08-03",
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 8
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher",
+    "operator_override": {
+      "reason": "Issue #8030 threads persistent Codex session capture through the existing run_external_agent launcher; the capture preflight and post-run session parse must bracket the same Popen lifecycle, so the same-day multi-metric growth lands together rather than splitting that launcher mid-flight.",
+      "issue": 8030
+    }
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -587,9 +615,19 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0912",
     "qualified_symbol": "run_external_agent",
-    "metric": 32,
+    "metric": 37,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 37
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher",
+    "operator_override": {
+      "reason": "Issue #8030 threads persistent Codex session capture through the existing run_external_agent launcher; the capture preflight and post-run session parse must bracket the same Popen lifecycle, so the same-day multi-metric growth lands together rather than splitting that launcher mid-flight.",
+      "issue": 8030
+    }
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -603,9 +641,15 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0913",
     "qualified_symbol": "_run_external_agent_with_auth_retries",
-    "metric": 11,
+    "metric": 12,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 12
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher"
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -619,17 +663,37 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0913",
     "qualified_symbol": "run_external_agent",
-    "metric": 16,
+    "metric": 17,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 17
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher",
+    "operator_override": {
+      "reason": "Issue #8030 threads persistent Codex session capture through the existing run_external_agent launcher; the capture preflight and post-run session parse must bracket the same Popen lifecycle, so the same-day multi-metric growth lands together rather than splitting that launcher mid-flight.",
+      "issue": 8030
+    }
   },
   {
     "file": "larch/agents/_run_external.py",
     "code": "PLR0915",
     "qualified_symbol": "run_external_agent",
-    "metric": 132,
+    "metric": 143,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-08-03",
+        "metric": 143
+      }
+    ],
+    "reason": "Issue #8030 wires persistent Codex session capture into the run_external_agent launcher",
+    "operator_override": {
+      "reason": "Issue #8030 threads persistent Codex session capture through the existing run_external_agent launcher; the capture preflight and post-run session parse must bracket the same Popen lifecycle, so the same-day multi-metric growth lands together rather than splitting that launcher mid-flight.",
+      "issue": 8030
+    }
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -1459,7 +1523,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "C901",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 15,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -1475,7 +1539,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0911",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 8,
+    "metric": 7,
     "added_at": "legacy",
     "history": []
   },
@@ -1498,24 +1562,8 @@
   {
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0912",
-    "qualified_symbol": "_publish_design_logs",
-    "metric": 16,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/design/design_log_publish_flow.py",
-    "code": "PLR0912",
     "qualified_symbol": "run_log_publish",
     "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/design/design_log_publish_flow.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_publish_design_logs",
-    "metric": 60,
     "added_at": "legacy",
     "history": []
   },
@@ -1635,7 +1683,7 @@
     "file": "larch/design/design_pause.py",
     "code": "C901",
     "qualified_symbol": "pause_load_main",
-    "metric": 33,
+    "metric": 28,
     "added_at": "legacy",
     "history": []
   },
@@ -1659,7 +1707,7 @@
     "file": "larch/design/design_pause.py",
     "code": "PLR0911",
     "qualified_symbol": "pause_load_main",
-    "metric": 25,
+    "metric": 19,
     "added_at": "legacy",
     "history": []
   },
@@ -1675,7 +1723,7 @@
     "file": "larch/design/design_pause.py",
     "code": "PLR0912",
     "qualified_symbol": "pause_load_main",
-    "metric": 35,
+    "metric": 30,
     "added_at": "legacy",
     "history": []
   },
@@ -1683,7 +1731,7 @@
     "file": "larch/design/design_pause.py",
     "code": "PLR0915",
     "qualified_symbol": "pause_load_main",
-    "metric": 97,
+    "metric": 80,
     "added_at": "legacy",
     "history": []
   },
@@ -1891,7 +1939,7 @@
     "file": "larch/design/design_step0.py",
     "code": "C901",
     "qualified_symbol": "step0_session_main",
-    "metric": 14,
+    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -1923,7 +1971,7 @@
     "file": "larch/design/design_step0.py",
     "code": "PLR0912",
     "qualified_symbol": "step0_session_main",
-    "metric": 14,
+    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -1939,7 +1987,7 @@
     "file": "larch/design/design_step0.py",
     "code": "PLR0915",
     "qualified_symbol": "step0_session_main",
-    "metric": 55,
+    "metric": 53,
     "added_at": "legacy",
     "history": []
   },
@@ -3008,22 +3056,6 @@
     "history": []
   },
   {
-    "file": "larch/git/push.py",
-    "code": "C901",
-    "qualified_symbol": "_checkpoint_rebase_result",
-    "metric": 11,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/push.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_checkpoint_rebase_result",
-    "metric": 8,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/git/rebase.py",
     "code": "C901",
     "qualified_symbol": "_resolve_conflicts",
@@ -3091,7 +3123,7 @@
     "file": "larch/implement/checks_run_relevant.py",
     "code": "C901",
     "qualified_symbol": "_run_relevant_checks_inner",
-    "metric": 16,
+    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -3155,7 +3187,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "C901",
     "qualified_symbol": "stage_and_push",
-    "metric": 23,
+    "metric": 22,
     "added_at": "legacy",
     "history": []
   },
@@ -3203,7 +3235,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0911",
     "qualified_symbol": "stage_and_push",
-    "metric": 12,
+    "metric": 11,
     "added_at": "legacy",
     "history": []
   },
@@ -3219,7 +3251,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0912",
     "qualified_symbol": "stage_and_push",
-    "metric": 25,
+    "metric": 24,
     "added_at": "legacy",
     "history": []
   },
@@ -3323,7 +3355,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0915",
     "qualified_symbol": "stage_and_push",
-    "metric": 64,
+    "metric": 61,
     "added_at": "legacy",
     "history": []
   },
@@ -3339,7 +3371,7 @@
     "file": "larch/implement/preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 20,
+    "metric": 19,
     "added_at": "legacy",
     "history": [
       {
@@ -3357,7 +3389,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0911",
     "qualified_symbol": "preflight_main",
-    "metric": 17,
+    "metric": 16,
     "added_at": "legacy",
     "history": [
       {
@@ -3375,7 +3407,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0912",
     "qualified_symbol": "preflight_main",
-    "metric": 20,
+    "metric": 19,
     "added_at": "legacy",
     "history": [
       {
@@ -3393,7 +3425,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 86,
+    "metric": 83,
     "added_at": "legacy",
     "history": [
       {
@@ -5598,14 +5630,6 @@
   {
     "file": "larch/report/run_log_commit.py",
     "code": "C901",
-    "qualified_symbol": "_copy_tree_to_repo",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/run_log_commit.py",
-    "code": "C901",
     "qualified_symbol": "_larch_log_commit",
     "metric": 15,
     "added_at": "legacy",
@@ -5654,14 +5678,6 @@
   {
     "file": "larch/report/run_log_commit.py",
     "code": "PLR0911",
-    "qualified_symbol": "larch_log_commit_main",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/run_log_commit.py",
-    "code": "PLR0911",
     "qualified_symbol": "publish_breadcrumbs_main",
     "metric": 8,
     "added_at": "legacy",
@@ -5693,7 +5709,7 @@
     "file": "larch/report/run_log_flush.py",
     "code": "C901",
     "qualified_symbol": "capture_transcript_main",
-    "metric": 18,
+    "metric": 15,
     "added_at": "legacy",
     "history": []
   },
@@ -5725,7 +5741,7 @@
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
     "qualified_symbol": "capture_transcript_main",
-    "metric": 15,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -5763,7 +5779,7 @@
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0912",
     "qualified_symbol": "capture_transcript_main",
-    "metric": 18,
+    "metric": 15,
     "added_at": "legacy",
     "history": []
   },
@@ -8059,14 +8075,6 @@
   {
     "file": "larch/state/finalize.py",
     "code": "C901",
-    "qualified_symbol": "_teardown_log_flush",
-    "metric": 11,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/finalize.py",
-    "code": "C901",
     "qualified_symbol": "_validate_finalize_cli_args",
     "metric": 16,
     "added_at": "legacy",
@@ -8084,7 +8092,7 @@
     "file": "larch/state/finalize.py",
     "code": "C901",
     "qualified_symbol": "teardown",
-    "metric": 13,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -8157,14 +8165,6 @@
     "code": "C901",
     "qualified_symbol": "check_live_mutation_auth",
     "metric": 16,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "C901",
-    "qualified_symbol": "local_cleanup_main",
-    "metric": 11,
     "added_at": "legacy",
     "history": []
   },
@@ -8328,14 +8328,6 @@
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
-    "qualified_symbol": "local_cleanup_main",
-    "metric": 52,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "PLR0915",
     "qualified_symbol": "setup",
     "metric": 86,
     "added_at": "2026-07-14",
@@ -8459,7 +8451,7 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 130,
+    "metric": 124,
     "added_at": "legacy",
     "history": [
       {
@@ -8477,7 +8469,7 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 127,
+    "metric": 121,
     "added_at": "legacy",
     "history": [
       {
@@ -8495,7 +8487,7 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 618,
+    "metric": 616,
     "added_at": "legacy",
     "history": [
       {
@@ -8509,7 +8501,7 @@
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 105,
+    "metric": 101,
     "added_at": "legacy",
     "history": []
   },
@@ -8517,7 +8509,7 @@
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 104,
+    "metric": 100,
     "added_at": "legacy",
     "history": []
   },
@@ -8525,7 +8517,7 @@
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 214,
+    "metric": 204,
     "added_at": "legacy",
     "history": []
   },

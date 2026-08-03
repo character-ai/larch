@@ -245,6 +245,30 @@ def _prepare_run_external_agent_files(prep: RunExternalAgentFilePrep) -> tuple[P
 _CODEX_THREAD_STARTED_TYPE = "thread.started"
 
 
+def _codex_thread_id_from_event_line(line: str) -> str | None:
+    """Return the validated ``thread_id`` when a JSONL line is a ``thread.started`` event."""
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if not stripped.startswith("{"):
+        raise ValueError("malformed codex session event")
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise ValueError("malformed codex session event") from exc
+    if type(obj) is not dict:  # pylint: disable=unidiomatic-typecheck  # JSON root must be exact object
+        raise ValueError("malformed codex session event")
+    if obj.get("type") != _CODEX_THREAD_STARTED_TYPE:
+        return None
+    thread_id = obj.get("thread_id")
+    if type(thread_id) is not str:  # pylint: disable=unidiomatic-typecheck  # event field must be exact str
+        raise ValueError("codex thread.started event missing string thread_id")
+    try:
+        return VendorSessionHandle.create(vendor="codex", session_id=thread_id).session_id
+    except ValueError as exc:
+        raise ValueError("codex thread.started event has invalid thread_id") from exc
+
+
 def parse_codex_session_id(events_file: str | Path) -> str:
     """Return the Codex session UUID from exactly one structured ``thread.started`` event.
 
@@ -257,30 +281,13 @@ def parse_codex_session_id(events_file: str | Path) -> str:
         raise ValueError("codex session events file missing")
     found: str | None = None
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if not stripped:
+        thread_id = _codex_thread_id_from_event_line(line)
+        if thread_id is None:
             continue
-        if not stripped.startswith("{"):
-            raise ValueError("malformed codex session event")
-        try:
-            obj = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            raise ValueError("malformed codex session event") from exc
-        if type(obj) is not dict:  # pylint: disable=unidiomatic-typecheck  # JSON root must be exact object
-            raise ValueError("malformed codex session event")
-        if obj.get("type") != _CODEX_THREAD_STARTED_TYPE:
-            continue
-        thread_id = obj.get("thread_id")
-        if type(thread_id) is not str:  # pylint: disable=unidiomatic-typecheck  # event field must be exact str
-            raise ValueError("codex thread.started event missing string thread_id")
-        try:
-            handle = VendorSessionHandle.create(vendor="codex", session_id=thread_id)
-        except ValueError as exc:
-            raise ValueError("codex thread.started event has invalid thread_id") from exc
         if found is None:
-            found = handle.session_id
+            found = thread_id
             continue
-        if found != handle.session_id:
+        if found != thread_id:
             raise ValueError("conflicting codex thread.started thread_id values")
         raise ValueError("duplicate codex thread.started events")
     if found is None:
