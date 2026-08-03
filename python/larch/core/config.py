@@ -1040,6 +1040,12 @@ TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
 # triage stripping) and the prefix-literal ratchets consume these tokens. No
 # tracking-issue transition writes them, so they stay out of
 # TRACKING_ISSUE_STATES and TRACKING_ISSUE_PREFIX_BY_STATE.
+# Two sibling selectors over the same convention are deliberately excluded
+# until a /debate writer exists: state/admission.py `_has_managed_prefix` and
+# issue/combine_issues.py `_BUSY_RE`. Both hand-list grandfathered literals
+# recorded in python/lifecycle-prefix-literal-baseline.json. Nothing produces a
+# [DEBATING] or [DEBATED] title yet, so the busy-state drift is unreachable
+# today; sweep both onto DEBATE_TITLE_STATES when the debate engine lands.
 DEBATE_TITLE_STATES: Final[tuple[str, ...]] = ("DEBATING", "DEBATED")
 DEBATE_TITLE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     state: f"[{state}] " for state in DEBATE_TITLE_STATES
