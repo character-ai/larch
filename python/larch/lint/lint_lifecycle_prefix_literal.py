@@ -135,6 +135,9 @@ def build_token_map() -> dict[str, TokenInfo]:
     for state, prefix in sorted(config.TRACKING_ISSUE_PREFIX_BY_STATE.items()):
         state_literal: str = json.dumps(state)
         add(prefix, constant=f"config.TRACKING_ISSUE_PREFIX_BY_STATE[{state_literal}]")
+    for state, prefix in sorted(config.DEBATE_TITLE_PREFIX_BY_STATE.items()):
+        debate_literal: str = json.dumps(state)
+        add(prefix, constant=f"config.DEBATE_TITLE_PREFIX_BY_STATE[{debate_literal}]")
     add(title_match.BUG_PREFIX, constant="title_match.BUG_PREFIX")
     return tokens
 

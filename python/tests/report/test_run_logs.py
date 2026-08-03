@@ -19,7 +19,7 @@ from larch.core import config
 from larch import io as larch_io
 from larch.report import final_report
 from larch.report import run_log_batch, run_log_commit, run_log_flush, run_log_manifest, run_logs
-from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch  # pyright: ignore[reportPrivateUsage]
+from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch, _append_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
@@ -2074,6 +2074,316 @@ def test_checks_digest_sizes_batch_is_append_mode_tsv(tmp_path: Path) -> None:
     assert rc == 0
     committed = tmp_path / "larch-logs" / "implement" / "run-abc" / "checks-digest-sizes.tsv"
     assert committed.read_text(encoding="utf-8") == record.read_text(encoding="utf-8")
+
+
+_DEBATE_SESSION_POINTER = "/tmp/claude-implement-AbC123/plan.txt"
+_DEBATE_OPERATOR_PATH = "/Users/example/larch3/skills/debate/SKILL.md"
+
+
+def test_debate_batch_registry_contracts() -> None:
+    assert run_log_batch._batch_extension("debate-round-ledger") == ".ndjson"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_mode("debate-round-ledger") == "append"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_sanitizer("debate-round-ledger") == "json-lines"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_extension("debate-proposal") == ".md"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_mode("debate-proposal") == "replace"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_sanitizer("debate-proposal") == "none"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_extension("debate-stalemate-tally") == ".json"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_mode("debate-stalemate-tally") == "replace"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_sanitizer("debate-stalemate-tally") == "json-object"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_extension("debate-participants") == ".tsv"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_mode("debate-participants") == "replace"  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._batch_sanitizer("debate-participants") == "none"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_debate_batches_round_trip_append_and_replace(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    ledger_one = tmp_path / "ledger-1.ndjson"
+    ledger_two = tmp_path / "ledger-2.ndjson"
+    _ = ledger_one.write_text('{"round":1,"point":"p1","stance":"HOLD"}\n', encoding="utf-8")
+    _ = ledger_two.write_text('{"round":2,"point":"p1","stance":"AGREE"}\n', encoding="utf-8")
+    path, written, unchanged = _append_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-round-ledger",
+        record_file=str(ledger_one),
+    )
+    assert written is True
+    assert unchanged is False
+    _, written2, _ = _append_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-round-ledger",
+        record_file=str(ledger_two),
+    )
+    assert written2 is True
+    assert path.read_text(encoding="utf-8") == (
+        '{"round":1,"point":"p1","stance":"HOLD"}\n'
+        '{"round":2,"point":"p1","stance":"AGREE"}\n'
+    )
+
+    proposal = tmp_path / "proposal.md"
+    _ = proposal.write_text("# Proposal\nShip the narrow carrier.\n", encoding="utf-8")
+    proposal_path, _, _ = _write_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-proposal",
+        input_file=str(proposal),
+    )
+    _ = proposal.write_text("# Proposal\nRevised body.\n", encoding="utf-8")
+    _, written_prop, _ = _write_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-proposal",
+        input_file=str(proposal),
+    )
+    assert written_prop is True
+    assert proposal_path.read_text(encoding="utf-8") == "# Proposal\nRevised body.\n"
+
+    tally = tmp_path / "tally.json"
+    _ = tally.write_text('{"outcome":"BOTH_VIABLE","points":["p1"]}\n', encoding="utf-8")
+    tally_path, _, _ = _write_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-stalemate-tally",
+        input_file=str(tally),
+    )
+    assert json.loads(tally_path.read_text(encoding="utf-8"))["outcome"] == "BOTH_VIABLE"
+
+    participants = tmp_path / "participants.tsv"
+    _ = participants.write_text("vendor\tslot\tstatus\ncodex\t1\tlive\n", encoding="utf-8")
+    participants_path, _, _ = _write_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-participants",
+        input_file=str(participants),
+    )
+    assert "codex\t1\tlive" in participants_path.read_text(encoding="utf-8")
+
+
+def test_debate_batches_validate_malformed_json(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    bad_ledger = tmp_path / "bad-ledger.ndjson"
+    _ = bad_ledger.write_text("{not-json\n", encoding="utf-8")
+    with pytest.raises(json.JSONDecodeError):
+        _ = _append_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-round-ledger",
+            record_file=str(bad_ledger),
+        )
+
+    bad_tally = tmp_path / "bad-tally.json"
+    _ = bad_tally.write_text("[]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="requires a JSON object"):
+        _ = _write_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-stalemate-tally",
+            input_file=str(bad_tally),
+        )
+
+
+def test_debate_proposal_redacts_operator_repo_and_secrets(tmp_path: Path) -> None:
+    proposal = tmp_path / "proposal.md"
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+    _ = proposal.write_text(
+        f"See {_DEBATE_OPERATOR_PATH} and token {secret}\n",
+        encoding="utf-8",
+    )
+    path, _, _ = _write_batch(
+        log_root=tmp_path / "larch-logs",
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-proposal",
+        input_file=str(proposal),
+    )
+    text = path.read_text(encoding="utf-8")
+    assert _DEBATE_OPERATOR_PATH not in text
+    assert config.REDACTED_OPERATOR_REPO in text
+    assert secret not in text
+    assert config.REDACTED_TOKEN in text
+
+
+@pytest.mark.parametrize(
+    ("batch", "mode", "payload"),
+    [
+        ("debate-proposal", "replace", f"pointer {_DEBATE_SESSION_POINTER}\n"),
+        ("debate-participants", "replace", f"vendor\tslot\ncodex\t{_DEBATE_SESSION_POINTER}\n"),
+        (
+            "debate-round-ledger",
+            "append",
+            json.dumps({"note": _DEBATE_SESSION_POINTER}) + "\n",
+        ),
+        (
+            "debate-stalemate-tally",
+            "replace",
+            json.dumps({"path": _DEBATE_SESSION_POINTER}) + "\n",
+        ),
+    ],
+)
+def test_debate_batches_reject_raw_session_tmpdir_before_redaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    batch: str,
+    mode: str,
+    payload: str,
+) -> None:
+    calls: list[Path] = []
+    original_redact = run_log_batch._redact_to_temp  # pyright: ignore[reportPrivateUsage]
+
+    def spy_redact_to_temp(
+        input_file: Path,
+        *,
+        scratch_dir: Path,
+        cap_bytes: int | None = None,
+    ) -> Path:
+        calls.append(input_file)
+        return original_redact(
+            input_file,
+            scratch_dir=scratch_dir,
+            cap_bytes=cap_bytes,
+        )
+
+    monkeypatch.setattr(run_log_batch, "_redact_to_temp", spy_redact_to_temp)
+    source = tmp_path / "payload.txt"
+    _ = source.write_text(payload, encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+    if mode == "append":
+        with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+            _ = _append_batch(
+                log_root=log_root,
+                skill="debate",
+                run_id="run-abc",
+                batch=batch,
+                record_file=str(source),
+            )
+    else:
+        with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+            _ = _write_batch(
+                log_root=log_root,
+                skill="debate",
+                run_id="run-abc",
+                batch=batch,
+                input_file=str(source),
+            )
+    assert not calls
+    out = log_root / "debate" / "run-abc" / f"{batch}{run_log_batch._batch_extension(batch)}"  # pyright: ignore[reportPrivateUsage]
+    assert not out.exists()
+
+
+def test_debate_json_batches_reject_escaped_session_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[Path] = []
+    original_redact = run_log_batch._redact_to_temp  # pyright: ignore[reportPrivateUsage]
+
+    def spy_redact_to_temp(
+        input_file: Path,
+        *,
+        scratch_dir: Path,
+        cap_bytes: int | None = None,
+    ) -> Path:
+        calls.append(input_file)
+        return original_redact(
+            input_file,
+            scratch_dir=scratch_dir,
+            cap_bytes=cap_bytes,
+        )
+
+    monkeypatch.setattr(run_log_batch, "_redact_to_temp", spy_redact_to_temp)
+    log_root = tmp_path / "larch-logs"
+
+    # Escaped slashes still contain /tmp/… after the backslash boundary; reject
+    # before redaction (raw or decoded).
+    escaped_slash = '{"note":"\\/tmp\\/claude-implement-AbC123\\/plan.txt"}\n'
+    ledger = tmp_path / "escaped-ledger.ndjson"
+    _ = ledger.write_text(escaped_slash, encoding="utf-8")
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _append_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-round-ledger",
+            record_file=str(ledger),
+        )
+
+    # Unicode escapes omit literal /tmp/ in the raw file; decoded values reject.
+    unicode_escaped = '{"path":"\\u002ftmp\\u002fclaude-implement-AbC123\\u002fplan.txt"}\n'
+    assert "/tmp/claude-implement-AbC123" not in unicode_escaped
+    tally = tmp_path / "escaped-tally.json"
+    _ = tally.write_text(unicode_escaped, encoding="utf-8")
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _write_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-stalemate-tally",
+            input_file=str(tally),
+        )
+
+    # A pointer hidden in a JSON object key rejects the same way.
+    escaped_key = '{"\\u002ftmp\\u002fclaude-implement-AbC123\\u002fplan.txt":1}\n'
+    assert "/tmp/claude-implement-AbC123" not in escaped_key
+    key_tally = tmp_path / "escaped-key-tally.json"
+    _ = key_tally.write_text(escaped_key, encoding="utf-8")
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _write_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-stalemate-tally",
+            input_file=str(key_tally),
+        )
+    key_ledger = tmp_path / "escaped-key-ledger.ndjson"
+    _ = key_ledger.write_text(
+        '{"row":{"\\u002ftmp\\u002fclaude-implement-AbC123\\u002fplan.txt":1}}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _append_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-round-ledger",
+            record_file=str(key_ledger),
+        )
+    assert not calls
+
+
+def test_debate_append_rejection_preserves_prior_content(
+    tmp_path: Path,
+) -> None:
+    log_root = tmp_path / "larch-logs"
+    good = tmp_path / "good.ndjson"
+    _ = good.write_text('{"round":1,"ok":true}\n', encoding="utf-8")
+    path, _, _ = _append_batch(
+        log_root=log_root,
+        skill="debate",
+        run_id="run-abc",
+        batch="debate-round-ledger",
+        record_file=str(good),
+    )
+    before = path.read_text(encoding="utf-8")
+    bad = tmp_path / "bad.ndjson"
+    _ = bad.write_text(json.dumps({"note": _DEBATE_SESSION_POINTER}) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _append_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-round-ledger",
+            record_file=str(bad),
+        )
+    assert path.read_text(encoding="utf-8") == before
 
 
 def test_larch_log_append_rebases_root_relative_log_root_and_record_file(

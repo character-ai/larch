@@ -37,10 +37,21 @@ _MALFORMED_TOKENS = {
 # Byte-compatible with the legacy title-eligibility shell helper.
 ARCHIVAL_JQ_FILTER = 'select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
 ARCHIVAL_REPORT_RE = re.compile(r"^\[.*report\] ", re.IGNORECASE)
-LIFECYCLE_REJECT_RE = re.compile(r"^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED)\]", re.IGNORECASE)
+_LIFECYCLE_REJECT_STATES = (
+    "IMPLEMENTING",
+    "DONE",
+    "DESIGNING",
+    "DESIGNED",
+    *config.DEBATE_TITLE_STATES,
+)
+LIFECYCLE_REJECT_RE = re.compile(
+    rf"^\[({'|'.join(_LIFECYCLE_REJECT_STATES)})\]",
+    re.IGNORECASE,
+)
 BRAINSTORM_RE = re.compile(r"^brainstorm([^A-Za-z]|$)", re.IGNORECASE)
 _SCOPE_PATH_FALLBACK = ["skills/design/SKILL.md"]
 _LIFECYCLE_INSERT_PREFIXES = (
+    *config.DEBATE_TITLE_STATES,
     "DESIGNING",
     "DESIGNED",
     "IMPLEMENTING",
@@ -768,8 +779,9 @@ def insert_signal_marker(*, title: str, marker: str) -> str:
         rest = rest[close_space + 2 :]
     for prefix in _LIFECYCLE_INSERT_PREFIXES:
         block = f"[{prefix}] "
-        if title.startswith(block):
-            return f"[{prefix}] [{marker}] {title[len(block):]}"
+        if title[: len(block)].casefold() == block.casefold():
+            # Preserve the title's original lifecycle-prefix spelling.
+            return f"{title[: len(block) - 1]} [{marker}] {title[len(block) :]}"
     return f"[{marker}] {title}"
 
 

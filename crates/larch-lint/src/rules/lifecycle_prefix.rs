@@ -35,7 +35,8 @@ pub struct LifecyclePrefixRule;
 pub static RULE: LifecyclePrefixRule = LifecyclePrefixRule;
 
 /// Canonical lifecycle and bug title prefixes. Mirrors the Python owners
-/// `config.TRACKING_ISSUE_PREFIX_BY_STATE` values and `title_match.BUG_PREFIX`.
+/// `config.TRACKING_ISSUE_PREFIX_BY_STATE` values,
+/// `config.DEBATE_TITLE_PREFIX_BY_STATE` values, and `title_match.BUG_PREFIX`.
 /// Matching normalizes both sides, so the trailing space carried by the Python
 /// state prefixes is not repeated here.
 pub const PREFIXES: &[&str] = &[
@@ -44,6 +45,8 @@ pub const PREFIXES: &[&str] = &[
     "[IMPLEMENTING]",
     "[DONE]",
     "[STALLED]",
+    "[DEBATING]",
+    "[DEBATED]",
     "[BUG]",
 ];
 
@@ -516,9 +519,10 @@ mod tests {
     }
 
     // The prefix set is owned by Python (`config.TRACKING_ISSUE_PREFIX_BY_STATE`
-    // + `title_match.BUG_PREFIX`) and cannot be imported across the process
-    // boundary, so it is embedded here. This guards against silent drift (G-Cfg-3)
-    // by re-deriving the owner set from the live Python source and comparing.
+    // + `config.DEBATE_TITLE_PREFIX_BY_STATE` + `title_match.BUG_PREFIX`) and
+    // cannot be imported across the process boundary, so it is embedded here.
+    // This guards against silent drift (G-Cfg-3) by re-deriving the owner set
+    // from the live Python source and comparing.
     #[test]
     fn prefixes_match_the_python_owner_constants() {
         use std::collections::BTreeSet;
@@ -543,6 +547,19 @@ mod tests {
             .filter(|value| value.starts_with('['))
             .map(|value| super::normalize(&value))
             .collect();
+
+        // DEBATE_TITLE_PREFIX_BY_STATE is derived from the bare DEBATE_TITLE_STATES
+        // tokens, so read that tuple and bracket each token to compare.
+        let (_, after_states) = config
+            .split_once("DEBATE_TITLE_STATES")
+            .expect("locate debate states");
+        let (_, after_tuple_open) = after_states.split_once('(').expect("locate tuple open");
+        let (tuple, _) = after_tuple_open.split_once(')').expect("locate tuple close");
+        owner.extend(
+            literal
+                .captures_iter(tuple)
+                .map(|caps| super::normalize(&format!("[{}]", &caps[1]))),
+        );
 
         // The BUG_PREFIX constant value.
         let bug_line = title

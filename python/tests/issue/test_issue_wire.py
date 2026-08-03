@@ -763,12 +763,36 @@ def test_extract_scope_paths_ignores_fenced_sections_and_keeps_root_paths() -> N
 def test_title_eligibility_and_insert_signal_marker() -> None:
     assert issue_wire.title_lifecycle_reject_marker("  [implementing] x") == "[IMPLEMENTING]"
     assert issue_wire.title_lifecycle_reject_marker("[STALLED] x") is None
+    assert issue_wire.title_lifecycle_reject_marker("[Debating] x") == "[DEBATING]"
+    assert issue_wire.title_lifecycle_reject_marker("  [dEbAtEd] x") == "[DEBATED]"
     assert issue_wire.title_has_archival_report_prefix("  [Analysis Report] x")
     assert not issue_wire.title_has_archival_report_prefix("[Run Logs Audit Report 2026] x")
     assert issue_wire.title_starts_with_brainstorm(" Brainstorm-mode")
     assert not issue_wire.title_starts_with_brainstorm("Brainstorming")
     assert issue_wire.insert_signal_marker(title="[DESIGNED] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
     assert issue_wire.insert_signal_marker(title="[DESIGNED] [FALSE-POSITIVE] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
+    assert (
+        issue_wire.insert_signal_marker(title="[DEBATING] Open question", marker="NEEDS-INPUT")
+        == "[DEBATING] [NEEDS-INPUT] Open question"
+    )
+    assert (
+        issue_wire.insert_signal_marker(title="[Debated] Mixed case", marker="FALSE-POSITIVE")
+        == "[Debated] [FALSE-POSITIVE] Mixed case"
+    )
+    assert (
+        issue_wire.insert_signal_marker(
+            title="[Debated] [FALSE-POSITIVE] Mixed case",
+            marker="FALSE-POSITIVE",
+        )
+        == "[Debated] [FALSE-POSITIVE] Mixed case"
+    )
+    assert (
+        issue_wire.insert_signal_marker(
+            title="[DEBATED] [NEEDS-INPUT] Ordered",
+            marker="FALSE-POSITIVE",
+        )
+        == "[DEBATED] [FALSE-POSITIVE] [NEEDS-INPUT] Ordered"
+    )
 
 
 def test_title_cli_leading_hyphen_subprocess() -> None:

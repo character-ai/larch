@@ -682,6 +682,31 @@ Structured per-step elapsed-time data for the session, measured from the timing 
 
 JSON reports may include an additive `rounds` array on a matching per-step row. `/implement` code-review rounds attach only to the `Step 5 — code review` row whose interval fully contains the round start and end; `/design` plan-review rounds attach only to the `design Step 3 — plan review` row under the same containment rule. Rows are de-duplicated by round number with the latest ledger row winning, then sorted by round. Round objects contain `round`, `duration_seconds`, `accepted`, and `rejected`; `/design` plan-review round objects also include `oos` when present.
 
+### Debate durable records
+
+These four batches register archive carriers for a future `/debate` engine.
+This change does **not** add debate-engine producers, CLI verbs, or skills.
+When that engine lands, it will write these artifacts so an archive-only reader
+can reconstruct the debate without the session tmpdir.
+
+| Batch | Extension | Mode | Sanitizer | Reconstruction role |
+|---|---|---|---|---|
+| `debate-participants` | `.tsv` | replace | `none` | Final participant roster (vendor, slot, live/dropped). |
+| `debate-round-ledger` | `.ndjson` | append | `json-lines` | Per-turn ledger rows across negotiation rounds. |
+| `debate-stalemate-tally` | `.json` | replace | `json-object` | Optional stalemate ballot outcome when `-s` voting ran. |
+| `debate-proposal` | `.md` | replace | `none` | Final synthesized proposal body. |
+
+Together, the roster, round ledger, optional stalemate tally, and final
+proposal support archive-only reconstruction of who argued, what each round
+recorded, how stalemates resolved, and what proposal emerged.
+
+**Durable-record invariant**: debate-batch writes reject recognized
+session-tmpdir pointers before redaction or persistence. Valid stored content
+still uses the existing secret and path redaction pipeline. Operator-repository
+paths remain accepted input and redact to the usual operator-repo token. See
+the canonical
+[durable debate-record invariant](security/artifacts-redaction-and-publication.md#durable-debate-record-invariant).
+
 ### execution-issues.ndjson
 
 **Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), the Step 7a local checkpoint, later external-implementer and pre-push checkpoints, and the Step 18 terminal tail.

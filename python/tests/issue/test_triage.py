@@ -316,6 +316,7 @@ def test_close_stops_when_snapshot_changes_between_mutations(
     ("title", "body", "labels"),
     [
         ("[IMPLEMENTING] report", "body", []),
+        ("[DEBATING] report", "body", []),
         ("report", "<!-- larch:plan:start -->", []),
         ("report", "body", [{"name": "needs-clarification"}]),
         ("Credential exposure", "body", []),
