@@ -7570,6 +7570,18 @@ python_removal = "pending"
 planning_issue = 7983
 
 [[commands]]
+domain = "umbrella"
+verb = "verify-completion"
+python_module = "larch.issue.umbrella"
+python_function = "verify_completion_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
 domain = "untrusted"
 verb = "content-block"
 python_module = "larch.issue.issue_wire"
@@ -8610,7 +8622,7 @@ rust = []
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
 kind = "skill"
-python = ["decompose annotate", "decompose close-original", "decompose migrate-deps", "decompose prepare"]
+python = ["decompose prepare", "umbrella verify-completion"]
 rust = []
 
 [[callers]]
@@ -8941,6 +8953,12 @@ rust = []
 path = "skills/implement/references/step5-review-branches.md"
 kind = "skill"
 python = ["bgjob wait", "implement clone-tag", "review tally-code-votes", "review-and-fix step5", "ship seed-initial-state"]
+rust = []
+
+[[callers]]
+path = "skills/implement/references/umbrella-partition.md"
+kind = "skill"
+python = ["umbrella verify-completion"]
 rust = []
 
 [[callers]]

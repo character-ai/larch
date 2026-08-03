@@ -706,18 +706,16 @@ def verify_completion_main(argv: list[str]) -> int:
             input_text=live_input,
             deps_text=live_deps,
         )
-        if (
-            rows["UMBRELLA_SENTINEL_VERSION"] != COMPLETION_SENTINEL_VERSION
-            or rows["REPOSITORY"] != values["--repo"]
-            or rows["UMBRELLA_NUMBER"] != values["--issue"]
-            or rows["GRAPH_VERIFIED"] != "true"
-            or not _valid_sha256(rows["PREPARED_INPUT_SHA256"])
-            or not _valid_sha256(rows["PREPARED_DEPS_SHA256"])
-            or not _valid_sha256(rows["PREPARED_GRAPH_SHA256"])
-            or rows["PREPARED_INPUT_SHA256"] != live_input_sha256
-            or rows["PREPARED_DEPS_SHA256"] != live_deps_sha256
-            or rows["PREPARED_GRAPH_SHA256"] != _prepared_graph_sha256(expected_proposal)
-        ):
+        expected_rows = {
+            "UMBRELLA_SENTINEL_VERSION": COMPLETION_SENTINEL_VERSION,
+            "REPOSITORY": values["--repo"],
+            "UMBRELLA_NUMBER": values["--issue"],
+            "PREPARED_INPUT_SHA256": live_input_sha256,
+            "PREPARED_DEPS_SHA256": live_deps_sha256,
+            "PREPARED_GRAPH_SHA256": _prepared_graph_sha256(expected_proposal),
+            "GRAPH_VERIFIED": "true",
+        }
+        if rows != expected_rows:
             raise UmbrellaError("stale-completion-sentinel")
     except (OSError, ValueError, UmbrellaError) as exc:
         return _emit_error(getattr(exc, "reason", "invalid-completion-sentinel"))
