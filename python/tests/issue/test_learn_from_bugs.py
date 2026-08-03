@@ -341,7 +341,9 @@ The summary includes an example metadata payload.
     digest = learn_from_bugs.build_digest(_issue(18, "[BUG] fenced class", body))
 
     assert digest.classification is None
-    assert digest.origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert digest.origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="no-classification-signal"
+    )
 
 
 def test_build_digest_ignores_headings_inside_backtick_fence() -> None:
@@ -469,6 +471,40 @@ def test_coverage_index_scans_repo_surface(tmp_path: Path) -> None:
     assert cov.script_lints == ("lint-bar",)
 
 
+def test_coverage_index_falls_back_to_unmarked_guideline_headings(tmp_path: Path) -> None:
+    (tmp_path / "ARCHITECTURAL_GUIDELINES.md").write_text(
+        "# Architectural guidelines\n\n"
+        "## Fix discipline\n\n"
+        "Apply changes surgically.\n\n"
+        "### Simplicity\n\n"
+        "Prefer the smallest complete change.\n\n"
+        "```markdown\n"
+        "### G-Fenced-1: Fenced false positive\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    cov = learn_from_bugs.coverage_index(tmp_path)
+
+    assert cov.guidelines == (
+        ("Fix discipline", "Fix discipline"),
+        ("Simplicity", "Simplicity"),
+    )
+    assert cov.guidelines_index_status == "indexed"
+
+
+def test_coverage_index_marks_present_unparsed_guidelines_as_empty(tmp_path: Path) -> None:
+    (tmp_path / "ARCHITECTURAL_GUIDELINES.md").write_text(
+        "# Architectural guidelines\n\nNo guideline headings yet.\n",
+        encoding="utf-8",
+    )
+
+    cov = learn_from_bugs.coverage_index(tmp_path)
+
+    assert not cov.guidelines
+    assert cov.guidelines_index_status == "empty"
+
+
 def test_coverage_index_absent_files_yield_empty(tmp_path: Path) -> None:
     cov = learn_from_bugs.coverage_index(tmp_path)
     assert cov.to_json() == {
@@ -477,6 +513,7 @@ def test_coverage_index_absent_files_yield_empty(tmp_path: Path) -> None:
         "python_lints": [],
         "script_lints": [],
     }
+    assert cov.guidelines_index_status == "missing"
 
 
 def test_coverage_index_does_not_emit_retired_rule_field(tmp_path: Path) -> None:
@@ -1162,7 +1199,40 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     assert first["structured"] is True
     coverage = json.loads((out_dir / "coverage-index.json").read_text(encoding="utf-8"))
     assert set(coverage) == {"guidelines", "invariants", "python_lints", "script_lints"}
+    assert stats["GUIDELINES_INDEX_STATUS"] == "missing"
     assert "RULES_INDEXED" not in stats
+
+
+def test_run_prepare_indexes_unmarked_root_guidelines(tmp_path: Path) -> None:
+    (tmp_path / ag.GUIDELINES_FILENAME).write_text(
+        "## Fix discipline\n\nApply changes surgically.\n\n"
+        "### Simplicity\n\nPrefer the smallest complete change.\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(
+        responses=[_result(json.dumps([_issue(1, "[BUG] a", STRUCTURED_BODY)]))],
+        strict=True,
+    )
+    out_dir = tmp_path / "run"
+    request = learn_from_bugs.PrepareRequest(
+        search="[BUG] in:title",
+        search_explicit=False,
+        state="closed",
+        limit=10,
+        repo_explicit="o/r",
+        out_dir=out_dir,
+        root=tmp_path,
+    )
+
+    stats = learn_from_bugs.run_prepare(runner, request)
+    coverage = json.loads((out_dir / "coverage-index.json").read_text(encoding="utf-8"))
+
+    assert stats["GUIDELINES_INDEXED"] == 2
+    assert stats["GUIDELINES_INDEX_STATUS"] == "indexed"
+    assert coverage["guidelines"] == [
+        ["Fix discipline", "Fix discipline"],
+        ["Simplicity", "Simplicity"],
+    ]
 
 
 def test_prepare_main_pages_digest_and_emits_each_path(
@@ -1213,6 +1283,7 @@ def test_prepare_main_pages_digest_and_emits_each_path(
     assert all(len(path.read_text(encoding="utf-8")) <= max_chars for path in digest_paths)
     assert [number for path in digest_paths for number in _digest_numbers(path)] == [1, 2, 3]
     assert "DIGEST_PATHS" not in stats
+    assert stats["GUIDELINES_INDEX_STATUS"] == "missing"
     assert int(stats["DIGEST_TOKENS_EST"]) == (
         sum(len(record) for record in records)
         + learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
@@ -2544,7 +2615,22 @@ def test_origin_bare_regression_has_null_ref() -> None:
 def test_origin_no_marker_is_unknown() -> None:
     body = "## Root cause\n\nA plain logic error with no residual language.\n"
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="inconclusive"
+    )
+
+
+def test_origin_without_classification_signal_has_distinct_reason() -> None:
+    body = (
+        "## Summary\n\nThe operation failed.\n\n"
+        "## Impact\n\nOperators cannot see the configured value.\n"
+    )
+
+    digest = learn_from_bugs.build_digest(_issue(18, "[BUG] missing signal", body))
+
+    assert digest.origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="no-classification-signal"
+    )
 
 
 @pytest.mark.parametrize(
@@ -2571,13 +2657,17 @@ def test_origin_ignores_unstructured_classification_terms() -> None:
         body="A DESIGN_GAP, owning surface CONFIGURATION, needs investigation.\n",
     )
 
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="no-classification-signal"
+    )
 
 
 def test_origin_introduced_in_requires_adjacency() -> None:
     body = "## Root cause analysis\n\nThe defect was introduced early in #12 of the port.\n"
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="inconclusive"
+    )
 
 
 @pytest.mark.parametrize(
@@ -2644,7 +2734,9 @@ def test_origin_ignores_marker_in_summary_only() -> None:
         "## Suggested fix(es)\n\nFix it.\n"
     )
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="inconclusive"
+    )
 
 
 def test_origin_ignores_marker_in_suggested_fix_only() -> None:
@@ -2654,7 +2746,9 @@ def test_origin_ignores_marker_in_suggested_fix_only() -> None:
         "## Suggested fix(es)\n\nThis was introduced by #9.\n"
     )
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="inconclusive"
+    )
 
 
 def test_origin_title_only_ignores_plan_body_markers() -> None:
@@ -2667,7 +2761,9 @@ def test_origin_title_only_ignores_plan_body_markers() -> None:
     )
     digest = learn_from_bugs.build_digest(_issue(12, "[BUG] plan-only", body))
     assert digest.sections == {"_title_only": ""}
-    assert digest.origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert digest.origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="no-classification-signal"
+    )
 
 
 def test_origin_freeform_referenced_marker() -> None:
@@ -2685,7 +2781,9 @@ def test_origin_ignores_marker_after_plan_boundary() -> None:
         "persists after #999\n"
     )
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
-    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+    assert origin == learn_from_bugs.Origin(
+        kind="unknown", ref=None, unknown_reason="inconclusive"
+    )
 
 
 def test_build_digest_json_includes_origin() -> None:
@@ -2755,6 +2853,7 @@ def _digest_with_origin(
     *,
     kind: learn_from_bugs.OriginKind,
     ref: int | None = None,
+    unknown_reason: learn_from_bugs.UnknownOriginReason | None = None,
     title: str = "[BUG] x",
 ) -> learn_from_bugs.BugDigest:
     return learn_from_bugs.BugDigest(
@@ -2766,7 +2865,7 @@ def _digest_with_origin(
         structured=True,
         prefix_chars=10,
         sections={"summary": "x"},
-        origin=learn_from_bugs.Origin(kind=kind, ref=ref),
+        origin=learn_from_bugs.Origin(kind=kind, ref=ref, unknown_reason=unknown_reason),
     )
 
 
@@ -2777,9 +2876,9 @@ def test_render_origin_headline_counts_chains_ratio_and_self_chain() -> None:
         _digest_with_origin(42, kind="regression", ref=42),  # self
         _digest_with_origin(3, kind="new-code"),
         _digest_with_origin(4, kind="spec-gap"),
-        _digest_with_origin(5, kind="unknown"),
-        _digest_with_origin(6, kind="unknown"),
-        _digest_with_origin(7, kind="unknown"),
+        _digest_with_origin(5, kind="unknown", unknown_reason="no-classification-signal"),
+        _digest_with_origin(6, kind="unknown", unknown_reason="no-classification-signal"),
+        _digest_with_origin(7, kind="unknown", unknown_reason="inconclusive"),
     ]
     headline = learn_from_bugs.render_origin_headline(digests)
     assert "selected=8" in headline
@@ -2787,6 +2886,8 @@ def test_render_origin_headline_counts_chains_ratio_and_self_chain() -> None:
     assert "- new-code: 1 (12.5%)" in headline
     assert "- spec-gap: 1 (12.5%)" in headline
     assert "- unknown: 3 (37.5%)" in headline
+    assert "  - no classification signal: 2 (25.0%)" in headline
+    assert "  - signal present but inconclusive: 1 (12.5%)" in headline
     assert "#100 -> #200" in headline
     assert "#42 -> #42 (suspect: self-reference)" in headline
     assert "#50 ->" not in headline  # bare omitted from chains
@@ -2799,6 +2900,7 @@ def test_render_origin_headline_zero_selected() -> None:
     assert "- regression: 0 (0.0%)" in headline
     assert "(none)" in headline
     assert "n/a (0/0)" in headline
+    assert "no classification signal" not in headline
 
 
 def test_validate_report_contract_accepts_valid_report() -> None:
