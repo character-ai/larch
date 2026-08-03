@@ -436,10 +436,12 @@ CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
+CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
+CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 # Inactive /debate role pins (piece 1). Live launch is owned by piece 2.
-DEBATE_CODEX_MODEL: Final = "gpt-5.6-sol"
+DEBATE_CODEX_MODEL: Final = CODEX_DEFAULT_MODEL
 DEBATE_CURSOR_MODEL: Final = CURSOR_GROK_4_5_HIGH_MODEL
-DEBATE_CLAUDE_MODEL: Final = "claude-opus-4-8"
+DEBATE_CLAUDE_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
 
 
 @dataclass(frozen=True)
@@ -714,7 +716,6 @@ FIXER_TIER_FAIL_REASONS: Final[tuple[str, ...]] = (
     FIXER_TIER_FAIL_REASON_UNAVAILABLE,
     FIXER_TIER_FAIL_REASON_EXHAUSTED,
 )
-CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
 CLAUDE_SONNET_4_6_1M_MODEL: Final = "claude-sonnet-4-6[1m]"
 CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
@@ -910,7 +911,6 @@ CURSOR_MODEL_LIST_HEADER: Final = "Available models"
 # Pinned grammar: `<id> - <display name>` (one line each). Fail closed otherwise.
 CURSOR_MODEL_LIST_LINE_RE: Final = r"^([A-Za-z0-9][A-Za-z0-9._+-]*) - .+$"
 EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT: Final = "claude-haiku-4-5"
-CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.6-terra"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"
