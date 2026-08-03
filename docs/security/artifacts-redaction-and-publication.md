@@ -252,6 +252,18 @@ retention rules live in [Larch Run Logs](../run-logs.md),
 is published. This document owns why every transition must stay filtered,
 bounded, and fail-closed.
 
+### Durable debate-record invariant
+
+The four debate batches (`debate-round-ledger`, `debate-proposal`,
+`debate-stalemate-tally`, `debate-participants`) reject recognized
+session-tmpdir pointers before redaction or persistence. The matcher is
+session-tmpdir-specific: it does not reject operator-repository paths, and it
+does not replace existing redaction of valid operator-repository paths,
+secrets, or other sensitive content in accepted payloads. JSON debate batches
+also inspect decoded string values so escaped session paths cannot bypass the
+guard. Batch contracts and write/append mechanics live in
+[Run-log batch registry](../run-log-batches.md#debate-record-batches).
+
 ### Breadcrumb security invariants
 
 Session `breadcrumbs/` directories are publication hints, not content roots.

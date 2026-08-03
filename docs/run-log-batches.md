@@ -1,6 +1,6 @@
 # Run-log batch registry
 
-Run-log batches are registered in `python/larch/report/run_logs.py`.
+Run-log batches are registered in `python/larch/report/run_log_batch.py`.
 
 Each batch declares:
 
@@ -14,7 +14,8 @@ Append-mode batches must use `run-log append`.
 Replace-mode batches must use `run-log write`.
 
 The registry includes the durable implement, review, design, token, timing,
-execution-issue, transcript, vendor-diagnostic, and checks-digest telemetry carriers.
+execution-issue, transcript, vendor-diagnostic, checks-digest telemetry, and
+debate record carriers.
 
 Registration defines the allowed shape when publication is enabled. Every
 session-derived batch still passes through the run-log trim, temporary-path
@@ -30,6 +31,33 @@ successful terminalization removes staging without an archive, synchronized
 cache, or pending publication. Analyzers use an explicit local `--log-root` or
 the storage-origin-bound corpus root returned by the shared synchronizer. They
 never treat disabled storage as an empty corpus.
+
+## Debate record batches
+
+Four debate carriers are registered for a future debate engine. Registration
+alone does not add producers:
+
+| Batch | Extension | Mode | Sanitizer |
+|---|---|---|---|
+| `debate-round-ledger` | `.ndjson` | append | `json-lines` |
+| `debate-proposal` | `.md` | replace | `none` |
+| `debate-stalemate-tally` | `.json` | replace | `json-object` |
+| `debate-participants` | `.tsv` | replace | `none` |
+
+**Session-tmpdir rejection**: for these four slugs only, `_write_batch` and
+`_append_batch` reject recognized session-tmpdir pointers before
+`_redact_to_temp` and before persistence. Raw text is scanned with
+`contains_recognized_session_tmpdir_pointer`. For `json-lines` and
+`json-object` sanitizers, decoded JSON string values are inspected recursively
+so escaped-slash or Unicode-escaped session paths cannot bypass the guard.
+Malformed JSON keeps the existing post-redaction validation error. Valid debate
+payloads, including operator-repository paths, still follow the existing
+redaction path. Non-debate batches are unchanged.
+
+The durable-record security statement lives in
+[artifacts-redaction-and-publication.md](security/artifacts-redaction-and-publication.md#durable-debate-record-invariant).
+Reconstruction roles and producer notes live in
+[run-logs.md](run-logs.md#debate-durable-records).
 
 `architectural-invariant-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes

@@ -18,6 +18,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
+from typing import cast
 
 from larch.core.architectural_guidelines import (
     validate_guideline_ship_outcome_record,
@@ -119,7 +120,20 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
+    "debate-round-ledger": BatchInfo(".ndjson", "append", "json-lines"),
+    "debate-proposal": BatchInfo(".md", "replace", "none"),
+    "debate-stalemate-tally": BatchInfo(".json", "replace", "json-object"),
+    "debate-participants": BatchInfo(".tsv", "replace", "none"),
 }
+
+_DEBATE_SESSION_TMPDIR_BATCHES: frozenset[str] = frozenset(
+    {
+        "debate-round-ledger",
+        "debate-proposal",
+        "debate-stalemate-tally",
+        "debate-participants",
+    }
+)
 
 
 def _batch_extension(slug: str) -> str:
@@ -375,6 +389,53 @@ def _redact_to_temp(input_file: Path, *, scratch_dir: Path, cap_bytes: int | Non
     return tmp
 
 
+def _json_values_contain_session_tmpdir_pointer(value: object) -> bool:
+    if isinstance(value, str):
+        return redact.contains_recognized_session_tmpdir_pointer(value)
+    if isinstance(value, dict):
+        mapping = cast("dict[object, object]", value)
+        return any(_json_values_contain_session_tmpdir_pointer(item) for item in mapping.values())
+    if isinstance(value, list):
+        sequence = cast("list[object]", value)
+        return any(_json_values_contain_session_tmpdir_pointer(item) for item in sequence)
+    return False
+
+
+def _reject_debate_session_tmpdir_pointers(*, batch: str, text: str) -> None:
+    """Reject debate-batch payloads that embed recognized session-tmpdir pointers.
+
+    Runs before redaction and persistence. Operator-repository paths are not
+    rejected here; they continue through existing redaction.
+    """
+    if batch not in _DEBATE_SESSION_TMPDIR_BATCHES:
+        return
+    reject_msg = (
+        f"batch {batch} rejects recognized session-tmpdir pointers before persistence"
+    )
+    if redact.contains_recognized_session_tmpdir_pointer(text):
+        raise ValueError(reject_msg)
+    sanitizer = _batch_sanitizer(batch)
+    if sanitizer == "json-lines":
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                decoded: object = json.loads(line)
+            except json.JSONDecodeError:
+                # Malformed rows keep the existing post-redaction validation error.
+                continue
+            if _json_values_contain_session_tmpdir_pointer(decoded):
+                raise ValueError(reject_msg)
+        return
+    if sanitizer == "json-object":
+        try:
+            decoded_obj: object = json.loads(text)
+        except json.JSONDecodeError:
+            return
+        if _json_values_contain_session_tmpdir_pointer(decoded_obj):
+            raise ValueError(reject_msg)
+
+
 def _write_batch(
     *, log_root: Path,
     skill: str,
@@ -387,7 +448,12 @@ def _write_batch(
     if _batch_mode(batch) != "replace":
         raise ValueError(f"batch {batch} is append-only; use append")
     cap = 8192 if batch == "codex-impl-transcript" else None
-    tmp = _redact_to_temp(_rebase_under_tmpdir(input_file), scratch_dir=_scratch_dir_for_log_root(log_root), cap_bytes=cap)
+    source = _rebase_under_tmpdir(input_file)
+    _reject_debate_session_tmpdir_pointers(
+        batch=batch,
+        text=source.read_text(encoding="utf-8", errors="replace"),
+    )
+    tmp = _redact_to_temp(source, scratch_dir=_scratch_dir_for_log_root(log_root), cap_bytes=cap)
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
@@ -411,7 +477,12 @@ def _append_batch(
         raise ValueError(f"unknown batch: {batch}")
     if _batch_mode(batch) != "append":
         raise ValueError(f"batch {batch} is replace-only; use write")
-    tmp = _redact_to_temp(_rebase_under_tmpdir(record_file), scratch_dir=_scratch_dir_for_log_root(log_root))
+    source = _rebase_under_tmpdir(record_file)
+    _reject_debate_session_tmpdir_pointers(
+        batch=batch,
+        text=source.read_text(encoding="utf-8", errors="replace"),
+    )
+    tmp = _redact_to_temp(source, scratch_dir=_scratch_dir_for_log_root(log_root))
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)

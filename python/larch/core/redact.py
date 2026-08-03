@@ -347,6 +347,11 @@ def _redact_secrets_pem(text: str) -> tuple[str, bool]:
     return "".join(out), unterminated
 
 
+def contains_recognized_session_tmpdir_pointer(text: str) -> bool:
+    """Return True when text matches a session-tmpdir pattern (not operator-repo)."""
+    return any(pattern.search(text) for pattern, _repl in _TMPDIR_PATTERNS)
+
+
 def redact_tmpdir_paths(text: str) -> str:
     for pattern, repl in _TMPDIR_PATTERNS:
         text = pattern.sub(repl, text)
