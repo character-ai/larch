@@ -1558,7 +1558,8 @@ def _repository_target_adopted(proposal: Proposal, root: Path) -> bool:
 
 def _filed_issue_status(
     runner: Runner, proposal: Proposal, repo: str
-) -> ProposalStatus:
+) -> ProposalStatus | None:
+    """Return a decisive filed-issue status, or None when closure is not decisive about adoption."""
     assert proposal.filed_issue is not None
     result = gh.command(runner,  # lint-subprocess-via-runner: ok local gh issue view with JSON response
         [
@@ -1592,6 +1593,8 @@ def _filed_issue_status(
         return "orphaned"
     if reason == "COMPLETED":
         return "adopted"
+    if reason == "DUPLICATE":
+        return None
     raise LearnFromBugsError("gh issue view returned an unknown closed issue reason")
 
 
@@ -1625,6 +1628,7 @@ def check_proposals(
         status: ProposalStatus
         if proposal.filed_issue is not None:
             filed_issue_status = _filed_issue_status(runner, proposal, repo)
+        if filed_issue_status is not None:
             status = filed_issue_status
         elif target_verified:
             status = "adopted"
