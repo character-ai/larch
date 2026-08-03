@@ -64,21 +64,22 @@ def _check_multi_issue_split(
     skill: str,
     require: Callable[[str, str, str], None],
 ) -> None:
+    reference = "skills/implement/references/umbrella-partition.md"
+    require(skill, reference, "SKILL multi-issue split pointer")
     for needle, label in [
-        ("### Multi-issue split ownership", "SKILL multi-issue split owner"),
-        ("Invoke `/umbrella` via the Skill tool", "SKILL split delegates through umbrella"),
-        ('--lifecycle-parent-context "$CONTEXT_FILE"', "SKILL split forwards lifecycle handoff"),
+        ("Invoke `/umbrella` via the Skill tool", "reference split delegates through umbrella"),
+        ('--lifecycle-parent-context "$CONTEXT_FILE"', "reference split forwards lifecycle handoff"),
         (
             '--prepared-input-file "$IMPLEMENT_TMPDIR/umbrella-partition/partition-input.txt"',
-            "SKILL split forwards exact prepared input",
+            "reference split forwards exact prepared input",
         ),
         (
-            'umbrella verify-completion --sentinel-file "$IMPLEMENT_TMPDIR/umbrella-partition/umbrella-complete.sentinel"',
-            "SKILL split verifies identity-bound umbrella completion",
+            '--sentinel-file "$IMPLEMENT_TMPDIR/umbrella-partition/umbrella-complete.sentinel"',
+            "reference split verifies identity-bound umbrella completion",
         ),
-        ("do not close the original", "SKILL split forbids direct original closure"),
+        ("original closure", "reference split forbids direct original closure"),
     ]:
-        require(skill, needle, label)
+        require(reference, needle, label)
 
 
 def run(repo_root: Path) -> list[str]:
@@ -1229,4 +1230,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 391
+LEGACY_ASSERTION_LABEL_COUNT = 392

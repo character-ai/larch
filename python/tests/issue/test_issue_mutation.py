@@ -199,7 +199,13 @@ def test_managed_umbrella_conversion_is_atomic_and_shape_restricted() -> None:
     )
     assert converted.after.title == "[UMBRELLA] [BUG] Split this work"
     assert converted.after.body.endswith("<!-- larch:umbrella-proposal -->\n")
-    assert len([call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]]) == 1
+    assert len(
+        [
+            call
+            for call in runner.calls
+            if call[:3] == ["gh", "issue", "edit"]  # lint-gh-argv-literal: ok fixture assertion
+        ]
+    ) == 1
 
     invalid = [
         ("[UMBRELLA] Renamed", original_body + "\n<!-- larch:umbrella-proposal -->\n"),

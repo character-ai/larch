@@ -1,8 +1,8 @@
 """Immutable skill-structure pin tables.
 
-Simple contains/absent/count/ordered/adjacent-pair contracts for design live
-here. Alias, bug, learn-from-bugs, implement, research, and review structure
-contracts are covered by complete specialized ports in sibling modules
+Simple contains/absent/count/ordered/adjacent-pair contracts for design and
+umbrella live here. Alias, bug, learn-from-bugs, implement, research, and review
+structure contracts are covered by complete specialized ports in sibling modules
 (executable loops, CLI lints, proximity windows, and regex-BRE semantics).
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ REVIEW_PINS: Final[tuple[StructurePin, ...]] = ()
 UMBRELLA_PINS: Final[tuple[StructurePin, ...]] = (
     StructurePin(skill="umbrella", label="prepared handoff must require parent lifecycle context", path="skills/umbrella/SKILL.md", kind="contains", needle="Accept that group only with a leading `--lifecycle-parent-context`, `--skip-approve`, and one numeric issue."),
     StructurePin(skill="umbrella", label="prepared handoff must persist dependency copy through umbrella owner", path="skills/umbrella/SKILL.md", kind="contains", needle='--deps-output "$UMBRELLA_TMPDIR/prepared-deps.tsv"'),
-    StructurePin(skill="umbrella", label="prepared handoff must retain normal dedup", path="skills/umbrella/SKILL.md", kind="contains", needle="the exact parent-approved edges are authoritative while normal duplicate detection remains enabled"),
+    StructurePin(skill="umbrella", label="prepared handoff must retain normal dedup", path="skills/umbrella/SKILL.md", kind="contains", needle="the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled"),
     StructurePin(skill="umbrella", label="prepared completion sentinel must bind live inputs", path="skills/umbrella/SKILL.md", kind="contains", needle='--sentinel-file "$COMPLETION_SENTINEL" --sentinel-root "$PREPARED_ROOT" --prepared-input "$PREPARED_INPUT_FILE" --prepared-deps "$PREPARED_DEPS_FILE"'),
 )
 
