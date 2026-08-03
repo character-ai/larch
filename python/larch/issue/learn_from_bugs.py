@@ -98,10 +98,19 @@ _CLASSIFICATION_VALUE_RE: Final = re.compile(
     r"owning\s+surface\s+(?P<surface>[A-Z][A-Z0-9_]*)\b",
     re.IGNORECASE,
 )
+_HARNESS_ROOT_CAUSE_CLASS_RE: Final = re.compile(
+    r"\broot[- ]cause\s+class\s*(?::\s*)?`?(?P<kind>[A-Z][A-Z0-9_]*)`?\b",
+    re.IGNORECASE,
+)
+_HARNESS_OWNING_SURFACE_RE: Final = re.compile(
+    r"\bowning\s+surface\s*(?::\s*)?`?(?P<surface>[A-Z][A-Z0-9_]*)`?\b",
+    re.IGNORECASE,
+)
 _FENCE_MARKER_RE: Final = re.compile(r"^(`{3,}|~{3,})(.*)$")
 _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 _PROPOSAL_ID_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TEST_NAME_RE: Final = re.compile(r"^test_[A-Za-z0-9_]+$")
+_TEST_TARGET_SUFFIXES: Final = (".py", ".rs")
 _FIX_TOKEN_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _CHECK_SYMBOL_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _BOX_DRAWING_CHAR_RE: Final = re.compile(r"[\u2500-\u257f]")
@@ -419,6 +428,25 @@ def _validate_fix_or_hook_target(proposal_type: ProposalType, target: str) -> bo
     return False
 
 
+def _validate_test_target(target: str, root: Path | None) -> None:
+    """Validate a Python or Rust test target; redirect other symbol targets."""
+    path_target, separator, test_name = target.partition("::")
+    suffix = Path(path_target).suffix
+    if separator and suffix not in _TEST_TARGET_SUFFIXES:
+        _validate_path_target(path_target, (), root)
+        if _CHECK_SYMBOL_RE.fullmatch(test_name) is None:
+            raise LearnFromBugsError(f"invalid test function target: {target!r}")
+        check_target = f"check:{path_target}#{test_name}"
+        raise LearnFromBugsError(
+            f"non-Python test function target: {target!r}; use {check_target!r}"
+        )
+    if separator:
+        symbol_pattern = _TEST_NAME_RE if suffix == ".py" else _CHECK_SYMBOL_RE
+        if symbol_pattern.fullmatch(test_name) is None:
+            raise LearnFromBugsError(f"invalid test function target: {target!r}")
+    _validate_path_target(path_target, _TEST_TARGET_SUFFIXES, root)
+
+
 def _validate_target(
     proposal_type: ProposalType, target: str, root: Path | None = None
 ) -> None:
@@ -436,10 +464,7 @@ def _validate_target(
         path_target, _fragment = _validate_architectural_target(target)
         _validate_path_target(path_target, (".md",), root)
     elif proposal_type == "test":
-        path_target, separator, test_name = target.partition("::")
-        if separator and _TEST_NAME_RE.fullmatch(test_name) is None:
-            raise LearnFromBugsError(f"invalid test function target: {target!r}")
-        _validate_path_target(path_target, (".py",), root)
+        _validate_test_target(target, root)
     else:
         raise LearnFromBugsError(f"invalid {proposal_type} target: {target!r}")
 
@@ -774,6 +799,29 @@ def _parse_classification(value: str) -> BugClass | None:
     )
 
 
+def _parse_harness_classification(value: str) -> BugClass | None:
+    """Return the typed class from explicit test-harness metadata markers."""
+    lines: list[str] = value.splitlines()
+    fenced: set[int] = _fenced_line_indices(lines)
+    diagnostic_text: str = "\n".join(
+        line for index, line in enumerate(lines) if index not in fenced
+    )
+    kind_match: re.Match[str] | None = _HARNESS_ROOT_CAUSE_CLASS_RE.search(
+        diagnostic_text
+    )
+    if kind_match is None:
+        return None
+    surface_match: re.Match[str] | None = _HARNESS_OWNING_SURFACE_RE.search(
+        diagnostic_text, kind_match.end()
+    )
+    if surface_match is None:
+        return None
+    return BugClass(
+        kind=kind_match.group("kind").upper(),
+        surface=surface_match.group("surface").upper(),
+    )
+
+
 def _is_table_row(line: str) -> bool:
     """Recognize a Markdown or box-drawing table row without parsing its cells."""
     stripped: str = line.strip()
@@ -824,7 +872,7 @@ def _pick_sections(prefix: str) -> tuple[dict[str, str], bool, BugClass | None]:
     found: dict[str, str] = _split_sections(prefix)
     classification: BugClass | None = _parse_classification(
         found.get("classification", "")
-    )
+    ) or _parse_harness_classification(prefix)
     picked: dict[str, str] = {}
     seen_roots: set[str] = set()
     for want, cap in WANT_SECTIONS:
@@ -835,8 +883,12 @@ def _pick_sections(prefix: str) -> tuple[dict[str, str], bool, BugClass | None]:
     if picked:
         return picked, True, classification
     if len(prefix.strip()) < TITLE_ONLY_PREFIX_MAX:
-        return {"_title_only": ""}, False, None
-    return {"_freeform": _squeeze(_elide_table_runs(prefix), FREEFORM_CAP)}, False, None
+        return {"_title_only": ""}, False, classification
+    return (
+        {"_freeform": _squeeze(_elide_table_runs(prefix), FREEFORM_CAP)},
+        False,
+        classification,
+    )
 
 
 def _has_structured_want_sections(ordered: Sequence[tuple[str, str]]) -> bool:
@@ -914,7 +966,7 @@ def classify_origin(
     normalized_title = _DONE_PREFIX_RE.sub("", title)
     parsed_classification = classification or _parse_classification(
         _split_sections(prefix).get("classification", "")
-    )
+    ) or _parse_harness_classification(prefix)
     sources = _origin_source_texts(title=normalized_title, prefix=prefix)
     classification_origin = (
         None
@@ -1405,13 +1457,22 @@ def _architectural_target_adopted(proposal: Proposal, root: Path) -> bool:
     return False
 
 
+def _symbol_target_adopted(path: Path, symbol: str) -> bool:
+    """Return whether one exact identifier occurs in a repository file."""
+    return re.search(
+        rf"\b{re.escape(symbol)}\b", path.read_text(encoding="utf-8")
+    ) is not None
+
+
 def _test_target_adopted(proposal: Proposal, root: Path) -> bool:
     raw_path, separator, test_name = proposal.target.partition("::")
-    path = _safe_relative_path(root, raw_path, (".py",))
+    path = _safe_relative_path(root, raw_path, _TEST_TARGET_SUFFIXES)
     if not path.is_file():
         return False
     if not separator:
         return True
+    if path.suffix == ".rs":
+        return _symbol_target_adopted(path, test_name)
     return (
         re.search(
             rf"^def\s+{re.escape(test_name)}\s*\(",
@@ -1477,9 +1538,7 @@ def _check_target_adopted(proposal: Proposal, root: Path) -> bool:
     path = _safe_relative_path(root, raw_path, ())
     if not path.is_file():
         return False
-    return re.search(
-        rf"\b{re.escape(symbol)}\b", path.read_text(encoding="utf-8")
-    ) is not None
+    return _symbol_target_adopted(path, symbol)
 
 
 def _repository_target_adopted(proposal: Proposal, root: Path) -> bool:

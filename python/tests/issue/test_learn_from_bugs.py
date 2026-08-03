@@ -140,6 +140,30 @@ Ask for the service record and observe the typed limitation.
 Found by /smarts:test-smarts seed `abc123` (2026-08-02).
 """
 
+TEST_SMARTS_HARNESS_BODY = """The `/smarts:test-smarts` harness observed this defect.
+
+- Root cause class: `IMPLEMENTATION_BUG`
+- Owning surface: `RUST_CRATE`
+- Replay seed: `abc123`
+
+## Summary
+
+One structured harness issue retained only its summary in the compact digest.
+
+## Minimal reproduction
+
+Run the harness.
+"""
+
+TEST_SMARTS_CONTEXT_BODY = """#### Context
+
+Found by `/smarts:test-smarts`. Root-cause class `IMPLEMENTATION_BUG`; owning surface `RUST_CRATE`.
+
+#### Reproduction
+
+Run the harness.
+"""
+
 TITLE_ONLY_BODY = "<!-- larch:plan:start -->\n## Plan\n## Approach\nonly a plan here\n"
 
 
@@ -259,6 +283,65 @@ def test_template_corpus_populates_origin_headline() -> None:
     assert "- new-code: 1 (33.3%)" in headline
     assert "- spec-gap: 2 (66.7%)" in headline
     assert "- unknown: 0 (0.0%)" in headline
+
+
+@pytest.mark.parametrize(
+    "body",
+    [TEST_SMARTS_HARNESS_BODY, TEST_SMARTS_CONTEXT_BODY],
+)
+def test_build_digest_retains_explicit_harness_class(body: str) -> None:
+    digest = learn_from_bugs.build_digest(_issue(17, "[BUG] harness class", body))
+
+    assert digest.classification == learn_from_bugs.BugClass(
+        kind="IMPLEMENTATION_BUG",
+        surface="RUST_CRATE",
+    )
+    assert digest.to_json()["class"] == {
+        "kind": "IMPLEMENTATION_BUG",
+        "surface": "RUST_CRATE",
+    }
+    assert digest.origin == learn_from_bugs.Origin(kind="new-code", ref=None)
+
+
+def test_summary_only_harness_corpus_uses_class_for_origin() -> None:
+    classifications = (
+        ["IMPLEMENTATION_BUG"] * 8
+        + ["CONFIGURATION_GAP"] * 3
+        + ["DESIGN_GAP"] * 3
+    )
+    digests = [
+        learn_from_bugs.build_digest(
+            _issue(
+                number,
+                "[BUG] harness class",
+                TEST_SMARTS_HARNESS_BODY.replace("IMPLEMENTATION_BUG", classification, 1),
+            )
+        )
+        for number, classification in enumerate(classifications, start=1)
+    ]
+
+    assert all(set(digest.sections) == {"summary"} for digest in digests)
+    headline = learn_from_bugs.render_origin_headline(digests)
+    assert "- new-code: 8 (57.1%)" in headline
+    assert "- spec-gap: 6 (42.9%)" in headline
+    assert "- unknown: 0 (0.0%)" in headline
+
+
+def test_build_digest_ignores_harness_class_markers_inside_fence() -> None:
+    body = """## Summary
+
+The summary includes an example metadata payload.
+
+```text
+- Root cause class: `IMPLEMENTATION_BUG`
+- Owning surface: `RUST_CRATE`
+```
+"""
+
+    digest = learn_from_bugs.build_digest(_issue(18, "[BUG] fenced class", body))
+
+    assert digest.classification is None
+    assert digest.origin == learn_from_bugs.Origin(kind="unknown", ref=None)
 
 
 def test_build_digest_ignores_headings_inside_backtick_fence() -> None:
@@ -601,6 +684,35 @@ def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: py
     assert out["RUN_DATE"] == "2026-07-09T12:00:00Z"
     assert out["SCAN_STARTED_AT"] == "2026-07-09T11:00:00Z"
     assert out["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == "0"
+
+
+def test_write_state_cli_accepts_rust_test_function_target(tmp_path: Path) -> None:
+    proposals_file = tmp_path / "proposals.jsonl"
+    target = "crates/smarts-cli/src/release.rs::publish_retries_on_empty_release_attestation"
+    proposals_file.write_text(
+        json.dumps(
+            _proposal(
+                proposal_id="rust-regression",
+                proposal_type="test",
+                target=target,
+                status="pending",
+                run_date="2026-08-02",
+            ).to_json()
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert learn_from_bugs.write_state_main([
+        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+        "--selected-count", "1", "--highest-closed-issue-number-scanned", "1",
+        "--run-date", "2026-08-02T12:00:00Z", "--scan-started-at", "2026-08-02T11:00:00Z",
+        "--proposals-file", str(proposals_file),
+    ]) == 0
+
+    written = learn_from_bugs.read_state(learn_from_bugs.state_path(tmp_path))
+    assert written is not None
+    assert written.proposals[0].target == target
 
 
 def test_write_state_cli_rejects_invalid_existing_marker(tmp_path: Path) -> None:
@@ -1340,6 +1452,61 @@ def test_invalid_canonical_targets_are_rejected(
         learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
 
 
+def test_rust_test_function_target_loads_without_rewrite(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    target = "crates/smarts-cli/src/release.rs::publish_retries_on_empty_release_attestation"
+    path.write_text(
+        json.dumps(
+            {
+                "id": "rust-regression",
+                "type": "test",
+                "target": target,
+                "run_date": "2026-08-02",
+                "status": "pending",
+                "filed_issue": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proposals = learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+    assert proposals == (
+        _proposal(
+            proposal_id="rust-regression",
+            proposal_type="test",
+            target=target,
+            status="pending",
+            run_date="2026-08-02",
+        ),
+    )
+
+
+def test_unsupported_test_language_error_names_check_redirect(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "id": "go-regression",
+                "type": "test",
+                "target": "cmd/release_test.go::TestPublishRetry",
+                "run_date": "2026-08-02",
+                "status": "pending",
+                "filed_issue": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        learn_from_bugs.LearnFromBugsError,
+        match="use 'check:cmd/release_test\\.go#TestPublishRetry'",
+    ):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
 def test_load_proposals_preserves_historical_issue_linkage(tmp_path: Path) -> None:
     path = tmp_path / "proposals.jsonl"
     first = _proposal(status="pending", filed_issue=42).to_json()
@@ -1457,6 +1624,29 @@ def test_check_target_adopts_existing_symbol(
     proposal = _proposal(
         proposal_type=proposal_type,
         target="check:crates/larch-lint/src/checks.rs#hosted_check",
+    )
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "adopted"
+    assert checked[0].adoption_evidence == "target-verified"
+
+
+def test_rust_test_target_adopts_existing_symbol(tmp_path: Path) -> None:
+    test_path = tmp_path / "crates" / "smarts-cli" / "src" / "release.rs"
+    test_path.parent.mkdir(parents=True)
+    test_path.write_text(
+        "#[test]\nfn publish_retries_on_empty_release_attestation() {}\n",
+        encoding="utf-8",
+    )
+    proposal = _proposal(
+        proposal_type="test",
+        target=(
+            "crates/smarts-cli/src/release.rs"
+            "::publish_retries_on_empty_release_attestation"
+        ),
     )
 
     checked = learn_from_bugs.check_proposals(
