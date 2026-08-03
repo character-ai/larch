@@ -28,14 +28,13 @@ from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.core import redact
 from larch.core.proc import CommandResult
 
+from larch.agents import _types
 from larch.agents._types import (
     _QUOTA_RE,
     _AUTH_RE,
     _TOML_CLOSED_STRING_DELIMITER_COUNT,
     _PY_CLI,
     _SESSION_CAPTURE_FAILED_RC,
-    EXTERNAL_AGENT_FAILURE_REASON_SESSION_CAPTURE_FAILED,
-    TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS,
     ExternalAgentFailureReason,
     LauncherPaths,
     RunExternalAgentResult,
@@ -296,7 +295,7 @@ def _session_capture_failure_result(
     message: str,
 ) -> RunExternalAgentResult:
     _append(path=diag, text=f"{message}\n")
-    reason: ExternalAgentFailureReason = EXTERNAL_AGENT_FAILURE_REASON_SESSION_CAPTURE_FAILED
+    reason: ExternalAgentFailureReason = _types.EXTERNAL_AGENT_FAILURE_REASON_SESSION_CAPTURE_FAILED
     return RunExternalAgentResult(
         _SESSION_CAPTURE_FAILED_RC,
         output_path,
@@ -1302,7 +1301,7 @@ def _run_external_agent_with_auth_retries(
             return result
         if (
             result.failure_reason is not None
-            and result.failure_reason in TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS
+            and result.failure_reason in _types.TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS
         ):
             return result
         if _policy_rejection_marker_present(output):

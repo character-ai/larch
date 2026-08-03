@@ -15,7 +15,7 @@ import pytest
 
 from larch.agents import _vendor
 from larch.agents._run_external import _codex_auth_args, _trust_config_arg
-from larch.agents._types import _PY_CLI
+from larch.agents._types import _PY_CLI, VendorSessionHandle
 from larch.agents._vendor import (
     CAP_HIT_PAYLOAD,
     CLAUDE_DESCRIPTOR,
@@ -1148,7 +1148,7 @@ def test_cap_check_result_frozen() -> None:
 
 class TestSessionArgvBuilders:
     def _request(self, **overrides: object) -> VendorLaunchRequest:
-        base = {
+        base: dict[str, object] = {
             "workdir": "/repo",
             "output": "/tmp/out.txt",
             "prompt": "continue the debate",
@@ -1161,8 +1161,6 @@ class TestSessionArgvBuilders:
         assert build_cursor_create_chat_argv() == ["cursor", "agent", "create-chat"]
 
     def test_cursor_resume_plan_mode_trust_json_workspace(self) -> None:
-        from larch.agents._types import VendorSessionHandle
-
         handle = VendorSessionHandle.create(vendor="cursor", session_id="chat-abc123")
         argv = build_cursor_resume_argv(handle, self._request())
         assert argv == [
@@ -1192,8 +1190,6 @@ class TestSessionArgvBuilders:
         assert "read-only" in build_codex_session_argv(req)
 
     def test_codex_resume_omits_unsupported_flags_keeps_uuid(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from larch.agents._types import VendorSessionHandle
-
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         handle = VendorSessionHandle.create(
             vendor="codex",
@@ -1223,8 +1219,6 @@ class TestSessionArgvBuilders:
         assert _trust_config_arg("/repo") in argv
 
     def test_wrong_vendor_and_unsafe_handles_rejected(self) -> None:
-        from larch.agents._types import VendorSessionHandle
-
         cursor = VendorSessionHandle.create(vendor="cursor", session_id="chat1")
         codex = VendorSessionHandle.create(
             vendor="codex",
@@ -1235,20 +1229,18 @@ class TestSessionArgvBuilders:
             build_cursor_resume_argv(codex, req)
         with pytest.raises(ValueError, match="wrong vendor"):
             build_codex_resume_argv(cursor, req)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="must be non-empty"):
             VendorSessionHandle.create(vendor="cursor", session_id="")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="without surrounding or embedded whitespace"):
             VendorSessionHandle.create(vendor="cursor", session_id="  spaced  ")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="must not be flag-like"):
             VendorSessionHandle.create(vendor="cursor", session_id="-flaglike")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="codex session id must be a UUID"):
             VendorSessionHandle.create(vendor="codex", session_id="not-a-uuid")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unsupported vendor session handle vendor"):
             VendorSessionHandle.create(vendor="claude", session_id="x")
 
     def test_handle_is_frozen_and_module_has_no_last(self) -> None:
-        from larch.agents._types import VendorSessionHandle
-
         handle = VendorSessionHandle.create(vendor="cursor", session_id="chat1")
         with pytest.raises(FrozenInstanceError):
             handle.session_id = "other"  # type: ignore[misc]

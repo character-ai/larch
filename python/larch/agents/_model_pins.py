@@ -57,7 +57,7 @@ def cursor_pinned_models() -> tuple[PinnedModel, ...]:
     """Unique Cursor pins from implement-lane and debate inventories."""
     by_id: dict[str, str] = {}
     for pin in cursor_pinned_model_declarations():
-        by_id.setdefault(pin.model_id, pin.constant_name)
+        _ = by_id.setdefault(pin.model_id, pin.constant_name)
     return tuple(
         PinnedModel(constant_name=constant_name, model_id=model_id)
         for model_id, constant_name in sorted(by_id.items())
@@ -84,7 +84,7 @@ def codex_pinned_models() -> tuple[PinnedModel, ...]:
     """Codex pins that /status resolves (unverifiable until a list surface exists)."""
     by_id: dict[str, str] = {}
     for pin in codex_pinned_model_declarations():
-        by_id.setdefault(pin.model_id, pin.constant_name)
+        _ = by_id.setdefault(pin.model_id, pin.constant_name)
     return tuple(
         PinnedModel(constant_name=constant_name, model_id=model_id)
         for model_id, constant_name in sorted(by_id.items())

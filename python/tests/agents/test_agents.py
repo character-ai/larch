@@ -6659,8 +6659,8 @@ def test_session_capture_failure_is_terminal_no_auth_retry(
 
     monkeypatch.setattr(_run_external.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 5)
-    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))
-    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
