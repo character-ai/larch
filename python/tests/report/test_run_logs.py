@@ -2274,7 +2274,7 @@ def test_debate_batches_reject_raw_session_tmpdir_before_redaction(
                 batch=batch,
                 input_file=str(source),
             )
-    assert calls == []
+    assert not calls
     out = log_root / "debate" / "run-abc" / f"{batch}{run_log_batch._batch_extension(batch)}"  # pyright: ignore[reportPrivateUsage]
     assert not out.exists()
 
@@ -2356,7 +2356,7 @@ def test_debate_json_batches_reject_escaped_session_tmpdir(
             batch="debate-round-ledger",
             record_file=str(key_ledger),
         )
-    assert calls == []
+    assert not calls
 
 
 def test_debate_append_rejection_preserves_prior_content(
