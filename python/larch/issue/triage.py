@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Final, TextIO, cast
 from urllib.parse import urlparse
 
-from larch.core import proc, redact
+from larch.core import config, proc, redact
 from larch.core.proc import CommandResult, Runner
 from larch.git import gh
 from larch.issue import issue_mutation
@@ -40,8 +40,18 @@ _EMAIL_RE: Final = re.compile(
     r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])"
 )
 _URL_RE: Final = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
+_LIFECYCLE_PREFIX_STATES: Final = (
+    "IMPLEMENTING",
+    "DONE",
+    "DESIGNING",
+    "DESIGNED",
+    "STALLED",
+    "IN PROGRESS",
+    "PLANNED",
+    *config.DEBATE_TITLE_STATES,
+)
 _LIFECYCLE_PREFIX_RE: Final = re.compile(
-    r"^\[(?:IMPLEMENTING|DONE|DESIGNING|DESIGNED|STALLED|IN PROGRESS|PLANNED)\]\s+",
+    rf"^\[(?:{'|'.join(_LIFECYCLE_PREFIX_STATES)})\]\s+",
     re.IGNORECASE,
 )
 _PROTECTED_MARKER_RE: Final = re.compile(r"<!--\s*larch:", re.IGNORECASE)

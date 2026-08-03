@@ -76,6 +76,8 @@ class BatchInfo:
     extension: str
     mode: str
     sanitizer: str
+    # Durable records that reject recognized session-tmpdir pointers outright.
+    reject_session_tmpdir: bool = False
 
 
 _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
@@ -120,20 +122,13 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
-    "debate-round-ledger": BatchInfo(".ndjson", "append", "json-lines"),
-    "debate-proposal": BatchInfo(".md", "replace", "none"),
-    "debate-stalemate-tally": BatchInfo(".json", "replace", "json-object"),
-    "debate-participants": BatchInfo(".tsv", "replace", "none"),
+    "debate-round-ledger": BatchInfo(".ndjson", "append", "json-lines", reject_session_tmpdir=True),
+    "debate-proposal": BatchInfo(".md", "replace", "none", reject_session_tmpdir=True),
+    "debate-stalemate-tally": BatchInfo(
+        ".json", "replace", "json-object", reject_session_tmpdir=True
+    ),
+    "debate-participants": BatchInfo(".tsv", "replace", "none", reject_session_tmpdir=True),
 }
-
-_DEBATE_SESSION_TMPDIR_BATCHES: frozenset[str] = frozenset(
-    {
-        "debate-round-ledger",
-        "debate-proposal",
-        "debate-stalemate-tally",
-        "debate-participants",
-    }
-)
 
 
 def _batch_extension(slug: str) -> str:
@@ -146,6 +141,10 @@ def _batch_mode(slug: str) -> str:
 
 def _batch_sanitizer(slug: str) -> str:
     return _LARCH_LOG_BATCHES[slug].sanitizer
+
+
+def _batch_rejects_session_tmpdir(slug: str) -> bool:
+    return _LARCH_LOG_BATCHES[slug].reject_session_tmpdir
 
 
 def _implement_tmpdir() -> Path | None:
@@ -389,32 +388,23 @@ def _redact_to_temp(input_file: Path, *, scratch_dir: Path, cap_bytes: int | Non
     return tmp
 
 
-def _json_values_contain_session_tmpdir_pointer(value: object) -> bool:
+def _json_contains_session_tmpdir_pointer(value: object) -> bool:
     if isinstance(value, str):
         return redact.contains_recognized_session_tmpdir_pointer(value)
     if isinstance(value, dict):
         mapping = cast("dict[object, object]", value)
-        return any(_json_values_contain_session_tmpdir_pointer(item) for item in mapping.values())
+        return any(
+            _json_contains_session_tmpdir_pointer(item)
+            for item in (*mapping.keys(), *mapping.values())
+        )
     if isinstance(value, list):
         sequence = cast("list[object]", value)
-        return any(_json_values_contain_session_tmpdir_pointer(item) for item in sequence)
+        return any(_json_contains_session_tmpdir_pointer(item) for item in sequence)
     return False
 
 
-def _reject_debate_session_tmpdir_pointers(*, batch: str, text: str) -> None:
-    """Reject debate-batch payloads that embed recognized session-tmpdir pointers.
-
-    Runs before redaction and persistence. Operator-repository paths are not
-    rejected here; they continue through existing redaction.
-    """
-    if batch not in _DEBATE_SESSION_TMPDIR_BATCHES:
-        return
-    reject_msg = (
-        f"batch {batch} rejects recognized session-tmpdir pointers before persistence"
-    )
-    if redact.contains_recognized_session_tmpdir_pointer(text):
-        raise ValueError(reject_msg)
-    sanitizer = _batch_sanitizer(batch)
+def _decoded_json_contains_session_tmpdir_pointer(*, sanitizer: str, text: str) -> bool:
+    """Return True when a decoded JSON payload embeds a session-tmpdir pointer."""
     if sanitizer == "json-lines":
         for line in text.splitlines():
             if not line.strip():
@@ -424,16 +414,35 @@ def _reject_debate_session_tmpdir_pointers(*, batch: str, text: str) -> None:
             except json.JSONDecodeError:
                 # Malformed rows keep the existing post-redaction validation error.
                 continue
-            if _json_values_contain_session_tmpdir_pointer(decoded):
-                raise ValueError(reject_msg)
-        return
+            if _json_contains_session_tmpdir_pointer(decoded):
+                return True
+        return False
     if sanitizer == "json-object":
         try:
             decoded_obj: object = json.loads(text)
         except json.JSONDecodeError:
-            return
-        if _json_values_contain_session_tmpdir_pointer(decoded_obj):
-            raise ValueError(reject_msg)
+            # Malformed payloads keep the existing post-redaction validation error.
+            return False
+        return _json_contains_session_tmpdir_pointer(decoded_obj)
+    return False
+
+
+def _reject_debate_session_tmpdir_pointers(*, batch: str, text: str) -> None:
+    """Reject debate-batch payloads that embed recognized session-tmpdir pointers.
+
+    Runs before redaction and persistence. Operator-repository paths are not
+    rejected here; they continue through existing redaction.
+    """
+    if not _batch_rejects_session_tmpdir(batch):
+        return
+    if redact.contains_recognized_session_tmpdir_pointer(
+        text
+    ) or _decoded_json_contains_session_tmpdir_pointer(
+        sanitizer=_batch_sanitizer(batch), text=text
+    ):
+        raise ValueError(
+            f"batch {batch} rejects recognized session-tmpdir pointers before persistence"
+        )
 
 
 def _write_batch(

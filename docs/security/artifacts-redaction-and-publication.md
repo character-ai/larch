@@ -260,8 +260,8 @@ session-tmpdir pointers before redaction or persistence. The matcher is
 session-tmpdir-specific: it does not reject operator-repository paths, and it
 does not replace existing redaction of valid operator-repository paths,
 secrets, or other sensitive content in accepted payloads. JSON debate batches
-also inspect decoded string values so escaped session paths cannot bypass the
-guard. Batch contracts and write/append mechanics live in
+also inspect decoded object keys and string values so escaped session paths
+cannot bypass the guard. Batch contracts and write/append mechanics live in
 [Run-log batch registry](../run-log-batches.md#debate-record-batches).
 
 ### Breadcrumb security invariants

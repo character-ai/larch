@@ -1036,6 +1036,14 @@ TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     "done": "[DONE] ",
     "stalled": "[STALLED] ",
 }
+# Reserved debate title states. Title selectors (rejection, signal insertion,
+# triage stripping) and the prefix-literal ratchets consume these tokens. No
+# tracking-issue transition writes them, so they stay out of
+# TRACKING_ISSUE_STATES and TRACKING_ISSUE_PREFIX_BY_STATE.
+DEBATE_TITLE_STATES: Final[tuple[str, ...]] = ("DEBATING", "DEBATED")
+DEBATE_TITLE_PREFIX_BY_STATE: Final[dict[str, str]] = {
+    state: f"[{state}] " for state in DEBATE_TITLE_STATES
+}
 TRACKING_TITLE_MAX_LEN: Final = 256
 REFRESH_SKIP_NO_REPO_CWD: Final = "no-repo-cwd"
 

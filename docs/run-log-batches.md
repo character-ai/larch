@@ -48,8 +48,9 @@ alone does not add producers:
 `_append_batch` reject recognized session-tmpdir pointers before
 `_redact_to_temp` and before persistence. Raw text is scanned with
 `contains_recognized_session_tmpdir_pointer`. For `json-lines` and
-`json-object` sanitizers, decoded JSON string values are inspected recursively
-so escaped-slash or Unicode-escaped session paths cannot bypass the guard.
+`json-object` sanitizers, decoded JSON object keys and string values are
+inspected recursively so escaped-slash or Unicode-escaped session paths cannot
+bypass the guard.
 Malformed JSON keeps the existing post-redaction validation error. Valid debate
 payloads, including operator-repository paths, still follow the existing
 redaction path. Non-debate batches are unchanged.

@@ -2329,6 +2329,33 @@ def test_debate_json_batches_reject_escaped_session_tmpdir(
             batch="debate-stalemate-tally",
             input_file=str(tally),
         )
+
+    # A pointer hidden in a JSON object key rejects the same way.
+    escaped_key = '{"\\u002ftmp\\u002fclaude-implement-AbC123\\u002fplan.txt":1}\n'
+    assert "/tmp/claude-implement-AbC123" not in escaped_key
+    key_tally = tmp_path / "escaped-key-tally.json"
+    _ = key_tally.write_text(escaped_key, encoding="utf-8")
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _write_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-stalemate-tally",
+            input_file=str(key_tally),
+        )
+    key_ledger = tmp_path / "escaped-key-ledger.ndjson"
+    _ = key_ledger.write_text(
+        '{"row":{"\\u002ftmp\\u002fclaude-implement-AbC123\\u002fplan.txt":1}}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="rejects recognized session-tmpdir pointers"):
+        _ = _append_batch(
+            log_root=log_root,
+            skill="debate",
+            run_id="run-abc",
+            batch="debate-round-ledger",
+            record_file=str(key_ledger),
+        )
     assert calls == []
 
 

@@ -37,15 +37,21 @@ _MALFORMED_TOKENS = {
 # Byte-compatible with the legacy title-eligibility shell helper.
 ARCHIVAL_JQ_FILTER = 'select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
 ARCHIVAL_REPORT_RE = re.compile(r"^\[.*report\] ", re.IGNORECASE)
+_LIFECYCLE_REJECT_STATES = (
+    "IMPLEMENTING",
+    "DONE",
+    "DESIGNING",
+    "DESIGNED",
+    *config.DEBATE_TITLE_STATES,
+)
 LIFECYCLE_REJECT_RE = re.compile(
-    r"^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED|DEBATING|DEBATED)\]",
+    rf"^\[({'|'.join(_LIFECYCLE_REJECT_STATES)})\]",
     re.IGNORECASE,
 )
 BRAINSTORM_RE = re.compile(r"^brainstorm([^A-Za-z]|$)", re.IGNORECASE)
 _SCOPE_PATH_FALLBACK = ["skills/design/SKILL.md"]
 _LIFECYCLE_INSERT_PREFIXES = (
-    "DEBATING",
-    "DEBATED",
+    *config.DEBATE_TITLE_STATES,
     "DESIGNING",
     "DESIGNED",
     "IMPLEMENTING",
