@@ -29,7 +29,9 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core.architectural_guidelines import (
     GUIDELINE_HEADING_RE,
+    GUIDELINES_FILENAME,
     INVARIANT_HEADING_RE,
+    INVARIANTS_FILENAME,
 )
 from larch.core.proc import CommandResult, ProcRunner, Runner
 from larch.design import design_log_ship
@@ -48,6 +50,17 @@ DEFAULT_LIMIT: Final = 50
 
 OriginKind = Literal["regression", "new-code", "spec-gap", "unknown"]
 ORIGIN_KINDS: Final[tuple[OriginKind, ...]] = ("regression", "new-code", "spec-gap", "unknown")
+UnknownOriginReason = Literal["no-classification-signal", "inconclusive"]
+_UNKNOWN_ORIGIN_REASONS: Final[tuple[UnknownOriginReason, ...]] = (
+    "no-classification-signal",
+    "inconclusive",
+)
+_UNKNOWN_ORIGIN_REASON_LABELS: Final[Mapping[UnknownOriginReason, str]] = {
+    "no-classification-signal": "no classification signal",
+    "inconclusive": "signal present but inconclusive",
+}
+GuidelinesIndexStatus = Literal["missing", "empty", "indexed"]
+_GUIDELINES_INDEX_STATUS_KEY: Final = "GUIDELINES_INDEX_STATUS"
 
 # Per-section char caps for the compact digest.
 SUMMARY_CAP: Final = 600
@@ -107,6 +120,9 @@ _HARNESS_OWNING_SURFACE_RE: Final = re.compile(
     re.IGNORECASE,
 )
 _FENCE_MARKER_RE: Final = re.compile(r"^(`{3,}|~{3,})(.*)$")
+_UNMARKED_GUIDELINE_HEADING_RE: Final = re.compile(
+    r"^#{2,3}\s+(?P<title>.+?)(?:\s+#+)?\s*$"
+)
 _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 _PROPOSAL_ID_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TEST_NAME_RE: Final = re.compile(r"^test_[A-Za-z0-9_]+$")
@@ -235,9 +251,18 @@ class Origin:
 
     kind: OriginKind
     ref: int | None = None
+    unknown_reason: UnknownOriginReason | None = None
 
     def to_json(self) -> dict[str, object]:
         return {"kind": self.kind, "ref": self.ref}
+
+
+@dataclass(frozen=True)
+class _OriginEvidence:
+    """Origin classifier inputs plus whether the diagnostic supplied a signal."""
+
+    sources: tuple[str, ...]
+    has_classification_signal: bool
 
 
 @dataclass(frozen=True)
@@ -289,6 +314,7 @@ class CoverageIndex:
     invariants: tuple[tuple[str, str], ...]
     python_lints: tuple[str, ...]
     script_lints: tuple[str, ...]
+    guidelines_index_status: GuidelinesIndexStatus
 
     def to_json(self) -> dict[str, object]:
         return {
@@ -897,15 +923,21 @@ def _has_structured_want_sections(ordered: Sequence[tuple[str, str]]) -> bool:
     return any(want in names for want, _cap in WANT_SECTIONS)
 
 
-def _origin_source_texts(*, title: str, prefix: str) -> list[str]:
-    """Return unsqueezed origin-scan texts in stable title-then-body order."""
+def _origin_evidence(*, title: str, prefix: str) -> _OriginEvidence:
+    """Return origin-scan texts and whether the diagnostic supplied a signal."""
     ordered = _iter_diagnostic_sections(prefix)
     sources: list[str] = [title]
     sources.extend(body for name, body in ordered if name.startswith("root cause"))
     # `_title_only`: title only; never scan the empty value text.
     if not _has_structured_want_sections(ordered) and len(prefix.strip()) >= TITLE_ONLY_PREFIX_MAX:
         sources.append(prefix)
-    return sources
+    return _OriginEvidence(
+        sources=tuple(sources),
+        has_classification_signal=any(
+            name == "classification" or name.startswith("root cause")
+            for name, _body in ordered
+        ),
+    )
 
 
 def _first_referenced_origin(text: str) -> tuple[int, int] | None:
@@ -967,7 +999,8 @@ def classify_origin(
     parsed_classification = classification or _parse_classification(
         _split_sections(prefix).get("classification", "")
     ) or _parse_harness_classification(prefix)
-    sources = _origin_source_texts(title=normalized_title, prefix=prefix)
+    evidence = _origin_evidence(title=normalized_title, prefix=prefix)
+    sources = evidence.sources
     classification_origin = (
         None
         if parsed_classification is None
@@ -983,7 +1016,15 @@ def classify_origin(
         return Origin(kind="spec-gap", ref=None)
     if _phrase_in_sources(sources, _NEW_CODE_PHRASES) or classification_origin == "new-code":
         return Origin(kind="new-code", ref=None)
-    return Origin(kind="unknown", ref=None)
+    return Origin(
+        kind="unknown",
+        ref=None,
+        unknown_reason=(
+            "inconclusive"
+            if evidence.has_classification_signal or parsed_classification is not None
+            else "no-classification-signal"
+        ),
+    )
 
 
 def parse_zones(zones_csv: str) -> tuple[str, ...]:
@@ -1031,10 +1072,16 @@ def render_origin_headline(digests: Sequence[BugDigest]) -> str:
     """Render the mandatory Section 2 origin-distribution headline block."""
     selected = len(digests)
     counts: dict[OriginKind, int] = dict.fromkeys(ORIGIN_KINDS, 0)
+    unknown_reason_counts: dict[UnknownOriginReason, int] = dict.fromkeys(
+        _UNKNOWN_ORIGIN_REASONS, 0
+    )
     chains: list[str] = []
     suspect_chains: list[str] = []
     for digest in digests:
         counts[digest.origin.kind] = counts[digest.origin.kind] + 1
+        if digest.origin.kind == "unknown":
+            unknown_reason = digest.origin.unknown_reason or "inconclusive"
+            unknown_reason_counts[unknown_reason] = unknown_reason_counts[unknown_reason] + 1
         if digest.origin.kind != "regression" or digest.origin.ref is None:
             continue
         chain = f"#{digest.origin.ref} -> #{digest.number}"
@@ -1049,6 +1096,11 @@ def render_origin_headline(digests: Sequence[BugDigest]) -> str:
     for kind in ORIGIN_KINDS:
         count = counts[kind]
         lines.append(f"- {kind}: {count} ({_pct_one_decimal(count, selected)}%)")
+    if counts["unknown"]:
+        for reason in _UNKNOWN_ORIGIN_REASONS:
+            count = unknown_reason_counts[reason]
+            label = _UNKNOWN_ORIGIN_REASON_LABELS[reason]
+            lines.append(f"  - {label}: {count} ({_pct_one_decimal(count, selected)}%)")
     lines.append("#### Referenced regression chains")
     if chains or suspect_chains:
         lines.extend(f"- {item}" for item in chains)
@@ -1231,13 +1283,55 @@ def list_issues(
 # --- Coverage index (offline, pure) -----------------------------------------
 
 
+def _scan_marked_ids_from_lines(
+    lines: list[str], pattern: re.Pattern[str]
+) -> tuple[tuple[str, str], ...]:
+    fenced = _fenced_line_indices(lines)
+    entries: list[tuple[str, str]] = []
+    for index, line in enumerate(lines):
+        if index in fenced:
+            continue
+        match = pattern.match(line)
+        if match is not None:
+            entries.append((match.group(1), match.group(2)))
+    return tuple(entries)
+
+
 def _scan_marked_ids(
     path: Path, pattern: re.Pattern[str]
 ) -> tuple[tuple[str, str], ...]:
     if not path.is_file():
         return ()
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return tuple((match.group(1), match.group(2)) for match in pattern.finditer(text))
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return _scan_marked_ids_from_lines(lines, pattern)
+
+
+def _scan_guideline_entries(path: Path) -> tuple[tuple[str, str], ...]:
+    """Read named guideline IDs, or generic h2/h3 headings when no IDs exist."""
+    if not path.is_file():
+        return ()
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    marked = _scan_marked_ids_from_lines(lines, GUIDELINE_HEADING_RE)
+    if marked:
+        return marked
+    fenced = _fenced_line_indices(lines)
+    entries: list[tuple[str, str]] = []
+    for index, line in enumerate(lines):
+        if index in fenced:
+            continue
+        match = _UNMARKED_GUIDELINE_HEADING_RE.match(line)
+        if match is not None:
+            heading = match.group("title")
+            entries.append((heading, heading))
+    return tuple(entries)
+
+
+def _guidelines_index_status(
+    path: Path, entries: Sequence[tuple[str, str]]
+) -> GuidelinesIndexStatus:
+    if not path.is_file():
+        return "missing"
+    return "indexed" if entries else "empty"
 
 
 def _scan_lint_names(directory: Path, glob: str, prefix: str) -> tuple[str, ...]:
@@ -1252,17 +1346,18 @@ def _scan_lint_names(directory: Path, glob: str, prefix: str) -> tuple[str, ...]
 
 def coverage_index(root: Path) -> CoverageIndex:
     """Scan the repo root for existing guidelines, invariants, and lints."""
+    guidelines_path = root / GUIDELINES_FILENAME
+    guidelines = _scan_guideline_entries(guidelines_path)
     return CoverageIndex(
-        guidelines=_scan_marked_ids(
-            root / "ARCHITECTURAL_GUIDELINES.md", GUIDELINE_HEADING_RE
-        ),
+        guidelines=guidelines,
         invariants=_scan_marked_ids(
-            root / "ARCHITECTURAL_INVARIANTS.md", INVARIANT_HEADING_RE
+            root / INVARIANTS_FILENAME, INVARIANT_HEADING_RE
         ),
         python_lints=_scan_lint_names(
             root / "python" / "larch" / "lint", "lint_*.py", "lint_"
         ),
         script_lints=_scan_lint_names(root / "scripts", "lint-*", "lint-"),
+        guidelines_index_status=_guidelines_index_status(guidelines_path, guidelines),
     )
 
 
@@ -1343,6 +1438,7 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         "DIGEST_CHARS": digest_chars,
         "DIGEST_TOKENS_EST": _estimate_digest_tokens(digest_chars),
         "GUIDELINES_INDEXED": len(coverage.guidelines),
+        _GUIDELINES_INDEX_STATUS_KEY: coverage.guidelines_index_status,
         "INVARIANTS_INDEXED": len(coverage.invariants),
         "PYTHON_LINTS_INDEXED": len(coverage.python_lints),
         "SCRIPT_LINTS_INDEXED": len(coverage.script_lints),
