@@ -9,6 +9,7 @@ from larch.outcomes import Outcome
 
 ToolName = Literal["cursor", "codex", "claude"]
 RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]
+SlotTransport = Literal["subprocess", "agent-tool"]
 
 RETRY_POLICY_CAPS: Final[dict[str, tuple[int, str]]] = {
     "transient-infra": (4, "sleep-seconds.sh 5"),
@@ -435,6 +436,10 @@ CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
+# Inactive /debate role pins (piece 1). Live launch is owned by piece 2.
+DEBATE_CODEX_MODEL: Final = "gpt-5.6-sol"
+DEBATE_CURSOR_MODEL: Final = CURSOR_GROK_4_5_HIGH_MODEL
+DEBATE_CLAUDE_MODEL: Final = "claude-opus-4-8"
 
 
 @dataclass(frozen=True)
@@ -449,6 +454,8 @@ class SlotDefault:
     focus_area: str = ""
     weight: int = 0
     archetype: str = ""
+    model: str = ""
+    transport: SlotTransport = "subprocess"
 
 
 @dataclass(frozen=True)
@@ -649,6 +656,44 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_role="Merge partition proposals",
         doc_skills="/design",
         doc_fallback="Codex-primary single slot through dispatch-waterfall.",
+    ),
+    "debate.panel": RoleDefault(
+        role_id="debate.panel",
+        kind="slot_panel",
+        slots=(
+            SlotDefault(
+                slot="cursor",
+                tool="cursor",
+                model=DEBATE_CURSOR_MODEL,
+                cursor_model=DEBATE_CURSOR_MODEL,
+                transport="subprocess",
+            ),
+            SlotDefault(
+                slot="codex",
+                tool="codex",
+                model=DEBATE_CODEX_MODEL,
+                transport="subprocess",
+            ),
+            SlotDefault(
+                slot="claude",
+                tool="claude",
+                model=DEBATE_CLAUDE_MODEL,
+                transport="agent-tool",
+            ),
+        ),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
+        doc_phase="Debate panel",
+        doc_role="Argue a proposal in persistent vendor sessions",
+        doc_skills="/debate",
+        doc_fallback="Fixed Cursor, Codex, and Claude slots with no silent substitution. Piece 2 activates launch and degraded-vendor accounting. The Claude slot is an in-session Agent-tool subagent; Cursor and Codex use subprocess transport.",
+    ),
+    "debate.synthesizer": _waterfall_role(
+        "debate.synthesizer",
+        order=("codex", "cursor", "claude"),
+        doc_phase="Debate synthesizer",
+        doc_role="Synthesize a converged debate into a proposal",
+        doc_skills="/debate",
+        doc_fallback="Codex-primary with fixed Codex, then Cursor, then Claude fallback order. Piece 2 activates this role.",
     ),
 }
 

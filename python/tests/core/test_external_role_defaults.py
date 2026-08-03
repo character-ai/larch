@@ -266,3 +266,30 @@ def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None
             len(external_defaults.tool_order(role_id))
             * config.FIXER_LANE_TIMEOUT_SEC
         )
+
+
+def test_debate_panel_and_synthesizer_roles() -> None:
+    panel = external_defaults.role_default("debate.panel")
+    assert panel.kind == "slot_panel"
+    slots = external_defaults.slot_defaults("debate.panel")
+    assert [(slot.slot, slot.tool, slot.model, slot.transport) for slot in slots] == [
+        ("cursor", "cursor", config.DEBATE_CURSOR_MODEL, "subprocess"),
+        ("codex", "codex", config.DEBATE_CODEX_MODEL, "subprocess"),
+        ("claude", "claude", config.DEBATE_CLAUDE_MODEL, "agent-tool"),
+    ]
+    assert sum(1 for slot in slots if slot.transport == "agent-tool") == 1
+    assert all(slot.transport == "subprocess" for slot in slots if slot.tool != "claude")
+    for field in (panel.doc_phase, panel.doc_role, panel.doc_skills, panel.doc_fallback):
+        assert field
+
+    synth = external_defaults.role_default("debate.synthesizer")
+    assert synth.kind == "waterfall"
+    assert external_defaults.tool_order("debate.synthesizer") == ("codex", "cursor", "claude")
+    for field in (synth.doc_phase, synth.doc_role, synth.doc_skills, synth.doc_fallback):
+        assert field
+
+    rows = external_defaults.doc_rows()
+    assert {row.role_id for row in rows} == set(config.ROLE_DEFAULTS)
+    docs = (Path(__file__).resolve().parents[3] / "docs/external-reviewers.md").read_text(encoding="utf-8")
+    assert "debate.panel" in docs
+    assert "debate.synthesizer" in docs

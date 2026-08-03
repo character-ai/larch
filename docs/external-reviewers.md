@@ -20,6 +20,16 @@ startup lock unless `CURSOR_API_KEY` is already usable.
 
 ## Trust boundary (filesystem access)
 
+## Persistent vendor sessions (inactive until piece 2)
+
+Piece 1 of `/debate` lands read-only persistent-session transport helpers without a production caller.
+
+- **Cursor**: `cursor agent create-chat` (option-free) returns a chat ID. Resume uses `cursor agent -p --resume <chatId> --mode plan --trust --output-format json --workspace <workdir> …`.
+- **Codex initial**: reuses the existing read-only `codex exec --sandbox read-only -C <workdir> … --json` builder.
+- **Codex resume**: `codex exec resume <UUID> … -c sandbox_mode="read-only" --json --output-last-message …`. Resume omits `--sandbox`, `-C`, and `--add-dir`; the caller must launch with `cwd=<workdir>`.
+- **UUID capture**: opt-in on `run_external_agent(..., capture_session_handle=True)`. It parses the Codex JSONL `stdout_path` for exactly one structured `thread.started` / `thread_id` event. Capture failure is fail-closed and terminal: exit code `_SESSION_CAPTURE_FAILED_RC` (`4`) with failure reason `session-capture-failed`, no auth retry, and no second subprocess.
+- **`--last` is prohibited** by construction. Resume builders take an explicit validated handle only.
+
 ## Launching External Reviewers
 
 External reviewers are launched via `python3 python/cli.py agent run-external-agent`, which provides:
@@ -110,6 +120,8 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Brainstorm framing/scope | Generate optional ideation | `/design` | Registry roles `design.brainstorm_framing` and `design.brainstorm_scope` are consumed by Step 1d.5 through `external-defaults role`. Framing defaults Cursor→Codex→Claude; scope defaults Codex→Cursor→Claude. Pragmatic brainstorming is parent-session Claude and is not registry-backed. |
 | Decompose panel | Propose issue partitions | `/design` | Registry role `design.decompose_panel`: Cursor and Codex are allowed parallel tools, but only present vendors emit rows per archetype. The both-absent Claude generic path remains explicit dispatch logic. |
 | Decompose aggregator | Merge partition proposals | `/design` | Registry role `design.decompose_aggregator`: Codex-primary single slot. |
+| Debate panel | Argue a proposal in persistent vendor sessions | `/debate` | Registry role `debate.panel`. Fixed Cursor, Codex, and Claude slots with no silent substitution. Piece 2 activates launch and degraded-vendor accounting. The Claude slot is an in-session Agent-tool subagent; Cursor and Codex use subprocess transport. |
+| Debate synthesizer | Synthesize a converged debate into a proposal | `/debate` | Registry role `debate.synthesizer`: Codex-primary with fixed Codex, then Cursor, then Claude fallback order. Piece 2 activates this role. |
 | Findings aggregators | Merge review findings | `/design`, `/review`, `/implement` Step 5 | Registry roles `review.findings_aggregator` and `design.plan_findings_aggregator`: Codex-primary single slots through dispatch-waterfall, with Codex using the `review` model role before Cursor or Claude fallback. |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |

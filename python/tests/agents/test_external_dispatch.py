@@ -1174,3 +1174,22 @@ def test_claude_drafter_malformed_envelope_is_parse_failure(
     status = output.read_text(encoding="utf-8")
     assert "STATUS=ERROR" in status
     assert "CLAUDE_JSON_RESULT_INVALID" in status
+
+
+def test_debate_roles_do_not_alter_existing_panels() -> None:
+    review_slots = external_defaults.slot_defaults("review.panel")
+    assert all(slot.slot in {"correctness", "edge-cases", "testing"} for slot in review_slots)
+    assert "debate.panel" in config.ROLE_DEFAULTS
+    assert "debate.synthesizer" in config.ROLE_DEFAULTS
+    # Existing panels remain unchanged in size/shape after debate registration.
+    assert len(review_slots) == 6
+    assert external_defaults.tool_order("implement.step2_coder") == ("codex", "cursor", "claude")
+
+
+def test_existing_external_dispatch_paths_do_not_request_session_capture() -> None:
+    import inspect
+    from larch.agents import _drafter, _review_launcher, _ci_launcher
+
+    for module in (_drafter, _review_launcher, _ci_launcher):
+        source = inspect.getsource(module)
+        assert "capture_session_handle=True" not in source
