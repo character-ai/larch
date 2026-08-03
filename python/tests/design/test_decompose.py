@@ -63,6 +63,23 @@ def test_prepare_prefixed_titles_preserve_bracket_and_split_index(tmp_path: Path
     assert "### [BUG] split-7277-2: API\n" in batch
 
 
+def test_prepare_prefixed_titles_drops_workflow_lifecycle_prefix(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    _write_route_state(d, ISSUE_NUMBER="7277", ISSUE_TITLE="[DESIGNING] [BUG] when /design splits a feature")
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+    status, _witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="7277")
+    assert status == "ok"
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert "### [BUG] split-7277-1: Base\n" in batch
+    assert "[DESIGNING]" not in batch
+
+
 def test_prepare_prefixed_titles_without_bracket_and_without_issue_number(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
     partition = d / "partition.md"

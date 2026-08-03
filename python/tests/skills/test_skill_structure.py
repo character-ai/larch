@@ -21,6 +21,7 @@ from .skill_structure_pins import (
     FOCUSED_TARGETS,
     SPECIALIZED_MODULES,
     StructurePin,
+    UMBRELLA_PINS,
     validate_pin_table,
 )
 
@@ -225,6 +226,15 @@ def test_design_structure_pin(pin: StructurePin) -> None:
     evaluate_pin(pin)
 
 
+@pytest.mark.parametrize(
+    "pin",
+    UMBRELLA_PINS,
+    ids=[p.param_id for p in UMBRELLA_PINS],
+)
+def test_umbrella_structure_pin(pin: StructurePin) -> None:
+    evaluate_pin(pin)
+
+
 def test_triage_close_replacement_bug_prefix_contract() -> None:
     text = _read_text("skills/triage/SKILL.md")
     assert (
@@ -331,8 +341,13 @@ def test_legacy_label_inventory_maps_every_label_to_one_collected_node() -> None
     all_nodes = _collect_node_ids()
     label_owners: dict[tuple[str, str], list[str]] = {}
     for pin in ALL_PINS:
+        test_name = (
+            "test_umbrella_structure_pin"
+            if pin.skill == "umbrella"
+            else "test_design_structure_pin"
+        )
         label_owners.setdefault((pin.skill, pin.label), []).append(
-            f"tests/skills/test_skill_structure.py::test_design_structure_pin[{pin.param_id}]"
+            f"tests/skills/test_skill_structure.py::{test_name}[{pin.param_id}]"
         )
     for skill, mod_name in SPECIALIZED_MODULES.items():
         mod = importlib.import_module(f".{mod_name}", package=__package__)

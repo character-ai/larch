@@ -13,8 +13,9 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 1 | scout proposes specialists fanned into Cursor+Codex dyn slots | `python/larch/design/plan_scout.py` |
 | <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | round gated static plus dynamic | NDJSON manifest from python/cli.py plan-review panel-dispatch via paths-file sidecar | `python/larch/review/plan_review_panel.py` |
 | <a id="design.decompose.split_path"></a>`design.decompose.split_path` | AskUserQuestion | main-agent inline proposal + single AskUserQuestion Partition/Override/chat | `skills/design/references/decompose-panel.md` |
-| <a id="design.decompose.file_issues_after_split"></a>`design.decompose.file_issues_after_split` | python/cli.py | prepare annotate migrate-deps close-original | `python/cli.py` |
-| <a id="design.decompose.file_issues"></a>`design.decompose.file_issues` | python/cli.py | prepare annotate close-original | `python/cli.py` |
+| <a id="design.decompose.umbrella_handoff"></a>`design.decompose.umbrella_handoff` | /umbrella | exact approved batch + dependencies + in-place original conversion | `skills/design/references/decompose-panel.md` |
+| <a id="implement.partition.umbrella_handoff"></a>`implement.partition.umbrella_handoff` | /umbrella | multi-issue target replacement owner | `skills/implement/SKILL.md` |
+| <a id="umbrella.leaf_filing"></a>`umbrella.leaf_filing` | /issue | deduplication + prepared dependency wiring + identity-bound verified sentinel | `skills/umbrella/SKILL.md` |
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | cli.py | offline panel regression coverage | `python/cli.py` |
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |
 | <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | cli.py | offline prepare annotate close-original coverage | `python/cli.py` |

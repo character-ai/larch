@@ -364,6 +364,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("umbrella", "reconcile-in-flight"): ("larch.issue.umbrella", "reconcile_in_flight_main", False),
     ("umbrella", "mutate"): ("larch.issue.umbrella", "mutate_main", False),
     ("umbrella", "verify"): ("larch.issue.umbrella", "verify_main", False),
+    ("umbrella", "verify-completion"): ("larch.issue.umbrella", "verify_completion_main", False),
     ("issue", "fetch-issue-details"): ("larch.issue.issue_create", "fetch_issue_details_main", False),
     ("issue", "list-issues"): ("larch.issue.issue_create", "list_issues_main", False),
     ("issue", "migration-audit"): (

@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` skill orchestrator at every Split-path entry: size-triggered routes, explicit `--partition` / `-p`, semantic-sprawl, Gate B, settle-dispatch, and Step 5c publish-size refusal.
 
-**Contract**: normative inline partition procedure — main-agent builds proposal, one `AskUserQuestion`, then file/annotate/migrate-deps/close-original.
+**Contract**: the main agent validates the exact proposal, asks once, then delegates original conversion and leaf creation to `/umbrella`.
 
 **When to load**: load when any Split-path entry condition triggers in `SKILL.md` or the referenced routing files.
 
@@ -50,46 +50,35 @@ After preparation, make exactly one `AskUserQuestion` call.
 
 Override keeps the existing warning and caller-specific continuation. No Split-path branch emits a second `AskUserQuestion`.
 
-## 4. File and annotate
+## 4. Convert through `/umbrella`
 
-`prepare` writes each piece's filed-issue title with a common, traceable prefix: any leading square-bracket prefix from the original issue title (for example `[BUG]`, `[FEATURE]`) is preserved, followed by `split-<original-issue-number>-<piece-number>`. The original-issue title and number are read from `.design-step0-route-state.env` (bound at Step 0). Do not pass `--title-prefix` to `/larch:issue`; the prefix is already baked into each title in `partition-input.txt`.
+`prepare` preserves any leading topical prefix such as `[BUG]`, adds `split-<original-issue-number>-<piece-number>`, and reads the original identity from Step 0 state. Preserve the exact approved batch and TSV after approval.
 
-On valid Partition acceptance, invoke `/larch:issue` in batch mode with `$DESIGN_TMPDIR/decompose/partition-input.txt` and `--no-dep-llm`. Keep dedup enabled. Pass `--context-file "$DESIGN_TMPDIR/source-env.sh"` to nested issue creation. Supply `--intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"` only when that TSV is non-empty; declared edges are authoritative and independent pieces must remain independent.
+Require Step 0 `CONTEXT_FILE` and remove any stale `$DESIGN_TMPDIR/decompose/umbrella-complete.sentinel`. Missing context fails closed before child invocation or GitHub mutation and preserves `$DESIGN_TMPDIR`.
 
-Capture stdout and run:
+Invoke `/umbrella` via the Skill tool:
 
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose annotate \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --issue-stdout-file "$DESIGN_TMPDIR/decompose/issue-run.stdout"
-```
+- Try bare `umbrella` with `--lifecycle-parent-context "$CONTEXT_FILE"` first, then `--skip-approve`, `--prepared-root "$DESIGN_TMPDIR/decompose"`, `--prepared-input-file "$DESIGN_TMPDIR/decompose/partition-input.txt"`, `--prepared-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"`, `--completion-sentinel "$DESIGN_TMPDIR/decompose/umbrella-complete.sentinel"`, and `$ISSUE_NUMBER`.
+- Retry byte-identical arguments as `larch:umbrella` only for `Unknown skill: umbrella`; otherwise preserve the failure.
 
-Do not continue unless annotation records a complete batch.
+The child consumes the exact prior approval, keeps `/issue` deduplication, applies the prepared graph, converts the original in place to open `[UMBRELLA]`, and skips independent decomposition or approval.
 
-## 5. Migrate dependencies, then close
+## 5. Verify the child handoff
 
-Run migration before closure:
+After the child returns, validate the completion proof against the live approved artifacts and target identity:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose migrate-deps \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --original-issue "$ISSUE_NUMBER" \
-  --repo "$REPO"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella verify-completion \
+  --sentinel-file "$DESIGN_TMPDIR/decompose/umbrella-complete.sentinel" \
+  --sentinel-root "$DESIGN_TMPDIR/decompose" \
+  --prepared-input "$DESIGN_TMPDIR/decompose/partition-input.txt" \
+  --prepared-deps "$DESIGN_TMPDIR/decompose/partition-deps.tsv" \
+  --repo "$REPO" \
+  --issue "$ISSUE_NUMBER"
 ```
 
-Migration validates session-backed live-mutation authorization before any GitHub read or mutation. Authorization denial makes zero GitHub calls and leaves the run retryable. It snapshots the original incoming and outgoing relations, adds and read-verifies all replacement edges, then removes and read-verifies original edges. It persists retry state and writes `.decompose-deps-migrated` only after the full live graph verifies.
+Require exit zero, `UMBRELLA_COMPLETION_VERIFIED=true`, and exact `UMBRELLA_NUMBER=$ISSUE_NUMBER`. Any incomplete or stale proof preserves the open original and `$DESIGN_TMPDIR` without claiming success. Keep `decompose annotate`, `decompose migrate-deps`, and `decompose close-original` off the Split-path; `/umbrella` is the single mutation owner.
 
-Then run:
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose close-original \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --original-issue "$ISSUE_NUMBER" \
-  --repo "$REPO"
-```
-
-`close-original` revalidates the migration sentinel and live postcondition, including every declared intra-piece edge, before comment or close. Any partial filing, denied authorization, stale state, or verification failure preserves the original issue and tmpdir. On resume after filing, if migration is absent, incomplete, or stale, rerun `migrate-deps` before `close-original`.
-
-For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the closed original. Only Override reruns `design-step5c.sh --fresh-attempt`.
+For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the converted original. Only Override reruns `design-step5c.sh --fresh-attempt`.
 
 Panel dispatch and aggregate CLI commands remain available to their existing non-Split callers.

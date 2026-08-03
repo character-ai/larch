@@ -1,8 +1,8 @@
 """Immutable skill-structure pin tables.
 
-Simple contains/absent/count/ordered/adjacent-pair contracts for design live
-here. Alias, bug, learn-from-bugs, implement, research, and review structure
-contracts are covered by complete specialized ports in sibling modules
+Simple contains/absent/count/ordered/adjacent-pair contracts for design and
+umbrella live here. Alias, bug, learn-from-bugs, implement, research, and review
+structure contracts are covered by complete specialized ports in sibling modules
 (executable loops, CLI lints, proximity windows, and regex-BRE semantics).
 """
 from __future__ import annotations
@@ -59,8 +59,19 @@ LEARN_FROM_BUGS_PINS: Final[tuple[StructurePin, ...]] = ()
 IMPLEMENT_PINS: Final[tuple[StructurePin, ...]] = ()
 RESEARCH_PINS: Final[tuple[StructurePin, ...]] = ()
 REVIEW_PINS: Final[tuple[StructurePin, ...]] = ()
+UMBRELLA_PINS: Final[tuple[StructurePin, ...]] = (
+    StructurePin(skill="umbrella", label="prepared handoff must require parent lifecycle context", path="skills/umbrella/SKILL.md", kind="contains", needle="Accept that group only with a leading `--lifecycle-parent-context`, `--skip-approve`, and one numeric issue."),
+    StructurePin(skill="umbrella", label="prepared handoff must persist dependency copy through umbrella owner", path="skills/umbrella/SKILL.md", kind="contains", needle='--deps-output "$UMBRELLA_TMPDIR/prepared-deps.tsv"'),
+    StructurePin(skill="umbrella", label="prepared handoff must retain normal dedup", path="skills/umbrella/SKILL.md", kind="contains", needle="the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled"),
+    StructurePin(skill="umbrella", label="prepared completion sentinel must bind live inputs", path="skills/umbrella/SKILL.md", kind="contains", needle='--sentinel-file "$COMPLETION_SENTINEL" --sentinel-root "$PREPARED_ROOT" --prepared-input "$PREPARED_INPUT_FILE" --prepared-deps "$PREPARED_DEPS_FILE"'),
+)
 
 DESIGN_PINS: Final[tuple[StructurePin, ...]] = (
+    StructurePin(skill="design", label="Split-path must invoke umbrella through Skill tool", path="skills/design/references/decompose-panel.md", kind="contains", needle="Invoke `/umbrella` via the Skill tool:"),
+    StructurePin(skill="design", label="Split-path must pass exact prepared input", path="skills/design/references/decompose-panel.md", kind="contains", needle='--prepared-input-file "$DESIGN_TMPDIR/decompose/partition-input.txt"'),
+    StructurePin(skill="design", label="Split-path must verify identity-bound umbrella completion", path="skills/design/references/decompose-panel.md", kind="contains", needle="umbrella verify-completion"),
+    StructurePin(skill="design", label="Split-path must not directly invoke issue batch", path="skills/design/references/decompose-panel.md", kind="absent", needle="invoke `/larch:issue` in batch mode"),
+    StructurePin(skill="design", label="Split-path must not call close-original", path="skills/design/references/decompose-panel.md", kind="absent", needle='python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose close-original'),
     StructurePin(skill="design", label="Step 3 must load runtime slice before entry", path="skills/design/SKILL.md", kind="contains", needle="**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-runtime.md` completely before invoking `design-step3-entry.sh`; the entry wrapper emits the preview internally."),
     StructurePin(skill="design", label="Gate B slice must load unconditionally", path="skills/design/SKILL.md", kind="contains", needle="approval-gates-gate-b.md` completely. This Gate B slice is unconditional"),
     StructurePin(skill="design", label="Gate C slice must load unconditionally", path="skills/design/SKILL.md", kind="contains", needle="approval-gates-gate-c.md` completely. This Gate C slice is unconditional"),
@@ -393,6 +404,7 @@ ALL_PINS: Final[tuple[StructurePin, ...]] = (
     *IMPLEMENT_PINS,
     *RESEARCH_PINS,
     *REVIEW_PINS,
+    *UMBRELLA_PINS,
 )
 
 

@@ -59,6 +59,29 @@ def _check_terminal_references(
     )
 
 
+def _check_multi_issue_split(
+    *,
+    skill: str,
+    require: Callable[[str, str, str], None],
+) -> None:
+    reference = "skills/implement/references/umbrella-partition.md"
+    require(skill, reference, "SKILL multi-issue split pointer")
+    for needle, label in [
+        ("Invoke `/umbrella` via the Skill tool", "reference split delegates through umbrella"),
+        ('--lifecycle-parent-context "$CONTEXT_FILE"', "reference split forwards lifecycle handoff"),
+        (
+            '--prepared-input-file "$IMPLEMENT_TMPDIR/umbrella-partition/partition-input.txt"',
+            "reference split forwards exact prepared input",
+        ),
+        (
+            '--sentinel-file "$IMPLEMENT_TMPDIR/umbrella-partition/umbrella-complete.sentinel"',
+            "reference split verifies identity-bound umbrella completion",
+        ),
+        ("original closure", "reference split forbids direct original closure"),
+    ]:
+        require(reference, needle, label)
+
+
 def run(repo_root: Path) -> list[str]:
     """Execute the legacy implement structure body; return failure messages."""
     prev = Path.cwd()
@@ -116,6 +139,7 @@ def run(repo_root: Path) -> list[str]:
                 if header not in registry_text:
                     checks.append(f"{registry_ref} missing {header}")
         require(skill, registry_ref, "SKILL pointer for extracted script registry")
+        _check_multi_issue_split(skill=skill, require=require)
         # New mandatory references.
         for ref in [
             "rebase-checkpoint-routing.md",
@@ -1206,4 +1230,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 391
+LEGACY_ASSERTION_LABEL_COUNT = 392

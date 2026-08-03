@@ -25,7 +25,7 @@ from larch.design.design_step0_env import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
-from larch.issue.title_match import leading_square_bracket_prefix
+from larch.issue.title_match import leading_square_bracket_prefix, strip_lifecycle_prefix
 from larch.state import session_env
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -133,7 +133,7 @@ def _prefixed_piece_title(
     starts with the same bracket(s), they are not duplicated. When no issue
     number is bound, only the preserved bracket (if any) prefixes the title.
     """
-    bracket = leading_square_bracket_prefix(original_title)
+    bracket = leading_square_bracket_prefix(strip_lifecycle_prefix(original_title))
     stripped_piece = piece_title
     if bracket:
         prefix_with_space = bracket + " "
