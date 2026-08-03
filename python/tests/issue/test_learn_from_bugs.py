@@ -2373,6 +2373,134 @@ def test_filed_issue_rejects_unknown_closed_reason() -> None:
         learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")
 
 
+def test_filed_issue_duplicate_with_verified_target_is_adopted(tmp_path: Path) -> None:
+    (tmp_path / "python" / "larch").mkdir(parents=True)
+    (tmp_path / "python" / "larch" / "cli.py").write_text(
+        '_REGISTRY = {("lint", "audit-lint"): ("module", "main")}\n',
+        encoding="utf-8",
+    )
+    proposal = _proposal(filed_issue=9)
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "DUPLICATE"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "adopted"
+    assert checked[0].adoption_evidence == "target-verified"
+
+
+def test_filed_issue_duplicate_unverified_prior_adopted_is_orphaned(
+    tmp_path: Path,
+) -> None:
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        status="adopted",
+        filed_issue=9,
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "DUPLICATE"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "orphaned"
+    assert checked[0].adoption_evidence is None
+
+
+def test_filed_issue_duplicate_unverified_prior_proposed_is_pending(
+    tmp_path: Path,
+) -> None:
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        status="proposed",
+        filed_issue=9,
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "DUPLICATE"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "pending"
+    assert checked[0].adoption_evidence is None
+
+
+def test_filed_issue_duplicate_does_not_abort_later_proposals(tmp_path: Path) -> None:
+    first = _proposal(
+        "dup-first",
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        filed_issue=9,
+    )
+    second = _proposal(
+        "later-open",
+        target="check:crates/larch-lint/src/checks.rs#other_check",
+        filed_issue=10,
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "DUPLICATE"}
+                )
+            ),
+            _result(
+                json.dumps(
+                    {"number": 10, "state": "OPEN", "stateReason": None}
+                )
+            ),
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(
+        runner, (first, second), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "pending"
+    assert checked[0].adoption_evidence is None
+    assert checked[1].status == "pending"
+    assert checked[1].adoption_evidence is None
+
+
+def test_filed_issue_rejects_reopened_closed_reason() -> None:
+    proposal = _proposal(filed_issue=9)
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "REOPENED"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="closed issue reason"):
+        learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")
+
+
 @pytest.mark.parametrize("stdout", ["not JSON", "[]"])
 def test_filed_issue_rejects_malformed_json_response(stdout: str) -> None:
     proposal = _proposal(filed_issue=9)
