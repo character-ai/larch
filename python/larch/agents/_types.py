@@ -80,7 +80,13 @@ _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
 _TOML_CLOSED_STRING_DELIMITER_COUNT = 2
 _AUTH_RETRY_RC = 2
 _PROBE_NO_RETRY_RC = 3
+_SESSION_CAPTURE_FAILED_RC = 4
 _CURSOR_PREFLIGHT_AUTH_RC = 2
+_VENDOR_SESSION_VENDORS: Final[frozenset[str]] = frozenset({"cursor", "codex"})
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+_CODEX_SESSION_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
     "HARD CONSTRAINTS — your role is read-only review. "
     "Do not create, edit, delete, or overwrite files. "
@@ -109,6 +115,15 @@ CodexGateSignal = Literal["model-metadata-not-found", "newer-codex-required"]
 CODEX_GATE_SIGNAL_METADATA_NOT_FOUND: Final[CodexGateSignal] = "model-metadata-not-found"
 CODEX_GATE_SIGNAL_NEWER_REQUIRED: Final[CodexGateSignal] = "newer-codex-required"
 CODEX_GATE_SIGNALS: Final[frozenset[str]] = frozenset(get_args(CodexGateSignal))
+
+VendorSessionVendor = Literal["cursor", "codex"]
+ExternalAgentFailureReason = Literal["session-capture-failed"]
+EXTERNAL_AGENT_FAILURE_REASON_SESSION_CAPTURE_FAILED: Final[ExternalAgentFailureReason] = (
+    "session-capture-failed"
+)
+TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS: Final[frozenset[str]] = frozenset(
+    get_args(ExternalAgentFailureReason)
+)
 
 
 @dataclass(frozen=True)
@@ -179,9 +194,39 @@ class DegradedToolsResult:
 
 
 @dataclass(frozen=True)
+class VendorSessionHandle:
+    """Frozen vendor identity plus an explicit session identifier for resume argv."""
+
+    vendor: VendorSessionVendor
+    session_id: str
+
+    @classmethod
+    def create(cls, *, vendor: str, session_id: str) -> VendorSessionHandle:
+        if vendor not in _VENDOR_SESSION_VENDORS:
+            raise ValueError(f"unsupported vendor session handle vendor: {vendor!r}")
+        if type(session_id) is not str:  # pylint: disable=unidiomatic-typecheck  # exact runtime type rejects bool and subclasses
+            raise TypeError("vendor session id must be a string")
+        if not session_id or session_id.strip() != session_id or any(ch.isspace() for ch in session_id):
+            raise ValueError("vendor session id must be non-empty without surrounding or embedded whitespace")
+        if _CTRL_RE.search(session_id):
+            raise ValueError("vendor session id must not contain control characters")
+        if session_id.startswith("-"):
+            raise ValueError("vendor session id must not be flag-like")
+        if vendor == "codex":
+            if _CODEX_SESSION_UUID_RE.fullmatch(session_id) is None:
+                raise ValueError("codex session id must be a UUID")
+        elif _SESSION_ID_RE.fullmatch(session_id) is None:
+            raise ValueError("cursor session id has unsupported characters")
+        typed_vendor: VendorSessionVendor = "codex" if vendor == "codex" else "cursor"
+        return cls(vendor=typed_vendor, session_id=session_id)
+
+
+@dataclass(frozen=True)
 class RunExternalAgentResult:
     exit_code: int
     output: Path
+    session_handle: VendorSessionHandle | None = None
+    failure_reason: ExternalAgentFailureReason | None = None
 
 
 @dataclass(frozen=True)

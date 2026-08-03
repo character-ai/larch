@@ -15,7 +15,7 @@ import pytest
 
 from larch.agents import _vendor
 from larch.agents._run_external import _codex_auth_args, _trust_config_arg
-from larch.agents._types import _PY_CLI
+from larch.agents._types import _PY_CLI, VendorSessionHandle
 from larch.agents._vendor import (
     CAP_HIT_PAYLOAD,
     CLAUDE_DESCRIPTOR,
@@ -40,7 +40,11 @@ from larch.agents._vendor import (
     build_check_budget_argv,
     build_claude_argv,
     build_codex_argv,
+    build_codex_resume_argv,
+    build_codex_session_argv,
     build_cursor_argv,
+    build_cursor_create_chat_argv,
+    build_cursor_resume_argv,
     build_vendor_registry,
     check_token_budget_cap,
     cursor_config_context,
@@ -1140,3 +1144,112 @@ def test_cap_check_result_frozen() -> None:
     result = VendorCapCheckResult(hit=False)
     with pytest.raises(FrozenInstanceError):
         result.hit = True  # type: ignore[misc]
+
+
+class TestSessionArgvBuilders:
+    def _request(self, **overrides: object) -> VendorLaunchRequest:
+        base: dict[str, object] = {
+            "workdir": "/repo",
+            "output": "/tmp/out.txt",
+            "prompt": "continue the debate",
+            "model_args": ("--model", "cursor-grok-4.5-high"),
+        }
+        base.update(overrides)
+        return VendorLaunchRequest(**base)  # type: ignore[arg-type]
+
+    def test_cursor_create_chat_is_option_free(self) -> None:
+        assert build_cursor_create_chat_argv() == ["cursor", "agent", "create-chat"]
+
+    def test_cursor_resume_plan_mode_trust_json_workspace(self) -> None:
+        handle = VendorSessionHandle.create(vendor="cursor", session_id="chat-abc123")
+        argv = build_cursor_resume_argv(handle, self._request())
+        assert argv == [
+            "cursor",
+            "agent",
+            "-p",
+            "--resume",
+            "chat-abc123",
+            "--mode",
+            "plan",
+            "--trust",
+            "--output-format",
+            "json",
+            "--model",
+            "cursor-grok-4.5-high",
+            "--workspace",
+            "/repo",
+            "continue the debate",
+        ]
+        assert "--last" not in argv
+
+    def test_codex_session_reuses_read_only_builder(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        req = VendorLaunchRequest(workdir="/repo", output="/tmp/out.txt", prompt="start")
+        assert build_codex_session_argv(req) == build_codex_argv("read-only", req)
+        assert "--sandbox" in build_codex_session_argv(req)
+        assert "read-only" in build_codex_session_argv(req)
+
+    def test_codex_resume_omits_unsupported_flags_keeps_uuid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        handle = VendorSessionHandle.create(
+            vendor="codex",
+            session_id="019fc6b3-e6c4-7892-a97a-c80b30a7f5b0",
+        )
+        req = VendorLaunchRequest(
+            workdir="/repo",
+            output="/tmp/out.txt",
+            prompt="resume please",
+            model_args=("-m", "gpt-5.6-sol"),
+        )
+        argv = build_codex_resume_argv(handle, req)
+        assert argv[:4] == [
+            "codex",
+            "exec",
+            "resume",
+            "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0",
+        ]
+        assert "--sandbox" not in argv
+        assert "-C" not in argv
+        assert "--add-dir" not in argv
+        assert "--last" not in argv
+        assert 'sandbox_mode="read-only"' in argv
+        assert "--json" in argv
+        assert "--output-last-message" in argv
+        assert argv[-1] == "resume please"
+        assert _trust_config_arg("/repo") in argv
+
+    def test_wrong_vendor_and_unsafe_handles_rejected(self) -> None:
+        cursor = VendorSessionHandle.create(vendor="cursor", session_id="chat1")
+        codex = VendorSessionHandle.create(
+            vendor="codex",
+            session_id="019fc6b3-e6c4-7892-a97a-c80b30a7f5b0",
+        )
+        req = self._request(model_args=())
+        with pytest.raises(ValueError, match="wrong vendor"):
+            build_cursor_resume_argv(codex, req)
+        with pytest.raises(ValueError, match="wrong vendor"):
+            build_codex_resume_argv(cursor, req)
+        with pytest.raises(ValueError, match="must be non-empty"):
+            VendorSessionHandle.create(vendor="cursor", session_id="")
+        with pytest.raises(ValueError, match="without surrounding or embedded whitespace"):
+            VendorSessionHandle.create(vendor="cursor", session_id="  spaced  ")
+        with pytest.raises(ValueError, match="must not be flag-like"):
+            VendorSessionHandle.create(vendor="cursor", session_id="-flaglike")
+        with pytest.raises(ValueError, match="codex session id must be a UUID"):
+            VendorSessionHandle.create(vendor="codex", session_id="not-a-uuid")
+        with pytest.raises(ValueError, match="unsupported vendor session handle vendor"):
+            VendorSessionHandle.create(vendor="claude", session_id="x")
+
+    def test_handle_is_frozen_and_module_has_no_last(self) -> None:
+        handle = VendorSessionHandle.create(vendor="cursor", session_id="chat1")
+        with pytest.raises(FrozenInstanceError):
+            handle.session_id = "other"  # type: ignore[misc]
+        source = VENDOR_PATH.read_text(encoding="utf-8")
+        assert "--last" not in source
+        for builder in (
+            build_cursor_create_chat_argv,
+            build_cursor_resume_argv,
+            build_codex_session_argv,
+            build_codex_resume_argv,
+        ):
+            assert builder.__name__ in source

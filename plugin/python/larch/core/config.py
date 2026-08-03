@@ -9,6 +9,7 @@ from larch.outcomes import Outcome
 
 ToolName = Literal["cursor", "codex", "claude"]
 RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]
+SlotTransport = Literal["subprocess", "agent-tool"]
 
 RETRY_POLICY_CAPS: Final[dict[str, tuple[int, str]]] = {
     "transient-infra": (4, "sleep-seconds.sh 5"),
@@ -435,6 +436,12 @@ CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
+CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
+CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
+# Inactive /debate role pins (piece 1). Live launch is owned by piece 2.
+DEBATE_CODEX_MODEL: Final = CODEX_DEFAULT_MODEL
+DEBATE_CURSOR_MODEL: Final = CURSOR_GROK_4_5_HIGH_MODEL
+DEBATE_CLAUDE_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
 
 
 @dataclass(frozen=True)
@@ -449,6 +456,8 @@ class SlotDefault:
     focus_area: str = ""
     weight: int = 0
     archetype: str = ""
+    model: str = ""
+    transport: SlotTransport = "subprocess"
 
 
 @dataclass(frozen=True)
@@ -650,6 +659,44 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_skills="/design",
         doc_fallback="Codex-primary single slot through dispatch-waterfall.",
     ),
+    "debate.panel": RoleDefault(
+        role_id="debate.panel",
+        kind="slot_panel",
+        slots=(
+            SlotDefault(
+                slot="cursor",
+                tool="cursor",
+                model=DEBATE_CURSOR_MODEL,
+                cursor_model=DEBATE_CURSOR_MODEL,
+                transport="subprocess",
+            ),
+            SlotDefault(
+                slot="codex",
+                tool="codex",
+                model=DEBATE_CODEX_MODEL,
+                transport="subprocess",
+            ),
+            SlotDefault(
+                slot="claude",
+                tool="claude",
+                model=DEBATE_CLAUDE_MODEL,
+                transport="agent-tool",
+            ),
+        ),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
+        doc_phase="Debate panel",
+        doc_role="Argue a proposal in persistent vendor sessions",
+        doc_skills="/debate",
+        doc_fallback="Fixed Cursor, Codex, and Claude slots with no silent substitution. Piece 2 activates launch and degraded-vendor accounting. The Claude slot is an in-session Agent-tool subagent; Cursor and Codex use subprocess transport.",
+    ),
+    "debate.synthesizer": _waterfall_role(
+        "debate.synthesizer",
+        order=("codex", "cursor", "claude"),
+        doc_phase="Debate synthesizer",
+        doc_role="Synthesize a converged debate into a proposal",
+        doc_skills="/debate",
+        doc_fallback="Codex-primary with fixed Codex, then Cursor, then Claude fallback order. Piece 2 activates this role.",
+    ),
 }
 
 # Deprecated compatibility alias. Runtime consumers should use role-specific
@@ -669,7 +716,6 @@ FIXER_TIER_FAIL_REASONS: Final[tuple[str, ...]] = (
     FIXER_TIER_FAIL_REASON_UNAVAILABLE,
     FIXER_TIER_FAIL_REASON_EXHAUSTED,
 )
-CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
 CLAUDE_SONNET_4_6_1M_MODEL: Final = "claude-sonnet-4-6[1m]"
 CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
@@ -865,7 +911,6 @@ CURSOR_MODEL_LIST_HEADER: Final = "Available models"
 # Pinned grammar: `<id> - <display name>` (one line each). Fail closed otherwise.
 CURSOR_MODEL_LIST_LINE_RE: Final = r"^([A-Za-z0-9][A-Za-z0-9._+-]*) - .+$"
 EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT: Final = "claude-haiku-4-5"
-CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.6-terra"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"

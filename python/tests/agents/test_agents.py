@@ -6544,3 +6544,181 @@ def test_parse_drafter_output_dialectic_inside_plan_is_fatal(tmp_path: Path) -> 
 )
 def test_agents_reexports_split_public_contract(name: str, module: object) -> None:
     assert getattr(agents, name) is getattr(module, name)
+
+
+def test_parse_codex_session_id_valid_structured_event(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    events.write_text(
+        '{"type":"item.completed","text":"thread.started ignored"}\n'
+        '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"}\n'
+        '{"type":"agent.message","text":"hi"}\n',
+        encoding="utf-8",
+    )
+    assert agents.parse_codex_session_id(events) == "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ('{"type":"agent.message","text":"no start"}\n', "missing"),
+        ("not-json\n", "malformed"),
+        ('{"type":"thread.started"}\n', "missing string thread_id"),
+        ('{"type":"thread.started","thread_id":123}\n', "missing string thread_id"),
+        ('{"type":"thread.started","thread_id":"not-a-uuid"}\n', "invalid thread_id"),
+        (
+            '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"}\n'
+            '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"}\n',
+            "duplicate",
+        ),
+        (
+            '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"}\n'
+            '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b1"}\n',
+            "conflicting",
+        ),
+    ],
+)
+def test_parse_codex_session_id_rejects_bad_events(tmp_path: Path, payload: str, match: str) -> None:
+    events = tmp_path / "events.jsonl"
+    events.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
+        agents.parse_codex_session_id(events)
+
+
+def test_opt_in_session_capture_returns_typed_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "codex.out"
+    events = tmp_path / "events.jsonl"
+
+    def fake_popen(*_args: object, **_kwargs: object) -> object:
+        class _Proc:
+            pid = 1
+
+            def wait(self, timeout: float | None = None) -> int:
+                _ = timeout
+                events.write_text(
+                    '{"type":"thread.started","thread_id":"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"}\n',
+                    encoding="utf-8",
+                )
+                output.write_text("ok\n", encoding="utf-8")
+                return 0
+
+            def poll(self) -> int | None:
+                return 0
+
+            def terminate(self) -> None:
+                return None
+
+        return _Proc()
+
+    monkeypatch.setattr(_run_external.subprocess, "Popen", fake_popen)
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        capture_session_handle=True,
+        poll_interval=0.01,
+    )
+    assert result.exit_code == 0
+    assert result.session_handle is not None
+    assert result.session_handle.vendor == "codex"
+    assert result.session_handle.session_id == "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"
+    assert result.failure_reason is None
+
+
+def test_session_capture_failure_is_terminal_no_auth_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "codex.out"
+    events = tmp_path / "events.jsonl"
+    launches = {"n": 0}
+
+    def fake_popen(*_args: object, **_kwargs: object) -> object:
+        launches["n"] += 1
+
+        class _Proc:
+            pid = 1
+
+            def wait(self, timeout: float | None = None) -> int:
+                _ = timeout
+                events.write_text('{"type":"agent.message","text":"no start"}\n', encoding="utf-8")
+                output.write_text("ok\n", encoding="utf-8")
+                return 0
+
+            def poll(self) -> int | None:
+                return 0
+
+            def terminate(self) -> None:
+                return None
+
+        return _Proc()
+
+    monkeypatch.setattr(_run_external.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 5)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
+        tool="codex",
+        output=output,
+        timeout_seconds=5,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        capture_session_handle=True,
+    )
+    assert launches["n"] == 1
+    assert result.exit_code == agents._SESSION_CAPTURE_FAILED_RC
+    assert result.failure_reason == "session-capture-failed"
+    assert result.failure_reason in agents.TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS
+    assert result.session_handle is None
+    diag = output.with_suffix(output.suffix + ".diag")
+    assert "session-capture-failed" in diag.read_text(encoding="utf-8")
+
+
+def test_ordinary_oneshot_codex_succeeds_without_start_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "codex.out"
+    events = tmp_path / "events.jsonl"
+
+    def fake_popen(*_args: object, **_kwargs: object) -> object:
+        class _Proc:
+            pid = 1
+
+            def wait(self, timeout: float | None = None) -> int:
+                _ = timeout
+                events.write_text('{"type":"agent.message","text":"no start"}\n', encoding="utf-8")
+                output.write_text("ok\n", encoding="utf-8")
+                return 0
+
+            def poll(self) -> int | None:
+                return 0
+
+            def terminate(self) -> None:
+                return None
+
+        return _Proc()
+
+    monkeypatch.setattr(_run_external.subprocess, "Popen", fake_popen)
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        poll_interval=0.01,
+    )
+    assert result.exit_code == 0
+    assert result.session_handle is None
+    assert result.failure_reason is None
+
+
+def test_session_types_and_parser_reexported() -> None:
+    assert agents.VendorSessionHandle is _types.VendorSessionHandle
+    assert agents.parse_codex_session_id is _run_external.parse_codex_session_id
+    assert agents._SESSION_CAPTURE_FAILED_RC == 4
+    assert "session-capture-failed" in agents.TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS

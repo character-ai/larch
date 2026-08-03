@@ -14,6 +14,19 @@ import pytest_sharding
 
 from tests.support import shell_fixtures as _shell_fixtures
 
+_SESSION_ROUTING_ENV_VARS = (
+    "IMPLEMENT_TMPDIR",
+    "DESIGN_TMPDIR",
+    "REVIEW_TMPDIR",
+    "SESSION_ENV_PATH",
+    "LARCH_EXECUTION_ISSUES_LOG",
+    "CLAUDE_PLUGIN_ROOT",
+    "LARCH_CLAUDE_PLUGIN_ROOT",
+    "ISSUE_NUMBER",
+    "REPO",
+    "SESSION_ID",
+)
+
 
 @pytest.fixture(autouse=True)
 def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -43,27 +56,17 @@ def _session_routing_isolation() -> Iterator[None]:
     Some wrapper helpers assign process env directly, bypassing monkeypatch.
     Scrub before and after each test so those mutations cannot leak into later
     subprocess tests.
+
+    ISSUE_NUMBER, REPO, and SESSION_ID belong to the same class: the /design
+    wrapper rehydration helpers export them onto the real process env, so a
+    later test in the same shard would otherwise observe another test's session
+    identity (for example a leaked ISSUE_NUMBER makes ship's pre-PR governance
+    gate run in a test that expects it skipped).
     """
-    for name in (
-        "IMPLEMENT_TMPDIR",
-        "DESIGN_TMPDIR",
-        "REVIEW_TMPDIR",
-        "SESSION_ENV_PATH",
-        "LARCH_EXECUTION_ISSUES_LOG",
-        "CLAUDE_PLUGIN_ROOT",
-        "LARCH_CLAUDE_PLUGIN_ROOT",
-    ):
+    for name in _SESSION_ROUTING_ENV_VARS:
         os.environ.pop(name, None)
     yield
-    for name in (
-        "IMPLEMENT_TMPDIR",
-        "DESIGN_TMPDIR",
-        "REVIEW_TMPDIR",
-        "SESSION_ENV_PATH",
-        "LARCH_EXECUTION_ISSUES_LOG",
-        "CLAUDE_PLUGIN_ROOT",
-        "LARCH_CLAUDE_PLUGIN_ROOT",
-    ):
+    for name in _SESSION_ROUTING_ENV_VARS:
         os.environ.pop(name, None)
 
 

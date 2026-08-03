@@ -27,6 +27,7 @@ from larch.agents._run_external import (
     _trust_config_arg,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist argv helper
 )
 from larch.agents._types import (
+    VendorSessionHandle,
     _PY_CLI,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist cli path
     _is_positive_int,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist cap gate
 )
@@ -166,6 +167,68 @@ def build_codex_argv(profile: str, request: VendorLaunchRequest) -> list[str]:
         "--json",
         "--",
         prompt_token,
+    ]
+
+
+def build_codex_session_argv(request: VendorLaunchRequest) -> list[str]:
+    """Build the read-only Codex initial-session argv used before explicit resume."""
+    return build_codex_argv("read-only", request)
+
+
+def build_codex_resume_argv(handle: VendorSessionHandle, request: VendorLaunchRequest) -> list[str]:
+    r"""Build ``codex exec resume <UUID>`` argv without latest-session fallback, ``--sandbox``, or ``-C``.
+
+    Callers must launch with ``cwd=request.workdir``. Read-only access is enforced via
+    ``sandbox_mode="read-only"`` config override.
+    """
+    if handle.vendor != "codex":
+        raise ValueError(f"wrong vendor for codex resume: {handle.vendor}")
+    # Re-validate so a reconstructed handle cannot smuggle a latest-session fallback or flag-like ids.
+    validated = VendorSessionHandle.create(vendor=handle.vendor, session_id=handle.session_id)
+    prompt_token = "-" if request.prompt_via_stdin else request.prompt
+    return [
+        "codex",
+        "exec",
+        "resume",
+        validated.session_id,
+        *request.model_args,
+        "-c",
+        _trust_config_arg(request.workdir),
+        *_codex_auth_args(),
+        "-c",
+        'sandbox_mode="read-only"',
+        "--output-last-message",
+        request.output,
+        "--json",
+        prompt_token,
+    ]
+
+
+def build_cursor_create_chat_argv() -> list[str]:
+    """Build the verified option-free ``cursor agent create-chat`` argv."""
+    return ["cursor", "agent", "create-chat"]
+
+
+def build_cursor_resume_argv(handle: VendorSessionHandle, request: VendorLaunchRequest) -> list[str]:
+    """Build ``cursor agent -p --resume <chatId>`` argv in plan mode with ``--trust``."""
+    if handle.vendor != "cursor":
+        raise ValueError(f"wrong vendor for cursor resume: {handle.vendor}")
+    validated = VendorSessionHandle.create(vendor=handle.vendor, session_id=handle.session_id)
+    return [
+        "cursor",
+        "agent",
+        "-p",
+        "--resume",
+        validated.session_id,
+        "--mode",
+        "plan",
+        "--trust",
+        "--output-format",
+        "json",
+        *request.model_args,
+        "--workspace",
+        request.workdir,
+        request.prompt,
     ]
 
 
