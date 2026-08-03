@@ -28,6 +28,13 @@ _BUSY_PREFIXES: Final = frozenset(
     [config.TRACKING_ISSUE_PREFIX_BY_STATE[state].strip() for state in _MANAGED_BUSY_STATES]
     + [prefix.strip() for prefix in LIFECYCLE_PREFIXES if prefix not in _MANAGED_PREFIXES]
 )
+_UMBRELLA_SOURCE_PREFIXES: Final = frozenset(
+    {
+        config.TRACKING_ISSUE_PREFIX_BY_STATE["designing"].strip().casefold(),
+        config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"].strip().casefold(),
+    }
+)
+_UMBRELLA_PROPOSAL_MARKER: Final = "<!-- larch:umbrella-proposal"
 _UPDATED_AT_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
@@ -37,6 +44,7 @@ class MutationField(StrEnum):
     LABELS = "labels"
     NAMED_BLOCK = "named-block"
     IMPLEMENTATION_LEASE = "implementation-lease"
+    UMBRELLA_CONVERSION = "umbrella-conversion"
 
 
 class ProtectedIssueMutation(ShipError):
@@ -180,7 +188,11 @@ def _validate_request(request: IssueMutationRequest) -> None:  # noqa: C901,PLR0
     if not request.fields:
         raise _failure("missing-allowed-field")
     lease_field = MutationField.IMPLEMENTATION_LEASE in request.fields
-    if MutationField.NAMED_BLOCK in request.fields:
+    umbrella_conversion = MutationField.UMBRELLA_CONVERSION in request.fields
+    if umbrella_conversion:
+        if request.fields != frozenset({MutationField.TITLE, MutationField.BODY, MutationField.UMBRELLA_CONVERSION}) or request.title is None or request.body is None:
+            raise _failure("invalid-umbrella-conversion-request")
+    elif MutationField.NAMED_BLOCK in request.fields:
         if request.fields != frozenset({MutationField.NAMED_BLOCK}) or not request.marker or request.body is None:
             raise _failure("invalid-named-block-request")
     elif lease_field:
@@ -248,6 +260,24 @@ def _verify_authorized_body_change(  # noqa: C901 - authorization branches mirro
     if body is None:
         return None
     redacted_body = _redact_body(body)
+    if MutationField.UMBRELLA_CONVERSION in request.fields:
+        detected_prefix = detect_lifecycle_prefix(before.title)
+        source_prefix = detected_prefix.strip().casefold()
+        source_title = before.title[len(detected_prefix) :]
+        invalid_title = (
+            request.title is None
+            or not source_title.strip()
+            or request.title != f"[UMBRELLA] {source_title}"
+            or _redact_title(request.title) != request.title
+        )
+        if (
+            source_prefix not in _UMBRELLA_SOURCE_PREFIXES
+            or invalid_title
+            or _UMBRELLA_PROPOSAL_MARKER not in redacted_body
+            or (before.body and before.body not in redacted_body)
+        ):
+            raise _failure("invalid-umbrella-conversion")
+        return redacted_body
     if MutationField.IMPLEMENTATION_LEASE in request.fields:
         from larch.issue import issue_wire  # noqa: PLC0415 - avoids issue-wire mutation-owner cycle
 
@@ -389,6 +419,24 @@ def update_body(
             snapshot, fields=frozenset({MutationField.BODY}), body=body
         ),
         cwd=cwd,
+    )
+
+
+def convert_managed_issue_to_umbrella(
+    runner: Runner, *, repository: str, issue: str, title: str, body: str
+) -> VerifiedIssueMutation:
+    """Atomically convert one managed issue while preserving its full body."""
+    snapshot = read_snapshot(runner, repository=repository, issue=issue)
+    if snapshot.state.upper() != "OPEN":
+        raise _failure("invalid-umbrella-conversion")
+    return apply(
+        runner,
+        request_for_snapshot(
+            snapshot,
+            fields=frozenset({MutationField.TITLE, MutationField.BODY, MutationField.UMBRELLA_CONVERSION}),
+            title=title,
+            body=body,
+        ),
     )
 
 

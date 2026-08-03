@@ -98,7 +98,7 @@ On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_
 
 `/design` requires the default gate: `main`, clean tree, empty stash. Call `design step0-session` without `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell.
 
-Setup KV contract pointer (maintainer only): `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md`. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
+Setup KV contract pointer (maintainer only): `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md`. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CONTEXT_FILE`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Preserve `CONTEXT_FILE` for every nested Skill-tool lifecycle handoff. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \
@@ -355,9 +355,9 @@ On direct-entry paths, bind plan-size KVs from `.design-postplan-emit-result.env
 
 #### Split-path (decomposition panel)
 
-**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for inline proposal construction, the one-question contract, validation, filing, dependency migration, and original-issue close.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for inline proposal construction, the one-question contract, validation, and exact `/umbrella` handoff.
 Execute `decompose-panel.md` Split-path inline. The main agent computes and repairs the proposal without subagents.
-On approved split that files N issues and closes the original: export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block through Read/cache, print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, emit the cached summary as terminal plain chat, and exit 0.
+On an approved split whose `/umbrella` completion sentinel verifies: export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block through Read/cache, print `**ℹ /design exited: #<original> converted to an umbrella with N filed leaves.**`, emit the cached summary as terminal plain chat, and exit 0.
 On Other/chat, exit the structured partition path without another `AskUserQuestion`; apply the caller's normal non-exiting completion boundary when continuing.
 On unavailable Partition selection, record the validation failure, preserve `$DESIGN_TMPDIR`, and end Split-path without another question.
 For Step 5c, only Override reruns `design-step5c.sh --fresh-attempt`.

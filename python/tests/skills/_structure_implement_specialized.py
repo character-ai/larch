@@ -59,6 +59,28 @@ def _check_terminal_references(
     )
 
 
+def _check_multi_issue_split(
+    *,
+    skill: str,
+    require: Callable[[str, str, str], None],
+) -> None:
+    for needle, label in [
+        ("### Multi-issue split ownership", "SKILL multi-issue split owner"),
+        ("Invoke `/umbrella` via the Skill tool", "SKILL split delegates through umbrella"),
+        ('--lifecycle-parent-context "$CONTEXT_FILE"', "SKILL split forwards lifecycle handoff"),
+        (
+            '--prepared-input-file "$IMPLEMENT_TMPDIR/umbrella-partition/partition-input.txt"',
+            "SKILL split forwards exact prepared input",
+        ),
+        (
+            'umbrella verify-completion --sentinel-file "$IMPLEMENT_TMPDIR/umbrella-partition/umbrella-complete.sentinel"',
+            "SKILL split verifies identity-bound umbrella completion",
+        ),
+        ("do not close the original", "SKILL split forbids direct original closure"),
+    ]:
+        require(skill, needle, label)
+
+
 def run(repo_root: Path) -> list[str]:
     """Execute the legacy implement structure body; return failure messages."""
     prev = Path.cwd()
@@ -116,6 +138,7 @@ def run(repo_root: Path) -> list[str]:
                 if header not in registry_text:
                     checks.append(f"{registry_ref} missing {header}")
         require(skill, registry_ref, "SKILL pointer for extracted script registry")
+        _check_multi_issue_split(skill=skill, require=require)
         # New mandatory references.
         for ref in [
             "rebase-checkpoint-routing.md",

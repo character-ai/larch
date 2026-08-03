@@ -187,6 +187,59 @@ def test_protected_body_requires_its_matching_named_marker_and_lease() -> None:
     assert issue_mutation.apply(runner, allowed).after.body == replacement
 
 
+def test_managed_umbrella_conversion_is_atomic_and_shape_restricted() -> None:
+    original_body = "Original body with its plan.\n"
+    runner = MutationRunner(title="[DESIGNING] [BUG] Split this work", body=original_body)
+    converted = issue_mutation.convert_managed_issue_to_umbrella(
+        runner,
+        repository="owner/repo",
+        issue="7",
+        title="[UMBRELLA] [BUG] Split this work",
+        body=original_body + "\n<!-- larch:umbrella-proposal -->\n",
+    )
+    assert converted.after.title == "[UMBRELLA] [BUG] Split this work"
+    assert converted.after.body.endswith("<!-- larch:umbrella-proposal -->\n")
+    assert len([call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]]) == 1
+
+    invalid = [
+        ("[UMBRELLA] Renamed", original_body + "\n<!-- larch:umbrella-proposal -->\n"),
+        ("[UMBRELLA] [BUG] Split this work", "replacement without original"),
+        ("[UMBRELLA] [BUG] Split this work", original_body + "\nNo protected proposal record.\n"),
+    ]
+    for title, body in invalid:
+        fresh = MutationRunner(title="[DESIGNING] [BUG] Split this work", body=original_body)
+        with pytest.raises(issue_mutation.ProtectedIssueMutation, match="invalid-umbrella-conversion"):
+            _ = issue_mutation.convert_managed_issue_to_umbrella(
+                fresh,
+                repository="owner/repo",
+                issue="7",
+                title=title,
+                body=body,
+            )
+
+    spaced = MutationRunner(title="[IMPLEMENTING]  Preserve spacing", body=original_body)
+    assert issue_mutation.convert_managed_issue_to_umbrella(
+        spaced,
+        repository="owner/repo",
+        issue="7",
+        title="[UMBRELLA]  Preserve spacing",
+        body=original_body + "\n<!-- larch:umbrella-proposal -->\n",
+    ).after.title == "[UMBRELLA]  Preserve spacing"
+
+    for rejected in (
+        MutationRunner(title="[DESIGNED] Split this work", body=original_body),
+        MutationRunner(title="[IMPLEMENTING] Split this work", body=original_body, state="CLOSED"),
+    ):
+        with pytest.raises(issue_mutation.ProtectedIssueMutation, match="invalid-umbrella-conversion"):
+            _ = issue_mutation.convert_managed_issue_to_umbrella(
+                rejected,
+                repository="owner/repo",
+                issue="7",
+                title="[UMBRELLA] Split this work",
+                body=original_body + "\n<!-- larch:umbrella-proposal -->\n",
+            )
+
+
 def test_plan_receipt_uses_rehydrated_named_block_lease(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
