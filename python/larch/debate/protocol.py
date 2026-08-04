@@ -595,14 +595,7 @@ def _freeze_run_local_values(
 ) -> Mapping[str, str]:
     if values is None:
         return MappingProxyType({})
-    if not isinstance(values, Mapping):
-        raise ProtocolRejection(ParseRejectionReason.invalid_run_local_values)
-    frozen: dict[str, str] = {}
-    for key, value in values.items():
-        if not isinstance(key, str) or not isinstance(value, str):
-            raise ProtocolRejection(ParseRejectionReason.invalid_run_local_values)
-        frozen[key] = value
-    return MappingProxyType(frozen)
+    return MappingProxyType(dict(values))
 
 
 def _verify_binding_fingerprints(
@@ -629,8 +622,6 @@ def _validate_point_universe(
         raise ProtocolRejection(ParseRejectionReason.empty_point_universe)
     seen: set[int] = set()
     for point_id in point_universe:
-        if not isinstance(point_id, PointId):
-            raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
         if point_id.number in seen:
             raise ProtocolRejection(ParseRejectionReason.duplicate_point_id)
         seen.add(point_id.number)
@@ -651,8 +642,6 @@ def _require_ascending_slots(slots: Sequence[Participant]) -> None:
     previous_index = -1
     seen: set[Participant] = set()
     for slot in slots:
-        if not isinstance(slot, Participant):
-            raise ProtocolRejection(ParseRejectionReason.invalid_slot)
         if slot in seen:
             raise ProtocolRejection(ParseRejectionReason.invalid_slot_ordering)
         seen.add(slot)
@@ -667,8 +656,6 @@ def _validate_round_bindings(bindings: tuple[SlotLedgerBinding, ...]) -> None:
         raise ProtocolRejection(ParseRejectionReason.below_live_panel_floor)
     if len(bindings) > LIVE_PANEL_MAXIMUM:
         raise ProtocolRejection(ParseRejectionReason.above_live_panel_ceiling)
-    if not all(isinstance(binding, SlotLedgerBinding) for binding in bindings):
-        raise ProtocolRejection(ParseRejectionReason.invalid_slot_ordering)
     _require_ascending_slots(tuple(binding.slot for binding in bindings))
     reference_points = _ledger_point_ids(bindings[0].ledger)
     for binding in bindings[1:]:
@@ -686,12 +673,7 @@ class SlotLedgerBinding:
     run_local_values: InitVar[Mapping[str, str] | None] = None
 
     def __post_init__(self, run_local_values: Mapping[str, str] | None) -> None:
-        if not isinstance(self.slot, Participant):
-            raise ProtocolRejection(ParseRejectionReason.invalid_slot)
-        if not isinstance(self.ledger, ParsedSlotLedger):
-            raise ProtocolRejection(ParseRejectionReason.malformed_row)
-        if not isinstance(self.fingerprints, tuple):
-            raise ProtocolRejection(ParseRejectionReason.fingerprint_mismatch)
+        object.__setattr__(self, "fingerprints", tuple(self.fingerprints))
         values = _freeze_run_local_values(run_local_values)
         _verify_binding_fingerprints(self.ledger, self.fingerprints, values)
 
@@ -704,8 +686,6 @@ class RoundState:
     bindings: tuple[SlotLedgerBinding, ...]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.round_number, RoundNumber):
-            raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
         if int(self.round_number) < 1 or int(self.round_number) > ROUND_LIMIT:
             raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
         object.__setattr__(self, "bindings", tuple(self.bindings))
@@ -729,8 +709,6 @@ class Dispute:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "holding_slots", tuple(self.holding_slots))
-        if not isinstance(self.point_id, PointId):
-            raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
         if len(self.holding_slots) < LIVE_PANEL_MINIMUM:
             raise ProtocolRejection(ParseRejectionReason.below_live_panel_floor)
         _require_ascending_slots(self.holding_slots)
@@ -744,10 +722,6 @@ class SelectedAdjudication:
     selected_position: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.point_id, PointId):
-            raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
-        if not isinstance(self.selected_position, str):
-            raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
         _validate_adjudication_position(self.selected_position)
 
     @property
@@ -764,10 +738,6 @@ class SplitAdjudication:
     position_b: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.point_id, PointId):
-            raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
-        if not isinstance(self.position_a, str) or not isinstance(self.position_b, str):
-            raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
         _validate_adjudication_position(self.position_a)
         _validate_adjudication_position(self.position_b)
         if self.position_a == self.position_b:
@@ -948,8 +918,6 @@ def _adjudication_coverage(
     seen: set[PointId] = set()
     has_split = False
     for record in records:
-        if not isinstance(record, (SelectedAdjudication, SplitAdjudication)):
-            raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
         if record.point_id in seen or record.point_id not in unresolved_set:
             raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
         seen.add(record.point_id)
@@ -984,12 +952,6 @@ def _validate_proposal_phase_fields(
     terminal_set = terminal_outcome is not None
     if phase_set == terminal_set:
         raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
-    if phase is not None and not isinstance(phase, NonterminalPhase):
-        raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
-    if terminal_outcome is not None and not isinstance(
-        terminal_outcome, TerminalOutcome
-    ):
-        raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
 
 
 def _validate_proposal_rounds(
@@ -1000,8 +962,6 @@ def _validate_proposal_rounds(
     if len(rounds) > ROUND_LIMIT:
         raise ProtocolRejection(ParseRejectionReason.illegal_transition)
     for index, round_state in enumerate(rounds):
-        if not isinstance(round_state, RoundState):
-            raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
         if int(round_state.round_number) != index + 1:
             raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
         if round_state.point_ids != point_universe:
@@ -1012,18 +972,6 @@ def _validate_proposal_rounds(
                 binding.fingerprints,
                 run_local_values,
             )
-
-
-def _validate_proposal_records(
-    disputes: tuple[Dispute, ...],
-    adjudications: tuple[AdjudicationRecord, ...],
-) -> None:
-    for dispute in disputes:
-        if not isinstance(dispute, Dispute):
-            raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
-    for record in adjudications:
-        if not isinstance(record, (SelectedAdjudication, SplitAdjudication)):
-            raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
 
 
 def _validate_proposal_shape(
@@ -1078,8 +1026,8 @@ class ProposalState:
             "point_universe",
             _validate_point_universe(tuple(self.point_universe)),
         )
-        parse_protocol_version(self.protocol_version)
-        parse_fingerprint_version(self.fingerprint_algorithm_version)
+        _ = parse_protocol_version(self.protocol_version)
+        _ = parse_fingerprint_version(self.fingerprint_algorithm_version)
         object.__setattr__(
             self,
             "run_local_values",
@@ -1094,7 +1042,6 @@ class ProposalState:
         _validate_proposal_rounds(
             self.point_universe, self.rounds, self.run_local_values
         )
-        _validate_proposal_records(self.disputes, self.adjudications)
         _validate_proposal_shape(
             self.phase,
             self.terminal_outcome,
