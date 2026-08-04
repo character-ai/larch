@@ -1096,7 +1096,7 @@ def test_stalemate_one_matching_slot_is_empty_completed() -> None:
     )
     detection = detect_stalemate_disputes(proposal, earlier, later)
     assert detection.status is StalemateDetectionStatus.COMPLETED
-    assert detection.disputes == ()
+    assert not detection.disputes
 
 
 def test_stalemate_changed_reason_or_action_skips_dispute() -> None:
@@ -1105,7 +1105,7 @@ def test_stalemate_changed_reason_or_action_skips_dispute() -> None:
     later = _two_slot_round(RoundNumber.ROUND_2, _hold_ledger("v2", 1))
     detection = detect_stalemate_disputes(proposal, earlier, later)
     assert detection.status is StalemateDetectionStatus.COMPLETED
-    assert detection.disputes == ()
+    assert not detection.disputes
 
 
 def test_stalemate_membership_changed_distinct_from_empty() -> None:
@@ -1121,7 +1121,7 @@ def test_stalemate_membership_changed_distinct_from_empty() -> None:
     )
     detection = detect_stalemate_disputes(proposal, earlier, later)
     assert detection.status is StalemateDetectionStatus.MEMBERSHIP_CHANGED
-    assert detection.disputes == ()
+    assert not detection.disputes
 
 
 def test_stalemate_nonadjacent_and_forged_fingerprints() -> None:
@@ -1306,15 +1306,15 @@ def test_legal_edge_count_and_illegal_pairs() -> None:
     assert len(illegal) == 7
 
 
+_SORTED_LEGAL_EDGES = tuple(
+    sorted(_LEGAL_EDGES, key=lambda item: (item[0].value, item[1].value))
+)
+
+
 @pytest.mark.parametrize(
     ("phase", "action"),
-    sorted(_LEGAL_EDGES, key=lambda item: (item[0].value, item[1].value)),
-    ids=[
-        f"{phase.value}+{action.value}"
-        for phase, action in sorted(
-            _LEGAL_EDGES, key=lambda item: (item[0].value, item[1].value)
-        )
-    ],
+    _SORTED_LEGAL_EDGES,
+    ids=[f"{phase.value}+{action.value}" for phase, action in _SORTED_LEGAL_EDGES],
 )
 def test_each_legal_edge(
     phase: NonterminalPhase, action: TransitionAction
