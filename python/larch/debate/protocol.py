@@ -34,6 +34,7 @@ SLOT_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")
 SLOT_SET: Final[frozenset[str]] = frozenset(SLOT_ORDER)
 
 LEDGER_POINT_TOKEN: Final[str] = "POINT"
+POINT_ID_PREFIX: Final[str] = "POINT_"
 ACTION_AGREE: Final[str] = "AGREE"
 ACTION_CONCEDE: Final[str] = "CONCEDE"
 ACTION_HOLD: Final[str] = "HOLD"
@@ -44,20 +45,26 @@ ACTION_TOKENS: Final[frozenset[str]] = frozenset(
 ARTIFACT_CITATION_PREFIX: Final[str] = "[[artifact:"
 ARTIFACT_CITATION_SUFFIX: Final[str] = "]]"
 
+# Every pattern below is built from the wire constants above so each literal
+# has exactly one owner. Editing a constant moves its parser with it.
 _LEDGER_ROW_RE: Final[re.Pattern[str]] = re.compile(
-    r"^POINT (\S+) (\S+) (.*)$"
+    rf"^{re.escape(LEDGER_POINT_TOKEN)} (\S+) (\S+) (.*)$"
 )
 # The digit bound is derived from POINT_ID_MAX so the accepted range has one
 # owner. Matches are re-validated through is_valid_point_token, so a wider
 # class stays safe while a narrower one would silently drop legal ids.
 _POINT_CITATION_RE: Final[re.Pattern[str]] = re.compile(
-    rf"(?<![A-Za-z0-9_])POINT (POINT_[1-9][0-9]{{0,{len(str(POINT_ID_MAX)) - 1}}})"
+    rf"(?<![A-Za-z0-9_]){re.escape(LEDGER_POINT_TOKEN)} "
+    rf"({re.escape(POINT_ID_PREFIX)}[1-9][0-9]{{0,{len(str(POINT_ID_MAX)) - 1}}})"
     r"(?![0-9A-Za-z_])"
 )
 _ARTIFACT_CITATION_RE: Final[re.Pattern[str]] = re.compile(
-    r"\[\[artifact:([^\]]*)\]\]"
+    rf"{re.escape(ARTIFACT_CITATION_PREFIX)}([^\]]*)"
+    rf"{re.escape(ARTIFACT_CITATION_SUFFIX)}"
 )
-_FINGERPRINT_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{16}$")
+_FINGERPRINT_RE: Final[re.Pattern[str]] = re.compile(
+    rf"^[0-9a-f]{{{FINGERPRINT_HEX_LENGTH}}}$"
+)
 _CONTROL_OR_FORBIDDEN_RE: Final[re.Pattern[str]] = re.compile(
     r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029\t\r]"
 )
@@ -144,13 +151,13 @@ class PointId:
 
     @property
     def token(self) -> str:
-        return f"POINT_{self.number}"
+        return f"{POINT_ID_PREFIX}{self.number}"
 
     @classmethod
     def from_token(cls, token: str) -> PointId:
-        if not token.startswith("POINT_") or len(token) <= len("POINT_"):
+        if not token.startswith(POINT_ID_PREFIX) or len(token) <= len(POINT_ID_PREFIX):
             raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
-        rest = token[len("POINT_") :]
+        rest = token[len(POINT_ID_PREFIX) :]
         if not rest.isdigit() or rest[0] == "0":
             raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
         number = int(rest, 10)
