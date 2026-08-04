@@ -182,6 +182,13 @@ class AdjudicationDecision(StrEnum):
     SPLIT = "SPLIT"
 
 
+class StalemateDetectionStatus(StrEnum):
+    """Whether stalemate detection ran or was skipped for changed membership."""
+
+    COMPLETED = "COMPLETED"
+    MEMBERSHIP_CHANGED = "MEMBERSHIP_CHANGED"
+
+
 class TransitionAction(StrEnum):
     """Explicit transition-table actions."""
 
@@ -701,6 +708,7 @@ class RoundState:
             raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
         if int(self.round_number) < 1 or int(self.round_number) > ROUND_LIMIT:
             raise ProtocolRejection(ParseRejectionReason.invalid_round_number)
+        object.__setattr__(self, "bindings", tuple(self.bindings))
         _validate_round_bindings(self.bindings)
 
     @property
@@ -847,17 +855,32 @@ def _revalidate_round_against_proposal(
         )
 
 
+@dataclass(frozen=True)
+class StalemateDetection:
+    """Stalemate-detection result separating empty success from a skipped run."""
+
+    status: StalemateDetectionStatus
+    disputes: tuple[Dispute, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "disputes", tuple(self.disputes))
+        if self.status is StalemateDetectionStatus.MEMBERSHIP_CHANGED and self.disputes:
+            raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
+
+
 def detect_stalemate_disputes(
     proposal: ProposalState,
     earlier: RoundState,
     later: RoundState,
-) -> tuple[Dispute, ...]:
+) -> StalemateDetection:
     """Detect qualifying HOLD stalemates across adjacent rounds.
 
-    Requires adjacent round numbers. Changed live-slot membership yields no
-    disputes. Forged or mismatched fingerprints raise. A dispute requires at
-    least two matching slots that ``HOLD`` in both rounds with unchanged
-    recomputed fingerprints under the proposal's frozen run-local snapshot.
+    Requires adjacent round numbers. Forged or mismatched fingerprints raise. A
+    dispute requires at least two matching slots that ``HOLD`` in both rounds
+    with unchanged recomputed fingerprints under the proposal's frozen run-local
+    snapshot. Changed live-slot membership skips detection and reports
+    :attr:`StalemateDetectionStatus.MEMBERSHIP_CHANGED`, which is distinct from a
+    completed run that found no qualifying dispute.
     """
     if int(later.round_number) != int(earlier.round_number) + 1:
         raise ProtocolRejection(ParseRejectionReason.nonadjacent_rounds)
@@ -866,7 +889,9 @@ def detect_stalemate_disputes(
     _revalidate_round_against_proposal(proposal, later)
 
     if earlier.live_slots != later.live_slots:
-        return ()
+        return StalemateDetection(
+            status=StalemateDetectionStatus.MEMBERSHIP_CHANGED, disputes=()
+        )
 
     earlier_by_slot = {binding.slot: binding for binding in earlier.bindings}
     later_by_slot = {binding.slot: binding for binding in later.bindings}
@@ -899,7 +924,9 @@ def detect_stalemate_disputes(
             disputes.append(
                 Dispute(point_id=point_id, holding_slots=tuple(holding_slots))
             )
-    return tuple(disputes)
+    return StalemateDetection(
+        status=StalemateDetectionStatus.COMPLETED, disputes=tuple(disputes)
+    )
 
 
 def _adjudication_coverage(
@@ -986,6 +1013,18 @@ def _validate_proposal_rounds(
             )
 
 
+def _validate_proposal_records(
+    disputes: tuple[Dispute, ...],
+    adjudications: tuple[AdjudicationRecord, ...],
+) -> None:
+    for dispute in disputes:
+        if not isinstance(dispute, Dispute):
+            raise ProtocolRejection(ParseRejectionReason.invalid_proposal_state)
+    for record in adjudications:
+        if not isinstance(record, (SelectedAdjudication, SplitAdjudication)):
+            raise ProtocolRejection(ParseRejectionReason.malformed_adjudication)
+
+
 def _validate_proposal_shape(
     phase: NonterminalPhase | None,
     terminal_outcome: TerminalOutcome | None,
@@ -1047,10 +1086,14 @@ class ProposalState:
                 cast("Mapping[str, str] | None", self.run_local_values)
             ),
         )
+        object.__setattr__(self, "rounds", tuple(self.rounds))
+        object.__setattr__(self, "disputes", tuple(self.disputes))
+        object.__setattr__(self, "adjudications", tuple(self.adjudications))
         _validate_proposal_phase_fields(self.phase, self.terminal_outcome)
         _validate_proposal_rounds(
             self.point_universe, self.rounds, self.run_local_values
         )
+        _validate_proposal_records(self.disputes, self.adjudications)
         _validate_proposal_shape(
             self.phase,
             self.terminal_outcome,
@@ -1135,14 +1178,19 @@ def _submit_round(
 
     # Round 2 incomplete: classify by qualifying disputes covering all unresolved.
     earlier = proposal.rounds[0]
-    disputes = detect_stalemate_disputes(proposal, earlier, round_state)
+    detection = detect_stalemate_disputes(proposal, earlier, round_state)
     unresolved = unresolved_points(round_state)
-    disputed_points = {dispute.point_id for dispute in disputes}
-    if unresolved and disputed_points == set(unresolved):
+    disputes: tuple[Dispute, ...] = ()
+    if detection.status is StalemateDetectionStatus.MEMBERSHIP_CHANGED:
+        # Detection was skipped, not empty: surviving-slot holds stay unclassified.
+        next_phase = NonterminalPhase.UNCONVERGED
+    elif unresolved and {
+        dispute.point_id for dispute in detection.disputes
+    } == set(unresolved):
         next_phase = NonterminalPhase.AWAITING_ADJUDICATION
+        disputes = detection.disputes
     else:
         next_phase = NonterminalPhase.UNCONVERGED
-        disputes = ()
     return replace(
         proposal,
         phase=next_phase,
