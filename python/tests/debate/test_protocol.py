@@ -259,15 +259,15 @@ def test_exported_constants() -> None:
     assert POINT_ID_MIN == 1
     assert POINT_ID_MAX == 9999
     assert SLOT_ORDER == ("cursor", "codex", "claude")
-    assert SLOT_SET == frozenset(SLOT_ORDER)
+    assert frozenset(SLOT_ORDER) == SLOT_SET
     assert LIVE_PANEL_MINIMUM == 2
-    assert LIVE_PANEL_MAXIMUM == len(SLOT_ORDER)
+    assert len(SLOT_ORDER) == LIVE_PANEL_MAXIMUM
     assert LEDGER_POINT_TOKEN == "POINT"
     assert POINT_ID_PREFIX == "POINT_"
     assert ACTION_AGREE == "AGREE"
     assert ACTION_CONCEDE == "CONCEDE"
     assert ACTION_HOLD == "HOLD"
-    assert ACTION_TOKENS == frozenset({ACTION_AGREE, ACTION_CONCEDE, ACTION_HOLD})
+    assert frozenset({ACTION_AGREE, ACTION_CONCEDE, ACTION_HOLD}) == ACTION_TOKENS
     assert ARTIFACT_CITATION_PREFIX == "[[artifact:"
     assert ARTIFACT_CITATION_SUFFIX == "]]"
 
@@ -561,9 +561,10 @@ def test_point_id_bounds() -> None:
         ParseRejectionReason.point_id_out_of_range,
         lambda: PointId(POINT_ID_MAX + 1),
     )
+    bool_point_id = True
     _expect_reject(
         ParseRejectionReason.malformed_point_id,
-        lambda: PointId(True),  # type: ignore[arg-type]  # bool must reject
+        lambda: PointId(bool_point_id),  # type: ignore[arg-type]  # bool must reject
     )
     _expect_reject(
         ParseRejectionReason.malformed_point_id,
