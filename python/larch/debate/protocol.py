@@ -27,6 +27,9 @@ ROUND_LIMIT: Final[int] = 2
 POINT_ID_MIN: Final[int] = 1
 POINT_ID_MAX: Final[int] = 9999
 
+# Membership owner is larch.core.external_defaults.VALID_TOOLS; this module's
+# purity constraint forbids importing larch.core, and the ordered triple has no
+# existing owner. Update this tuple when that vendor set changes.
 SLOT_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")
 SLOT_SET: Final[frozenset[str]] = frozenset(SLOT_ORDER)
 
@@ -44,8 +47,12 @@ ARTIFACT_CITATION_SUFFIX: Final[str] = "]]"
 _LEDGER_ROW_RE: Final[re.Pattern[str]] = re.compile(
     r"^POINT (\S+) (\S+) (.*)$"
 )
+# The digit bound is derived from POINT_ID_MAX so the accepted range has one
+# owner. Matches are re-validated through is_valid_point_token, so a wider
+# class stays safe while a narrower one would silently drop legal ids.
 _POINT_CITATION_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?<![A-Za-z0-9_])POINT (POINT_[1-9][0-9]{0,3})(?![0-9A-Za-z_])"
+    rf"(?<![A-Za-z0-9_])POINT (POINT_[1-9][0-9]{{0,{len(str(POINT_ID_MAX)) - 1}}})"
+    r"(?![0-9A-Za-z_])"
 )
 _ARTIFACT_CITATION_RE: Final[re.Pattern[str]] = re.compile(
     r"\[\[artifact:([^\]]*)\]\]"
