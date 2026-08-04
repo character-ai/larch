@@ -43,6 +43,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - `skills/shared/subskill-invocation.md`; `skills/shared/skill-design-principles.md`; `skills/shared/reviewer-templates.md`: shared skill and reviewer authorities
 - `SECURITY.md`: public security policy and high-level trust overview; `docs/security/README.md`: document taxonomy, ownership, and runtime packaging contract; `docs/security/supply-chain-credentials-and-services.md`: release, credential, transport, and service security contracts; `docs/security/workflow-trust-and-mutations.md`: workflow trust, mutation, and private-finding contracts; `docs/security/artifacts-redaction-and-publication.md`: artifact classification, redaction, diagnostics, scanning, retention, and publication contracts
 - `docs/python-migration.md`: sh-to-py playbook, decision log, manifest, and `lint-retired-scripts`
+- `python/larch/debate/protocol.py`, `python/tests/debate/test_protocol.py`, `docs/debate-protocol.md`: debate protocol implementation, executable contract, and normative document
 
 ## Output Style
 
