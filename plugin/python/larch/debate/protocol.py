@@ -728,6 +728,7 @@ class Dispute:
     holding_slots: tuple[Participant, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "holding_slots", tuple(self.holding_slots))
         if not isinstance(self.point_id, PointId):
             raise ProtocolRejection(ParseRejectionReason.malformed_point_id)
         if len(self.holding_slots) < LIVE_PANEL_MINIMUM:
