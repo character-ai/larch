@@ -12,7 +12,7 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, cast
 
 from larch.design import plan_grammar
 
@@ -214,7 +214,7 @@ def parse_slot(value: str) -> Participant:
 def is_valid_point_token(token: str) -> bool:
     """Return whether ``token`` is a canonical ``POINT_N`` in range."""
     try:
-        PointId.from_token(token)
+        _ = PointId.from_token(token)
     except ProtocolRejection:
         return False
     return True
@@ -429,7 +429,9 @@ def normalize_reason_for_fingerprint(
     values and caller container order cannot change the result.
     """
     if isinstance(run_local_values, Mapping):
-        needles_raw: list[str] = list(run_local_values.values())
+        needles_raw: list[str] = list(
+            cast("Mapping[str, str]", run_local_values).values()
+        )
     else:
         needles_raw = list(run_local_values)
 
