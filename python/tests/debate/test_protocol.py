@@ -7,6 +7,7 @@ constructors only: no subprocess, clock, environment, or network access.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -108,9 +109,11 @@ _LEGAL_EDGES: frozenset[tuple[NonterminalPhase, TransitionAction]] = frozenset(
 )
 
 
-def _expect_reject(reason: ParseRejectionReason, call: object) -> None:
+def _expect_reject(
+    reason: ParseRejectionReason, call: Callable[[], object]
+) -> None:
     with pytest.raises(ProtocolRejection) as exc_info:
-        call()  # type: ignore[operator]
+        _ = call()
     assert exc_info.value.reason is reason
 
 
@@ -351,15 +354,15 @@ def test_version_and_fingerprint_parsers() -> None:
 def test_dataclass_immutability_and_tuple_coercion() -> None:
     point = PointId(1)
     with pytest.raises(FrozenInstanceError):
-        point.number = 2  # type: ignore[misc]
+        point.number = 2  # type: ignore[misc]  # frozen must reject
     ledger = _agree_ledger(1)
     binding = _binding(Participant.cursor, ledger)
     with pytest.raises(FrozenInstanceError):
-        binding.slot = Participant.codex  # type: ignore[misc]
+        binding.slot = Participant.codex  # type: ignore[misc]  # frozen rejects
     # RoundState coerces a list of bindings to a tuple.
     coerced = RoundState(
         round_number=RoundNumber.ROUND_1,
-        bindings=[  # type: ignore[arg-type]
+        bindings=[  # type: ignore[arg-type]  # list proves tuple coercion
             _binding(Participant.cursor, ledger),
             _binding(Participant.codex, ledger),
         ],
@@ -1445,7 +1448,7 @@ def test_illegal_edges_reject_before_payload(
         kwargs["adjudications"] = (SelectedAdjudication(PointId(1), "x"),)
     _expect_reject(
         ParseRejectionReason.illegal_transition,
-        lambda: transition(proposal, action, **kwargs),  # type: ignore[arg-type]
+        lambda: transition(proposal, action, **kwargs),  # type: ignore[arg-type]  # object kwargs
     )
 
 
