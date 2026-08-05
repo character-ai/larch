@@ -60,6 +60,11 @@ impl CleanInstallCase {
 }
 
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
+    CleanInstallCase::new(
+        "clean-install-agent-parse-codex-usage",
+        "agent",
+        "parse-codex-usage",
+    ),
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
     CleanInstallCase::new(
         "clean-install-session-cleanup-tmpdir",

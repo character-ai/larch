@@ -1,24 +1,19 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalMemberAccess=false, reportPrivateUsage=false, reportUnusedFunction=false
-"""Usage parsing and failure diagnostics for agent launchers."""
+"""Failure diagnostics for agent launchers."""
 
 from __future__ import annotations
 
-import argparse
 import contextlib
-import json
 import os
 import re
 from pathlib import Path
 
-from larch.core import logging_util
 from larch.core import redact
 
 from larch.agents._types import (
-    _err,
     _write,
     _append,
     _parse_positive_or_zero_int,
-    UsageTotals,
     LauncherPaths,
     _env_int,
 )
@@ -37,136 +32,11 @@ def _num(value: object) -> int:
     raise ValueError("usage token value is not numeric")
 
 
-def _dig(obj: object, *keys: str) -> object:
-    cur = obj
-    for key in keys:
-        if not isinstance(cur, dict) or key not in cur:
-            return None
-        cur = cur[key]
-    return cur
-
-
 def _first_not_none(*values: object | None) -> object | None:
     for value in values:
         if value is not None:
             return value
     return None
-
-
-def _has_tokenish(obj: object) -> bool:
-    if not isinstance(obj, dict):
-        return False
-    paths = (
-        ("input_tokens",),
-        ("cached_input_tokens",),
-        ("output_tokens",),
-        ("input_tokens_details", "cached_tokens"),
-        ("msg", "input_tokens"),
-        ("msg", "cached_input_tokens"),
-        ("msg", "output_tokens"),
-        ("msg", "input_tokens_details", "cached_tokens"),
-    )
-    return any(_dig(obj, *path) is not None for path in paths)
-
-
-def _usage_row(obj: dict[str, object]) -> UsageTotals:
-    msg_usage = _dig(obj, "msg", "usage")
-    usage = _dig(obj, "usage")
-    ignore_msg = False
-    if _has_tokenish(msg_usage) and isinstance(usage, dict) and _has_tokenish(usage):
-        ignore_msg = (
-            _num(_dig(msg_usage, "input_tokens")) == 0
-            and _num(_first_not_none(_dig(msg_usage, "cached_input_tokens"), _dig(msg_usage, "input_tokens_details", "cached_tokens"))) == 0
-            and _num(_dig(msg_usage, "output_tokens")) == 0
-        )
-    input_tokens = _num(
-        _first_not_none(
-            None if ignore_msg else _dig(msg_usage, "input_tokens"),
-            _dig(obj, "msg", "input_tokens"),
-            _dig(usage, "input_tokens"),
-            _dig(obj, "input_tokens"),
-            0,
-        )
-    )
-    cached = _num(
-        _first_not_none(
-            None if ignore_msg else _dig(msg_usage, "cached_input_tokens"),
-            None if ignore_msg else _dig(msg_usage, "input_tokens_details", "cached_tokens"),
-            _dig(obj, "msg", "cached_input_tokens"),
-            _dig(obj, "msg", "input_tokens_details", "cached_tokens"),
-            _dig(usage, "cached_input_tokens"),
-            _dig(usage, "input_tokens_details", "cached_tokens"),
-            _dig(obj, "cached_input_tokens"),
-            _dig(obj, "input_tokens_details", "cached_tokens"),
-            0,
-        )
-    )
-    output = _num(
-        _first_not_none(
-            None if ignore_msg else _dig(msg_usage, "output_tokens"),
-            _dig(obj, "msg", "output_tokens"),
-            _dig(usage, "output_tokens"),
-            _dig(obj, "output_tokens"),
-            0,
-        )
-    )
-    if cached > input_tokens:
-        raise ValueError("cached_tokens exceeds input_tokens; fail-closed")
-    return UsageTotals(input_tokens, cached, output)
-
-
-def parse_codex_usage_file(events_file: str | Path) -> UsageTotals:
-    path = Path(events_file)
-    if not path.is_file() or path.stat().st_size == 0:
-        raise FileNotFoundError("events file missing")
-    total = UsageTotals(0, 0, 0)
-    count = 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if not stripped.startswith(("{", "[")):
-            continue  # skip non-JSON noise lines (e.g. wrapper banners)
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError("malformed usage event") from exc
-        if not isinstance(obj, dict):
-            continue
-        selected = _has_tokenish(_dig(obj, "msg", "usage")) or _has_tokenish(_dig(obj, "usage")) or (obj.get("type") == "token_usage" and _has_tokenish(obj))
-        if not selected:
-            continue
-        row = _usage_row(obj)
-        total = UsageTotals(total.input_tokens + row.input_tokens, total.cached_input_tokens + row.cached_input_tokens, total.output_tokens + row.output_tokens)
-        count += 1
-    if count == 0 or total.total_tokens == 0:
-        raise ValueError("no usage events")
-    return total
-
-
-def parse_codex_usage_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent parse-codex-usage")
-    parser.add_argument("events_jsonl")
-    args = parser.parse_args(argv)
-    try:
-        totals = parse_codex_usage_file(args.events_jsonl)
-    except FileNotFoundError:
-        _err("agent parse-codex-usage: events file missing")
-        return 1
-    except ValueError as exc:
-        if "cached_tokens" in str(exc):
-            _err("agent parse-codex-usage: cached_tokens exceeds input_tokens; fail-closed")
-        elif "malformed" in str(exc):
-            _err("agent parse-codex-usage: malformed usage event; fail-closed")
-        else:
-            _err("agent parse-codex-usage: no usage events")
-        return 1
-    logging_util.emit_kv(key="INPUT", value=str(totals.uncached_input_tokens))
-    logging_util.emit_kv(key="CACHED_INPUT", value=str(totals.cached_input_tokens))
-    logging_util.emit_kv(key="OUTPUT", value=str(totals.output_tokens))
-    logging_util.emit_kv(key="TOTAL", value=str(totals.total_tokens))
-    return 0
 
 
 def select_failed_agent_stderr_source(

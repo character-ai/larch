@@ -22,6 +22,7 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
+  agent          Vendor-agent launch and diagnostic commands
   ci-timing      Collect GitHub Actions timing inputs for test rebalancing
   dirty-tree     Working-tree checkpoint and scope compatibility commands
   example        Non-production commands that exercise dispatcher wiring

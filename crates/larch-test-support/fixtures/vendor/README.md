@@ -5,7 +5,8 @@ requiring a vendor executable or network access.
 
 - `codex-success.json` combines the structured thread identifier cases from
   `test_parse_codex_session_id_valid_structured_event` with the nested usage
-  totals from `test_parse_codex_usage_nested_usage`.
+  totals now asserted by `nested_usage_shapes_sum_across_records` in
+  `crates/larch-core/src/vendor_usage.rs`.
 - `cursor-success.json` preserves the JSON result and camel-case token fields
   used by Cursor launcher and usage-recording tests.
 - The `claude-*.json` fixtures cover every status asserted by

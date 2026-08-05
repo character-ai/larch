@@ -10,11 +10,28 @@ unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH LARCH_TOKEN_LEDGER
 unset LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# scripts/larch.sh is the only approved Rust entrypoint and reads this root.
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 PASS=0
 FAIL=0
+SKIP=0
+
+# `agent parse-codex-usage` is Rust-owned (#8105). A dev checkout needs an
+# explicitly built binary, which the Python-only harness shard does not have.
+# Rows that need it skip loudly instead of silently passing; Rust owns their
+# parity coverage in crates/larch-core and crates/larch-adapters.
+RUST_AVAILABLE=0
+for candidate in "${LARCH_BINARY:-}" "$REPO_ROOT/target/release/larch" "$REPO_ROOT/target/debug/larch"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+        export LARCH_BINARY="$candidate"
+        RUST_AVAILABLE=1
+        break
+    fi
+done
 
 pass() { PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1" >&2; FAIL=$((FAIL + 1)); }
+skip() { echo "SKIP: $1 (no built larch binary; set LARCH_BINARY)" >&2; SKIP=$((SKIP + 1)); }
 contains() {
     case "$3" in
         *"$2"*) pass ;;
@@ -34,26 +51,38 @@ wrapper noise
 {"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
 {"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}
 JSONL
-codex_usage=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex.events.jsonl" 2>/dev/null || true)
-eq "codex parse usage" $'INPUT=115\nCACHED_INPUT=905\nOUTPUT=57\nTOTAL=1077' "$codex_usage"
+if [[ "$RUST_AVAILABLE" == 1 ]]; then
+    codex_usage=$("$REPO_ROOT/scripts/larch.sh" agent parse-codex-usage "$TMP/codex.events.jsonl" 2>/dev/null || true)
+    eq "codex parse usage" $'INPUT=115\nCACHED_INPUT=905\nOUTPUT=57\nTOTAL=1077' "$codex_usage"
+else
+    skip "codex parse usage"
+fi
 
 cat > "$TMP/codex-bad.events.jsonl" <<'JSONL'
 {"msg":{"kind":"started"}}
 JSONL
-set +e
-codex_bad=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex-bad.events.jsonl" 2>/dev/null)
-codex_bad_rc=$?
-set -e
-eq "codex no-usage fail-closed rc" "1" "$codex_bad_rc"
-eq "codex no-usage stdout empty" "" "$codex_bad"
+if [[ "$RUST_AVAILABLE" == 1 ]]; then
+    set +e
+    codex_bad=$("$REPO_ROOT/scripts/larch.sh" agent parse-codex-usage "$TMP/codex-bad.events.jsonl" 2>/dev/null)
+    codex_bad_rc=$?
+    set -e
+    eq "codex no-usage fail-closed rc" "1" "$codex_bad_rc"
+    eq "codex no-usage stdout empty" "" "$codex_bad"
+else
+    skip "codex no-usage fail-closed"
+fi
 
 cat > "$TMP/codex-rollup.events.jsonl" <<'JSONL'
 {"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
 {"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}
 {"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
 JSONL
-codex_rollup=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
-eq "codex token_usage sums with per-turn usage while ignoring non-token_usage top-level lifecycle fields" $'INPUT=877\nCACHED_INPUT=7900\nOUTPUT=272\nTOTAL=9049' "$codex_rollup"
+if [[ "$RUST_AVAILABLE" == 1 ]]; then
+    codex_rollup=$("$REPO_ROOT/scripts/larch.sh" agent parse-codex-usage "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
+    eq "codex token_usage sums with per-turn usage while ignoring non-token_usage top-level lifecycle fields" $'INPUT=877\nCACHED_INPUT=7900\nOUTPUT=272\nTOTAL=9049' "$codex_rollup"
+else
+    skip "codex token_usage rollup sums"
+fi
 
 cat > "$TMP/cursor.json" <<'JSON'
 {"result":"plain reviewer prose","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}
@@ -212,7 +241,10 @@ STUB_EOF
             continue
         fi
         if [[ "$variant" == "codex" ]]; then
-            if [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" \
+            if [[ "$RUST_AVAILABLE" != 1 ]]; then
+                # Per-bucket codex usage flows through the Rust-owned parser.
+                skip "agent launch-${variant}-implement per-bucket codex usage"
+            elif [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" \
                 'select(.type=="vendor" and .raw==$raw and .vendor=="codex" and .input==777 and .cache_read==7000 and .output==222 and .total==7999)' "$LCI_LEDGER" >/dev/null 2>&1; then
                 pass
             else
@@ -287,6 +319,9 @@ else
 fi
 
 total=$((PASS + FAIL))
+if (( SKIP > 0 )); then
+    echo "SKIPPED: test-token-vendor-scrapers.sh — $SKIP Rust-owned assertions (set LARCH_BINARY to run them)" >&2
+fi
 if (( FAIL == 0 )); then
     echo "PASS: test-token-vendor-scrapers.sh — $PASS/$total assertions"
 else

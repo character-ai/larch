@@ -19,6 +19,8 @@ from larch.agents import _review_launcher
 from larch.agents._vendor import VendorCapCheckResult
 from larch.core.proc import CommandResult
 
+from test_support import codex_usage_stdout, is_codex_usage_command
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
 # Subprocess stub tests can cold-start slowly under suite load, so keep the
@@ -862,6 +864,9 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
     def track_run(argv: list[str], **_kwargs: Any) -> object:
         if len(argv) >= 4 and argv[2] == "token":
             calls.append((argv[2], argv[3]))
+        if is_codex_usage_command(argv):
+            # `agent parse-codex-usage` is Rust-owned; stub only that boundary.
+            return CommandResult(tuple(argv), 0, codex_usage_stdout(), "", 0.01)
         return real_run(argv, **_kwargs)
 
     monkeypatch.setattr(agents.proc, "run", track_run)

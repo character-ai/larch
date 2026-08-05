@@ -110,6 +110,19 @@ pub fn read_optional_utf8_lossy(path: &Path) -> Result<Option<String>, FileIoErr
     }
 }
 
+/// Remove a file, treating an already-absent path as success.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] when removal fails for any reason other than absence.
+pub fn remove_optional_file(path: &Path) -> Result<(), FileIoError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(path, &error)),
+    }
+}
+
 /// Read a legacy session KV file and reject every carriage return.
 ///
 /// # Errors

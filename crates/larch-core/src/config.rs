@@ -49,12 +49,19 @@ pub mod env {
     pub const LARCH_CODEX_VOTE_MODEL: &str = "LARCH_CODEX_VOTE_MODEL";
     /// Optional Cursor model override.
     pub const LARCH_CURSOR_MODEL: &str = "LARCH_CURSOR_MODEL";
+    /// Optional tail length for a failed-agent stderr excerpt.
+    pub const LARCH_FAILED_AGENT_STDERR_TAIL_LINES: &str = "LARCH_FAILED_AGENT_STDERR_TAIL_LINES";
     /// Release version pinned by the release workflow during a local upgrade.
     pub const LARCH_EXPECTED_STABLE_VERSION: &str = "LARCH_EXPECTED_STABLE_VERSION";
     /// Disable run-log commits for the current workflow.
     pub const LARCH_NO_LOGS_COMMIT: &str = "LARCH_NO_LOGS_COMMIT";
     /// Canonical run identifier.
     pub const LARCH_RUN_ID: &str = "LARCH_RUN_ID";
+    /// Optional byte ceiling for a composed vendor failure diagnostic.
+    pub const LARCH_VENDOR_FAILURE_DIAG_BYTES: &str = "LARCH_VENDOR_FAILURE_DIAG_BYTES";
+    /// Optional per-section line budget for a vendor failure diagnostic.
+    pub const LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES: &str =
+        "LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES";
     /// Current user login name on platforms that provide it.
     pub const LOGNAME: &str = "LOGNAME";
     /// `OpenAI` API credential used by Codex subprocesses.

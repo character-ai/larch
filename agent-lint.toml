@@ -657,13 +657,6 @@ exclude = [
   "python/test_pr_body.py",
   "python/test_pr_body.py",
   # python/cli.py session persist-run-flags. Referenced from Makefile
-  # python/cli.py agent parse-codex-usage is invoked by Codex launchers through
-  # $PLUGIN_ROOT path composition, which agent-lint's dead-script graph does
-  # not resolve. Its harness is Makefile-only like adjacent token tests.
-  "python/cli.py agent parse-codex-usage",
-  "python/agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
   # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
   "python/cli.py agent launch-codex-exec",
   "python/agents.py",

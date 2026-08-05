@@ -10,7 +10,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Final, Self, TypeVar, cast
 
 if TYPE_CHECKING:
     import pytest
@@ -43,6 +43,7 @@ from tests.support.session import (  # noqa: E402  # pylint: disable=wrong-impor
 
 __all__ = [
     "CLI",
+    "CODEX_USAGE_COMMAND",
     "DESIGN_BASELINE_KEYS",
     "IMPLEMENT_BASELINE_KEYS",
     "PR_VIEW_BEHIND_JSON",
@@ -51,9 +52,11 @@ __all__ = [
     "RecordingRunner",
     "RunCall",
     "capture_start",
+    "codex_usage_stdout",
     "completed",
     "gh_pr_view",
     "gh_result",
+    "is_codex_usage_command",
     "make_adverse_push_repo",
     "make_checks_session",
     "make_committed_repo",
@@ -527,6 +530,23 @@ def ok(argv: Sequence[str], stdout: str = "") -> CommandResult:
 def completed(argv: Sequence[str], stdout: str = "") -> subprocess.CompletedProcess[str]:
     """Build a successful text CompletedProcess for the supplied arguments."""
     return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+
+CODEX_USAGE_COMMAND: Final[tuple[str, str]] = ("agent", "parse-codex-usage")
+
+
+def is_codex_usage_command(argv: object) -> bool:
+    """Report whether argv invokes the Rust-owned `agent parse-codex-usage`."""
+    if not isinstance(argv, (list, tuple)):
+        return False
+    items: list[str] = [str(item) for item in cast("Sequence[object]", argv)]
+    return tuple(items[1:3]) == CODEX_USAGE_COMMAND
+
+
+def codex_usage_stdout(*, uncached_input: int = 7, cached_input: int = 3, output: int = 4) -> str:
+    """Render the `KEY=value` stdout that `agent parse-codex-usage` emits."""
+    total: int = uncached_input + cached_input + output
+    return f"INPUT={uncached_input}\nCACHED_INPUT={cached_input}\nOUTPUT={output}\nTOTAL={total}\n"
 
 
 def gh_pr_view(stdout: str) -> CommandResult:

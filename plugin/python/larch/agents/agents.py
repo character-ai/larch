@@ -84,10 +84,7 @@ from larch.agents._failure_diag import (  # noqa: F401
     _review_failure_auth_paths,
     _implement_failure_auth_paths,
     _num,
-    _dig,
     _first_not_none,
-    _has_tokenish,
-    _usage_row,
     _stderr_tail_from_less_specific_carrier,
     _failure_diagnostic_source_candidates,
 )

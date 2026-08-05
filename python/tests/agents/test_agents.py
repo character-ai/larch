@@ -32,7 +32,9 @@ from larch.agents import _failure_diag
 from larch.agents import _launch_failure
 from larch.agents import _types
 from larch.design import plan_grammar
-from test_support import completed, ok
+from test_support import codex_usage_stdout, completed, is_codex_usage_command, ok
+
+USAGE_MISSING_DIAGNOSTIC = "agent parse-codex-usage: no usage events\n"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -593,75 +595,6 @@ def test_read_claude_model_main_unknown_fallback(
     rc = agents.read_claude_model_main([])
     assert rc == 0
     assert capsys.readouterr().out == "CLAUDE_MODEL=unknown\n"
-
-
-def test_parse_codex_usage_nested_usage(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text(
-        '{"msg":{"usage":{"input_tokens":12,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}}\n',
-        encoding="utf-8",
-    )
-    totals = agents.parse_codex_usage_file(events)
-    assert totals.uncached_input_tokens == 7
-    assert totals.cached_input_tokens == 5
-    assert totals.output_tokens == 7
-    assert totals.total_tokens == 19
-
-
-def test_parse_codex_usage_preserves_explicit_zeroes(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text(
-        '{"msg":{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0},'
-        '"input_tokens":99,"cached_input_tokens":88,"output_tokens":77},'
-        '"usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}\n',
-        encoding="utf-8",
-    )
-    totals = agents.parse_codex_usage_file(events)
-    assert totals.input_tokens == 99
-    assert totals.cached_input_tokens == 88
-    assert totals.output_tokens == 77
-
-
-def test_parse_codex_usage_zero_msg_usage_keeps_sibling_msg_fields(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text(
-        '{"msg":{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0},'
-        '"input_tokens":42,"cached_input_tokens":4,"output_tokens":6},'
-        '"usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}\n',
-        encoding="utf-8",
-    )
-    totals = agents.parse_codex_usage_file(events)
-    assert totals.input_tokens == 42
-    assert totals.cached_input_tokens == 4
-    assert totals.output_tokens == 6
-
-
-def test_parse_codex_usage_fails_closed_on_malformed_jsonl(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text(
-        '{"type":"token_usage","input_tokens":10,"cached_input_tokens":1,"output_tokens":2}\n'
-        '{"type":"token_usage","input_tokens":1\n',
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="malformed usage event"):
-        agents.parse_codex_usage_file(events)
-
-
-def test_parse_codex_usage_fails_when_usage_stream_has_no_tokens(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text('{"type":"token_usage"}\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="no usage events"):
-        agents.parse_codex_usage_file(events)
-
-
-def test_parse_codex_usage_fails_when_cached_exceeds_input(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    _ = events.write_text(
-        '{"type":"token_usage","input_tokens":3,"cached_input_tokens":4,"output_tokens":1}\n',
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="cached_tokens exceeds input_tokens"):
-        agents.parse_codex_usage_file(events)
 
 
 def test_record_cursor_usage_ignores_malformed_fields(tmp_path: Path) -> None:
@@ -2404,6 +2337,10 @@ def test_run_negotiation_round_codex_failure_and_model_error(
     _ = prompt.write_text("prompt body", encoding="utf-8")
 
     def fake_run(cmd: object, **kwargs: object) -> agents.subprocess.CompletedProcess[str]:
+        if is_codex_usage_command(cmd):
+            # Usage parsing is Rust-owned. The stub vendor writes no usage
+            # events, so the real command fails closed exactly like this.
+            return agents.subprocess.CompletedProcess(cmd, 1, "", USAGE_MISSING_DIAGNOSTIC)
         kwargs["stderr"].write("auth error\n")
         return agents.subprocess.CompletedProcess(cmd, 7)
 
@@ -2983,6 +2920,15 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     monkeypatch.setenv("CODEX_HOME_LOG", str(home_log))
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "0")
     monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
+    real_run = agents.proc.run
+
+    def usage_aware_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
+        # `agent parse-codex-usage` is Rust-owned; stub only that boundary.
+        if is_codex_usage_command(argv):
+            return ok(argv, codex_usage_stdout())
+        return real_run(argv, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(agents.proc, "run", usage_aware_run)
     rc = agents.launch_codex_exec_main(
         [
             "--output",
@@ -6533,7 +6479,7 @@ def test_parse_drafter_output_dialectic_inside_plan_is_fatal(tmp_path: Path) -> 
     [
         ("TierAttempt", _types),
         ("classify_launch_failure", _launch_failure),
-        ("parse_codex_usage_file", _failure_diag),
+        ("resolve_failure_diagnostic_source", _failure_diag),
         ("run_external_agent", _run_external),
         ("check_reviewers", _auth),
         ("launch_codex_drafter", _drafter),
