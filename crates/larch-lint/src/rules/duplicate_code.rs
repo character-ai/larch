@@ -1,10 +1,11 @@
 //! Normalized Rust duplicate-code detector for production sources.
 //!
 //! The rule lexes kept production items into a comment-free token stream,
-//! ignores formatting and imports, skips generated and test code, skips
-//! `impl Rule for …` registration boilerplate, and reports exact cross-module
-//! clone families at or above the token threshold. There is no baseline: any
-//! reported family fails the gate.
+//! ignores formatting and imports, skips generated and test code, skips the
+//! workspace-only `larch-test-support` fixture crate, skips `impl Rule for …`
+//! registration boilerplate, and reports exact cross-module clone families at
+//! or above the token threshold. There is no baseline: any reported family
+//! fails the gate.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
@@ -47,7 +48,9 @@ impl Rule for DuplicateCodeRule {
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let mut sequences = Vec::new();
         for path in path_discovery::selected_rust_sources(repository)? {
-            if path_discovery::is_test_path(path.as_str()) {
+            if path_discovery::is_test_path(path.as_str())
+                || path.as_str().starts_with("crates/larch-test-support/")
+            {
                 continue;
             }
             let source = repository.read_utf8(path)?;

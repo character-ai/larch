@@ -9,9 +9,10 @@
 //!
 //! Scope note: the larch-lint crate is excluded from the scanned surface. It
 //! names wire artifacts as lint configuration, not as run-time reads or writes,
-//! so including it would report meta-references as one-sided artifacts. The
-//! runtime migration lands larch runtime code in its own crate, which this rule
-//! scans.
+//! so including it would report meta-references as one-sided artifacts.
+//! `larch-test-support` is also excluded: its fixtures name artifact basenames
+//! as offline corpus data, not as production readers or writers. The runtime
+//! migration lands larch runtime code in its own crate, which this rule scans.
 //!
 //! Crate survey: manifest and baseline parsing reuse the workspace `toml` and
 //! `serde` crates; Rust reader and writer evidence reuses the shared `syn`
@@ -35,6 +36,7 @@ const MANIFEST_PATH: &str = "crates/larch-lint/data/wire-artifact-manifest.toml"
 const BASELINE_PATH: &str = "crates/larch-lint/data/wire-artifact-pairing-baseline.toml";
 const RUST_SCOPE_INCLUDE: &str = "crates/*/src/**/*.rs";
 const LINTER_CRATE_EXCLUDE: &str = "crates/larch-lint/**";
+const TEST_SUPPORT_EXCLUDE: &str = "crates/larch-test-support/**";
 const SHELL_SCOPES: [&str; 2] = ["scripts/**", "skills/*/scripts/**"];
 const SHELL_TEST_PREFIX: &str = "test-";
 const VALID_SIDES: [&str; 3] = ["external-writer", "external-reader", "intentionally-one-sided"];
@@ -265,7 +267,7 @@ fn parse_baseline(text: &str) -> Result<BTreeSet<String>, LintError> {
 /// Collect reader literals and writer-bearing function scopes from production
 /// Rust, excluding the linter crate and inline `#[cfg(test)]` code.
 fn scan_rust(repository: &Repository) -> Result<RustEvidence, LintError> {
-    let selector = PathSelector::new(&[RUST_SCOPE_INCLUDE], &[LINTER_CRATE_EXCLUDE])?;
+    let selector = PathSelector::new(&[RUST_SCOPE_INCLUDE], &[LINTER_CRATE_EXCLUDE, TEST_SUPPORT_EXCLUDE])?;
     let mut evidence = RustEvidence::default();
     for path in selector.select(repository) {
         let Ok(source) = repository.read_utf8(path) else {

@@ -7,6 +7,7 @@ mod git;
 mod http;
 mod process;
 mod run_log;
+mod snapshot_util;
 
 pub use clock::TestClock;
 pub use environment::TestEnvironment;
