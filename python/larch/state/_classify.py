@@ -158,6 +158,16 @@ def _ship_refresh_preterminal_stall(*, lower: str, step: str) -> bool:
     )
 
 
+def _migration_governance_blocked_bail(bail: str) -> bool:
+    """Match the machine-authored governance marker only in the raw bail field."""
+    first_line: str = bail.partition("\n")[0].casefold()
+    marker: str = config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER
+    marker_index: int = first_line.find(marker)
+    if marker_index < 0:
+        return False
+    return bool(first_line[marker_index + len(marker):].strip())
+
+
 def _classify_text(
     *,
     text: str,
@@ -166,6 +176,12 @@ def _classify_text(
     detail_log_valid: bool = False,
     exit_code: str = "unknown",
 ) -> tuple[str, str, str]:
+    if _migration_governance_blocked_bail(bail):
+        return (
+            "contract-failure",
+            "none",
+            config.STALL_RECOVERY_PATTERN_MIGRATION_GOVERNANCE_BLOCK,
+        )
     if step == "rebase-failed":
         return "transient-infra", "step8-shippr", "rebase-transient"
     if _checks_child_sigterm_or_unresolved(bail=bail, step=step, exit_code=exit_code):

@@ -74,6 +74,9 @@ SKILL_LIFECYCLE_INSTRUCTION_TEMPLATE: Final = (
 )
 ENV_LARCH_R2_ACCOUNT_ID: Final = "LARCH_R2_ACCOUNT_ID"
 ENV_LARCH_R2_ENDPOINT: Final = "LARCH_R2_ENDPOINT"
+# Shared migration-governance stall wire tokens.
+MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER: Final = "migration governance blocked:"
+STALL_RECOVERY_PATTERN_MIGRATION_GOVERNANCE_BLOCK: Final = "migration-governance-block"
 # Aggregate migration-governance report contract.
 MIGRATION_AUDIT_SCHEMA_VERSION: Final = 1
 MIGRATION_AUDIT_EXIT_FINDINGS: Final = 1
