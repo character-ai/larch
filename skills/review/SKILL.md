@@ -87,7 +87,7 @@ Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-e
 ```bash
 review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"
 review_run_id_valid=false
-if python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log validate-run-id --run-id="${RUN_ID:-}" | grep -qx 'VALID=true'; then
+if "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log validate-run-id --run-id="${RUN_ID:-}" | grep -qx 'VALID=true'; then
   review_run_id_valid=true
 fi
 if [[ "$review_run_id_valid" = true && "${SCOUT_STATUS:-na}" != "na" ]]; then

@@ -668,7 +668,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("run-log", "lifecycle-failure"): ("larch.report.run_lifecycle", "failure_main", True),
     ("run-log", "lifecycle-cancel"): ("larch.report.run_lifecycle", "cancel_main", True),
     ("run-log", "lifecycle-early-return"): ("larch.report.run_lifecycle", "early_return_main", True),
-    ("run-log", "validate-run-id"): ("larch.report.run_logs", "larch_log_validate_run_id_main", True),
     ("run-log", "capture-transcript"): ("larch.report.run_log_flush", "capture_transcript_main", False),
     ("run-log", "render-session-transcript"): ("larch.rendering.render_session_transcript", "main", False),
     ("run-log", "cleanup-implement-logs"): ("larch.report.cleanup_implement_logs", "main", False),
