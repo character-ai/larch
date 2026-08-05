@@ -110,6 +110,21 @@ RUN_LOG_INCOMPLETE_RC: Final = 7
 # report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
+# Debate orchestration has a machine-readable exit partition.  Keep these
+# separate from the generic workflow outcomes: callers use them to decide
+# whether a stale invocation can be retried without inspecting diagnostics.
+DEBATE_EXIT_STALE_FINGERPRINT: Final = 3
+DEBATE_EXIT_CORRUPT_STATE: Final = 4
+DEBATE_EXIT_PERSISTENCE_FAILURE: Final = 5
+DEBATE_EXIT_RUNNER_FAILURE: Final = 6
+DEBATE_EXIT_UNSUPPORTED_TRANSPORT: Final = 7
+DEBATE_ABSENT_FINGERPRINT: Final = "ABSENT"
+DEBATE_STATE_FILENAME: Final = "debate-state.json"
+DEBATE_ABORT_RESTORE_FILENAME: Final = "abort-restore.env"
+DEBATE_RESTORE_ISSUE_NUMBER_KEY: Final = "RESTORE_ISSUE_NUMBER"
+DEBATE_RESTORE_ORIGINAL_TITLE_KEY: Final = "RESTORE_ORIGINAL_TITLE"
+DEBATE_RESTORE_TITLE_KEY: Final = "RESTORE_TITLE"
+DEBATE_SOURCE_FINGERPRINT_KEY: Final = "SOURCE_FINGERPRINT"
 OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
     Outcome.OK: EXIT_OK,
     Outcome.NEEDS_USER_INPUT: EXIT_NEEDS_USER_INPUT,

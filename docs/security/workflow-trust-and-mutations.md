@@ -438,3 +438,19 @@ manifest materialization, mirror-copy failure, and checkpoint refusal.
 Nested `/design` and `/implement` partitions use a narrower prepared-artifact path. The child accepts it only with immutable parent lifecycle context, one numeric managed issue, `--skip-approve`, and the complete internal flag group. Input and dependency files must be contained regular files under the declared parent scratch root. `/umbrella` parses and bounds the exact generic batch, rejects malformed or cyclic dependency graphs, persists deterministic leaf identities and an atomic child-local dependency copy before any create, and keeps `/issue` duplicate detection enabled. Filing consumes that copy instead of rereading the parent TSV. The parent approval covers only those exact leaves and edges; the child cannot re-decompose them or ask a broader second question.
 
 Final conversion is one centralized issue-mutation operation. It accepts only an open `[DESIGNING]` or `[IMPLEMENTING]` source, requires the target title to preserve the complete source title after replacing its lifecycle prefix with `[UMBRELLA]`, requires the complete prior body to survive inside the new body, redacts before write, and verifies a fresh read-back. The child compares the live prepared-artifact hashes and deterministic leaf/edge shape to the persisted proposal, then writes a repository-, issue-, artifact-, and graph-SHA-256-bound parent completion sentinel atomically only after leaf and graph verification. The parent rehashes both live artifacts and recomputes the graph fingerprint through the umbrella owner before consuming that sentinel. Missing context, unsafe, invalid, or stale artifacts, stale source content, partial filing, or failed verification preserves the original issue and parent scratch state without a success claim.
+
+## Debate state and local handoff
+
+The `debate` CLI treats its state file, agent output, and persisted session
+handles as untrusted local workflow data. It accepts only canonical,
+versioned JSON, binds every mutation to a full-state fingerprint, serializes
+mutations with a state lock, and uses contained no-follow file operations and
+atomic replacement. Active-round queues and completed bindings are persisted
+before the protocol advances, so recovery never repeats a completed turn.
+
+Cursor and Codex reuse the read-only external launcher and explicit persisted
+session handles. Claude transport is caller-owned: the default debate runner
+fails before dispatch unless a caller injects its Agent-tool runner. A dropped
+slot is recorded before panel membership changes. `debate abort` makes only a
+fixed local title-restore handoff; these verbs make no GitHub mutation and do
+not create a same-user security boundary.

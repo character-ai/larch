@@ -6584,6 +6584,15 @@ def test_parse_codex_session_id_rejects_bad_events(tmp_path: Path, payload: str,
         agents.parse_codex_session_id(events)
 
 
+def test_parse_cursor_create_chat_id_requires_one_structured_record(tmp_path: Path) -> None:
+    events = tmp_path / "cursor-create.jsonl"
+    events.write_text('{"chatId":"debate-chat_1"}\n', encoding="utf-8")
+    assert agents.parse_cursor_create_chat_id(events) == "debate-chat_1"
+    events.write_text('{"chatId":"debate-chat_1"}\n{"chatId":"debate-chat_2"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate"):
+        agents.parse_cursor_create_chat_id(events)
+
+
 def test_opt_in_session_capture_returns_typed_handle(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -6720,5 +6729,6 @@ def test_ordinary_oneshot_codex_succeeds_without_start_event(
 def test_session_types_and_parser_reexported() -> None:
     assert agents.VendorSessionHandle is _types.VendorSessionHandle
     assert agents.parse_codex_session_id is _run_external.parse_codex_session_id
+    assert agents.parse_cursor_create_chat_id is _run_external.parse_cursor_create_chat_id
     assert agents._SESSION_CAPTURE_FAILED_RC == 4
     assert "session-capture-failed" in agents.TERMINAL_EXTERNAL_AGENT_FAILURE_REASONS
