@@ -728,6 +728,13 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
+    "file": "larch/debate/orchestrator.py",
+    "suppression_kind": "pyright-report",
+    "text": "pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false",
+    "occurrence": 1,
+    "reason": "untrusted debate state JSON decodes to object and the per-field validators narrow it; a pyright file directive rejects a same-line reason, so the reason lives in the comment directly above it"
+  },
+  {
     "file": "larch/design/_plan_quality_commands.py",
     "suppression_kind": "pylint-skip-file",
     "text": "pylint: skip-file",

@@ -1,4 +1,9 @@
-# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false, reportUnnecessaryComparison=false
+# Reason for the directive below, which carries no trailing prose of its own:
+# untrusted state JSON decodes to `object`, so the explicit per-field validators
+# here carry the narrowing pyright cannot infer, and the state writers discard
+# protocol return values by design.  reportUnnecessaryComparison stays enabled so
+# the state-boundary checks keep their coverage.
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
 """Durable, fail-closed orchestration for the two-round debate protocol.
 
 The protocol module deliberately knows nothing about files or agents.  This
@@ -12,7 +17,6 @@ import argparse
 import fcntl
 import hashlib
 import json
-import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -218,12 +222,6 @@ def _strict_bool(value: str) -> bool:
 
 def _trusted_root(path: str | Path, *, create: bool = False) -> Path:
     root = Path(path)
-    # macOS exposes its system temporary directory through /tmp -> /private/tmp.
-    # Treat that platform alias as the canonical temp root, while preserving the
-    # no-symlink rule for caller-created debate roots.
-    system_tmp = Path(tempfile.gettempdir())
-    if root == system_tmp or system_tmp in root.parents:
-        root = system_tmp / root.relative_to(system_tmp)
     try:
         return larch_io.ensure_trusted_directory(root) if create else larch_io.validate_trusted_directory(root)
     except OSError as exc:
@@ -551,7 +549,7 @@ def round_prep(*, root: str | Path, expected_fingerprint: str, round_number: int
 
 
 def _default_runner(_request: TurnRequest) -> TurnResult:
-    return TurnResult(False, error_class="unsupported_transport", detail="default runner is not configured")
+    return TurnResult(False, error_class=config.DEBATE_DROP_UNSUPPORTED_TRANSPORT, detail="default runner is not configured")
 
 
 def _drop(state: ProposalState, *, slot: str, round_number: int, reason: str) -> ProposalState:
@@ -587,16 +585,17 @@ def record_turn(*, root: str | Path, expected_fingerprint: str, round_number: in
         state = write_state(debate_root, ProposalState(state.initialization, state.proposal, reserved, state.drops))
         result = (runner or _default_runner)(request)
         if not result.ok or result.output is None:
-            dropped = _drop(state, slot=slot, round_number=round_number, reason=result.error_class or "runner_failure")
-            return write_state(debate_root, dropped), result.error_class or "runner_failure"
+            reason = result.error_class if result.error_class in config.DEBATE_DROP_EXIT_CODES else config.DEBATE_DROP_RUNNER_FAILURE
+            dropped = _drop(state, slot=slot, round_number=round_number, reason=reason)
+            return write_state(debate_root, dropped), reason
         try:
             output = larch_io.read_trusted_text(result.output, root=debate_root)
             ledger = protocol.parse_slot_ledger(output)
             fingerprints = tuple(protocol.fingerprint_reason(row.reason, run_local_values=state.proposal.run_local_values) for row in ledger.rows)
             binding = protocol.SlotLedgerBinding(slot=protocol.parse_slot(slot), ledger=ledger, fingerprints=fingerprints, run_local_values=state.proposal.run_local_values)
         except (OSError, protocol.ProtocolRejection):
-            dropped = _drop(state, slot=slot, round_number=round_number, reason="protocol_rejection")
-            return write_state(debate_root, dropped), "protocol_rejection"
+            dropped = _drop(state, slot=slot, round_number=round_number, reason=config.DEBATE_DROP_PROTOCOL_REJECTION)
+            return write_state(debate_root, dropped), config.DEBATE_DROP_PROTOCOL_REJECTION
         completed = dict(reserved.bindings)
         completed[slot] = binding
         pending = tuple(item for item in reserved.pending_slots if item != slot)
@@ -607,8 +606,8 @@ def record_turn(*, root: str | Path, expected_fingerprint: str, round_number: in
             try:
                 proposal = protocol.transition(state.proposal, protocol.TransitionAction.SUBMIT_ROUND, round_state=protocol.RoundState(protocol.RoundNumber(round_number), bindings))
             except protocol.ProtocolRejection:
-                dropped = _drop(state, slot=slot, round_number=round_number, reason="protocol_rejection")
-                return write_state(debate_root, dropped), "protocol_rejection"
+                dropped = _drop(state, slot=slot, round_number=round_number, reason=config.DEBATE_DROP_PROTOCOL_REJECTION)
+                return write_state(debate_root, dropped), config.DEBATE_DROP_PROTOCOL_REJECTION
             next_state = ProposalState(state.initialization, proposal, None, state.drops)
         return write_state(debate_root, next_state), ""
 
@@ -642,7 +641,7 @@ def abort(*, root: str | Path, expected_fingerprint: str) -> ProposalState:
 
 def _envelope(*, ok: bool, operation: str, state: ProposalState | None, error_class: str = "", warning: str = "", slot_result: str = "") -> str:
     proposal = state.proposal if state is not None else None
-    return json.dumps({"schema_version": 1, "ok": ok, "operation": operation, "fingerprint": state.fingerprint if state else None, "phase": proposal.phase.value if proposal and proposal.phase else None, "terminal_outcome": proposal.terminal_outcome.value if proposal and proposal.terminal_outcome else None, "warning": warning or (state.initialization.warning if state else ""), "slot_result": slot_result or None, "error_class": error_class or None}, sort_keys=True, separators=(",", ":"))
+    return json.dumps({"schema_version": config.DEBATE_ENVELOPE_SCHEMA_VERSION, "ok": ok, "operation": operation, "fingerprint": state.fingerprint if state else None, "phase": proposal.phase.value if proposal and proposal.phase else None, "terminal_outcome": proposal.terminal_outcome.value if proposal and proposal.terminal_outcome else None, "warning": warning or (state.initialization.warning if state else ""), "slot_result": slot_result or None, "error_class": error_class or None}, sort_keys=True, separators=(",", ":"))
 
 
 def _main(operation: str, argv: list[str] | None) -> int:
@@ -669,7 +668,7 @@ def _main(operation: str, argv: list[str] | None) -> int:
             return 0
         if operation == "record-turn":
             state, result = record_turn(root=args.debate_tmpdir, expected_fingerprint=args.expected_fingerprint, round_number=args.round, slot=args.slot)
-            code = config.DEBATE_EXIT_UNSUPPORTED_TRANSPORT if result == "unsupported_transport" else 0
+            code = config.DEBATE_DROP_EXIT_CODES[result] if result else 0
             print(_envelope(ok=not result, operation=operation, state=state, error_class=result, slot_result=result))
             return code
         state = abort(root=args.debate_tmpdir, expected_fingerprint=args.expected_fingerprint)
