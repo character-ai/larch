@@ -24,7 +24,7 @@ from larch.core.ctx import Ctx
 from larch.core import logging_util
 from larch.core.env_file import read_env_file
 from larch.core import proc
-from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
 from larch.core import redact
 from larch.core.proc import CommandResult
 
@@ -63,7 +63,6 @@ from larch.agents._failure_diag import (
     _truncate_utf8_bytes,
     _vendor_failure_diag_cap,
     resolve_failure_diagnostic_source,
-    parse_codex_usage_file,
     _num,
     _first_not_none,
 )
@@ -765,11 +764,49 @@ def _emit_claude_subprocess_failure_fields(*, output: Path, launcher_exit: int) 
     logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
 
 
+@dataclass(frozen=True)
+class _CodexUsageTotals:
+    """Totals returned by the Rust-owned `agent parse-codex-usage` command."""
+
+    uncached_input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+def _read_codex_usage(events: Path) -> _CodexUsageTotals | str:
+    """Run the Rust usage parser, returning totals or its operator diagnostic."""
+    result = proc.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "agent",
+            "parse-codex-usage",
+            str(events),
+        ],
+    )
+    if result.returncode != 0:
+        return result.stderr.strip() or "agent parse-codex-usage: no usage events"
+    parsed: dict[str, int] = {}
+    for key in ("INPUT", "CACHED_INPUT", "OUTPUT", "TOTAL"):
+        raw: str = larch_io.kv_value(text=result.stdout, key=key, duplicate_policy="first").strip()
+        value: int | None = _parse_positive_or_zero_int(raw)
+        if value is None:
+            # A clean exit without the full KV set is not a usable result; never
+            # infer zero totals from missing output (G-Orch-3).
+            return f"agent parse-codex-usage: missing {key} in usage totals"
+        parsed[key] = value
+    return _CodexUsageTotals(
+        uncached_input_tokens=parsed["INPUT"],
+        cached_input_tokens=parsed["CACHED_INPUT"],
+        output_tokens=parsed["OUTPUT"],
+        total_tokens=parsed["TOTAL"],
+    )
+
+
 def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
-    try:
-        totals = parse_codex_usage_file(events)
-    except (FileNotFoundError, ValueError) as exc:
-        _append(path=sidecar, text=f"agent parse-codex-usage: {exc}\n")
+    totals = _read_codex_usage(events)
+    if isinstance(totals, str):
+        _append(path=sidecar, text=f"{totals}\n")
         return
     if token_record is not None:
         model_line = f"MODEL={model}\n" if model else ""

@@ -169,21 +169,6 @@ class AuthVerdict:
 
 
 @dataclass(frozen=True)
-class UsageTotals:
-    input_tokens: int
-    cached_input_tokens: int
-    output_tokens: int
-
-    @property
-    def uncached_input_tokens(self) -> int:
-        return self.input_tokens - self.cached_input_tokens
-
-    @property
-    def total_tokens(self) -> int:
-        return self.uncached_input_tokens + self.cached_input_tokens + self.output_tokens
-
-
-@dataclass(frozen=True)
 class DegradedToolsResult:
     degraded: bool
     codex_state: str

@@ -342,11 +342,13 @@ verb = "parse-codex-usage"
 python_module = "larch.agents.agents"
 python_function = "parse_codex_usage_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8105
+clean_install_test = "clean-install-agent-parse-codex-usage"
 
 [[commands]]
 domain = "agent"
@@ -8313,6 +8315,12 @@ path = "python/larch/agents/_review_launcher.py"
 kind = "python-runtime"
 python = []
 rust = ["git snapshot-untracked"]
+
+[[callers]]
+path = "python/larch/agents/_run_external.py"
+kind = "python-runtime"
+python = []
+rust = ["agent parse-codex-usage"]
 
 [[callers]]
 path = "python/larch/agents/agent_voters.py"

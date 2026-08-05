@@ -19,9 +19,13 @@ mod redaction;
 mod retry;
 mod session_state;
 mod telemetry;
+mod text;
 mod time;
 mod upgrade_larch;
 mod vendor;
+mod vendor_diagnostics;
+mod vendor_failure;
+mod vendor_usage;
 
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
@@ -104,6 +108,7 @@ pub use session_state::{
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
+pub use text::{split_text_lines, tail_lines, truncate_utf8_bytes};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{
     ActiveRootState, InstalledVersionState, MarketplaceState, UpgradeDisposition,
@@ -121,6 +126,20 @@ pub use vendor::{
     codex_auth_args, codex_env_auth_from_key, extract_model_from_argv, parse_claude_envelope,
     trust_config_arg,
 };
+pub use vendor_diagnostics::{
+    FAILED_AGENT_STDERR_TAIL_BYTE_CAP, FAILED_AGENT_STDERR_TAIL_LINES, FailureDiagSource,
+    FailureDiagWrite, LauncherArtifactKind, LauncherArtifactPaths, StderrCaptureMode,
+    VENDOR_FAILURE_DIAG_BYTE_CAP, VENDOR_FAILURE_DIAG_SECTION_LINES, compose_failure_diag,
+    failed_agent_stderr_candidates, failure_diag_section_body, failure_diag_source_order,
+    plan_failure_diag_write, render_failed_agent_stderr_tail, stream_reset_history_entry,
+};
+pub use vendor_failure::{
+    AuthVerdict, CodexGateDetail, CodexGateSignal, FailureClass, FailureReason, LaunchFailure,
+    LaunchFailureInputs, LauncherArtifact, LauncherExitArtifacts, classify_launch_failure,
+    detect_codex_cli_gate, effective_failure_class, is_quota_failure, is_transient_infra_failure,
+    parse_launcher_exit_text, parse_launcher_failure_class, resolve_launcher_exit,
+};
+pub use vendor_usage::{UsageParseError, UsageTotals, parse_codex_usage};
 
 /// Immutable metadata about the running larch build.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -30,6 +30,8 @@ from larch.core import external_defaults
 from larch.review import plan_review_panel
 from larch.design import plan_scout
 from larch.git import rebase
+
+from test_support import is_codex_usage_command
 from larch.review import review_aggregate
 from larch.review import review_and_fix
 from larch.review import coder_runner, snapshot
@@ -1004,11 +1006,15 @@ def test_negotiation_codex_quota_mirrored_on_nonzero(
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(
-        agents.subprocess,
-        "run",
-        lambda cmd, **kw: (kw["stderr"].write("err\n"), agents.subprocess.CompletedProcess(cmd, 7))[1],
-    )
+    def fake_run(cmd: object, **kw: object) -> subprocess.CompletedProcess[str]:
+        if is_codex_usage_command(cmd):
+            # Usage parsing is Rust-owned. The stub vendor writes no usage
+            # events, so the real command fails closed exactly like this.
+            return subprocess.CompletedProcess(cmd, 1, "", "agent parse-codex-usage: no usage events\n")
+        _ = kw["stderr"].write("err\n")
+        return subprocess.CompletedProcess(cmd, 7)
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
     mirror_calls: list[object] = []
     monkeypatch.setattr(_drafter, "_mirror_codex_quota_from_events", lambda **_kw: mirror_calls.append(1))
     rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)

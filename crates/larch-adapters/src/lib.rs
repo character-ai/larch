@@ -14,6 +14,7 @@ mod process_identity;
 pub mod retry;
 pub mod runtime;
 pub mod upgrade_larch;
+pub mod vendor_diagnostics;
 
 use larch_core::BuildMetadata;
 
@@ -25,7 +26,7 @@ pub use cursor_config::CursorConfigContext;
 pub use file_io::{
     FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
     guarded_update_env, read_first_raw_key, read_kv_raw, read_optional_utf8_lossy,
-    read_session_kv_text, read_utf8, rename_same_directory,
+    read_session_kv_text, read_utf8, remove_optional_file, rename_same_directory,
 };
 pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,

@@ -16,6 +16,7 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
+mod agent_commands;
 mod argparse_compat;
 mod ci_timing;
 mod dirty_tree_commands;
@@ -34,6 +35,7 @@ mod release_version;
 mod session_lifecycle_commands;
 mod state_commands;
 
+use agent_commands::AgentCommand;
 use ci_timing::CiTimingCommand;
 use git_commands::GitCommand;
 
@@ -51,6 +53,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Domain {
+    /// Vendor-agent launch and diagnostic commands.
+    #[command(subcommand)]
+    Agent(AgentCommand),
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
@@ -562,6 +567,7 @@ fn run(
     metadata: larch_core::BuildMetadata,
 ) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
     match cli.domain {
+        Domain::Agent(command) => Ok(agent_commands::run(command)),
         Domain::Bootstrap(BootstrapCommand::SelfCheck) => {
             println!("{}", larch_core::bootstrap_self_check(metadata));
             Ok(ExitCode::SUCCESS)
