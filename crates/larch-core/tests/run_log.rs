@@ -11,7 +11,15 @@ fn validate_run_log_slug_matches_python_contract() {
     for value in ["run-1", "-abc123", "abc.DEF_123", "current", "."] {
         assert!(validate_run_log_slug(value), "{value}");
     }
-    for value in ["", "../evil", "a..b", "bad/slash", r"bad\slash", "bad space", "bad*char"] {
+    for value in [
+        "",
+        "../evil",
+        "a..b",
+        "bad/slash",
+        r"bad\slash",
+        "bad space",
+        "bad*char",
+    ] {
         assert!(!validate_run_log_slug(value), "{value}");
     }
 }
@@ -106,7 +114,10 @@ fn layout_and_round_identity_use_validated_slugs() {
     );
     assert_eq!(RoundNumber::new(1).unwrap().dir_name(), "round-1");
     assert_eq!(
-        layout.round_dir(1).file_name().and_then(|name| name.to_str()),
+        layout
+            .round_dir(1)
+            .file_name()
+            .and_then(|name| name.to_str()),
         Some("round-1")
     );
 }
@@ -119,10 +130,9 @@ fn execution_issue_entry_formats_round_trip() {
     assert_eq!(markdown.detected_format(), ExecutionIssueFormat::Markdown);
     assert_eq!(markdown.entries().len(), 2);
 
-    let ndjson = ExecutionIssueLedger::parse_ndjson(
-        "{\"category\":\"Warnings\",\"body\":\"watch this\"}\n",
-    )
-    .expect("ndjson");
+    let ndjson =
+        ExecutionIssueLedger::parse_ndjson("{\"category\":\"Warnings\",\"body\":\"watch this\"}\n")
+            .expect("ndjson");
     assert_eq!(ndjson.detected_format(), ExecutionIssueFormat::Ndjson);
     assert_eq!(ndjson.entries()[0].body(), "watch this");
     assert_eq!(

@@ -94,9 +94,7 @@ impl fmt::Display for RunLogSlugError {
         formatter.write_str(match self.kind {
             RunLogSlugErrorKind::Empty => "run-log slug must be non-empty",
             RunLogSlugErrorKind::DotDot => "run-log slug must not contain '..'",
-            RunLogSlugErrorKind::PathSeparator => {
-                "run-log slug must not contain path separators"
-            }
+            RunLogSlugErrorKind::PathSeparator => "run-log slug must not contain path separators",
             RunLogSlugErrorKind::InvalidCharacter => {
                 "run-log slug must contain only ASCII letters, digits, dot, underscore, or dash"
             }
@@ -109,8 +107,7 @@ impl Error for RunLogSlugError {}
 /// Match Python `validate_run_id_slug` exactly.
 #[must_use]
 pub fn validate_run_log_slug(run_id: &str) -> bool {
-    if run_id.is_empty() || run_id.contains("..") || run_id.contains('/') || run_id.contains('\\')
-    {
+    if run_id.is_empty() || run_id.contains("..") || run_id.contains('/') || run_id.contains('\\') {
         return false;
     }
     run_id

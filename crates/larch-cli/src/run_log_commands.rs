@@ -1,11 +1,7 @@
 //! `run-log` command boundary.
 
 use larch_core::validate_run_log_slug;
-use std::{
-    ffi::OsString,
-    io::Write as _,
-    process::ExitCode,
-};
+use std::{ffi::OsString, io::Write as _, process::ExitCode};
 
 /// Run the Rust-owned `run-log validate-run-id` command.
 pub fn validate_run_id(arguments: &[OsString]) -> ExitCode {
@@ -46,10 +42,7 @@ fn parse_validate_run_id(arguments: &[OsString]) -> ParseOutcome {
     let mut pending = arguments.iter();
     while let Some(raw) = pending.next() {
         let Some(flag) = raw.to_str() else {
-            return ParseOutcome::Error(format!(
-                "unknown argument: {}",
-                raw.to_string_lossy()
-            ));
+            return ParseOutcome::Error(format!("unknown argument: {}", raw.to_string_lossy()));
         };
         if matches!(flag, "-h" | "--help") {
             return ParseOutcome::Help;

@@ -80,7 +80,9 @@ impl RunLogLayout {
     /// Return `<log_root>/<skill>/<run_id>`.
     #[must_use]
     pub fn run_dir(&self) -> PathBuf {
-        self.log_root.join(self.skill.as_str()).join(self.run_id.as_str())
+        self.log_root
+            .join(self.skill.as_str())
+            .join(self.run_id.as_str())
     }
 
     /// Return the run manifest path.
@@ -116,7 +118,10 @@ mod tests {
             RunLogSlug::parse("implement").unwrap(),
             RunLogSlug::parse("run-abc").unwrap(),
         );
-        assert_eq!(layout.run_dir(), PathBuf::from("/tmp/logs/implement/run-abc"));
+        assert_eq!(
+            layout.run_dir(),
+            PathBuf::from("/tmp/logs/implement/run-abc")
+        );
         assert_eq!(
             layout.manifest_path(),
             PathBuf::from("/tmp/logs/implement/run-abc/manifest.json")

@@ -43,11 +43,7 @@ pub fn manifest_pr_evidence_matches(manifest: Option<&Value>, pr: i64) -> bool {
     let Ok(value) = trimmed.parse::<i64>() else {
         return false;
     };
-    if pr > 0 {
-        value == pr
-    } else {
-        value > 0
-    }
+    if pr > 0 { value == pr } else { value > 0 }
 }
 
 fn heading_matches(line: &str, pattern: &regex::Regex) -> bool {
@@ -57,9 +53,7 @@ fn heading_matches(line: &str, pattern: &regex::Regex) -> bool {
 
 fn stale_bail_heading_re() -> &'static regex::Regex {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| {
-        regex::Regex::new(r"bailed(-needs-user-input)?$").expect("stale bail regex")
-    })
+    RE.get_or_init(|| regex::Regex::new(r"bailed(-needs-user-input)?$").expect("stale bail regex"))
 }
 
 fn terminal_outcome_re() -> &'static regex::Regex {

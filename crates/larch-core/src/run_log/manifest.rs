@@ -1,11 +1,6 @@
 //! Versioned run-log manifest reader.
 
-use std::{
-    collections::BTreeMap,
-    error::Error,
-    fmt,
-    path::Path,
-};
+use std::{collections::BTreeMap, error::Error, fmt, path::Path};
 
 use serde_json::Value;
 
@@ -239,7 +234,8 @@ impl ManifestRecord {
                 }
                 let mut extra = BTreeMap::new();
                 for (key, value) in &map {
-                    if V2_CORE_KEYS.contains(&key.as_str()) || V2_RESERVED_KEYS.contains(&key.as_str())
+                    if V2_CORE_KEYS.contains(&key.as_str())
+                        || V2_RESERVED_KEYS.contains(&key.as_str())
                     {
                         continue;
                     }

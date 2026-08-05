@@ -206,10 +206,7 @@ fn flush_markdown_entry(
     category: &str,
     body_lines: &[String],
 ) {
-    let body = body_lines
-        .join("\n")
-        .trim()
-        .to_owned();
+    let body = body_lines.join("\n").trim().to_owned();
     if !category.is_empty() && !body.is_empty() {
         entries.push(ExecutionIssueEntry::new(category, body));
     }
@@ -239,8 +236,8 @@ mod tests {
 
     #[test]
     fn truncated_ndjson_fails_loudly() {
-        let error = ExecutionIssueLedger::parse_ndjson("{\"category\":\"Warnings\",\"body\":")
-            .unwrap_err();
+        let error =
+            ExecutionIssueLedger::parse_ndjson("{\"category\":\"Warnings\",\"body\":").unwrap_err();
         assert_eq!(error.kind(), ExecutionIssueReadErrorKind::InvalidJson);
         assert_eq!(error.reason(), "invalid-json");
     }
