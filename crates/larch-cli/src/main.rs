@@ -23,6 +23,7 @@ mod dirty_tree_commands;
 mod git_commands;
 mod github_repository_resolution;
 mod kill_background;
+mod progress_commands;
 mod push_network;
 mod push_rebase;
 mod release_assets;
@@ -82,6 +83,9 @@ enum Domain {
     /// Plugin metadata commands.
     #[command(subcommand)]
     Plugin(PluginCommand),
+    /// Clone-scoped progress breadcrumbs and the larch statusline.
+    #[command(subcommand)]
+    Progress(ProgressCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -116,6 +120,31 @@ enum RunLogCommand {
     /// Emit `VALID=true|false` for a run-log path slug.
     #[command(name = "validate-run-id", disable_help_flag = true)]
     ValidateRunId(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ProgressCommand {
+    /// Point the clone's active-run pointer at one run.
+    #[command(disable_help_flag = true)]
+    Activate(RawCompatibilityArguments),
+    /// Clear the active-run pointer when the named run still owns it.
+    #[command(disable_help_flag = true)]
+    Deactivate(RawCompatibilityArguments),
+    /// Clear the active-run pointer regardless of its prior owner.
+    #[command(disable_help_flag = true)]
+    Clear(RawCompatibilityArguments),
+    /// Append one breadcrumb to the active run or a named run.
+    #[command(disable_help_flag = true)]
+    Note(RawCompatibilityArguments),
+    /// Render the larch statusline for the payload on stdin.
+    #[command(disable_help_flag = true)]
+    Statusline(RawCompatibilityArguments),
+    /// Clear a stale active-run pointer when a fresh session starts.
+    #[command(disable_help_flag = true)]
+    SessionReset(RawCompatibilityArguments),
+    /// Install the larch statusline into clone-local Claude settings.
+    #[command(disable_help_flag = true)]
+    InstallStatusline(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -624,6 +653,25 @@ fn run(
         Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
             Ok(object_store_commands::run(&arguments))
         }
+        Domain::Progress(command) => Ok(match command {
+            ProgressCommand::Activate(arguments) => {
+                progress_commands::activate(&arguments.arguments)
+            }
+            ProgressCommand::Deactivate(arguments) => {
+                progress_commands::deactivate(&arguments.arguments)
+            }
+            ProgressCommand::Clear(arguments) => progress_commands::clear(&arguments.arguments),
+            ProgressCommand::Note(arguments) => progress_commands::note(&arguments.arguments),
+            ProgressCommand::Statusline(arguments) => {
+                progress_commands::render_statusline(&arguments.arguments)
+            }
+            ProgressCommand::SessionReset(arguments) => {
+                progress_commands::session_reset(&arguments.arguments)
+            }
+            ProgressCommand::InstallStatusline(arguments) => {
+                progress_commands::install_statusline(&arguments.arguments)
+            }
+        }),
         Domain::Release(command) => run_release(command),
         Domain::Session(SessionCommand::KillBackgroundProcesses(arguments)) => Ok(
             kill_background::kill_background_processes(&arguments.arguments),

@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "cache/larch/progress/d8b96cde3cb3f56e/current": {
+      "text": "run-1\n"
+    },
+    "cache/larch/progress/d8b96cde3cb3f56e/run-1/breadcrumbs.log": {
+      "text": "[design 1] first\n[implement 5] second\n"
+    },
+    "cache/larch/progress/d8b96cde3cb3f56e/run-2/breadcrumbs.log": {
+      "text": "[design 3] other run\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

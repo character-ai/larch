@@ -30,6 +30,7 @@ Commands:
   kv             Exact `KEY=value` stream readers
   lint           Repository policy lint commands
   plugin         Plugin metadata commands
+  progress       Clone-scoped progress breadcrumbs and the larch statusline
   object-store   Narrow provider transports used by Python-owned run-log workflows
   release        Release-maintenance commands
   session        Session state compatibility commands

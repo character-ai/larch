@@ -5257,11 +5257,13 @@ verb = "activate"
 python_module = "larch.report.progress_file"
 python_function = "progress_activate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-activate"
 
 [[commands]]
 domain = "progress"
@@ -5269,11 +5271,13 @@ verb = "clear"
 python_module = "larch.report.progress_file"
 python_function = "progress_clear_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-clear"
 
 [[commands]]
 domain = "progress"
@@ -5281,11 +5285,13 @@ verb = "deactivate"
 python_module = "larch.report.progress_file"
 python_function = "progress_deactivate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-deactivate"
 
 [[commands]]
 domain = "progress"
@@ -5293,11 +5299,13 @@ verb = "install-statusline"
 python_module = "larch.report.statusline_install"
 python_function = "install_statusline_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-install-statusline"
 
 [[commands]]
 domain = "progress"
@@ -5305,11 +5313,13 @@ verb = "note"
 python_module = "larch.report.progress_file"
 python_function = "progress_note_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-note"
 
 [[commands]]
 domain = "progress"
@@ -5329,11 +5339,13 @@ verb = "session-reset"
 python_module = "larch.report.statusline"
 python_function = "session_reset_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-session-reset"
 
 [[commands]]
 domain = "progress"
@@ -5341,11 +5353,13 @@ verb = "statusline"
 python_module = "larch.report.statusline"
 python_function = "statusline_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8084
+clean_install_test = "clean-install-progress-statusline"
 
 [[commands]]
 domain = "progress"
@@ -8450,7 +8464,13 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "push branch", "push checkpoint-probe"]
+rust = [
+    "dirty-tree *",
+    "git phantom-probe",
+    "progress install-statusline",
+    "push branch",
+    "push checkpoint-probe",
+]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8821,8 +8841,8 @@ rust = ["kv get", "session resolve-implement-tmpdir"]
 [[callers]]
 path = "scripts/sessionstart-statusline.sh"
 kind = "hook"
-python = ["progress install-statusline", "progress session-reset"]
-rust = []
+python = []
+rust = ["progress install-statusline", "progress session-reset"]
 
 [[callers]]
 path = "skills/alias/SKILL.md"

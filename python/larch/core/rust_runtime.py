@@ -197,3 +197,26 @@ def push_branch(runner: Runner, *, cwd: str | None = None) -> PushOutput:
     if not branch:
         return PushOutput(status="failed")
     return PushOutput(status="pushed", branch=branch)
+
+
+def install_statusline(
+    runner: Runner,
+    *,
+    plugin_root: str,
+    repo_root: str,
+    notice: bool = False,
+    cwd: str | None = None,
+) -> bool:
+    """Invoke the Rust statusline installer, which is fail silent by contract."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "progress",
+        "install-statusline",
+        "--plugin-root",
+        plugin_root,
+        "--repo-root",
+        repo_root,
+    ]
+    if notice:
+        argv.append("--notice")
+    return runner.run(argv, cwd=cwd).returncode == 0

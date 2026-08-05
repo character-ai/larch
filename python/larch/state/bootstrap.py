@@ -28,7 +28,7 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body
 from larch.issue import issue_query, tracking_issue
-from larch.report import progress_file, run_log_batch, run_logs, statusline_install, timing, tokens
+from larch.report import progress_file, run_log_batch, run_logs, timing, tokens
 from larch.agents import agents
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -97,9 +97,10 @@ def _resolve_repo_root() -> str:
 
 
 def _install_statusline_best_effort() -> None:
-    _ = statusline_install.install_statusline(
-        plugin_root=_REPO_ROOT,
-        repo_root=Path.cwd(),
+    _ = rust_runtime.install_statusline(
+        proc,
+        plugin_root=str(_REPO_ROOT),
+        repo_root=str(Path.cwd()),
         notice=True,
     )
 

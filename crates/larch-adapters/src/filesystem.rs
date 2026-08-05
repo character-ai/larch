@@ -768,6 +768,35 @@ pub fn writer_target_allowed(path: impl AsRef<Path>, roots: &[PathBuf]) -> bool 
     roots.iter().any(|root| path_under(path.as_ref(), root))
 }
 
+/// Create `directory` and every missing ancestor without following symlinks.
+///
+/// The nearest existing ancestor anchors a [`TemporaryRoot`], so the whole
+/// chain is created through the same confinement checks a write would use.
+///
+/// # Errors
+///
+/// Returns [`PathSafetyError`] when no existing ancestor is reachable, an
+/// ancestor is a symlink or non-directory, or creation fails.
+pub fn ensure_directory_chain(directory: &Path) -> Result<(), PathSafetyError> {
+    let mut anchor = directory;
+    while !anchor.exists() {
+        anchor = anchor.parent().ok_or_else(|| {
+            PathSafetyError::new(PathSafetyErrorKind::Missing, Some(directory.to_path_buf()))
+        })?;
+    }
+    let relative = directory.strip_prefix(anchor).map_err(|_error| {
+        PathSafetyError::new(
+            PathSafetyErrorKind::EscapesRoot,
+            Some(directory.to_path_buf()),
+        )
+    })?;
+    let root = TemporaryRoot::resolve(Some(anchor))?;
+    // The trusted root is canonical, so the tail is rejoined to it rather than
+    // to the caller's possibly symlinked spelling.
+    root.ensure_directory(root.path().join(relative))
+        .map(|_created| ())
+}
+
 /// Return whether an output parent is an existing non-symlinked directory.
 #[must_use]
 pub fn safe_output_parent(path: impl AsRef<Path>) -> bool {

@@ -19,6 +19,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const DIAGNOSTIC_PATH_LIMIT: usize = 8;
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
+static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
 const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
     "ALL_PROXY",
     "AWS_ACCESS_KEY_ID",
@@ -102,6 +103,7 @@ pub enum NormalizationRule {
     SandboxRoot,
     Rfc3339Utc,
     ProcessIdentity,
+    StatuslineStamp,
 }
 
 #[derive(Clone, Debug)]
@@ -477,9 +479,19 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
             NormalizationRule::ProcessIdentity => process_identity_pattern()
                 .replace_all(&normalized, "${1}=<PID>")
                 .into_owned(),
+            NormalizationRule::StatuslineStamp => statusline_stamp_pattern()
+                .replace_all(&normalized, "larch <STAMP>:")
+                .into_owned(),
         };
     }
     normalized
+}
+
+fn statusline_stamp_pattern() -> &'static Regex {
+    STATUSLINE_STAMP.get_or_init(|| {
+        Regex::new(r"larch \d{2}:\d{2}:")
+            .expect("statusline stamp normalization regex should compile")
+    })
 }
 
 fn rfc3339_utc_pattern() -> &'static Regex {

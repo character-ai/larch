@@ -19,9 +19,12 @@ pub mod vendor_lifecycle;
 
 use larch_core::BuildMetadata;
 
+pub mod bgjob_registry;
 mod file_io;
 mod filesystem;
+pub mod progress_state;
 mod session_lifecycle;
+pub mod statusline;
 
 pub use cursor_config::CursorConfigContext;
 pub use file_io::{
@@ -31,9 +34,9 @@ pub use file_io::{
 };
 pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
-    SecureTempDir, SecureTempFile, TemporaryRoot, is_allowed_session_tmpdir, normalize_path,
-    path_strictly_under, path_under, resolve_allow_missing, safe_output_parent,
-    writer_target_allowed,
+    SecureTempDir, SecureTempFile, TemporaryRoot, ensure_directory_chain,
+    is_allowed_session_tmpdir, normalize_path, path_strictly_under, path_under,
+    resolve_allow_missing, safe_output_parent, writer_target_allowed,
 };
 pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,

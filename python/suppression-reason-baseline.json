@@ -3255,20 +3255,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/report/statusline.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=broad-except",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/statusline.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=broad-except",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/report/timing.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=all",
