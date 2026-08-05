@@ -244,6 +244,9 @@ fn run_program(
         .env("PATH", sandbox.root().join(".bin"))
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("TMPDIR", sandbox.root().join(".tmp"));
+    if let Some(profile) = env::var_os("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", profile);
+    }
     for argument in &program.arguments {
         command.arg(expand_sandbox(argument, sandbox.root()));
     }

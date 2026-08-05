@@ -717,8 +717,8 @@ mod tests {
         });
         let writers = values
             .iter()
-            .cloned()
             .map(|value| {
+                let value = value.clone();
                 let writer_root = root.clone();
                 let writer_target = target.clone();
                 let writer_active = Arc::clone(&active);
