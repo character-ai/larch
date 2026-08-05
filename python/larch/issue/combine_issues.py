@@ -31,11 +31,10 @@ from larch.errors import ShipError
 _BUSY_PREFIXES = (
     *(config.TRACKING_ISSUE_PREFIX_BY_STATE[state] for state in config.TRACKING_BUSY_STATES),
     *config.DEBATE_TITLE_PREFIX_BY_STATE.values(),
-    "[PLANNED] ",
-    "[IN PROGRESS] ",
-    "[LOCKED]",
 )
-_BUSY_RE = re.compile(rf"^(?:{'|'.join(re.escape(prefix) for prefix in _BUSY_PREFIXES)})")
+_BUSY_RE = re.compile(
+    rf"^(?:{'|'.join(re.escape(prefix) for prefix in _BUSY_PREFIXES)}|\[(?:PLANNED|IN PROGRESS)\]\s|\[LOCKED\])"
+)
 _OOS_RE = re.compile(r"^\[OOS\]\s")
 _BLOCKS_LINE_RE = re.compile(r"^(?:Blocks|Blocking)[ \t]+#([0-9]+)(?:[^0-9]|$)", re.IGNORECASE)
 _MARKDOWN_PREFIX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?")
