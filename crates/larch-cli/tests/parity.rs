@@ -52,6 +52,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
     CleanInstallCase::new("clean-install-session-read-key", "session", "read-key"),
     CleanInstallCase::new("clean-install-session-read-keys", "session", "read-keys"),
+    CleanInstallCase::new(
+        "clean-install-session-kill-background-processes",
+        "session",
+        "kill-background-processes",
+    ),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),

@@ -778,7 +778,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("session", "persist-run-flags"): ("larch.state.session_env", "persist_run_flags_main", False),
     ("session", "restore-finalize-state"): ("larch.state.session_env", "restore_finalize_state_main", False),
     ("session", "cleanup-tmpdir"): ("larch.state.session_env", "cleanup_tmpdir_main", False),
-    ("session", "kill-background-processes"): ("larch.state.finalize", "kill_background_processes_main", False),
     ("session", "local-cleanup"): ("larch.state.session_env", "local_cleanup_main", False),
     ("session", "entry-gate"): ("larch.state.session_env", "entry_gate_main", False),
     ("session", "resolve-implement-tmpdir"): ("larch.state.session_env", "resolve_implement_tmpdir_main", True),

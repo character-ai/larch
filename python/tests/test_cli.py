@@ -97,14 +97,6 @@ def test_dispatch_report_tokens_analyze() -> None:
     assert rc == 0
 
 
-def test_dispatch_session_kill_background_processes() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.state.finalize": MagicMock(kill_background_processes_main=mock_main)}):
-        rc = cli.main(["session", "kill-background-processes", "--design-tmpdir", "/tmp/claude-design-test"])
-    mock_main.assert_called_once_with(["--design-tmpdir", "/tmp/claude-design-test"])
-    assert rc == 0
-
-
 def test_dispatch_session_resolve_implement_tmpdir() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"larch.state.session_env": MagicMock(resolve_implement_tmpdir_main=mock_main)}):

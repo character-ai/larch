@@ -28,6 +28,10 @@ pub enum VendorProgram {
 pub enum HostUtilityProgram {
     /// Inspect processes holding one validated file path open.
     Lsof,
+    /// Bounded process-table probes for identity capture and cleanup.
+    Ps,
+    /// Bounded child and process-group enumeration.
+    Pgrep,
 }
 
 /// Approved GitHub CLI operations used to acquire the active `gh` credential.
@@ -67,6 +71,8 @@ impl HostUtilityProgram {
     pub const fn executable(self) -> &'static str {
         match self {
             Self::Lsof => "lsof",
+            Self::Ps => "ps",
+            Self::Pgrep => "pgrep",
         }
     }
 
@@ -75,13 +81,25 @@ impl HostUtilityProgram {
     pub const fn operation(self) -> &'static str {
         match self {
             Self::Lsof => "host.open-file-probe",
+            Self::Ps => "host.process-identity-probe",
+            Self::Pgrep => "host.process-group-probe",
         }
     }
 
     /// Return the allowlist rationale.
     #[must_use]
     pub const fn reason(self) -> &'static str {
-        "bounded open-file holder probe required for safe stale Git index-lock recovery"
+        match self {
+            Self::Lsof => {
+                "bounded open-file holder probe required for safe stale Git index-lock recovery"
+            }
+            Self::Ps => {
+                "bounded process start-time and command probes required for validated process termination"
+            }
+            Self::Pgrep => {
+                "bounded descendant and process-group enumeration required for validated process termination"
+            }
+        }
     }
 }
 

@@ -14,6 +14,7 @@ mod logging_util;
 mod object_store;
 mod outcome;
 mod process;
+mod process_identity;
 mod redaction;
 mod retry;
 mod session_state;
@@ -75,6 +76,21 @@ pub use process::{
     HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,
     ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
     ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, VendorProgram,
+};
+pub use process_identity::{
+    COMMAND_LOG_LIMIT, DESIGN_STEP3_KILL_LOG_FILE, DESIGN_STEP3_LOOP_IDENTITY_FILE,
+    DESIGN_STEP3_MISSING_PID_GRACE, DESIGN_STEP3_WRAPPER_DETACHED_FILE, FINALIZE_KILL_LOG_FILE,
+    IMPLEMENT_STEP5_KILL_LOG_FILE, IMPLEMENT_STEP5_LOOP_IDENTITY_FILE,
+    IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE, IdentityProbeOutput, KillLogEvent, KillTargetSnapshot,
+    PROCESS_IDENTITY_CAPTURE_ATTEMPTS, PROCESS_IDENTITY_CAPTURE_SLEEP, PROCESS_IDENTITY_PS_TIMEOUT,
+    PS_LSTART_FIELD_COUNT, ProcessIdentityHost, ProcessIdentityProbeResult,
+    RecordedProcessIdentity, TERMINATE_ESCALATION_SLEEP, TerminateSignal, ValidationResult,
+    append_kill_log, await_loop_identity, await_loop_poll, bounded_command, collect_descendants,
+    collect_process_group_members, identity_to_json, kill_session_background_processes,
+    normalize_command_signature, parse_ps_identity, probe_process_identity, read_identity_record,
+    read_process_identity, read_stable_process_identity, result_env_has_step3_status,
+    teardown_loop_identity, terminate_validated_process_group, validate_process_identity,
+    write_identity_record, write_loop_identity, write_step5_loop_identity,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
 pub use retry::{

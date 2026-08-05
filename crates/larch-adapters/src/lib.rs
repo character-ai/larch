@@ -9,6 +9,7 @@ pub mod google_auth;
 pub mod google_storage;
 pub mod logging;
 pub mod process;
+mod process_identity;
 pub mod retry;
 pub mod runtime;
 pub mod upgrade_larch;
@@ -42,6 +43,7 @@ pub use git::{
 pub use process::{
     NoopProcessObserver, OpenFileHolderStatus, TokioProcessRunner, probe_open_file_holder,
 };
+pub use process_identity::SystemProcessIdentityHost;
 
 /// Return metadata compiled into the adapter layer.
 #[must_use]

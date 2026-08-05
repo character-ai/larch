@@ -185,10 +185,16 @@ session files directly.
 Destructive cleanup or synchronization validates the exact root and target,
 rechecks mutable identity immediately before acting, and limits deletion to an
 operation-owned allowlist. A persisted PID or process group is signaled only
-after process identity is re-verified. A fixed-string comparison, field
-equality, or closed parser must handle interpolated labels, markers, refs, and
-identifiers. Do not interpolate untrusted data into a regular expression or
-shell program.
+after process identity is re-verified. The Rust runtime owns process-identity
+capture, validated process-group termination, and
+`session kill-background-processes` (`crates/larch-core/src/process_identity.rs`,
+`crates/larch-adapters/src/process_identity.rs`,
+`crates/larch-cli/src/kill_background.rs`). Python still owns the shared
+`process_identity` helpers consumed by bgjob, stall-recovery, and the
+plan-review / review-and-fix loop-identity commands until later #7677 leaves
+cut those callers over. A fixed-string comparison, field equality, or closed
+parser must handle interpolated labels, markers, refs, and identifiers. Do not
+interpolate untrusted data into a regular expression or shell program.
 
 ## Workflow Boundaries
 
