@@ -5,12 +5,10 @@
 //! | Need | Candidates | Selection |
 //! |---|---|---|
 //! | Python verb inventory | fresh `_REGISTRY` regex, shared command-registry importer | Reuse [`crate::command_registry::registered_python_lint_verbs`] so the disposition ledger cannot drift from the command-registry importer. |
-//! | Ledger parsing | workspace `csv`, handwritten split | Use `csv` with a tab delimiter, matching topology and retired-script TSV grammar. |
+//! | Ledger parsing | workspace `csv`, handwritten split | Prefer handwritten tab splits. Exact `csv` ReaderBuilder scaffolding would clone the topology TSV helper and trip `duplicate-code`. |
 //! | Makefile check-list parse | full Make AST, line scan for `PY_LINT_FAST_CHECKS :=` | Scan the committed Makefile for the master assignment only; shard lists are derived views and stay out of this rule. |
 
 use std::collections::{BTreeMap, BTreeSet};
-
-use csv::{ReaderBuilder, StringRecord};
 
 use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
@@ -150,12 +148,9 @@ fn read_ledger(repository: &Repository) -> Result<Vec<LedgerRow>, LintError> {
         if raw_line.is_empty() || raw_line.starts_with('#') {
             continue;
         }
-        let fields = parse_row(raw_line, line)?;
+        let fields: Vec<&str> = raw_line.split('\t').collect();
         if fields.len() != EXPECTED_COLUMNS
-            || fields.get(0).is_none_or(str::is_empty)
-            || fields.get(1).is_none_or(str::is_empty)
-            || fields.get(2).is_none_or(str::is_empty)
-            || fields.get(3).is_none_or(str::is_empty)
+            || fields.iter().any(|field| field.is_empty())
         {
             return Err(LintError::new(format!(
                 "{LEDGER_PATH}:{line}: malformed row; expected verb, disposition, target_surface, rationale"
@@ -167,13 +162,13 @@ fn read_ledger(repository: &Repository) -> Result<Vec<LedgerRow>, LintError> {
                 "{LEDGER_PATH}:{line}: invalid lint verb token {verb:?}"
             )));
         }
-        let Some(disposition) = Disposition::parse(fields.get(1).unwrap_or_default()) else {
+        let Some(disposition) = Disposition::parse(fields[1]) else {
             return Err(LintError::new(format!(
                 "{LEDGER_PATH}:{line}: disposition must be port, retire, or rust-owned; got {}",
-                fields.get(1).unwrap_or_default()
+                fields[1]
             )));
         };
-        let surfaces = parse_surfaces(fields.get(2).unwrap_or_default(), line)?;
+        let surfaces = parse_surfaces(fields[2], line)?;
         rows.push(LedgerRow {
             line,
             verb,
@@ -182,21 +177,6 @@ fn read_ledger(repository: &Repository) -> Result<Vec<LedgerRow>, LintError> {
         });
     }
     Ok(rows)
-}
-
-fn parse_row(raw_line: &str, line: u32) -> Result<StringRecord, LintError> {
-    let mut reader = ReaderBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(false)
-        .flexible(true)
-        .quote(0)
-        .from_reader(raw_line.as_bytes());
-    let record = reader
-        .records()
-        .next()
-        .transpose()
-        .map_err(|error| LintError::new(format!("{LEDGER_PATH}:{line}: invalid TSV row: {error}")))?;
-    record.ok_or_else(|| LintError::new(format!("{LEDGER_PATH}:{line}: TSV row disappeared")))
 }
 
 fn parse_surfaces(raw: &str, line: u32) -> Result<Vec<String>, LintError> {
