@@ -14,7 +14,6 @@ import pytest
 
 from larch.core import config
 from larch.state import finalize
-from larch.core import logging_util
 from larch.core import proc
 from larch.report import progress_file
 from larch.state import session_env
@@ -45,70 +44,6 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
         env=merged,
         check=False,
     )
-
-
-def test_read_key_defaults_and_embedded_equals(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("TOKEN=a=b=c\nEMPTY=\nTOKEN_EXTRA=wrong\n", encoding="utf-8")
-    got = run_cli("read-key", "--file", str(session), "--key", "TOKEN")
-    assert got.returncode == 0
-    assert got.stdout == "a=b=c\n"
-    empty = run_cli("read-key", "--file", str(session), "--key", "EMPTY", "--default", "fallback")
-    assert empty.stdout == "fallback\n"
-    missing = run_cli("read-key", "--file", str(tmp_path / "missing"), "--key", "TOKEN", "--default", "fallback")
-    assert missing.returncode == 0
-    assert missing.stdout == "fallback\n"
-    forgotten = run_cli("read-key", "--key", "TOKEN", "--default", "fallback")
-    assert forgotten.returncode == 1
-
-
-def test_read_keys_batch_order_defaults_and_first_match(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("SITE=core\nTRIGGER=\nVALUE=a=b=c\nFIRST=one\nFIRST=two\n", encoding="utf-8")
-    got = run_cli(
-        "read-keys",
-        "--file",
-        str(session),
-        "--key",
-        "SITE=unknown",
-        "--key",
-        "TRIGGER=fallback",
-        "--key",
-        "VALUE",
-        "--key",
-        "MISSING=def",
-        "--key",
-        "ABSENT",
-        "--key",
-        "FIRST",
-    )
-    assert got.returncode == 0, got.stderr
-    # Input order preserved; embedded '=' kept; empty value -> default;
-    # absent+no-default -> empty; first occurrence wins.
-    assert got.stdout == "SITE=core\nTRIGGER=fallback\nVALUE=a=b=c\nMISSING=def\nABSENT=\nFIRST=one\n"
-
-
-def test_read_keys_missing_file_resolves_defaults(tmp_path: Path) -> None:
-    got = run_cli("read-keys", "--file", str(tmp_path / "nope"), "--key", "A=1", "--key", "B")
-    assert got.returncode == 0
-    assert got.stdout == "A=1\nB=\n"
-
-
-def test_read_keys_requires_file_flag_and_a_key(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("A=1\n", encoding="utf-8")
-    no_file = run_cli("read-keys", "--key", "A=1")
-    assert no_file.returncode == 1
-    no_key = run_cli("read-keys", "--file", str(session))
-    assert no_key.returncode == 1
-
-
-def test_read_keys_rejects_carriage_return_injection(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("SAFE=value\rLARCH_TOKEN_SESSION_ID=attacker\n", encoding="utf-8")
-    result = run_cli("read-keys", "--file", str(session), "--key", "SAFE")
-    assert result.returncode == 1
-    assert "carriage return" in result.stderr
 
 
 def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
@@ -268,14 +203,6 @@ def test_external_timeout_default_invalid_empty_zero_and_override(monkeypatch: p
 
     monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "45")
     assert session_env._external_timeout() == "45"  # pyright: ignore[reportPrivateUsage]
-
-
-def test_read_key_rejects_carriage_return_injection(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("SAFE=value\rLARCH_TOKEN_SESSION_ID=attacker\n", encoding="utf-8")
-    result = run_cli("read-key", "--file", str(session), "--key", "SAFE")
-    assert result.returncode == 1
-    assert "carriage return" in result.stderr
 
 
 def test_validate_design_tmpdir_main_accepts_allowlisted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1390,42 +1317,6 @@ def test_reap_pid_residuals_removes_leaf_design_symlink_and_residuals(
     assert not parsed_path.exists()
 
 
-def test_read_key_emits_on_fd3_under_quiet_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-    logging_util.reset_quiet_state()
-    session = tmp_path / "session-env.sh"
-    session.write_text("TOKEN=secret-value\n", encoding="utf-8")
-    read_fd, write_fd = os.pipe()
-    saved_stdout = os.dup(1)
-    try:
-        os.dup2(write_fd, 1)
-        os.close(write_fd)
-        rc = session_env.read_key_main(["--file", str(session), "--key", "TOKEN"])
-        os.dup2(saved_stdout, 1)
-        contract = os.read(read_fd, 4096).decode()
-    finally:
-        os.close(read_fd)
-        os.close(saved_stdout)
-    assert rc == 0
-    assert contract == "secret-value\n"
-
-
-def test_read_key_pins_first_match_duplicate_and_empty_value_policy(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("TOKEN=\nTOKEN=second\nOTHER=value\n", encoding="utf-8")
-
-    fallback = run_cli(
-        "read-key", "--file", str(session), "--key", "TOKEN", "--default", "fallback"
-    )
-    empty = run_cli("read-key", "--file", str(session), "--key", "TOKEN")
-
-    assert fallback.returncode == 0
-    assert fallback.stdout == "fallback\n"
-    assert empty.returncode == 0
-    assert empty.stdout == "\n"
-
-
 def test_setup_writes_session_id_and_keepalive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
@@ -2348,29 +2239,6 @@ def test_write_id_direct_writes_then_preserves(tmp_path: Path) -> None:
 def test_write_id_direct_rejects_disallowed_root() -> None:
     with pytest.raises(OSError, match="allowed session root"):
         session_env.write_id(output=Path("/etc/larch-not-allowed/session-id"))
-
-
-def test_read_key_direct_resolves_and_defaults(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("TOKEN=a=b=c\nEMPTY=\n", encoding="utf-8")
-    result = session_env.read_key(file=str(session), key="TOKEN", default=None, file_flag_present=True)
-    assert isinstance(result, session_env.ReadKeyResult)
-    assert result.value == "a=b=c"
-    assert session_env.read_key(file=str(session), key="EMPTY", default="fb", file_flag_present=True).value == "fb"
-    assert session_env.read_key(file=str(tmp_path / "missing"), key="TOKEN", default="fb", file_flag_present=True).value == "fb"
-    with pytest.raises(FrozenInstanceError):
-        result.value = "x"  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
-
-
-def test_read_key_direct_error_paths(tmp_path: Path) -> None:
-    session = tmp_path / "session-env.sh"
-    session.write_text("TOKEN=v\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="--key is required"):
-        session_env.read_key(file=str(session), key="", default=None, file_flag_present=True)
-    with pytest.raises(ValueError, match="--file is required"):
-        session_env.read_key(file=None, key="TOKEN", default=None, file_flag_present=False)
-    with pytest.raises(ValueError, match="cannot read"):
-        session_env.read_key(file=str(tmp_path / "missing"), key="TOKEN", default=None, file_flag_present=True)
 
 
 def test_entry_gate_direct_returns_frozen_result() -> None:

@@ -34,8 +34,64 @@ if [[ -z "$BASH_BIN" || ! -x "$BASH_BIN" ]]; then
 fi
 
 tmp=$(mktemp -d /tmp/larch-sessionstart-test.XXXXXX)
+tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 XDG_TEST="$tmp/xdg-cache"
+PLUGIN_VERSION=$(awk -F '"' '$2 == "version" { print $4 }' "$REPO_ROOT/.claude-plugin/plugin.json")
+case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) LARCH_TARGET=aarch64-apple-darwin ;;
+    Darwin:x86_64|Darwin:amd64) LARCH_TARGET=x86_64-apple-darwin ;;
+    Linux:arm64|Linux:aarch64) LARCH_TARGET=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64|Linux:amd64) LARCH_TARGET=x86_64-unknown-linux-gnu ;;
+    *) echo "FAIL: unsupported harness target" >&2; exit 1 ;;
+esac
+FAKE_LARCH="$tmp/larch-fixture"
+cat > "$FAKE_LARCH" <<STUB
+#!$BASH_BIN
+set -u
+if [[ "\${1:-}" == "--version" ]]; then
+    printf '%s\n' 'larch $PLUGIN_VERSION'
+    exit 0
+fi
+if [[ "\${1:-}" == "bootstrap" && "\${2:-}" == "self-check" ]]; then
+    printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+    exit 0
+fi
+if [[ "\${1:-}" == "kv" && "\${2:-}" == "get" ]]; then
+    shift 2
+    key="" file="" default="" match=first found=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --key) key="\$2"; shift 2 ;;
+            --file) file="\$2"; shift 2 ;;
+            --default) default="\$2"; shift 2 ;;
+            --match) match="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    found="\$default"
+    if [[ -f "\$file" ]]; then
+        while IFS= read -r line || [[ -n "\$line" ]]; do
+            case "\$line" in
+                "\$key="*)
+                    value="\${line#*=}"
+                    if [[ "\$match" == first ]]; then
+                        printf '%s\n' "\$value"
+                        exit 0
+                    fi
+                    if [[ "\$match" != last-non-empty || -n "\$value" ]]; then
+                        found="\$value"
+                    fi
+                    ;;
+            esac
+        done < "\$file"
+    fi
+    printf '%s\n' "\$found"
+    exit 0
+fi
+exit 2
+STUB
+chmod +x "$FAKE_LARCH"
 
 JQ_ONLY_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
 JQ_GIT_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
@@ -129,6 +185,7 @@ build_bin() {
     rm -rf "$dir"
     mkdir -p "$dir"
     link_tool "$dir" grep
+    link_tool "$dir" bash
     link_tool "$dir" awk
     link_tool "$dir" cat
     link_tool "$dir" sed
@@ -138,6 +195,7 @@ build_bin() {
     link_tool "$dir" basename
     link_tool "$dir" date
     link_tool "$dir" touch
+    link_tool "$dir" uname
 }
 
 add_real_tool() {
@@ -160,7 +218,7 @@ STUB
 run_from_dir() {
     local bin=$1 cwd=$2 out_file=$3 err_file=$4 rc=0
     local home="${5:-}"
-    local env_args=(PATH="$bin")
+    local env_args=(PATH="$bin" LARCH_BINARY="$FAKE_LARCH")
     if [[ -n "$home" ]]; then
         env_args+=(HOME="$home")
     fi
@@ -171,7 +229,7 @@ run_from_dir() {
 run_with_stdin() {
     local bin=$1 cwd=$2 input=$3 xdg_cache=$4 out_file=$5 err_file=$6 rc=0
     local home="${7:-}"
-    local env_args=(PATH="$bin" XDG_CACHE_HOME="$xdg_cache" CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
+    local env_args=(PATH="$bin" XDG_CACHE_HOME="$xdg_cache" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_BINARY="$FAKE_LARCH")
     if [[ -n "$home" ]]; then
         env_args+=(HOME="$home")
     fi
@@ -186,6 +244,7 @@ run_with_stdin_and_stale_token() {
         PATH="$bin"
         XDG_CACHE_HOME="$xdg_cache"
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+        LARCH_BINARY="$FAKE_LARCH"
         LARCH_TOKEN_SESSION_ID="stale-session"
         TOKEN_RECORD_FILE="$record_file"
     )

@@ -25,9 +25,33 @@ impl CleanInstallCase {
     const fn new(id: &'static str, domain: &'static str, verb: &'static str) -> Self {
         Self { id, domain, verb }
     }
+
+    fn arguments(self) -> &'static [&'static str] {
+        match self.id {
+            "clean-install-kv-get" => &["--key", "MISSING", "--default", "clean-install"],
+            "clean-install-session-read-key" => &[
+                "--file",
+                "/larch-clean-install-read-key-missing",
+                "--key",
+                "KEY",
+                "--default",
+                "clean-install",
+            ],
+            "clean-install-session-read-keys" => &[
+                "--file",
+                "/larch-clean-install-read-keys-missing",
+                "--key",
+                "KEY=clean-install",
+            ],
+            _ => &["--help"],
+        }
+    }
 }
 
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
+    CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
+    CleanInstallCase::new("clean-install-session-read-key", "session", "read-key"),
+    CleanInstallCase::new("clean-install-session-read-keys", "session", "read-keys"),
     CleanInstallCase::new("clean-install-gh-remote-repo", "gh", "remote-repo"),
     CleanInstallCase::new("clean-install-gh-resolve-repo", "gh", "resolve-repo"),
     CleanInstallCase::new("clean-install-gh-run-logs", "gh", "run-logs"),
@@ -231,6 +255,146 @@ fn representative_python_and_rust_commands_have_reviewed_parity() {
     }
 }
 
+struct SessionKvFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    stdin: Option<&'static [u8]>,
+    seed: Option<(&'static str, &'static str)>,
+    normalize_root: bool,
+}
+
+impl SessionKvFixture {
+    fn build(self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let rust_command = match self.command {
+            "kv-get" => ["kv", "get"],
+            "read-key" => ["session", "read-key"],
+            "read-keys" => ["session", "read-keys"],
+            command => panic!("unknown session parity command: {command}"),
+        };
+        let mut python = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.command))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust = Program::new(rust).args(
+            rust_command
+                .into_iter()
+                .chain(self.arguments.iter().copied()),
+        );
+        if let Some(input) = self.stdin {
+            python = python.stdin(input);
+            rust = rust.stdin(input);
+        }
+        ParityCase {
+            name: self.name,
+            python,
+            rust,
+            seed_files: self
+                .seed
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .into_iter()
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: self
+                .normalize_root
+                .then_some(NormalizationRule::SandboxRoot)
+                .into_iter()
+                .collect(),
+        }
+    }
+}
+
+#[test]
+fn session_kv_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("session_kv_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+    let cases = [
+        SessionKvFixture {
+            name: "kv-stdin-bytes",
+            command: "kv-get",
+            arguments: &["--key", "KEY", "--match", "last-non-empty"],
+            stdin: Some(b"KEY=first\nKEY=\xff\nKEY=\n"),
+            seed: None,
+            normalize_root: false,
+        },
+        SessionKvFixture {
+            name: "kv-file-cr-strip",
+            command: "kv-get",
+            arguments: &[
+                "--file",
+                "{sandbox}/values.env",
+                "--key",
+                "KEY",
+                "--match",
+                "last",
+                "--cr-strip",
+                "strip",
+            ],
+            stdin: None,
+            seed: Some(("values.env", "KEY=first\r\nKEY=\rvalue\r\r\n")),
+            normalize_root: false,
+        },
+        SessionKvFixture {
+            name: "kv-usage-error",
+            command: "kv-get",
+            arguments: &[],
+            stdin: None,
+            seed: None,
+            normalize_root: false,
+        },
+        SessionKvFixture {
+            name: "session-read-key-first",
+            command: "read-key",
+            arguments: &["--file", "{sandbox}/session.env", "--key", "KEY"],
+            stdin: None,
+            seed: Some(("session.env", "IGNORED=value\u{85}KEY=first\nKEY=last\n")),
+            normalize_root: false,
+        },
+        SessionKvFixture {
+            name: "session-read-key-cr-error",
+            command: "read-key",
+            arguments: &[
+                "--file",
+                "{sandbox}/session.env",
+                "--key",
+                "KEY",
+                "--default",
+                "fallback",
+            ],
+            stdin: None,
+            seed: Some(("session.env", "KEY=value\r\n")),
+            normalize_root: true,
+        },
+        SessionKvFixture {
+            name: "session-read-keys",
+            command: "read-keys",
+            arguments: &[
+                "--file",
+                "{sandbox}/session.env",
+                "--key",
+                "A",
+                "--key",
+                "B=default",
+                "--key",
+                "MISSING=fallback",
+            ],
+            stdin: None,
+            seed: Some(("session.env", "A=first\nA=last\nB=\n")),
+            normalize_root: false,
+        },
+    ];
+
+    for fixture in cases {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[test]
 fn hung_command_fails_at_the_case_boundary() {
     let fixture_directory = fixture_directory();
@@ -267,11 +431,17 @@ fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         let lines: Vec<&str> = events.lines().collect();
+        let expected_dispatch = format!(
+            "{} {} {}",
+            case.domain,
+            case.verb,
+            case.arguments().join(" ")
+        );
         assert_eq!(lines.first(), Some(&"--version"), "{}", case.id);
         assert_eq!(lines.get(1), Some(&"bootstrap self-check"), "{}", case.id);
         assert_eq!(
             lines.get(2),
-            Some(&format!("{} {} --help", case.domain, case.verb).as_str()),
+            Some(&expected_dispatch.as_str()),
             "{}",
             case.id
         );
@@ -293,9 +463,14 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         assert!(
-            !events
-                .lines()
-                .any(|line| line == format!("{} {} --help", case.domain, case.verb)),
+            !events.lines().any(|line| {
+                line == format!(
+                    "{} {} {}",
+                    case.domain,
+                    case.verb,
+                    case.arguments().join(" ")
+                )
+            }),
             "{failure} reached selector dispatch"
         );
     }
@@ -383,7 +558,8 @@ fn run_clean_install_case(
     let mut command = Command::new("/bin/bash");
     command
         .arg(fixture.root.join("scripts/larch.sh"))
-        .args([case.domain, case.verb, "--help"])
+        .args([case.domain, case.verb])
+        .args(case.arguments())
         .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
         .env("LARCH_BINARY", &fixture.wrapper)
         .env("REAL_LARCH", &fixture.binary)

@@ -33,7 +33,7 @@ fail_usage() {
 read_kv() {
     local key=$1 file=$2
     [ -f "$file" ] || return 0
-    python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
 }
 
 IMPLEMENT_TMPDIR=""
@@ -87,7 +87,7 @@ case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit
 case "$RUN_ID" in *[!A-Za-z0-9._-]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID must match ^[A-Za-z0-9._-]+$"; exit 1 ;; esac
 
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
-version="$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null || true)"
+version="$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" plugin read-version 2>/dev/null | CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null || true)"
 [ -n "$version" ] || version="unknown"
 
 {
@@ -122,7 +122,7 @@ if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$out_file"
         printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=%s\n' "$ISSUE" "$RUN_ID" "$_adopted" > "$PARENT_ISSUE"
     fi
     emit_kv POSTED true
-    emit_kv COMMENT_URL "$(python3 "$PLUGIN_ROOT/python/cli.py" kv get --key COMMENT_URL --file "$out_file" --match first 2>/dev/null)"
+    emit_kv COMMENT_URL "$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" kv get --key COMMENT_URL --file "$out_file" --match first 2>/dev/null)"
     exit 0
 fi
 

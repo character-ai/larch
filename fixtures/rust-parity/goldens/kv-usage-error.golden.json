@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py kv get [-h] --key KEY [--file FILE]\n                     [--match {first,last,last-non-empty}] [--default DEFAULT]\n                     [--cr-strip {none,suffix,rstrip,strip}]\ncli.py kv get: error: the following arguments are required: --key\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -27,6 +27,7 @@ mod release_prepare;
 mod release_publish;
 mod release_stage;
 mod release_version;
+mod state_commands;
 
 use git_commands::GitCommand;
 
@@ -53,6 +54,9 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// Exact `KEY=value` stream readers.
+    #[command(subcommand)]
+    Kv(KvCommand),
     /// Repository policy lint commands.
     Lint(larch_lint::LintArguments),
     /// Plugin metadata commands.
@@ -64,6 +68,9 @@ enum Domain {
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
+    /// Session state compatibility commands.
+    #[command(subcommand)]
+    Session(SessionCommand),
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
@@ -73,6 +80,31 @@ enum Domain {
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
+}
+
+#[derive(Subcommand)]
+enum KvCommand {
+    /// Extract one value from `KEY=value` input.
+    #[command(disable_help_flag = true)]
+    Get(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum SessionCommand {
+    /// Read one value from a session environment file.
+    #[command(disable_help_flag = true)]
+    ReadKey(RawCompatibilityArguments),
+    /// Read several values from one session environment file.
+    #[command(disable_help_flag = true)]
+    ReadKeys(RawCompatibilityArguments),
+}
+
+#[derive(Args)]
+#[command(trailing_var_arg = true)]
+struct RawCompatibilityArguments {
+    /// Raw arguments parsed by the legacy-compatible command boundary.
+    #[arg(allow_hyphen_values = true)]
+    arguments: Vec<OsString>,
 }
 
 #[derive(Subcommand)]
@@ -493,6 +525,7 @@ fn run(
             Ok(ExitCode::SUCCESS)
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
+        Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),
         Domain::Lint(arguments) => Ok(ExitCode::from(larch_lint::run_cli(arguments).as_u8())),
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
@@ -501,6 +534,12 @@ fn run(
             Ok(object_store_commands::run(&arguments))
         }
         Domain::Release(command) => run_release(command),
+        Domain::Session(SessionCommand::ReadKey(arguments)) => {
+            Ok(state_commands::read_key(&arguments.arguments))
+        }
+        Domain::Session(SessionCommand::ReadKeys(arguments)) => {
+            Ok(state_commands::read_keys(&arguments.arguments))
+        }
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)

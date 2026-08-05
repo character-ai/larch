@@ -75,12 +75,15 @@ for entry in "$registry_root"/*.env; do
     emit_deny 'run_in_background denied: cannot locate shared registry codec'
     exit 0
   }
-  kv_cli="$script_dir/../python/cli.py"
-  [ -f "$kv_cli" ] && command -v python3 >/dev/null 2>&1 || {
+  plugin_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P) || {
+    emit_deny 'run_in_background denied: cannot locate plugin root'
+    exit 0
+  }
+  [ -x "$plugin_root/scripts/larch.sh" ] || {
     emit_deny 'run_in_background denied: shared registry codec unavailable'
     exit 0
   }
-  clone_path=$(python3 "$kv_cli" kv get --file "$entry" --key CLONE_PATH --match first 2>/dev/null)
+  clone_path=$(CLAUDE_PLUGIN_ROOT="$plugin_root" "$plugin_root/scripts/larch.sh" kv get --file "$entry" --key CLONE_PATH --match first 2>/dev/null)
   kv_rc=$?
   if [ "$kv_rc" -ne 0 ]; then
     emit_deny 'run_in_background denied: cannot read active bgjob registry entry'

@@ -18,7 +18,6 @@ from larch.core import config
 from larch.core.repo_roots import plugin_root as resolve_plugin_root
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
-_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _plugin_root_fallback() -> Path:
@@ -49,14 +48,17 @@ def _validate_plugin_root(plugin_root: Path) -> int | None:
 
 
 def _read_key(*, path: Path, key: str, default: str = "") -> str:
-    result = _run(
-        [sys.executable, str(_PY_CLI), "session", "read-key", "--file", str(path), "--key", key, "--default", default],
-        env=dict(os.environ),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    stdout = (result.stdout or "").strip()
-    return stdout if result.returncode == 0 else default
+    try:
+        text = larch_io.read_text(path, default="", reject_cr=True)
+        value = larch_io.kv_value(
+            text=text,
+            key=key,
+            default=default,
+            duplicate_policy="first",
+        )
+        return (default if value == "" else value).strip()
+    except (OSError, ValueError):
+        return default
 
 
 def _env_for(*, tmpdir: Path, plugin_root: Path) -> dict[str, str]:

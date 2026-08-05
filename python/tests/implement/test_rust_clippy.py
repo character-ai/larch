@@ -175,9 +175,32 @@ def test_workspace_inputs_select_one_default_feature_workspace_command(tmp_path:
     )
 
 
+def test_shared_integration_test_module_selects_each_affected_target(tmp_path: Path) -> None:
+    plan = _plan(tmp_path, ["crates/demo/tests/support/helpers.rs"])
+
+    assert plan.commands() == (
+        (
+            config.CARGO_CLI,
+            "clippy",
+            "--locked",
+            "--package",
+            "demo",
+            "--test",
+            "alpha",
+            "--test",
+            "api",
+            "--test",
+            "zeta",
+            "--",
+            "-D",
+            "warnings",
+        ),
+    )
+
+
 def test_unmappable_rust_path_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(rust_clippy.RustClippyError, match="unmappable Rust path"):
-        _ = _plan(tmp_path, ["crates/demo/tests/support.rs"])
+        _ = _plan(tmp_path, ["crates/demo/generated/support.rs"])
 
 
 @dataclass

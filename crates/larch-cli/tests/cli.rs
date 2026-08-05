@@ -24,10 +24,12 @@ Usage: larch <COMMAND>
 Commands:
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository commands
+  kv             Exact `KEY=value` stream readers
   lint           Repository policy lint commands
   plugin         Plugin metadata commands
   object-store   Narrow provider transports used by Python-owned run-log workflows
   release        Release-maintenance commands
+  session        Session state compatibility commands
   gh             GitHub workflow helper commands
   push           Push commands with typed Git network operations
   upgrade-larch  Upgrade the installed larch plugin and executable

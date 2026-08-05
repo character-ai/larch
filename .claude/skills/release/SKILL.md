@@ -396,9 +396,9 @@ set -e
 Parse `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, and `BRANCH_DELETED` from `cleanup_out`:
 
 ```bash
-cleanup_success=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key CLEANUP_SUCCESS --match first)
-current_branch=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key CURRENT_BRANCH --match first)
-branch_deleted=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key BRANCH_DELETED --match first)
+cleanup_success=$(printf '%s\n' "$cleanup_out" | CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --key CLEANUP_SUCCESS --match first)
+current_branch=$(printf '%s\n' "$cleanup_out" | CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --key CURRENT_BRANCH --match first)
+branch_deleted=$(printf '%s\n' "$cleanup_out" | CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --key BRANCH_DELETED --match first)
 
 if [ "$cleanup_rc" -ne 0 ] || [ -z "$cleanup_success" ] || [ -z "$current_branch" ] || [ -z "$branch_deleted" ]; then
   cleanup_success=false
@@ -423,9 +423,9 @@ else
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 if [ -f "$STEP7_STATE" ]; then
-  MARKETPLACE_RECONCILED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key MARKETPLACE_RECONCILED --match first)
-  NEW_VERSION_INSTALLED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key NEW_VERSION_INSTALLED --match first)
-  RESTART_REQUIRED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key RESTART_REQUIRED --match first)
+  MARKETPLACE_RECONCILED=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --file "$STEP7_STATE" --key MARKETPLACE_RECONCILED --match first)
+  NEW_VERSION_INSTALLED=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --file "$STEP7_STATE" --key NEW_VERSION_INSTALLED --match first)
+  RESTART_REQUIRED=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$PWD/target/release/larch" "$PWD/scripts/larch.sh" kv get --file "$STEP7_STATE" --key RESTART_REQUIRED --match first)
   MARKETPLACE_RECONCILED=${MARKETPLACE_RECONCILED:-false}
   NEW_VERSION_INSTALLED=${NEW_VERSION_INSTALLED:-false}
   RESTART_REQUIRED=${RESTART_REQUIRED:-false}

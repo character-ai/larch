@@ -109,9 +109,11 @@ the same user. `/tmp` is shared scratch and provides no cross-skill secrecy.
 
 Rust filesystem adapters require explicit absolute roots, reject escapes,
 symlinks, special files, and multiply linked write targets, and revalidate near
-mutation. Python session and wire-file helpers apply equivalent operation-level
-checks. These are confinement controls for larch mistakes and untrusted paths,
-not a sandbox against hostile same-UID parent replacement.
+mutation. Shared Rust session-state foundations own KV parsing, session-root
+derivation, path-confinement checks, and private atomic publication. Python
+session writers apply equivalent operation-level checks while their commands
+remain Python-owned. These are confinement controls for larch mistakes and
+untrusted paths, not a sandbox against hostile same-UID parent replacement.
 
 ## Mutation Authorization and State Integrity
 
@@ -173,8 +175,10 @@ drift fails closed. Unavailable or stale evidence fails closed.
 ### Local mutation safety
 
 Wire files use closed key sets, single-line values, explicit size limits,
-non-symlink regular files, and atomic publication. Session writers in
-`python/larch/state/session_env.py` own the approved destination and key
+non-symlink regular files, and atomic publication. The Rust CLI owns `kv get`,
+`session read-key`, and `session read-keys`; their parsing and filesystem
+primitives live in `larch-core` and `larch-adapters`. Session writer commands in
+`python/larch/state/session_env.py` still own approved destinations and key
 allowlists. Prompt-side orchestration must not write or repair trusted result or
 session files directly.
 

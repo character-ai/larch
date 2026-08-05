@@ -167,15 +167,9 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
         fi
         if [[ -n "$sentinel_path" && -f "$sentinel_path" ]]; then
             _sentinel_plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
-            if command -v python3 >/dev/null 2>&1; then
-                issue_number=$(python3 "$_sentinel_plugin_root/python/cli.py" kv get --file "$sentinel_path" --key ISSUE_NUMBER --match first 2>/dev/null || true)
-                stall_step=$(python3 "$_sentinel_plugin_root/python/cli.py" kv get --file "$sentinel_path" --key STALL_STEP --match first 2>/dev/null || true)
-                stash_ref=$(python3 "$_sentinel_plugin_root/python/cli.py" kv get --file "$sentinel_path" --key STASH_REF --match first 2>/dev/null || true)
-            else
-                issue_number=""
-                stall_step=""
-                stash_ref=""
-            fi
+            issue_number=$(CLAUDE_PLUGIN_ROOT="$_sentinel_plugin_root" "$_sentinel_plugin_root/scripts/larch.sh" kv get --file "$sentinel_path" --key ISSUE_NUMBER --match first 2>/dev/null || true)
+            stall_step=$(CLAUDE_PLUGIN_ROOT="$_sentinel_plugin_root" "$_sentinel_plugin_root/scripts/larch.sh" kv get --file "$sentinel_path" --key STALL_STEP --match first 2>/dev/null || true)
+            stash_ref=$(CLAUDE_PLUGIN_ROOT="$_sentinel_plugin_root" "$_sentinel_plugin_root/scripts/larch.sh" kv get --file "$sentinel_path" --key STASH_REF --match first 2>/dev/null || true)
             issue_number=${issue_number:-unknown}
             stall_step=${stall_step:-unknown}
             # Branch on whether a stash was actually recorded — empty STASH_REF

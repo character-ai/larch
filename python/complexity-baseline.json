@@ -8171,23 +8171,6 @@
   {
     "file": "larch/state/session_env.py",
     "code": "C901",
-    "qualified_symbol": "read_key",
-    "metric": 12,
-    "added_at": "2026-07-14",
-    "history": [],
-    "reason": "read_key resolution logic relocated from read_key_main"
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "C901",
-    "qualified_symbol": "read_keys_main",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "C901",
     "qualified_symbol": "resolve_implement_tmpdir",
     "metric": 17,
     "added_at": "legacy",
@@ -8280,14 +8263,6 @@
     "code": "PLR0912",
     "qualified_symbol": "check_live_mutation_auth",
     "metric": 15,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "PLR0912",
-    "qualified_symbol": "read_keys_main",
-    "metric": 13,
     "added_at": "legacy",
     "history": []
   },

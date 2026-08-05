@@ -19,12 +19,15 @@ mod file_io;
 mod filesystem;
 
 pub use file_io::{
-    FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, guarded_update_env,
-    read_utf8, rename_same_directory,
+    FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
+    guarded_update_env, read_first_raw_key, read_kv_raw, read_optional_utf8_lossy,
+    read_session_kv_text, read_utf8, rename_same_directory,
 };
 pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
-    SecureTempDir, SecureTempFile, TemporaryRoot, normalize_path,
+    SecureTempDir, SecureTempFile, TemporaryRoot, is_allowed_session_tmpdir, normalize_path,
+    path_strictly_under, path_under, resolve_allow_missing, safe_output_parent,
+    writer_target_allowed,
 };
 pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,

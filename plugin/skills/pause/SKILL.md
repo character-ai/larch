@@ -58,10 +58,10 @@ fi
 pause_out=$("${pause_args[@]}")
 printf '%s\n' "$pause_out" > "$DESIGN_TMPDIR/pause-save.out"
 
-pause_ok=$(printf '%s\n' "$pause_out" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --key PAUSE_OK --match last)
-step=$(printf '%s\n' "$pause_out" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --key STEP --match last)
-run_id=$(printf '%s\n' "$pause_out" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --key RUN_ID --match last)
-err=$(printf '%s\n' "$pause_out" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --key ERROR --match last)
+pause_ok=$(printf '%s\n' "$pause_out" | CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --key PAUSE_OK --match last)
+step=$(printf '%s\n' "$pause_out" | CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --key STEP --match last)
+run_id=$(printf '%s\n' "$pause_out" | CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --key RUN_ID --match last)
+err=$(printf '%s\n' "$pause_out" | CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --key ERROR --match last)
 
 if [ "$pause_ok" = "true" ]; then
   printf '%s\n' "✅ /larch:pause: state saved (STEP=${step}, RUN_ID=${run_id}) — re-invoke /design ${ISSUE_NUMBER} to resume"

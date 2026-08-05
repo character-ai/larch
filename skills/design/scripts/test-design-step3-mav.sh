@@ -12,6 +12,43 @@ FAIL=0
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-design-step3-mav.XXXXXX")"
 TMPROOT="$(cd "$TMPROOT" && pwd -P)"
 trap 'rm -rf "$TMPROOT"' EXIT
+BASH_BIN="$(command -v bash)"
+PLUGIN_VERSION="$(awk -F '"' '$2 == "version" { print $4 }' "$ROOT/.claude-plugin/plugin.json")"
+case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) LARCH_TARGET=aarch64-apple-darwin ;;
+    Darwin:x86_64|Darwin:amd64) LARCH_TARGET=x86_64-apple-darwin ;;
+    Linux:arm64|Linux:aarch64) LARCH_TARGET=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64|Linux:amd64) LARCH_TARGET=x86_64-unknown-linux-gnu ;;
+    *) echo "FAIL: unsupported harness target" >&2; exit 1 ;;
+esac
+export LARCH_BINARY="$TMPROOT/larch-fixture"
+cat >"$LARCH_BINARY" <<EOF2
+#!$BASH_BIN
+set -u
+if [[ "\${1:-}" == --version ]]; then printf '%s\n' 'larch $PLUGIN_VERSION'; exit 0; fi
+if [[ "\${1:-}" == bootstrap && "\${2:-}" == self-check ]]; then
+    printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+    exit 0
+fi
+if [[ "\${1:-}" == kv && "\${2:-}" == get ]]; then
+    shift 2
+    key="" file="" value=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --key) key="\$2"; shift 2 ;;
+            --file) file="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    while IFS= read -r line || [[ -n "\$line" ]]; do
+        case "\$line" in "\$key="*) value="\${line#*=}" ;; esac
+    done <"\$file"
+    printf '%s\n' "\$value"
+    exit 0
+fi
+exit 2
+EOF2
+chmod +x "$LARCH_BINARY"
 
 pass() { printf '  ok: %s\n' "$1"; PASS=$((PASS + 1)); }
 fail() { printf 'FAIL: %s\n' "$1" >&2; FAIL=$((FAIL + 1)); }

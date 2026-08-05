@@ -160,7 +160,7 @@ def _shell_findings(source: SourceFile) -> list[Finding]:
                     path=source.path,
                     line=number,
                     rule_id=RULE_ID,
-                    message="ad-hoc shell KEY=value reader; use cli.py kv get",
+                    message="ad-hoc shell KEY=value reader; use scripts/larch.sh kv get",
                     anchor=_shell_anchor(line=line, occurrence=occurrence),
                 )
             )
