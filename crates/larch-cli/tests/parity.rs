@@ -55,7 +55,6 @@ impl CleanInstallCase {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
             "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
-            "clean-install-run-log-storage-preflight" => &["--help"],
             _ => &["--help"],
         }
     }
