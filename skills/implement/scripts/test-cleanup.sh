@@ -6,7 +6,6 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 HELPER="$SCRIPT_DIR/cleanup.sh"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-cleanup.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -16,28 +15,13 @@ fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)" ;; esac; }
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
-plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python/stubs/session"
-cp "$REPO_ROOT/python/"*.py "$plugin/python/"
-mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
-cat >"$plugin/python/cli.py" <<'DISPATCHER'
-#!/usr/bin/env python3
-import os
-import sys
-from pathlib import Path
-
-def main() -> None:
-    root = Path(__file__).resolve().parent
-    if len(sys.argv) >= 3 and sys.argv[1] == "session":
-        stub = root / "stubs" / "session" / sys.argv[2]
-        if stub.is_file() and os.access(stub, os.X_OK):
-            os.execv(str(stub), [str(stub), *sys.argv[3:]])
-    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
-
-if __name__ == "__main__":
-    main()
-DISPATCHER
-cat > "$plugin/python/stubs/session/cleanup-tmpdir" <<'STUB'
+# cleanup.sh reaches the Rust owner through the verified bootstrap script, so the
+# harness stubs that entrypoint instead of the retired Python dispatcher.
+plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
+cat > "$plugin/scripts/larch.sh" <<'STUB'
 #!/usr/bin/env bash
+[ "${1:-}" = session ] && [ "${2:-}" = cleanup-tmpdir ] || { printf '%s\n' "unexpected larch command: $*" >&2; exit 64; }
+shift 2
 dir=""
 while [ $# -gt 0 ]; do case "$1" in --dir) dir=$2; shift 2 ;; *) shift ;; esac; done
 printf '%s\n' "$dir" > "${CLEANUP_DIR_LOG:?}"
@@ -46,7 +30,7 @@ if [ "${CLEANUP_FAIL:-false}" = "true" ]; then
 fi
 rm -rf "$dir"
 STUB
-chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/cleanup-tmpdir"
+chmod +x "$plugin/scripts/larch.sh"
 
 target="$TMP_ROOT/session"; mkdir -p "$target"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" CLEANUP_DIR_LOG="$TMP_ROOT/dir.log" "$HELPER" --implement-tmpdir "$target")

@@ -71,7 +71,7 @@ design_require_plugin_root() {
       ;;
   esac
   export CLAUDE_PLUGIN_ROOT
-  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
+  CLAUDE_PLUGIN_ROOT="$_cpr_cli_root" "${_cpr_cli_root}/scripts/larch.sh" session require-plugin-root || exit $?
 }
 
 design_source_env_optional() {

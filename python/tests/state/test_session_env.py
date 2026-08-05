@@ -205,63 +205,6 @@ def test_external_timeout_default_invalid_empty_zero_and_override(monkeypatch: p
     assert session_env._external_timeout() == "45"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_validate_design_tmpdir_main_accepts_allowlisted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
-
-    rc = session_env.validate_design_tmpdir_main([str(tmp_path / "sub")])
-
-    assert rc == 0
-
-
-def test_validate_design_tmpdir_main_requires_path(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
-    rc = session_env.validate_design_tmpdir_main([])
-
-    assert rc == 2
-    assert "path is required" in capsys.readouterr().err
-
-
-def test_validate_design_tmpdir_main_rejects_disallowed_prefix(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
-    rc = session_env.validate_design_tmpdir_main(["/var/tmp/x"])
-
-    assert rc == 2
-    assert "allowlist" in capsys.readouterr().err
-
-
-def test_validate_design_tmpdir_main_writes_no_quiet_log_before_allowlist(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    disallowed = Path("/var/tmp") / f"larch-test-session-env-disallowed-{os.getpid()}"
-    try:
-        disallowed.mkdir()
-    except OSError as exc:
-        pytest.skip(f"/var/tmp unavailable for disallowed-path check: {exc}")
-    try:
-        monkeypatch.setenv("TMPDIR", str(tmp_path))
-        monkeypatch.setenv("DESIGN_TMPDIR", str(disallowed))
-        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
-
-        rc = session_env.validate_design_tmpdir_main([str(disallowed)])
-
-        assert rc == 2
-        assert "allowlist" in capsys.readouterr().err
-        assert not list(disallowed.glob("larch-quiet-*.log"))
-    finally:
-        shutil.rmtree(disallowed, ignore_errors=True)
-
-
 def test_write_design_env_relative_tmpdir_stderr_parity(tmp_path: Path) -> None:
     out = tmp_path / "source-env.sh"
     result = run_cli(
@@ -870,7 +813,7 @@ def test_write_run_params(tmp_path: Path) -> None:
     assert missing_parent.returncode == 1
 
 
-def test_persist_run_flags_write_id_and_entry_gate(tmp_path: Path) -> None:
+def test_persist_run_flags_and_entry_gate(tmp_path: Path) -> None:
     flags = run_cli(
         "persist-run-flags",
         "--implement-tmpdir",
@@ -889,18 +832,9 @@ def test_persist_run_flags_write_id_and_entry_gate(tmp_path: Path) -> None:
     assert "SELF_IMPLEMENT_REQUESTED=true\n" in run_flags_text
     missing = run_cli("persist-run-flags", "--implement-tmpdir", str(tmp_path))
     assert missing.returncode == 2
-    sid = tmp_path / "session-id"
-    first = run_cli("write-id", "--output", str(sid))
-    assert first.returncode == 0
-    original = sid.read_text(encoding="utf-8")
-    sid.write_text("keep\n", encoding="utf-8")
-    second = run_cli("write-id", "--output", str(sid))
-    assert second.returncode == 0
-    assert sid.read_text(encoding="utf-8") == "keep\n"
     gate = run_cli("entry-gate", "--mode", "implement", "--current-branch", "feature", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "user")
     assert gate.returncode == 0
     assert "ENTRY_GATE=continue" in gate.stdout
-    assert original
 
 
 def test_restore_finalize_state_raw_rhs_and_20_keys(tmp_path: Path) -> None:
@@ -1257,19 +1191,13 @@ def test_local_cleanup_rejects_main_branch() -> None:
     assert "must not be 'main'" in result.stderr
 
 
-def test_cleanup_tmpdir_allowlist_and_cache_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_sessions_root_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `session cleanup-tmpdir` moved to the Rust owner in issue #8057; the shared
+    # root derivation still backs the Python session writers that remain.
     monkeypatch.setenv("XDG_CACHE_HOME", "relative-cache")
     monkeypatch.setenv("HOME", "")
     assert session_env.cleanup_cache_sessions_root() == Path("relative-cache/larch/sessions")
     assert finalize.cache_sessions_root().is_absolute()
-    target = tmp_path / "cleanup-me"
-    target.mkdir()
-    result = run_cli("cleanup-tmpdir", "--dir", str(target), env={"TMPDIR": str(tmp_path)})
-    assert result.returncode == 0
-    assert not target.exists()
-    assert (tmp_path / "larch-cleanup-audit.log").is_file()
-    bad = run_cli("cleanup-tmpdir", "--dir", "/etc/not-larch")
-    assert bad.returncode == 1
 
 
 def test_reap_pid_residuals_refuses_symlinked_ancestors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1346,145 +1274,6 @@ def test_setup_writes_session_id_and_keepalive(tmp_path: Path, monkeypatch: pyte
     assert f"CLONE_PATH={Path.cwd()}" in sentinel
     assert f"SESSION_ID={session_id}" in sentinel
     assert not any(line.startswith(("PID=", "PPID=", "PREFIX=", "CREATED=", "NOTE=")) for line in sentinel.splitlines())
-
-
-def _make_implement_candidate(
-    root: Path,
-    name: str,
-    cwd: str,
-    *,
-    sentinel: str = "design-export/manifest.env",
-    session_id: str = "sid-1",
-    mtime: int = 1000,
-    keepalive_text: str | None = None,
-) -> Path:
-    candidate = root / f"claude-implement-{name}"
-    candidate.mkdir(parents=True)
-    if keepalive_text is None:
-        keepalive_text = f"# larch session identity (hook routing)\nCLONE_PATH={cwd}\nSESSION_ID={session_id}\n"
-    (candidate / ".larch-keepalive").write_text(keepalive_text, encoding="utf-8")
-    sentinel_path = candidate / sentinel
-    sentinel_path.parent.mkdir(parents=True, exist_ok=True)
-    sentinel_path.write_text("sentinel\n", encoding="utf-8")
-    os.utime(sentinel_path, (mtime, mtime))
-    return candidate
-
-
-def test_resolve_implement_tmpdir_empty_cwd_and_roots(tmp_path: Path) -> None:
-    env = {"HOME": "", "XDG_CACHE_HOME": str(tmp_path / "xdg")}
-    assert session_env.implement_session_roots(env=env)[0] == tmp_path / "xdg" / "larch" / "sessions"
-    assert session_env.implement_session_roots(env={"HOME": ""})[0] == Path("/tmp/.cache/larch/sessions")
-    assert session_env.resolve_implement_tmpdir("", env=env, now=1000) == ""
-    cli = run_cli("resolve-implement-tmpdir")
-    assert cli.returncode == 0
-    assert cli.stdout == ""
-
-
-def test_resolve_implement_tmpdir_routes_clone_path_and_embedded_equals(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo=name")
-    other = str(tmp_path / "repo-other")
-    wanted = _make_implement_candidate(root, "wanted", cwd, mtime=2000)
-    _make_implement_candidate(root, "other", other, mtime=3000)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "HOME": ""}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=2500) == str(wanted)
-
-
-def test_resolve_implement_tmpdir_session_id_disambiguates_and_disqualifies(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    wanted = _make_implement_candidate(root, "sid-a", cwd, session_id="sid-a", mtime=1000)
-    _make_implement_candidate(root, "sid-b", cwd, session_id="sid-b", mtime=3000)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_TOKEN_SESSION_ID": "sid-a"}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=25000) == str(wanted)
-    env["LARCH_TOKEN_SESSION_ID"] = "sid-missing"
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=25000) == ""
-
-
-def test_resolve_implement_tmpdir_legacy_sentinels_and_acceptance_order(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    first_order = _make_implement_candidate(root, "first-order", cwd, sentinel="design-export/manifest.env", mtime=1000)
-    review = first_order / "review-round-summary.md"
-    review.write_text("newer review\n", encoding="utf-8")
-    os.utime(review, (5000, 5000))
-    expected = _make_implement_candidate(root, "review-only", cwd, sentinel="review-round-summary.md", mtime=3000)
-    _make_implement_candidate(root, "bump", cwd, sentinel=".bump-version-armed", mtime=2000)
-    _make_implement_candidate(root, "release", cwd, sentinel=".release-armed", mtime=2500)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=10000) == str(expected)
-
-
-@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
-def test_resolve_implement_tmpdir_legacy_sentinel_only_candidate(
-    tmp_path: Path, sentinel: str
-) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    expected = _make_implement_candidate(root, "legacy-only", cwd, sentinel=sentinel, mtime=1000)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
-
-
-@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
-def test_resolve_implement_tmpdir_legacy_sentinel_newest_candidate(
-    tmp_path: Path, sentinel: str
-) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    _make_implement_candidate(root, "older", cwd, sentinel="design-export/manifest.env", mtime=1000)
-    expected = _make_implement_candidate(root, "legacy-newest", cwd, sentinel=sentinel, mtime=3000)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
-
-
-def test_resolve_implement_tmpdir_ttl_and_session_bypass(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    fresh = _make_implement_candidate(root, "fresh", cwd, mtime=800)
-    _make_implement_candidate(root, "equal-stale", cwd, mtime=1000 - 21600)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache")}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "200"}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == ""
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "bogus"}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_TOKEN_SESSION_ID": "sid-1"}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=0) == str(fresh)
-
-
-def test_resolve_implement_tmpdir_newest_tie_and_malformed_skip(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    lex_winner = _make_implement_candidate(root, "aaa", cwd, mtime=1000)
-    _make_implement_candidate(root, "bbb", cwd, mtime=1000)
-    newest = _make_implement_candidate(root, "newest", cwd, mtime=2000)
-    _make_implement_candidate(
-        root,
-        "malformed",
-        cwd,
-        mtime=3000,
-        keepalive_text=f"CLONE_PATH={cwd}\rSESSION_ID=sid-1\n",
-    )
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0"}
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=4000) == str(newest)
-    newest.joinpath("design-export/manifest.env").unlink()
-    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=4000) == str(lex_winner)
-
-
-def test_resolve_implement_tmpdir_cli_output(tmp_path: Path) -> None:
-    root = tmp_path / "cache" / "larch" / "sessions"
-    cwd = str(tmp_path / "repo")
-    wanted = _make_implement_candidate(root, "cli", cwd, mtime=1000)
-    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
-    resolved = run_cli("resolve-implement-tmpdir", "--cwd", cwd, env=env)
-    assert resolved.returncode == 0, resolved.stderr
-    assert resolved.stdout == str(wanted)
-    missing = run_cli("resolve-implement-tmpdir", "--cwd", str(tmp_path / "missing"), env=env)
-    assert missing.returncode == 0
-    assert missing.stdout == ""
 
 
 def test_ignore_placeholder_run_dirs_drops_only_run_n() -> None:
@@ -1725,28 +1514,6 @@ def test_write_run_params_rejects_empty_boolean_flags(tmp_path: Path) -> None:
     )
     assert invalid.returncode == 2
     assert "requires a value" in invalid.stderr
-
-
-def test_cleanup_tmpdir_fails_when_removal_blocked(tmp_path: Path) -> None:
-    target = tmp_path / "cleanup-me"
-    target.mkdir()
-    (target / "keep").write_text("x", encoding="utf-8")
-    if os.name != "nt":
-        target.chmod(0o555)
-        try:
-            result = run_cli("cleanup-tmpdir", "--dir", str(target), env={"TMPDIR": str(tmp_path)})
-            assert result.returncode == 1
-            assert target.exists()
-            assert "cleanup-tmpdir failed" in result.stderr
-        finally:
-            target.chmod(0o755)
-
-
-def test_cleanup_tmpdir_succeeds_when_target_already_absent(tmp_path: Path) -> None:
-    target = tmp_path / "already-gone"
-    result = run_cli("cleanup-tmpdir", "--dir", str(target), env={"TMPDIR": str(tmp_path)})
-    assert result.returncode == 0
-    assert result.stderr == ""
 
 
 def _git(args: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:

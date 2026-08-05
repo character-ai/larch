@@ -14,6 +14,18 @@ make_fake_step3_plugin() {
   local dir="$1"
   mkdir -p "$dir/python"
   ln -s "$ROOT/python/larch" "$dir/python/larch"
+  # The wrappers reach the Rust session verbs through the verified bootstrap.
+  mkdir -p "$dir/scripts"
+  cat >"$dir/scripts/larch.sh" <<'LARCH_STUB'
+#!/usr/bin/env bash
+  set -uo pipefail
+  case "${1:-} ${2:-}" in
+    "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+  esac
+  printf '%s\n' "unexpected larch command: $*" >&2
+  exit 64
+LARCH_STUB
+  chmod +x "$dir/scripts/larch.sh"
   cat >"$dir/python/cli.py" <<'CLIPY'
 #!/usr/bin/env python3
 from __future__ import annotations

@@ -43,6 +43,17 @@ impl CleanInstallCase {
                 "--key",
                 "KEY=clean-install",
             ],
+            "clean-install-session-cleanup-tmpdir" => {
+                &["--dir", "/tmp/larch-clean-install-session-missing"]
+            }
+            // The verb rejects every argument, so a clean dispatch carries none.
+            "clean-install-session-require-plugin-root" => &[],
+            "clean-install-session-resolve-implement-tmpdir" => {
+                &["--cwd", "/larch-clean-install-clone-missing"]
+            }
+            "clean-install-session-validate-design-tmpdir" => {
+                &["/tmp/larch-clean-install-design-tmpdir-missing"]
+            }
             _ => &["--help"],
         }
     }
@@ -50,12 +61,32 @@ impl CleanInstallCase {
 
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
+    CleanInstallCase::new(
+        "clean-install-session-cleanup-tmpdir",
+        "session",
+        "cleanup-tmpdir",
+    ),
     CleanInstallCase::new("clean-install-session-read-key", "session", "read-key"),
     CleanInstallCase::new("clean-install-session-read-keys", "session", "read-keys"),
     CleanInstallCase::new(
         "clean-install-session-kill-background-processes",
         "session",
         "kill-background-processes",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-require-plugin-root",
+        "session",
+        "require-plugin-root",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-resolve-implement-tmpdir",
+        "session",
+        "resolve-implement-tmpdir",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-validate-design-tmpdir",
+        "session",
+        "validate-design-tmpdir",
     ),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
@@ -423,6 +454,290 @@ fn session_kv_commands_have_reviewed_parity() {
     }
 }
 
+struct SessionLifecycleFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    environment: &'static [(&'static str, &'static str)],
+    seeds: &'static [(&'static str, &'static str)],
+    normalization: &'static [NormalizationRule],
+}
+
+impl SessionLifecycleFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.command))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust_program = Program::new(rust).args(
+            ["session", self.command]
+                .into_iter()
+                .chain(self.arguments.iter().copied()),
+        );
+        for (key, value) in self.environment {
+            python_program = python_program.env(key, value);
+            rust_program = rust_program.env(key, value);
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: self.normalization.to_vec(),
+        }
+    }
+}
+
+/// Environment shared by every lifecycle case that needs an expanded plugin root.
+const PLUGIN_ROOT_ENVIRONMENT: &[(&str, &str)] = &[("CLAUDE_PLUGIN_ROOT", "{sandbox}")];
+const SANDBOX_ONLY: &[NormalizationRule] = &[NormalizationRule::SandboxRoot];
+const CLEANUP_NORMALIZATION: &[NormalizationRule] = &[
+    NormalizationRule::SandboxRoot,
+    NormalizationRule::Rfc3339Utc,
+    NormalizationRule::ProcessIdentity,
+];
+/// One implement session bound to the clone and identity the match case queries.
+const IMPLEMENT_KEEPALIVE: &str = "CLONE_PATH=/clone/for/parity\nSESSION_ID=S1\n";
+/// A sibling session in the same root bound to a different identity.
+const OTHER_KEEPALIVE: &str = "CLONE_PATH=/clone/for/parity\nSESSION_ID=S2\n";
+
+const SESSION_LIFECYCLE_CASES: &[SessionLifecycleFixture] = &[
+    SessionLifecycleFixture {
+        name: "session-require-plugin-root-expanded",
+        command: "require-plugin-root",
+        arguments: &[],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-require-plugin-root-empty",
+        command: "require-plugin-root",
+        arguments: &[],
+        environment: &[("CLAUDE_PLUGIN_ROOT", "")],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-require-plugin-root-unexpanded",
+        command: "require-plugin-root",
+        arguments: &[],
+        environment: &[("CLAUDE_PLUGIN_ROOT", "${CLAUDE_PLUGIN_ROOT}")],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-require-plugin-root-unrecognized",
+        command: "require-plugin-root",
+        arguments: &["--bogus"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-missing-path",
+        command: "validate-design-tmpdir",
+        arguments: &[],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-allowed",
+        command: "validate-design-tmpdir",
+        arguments: &["{sandbox}/.tmp/claude-design-parity"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[(".tmp/claude-design-parity/.keep", "")],
+        normalization: SANDBOX_ONLY,
+    },
+    // Not a sandbox path: every platform's temporary root is itself allowlisted,
+    // on Linux through `/tmp` and on macOS through `TMPDIR`. `/usr` is a real
+    // directory on both, so the rejected path resolves to itself either way.
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-outside-allowlist",
+        command: "validate-design-tmpdir",
+        arguments: &["/usr/larch-parity-not-a-session"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-relative",
+        command: "validate-design-tmpdir",
+        arguments: &["relative/design"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-dot-segment",
+        command: "validate-design-tmpdir",
+        arguments: &["{sandbox}/.tmp/../escape"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionLifecycleFixture {
+        name: "session-validate-design-tmpdir-unrecognized",
+        command: "validate-design-tmpdir",
+        arguments: &["--bogus"],
+        environment: PLUGIN_ROOT_ENVIRONMENT,
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-write-id-missing-output",
+        command: "write-id",
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-write-id-unrecognized",
+        command: "write-id",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-write-id-outside-allowed-root",
+        command: "write-id",
+        arguments: &["--output", "/larch-parity-not-a-session/session-id"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-write-id-preserves-existing-identity",
+        command: "write-id",
+        arguments: &["--output", "{sandbox}/.tmp/claude-design-parity/session-id"],
+        environment: &[],
+        seeds: &[(".tmp/claude-design-parity/session-id", "PRESERVED\n")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-missing-dir",
+        command: "cleanup-tmpdir",
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-outside-allowed-root",
+        command: "cleanup-tmpdir",
+        arguments: &["--dir", "/larch-parity-not-a-session"],
+        environment: &[],
+        seeds: &[],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-unrecognized",
+        command: "cleanup-tmpdir",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-removes-session",
+        command: "cleanup-tmpdir",
+        arguments: &["--dir", "{sandbox}/.tmp/claude-design-parity"],
+        environment: &[],
+        seeds: &[
+            (".tmp/claude-design-parity/nested/artifact.txt", "payload\n"),
+            (".tmp/claude-design-parity/session-id", "ID\n"),
+        ],
+        normalization: CLEANUP_NORMALIZATION,
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-cache-sessions-root",
+        command: "cleanup-tmpdir",
+        arguments: &[
+            "--dir",
+            "{sandbox}/xdg/larch/sessions/claude-implement-cache",
+        ],
+        environment: &[("XDG_CACHE_HOME", "{sandbox}/xdg")],
+        seeds: &[(
+            "xdg/larch/sessions/claude-implement-cache/artifact.txt",
+            "payload\n",
+        )],
+        normalization: CLEANUP_NORMALIZATION,
+    },
+    SessionLifecycleFixture {
+        name: "session-cleanup-tmpdir-missing-target",
+        command: "cleanup-tmpdir",
+        arguments: &["--dir", "{sandbox}/.tmp/claude-design-absent"],
+        environment: &[],
+        seeds: &[],
+        normalization: CLEANUP_NORMALIZATION,
+    },
+    SessionLifecycleFixture {
+        name: "session-resolve-implement-tmpdir-no-match",
+        command: "resolve-implement-tmpdir",
+        arguments: &["--cwd", "/clone/without/session"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionLifecycleFixture {
+        name: "session-resolve-implement-tmpdir-session-bound",
+        command: "resolve-implement-tmpdir",
+        arguments: &["--cwd", "/clone/for/parity"],
+        environment: &[("LARCH_TOKEN_SESSION_ID", "S1")],
+        seeds: &[
+            (
+                ".home/.cache/larch/sessions/claude-implement-alpha/design-export/manifest.env",
+                "MANIFEST=1\n",
+            ),
+            (
+                ".home/.cache/larch/sessions/claude-implement-alpha/.larch-keepalive",
+                IMPLEMENT_KEEPALIVE,
+            ),
+            (
+                ".home/.cache/larch/sessions/claude-implement-beta/review-round-summary.md",
+                "# round\n",
+            ),
+            (
+                ".home/.cache/larch/sessions/claude-implement-beta/.larch-keepalive",
+                OTHER_KEEPALIVE,
+            ),
+        ],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionLifecycleFixture {
+        name: "session-resolve-implement-tmpdir-unrecognized",
+        command: "resolve-implement-tmpdir",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+];
+
+#[test]
+fn session_lifecycle_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("session_lifecycle_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in SESSION_LIFECYCLE_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[test]
 fn hung_command_fails_at_the_case_boundary() {
     let fixture_directory = fixture_directory();
@@ -459,12 +774,7 @@ fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         let lines: Vec<&str> = events.lines().collect();
-        let expected_dispatch = format!(
-            "{} {} {}",
-            case.domain,
-            case.verb,
-            case.arguments().join(" ")
-        );
+        let expected_dispatch = clean_install_dispatch(*case);
         assert_eq!(lines.first(), Some(&"--version"), "{}", case.id);
         assert_eq!(lines.get(1), Some(&"bootstrap self-check"), "{}", case.id);
         assert_eq!(
@@ -491,14 +801,9 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         assert!(
-            !events.lines().any(|line| {
-                line == format!(
-                    "{} {} {}",
-                    case.domain,
-                    case.verb,
-                    case.arguments().join(" ")
-                )
-            }),
+            !events
+                .lines()
+                .any(|line| line == clean_install_dispatch(case)),
             "{failure} reached selector dispatch"
         );
     }
@@ -576,6 +881,18 @@ exec "$REAL_LARCH" "$@"
         root,
         wrapper,
     }
+}
+
+/// Render the argv line the verified bootstrap wrapper records for one case.
+///
+/// An argument-free verb records only its domain and verb, with no trailing
+/// separator, because the wrapper logs the shell's joined argument list.
+fn clean_install_dispatch(case: CleanInstallCase) -> String {
+    std::iter::once(case.domain)
+        .chain(std::iter::once(case.verb))
+        .chain(case.arguments().iter().copied())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn run_clean_install_case(

@@ -18,6 +18,7 @@ const UPDATE_GOLDENS_ENV: &str = "LARCH_UPDATE_PARITY_GOLDENS";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const DIAGNOSTIC_PATH_LIMIT: usize = 8;
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
+static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
 const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
     "ALL_PROXY",
     "AWS_ACCESS_KEY_ID",
@@ -100,6 +101,7 @@ impl SeedFile {
 pub enum NormalizationRule {
     SandboxRoot,
     Rfc3339Utc,
+    ProcessIdentity,
 }
 
 #[derive(Clone, Debug)]
@@ -457,11 +459,23 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
     let mut normalized = text.to_owned();
     for rule in rules {
         normalized = match rule {
+            // Replace the canonical spelling first: a command that resolves a
+            // path emits `/private/var/...` where the sandbox root is `/var/...`.
             NormalizationRule::SandboxRoot => {
-                normalized.replace(sandbox_root.to_string_lossy().as_ref(), "<SANDBOX>")
+                let canonical = fs::canonicalize(sandbox_root).unwrap_or_default();
+                let canonical = canonical.to_string_lossy().into_owned();
+                if canonical.is_empty() {
+                    normalized
+                } else {
+                    normalized.replace(canonical.as_str(), "<SANDBOX>")
+                }
+                .replace(sandbox_root.to_string_lossy().as_ref(), "<SANDBOX>")
             }
             NormalizationRule::Rfc3339Utc => rfc3339_utc_pattern()
                 .replace_all(&normalized, "<TIMESTAMP>")
+                .into_owned(),
+            NormalizationRule::ProcessIdentity => process_identity_pattern()
+                .replace_all(&normalized, "${1}=<PID>")
                 .into_owned(),
         };
     }
@@ -472,6 +486,13 @@ fn rfc3339_utc_pattern() -> &'static Regex {
     RFC3339_UTC.get_or_init(|| {
         Regex::new(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b")
             .expect("RFC 3339 normalization regex should compile")
+    })
+}
+
+fn process_identity_pattern() -> &'static Regex {
+    PROCESS_IDENTITY.get_or_init(|| {
+        Regex::new(r"\b(pid|ppid)=\d+")
+            .expect("process identity normalization regex should compile")
     })
 }
 
@@ -636,6 +657,24 @@ mod tests {
         );
 
         assert_eq!(normalized, "<SANDBOX>/out at <TIMESTAMP>; keep 2026-07-18");
+    }
+
+    #[test]
+    fn process_identity_normalization_survives_both_pid_spellings() {
+        let normalized = normalize_text(
+            "2026-08-05T00:00:00Z pid=91 ppid=7 parent=? dir=/tmp/case/session",
+            Path::new("/tmp/case"),
+            &[
+                NormalizationRule::SandboxRoot,
+                NormalizationRule::Rfc3339Utc,
+                NormalizationRule::ProcessIdentity,
+            ],
+        );
+
+        assert_eq!(
+            normalized,
+            "<TIMESTAMP> pid=<PID> ppid=<PID> parent=? dir=<SANDBOX>/session"
+        );
     }
 
     #[test]

@@ -14,7 +14,6 @@ fi
 
 REAL_JQ=$(command -v jq || true)
 REAL_GIT=$(command -v git || true)
-REAL_PYTHON3=$(command -v python3 || true)
 BASH_BIN=$(command -v bash || true)
 if [[ -z "$REAL_JQ" || ! -x "$REAL_JQ" ]]; then
     echo "FAIL: harness jq not on PATH; cannot validate JSON output" >&2
@@ -22,10 +21,6 @@ if [[ -z "$REAL_JQ" || ! -x "$REAL_JQ" ]]; then
 fi
 if [[ -z "$REAL_GIT" || ! -x "$REAL_GIT" ]]; then
     echo "FAIL: harness git not on PATH; cannot create git-state fixtures" >&2
-    exit 1
-fi
-if [[ -z "$REAL_PYTHON3" || ! -x "$REAL_PYTHON3" ]]; then
-    echo "FAIL: harness python3 not on PATH; cannot validate resolver path" >&2
     exit 1
 fi
 if [[ -z "$BASH_BIN" || ! -x "$BASH_BIN" ]]; then
@@ -55,6 +50,39 @@ if [[ "\${1:-}" == "--version" ]]; then
 fi
 if [[ "\${1:-}" == "bootstrap" && "\${2:-}" == "self-check" ]]; then
     printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+    exit 0
+fi
+if [[ "\${1:-}" == "session" && "\${2:-}" == "resolve-implement-tmpdir" ]]; then
+    shift 2
+    cwd=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --cwd) cwd="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    if [[ -n "\${TOKEN_RECORD_FILE:-}" ]]; then
+        printf '%s\n' "\${LARCH_TOKEN_SESSION_ID-__UNSET__}" > "\$TOKEN_RECORD_FILE"
+    fi
+    if [[ -n "\${FAKE_LARCH_RESOLVER_RC:-}" ]]; then
+        exit "\$FAKE_LARCH_RESOLVER_RC"
+    fi
+    if [[ -n "\${FAKE_LARCH_RESOLVER_SILENT:-}" ]]; then
+        exit 0
+    fi
+    for root in "\${XDG_CACHE_HOME:-}/larch/sessions" /tmp /private/tmp; do
+        for candidate in "\$root"/claude-implement-*; do
+            [[ -d "\$candidate" ]] || continue
+            [[ -f "\$candidate/.larch-keepalive" ]] || continue
+            grep -qxF "CLONE_PATH=\$cwd" "\$candidate/.larch-keepalive" || continue
+            for sentinel in design-export/manifest.env review-round-summary.md .bump-version-armed .release-armed; do
+                if [[ -f "\$candidate/\$sentinel" ]]; then
+                    printf '%s' "\$candidate"
+                    exit 0
+                fi
+            done
+        done
+    done
     exit 0
 fi
 if [[ "\${1:-}" == "kv" && "\${2:-}" == "get" ]]; then
@@ -358,16 +386,15 @@ assert_contains "$ctx" "jq not on PATH and git not on PATH" "case 4: fixed jq+gi
 build_bin "$tmp/real_bin"
 add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/real_bin" git "$REAL_GIT"
-add_real_tool "$tmp/real_bin" python3 "$REAL_PYTHON3"
 
-echo "=== Case 4a0: resolver pre-check structurally guards Python spawn ==="
-assert_source_order "case 4a0: claude-implement pre-check before Python resolver" \
+echo "=== Case 4a0: resolver pre-check structurally guards the resolver spawn ==="
+assert_source_order "case 4a0: claude-implement pre-check before the Rust resolver" \
     "for dir in \"\$root\"/claude-implement-*; do" \
     "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\"" \
     "$SCRIPT"
-assert_contains "$(cat "$SCRIPT")" 'if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then' \
-    "case 4a0: pre-check and python3 guard share spawn branch"
-assert_contains "$(cat "$SCRIPT")" "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/python/cli.py\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\"" \
+assert_contains "$(cat "$SCRIPT")" 'if implement_session_dir_exists; then' \
+    "case 4a0: pre-check guards the resolver spawn branch"
+assert_contains "$(cat "$SCRIPT")" "IMPLEMENT_TMPDIR=\$(CLAUDE_PLUGIN_ROOT=\"\$PLUGIN_ROOT\" \"\$PLUGIN_ROOT/scripts/larch.sh\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\"" \
     "case 4a0: resolver capture is fail-open under set -e"
 
 EXPECTED_SPARSE_DIRS=(".claude-plugin")
@@ -596,13 +623,8 @@ echo "=== Case 12: pre-check pass with resolver failure is fail-open ==="
 build_bin "$tmp/c12_bin"
 add_real_tool "$tmp/c12_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/c12_bin" git "$REAL_GIT"
-cat > "$tmp/c12_bin/python3" <<STUB
-#!$BASH_BIN
-exit 9
-STUB
-chmod +x "$tmp/c12_bin/python3"
 mkdir -p "$tmp/c12-cwd" "$XDG_TEST/larch/sessions/claude-implement-c12-dummy"
-rc=$(run_with_stdin "$tmp/c12_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
+rc=$(FAKE_LARCH_RESOLVER_RC=9 run_with_stdin "$tmp/c12_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
 assert_eq "$rc" "0" "case 12: exit code 0"
 stdout=$(cat "$tmp/c12.out")
 assert_empty "$stdout" "case 12: stdout empty when resolver exits non-zero"
@@ -623,12 +645,6 @@ echo "=== Case 12c: stale ambient LARCH_TOKEN_SESSION_ID is cleared before resol
 build_bin "$tmp/c12c_bin"
 add_real_tool "$tmp/c12c_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/c12c_bin" git "$REAL_GIT"
-cat > "$tmp/c12c_bin/python3" <<STUB
-#!$BASH_BIN
-printf '%s\n' "\${LARCH_TOKEN_SESSION_ID-__UNSET__}" > "\$TOKEN_RECORD_FILE"
-exit 0
-STUB
-chmod +x "$tmp/c12c_bin/python3"
 mkdir -p "$tmp/c12c-cwd" "$tmp/c12c-home" "$XDG_TEST/larch/sessions/claude-implement-c12c-stale"
 rc=$(run_with_stdin_and_stale_token "$tmp/c12c_bin" "$tmp/c12c-cwd" '{"cwd":"'"$tmp/c12c-cwd"'"}' "$XDG_TEST" "$tmp/c12c.out" "$tmp/c12c.err" "$tmp/c12c-token.txt" "$tmp/c12c-home")
 assert_eq "$rc" "0" "case 12c: exit code 0"

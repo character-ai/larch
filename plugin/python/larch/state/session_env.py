@@ -1,4 +1,13 @@
-"""Session/state lifecycle verbs for the larch Python runtime."""
+"""Session/state lifecycle verbs for the larch Python runtime.
+
+Issue #8057 moved ``session setup``'s temp-directory siblings to the Rust owner:
+``require-plugin-root``, ``validate-design-tmpdir``, ``write-id``,
+``resolve-implement-tmpdir``, and ``cleanup-tmpdir`` no longer register here.
+``require_plugin_root``, ``validate_design_tmpdir``, and ``write_id`` survive as
+library helpers because Python-owned commands in ``larch.design`` and
+``larch.state.bootstrap`` still call them in process; their CLI entrypoints and
+the fully orphaned implement-tmpdir resolver are gone.
+"""
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false
 
 from __future__ import annotations
@@ -11,10 +20,8 @@ import shlex
 import shutil
 import sys
 import tempfile
-import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
@@ -259,12 +266,6 @@ def require_plugin_root() -> int:
     return 0
 
 
-def require_plugin_root_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="session require-plugin-root", add_help=False)
-    _ = parser.parse_args(argv or [])
-    return require_plugin_root()
-
-
 @dataclass(frozen=True)
 class WriteEnvResult:
     """Result of :func:`write_env`.
@@ -392,15 +393,6 @@ def _read_kv_file_text(path: Path) -> str:
     return text
 
 
-IMPLEMENT_SENTINEL_RELS = (
-    Path("design-export") / "manifest.env",
-    Path("review-round-summary.md"),
-    Path(".bump-version-armed"),
-    Path(".release-armed"),
-)
-IMPLEMENT_TMPDIR_TTL_SECONDS = 21600
-
-
 def cleanup_cache_sessions_root(*, env: Mapping[str, str] | None = None) -> Path:
     environ = os.environ if env is None else env
     xdg = environ.get("XDG_CACHE_HOME")
@@ -410,14 +402,6 @@ def cleanup_cache_sessions_root(*, env: Mapping[str, str] | None = None) -> Path
         home = environ.get("HOME", "")
         base = f"{home}/.cache" if home else f"{TMP_FALLBACK}/.cache"
     return Path(base) / "larch" / "sessions"
-
-
-def implement_session_roots(*, env: Mapping[str, str] | None = None) -> tuple[Path, ...]:
-    return (
-        cleanup_cache_sessions_root(env=env),
-        TMP_ROOT,
-        Path("/private/tmp"),
-    )
 
 
 def check_live_mutation_auth(
@@ -610,93 +594,6 @@ def _read_kv_raw(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     return larch_io.parse_kv(_read_kv_file_text(path), skip_comments=True)
-
-
-def _read_first_raw_key(*, path: Path, key: str) -> str | None:
-    if not path.is_file():
-        return None
-    parsed = larch_io.parse_kv(_read_kv_file_text(path), duplicate_policy="first")
-    return parsed.get(key) if key in parsed else None
-
-
-def _first_existing_implement_sentinel(candidate: Path) -> Path | None:
-    for rel in IMPLEMENT_SENTINEL_RELS:
-        sentinel = candidate / rel
-        if sentinel.is_file():
-            return sentinel
-    return None
-
-
-def _implement_tmpdir_ttl(env: Mapping[str, str]) -> int:
-    raw = env.get("LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS", str(IMPLEMENT_TMPDIR_TTL_SECONDS))
-    return int(raw) if raw.isdigit() else IMPLEMENT_TMPDIR_TTL_SECONDS
-
-
-def resolve_implement_tmpdir(
-    hook_cwd: str,
-    *,
-    env: Mapping[str, str] | None = None,
-    now: int | None = None,
-) -> str:
-    if not hook_cwd:
-        return ""
-    environ = os.environ if env is None else env
-    now_value = int(time.time()) if now is None else now
-    best = ""
-    best_mtime = -1
-    session_id = environ.get("LARCH_TOKEN_SESSION_ID", "")
-    for root in implement_session_roots(env=environ):
-        try:
-            candidates: list[Path] = list(root.glob("claude-implement-*")) if root.is_dir() else []
-        except OSError:
-            continue
-        for candidate in candidates:
-            try:
-                if not candidate.is_dir():
-                    continue
-                sentinel = _first_existing_implement_sentinel(candidate)
-                if sentinel is None:
-                    continue
-                keepalive = candidate / ".larch-keepalive"
-                if not keepalive.is_file():
-                    continue
-                if _read_first_raw_key(path=keepalive, key="CLONE_PATH") != hook_cwd:
-                    continue
-                session_match = False
-                if session_id:
-                    if _read_first_raw_key(path=keepalive, key="SESSION_ID") != session_id:
-                        continue
-                    session_match = True
-                mtime = int(sentinel.stat().st_mtime)
-            except (OSError, ValueError):
-                continue
-            if not session_match:
-                ttl = _implement_tmpdir_ttl(environ)
-                if ttl > 0:
-                    if now_value <= 0:
-                        continue
-                    if now_value - mtime >= ttl:
-                        continue
-            candidate_text = str(candidate)
-            if mtime > best_mtime or (mtime == best_mtime and (not best or candidate_text < best)):
-                best_mtime = mtime
-                best = candidate_text
-    return best
-
-
-def resolve_implement_tmpdir_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session resolve-implement-tmpdir", add_help=False)
-    parser.add_argument("--cwd", default="")
-    try:
-        args = parser.parse_args(argv)
-        resolved = resolve_implement_tmpdir(args.cwd)
-    except (OSError, ValueError, SystemExit) as exc:
-        _plain_err(f"resolve-implement-tmpdir: {exc}")
-        return 1
-    if resolved:
-        sys.stdout.write(resolved)
-    return 0
-
 
 
 def _valid_repo_value(value: str) -> bool:
@@ -1061,23 +958,6 @@ def validate_design_tmpdir(candidate: str) -> tuple[bool, str]:
     if not any(prefix and resolved_cmp.startswith(prefix) for prefix in allow):
         return False, f"design-tmpdir: path not under allowlist after resolution: {resolved}"
     return True, ""
-
-
-def validate_design_tmpdir_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session validate-design-tmpdir", add_help=False)
-    parser.add_argument("path", nargs="?", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return 2
-    plugin_rc = require_plugin_root()
-    if plugin_rc != 0:
-        return plugin_rc
-    ok, message = validate_design_tmpdir(args.path)
-    if not ok:
-        _plain_err(message)
-        return 2
-    return 0
 
 
 def _recover_prior_bool(*, key: str, prior_file: Path) -> str:
@@ -1518,30 +1398,6 @@ def write_id(*, output: Path) -> WriteIdResult:
     return WriteIdResult(output=output, session_id=session_id, wrote=True)
 
 
-def write_id_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session write-id", add_help=False)
-    parser.add_argument("--output", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        logging_util.quiet_init(argv0="write-session-id.sh")
-        logging_util.emit_kv(key="FAILED", value="true")
-        logging_util.emit_kv(key="ERROR", value="unknown flag")
-        return 1
-    logging_util.quiet_init(argv0="write-session-id.sh")
-    if not args.output:
-        logging_util.emit_kv(key="FAILED", value="true")
-        logging_util.emit_kv(key="ERROR", value="--output is required")
-        return 1
-    try:
-        write_id(output=Path(args.output))
-        return 0
-    except OSError as exc:
-        logging_util.emit_kv(key="FAILED", value="true")
-        logging_util.emit_kv(key="ERROR", value=str(exc))
-        return 1
-
-
 def persist_run_flags_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session persist-run-flags", add_help=False)
     parser.add_argument("--implement-tmpdir", default="")
@@ -1715,47 +1571,6 @@ def restore_finalize_state_main(argv: list[str]) -> int:
             *run_log_write_argv(log_root=tmpdir / "larch-logs", run_id=run_id,
                                 batch="final-bail-reason", input_file=bail_reason_file),
         ])
-    return 0
-
-
-def cleanup_tmpdir_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session cleanup-tmpdir", add_help=False)
-    parser.add_argument("--dir", dest="dir", default="")
-    parser.add_argument("pos", nargs="?")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        logging_util.quiet_init(argv0="cleanup-tmpdir.sh")
-        _err("Usage: cleanup-tmpdir.sh --dir <path>")
-        return 1
-    logging_util.quiet_init(argv0="cleanup-tmpdir.sh")
-    target = args.dir or args.pos or ""
-    if not target:
-        _err("ERROR: --dir is required and must be non-empty")
-        return 1
-    if not is_allowed_session_tmpdir(target):
-        _err(f"ERROR: --dir must be under /tmp/, /private/tmp/, /var/folders/, or {cleanup_cache_sessions_root()}/ (got: {target})")
-        return 1
-    audit_log = Path(os.environ.get("TMPDIR", TMP_FALLBACK)) / "larch-cleanup-audit.log"
-    ts = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    parent = "?"
-    with suppress(Exception):
-        result = proc.run(["ps", "-o", "comm=", "-p", str(os.getppid())])
-        parent = re.sub(r"\s+", "_", result.stdout.strip()) or "?"
-    with suppress(OSError):
-        with audit_log.open("a", encoding="utf-8") as handle:
-            handle.write(f"{ts} pid={os.getpid()} ppid={os.getppid()} parent={parent} dir={target}\n")
-    target_path = Path(target)
-    if not target_path.exists():
-        return 0
-    try:
-        shutil.rmtree(target_path)
-    except OSError as exc:
-        _err(f"ERROR: cleanup-tmpdir failed: {exc}")
-        return 1
-    if target_path.exists():
-        _err(f"ERROR: cleanup-tmpdir failed: directory still exists: {target}")
-        return 1
     return 0
 
 

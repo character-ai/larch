@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".tmp/larch-cleanup-audit.log": {
+      "text": "<TIMESTAMP> pid=<PID> ppid=<PID> parent=? dir=<SANDBOX>/.tmp/claude-design-absent\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

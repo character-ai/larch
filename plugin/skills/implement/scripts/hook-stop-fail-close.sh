@@ -60,8 +60,8 @@ else
 fi
 
 IMPLEMENT_TMPDIR=""
-if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then
-    IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+if implement_session_dir_exists; then
+    IMPLEMENT_TMPDIR=$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
 fi
 [[ -n "$IMPLEMENT_TMPDIR" ]] || exit 0
 [[ ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]] || exit 0

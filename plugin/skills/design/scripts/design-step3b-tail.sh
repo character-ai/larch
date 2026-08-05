@@ -67,7 +67,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
 publish_step4_result() {
   local _status="$1"

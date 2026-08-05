@@ -155,7 +155,7 @@ design_require_plugin_root() {
       ;;
   esac
   export CLAUDE_PLUGIN_ROOT
-  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
+  CLAUDE_PLUGIN_ROOT="$_cpr_cli_root" "${_cpr_cli_root}/scripts/larch.sh" session require-plugin-root || exit $?
 }
 
 design_require_plugin_root
@@ -311,7 +311,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   exit 1
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
 if [ "$READ_RESULT_ENV" = true ]; then
   exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env

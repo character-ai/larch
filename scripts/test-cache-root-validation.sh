@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # test-cache-root-validation.sh — regression harness for larch cache session root validators.
+# `session cleanup-tmpdir` moved to the Rust owner in issue #8057; its cache-root,
+# /tmp, and unrelated-path cases now live in the Rust parity goldens.
 
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-CLEANUP=(python3 "$REPO_ROOT/python/cli.py" session cleanup-tmpdir)
 FINALIZE=(python3 "$REPO_ROOT/python/cli.py" implement-finalize)
 TOKEN_CLI=(python3 "$REPO_ROOT/python/cli.py" token)
 
@@ -53,12 +54,6 @@ write_state() {
 CACHE_ROOT="$TMPROOT/cache/larch/sessions"
 mkdir -p "$CACHE_ROOT"
 
-CLEANUP_TARGET="$CACHE_ROOT/claude-implement-cache-cleanup"
-mkdir -p "$CLEANUP_TARGET"
-rc=0
-XDG_CACHE_HOME="$TMPROOT/cache" "${CLEANUP[@]}" --dir "$CLEANUP_TARGET" >/dev/null 2>&1 || rc=$?
-assert_rc "$rc" 0 "cleanup-tmpdir accepts cache sessions root"
-
 FINALIZE_TARGET="$CACHE_ROOT/claude-implement-cache-finalize"
 mkdir -p "$FINALIZE_TARGET"
 write_state "$FINALIZE_TARGET"
@@ -70,11 +65,6 @@ TOKEN_DIR="$CACHE_ROOT/larch-research-token-tally"
 rc=0
 XDG_CACHE_HOME="$TMPROOT/cache" "${TOKEN_CLI[@]}" lane-write --phase research --lane cache --tool claude --total-tokens 10 --dir "$TOKEN_DIR" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 0 "token-tally accepts cache sessions root"
-
-TMP_CLEANUP=$(mktemp -d /tmp/larch-cache-root-cleanup.XXXXXX)
-rc=0
-"${CLEANUP[@]}" --dir "$TMP_CLEANUP" >/dev/null 2>&1 || rc=$?
-assert_rc "$rc" 0 "cleanup-tmpdir still accepts /tmp"
 
 TMP_TOKEN=$(mktemp -d /tmp/larch-cache-root-token.XXXXXX)
 rc=0
@@ -91,10 +81,6 @@ if [ -d /private/tmp ]; then
 fi
 
 UNRELATED="$REPO_ROOT/not-a-session-root"
-
-rc=0
-"${CLEANUP[@]}" --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
-assert_rc "$rc" 1 "cleanup-tmpdir rejects unrelated path"
 
 rc=0
 "${TOKEN_CLI[@]}" lane-report --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?

@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "Invalid --design-tmpdir: must be an absolute path\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

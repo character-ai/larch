@@ -30,15 +30,66 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
-    echo "FAIL: harness python3 not on PATH; cannot set up implement tmpdir" >&2
+    echo "FAIL: harness python3 not on PATH; cannot exercise the JSON fallback" >&2
     exit 1
 fi
 
 PASS=0
 FAIL=0
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-hook-stop-fail-close.XXXXXX")
+# The bootstrap refuses a LARCH_BINARY with a symlinked ancestor, and macOS
+# resolves $TMPDIR through /var -> /private/var.
+TMP=$(cd "$TMP" && pwd -P)
 STUB_BIN=$(mktemp -d "${TMPDIR:-/tmp}/test-hook-stop-fail-close-stub.XXXXXX")
 trap 'rm -rf "$TMP" "$STUB_BIN"' EXIT
+
+# The hook reaches the Rust `session resolve-implement-tmpdir` owner through the
+# verified bootstrap, which refuses to install inside a source checkout. Supply a
+# version-matched fake so the harness stays offline; resolver behavior itself is
+# pinned by the Rust unit tests and the session-lifecycle parity goldens.
+BASH_BIN=$(command -v bash)
+PLUGIN_VERSION=$(awk -F '"' '$2 == "version" { print $4 }' "$REPO_ROOT/.claude-plugin/plugin.json")
+case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) LARCH_TARGET=aarch64-apple-darwin ;;
+    Darwin:x86_64|Darwin:amd64) LARCH_TARGET=x86_64-apple-darwin ;;
+    Linux:arm64|Linux:aarch64) LARCH_TARGET=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64|Linux:amd64) LARCH_TARGET=x86_64-unknown-linux-gnu ;;
+    *) echo "FAIL: unsupported harness target" >&2; exit 1 ;;
+esac
+export LARCH_BINARY="$TMP/larch-fixture"
+cat >"$LARCH_BINARY" <<STUB
+#!$BASH_BIN
+set -u
+if [[ "\${1:-}" == "--version" ]]; then
+    printf '%s\n' 'larch $PLUGIN_VERSION'
+    exit 0
+fi
+if [[ "\${1:-}" == "bootstrap" && "\${2:-}" == "self-check" ]]; then
+    printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+    exit 0
+fi
+if [[ "\${1:-}" == "session" && "\${2:-}" == "resolve-implement-tmpdir" ]]; then
+    shift 2
+    cwd=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --cwd) cwd="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    for candidate in "\${XDG_CACHE_HOME:-}/larch/sessions"/claude-implement-*; do
+        [[ -d "\$candidate" ]] || continue
+        [[ -f "\$candidate/.larch-keepalive" ]] || continue
+        grep -qxF "CLONE_PATH=\$cwd" "\$candidate/.larch-keepalive" || continue
+        [[ -f "\$candidate/review-round-summary.md" ]] || continue
+        printf '%s' "\$candidate"
+        exit 0
+    done
+    exit 0
+fi
+exit 2
+STUB
+chmod +x "$LARCH_BINARY"
 
 fail() {
     FAIL=$((FAIL + 1))
@@ -71,6 +122,7 @@ invoke_hook() {
         export XDG_CACHE_HOME="$cache_root"
         export LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=0
         export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+        export LARCH_BINARY="$LARCH_BINARY"
         export PATH="${path_prefix}${PATH}"
         printf '%s' "$payload" | "$HOOK"
     )

@@ -1,3 +1,7 @@
+use crate::argparse_compat::{
+    join_arguments, looks_like_option, resolve_option, split_inline_option, write_stdout,
+    write_stdout_line,
+};
 use larch_adapters::{FileIoErrorKind, read_optional_utf8_lossy, read_session_kv_text};
 use larch_core::{
     CrStrip, DuplicatePolicy, EmptyKeyPolicy, KvDocument, ParseOptions, select_kv_bytes,
@@ -5,7 +9,7 @@ use larch_core::{
 use std::{
     collections::BTreeMap,
     ffi::{OsStr, OsString},
-    io::{self, Read as _, Write as _},
+    io::{self, Read as _},
     os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -289,7 +293,7 @@ fn parse_arguments(arguments: &[OsString], mode: ParseMode) -> Result<ParsedArgu
             let Some(value) = arguments.get(index) else {
                 return Err(format!("argument {option}: expected one argument"));
             };
-            if value_looks_like_option(value) {
+            if looks_like_option(value) {
                 return Err(format!("argument {option}: expected one argument"));
             }
             validate_choice(option, &value.to_string_lossy())?;
@@ -313,16 +317,11 @@ fn parse_arguments(arguments: &[OsString], mode: ParseMode) -> Result<ParsedArgu
 }
 
 fn scalar_option(name: &str, kv_options: bool) -> Option<&'static str> {
-    ["--file", "--key", "--default", "--match", "--cr-strip"]
+    let options: Vec<&'static str> = ["--file", "--key", "--default", "--match", "--cr-strip"]
         .into_iter()
         .filter(|option| kv_options || !matches!(*option, "--match" | "--cr-strip"))
-        .find(|option| *option == name || (name.len() > 2 && option.starts_with(name)))
-}
-
-fn split_inline_option(option: &str) -> (&str, Option<&str>) {
-    option
-        .split_once('=')
-        .map_or((option, None), |(name, value)| (name, Some(value)))
+        .collect();
+    resolve_option(name, &options)
 }
 
 fn validate_choice(option: &str, value: &str) -> Result<(), String> {
@@ -343,21 +342,6 @@ fn validate_choice(option: &str, value: &str) -> Result<(), String> {
             "argument {option}: invalid choice: '{value}' (choose from {rendered})"
         ))
     }
-}
-
-fn value_looks_like_option(value: &OsStr) -> bool {
-    let text = value.to_string_lossy();
-    let negative_number = text.strip_prefix('-').is_some_and(|number| {
-        number.bytes().any(|byte| byte.is_ascii_digit())
-            && number
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || byte == b'.')
-            && number.bytes().filter(|byte| *byte == b'.').count() <= 1
-            && number
-                .split_once('.')
-                .is_none_or(|(_whole, fraction)| !fraction.is_empty())
-    });
-    text.starts_with('-') && !negative_number
 }
 
 fn python_splitlines(text: &str) -> impl Iterator<Item = &str> {
@@ -386,29 +370,4 @@ fn kv_usage_error(error: &str) -> ExitCode {
 fn session_usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
     eprintln!("{usage}{program}: error: {error}");
     ExitCode::FAILURE
-}
-
-fn join_arguments(arguments: &[OsString]) -> String {
-    arguments
-        .iter()
-        .map(|argument| argument.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn write_stdout(text: &str) -> ExitCode {
-    if io::stdout().lock().write_all(text.as_bytes()).is_ok() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    }
-}
-
-fn write_stdout_line(value: &[u8]) -> ExitCode {
-    let mut stdout = io::stdout().lock();
-    if stdout.write_all(value).is_ok() && stdout.write_all(b"\n").is_ok() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    }
 }

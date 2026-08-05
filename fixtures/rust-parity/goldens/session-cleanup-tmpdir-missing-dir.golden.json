@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: --dir is required and must be non-empty\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1519,6 +1519,90 @@ python_removal = "pending"
 planning_issue = 7682
 
 [[commands]]
+domain = "debate"
+verb = "abort"
+python_module = "larch.debate.orchestrator"
+python_function = "abort_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "adjudicate"
+python_module = "larch.debate.orchestrator"
+python_function = "adjudicate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "init"
+python_module = "larch.debate.orchestrator"
+python_function = "init_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "publish-prepare"
+python_module = "larch.debate.orchestrator"
+python_function = "publish_prepare_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "record-turn"
+python_module = "larch.debate.orchestrator"
+python_function = "record_turn_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "round-prep"
+python_module = "larch.debate.orchestrator"
+python_function = "round_prep_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "synthesize"
+python_module = "larch.debate.orchestrator"
+python_function = "synthesize_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
 domain = "decompose"
 verb = "aggregate"
 python_module = "larch.design.decompose"
@@ -2273,90 +2357,6 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7680
-
-[[commands]]
-domain = "debate"
-verb = "abort"
-python_module = "larch.debate.orchestrator"
-python_function = "abort_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "adjudicate"
-python_module = "larch.debate.orchestrator"
-python_function = "adjudicate_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "init"
-python_module = "larch.debate.orchestrator"
-python_function = "init_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "publish-prepare"
-python_module = "larch.debate.orchestrator"
-python_function = "publish_prepare_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "record-turn"
-python_module = "larch.debate.orchestrator"
-python_function = "record_turn_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "round-prep"
-python_module = "larch.debate.orchestrator"
-python_function = "round_prep_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
-
-[[commands]]
-domain = "debate"
-verb = "synthesize"
-python_module = "larch.debate.orchestrator"
-python_function = "synthesize_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8043
 
 [[commands]]
 domain = "difficulty"
@@ -6595,11 +6595,13 @@ verb = "cleanup-tmpdir"
 python_module = "larch.state.session_env"
 python_function = "cleanup_tmpdir_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
+clean_install_test = "clean-install-session-cleanup-tmpdir"
 
 [[commands]]
 domain = "session"
@@ -6697,11 +6699,13 @@ verb = "require-plugin-root"
 python_module = "larch.state.session_env"
 python_function = "require_plugin_root_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
+clean_install_test = "clean-install-session-require-plugin-root"
 
 [[commands]]
 domain = "session"
@@ -6709,11 +6713,13 @@ verb = "resolve-implement-tmpdir"
 python_module = "larch.state.session_env"
 python_function = "resolve_implement_tmpdir_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
+clean_install_test = "clean-install-session-resolve-implement-tmpdir"
 
 [[commands]]
 domain = "session"
@@ -6757,11 +6763,13 @@ verb = "validate-design-tmpdir"
 python_module = "larch.state.session_env"
 python_function = "validate_design_tmpdir_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
+clean_install_test = "clean-install-session-validate-design-tmpdir"
 
 [[commands]]
 domain = "session"
@@ -6793,11 +6801,12 @@ verb = "write-id"
 python_module = "larch.state.session_env"
 python_function = "write_id_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
 
 [[commands]]
 domain = "session"
@@ -8369,7 +8378,13 @@ rust = []
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = []
+rust = ["session cleanup-tmpdir"]
+
+[[callers]]
+path = "python/larch/design/design_step6.py"
+kind = "python-runtime"
+python = []
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8686,8 +8701,8 @@ rust = []
 [[callers]]
 path = "scripts/sessionstart-health.sh"
 kind = "hook"
-python = ["session resolve-implement-tmpdir"]
-rust = ["kv get"]
+python = []
+rust = ["kv get", "session resolve-implement-tmpdir"]
 
 [[callers]]
 path = "scripts/sessionstart-statusline.sh"
@@ -8890,8 +8905,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.sh"
 kind = "skill"
-python = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate", "session validate-design-tmpdir"]
-rust = []
+python = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate"]
+rust = ["session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.md"
@@ -8902,8 +8917,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "voting findings-classification-header"]
-rust = ["kv get"]
+python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "run-log append-failure", "voting findings-classification-header"]
+rust = ["kv get", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -8914,20 +8929,20 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
-python = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
-rust = []
+python = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate"]
+rust = ["session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
 kind = "skill"
-python = ["design pause-save", "session require-plugin-root", "timing mark"]
-rust = []
+python = ["design pause-save", "timing mark"]
+rust = ["session require-plugin-root"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
-rust = []
+python = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "timing mark"]
+rust = ["session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -8962,8 +8977,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step5c.sh"
 kind = "skill"
-python = ["bgjob adapt", "design step5c", "session validate-design-tmpdir"]
-rust = []
+python = ["bgjob adapt", "design step5c"]
+rust = ["session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/difficulty-calibration/SKILL.md"
@@ -9118,14 +9133,14 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/cleanup.md"
 kind = "skill"
-python = ["session cleanup-tmpdir"]
-rust = []
+python = []
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/implement/scripts/cleanup.sh"
 kind = "skill"
-python = ["session cleanup-tmpdir"]
-rust = []
+python = []
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/implement/scripts/flush-execution-issues.md"
@@ -9154,14 +9169,14 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.md"
 kind = "skill"
-python = ["session resolve-implement-tmpdir"]
-rust = []
+python = []
+rust = ["session resolve-implement-tmpdir"]
 
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.sh"
 kind = "hook"
-python = ["session resolve-implement-tmpdir"]
-rust = []
+python = []
+rust = ["session resolve-implement-tmpdir"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.md"
@@ -9442,8 +9457,8 @@ rust = []
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
-rust = ["git branch-info"]
+python = ["agent degraded-tools-gate", "render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
+rust = ["git branch-info", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"
@@ -9466,8 +9481,8 @@ rust = ["push rebase"]
 [[callers]]
 path = "skills/research/references/research-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "session cleanup-tmpdir", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = []
+python = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/research/references/validation-phase.md"
@@ -9484,8 +9499,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
-rust = []
+python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

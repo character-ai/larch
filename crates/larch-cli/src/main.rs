@@ -16,6 +16,7 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
+mod argparse_compat;
 mod ci_timing;
 mod dirty_tree_commands;
 mod git_commands;
@@ -30,6 +31,7 @@ mod release_prepare;
 mod release_publish;
 mod release_stage;
 mod release_version;
+mod session_lifecycle_commands;
 mod state_commands;
 
 use ci_timing::CiTimingCommand;
@@ -101,6 +103,9 @@ enum KvCommand {
 
 #[derive(Subcommand)]
 enum SessionCommand {
+    /// Remove a session temporary directory confined to the session roots.
+    #[command(disable_help_flag = true)]
+    CleanupTmpdir(RawCompatibilityArguments),
     /// Terminate background processes scoped to a session tmpdir.
     #[command(disable_help_flag = true)]
     KillBackgroundProcesses(RawCompatibilityArguments),
@@ -110,6 +115,18 @@ enum SessionCommand {
     /// Read several values from one session environment file.
     #[command(disable_help_flag = true)]
     ReadKeys(RawCompatibilityArguments),
+    /// Fail closed when `CLAUDE_PLUGIN_ROOT` is unset or unexpanded.
+    #[command(disable_help_flag = true)]
+    RequirePluginRoot(RawCompatibilityArguments),
+    /// Print the live implement temporary directory for one clone.
+    #[command(disable_help_flag = true)]
+    ResolveImplementTmpdir(RawCompatibilityArguments),
+    /// Validate a design temporary directory against the session allowlist.
+    #[command(disable_help_flag = true)]
+    ValidateDesignTmpdir(RawCompatibilityArguments),
+    /// Idempotently publish a session identity file.
+    #[command(disable_help_flag = true)]
+    WriteId(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -590,6 +607,21 @@ fn run(
         }
         Domain::Session(SessionCommand::ReadKeys(arguments)) => {
             Ok(state_commands::read_keys(&arguments.arguments))
+        }
+        Domain::Session(SessionCommand::CleanupTmpdir(arguments)) => Ok(
+            session_lifecycle_commands::cleanup_tmpdir(&arguments.arguments),
+        ),
+        Domain::Session(SessionCommand::RequirePluginRoot(arguments)) => Ok(
+            session_lifecycle_commands::require_plugin_root(&arguments.arguments),
+        ),
+        Domain::Session(SessionCommand::ResolveImplementTmpdir(arguments)) => {
+            Ok(session_lifecycle_commands::resolve_implement_tmpdir_command(&arguments.arguments))
+        }
+        Domain::Session(SessionCommand::ValidateDesignTmpdir(arguments)) => Ok(
+            session_lifecycle_commands::validate_design_tmpdir_command(&arguments.arguments),
+        ),
+        Domain::Session(SessionCommand::WriteId(arguments)) => {
+            Ok(session_lifecycle_commands::write_id(&arguments.arguments))
         }
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());

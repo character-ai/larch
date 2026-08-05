@@ -132,7 +132,7 @@ check_order "Post-/review boundary — Stop hook pre-check before Python resolve
   "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\""
 check_contains "Post-/review boundary — Stop hook resolver capture fail-open" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
-  "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/python/cli.py\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\""
+  "IMPLEMENT_TMPDIR=\$(CLAUDE_PLUGIN_ROOT=\"\$PLUGIN_ROOT\" \"\$PLUGIN_ROOT/scripts/larch.sh\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\""
 check_contains "Post-/review boundary — review-boundary-passed sentinel write in SKILL.md" \
   "skills/implement/SKILL.md" \
   ".review-boundary-passed"

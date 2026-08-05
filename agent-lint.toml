@@ -492,7 +492,7 @@ exclude = [
   # scripts/test-check-stale-plugin.md (sibling contract), matching the same
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
-  # python/cli.py session cleanup-tmpdir's invoke-time audit log. Referenced only from
+  # The Rust `session cleanup-tmpdir` invoke-time audit log. Referenced only from
   # (sibling contract), matching the same Makefile-only pattern as
   # python/test_admission.py above.
   # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
