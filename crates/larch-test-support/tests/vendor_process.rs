@@ -155,6 +155,50 @@ fn every_vendor_replays_timeout_and_cancellation_with_partial_output() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn timed_out_vendor_leaves_no_live_descendant() {
+    use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+
+    let harness = VendorProcessHarness::new(&binaries()).expect("vendor harness");
+    let script = VendorScript::new(VendorProgram::Codex)
+        .with_never_exit(true)
+        .with_descendant_depth(2);
+    let request = harness
+        .request_with(
+            &script,
+            VendorRunOptions::default()
+                .with_timeout(Duration::from_secs(2))
+                .with_shutdown_grace(Duration::from_millis(100)),
+        )
+        .expect("descendant request");
+    let error = runtime()
+        .block_on(TokioProcessRunner::default().run(request, &NeverCancelled))
+        .expect_err("hung process tree must time out");
+    assert_eq!(error.kind(), ProcessErrorKind::TimedOut);
+
+    let pids: Vec<i32> = std::fs::read_to_string(harness.pid_file(0))
+        .expect("PID ledger")
+        .lines()
+        .map(|line| line.parse().expect("numeric PID"))
+        .collect();
+    assert_eq!(pids.len(), 3, "root, child, and grandchild must start");
+    for _attempt in 0..50 {
+        if pids
+            .iter()
+            .all(|pid| matches!(kill(Pid::from_raw(*pid), None), Err(Errno::ESRCH)))
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let live: Vec<_> = pids
+        .into_iter()
+        .filter(|pid| !matches!(kill(Pid::from_raw(*pid), None), Err(Errno::ESRCH)))
+        .collect();
+    assert!(live.is_empty(), "live vendor descendants: {live:?}");
+}
+
 #[test]
 fn every_vendor_replays_capture_truncation_and_empty_stdout() {
     let harness = VendorProcessHarness::new(&binaries()).expect("vendor harness");

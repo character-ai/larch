@@ -18,7 +18,9 @@ crate-local tests where the dependency graph permits it.
 - `VendorProcessHarness` installs the Cargo-built fake `claude`, `codex`, and
   `cursor` binaries on a private complete `PATH`. `VendorScript` replays ordered
   stdout and stderr chunks, bounded inter-chunk delays, an exit code, or a
-  never-exit process. Recorded contracts load through `VendorContractFixture`.
+  never-exit process. A never-exit script may spawn a chain of at most two
+  descendants and record their PIDs so timeout tests can prove the complete
+  process group stopped. Recorded contracts load through `VendorContractFixture`.
 - `HttpResponseBuilder` creates in-memory responses and rejects invalid status
   codes, header names, and header line injection.
 - `GitRepository::builder` creates an owned repository through installed Git.

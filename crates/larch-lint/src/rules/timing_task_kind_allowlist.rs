@@ -19,7 +19,10 @@ use std::{
 };
 
 use regex::Regex;
-use syn::{Attribute, ExprArray, ExprMethodCall, Field, LitStr, spanned::Spanned, visit::Visit};
+use syn::{
+    Attribute, Expr, ExprArray, ExprCall, ExprMethodCall, Field, LitStr, spanned::Spanned,
+    visit::Visit,
+};
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax::RustSyntax};
 
@@ -158,6 +161,7 @@ struct RustVisitor<'syntax> {
     constants: &'syntax Constants<'syntax>,
     arrays: BTreeMap<usize, String>,
     builders: BTreeMap<proc_macro2::LineColumn, BuilderCommand>,
+    constructors: Vec<(usize, String)>,
     defaults: BTreeMap<usize, String>,
 }
 
@@ -167,16 +171,18 @@ impl<'syntax> RustVisitor<'syntax> {
             constants,
             arrays: BTreeMap::new(),
             builders: BTreeMap::new(),
+            constructors: Vec::new(),
             defaults: BTreeMap::new(),
         }
     }
 
-    fn finish(self) -> BTreeMap<usize, String> {
-        let mut kinds = self.arrays;
+    fn finish(self) -> Vec<(usize, String)> {
+        let mut kinds: Vec<_> = self.arrays.into_iter().collect();
+        kinds.extend(self.constructors);
         kinds.extend(self.defaults);
         for candidate in self.builders.into_values() {
             if let Some(kind) = kind_after_flag(&candidate.arguments) {
-                kinds.insert(candidate.root_span.start().line, kind);
+                kinds.push((candidate.root_span.start().line, kind));
             }
         }
         kinds
@@ -184,6 +190,13 @@ impl<'syntax> RustVisitor<'syntax> {
 }
 
 impl<'ast> Visit<'ast> for RustVisitor<'_> {
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        if let Some(kind) = timing_task_kind_constructor(self.constants, call) {
+            self.constructors.push((call.span().start().line, kind));
+        }
+        syn::visit::visit_expr_call(self, call);
+    }
+
     fn visit_expr_array(&mut self, array: &'ast ExprArray) {
         record_array_kind(self.constants, &mut self.arrays, array);
         visit_array_children(self, array);
@@ -201,6 +214,23 @@ impl<'ast> Visit<'ast> for RustVisitor<'_> {
         syn::visit::visit_field(self, field);
     }
 
+}
+
+fn timing_task_kind_constructor(constants: &Constants<'_>, call: &ExprCall) -> Option<String> {
+    let Expr::Path(function) = call.func.as_ref() else {
+        return None;
+    };
+    let segments: Vec<_> = function.path.segments.iter().collect();
+    let [.., kind, constructor] = segments.as_slice() else {
+        return None;
+    };
+    if kind.ident != "TimingTaskKind" || constructor.ident != "new" || call.args.len() != 1 {
+        return None;
+    }
+    match constants.argument(call.args.first()?) {
+        Argument::Static(value) => Some(value),
+        Argument::Dynamic => None,
+    }
 }
 
 fn record_array_kind(

@@ -322,7 +322,11 @@ pub trait ChildProcess: Send {
     fn wait(&mut self) -> ChildWait<'_, Self::Exit>;
 }
 
-/// Request graceful child shutdown, escalate after `grace`, and always reap it.
+/// Request graceful child-group shutdown, escalate after `grace`, and reap the leader.
+///
+/// When the leader exits during grace, one final group force-kill removes a
+/// descendant that ignored the graceful request. Process adapters must treat
+/// an already-empty group as a successful force-kill.
 ///
 /// # Errors
 ///
@@ -337,6 +341,7 @@ where
     if graceful_error.is_none()
         && let Ok(status) = time::timeout(grace, child.wait()).await
     {
+        child.force_kill()?;
         return status;
     }
 
@@ -534,6 +539,7 @@ mod tests {
     #[derive(Default)]
     struct FakeChild {
         graceful: bool,
+        graceful_exit: Option<i32>,
         graceful_fails: bool,
         forced: bool,
         waits: usize,
@@ -563,6 +569,10 @@ mod tests {
             self.waits += 1;
             if self.forced {
                 Box::pin(future::ready(Ok(137)))
+            } else if self.graceful
+                && let Some(status) = self.graceful_exit
+            {
+                Box::pin(future::ready(Ok(status)))
             } else {
                 Box::pin(future::pending())
             }
@@ -599,5 +609,19 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         assert!(child.forced);
         assert_eq!(child.waits, 1);
+    }
+
+    #[test]
+    fn child_shutdown_force_cleans_group_after_leader_exit() {
+        let runtime = LarchRuntime::paused_current_thread().expect("test runtime should build");
+        let mut child = FakeChild {
+            graceful_exit: Some(143),
+            ..FakeChild::default()
+        };
+        let status = runtime
+            .block_on(shutdown_child(&mut child, Duration::from_secs(5)))
+            .expect("graceful exit");
+        assert_eq!(status, 143);
+        assert!(child.forced);
     }
 }

@@ -116,11 +116,18 @@ pub fn read_optional_utf8_lossy(path: &Path) -> Result<Option<String>, FileIoErr
 ///
 /// Returns [`FileIoError`] when removal fails for any reason other than absence.
 pub fn remove_optional_file(path: &Path) -> Result<(), FileIoError> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(io_error(path, &error)),
-    }
+    absent_is_success(fs::remove_file(path)).map_err(|error| io_error(path, &error))
+}
+
+/// Treat an already-absent filesystem target as a successful mutation.
+pub fn absent_is_success(result: io::Result<()>) -> io::Result<()> {
+    result.or_else(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            Ok(())
+        } else {
+            Err(error)
+        }
+    })
 }
 
 /// Read a legacy session KV file and reject every carriage return.

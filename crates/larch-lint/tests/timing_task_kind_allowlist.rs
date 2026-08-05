@@ -28,7 +28,7 @@ fn timing_task_kind_rule_covers_skill_text_rust_commands_and_clap_defaults() {
     );
     repository.write(
         "crates/example/src/timing.rs",
-        b"use clap::Parser;\nuse std::process::Command;\nconst ARGS: [&str; 2] = [\"--timing-task-kind\", \"missing-array\"];\n#[derive(Parser)]\nstruct Cli {\n    #[arg(long = \"timing-task-kind\", default_value = \"missing-default\")]\n    timing_task_kind: String,\n}\nfn run() { Command::new(\"runner\").arg(\"--timing-task-kind\").arg(\"missing-builder\"); }\n",
+        b"use clap::Parser;\nuse std::process::Command;\nconst ARGS: [&str; 2] = [\"--timing-task-kind\", \"missing-array\"];\n#[derive(Parser)]\nstruct Cli {\n    #[arg(long = \"timing-task-kind\", default_value = \"missing-default\")]\n    timing_task_kind: String,\n}\nfn run() { Command::new(\"runner\").arg(\"--timing-task-kind\").arg(\"missing-builder\"); }\nfn typed() { TimingTaskKind::new(\"missing-constructor\"); TimingTaskKind::new(\"known-kind\"); }\n",
     );
     repository.commit_all();
 
@@ -41,6 +41,7 @@ fn timing_task_kind_rule_covers_skill_text_rust_commands_and_clap_defaults() {
         .stdout(predicate::str::contains("crates/example/src/timing.rs:3: missing TIMING_TASK_KINDS_ALLOWED entry for missing-array"))
         .stdout(predicate::str::contains("crates/example/src/timing.rs:6: missing TIMING_TASK_KINDS_ALLOWED entry for missing-default"))
         .stdout(predicate::str::contains("crates/example/src/timing.rs:9: missing TIMING_TASK_KINDS_ALLOWED entry for missing-builder"))
+        .stdout(predicate::str::contains("crates/example/src/timing.rs:10: missing TIMING_TASK_KINDS_ALLOWED entry for missing-constructor"))
         .stdout(predicate::str::contains("ignored-test").not());
 }
 
@@ -50,7 +51,7 @@ fn timing_task_kind_rule_accepts_known_constants_and_inferred_clap_long_names() 
     write_allowlist(&repository);
     repository.write(
         "crates/example/src/timing.rs",
-        b"use clap::Parser;\nuse std::process::Command;\nconst KIND: &str = \"known-kind\";\n#[derive(Parser)]\nstruct Cli {\n    #[arg(long, default_value = \"known-kind\")]\n    timing_task_kind: String,\n}\nfn run() { Command::new(\"runner\").args([\"--timing-task-kind\", KIND]); }\n",
+        b"use clap::Parser;\nuse std::process::Command;\nconst KIND: &str = \"known-kind\";\n#[derive(Parser)]\nstruct Cli {\n    #[arg(long, default_value = \"known-kind\")]\n    timing_task_kind: String,\n}\nfn run() { Command::new(\"runner\").args([\"--timing-task-kind\", KIND]); TimingTaskKind::new(KIND); }\n",
     );
     repository.commit_all();
 

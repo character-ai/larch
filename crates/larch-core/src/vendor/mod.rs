@@ -4,6 +4,7 @@
 
 mod argv;
 mod envelope;
+mod lifecycle;
 mod registry;
 mod session;
 mod types;
@@ -15,6 +16,14 @@ pub use argv::{
     codex_env_auth_from_key, extract_model_from_argv, trust_config_arg,
 };
 pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
+pub use lifecycle::{
+    CursorStallRecord, LaunchTimingRecord, TimeoutStallRecord, TimingTaskKind, TimingTaskKindError,
+    VendorConfigurationGuard, VendorHookFuture, VendorLaunchContext, VendorLaunchError,
+    VendorLifecycleHooks, VendorPostHook, VendorRetryClassification, VendorRetryPolicy,
+    build_check_budget_argv, build_record_launch_timing_argv, check_token_budget_cap,
+    elapsed_minute_message, render_cursor_stall_json, render_timeout_stall_json, run_vendor_launch,
+    run_with_vendor_retries,
+};
 pub use registry::{
     CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, REQUIRED_CAPABILITIES,
     VENDOR_DESCRIPTORS, VendorDescriptorError, VendorDescriptorErrorKind, build_vendor_registry,
