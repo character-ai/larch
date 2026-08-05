@@ -404,8 +404,14 @@ mod tests {
 
     #[test]
     fn marker_line_requires_full_line_boundary() {
-        assert!(is_marker_line("<!-- token-report-end -->\n", "token-report-end"));
-        assert!(is_marker_line("  <!-- token-report-end -->  \n", "token-report-end"));
+        assert!(is_marker_line(
+            "<!-- token-report-end -->\n",
+            "token-report-end"
+        ));
+        assert!(is_marker_line(
+            "  <!-- token-report-end -->  \n",
+            "token-report-end"
+        ));
         // Mid-line marker-like text cannot break the block boundary.
         assert!(!is_marker_line(
             "see <!-- token-report-end --> inside\n",

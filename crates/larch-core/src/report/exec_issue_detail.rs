@@ -7,8 +7,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
-    fmt,
-    fs,
+    fmt, fs,
     path::Path,
 };
 
@@ -517,8 +516,7 @@ fn parse_ndjson_structured_rows(rows: &[Value]) -> IssueDetailGroups {
 }
 
 fn is_structured_row(row: &Value) -> bool {
-    row.get("category")
-        .is_some_and(Value::is_string)
+    row.get("category").is_some_and(Value::is_string)
         || row.get("event").and_then(Value::as_str) == Some("resolved")
 }
 
@@ -667,9 +665,7 @@ pub fn load_issue_detail_groups(
     prefer_run_dir: bool,
 ) -> LoadResult {
     let live_result = read_live_markdown(tmpdir);
-    if prefer_run_dir
-        && let Some(run_dir) = run_dir
-    {
+    if prefer_run_dir && let Some(run_dir) = run_dir {
         let ndjson = run_dir.join("execution-issues.ndjson");
         if ndjson.is_file() {
             let run_result = parse_ndjson_legacy(&ndjson);
@@ -842,7 +838,10 @@ mod tests {
             degraded_totals: None,
         };
         assert_eq!(count_load_result(&result), (1, 1));
-        let block = render_issue_detail_block(&result, None::<fn(&str, &[IssueDetail]) -> BTreeMap<String, String>>);
+        let block = render_issue_detail_block(
+            &result,
+            None::<fn(&str, &[IssueDetail]) -> BTreeMap<String, String>>,
+        );
         assert!(block.contains("1. exec1"));
         assert!(block.contains("1. warn1"));
     }
@@ -935,7 +934,10 @@ mod tests {
         .unwrap();
         fs::write(
             run_dir.join("execution-issues.ndjson"),
-            format!("{}\n", json!({"category":"Tool Failures","body":"- committed failure\n"})),
+            format!(
+                "{}\n",
+                json!({"category":"Tool Failures","body":"- committed failure\n"})
+            ),
         )
         .unwrap();
         let result = load_issue_detail_groups(dir.path(), Some(&run_dir), true);
@@ -979,8 +981,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let run_dir = dir.path().join("run");
         fs::create_dir_all(&run_dir).unwrap();
-        let body =
-            "{\"category\":\"Tool Failures\"}\n{\"category\":\"External Reviewer Issues\"}\n{\"category\":\"Warnings\"}";
+        let body = "{\"category\":\"Tool Failures\"}\n{\"category\":\"External Reviewer Issues\"}\n{\"category\":\"Warnings\"}";
         let rows = [json!("legacy"), json!({"body": body})];
         let text = rows
             .iter()
@@ -990,10 +991,8 @@ mod tests {
             + "\n";
         fs::write(run_dir.join("execution-issues.ndjson"), text).unwrap();
         let result = load_issue_detail_groups(dir.path(), Some(&run_dir), false);
-        let block = render_issue_detail_block(
-            &result,
-            Some(|_: &str, _: &[IssueDetail]| BTreeMap::new()),
-        );
+        let block =
+            render_issue_detail_block(&result, Some(|_: &str, _: &[IssueDetail]| BTreeMap::new()));
         assert!(result.listing_degraded);
         assert_eq!(result.degraded_totals, Some((2, 1)));
         assert!(block.contains("Exec Issues (2):"));
