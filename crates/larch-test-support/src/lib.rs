@@ -6,6 +6,8 @@ mod filesystem;
 mod git;
 mod http;
 mod process;
+mod run_log;
+mod snapshot_util;
 
 pub use clock::TestClock;
 pub use environment::TestEnvironment;
@@ -17,3 +19,8 @@ pub use git::{
 };
 pub use http::{HttpResponse, HttpResponseBuilder, HttpResponseError};
 pub use process::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder};
+pub use run_log::{
+    DurabilityState, LocalObjectStore, ObjectMetadata, ObjectStoreError, ObjectStoreErrorKind,
+    ParityDifference, ReportSnapshot, ReportingParityOracle, RunLogFixture, RunLogSnapshot,
+    RunLogTree, RunLogTreeBuilder,
+};

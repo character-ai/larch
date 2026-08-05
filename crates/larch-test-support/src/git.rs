@@ -13,7 +13,13 @@ use std::os::unix::{
     process::ExitStatusExt,
 };
 
-use crate::{TestEnvironment, TestWorkspace, filesystem::validate_relative};
+use crate::{
+    TestEnvironment, TestWorkspace,
+    filesystem::validate_relative,
+    snapshot_util::{
+        file_mode, fnv1a, hex, path_bytes, redact_matching_lines, replace_all, sorted_children,
+    },
+};
 
 const SNAPSHOT_BYTE_LIMIT: usize = 1024 * 1024;
 const SNAPSHOT_ENTRY_LIMIT: usize = 4096;
@@ -675,8 +681,8 @@ impl GitRepository {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionSnapshot {
     pub exit_class: ExitClass,
-    stdout: BoundedBytes,
-    stderr: BoundedBytes,
+    pub stdout: BoundedBytes,
+    pub stderr: BoundedBytes,
 }
 
 impl ExecutionSnapshot {
@@ -686,6 +692,24 @@ impl ExecutionSnapshot {
             exit_class: ExitClass::Success,
             stdout: BoundedBytes::new(&[]),
             stderr: BoundedBytes::new(&[]),
+        }
+    }
+
+    #[must_use]
+    pub fn failure(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Self {
+        Self {
+            exit_class: ExitClass::Failure(code),
+            stdout: BoundedBytes::new(stdout),
+            stderr: BoundedBytes::new(stderr),
+        }
+    }
+
+    #[must_use]
+    pub fn interrupted(stdout: &[u8], stderr: &[u8]) -> Self {
+        Self {
+            exit_class: ExitClass::Interrupted,
+            stdout: BoundedBytes::new(stdout),
+            stderr: BoundedBytes::new(stderr),
         }
     }
 
@@ -969,12 +993,16 @@ fn collect_path(
     Ok(())
 }
 
-fn sorted_children(path: &Path) -> io::Result<Vec<PathBuf>> {
-    let mut children = fs::read_dir(path)?
-        .map(|entry| entry.map(|value| value.path()))
-        .collect::<io::Result<Vec<_>>>()?;
-    children.sort_by_key(|left| path_bytes(left));
-    Ok(children)
+fn redact_lines(input: &[u8]) -> Vec<u8> {
+    redact_matching_lines(
+        input,
+        &[
+            b"credential".as_slice(),
+            b"password",
+            b"token",
+            b"authorization",
+        ],
+    )
 }
 
 fn bounded_normalized(bytes: &[u8], repository: &GitRepository) -> BoundedBytes {
@@ -984,73 +1012,6 @@ fn bounded_normalized(bytes: &[u8], repository: &GitRepository) -> BoundedBytes 
 fn normalize_bytes(input: &[u8], root: &Path) -> Vec<u8> {
     let replaced = replace_all(input, &path_bytes(root), b"<ROOT>");
     redact_lines(&replaced)
-}
-
-fn redact_lines(input: &[u8]) -> Vec<u8> {
-    let mut output = Vec::with_capacity(input.len());
-    for line in input.split_inclusive(|byte| *byte == b'\n' || *byte == 0) {
-        let lowercase = line.to_ascii_lowercase();
-        if [
-            b"credential".as_slice(),
-            b"password",
-            b"token",
-            b"authorization",
-        ]
-        .iter()
-        .any(|needle| contains(&lowercase, needle))
-        {
-            output.extend_from_slice(b"<REDACTED>");
-            if let Some(delimiter) = line.last().filter(|byte| **byte == b'\n' || **byte == 0) {
-                output.push(*delimiter);
-            }
-        } else {
-            output.extend_from_slice(&redact_url_userinfo(line));
-        }
-    }
-    output
-}
-
-fn redact_url_userinfo(input: &[u8]) -> Vec<u8> {
-    let Some(scheme) = find_bytes(input, b"://") else {
-        return input.to_vec();
-    };
-    let authority = scheme + 3;
-    let Some(at_relative) = input[authority..].iter().position(|byte| *byte == b'@') else {
-        return input.to_vec();
-    };
-    let at = authority + at_relative;
-    if !input[authority..at].contains(&b':') {
-        return input.to_vec();
-    }
-    let mut output = input[..authority].to_vec();
-    output.extend_from_slice(b"<REDACTED>@");
-    output.extend_from_slice(&input[at + 1..]);
-    output
-}
-
-fn replace_all(input: &[u8], needle: &[u8], replacement: &[u8]) -> Vec<u8> {
-    if needle.is_empty() {
-        return input.to_vec();
-    }
-    let mut output = Vec::with_capacity(input.len());
-    let mut remaining = input;
-    while let Some(index) = find_bytes(remaining, needle) {
-        output.extend_from_slice(&remaining[..index]);
-        output.extend_from_slice(replacement);
-        remaining = &remaining[index + needle.len()..];
-    }
-    output.extend_from_slice(remaining);
-    output
-}
-
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    find_bytes(haystack, needle).is_some()
-}
-
-fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
 }
 
 fn render_execution(output: &mut String, name: &str, execution: &ExecutionSnapshot) {
@@ -1092,27 +1053,6 @@ fn render_bytes(output: &mut String, name: &str, bytes: &BoundedBytes) {
         bytes.truncated
     )
     .expect("writing to String cannot fail");
-}
-
-fn hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(char::from(DIGITS[usize::from(byte >> 4)]));
-        output.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
-    }
-    output
-}
-
-const fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    let mut index = 0;
-    while index < bytes.len() {
-        hash ^= bytes[index] as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-        index += 1;
-    }
-    hash
 }
 
 fn command_output(status: ExitStatus, stdout: Vec<u8>, stderr: Vec<u8>) -> GitCommandOutput {
@@ -1180,27 +1120,10 @@ fn diagnostic(output: &GitCommandOutput) -> String {
     String::from_utf8_lossy(bytes).trim().to_owned()
 }
 
-fn path_bytes(path: &Path) -> Vec<u8> {
-    path.as_os_str().as_encoded_bytes().to_vec()
-}
-
-#[cfg(unix)]
-fn file_mode(metadata: &fs::Metadata) -> u32 {
-    metadata.permissions().mode() & 0o7777
-}
-
-#[cfg(not(unix))]
-fn file_mode(metadata: &fs::Metadata) -> u32 {
-    if metadata.permissions().readonly() {
-        0o444
-    } else {
-        0o666
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::snapshot_util::contains;
 
     #[cfg(unix)]
     #[test]

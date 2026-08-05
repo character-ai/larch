@@ -12,7 +12,7 @@ until each command moves directly to its Rust owner.
 | `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
 | `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases. Its binary target is named `larch`. | `larch-core`, `larch-adapters`. |
 | `larch-lint` | Repository-only policy tooling. It is not linked into the product. | None of the product crates. |
-| `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, and HTTP responses. Product crates may use it only as a dev-dependency. | `larch-core`. |
+| `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, HTTP responses, Git repositories, run-log corpora, and reporting parity snapshots. Product crates may use it only as a dev-dependency. | `larch-core`. |
 
 The product dependency direction is:
 
