@@ -66,6 +66,13 @@ def test_vote_for_id_last_match_and_exonerate(tmp_path: Path) -> None:
     assert result.stdout == "NO\n"
 
 
+def test_vote_for_id_text_uses_the_file_vote_grammar() -> None:
+    assert voting.vote_for_id_text(
+        ballot_id="FINDING_1",
+        text="FINDING_1: YES\nFINDING_1: EXONERATE\n",
+    ) == "NO"
+
+
 def test_reviewer_security_and_split_ballot(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     ballot.write_text(

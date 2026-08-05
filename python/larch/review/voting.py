@@ -529,16 +529,21 @@ def _vote_for_id_from_lines(*, ballot_id: str, lines: Iterable[str]) -> str:
     return result
 
 
+def vote_for_id_text(*, ballot_id: str, text: str, alias_id: str = "") -> str:
+    """Return one normalized vote from already-read voter output text."""
+    lines = _normalize_markdown_table_votes(text).splitlines()
+    result = _vote_for_id_from_lines(ballot_id=ballot_id, lines=lines)
+    if result != "JUDGE_ERROR" or not alias_id:
+        return result
+    return _vote_for_id_from_lines(ballot_id=alias_id, lines=lines)
+
+
 def vote_for_id(*, ballot_id: str, voter_file: str | Path, alias_id: str = "") -> str:
     try:
         raw = Path(voter_file).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "JUDGE_ERROR"
-    lines = _normalize_markdown_table_votes(raw).splitlines()
-    result = _vote_for_id_from_lines(ballot_id=ballot_id, lines=lines)
-    if result != "JUDGE_ERROR" or not alias_id:
-        return result
-    return _vote_for_id_from_lines(ballot_id=alias_id, lines=lines)
+    return vote_for_id_text(ballot_id=ballot_id, text=raw, alias_id=alias_id)
 
 
 def vote_for_id_main(argv: list[str]) -> int:

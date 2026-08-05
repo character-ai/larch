@@ -264,6 +264,11 @@ also inspect decoded object keys and string values so escaped session paths
 cannot bypass the guard. Batch contracts and write/append mechanics live in
 [Run-log batch registry](../run-log-batches.md#debate-record-batches).
 
+The debate orchestrator redacts the automated stalemate tally and synthesized
+proposal before it calls the batch writer. Dispatcher paths, vendor output
+paths, and publication-handoff paths remain local control data and are not
+embedded in either durable batch.
+
 ### Breadcrumb security invariants
 
 Session `breadcrumbs/` directories are publication hints, not content roots.

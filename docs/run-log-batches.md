@@ -34,8 +34,10 @@ never treat disabled storage as an empty corpus.
 
 ## Debate record batches
 
-Four debate carriers are registered for a future debate engine. Registration
-alone does not add producers:
+Four debate carriers support the debate engine. `debate adjudicate
+--vote-stalemates` produces the tally carrier and `debate synthesize` produces
+the proposal carrier; the surrounding debate flow owns the participant and
+round-ledger producers:
 
 | Batch | Extension | Mode | Sanitizer |
 |---|---|---|---|

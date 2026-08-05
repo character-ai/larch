@@ -24,6 +24,14 @@ The number of YES votes required depends on how many voters are available:
 
 Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce the round's intended panel size to a lower tier.
 
+## Debate Stalemate Voting
+
+`/debate --vote-stalemates` (`-s`) is a consumer of `python/cli.py agent dispatch-voters`. It presents the existing shared voter panel with an anonymized, two-position ballot for each unresolved debate point and uses the threshold table above without changing its tiers. The tally is local to the debate run: it does not write reviewer scores or any scoreboard.
+
+For each point, exactly one accepted position becomes `SELECTED`. Every no-unique-winner result — including a split, both positions accepted, neither position accepted, or an empty panel — records both positions as `BOTH_VIABLE`. A missing per-item vote remains `JUDGE_ERROR` at the shared panel tier; it records `BOTH_VIABLE` only when neither position is a unique winner. Autonomous debate never falls back to an operator after voter dispatch.
+
+Operator adjudication uses a tab-delimited decisions file. Each row is either `POINT_N<TAB>SELECTED<TAB>position` or `POINT_N<TAB>SPLIT<TAB>position A<TAB>position B`; the file must cover each unresolved point exactly once.
+
 ## Non-accepted Outcomes
 
 When a finding is not accepted, it is classified as either **`neutral`** (at least one YES vote but below the acceptance threshold; -0.25 points for in-scope findings) or **`rejected`** (zero YES votes; −1 point). The `neutral` outcome covers what was previously split-panel behavior.
