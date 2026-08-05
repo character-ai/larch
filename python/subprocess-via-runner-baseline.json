@@ -1106,13 +1106,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/lint/lint_codex_exec_auth.py",
-    "qualified_symbol": "_git_files",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/lint/lint_common.py",
     "qualified_symbol": "git_ls_files_z",
     "callee": "run",

@@ -1,28 +1,43 @@
-//! Reject em dashes in larch-authored Markdown templates and Rust output sinks.
+//! Reject em dashes in larch-authored output literals.
 //!
-//! The Python compatibility rule retains its Python AST scope. This rule owns
-//! the Markdown template scope and Rust output macro scope through the shared
-//! Markdown and Rust syntax abstractions.
+//! This rule owns the Markdown template, Rust output macro, and production
+//! Python output-sink scopes. Python uses the workspace tree-sitter grammar so
+//! imported `logging_util` sinks and `BreadcrumbWriter` aliases retain the
+//! former compatibility rule's ownership without keeping a second runner.
 
-use std::sync::LazyLock;
+use std::{collections::BTreeSet, sync::LazyLock};
 
 use proc_macro2::{TokenStream, TokenTree};
 use regex::Regex;
 use syn::visit::{self, Visit};
+use tree_sitter::Node;
 
 use crate::{
     Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression,
-    syntax::{FenceState, MarkdownDocument},
+    syntax::{FenceState, MarkdownDocument, is_production_python_path, parse_python},
 };
 
 use super::rust_scan;
 
 const NAME: &str = "em-dash-output";
-const DESCRIPTION: &str = "Reject em dashes in Markdown templates and Rust output sinks";
+const DESCRIPTION: &str = "Reject em dashes in Markdown templates and output sinks";
 const EM_DASH: char = '\u{2014}';
 const SUPPRESSION_TOKEN: &str = "lint-em-dash-output";
 const RUST_OUTPUT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
+const PYTHON_NAME_SINKS: [&str; 10] = [
+    "print",
+    "_emit",
+    "_diag",
+    "_err",
+    "_core_diagnostic",
+    "emit",
+    "emit_kv",
+    "diagnostic",
+    "_plain_diagnostic",
+    "_emit_kv",
+];
+const LOGGING_UTIL_SINKS: [&str; 3] = ["emit", "emit_kv", "diagnostic"];
 
 static PRINT_TEMPLATE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:P|p)rint:?\s+`([^`\n]*)`").expect("print template expression is valid")
@@ -58,6 +73,13 @@ impl Rule for EmDashOutputRule {
         for path in rust.select(repository) {
             findings.extend(check_rust(path.as_str(), &repository.read_utf8(path)?)?);
         }
+        for path in repository.paths() {
+            if is_production_python_path(path.as_str()) {
+                findings.extend(check_python(path.as_str(), &repository.read_utf8(path)?)?);
+            }
+        }
+        findings.sort();
+        findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
 }
@@ -98,6 +120,283 @@ fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
             .map(|line| (line, "em dash in Rust output literal".to_owned()))
             .collect()
     })
+}
+
+fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
+    // The retired Python rule validated every in-scope suppression marker,
+    // including a malformed marker that happens not to share a line with an
+    // em dash. Preserve that fail-closed contract before collecting calls.
+    for line in source.lines() {
+        let _ = suppression::reason(line, SUPPRESSION_TOKEN)?;
+    }
+    let tree = parse_python(source)?;
+    let mut symbols = PythonSymbols::default();
+    collect_python_imports(tree.root_node(), source, &mut symbols);
+    propagate_python_assignments(tree.root_node(), source, &mut symbols);
+
+    let mut lines = BTreeSet::new();
+    collect_python_output_calls(tree.root_node(), source, &symbols, &mut lines);
+    lines
+        .into_iter()
+        .map(|line| {
+            if suppression::reason(source.lines().nth(line.saturating_sub(1)).unwrap_or(""), SUPPRESSION_TOKEN)?.is_some() {
+                return Ok(None);
+            }
+            let line = u32::try_from(line)
+                .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
+            Ok(Some(Finding::new(path, line, "em dash in Python output literal")))
+        })
+        .filter_map(Result::transpose)
+        .collect()
+}
+
+#[derive(Debug)]
+struct PythonSymbols {
+    sink_names: BTreeSet<String>,
+    breadcrumb_writer_names: BTreeSet<String>,
+    logging_util_names: BTreeSet<String>,
+}
+
+impl Default for PythonSymbols {
+    fn default() -> Self {
+        Self {
+            sink_names: PYTHON_NAME_SINKS.into_iter().map(str::to_owned).collect(),
+            breadcrumb_writer_names: ["BreadcrumbWriter", "breadcrumb_writer", "writer"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            logging_util_names: ["logging_util"].into_iter().map(str::to_owned).collect(),
+        }
+    }
+}
+
+fn collect_python_imports(node: Node<'_>, source: &str, symbols: &mut PythonSymbols) {
+    match node.kind() {
+        "import_statement" => {
+            for item in normalized_import_items(node_text(node, source).strip_prefix("import ").unwrap_or("")) {
+                let words: Vec<_> = item.split_whitespace().collect();
+                if words.first() == Some(&"larch.core.logging_util") {
+                    let name = match words.as_slice() {
+                        [_, "as", alias] => *alias,
+                        _ => "logging_util",
+                    };
+                    symbols.logging_util_names.insert(name.to_owned());
+                }
+            }
+        }
+        "import_from_statement" => record_python_from_import(node_text(node, source), symbols),
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                collect_python_imports(child, source, symbols);
+            }
+        }
+    }
+}
+
+fn normalized_import_items(items: &str) -> impl Iterator<Item = &str> {
+    items.split(',').map(str::trim)
+}
+
+fn record_python_from_import(statement: &str, symbols: &mut PythonSymbols) {
+    let normalized = statement.replace(['\n', '(', ')'], " ");
+    let normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    let Some((module, names)) = normalized
+        .strip_prefix("from ")
+        .and_then(|value| value.split_once(" import "))
+    else {
+        return;
+    };
+    for item in normalized_import_items(names) {
+        let words: Vec<_> = item.split_whitespace().collect();
+        let Some(imported) = words.first().copied() else {
+            continue;
+        };
+        let local = match words.as_slice() {
+            [_, "as", alias] => *alias,
+            _ => imported,
+        };
+        match module {
+            "larch.core" if imported == "logging_util" => {
+                symbols.logging_util_names.insert(local.to_owned());
+            }
+            "larch.core.logging_util" if LOGGING_UTIL_SINKS.contains(&imported) => {
+                symbols.sink_names.insert(local.to_owned());
+            }
+            "larch.core.logging_util" if imported == "BreadcrumbWriter" => {
+                symbols.breadcrumb_writer_names.insert(local.to_owned());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn propagate_python_assignments(node: Node<'_>, source: &str, symbols: &mut PythonSymbols) {
+    let mut assignments = Vec::new();
+    collect_nodes(node, "assignment", &mut assignments);
+    collect_nodes(node, "augmented_assignment", &mut assignments);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for assignment in &assignments {
+            let Some(left) = assignment.child_by_field_name("left") else {
+                continue;
+            };
+            let Some(right) = assignment.child_by_field_name("right") else {
+                continue;
+            };
+            let targets = python_assignment_targets(left, source);
+            if targets.is_empty() {
+                continue;
+            }
+            if python_breadcrumb_constructor(right, source, symbols)
+                || symbols
+                    .breadcrumb_writer_names
+                    .contains(node_text(right, source).trim())
+            {
+                changed |= extend_names(&mut symbols.breadcrumb_writer_names, targets.iter());
+            } else if python_logging_sink_reference(right, source, symbols)
+                || symbols.sink_names.contains(node_text(right, source).trim())
+            {
+                changed |= extend_names(&mut symbols.sink_names, targets.iter());
+            }
+        }
+    }
+}
+
+fn collect_nodes<'tree>(node: Node<'tree>, kind: &str, nodes: &mut Vec<Node<'tree>>) {
+    if node.kind() == kind {
+        nodes.push(node);
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_nodes(child, kind, nodes);
+    }
+}
+
+fn python_assignment_targets(node: Node<'_>, source: &str) -> Vec<String> {
+    if node.kind() == "identifier" {
+        return vec![node_text(node, source).trim().to_owned()];
+    }
+    let mut targets = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        targets.extend(python_assignment_targets(child, source));
+    }
+    targets
+}
+
+fn extend_names<'a>(names: &mut BTreeSet<String>, additions: impl Iterator<Item = &'a String>) -> bool {
+    let mut changed = false;
+    for addition in additions {
+        changed |= names.insert(addition.clone());
+    }
+    changed
+}
+
+fn collect_python_output_calls(
+    node: Node<'_>,
+    source: &str,
+    symbols: &PythonSymbols,
+    lines: &mut BTreeSet<usize>,
+) {
+    if node.kind() == "call" && python_call_is_output_sink(node, source, symbols) {
+        collect_call_literal_lines(node, source, lines);
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_python_output_calls(child, source, symbols, lines);
+    }
+}
+
+fn python_call_is_output_sink(call: Node<'_>, source: &str, symbols: &PythonSymbols) -> bool {
+    let Some(function) = call.child_by_field_name("function") else {
+        return false;
+    };
+    let text = node_text(function, source).trim();
+    if symbols.sink_names.contains(text) {
+        return true;
+    }
+    if matches!(text, "sys.stdout.write" | "sys.stderr.write") {
+        return true;
+    }
+    let Some((receiver, method)) = text.rsplit_once('.') else {
+        return false;
+    };
+    (method == "emit" && python_breadcrumb_receiver(receiver, symbols))
+        || (LOGGING_UTIL_SINKS.contains(&method) && symbols.logging_util_names.contains(receiver))
+}
+
+fn python_logging_sink_reference(node: Node<'_>, source: &str, symbols: &PythonSymbols) -> bool {
+    let text = node_text(node, source).trim();
+    text.rsplit_once('.').is_some_and(|(module, name)| {
+        symbols.logging_util_names.contains(module) && LOGGING_UTIL_SINKS.contains(&name)
+    })
+}
+
+fn python_breadcrumb_constructor(node: Node<'_>, source: &str, symbols: &PythonSymbols) -> bool {
+    if node.kind() != "call" {
+        return false;
+    }
+    let Some(function) = node.child_by_field_name("function") else {
+        return false;
+    };
+    python_breadcrumb_constructor_text(node_text(function, source).trim(), symbols)
+}
+
+fn python_breadcrumb_constructor_text(text: &str, symbols: &PythonSymbols) -> bool {
+    symbols.breadcrumb_writer_names.contains(text)
+        || text.rsplit_once('.').is_some_and(|(module, name)| {
+            name == "BreadcrumbWriter" && symbols.logging_util_names.contains(module)
+        })
+}
+
+fn python_breadcrumb_receiver(receiver: &str, symbols: &PythonSymbols) -> bool {
+    if symbols.breadcrumb_writer_names.contains(receiver) {
+        return true;
+    }
+    if let Some(constructor) = receiver.strip_suffix(')') {
+        let function = constructor.split_once('(').map_or(constructor, |(function, _)| function);
+        return python_breadcrumb_constructor_text(function.trim(), symbols);
+    }
+    false
+}
+
+fn collect_call_literal_lines(call: Node<'_>, source: &str, lines: &mut BTreeSet<usize>) {
+    let Some(arguments) = call.child_by_field_name("arguments") else {
+        return;
+    };
+    let mut cursor = arguments.walk();
+    for argument in arguments.named_children(&mut cursor) {
+        let value = if argument.kind() == "keyword_argument" {
+            argument.child_by_field_name("value")
+        } else {
+            Some(argument)
+        };
+        let Some(value) = value else {
+            continue;
+        };
+        if python_literal_contains_em_dash(value, source) {
+            lines.insert(value.start_position().row + 1);
+        }
+    }
+}
+
+fn python_literal_contains_em_dash(node: Node<'_>, source: &str) -> bool {
+    if node.kind() == "string" {
+        return node_text(node, source).contains(EM_DASH);
+    }
+    if node.kind() == "concatenated_string" {
+        let mut cursor = node.walk();
+        return node
+            .named_children(&mut cursor)
+            .any(|child| python_literal_contains_em_dash(child, source));
+    }
+    false
+}
+
+fn node_text<'source>(node: Node<'_>, source: &'source str) -> &'source str {
+    source.get(node.byte_range()).unwrap_or("")
 }
 
 #[derive(Default)]

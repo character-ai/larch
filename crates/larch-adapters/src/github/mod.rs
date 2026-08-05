@@ -21,8 +21,8 @@ pub use operations::{
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,
-    ReleaseFuture, ReleaseOperations, ReleaseServiceError, ReleaseTransport, RepoSlug, find_asset,
-    validate_download_redirect,
+    PublicReleaseAsset, PublicReleaseDownloader, ReleaseFuture, ReleaseOperations,
+    ReleaseServiceError, ReleaseTransport, RepoSlug, find_asset, validate_download_redirect,
 };
 
 use bytes::Bytes;

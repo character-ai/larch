@@ -4001,8 +4001,6 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
         "cargo-clippy",
         "larch-lint",
         "check-topology-rule-paths",
-        "lint-em-dash-output",
-        "lint-codex-exec-auth",
         "lint-retired-scripts",
     ):
         assert hook in lint_skip

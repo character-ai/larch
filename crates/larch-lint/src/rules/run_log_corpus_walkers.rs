@@ -38,16 +38,33 @@
 //! classification patterns) and the line lexer, which no general crate owns
 //! without pulling a full parser that this build cannot line-anchor.
 
+use std::collections::BTreeSet;
+
 use regex::Regex;
+use tree_sitter::Node;
 
 use crate::suppression;
-use crate::{Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{
+    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
+    syntax::parse_python,
+};
 
 const NAME: &str = "run-log-corpus-walkers";
 const DESCRIPTION: &str = "Reject raw committed run-log corpus walkers outside the shared owner";
 const RUST_SCOPE_INCLUDE: &str = "crates/*/src/**/*.rs";
 const LINTER_CRATE_EXCLUDE: &str = "crates/larch-lint/**";
 const OWNER_SUFFIX: &str = "report/run_log_corpus.rs";
+const PYTHON_SCOPE_INCLUDES: [&str; 3] = [
+    "python/**/*.py",
+    "skills/fluff-analysis/scripts/fluff-analysis.py",
+    "skills/voter-calibration/scripts/voter-calibration.py",
+];
+const PYTHON_OWNER: &str = "python/larch/report/run_log_corpus.py";
+const PYTHON_EXEMPTIONS: [&str; 3] = [
+    "python/larch/report/retro_fix_cursor.py",
+    "python/larch/report/retro_v3_sweep.py",
+    "python/larch/report/cleanup_implement_logs.py",
+];
 const SUPPRESSION_TOKEN: &str = "lint-run-log-corpus-walkers";
 const CLASSIFICATION_MARKER: &str = "findings-classification";
 const CLASSIFICATION_ROOTS: [&str; 3] = ["design/", "implement/", "review/"];
@@ -94,21 +111,47 @@ impl Rule for RunLogCorpusWalkersRule {
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let walker = walker_regex()?;
-        let selector = PathSelector::new(&[RUST_SCOPE_INCLUDE], &[LINTER_CRATE_EXCLUDE])?;
+        let rust = PathSelector::new(&[RUST_SCOPE_INCLUDE], &[LINTER_CRATE_EXCLUDE])?;
+        let python = PathSelector::new(&PYTHON_SCOPE_INCLUDES, &[])?;
         let mut findings = Vec::new();
-        for path in selector.select(repository) {
+        for path in rust.select(repository) {
             if is_owner(path) {
                 continue;
             }
             let source = repository.read_utf8(path)?;
             findings.extend(scan_source(path.as_str(), &source, &walker)?);
         }
+        for path in python.select(repository) {
+            if is_python_owner_or_exempt(path) || is_excluded_python_path(path.as_str()) {
+                continue;
+            }
+            findings.extend(scan_python_source(path.as_str(), &repository.read_utf8(path)?)?);
+        }
+        findings.sort();
+        findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
 }
 
 fn is_owner(path: &RepoPath) -> bool {
     path.as_str().ends_with(OWNER_SUFFIX)
+}
+
+fn is_python_owner_or_exempt(path: &RepoPath) -> bool {
+    path.as_str() == PYTHON_OWNER || PYTHON_EXEMPTIONS.contains(&path.as_str())
+}
+
+fn is_excluded_python_path(path: &str) -> bool {
+    let parts: Vec<_> = path.split('/').collect();
+    parts.iter().any(|part| {
+        matches!(
+            *part,
+            ".git" | "node_modules" | ".venv" | ".agents" | "__pycache__" | "larch-logs" | "tests" | "test"
+        )
+    }) || path
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| name.starts_with("test_") || name.ends_with("_test.py"))
 }
 
 fn walker_regex() -> Result<Regex, LintError> {
@@ -137,13 +180,285 @@ fn scan_source(path: &str, source: &str, walker: &Regex) -> Result<Vec<Finding>,
     Ok(findings)
 }
 
+fn scan_python_source(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
+    let tree = parse_python(source)?;
+    let mut symbols = PythonWalkerSymbols::default();
+    let mut detections = BTreeSet::new();
+    collect_python_walkers(tree.root_node(), source, &mut symbols, &mut detections);
+    detections
+        .into_iter()
+        .map(|(line, detection)| {
+            if suppression::reason(source.lines().nth(line.saturating_sub(1)).unwrap_or(""), SUPPRESSION_TOKEN)?.is_some() {
+                return Ok(None);
+            }
+            let line = u32::try_from(line)
+                .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
+            Ok(Some(Finding::new(path, line, detection.message())))
+        })
+        .filter_map(Result::transpose)
+        .collect()
+}
+
+#[derive(Default)]
+struct PythonWalkerSymbols {
+    corpus_aliases: BTreeSet<String>,
+    safe_run_aliases: BTreeSet<String>,
+}
+
+fn python_target_names(node: Node<'_>, source: &str) -> Vec<String> {
+    if node.kind() == "identifier" {
+        return vec![node_text(node, source).trim().to_owned()];
+    }
+    let mut names = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        names.extend(python_target_names(child, source));
+    }
+    names
+}
+
+fn python_expression_is_safe_run(node: Node<'_>, source: &str, symbols: &PythonWalkerSymbols) -> bool {
+    if node.kind() == "identifier" {
+        return symbols.safe_run_aliases.contains(node_text(node, source).trim());
+    }
+    if node.kind() != "call" {
+        return false;
+    }
+    let Some(function) = node.child_by_field_name("function") else {
+        return false;
+    };
+    if !matches!(node_text(function, source).trim(), "str" | "Path") {
+        return false;
+    }
+    first_python_argument(node).is_some_and(|argument| python_expression_is_safe_run(argument, source, symbols))
+}
+
+fn python_expression_is_corpus(node: Node<'_>, source: &str, symbols: &PythonWalkerSymbols) -> bool {
+    let text = node_text(node, source);
+    if has_marker(text, &SESSION_MARKERS) {
+        return false;
+    }
+    if has_marker(text, &CORPUS_MARKERS) {
+        return true;
+    }
+    match node.kind() {
+        "identifier" => symbols.corpus_aliases.contains(text.trim()),
+        "binary_operator" => node
+            .child_by_field_name("left")
+            .is_some_and(|left| python_expression_is_corpus(left, source, symbols)),
+        "call" => node
+            .child_by_field_name("function")
+            .filter(|function| function.kind() == "attribute")
+            .and_then(|function| function.child_by_field_name("object"))
+            .is_some_and(|receiver| python_expression_is_corpus(receiver, source, symbols)),
+        _ => false,
+    }
+}
+
+fn collect_python_walkers(
+    node: Node<'_>,
+    source: &str,
+    symbols: &mut PythonWalkerSymbols,
+    detections: &mut BTreeSet<(usize, Detection)>,
+) {
+    if node.kind() == "for_statement" {
+        record_python_safe_run_loop(node, source, symbols);
+    }
+    if node.kind() == "call"
+        && let Some(detection) = python_walker_detection(node, source, symbols)
+    {
+        detections.insert((node.start_position().row + 1, detection));
+    }
+    if node.kind() == "for_statement" && is_python_dual_manifest_loop(node, source) {
+        detections.insert((node.start_position().row + 1, Detection::DualManifest));
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_python_walkers(child, source, symbols, detections);
+    }
+    if node.kind() == "assignment" {
+        record_python_assignment(node, source, symbols);
+    }
+}
+
+fn record_python_assignment(node: Node<'_>, source: &str, symbols: &mut PythonWalkerSymbols) {
+    let Some(left) = node.child_by_field_name("left") else {
+        return;
+    };
+    let Some(right) = node.child_by_field_name("right") else {
+        return;
+    };
+    let names = python_target_names(left, source);
+    if python_expression_is_safe_run(right, source, symbols) {
+        for name in names {
+            symbols.safe_run_aliases.insert(name.clone());
+            symbols.corpus_aliases.remove(&name);
+        }
+    } else if python_expression_is_corpus(right, source, symbols) {
+        for name in names {
+            if !symbols.safe_run_aliases.contains(&name) {
+                symbols.corpus_aliases.insert(name);
+            }
+        }
+    }
+}
+
+fn record_python_safe_run_loop(
+    node: Node<'_>,
+    source: &str,
+    symbols: &mut PythonWalkerSymbols,
+) {
+    let Some(iterable) = node.child_by_field_name("right") else {
+        return;
+    };
+    let Some(function) = iterable
+        .child_by_field_name("function")
+        .filter(|_| iterable.kind() == "call")
+    else {
+        return;
+    };
+    if node_text(function, source).trim() != "safe_child_run_dirs" {
+        return;
+    }
+    let Some(target) = node.child_by_field_name("left") else {
+        return;
+    };
+    for name in python_target_names(target, source) {
+        symbols.safe_run_aliases.insert(name.clone());
+        symbols.corpus_aliases.remove(&name);
+    }
+}
+
+fn python_walker_detection(
+    call: Node<'_>,
+    source: &str,
+    symbols: &PythonWalkerSymbols,
+) -> Option<Detection> {
+    let function = call.child_by_field_name("function")?;
+    let function_text = node_text(function, source).trim();
+    let name = function_text.rsplit('.').next()?;
+    if !matches!(name, "glob" | "rglob" | "iglob" | "walk" | "scandir") {
+        return None;
+    }
+    let argument = first_python_argument(call)?;
+    let argument_text = node_text(argument, source);
+    if matches!(name, "glob" | "rglob" | "iglob")
+        && python_constant_string(argument, source).is_some_and(is_python_classification_glob)
+    {
+        return Some(Detection::Classification);
+    }
+    let receiver = function_text.rsplit_once('.').map(|(receiver, _)| receiver);
+    let stdlib_glob = receiver == Some("glob");
+    let corpus_receiver = function
+        .child_by_field_name("object")
+        .is_some_and(|receiver| python_expression_is_corpus(receiver, source, symbols));
+    let corpus_argument = python_expression_is_corpus(argument, source, symbols);
+    match name {
+        "rglob" if corpus_receiver => Some(Detection::Glob),
+        "glob" | "iglob"
+            if (stdlib_glob && corpus_argument)
+                || (corpus_receiver && python_glob_looks_like_corpus(argument_text)) =>
+        {
+            Some(Detection::Glob)
+        }
+        "walk" if (receiver == Some("os") || corpus_receiver) && corpus_argument => {
+            Some(Detection::Walk)
+        }
+        "scandir" if corpus_argument => Some(Detection::ReadDir),
+        _ => None,
+    }
+}
+
+fn first_python_argument(call: Node<'_>) -> Option<Node<'_>> {
+    let arguments = call.child_by_field_name("arguments")?;
+    let mut cursor = arguments.walk();
+    arguments
+        .named_children(&mut cursor)
+        .find(|argument| argument.kind() != "keyword_argument")
+}
+
+fn is_python_classification_glob(argument: &str) -> bool {
+    argument.contains(CLASSIFICATION_MARKER)
+        && CLASSIFICATION_ROOTS
+            .iter()
+            .any(|root| argument.contains(root))
+}
+
+fn python_glob_looks_like_corpus(argument: &str) -> bool {
+    let trimmed = argument.trim().trim_matches(['\"', '\'']);
+    trimmed == "*"
+        || trimmed == "**"
+        || trimmed.starts_with("*/")
+        || argument.contains("larch-logs")
+        || CLASSIFICATION_ROOTS.iter().any(|root| argument.contains(root))
+}
+
+fn is_python_dual_manifest_loop(node: Node<'_>, source: &str) -> bool {
+    let Some(iterable) = node.child_by_field_name("right") else {
+        return false;
+    };
+    python_manifest_iterable(iterable, source)
+        && contains_python_manifest(node, source, "manifest.json")
+        && contains_python_manifest(node, source, "run-manifest.json")
+}
+
+fn python_manifest_iterable(node: Node<'_>, source: &str) -> bool {
+    match node.kind() {
+        "list" | "tuple" => contains_python_manifest(node, source, "manifest.json")
+            || contains_python_manifest(node, source, "run-manifest.json"),
+        "call" => {
+            let Some(function) = node.child_by_field_name("function") else {
+                return false;
+            };
+            if !matches!(node_text(function, source).trim(), "list" | "tuple") {
+                return false;
+            }
+            first_python_argument(node)
+                .is_some_and(|argument| python_manifest_iterable(argument, source))
+        }
+        _ => false,
+    }
+}
+
+fn contains_python_manifest(node: Node<'_>, source: &str, expected: &str) -> bool {
+    if python_constant_string(node, source) == Some(expected) {
+        return true;
+    }
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .any(|child| contains_python_manifest(child, source, expected))
+}
+
+fn python_constant_string<'source>(node: Node<'_>, source: &'source str) -> Option<&'source str> {
+    if node.kind() != "string" {
+        return None;
+    }
+    let raw = node_text(node, source).trim();
+    if matches!(raw.as_bytes().first(), Some(b'f' | b'F')) {
+        return None;
+    }
+    let stripped = raw.trim_start_matches(['r', 'R', 'b', 'B']);
+    let quote = stripped
+        .chars()
+        .next()
+        .filter(|quote| matches!(quote, '\"' | '\''))?;
+    stripped
+        .strip_prefix(quote)
+        .and_then(|value| value.strip_suffix(quote))
+}
+
+fn node_text<'source>(node: Node<'_>, source: &'source str) -> &'source str {
+    source.get(node.byte_range()).unwrap_or("")
+}
+
 /// A classified corpus-walker violation and its remediation family.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Detection {
     Classification,
     Walk,
     Glob,
     ReadDir,
+    DualManifest,
 }
 
 impl Detection {
@@ -158,6 +473,9 @@ impl Detection {
             Self::Glob => format!("raw corpus glob outside run_log_corpus: {remediation}"),
             Self::ReadDir => {
                 format!("raw corpus directory read outside run_log_corpus: {remediation}")
+            }
+            Self::DualManifest => {
+                "dual-manifest candidate loop outside run_log_corpus: use its metadata helpers".to_owned()
             }
         }
     }

@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 
 use crate::{
     GitCli, LintError, Repository, registered_rule_registry,
@@ -22,8 +22,91 @@ pub struct LintArguments {
     command: Command,
 }
 
+impl LintArguments {
+    /// Borrow the Gitleaks request when this invocation owns the scanner.
+    #[must_use]
+    pub fn gitleaks_arguments(&self) -> Option<&GitleaksArguments> {
+        match &self.command {
+            Command::Gitleaks(arguments) => Some(arguments),
+            Command::All | Command::Rule { .. } | Command::Rules | Command::Registry(_) => None,
+        }
+    }
+}
+
+/// Arguments for the checksum-pinned Gitleaks scanner.
+#[derive(Clone, Debug, Args)]
+pub struct GitleaksArguments {
+    /// Select a preparation-only, working-tree, or commit-history scan.
+    #[arg(long, value_enum)]
+    mode: GitleaksMode,
+    /// Bounded Git revision range required for a history scan.
+    #[arg(long)]
+    log_opts: Option<String>,
+    /// Resolve the repository and `.gitleaks.toml` from this directory.
+    #[arg(long, value_name = "PATH")]
+    repo_root: Option<PathBuf>,
+    /// Store the verified release binary under this directory.
+    #[arg(long, value_name = "PATH")]
+    cache_dir: Option<PathBuf>,
+}
+
+impl GitleaksArguments {
+    /// Build a scanner request for an embedding caller or focused test.
+    #[must_use]
+    pub fn new(
+        mode: GitleaksMode,
+        log_opts: Option<String>,
+        repo_root: Option<PathBuf>,
+        cache_dir: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            mode,
+            log_opts,
+            repo_root,
+            cache_dir,
+        }
+    }
+
+    /// Return the requested scanner mode.
+    #[must_use]
+    pub const fn mode(&self) -> GitleaksMode {
+        self.mode
+    }
+
+    /// Return the optional history range.
+    #[must_use]
+    pub fn log_opts(&self) -> Option<&str> {
+        self.log_opts.as_deref()
+    }
+
+    /// Return the optional repository-root override.
+    #[must_use]
+    pub fn repo_root(&self) -> Option<&Path> {
+        self.repo_root.as_deref()
+    }
+
+    /// Return the optional cache-directory override.
+    #[must_use]
+    pub fn cache_dir(&self) -> Option<&Path> {
+        self.cache_dir.as_deref()
+    }
+}
+
+/// Scan mode for the checksum-pinned Gitleaks command.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum GitleaksMode {
+    /// Verify the release artifact and report its exact version.
+    Verify,
+    /// Scan the uncommitted working tree with `--no-git`.
+    WorkingTree,
+    /// Scan a bounded Git revision range.
+    History,
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Verify or run the checksum-pinned Gitleaks scanner.
+    Gitleaks(GitleaksArguments),
     /// Run every registered rule.
     All,
     /// Run one registered rule.
@@ -77,6 +160,10 @@ pub fn run_cli_with_io(
     stderr: &mut impl Write,
 ) -> ExitCode {
     match arguments.command {
+        Command::Gitleaks(_) => render_error(
+            &LintError::new("Gitleaks must run through the larch executable"),
+            stderr,
+        ),
         Command::Rules => match registered_rule_registry() {
             Ok(registry) => match render_rule_list(&registry, stdout) {
                 Ok(()) => ExitCode::Clean,

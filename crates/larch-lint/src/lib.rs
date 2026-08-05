@@ -20,7 +20,7 @@ mod rules {
 
 #[doc(hidden)]
 pub use cli::run_cli_with_io;
-pub use cli::{LintArguments, run_cli};
+pub use cli::{GitleaksArguments, GitleaksMode, LintArguments, run_cli};
 pub use command_registry::{
     audit_migration_issue_commands, render_command_progress, sync_command_registry,
 };

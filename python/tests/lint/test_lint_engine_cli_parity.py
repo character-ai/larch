@@ -12,7 +12,6 @@ from larch.lint import (
     lint_gh_argv_literal,
     lint_git_push_refspec,
     lint_guidelines_note_wrapper_bypass,
-    lint_run_log_walkers,
     lint_shared_convention_regex,
 )
 
@@ -22,7 +21,6 @@ ROOT_ONLY_COMMANDS: tuple[tuple[str, LintMain, int], ...] = (
     ("gh-argv-literal", lint_gh_argv_literal.main, 2),
     ("git-push-refspec", lint_git_push_refspec.main, 2),
     ("guidelines-note-wrapper-bypass", lint_guidelines_note_wrapper_bypass.main, 2),
-    ("run-log-walkers", lint_run_log_walkers.main, 2),
     ("shared-convention-regex", lint_shared_convention_regex.main, 2),
 )
 

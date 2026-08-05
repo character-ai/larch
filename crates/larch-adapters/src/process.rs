@@ -648,7 +648,7 @@ mod tests {
     use crate::runtime::LarchRuntime;
     use larch_core::{
         ExternalProgram, GitCliOperation, GitHubCliOperation, HostUtilityProgram, ProcessRequest,
-        ProcessRequestError, VendorProgram,
+        ProcessRequestError, ScannerProgram, VendorProgram,
     };
     use larch_test_support::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder, TestClock};
     use std::{
@@ -733,11 +733,12 @@ mod tests {
             ExternalProgram::Vendor(VendorProgram::Claude),
             ExternalProgram::Vendor(VendorProgram::Codex),
             ExternalProgram::Vendor(VendorProgram::Cursor),
+            ExternalProgram::Scanner(ScannerProgram::Gitleaks),
             ExternalProgram::Git(GitCliOperation::Version),
             ExternalProgram::GitHub(GitHubCliOperation::AuthToken),
             ExternalProgram::HostUtility(HostUtilityProgram::Lsof),
         ];
-        assert_eq!(allowed.len(), 6);
+        assert_eq!(allowed.len(), 7);
         assert!(allowed.iter().all(|program| !program.reason().is_empty()));
         assert!(
             allowed

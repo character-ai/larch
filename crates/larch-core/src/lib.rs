@@ -82,7 +82,7 @@ pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
     HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,
     ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
-    ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, VendorProgram,
+    ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, ScannerProgram, VendorProgram,
 };
 pub use process_identity::{
     COMMAND_LOG_LIMIT, DESIGN_STEP3_KILL_LOG_FILE, DESIGN_STEP3_LOOP_IDENTITY_FILE,

@@ -11,7 +11,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `larch/io.py` — shared text, `KEY=value`, and atomic-write helpers for larch wire files
 - `larch/core/logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` owns Python stream routing, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
 - `larch/core/redact.py`, `larch/core/retry.py` — secret redaction and transient retry helpers
-- `larch/lint/gitleaks.py`: checksum-pinned release bootstrap shared by local pre-commit and CI gitleaks scans
+- The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit and CI scans.
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `render_session_transcript.py`, `cleanup_implement_logs.py`, `retro_v3_sweep.py` — run-log maintenance surfaces exposed as `python/cli.py run-log render-session-transcript`, `python/cli.py run-log cleanup-implement-logs`, and `python/cli.py run-log retro-v3-sweep`.

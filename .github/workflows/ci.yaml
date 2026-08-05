@@ -71,7 +71,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-em-dash-output,lint-codex-exec-auth,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-retired-scripts
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -130,7 +130,7 @@ jobs:
         # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright, and Rust
         # hooks covered by rust-gate) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-em-dash-output,lint-codex-exec-auth,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
@@ -524,28 +524,48 @@ jobs:
   # (covers the PR commit range; `fetch-depth: 0` supports merge-base lookup).
   # Both use the same checksum-pinned release artifact path as local pre-commit.
   gitleaks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+      LARCH_BINARY: ${{ github.workspace }}/target/debug/larch
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Cache Cargo inputs and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}-${{ hashFiles('crates/**/*.rs') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Cache gitleaks binary
         uses: actions/cache@v5
         with:
           path: ~/.cache/larch/tools/gitleaks
-          key: gitleaks-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('python/larch/lint/gitleaks.py') }}
+          key: gitleaks-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/larch-cli/src/gitleaks.rs', 'crates/larch-adapters/src/github/release.rs', 'crates/larch-core/src/process.rs', 'Cargo.lock') }}
+      - name: Build verified larch executable
+        run: cargo build --quiet --locked --package larch-cli
       - name: Prepare verified gitleaks release
-        run: python3 python/cli.py checks gitleaks --mode verify
+        run: '"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode verify'
       - name: Scan working tree
-        run: python3 python/cli.py checks gitleaks --mode working-tree
+        run: '"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode working-tree'
       - name: Scan git history
         run: |
           set -euo pipefail
           # Limit scan to new commits in this PR to avoid false positives from
           # historical test-fixture keys in the main branch.
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
-          python3 python/cli.py checks gitleaks --mode history --log-opts "${BASE}..HEAD"
+          "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode history --log-opts "${BASE}..HEAD"
 
 
   # Generator and local metadata drift checks. Uses a sparse checkout because

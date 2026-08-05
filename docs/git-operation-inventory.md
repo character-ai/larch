@@ -83,7 +83,6 @@ python/larch/lint/duplicate_code.py	later-domain	#7685	dynamic
 python/larch/lint/engine.py	later-domain	#7685	ls-files
 python/larch/lint/lint_common.py	later-domain	#7685	dynamic
 python/larch/lint/lint_git_push_refspec.py	later-domain	#7685	push
-python/larch/lint/lint_run_log_walkers.py	later-domain	#7685	dynamic
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
