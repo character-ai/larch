@@ -16,9 +16,9 @@ from typing import cast
 
 from larch.agents import collect_results
 from larch import io as larch_io
-from larch.core import config, logging_util
+from larch.core import config, logging_util, proc
 from larch.report import progress_file
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, plugin_root
 from larch.review import review_aggregate
 from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
@@ -57,6 +57,18 @@ def _run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subproces
         text=True,
         capture_output=True,
         check=False,
+        env=merged,
+    )
+
+
+def _run_larch_cli(argv: list[str], *, env: dict[str, str] | None = None) -> proc.CommandResult:
+    merged = os.environ.copy()
+    if env:
+        merged.update(env)
+    _ = merged.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root(_REPO_ROOT)))
+    return proc.run(
+        argv,
+        cwd=str(_REPO_ROOT),
         env=merged,
     )
 
@@ -488,8 +500,9 @@ def _compose_findings_from_collector(
             fail_slug = re.sub(r"[^A-Za-z0-9._+-]+", "_", slot_name).strip("_")[:200] or "slot"
             fail_log = design / f"{fail_slug}-collector.failure.log"
             srec = f"REVIEWER_FILE={rf}|TOOL={tool}|STATUS={status}|EXIT_CODE={xc}|FAILURE_REASON={fr}"
-            _ = _run_cli(
+            _ = _run_larch_cli(
                 argv=[
+                    str(larch_entrypoint(_REPO_ROOT)),
                     "agent",
                     "compose-collector-failure-log",
                     "--reviewer-file",

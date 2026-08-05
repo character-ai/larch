@@ -184,6 +184,13 @@ temporary-path and secret redaction, then a 5120-byte cap. Successful launches
 remove stale tail sidecars. Batch collection deduplicates repeated root-cause
 tails.
 
+The Rust-owned `agent compose-collector-failure-log` command reads its local
+reviewer and stderr sidecars through `larch_adapters::vendor_diagnostics`,
+uses the same bounded-tail renderer for stderr carriers, applies the shared
+core redactor to the complete composed body, and atomically writes the result
+with private mode `0600`. Its output remains session-private; it is not a
+public-report publisher.
+
 Per-slot `*.failure-diag` files combine bounded diagnostic sources for local
 recovery. They remain session-private. Implement Step 18 terminal snapshot
 preparation redacts their selected content into

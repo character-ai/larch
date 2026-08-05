@@ -21,6 +21,7 @@ from larch.core import proc as proc_module
 from test_support import ROOT
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
+RUST_AGENT_STUB = ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"
 
 
 def _write(path: Path, text: str) -> Path:
@@ -88,6 +89,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","usa
         {
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_BINARY": str(RUST_AGENT_STUB),
             "LARCH_QUIET_DISABLE": "1",
             "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.05",
             "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",

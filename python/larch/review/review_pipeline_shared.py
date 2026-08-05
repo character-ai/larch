@@ -158,6 +158,11 @@ def _run_capture(argv: Sequence[str], *, runner: proc.Runner | None = None, env:
     return _runner(runner).run(argv, cwd=str(Path.cwd()), env=_env_with_plugin(env))
 
 
+def run_capture(argv: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
+    """Run a command through the shared capture binding."""
+    return _run_capture(argv, runner=runner, env=env)
+
+
 def _run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
     return _run_capture([sys.executable, str(CLI), *args], runner=runner, env=env)
 

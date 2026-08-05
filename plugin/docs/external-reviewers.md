@@ -58,7 +58,7 @@ All launches happen in a single message to ensure true parallel execution.
 The wrapper script writes a `.done` sentinel file when the process completes. This is the only reliable way to detect completion:
 
 - **Do not read output files until the sentinel exists** — Cursor buffers all stdout until exit, so its output file is empty until the process finishes
-- **Poll for sentinels** using `python3 python/cli.py agent wait-reviewers`, which checks every 5 seconds and prints compact progress dots
+- **Poll for sentinels** using `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh agent wait-reviewers`, which checks every 5 seconds and prints compact progress dots
 - Sentinel files contain the exit code (e.g., `0` for success)
 
 ## Output Validation

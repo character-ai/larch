@@ -21,6 +21,7 @@ from tests.support.foundation import make_keepalive_consumer_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
+RUST_AGENT_STUB = REPO_ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"
 
 
 class FakeHarness:
@@ -603,6 +604,7 @@ def _dispatch_via_cli(
             "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
             "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.05",
             "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
+            "LARCH_BINARY": str(RUST_AGENT_STUB),
             "PATH": f"{stub_bin}:{merged.get('PATH', '')}",
         }
     )

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.design.plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 from larch.calibration import difficulty
 from larch.design.plan_scout import filter_manifest as filter_scout_manifest
@@ -35,7 +36,6 @@ from larch.review.review_pipeline_shared import (
     _manifest_rows,
     _normalize_output_base,
     _parse_args,
-    _run_capture,
     _run_command_string,
     _write_text,
 )
@@ -49,6 +49,8 @@ from larch.review.review_prune import (
     reviewer_prune_filter,
     write_prune_decision_env,
 )
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _valid_dynamic_archetype(value: object) -> bool:
@@ -78,6 +80,21 @@ def _valid_dynamic_archetype(value: object) -> bool:
     if isinstance(rationale, str) and "\n" in rationale:
         return False
     if isinstance(prompt_body, str) and "</reviewer_" in prompt_body.lower():
+        return False
+    return True
+
+
+def _validate_panel_base_inputs(
+    *, mode: str, review_tmpdir: Path, codex_available: str, cursor_available: str
+) -> bool:
+    if mode not in {"diff", "description"}:
+        _diag("review dispatch-panel: --mode must be diff or description")
+        return False
+    if not str(review_tmpdir):
+        _diag("review dispatch-panel: --review-tmpdir is required")
+        return False
+    if codex_available not in {"true", "false"} or cursor_available not in {"true", "false"}:
+        _diag("review dispatch-panel: availability flags must be true or false")
         return False
     return True
 
@@ -530,14 +547,12 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     round_raw = _get(parsed=parsed, key="--round-num", default="1")
     plan_file = _get(parsed=parsed, key="--plan-file")
     site = _get(parsed=parsed, key="--site", default="review Step 2")
-    if mode not in {"diff", "description"}:
-        _diag("review dispatch-panel: --mode must be diff or description")
-        return 2
-    if not str(review_tmpdir):
-        _diag("review dispatch-panel: --review-tmpdir is required")
-        return 2
-    if codex_available not in {"true", "false"} or cursor_available not in {"true", "false"}:
-        _diag("review dispatch-panel: availability flags must be true or false")
+    if not _validate_panel_base_inputs(
+        mode=mode,
+        review_tmpdir=review_tmpdir,
+        codex_available=codex_available,
+        cursor_available=cursor_available,
+    ):
         return 2
     if panel not in {"simple", "hard"}:
         _diag("review dispatch-panel: --panel must be simple or hard")
@@ -572,8 +587,12 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     diff_file = _get(parsed=parsed, key="--diff-file")
     diff_mode = ""
     if dynamic_max and mode == "diff" and diff_file and Path(diff_file).is_file() and Path(diff_file).stat().st_size:
-        classifier = os.environ.get("CLASSIFY_DIFF_MODE_SH", "")
-        result = _run_command_string(command=classifier, args=[diff_file]) if classifier else review_pipeline_shared.run_python_cli(["agent", "classify-diff", diff_file])
+        result = review_pipeline_shared.run_capture(
+            [str(larch_entrypoint(_PLUGIN_ROOT)), "agent", "classify-diff", diff_file]
+        )
+        if result.returncode != 0:
+            _diag("review dispatch-panel: diff classification failed")
+            return result.returncode or 1
         diff_mode = _kv_parse(result.stdout).get("DIFF_MODE", result.stdout.removeprefix("DIFF_MODE=").strip()) or "generic"
         if diff_mode in {"docs-only", "test-only", "generated-only"}:
             scout_status = f"skipped-{diff_mode}"
@@ -849,7 +868,13 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
-    result = _run_capture([dispatch_override, *waterfall_args], env=panel_env) if dispatch_override else review_pipeline_shared.run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], env=panel_env)
+    result = (
+        review_pipeline_shared.run_capture([dispatch_override, *waterfall_args], env=panel_env)
+        if dispatch_override
+        else review_pipeline_shared.run_python_cli(
+            ["agent", "dispatch-waterfall", *waterfall_args], env=panel_env
+        )
+    )
     kv = _kv_parse(result.stdout)
     if result.returncode != 0:
         _emit_kv(key="WARN", value=f"agent dispatch-waterfall exited rc={result.returncode}")

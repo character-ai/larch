@@ -85,9 +85,29 @@ impl CleanInstallCase {
 
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new(
+        "clean-install-agent-classify-diff",
+        "agent",
+        "classify-diff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-compose-collector-failure-log",
+        "agent",
+        "compose-collector-failure-log",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-gather-branch-context",
+        "agent",
+        "gather-branch-context",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-wait-reviewers",
+        "agent",
+        "wait-reviewers",
     ),
     CleanInstallCase::new("clean-install-lint-gitleaks", "lint", "gitleaks"),
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),

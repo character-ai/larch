@@ -682,9 +682,10 @@ def test_plan_review_tally_security_classifier_failure_aborts_without_public_oos
 
 def test_compose_findings_counts_failures_without_dropping_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A non-OK reviewer is counted as a failure while OK reviewers still parse (issue #4790)."""
-    # Failure records trigger collector-failure-log composition via _run_cli; stub it so
+    # Failure records trigger collector-failure-log composition via _run_larch_cli; stub it so
     # the unit test does not spawn the CLI subprocess.
     monkeypatch.setattr(plan_review_round, "_run_cli", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(plan_review_round, "_run_larch_cli", lambda *_a, **_k: None)  # type: ignore[arg-type]
     design = tmp_path
     sidecar_ok = design / "codex-plan-arch.sidecar.tsv"
     _write_sidecar(

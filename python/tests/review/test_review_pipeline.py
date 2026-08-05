@@ -5,7 +5,6 @@ import json
 import io
 import os
 import re
-import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stdout
@@ -3367,8 +3366,6 @@ def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -
     (case_dir / "review.diff").write_text("diff --git a/docs/foo.md b/docs/foo.md\n", encoding="utf-8")
     impl = tmp_path / "impl"
     impl.mkdir()
-    classifier = tmp_path / "classify-docs-only.sh"
-    _write_executable(classifier, '#!/usr/bin/env bash\nprintf "DIFF_MODE=docs-only\\n"\n')
     waterfall = tmp_path / "waterfall.sh"
     _write_waterfall_noop(waterfall)
     result = run_review(
@@ -3386,7 +3383,6 @@ def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
             "LARCH_QUIET_DISABLE": "1",
             "IMPLEMENT_TMPDIR": str(impl),
-            "CLASSIFY_DIFF_MODE_SH": str(classifier),
             "DISPATCH_WATERFALL": str(waterfall),
         },
     )
@@ -3394,6 +3390,29 @@ def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -
     assert "SCOUT_STATUS=skipped-docs-only" in result.stdout
     assert not (impl / ".producer-scout-warning-logged").exists()
     assert not (impl / "execution-issues.md").exists()
+
+
+def test_dispatch_panel_core_fails_closed_when_diff_classifier_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    plan = tmp_path / "plan.md"
+    plan.write_text("# plan\n", encoding="utf-8")
+    diff = tmp_path / "review.diff"
+    diff.write_text("diff --git a/docs/a.md b/docs/a.md\n", encoding="utf-8")
+
+    def failed_classifier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult((), 1, "", "manifest malformed", 0.0)
+
+    monkeypatch.setattr(review_pipeline_shared, "run_capture", failed_classifier)
+    assert review_dispatch_panel.dispatch_panel(
+        [
+            "--mode", "diff", "--diff-file", str(diff), "--review-tmpdir", str(review_tmpdir),
+            "--codex-available", "false", "--cursor-available", "false", "--panel", "hard",
+            "--plan-file", str(plan), "--dynamic-archetypes", "1",
+        ]
+    ) == 1
 
 
 def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4143,21 +4162,12 @@ def test_collect_findings_skips_external_not_substantive_from_collector(tmp_path
 
 def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
     # Test that collect-findings exits non-zero when wait-for-reviewers times out.
-    # The wait is now handled by python/cli.py agent wait-reviewers (Python-native);
-    # we omit the .done sentinel to trigger an actual timeout.
-    harness = tmp_path / "plugin-harness"
-    scripts = harness / "scripts"
-    scripts.mkdir(parents=True)
-    for entry in (ROOT / "scripts").iterdir():
-        if not entry.is_file():
-            continue
-        _ = shutil.copy2(entry, scripts / entry.name)
-    (harness / "python").symlink_to(ROOT / "python")
+    # The Rust owner emits a TIMEOUT row when the .done sentinel is absent.
     case = tmp_path / "collect-wait-fail"
     case.mkdir()
     outf = case / "claude-wait-output.txt"
     _ = outf.write_text("### In-Scope Findings\n- relay case finding.\n", encoding="utf-8")
-    # No .done sentinel — causes the Python wait to time out after --timeout 1.
+    # No .done sentinel — causes the Rust wait to report a timeout.
     result = run_review(
         "collect-findings",
         "--claude-output-files",
@@ -4171,7 +4181,7 @@ def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
         "--oos-file",
         str(case / "oos.md"),
         env={
-            "CLAUDE_PLUGIN_ROOT": str(harness),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
             "REVIEW_TMPDIR": str(case),
             "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.01",
         },

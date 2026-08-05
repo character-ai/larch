@@ -68,7 +68,7 @@ After all other tasks are done, collect and validate external reviewer outputs u
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout <seconds> <output-file> [<output-file> ...]
 ```
 
-Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation. The script internally calls `python3 python/cli.py agent wait-reviewers` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `python3 python/cli.py agent run-external-agent`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
+Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation. The script internally calls `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh agent wait-reviewers` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `python3 python/cli.py agent run-external-agent`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
 
 **Output**: The script emits structured `KEY=value` blocks on stdout (one block per reviewer, separated by blank lines):
 ```

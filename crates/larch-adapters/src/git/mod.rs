@@ -386,6 +386,7 @@ mod tests {
         check(
             &ExactDiffRequest {
                 cached: true,
+                unified_context: None,
                 name_only: true,
                 name_status: false,
                 quiet: false,
@@ -655,6 +656,7 @@ mod tests {
         assert!(
             ExactDiffRequest {
                 cached: false,
+                unified_context: None,
                 name_only: true,
                 name_status: true,
                 quiet: false,
@@ -748,6 +750,7 @@ mod tests {
         assert_argv(
             &ExactDiffRequest {
                 cached: false,
+                unified_context: None,
                 name_only: false,
                 name_status: true,
                 quiet: true,

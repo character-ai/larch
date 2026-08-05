@@ -352,6 +352,7 @@ specialist_out="$TMP/render-specialist-prompt.txt"
 python3 "$REPO_ROOT/python/cli.py" render specialist \
     --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
     --mode diff \
+    --diff-mode generic \
     --diff-file "$diff_file" \
     --plan-file "$plan_file" \
     --feature-file "$feature_file" > "$specialist_out"

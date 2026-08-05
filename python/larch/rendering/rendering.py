@@ -26,9 +26,9 @@ from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.git import pr_body
 from larch.core import redact
-from larch.agents import review_dispatch
 from larch.state import session_env
 from larch.issue import tracking_issue
 from larch.errors import ShipError
@@ -784,13 +784,21 @@ def _effective_diff_mode(args: argparse.Namespace) -> str:
 def _classify_diff_mode(diff_file: str) -> str:
     if not diff_file:
         return "generic"
-    try:
-        value: object = review_dispatch.classify_diff(diff_file)
-    except Exception:
-        return "generic"
-    if value in {"generic", "docs-only", "test-only", "generated-only"}:
-        return str(value)
-    return "generic"
+    environment = os.environ.copy()
+    _ = environment.setdefault("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    result = proc.run(
+        [str(larch_entrypoint(REPO_ROOT)), "agent", "classify-diff", diff_file],
+        env=environment,
+    )
+    if result.returncode != 0:
+        raise RenderError("diff classification failed")
+    rows = [line for line in result.stdout.splitlines() if line]
+    if len(rows) != 1 or not rows[0].startswith("DIFF_MODE="):
+        raise RenderError("diff classifier emitted an invalid response")
+    value = rows[0].removeprefix("DIFF_MODE=")
+    if value not in {"generic", "docs-only", "test-only", "generated-only"}:
+        raise RenderError("diff classifier emitted an invalid mode")
+    return value
 
 
 def _load_specialist_body(agent_file: Path) -> str:

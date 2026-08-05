@@ -14,6 +14,7 @@ import contextlib
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.research import research_eval
 from larch.review.review_pipeline_shared import (
     PER_REVIEWER_OOS_PROPOSAL_CAP,
@@ -24,10 +25,13 @@ from larch.review.review_pipeline_shared import (
     _get_list,
     _kv_parse,
     _parse_args,
+    _run_capture,
     _run_python_cli,
     _write_text,
 )
 from larch.review.review_types import FOCUS_AREA_SET
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
 # Pin collect contracts for structure tests: agent collect-results --timeout 1860 --substantive-validation --validation-mode.
 # In description mode, dual-list output is split between ### In-Scope Findings and ### Out-of-Scope Observations.
@@ -237,8 +241,15 @@ def collect_findings(argv: list[str]) -> int:
     if claude_files:
         sentinels = [str(path) + ".done" for path in claude_files]
         wait_log = review_tmpdir / "wait-for-claude-reviewers.log"
-        result = _run_python_cli(
-            ["agent", "wait-reviewers", "--timeout", timeout, *sentinels],
+        result = _run_capture(
+            [
+                str(larch_entrypoint(_PLUGIN_ROOT)),
+                "agent",
+                "wait-reviewers",
+                "--timeout",
+                timeout,
+                *sentinels,
+            ],
             env={"WAIT_FOR_REVIEWERS_POLL_INTERVAL": os.environ.get("WAIT_FOR_REVIEWERS_POLL_INTERVAL", "1")},
         )
         _write_text(path=wait_log, text=result.stdout + result.stderr)

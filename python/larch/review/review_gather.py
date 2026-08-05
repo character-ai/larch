@@ -9,13 +9,15 @@ import shutil
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.review.review_pipeline_shared import (
     _emit_kv,
     _get,
     _parse_args,
     _run_capture,
-    _run_python_cli,
 )
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _valid_rel_file(path: str) -> bool:
@@ -45,7 +47,15 @@ def gather_context(argv: list[str]) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     if mode == "diff":
         branch_context_env = output_dir / "gather-branch-context.env"
-        result = _run_python_cli(["agent", "gather-branch-context", "--output-dir", str(output_dir)])
+        result = _run_capture(
+            [
+                str(larch_entrypoint(_PLUGIN_ROOT)),
+                "agent",
+                "gather-branch-context",
+                "--output-dir",
+                str(output_dir),
+            ]
+        )
         from larch import io as larch_io  # noqa: PLC0415
         larch_io.write_text(path=branch_context_env, text=result.stdout)
         for line in result.stdout.splitlines():

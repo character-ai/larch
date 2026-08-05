@@ -54,11 +54,13 @@ verb = "classify-diff"
 python_module = "larch.agents.review_dispatch"
 python_function = "classify_diff_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8118
+clean_install_test = "clean-install-agent-classify-diff"
 
 [[commands]]
 domain = "agent"
@@ -78,11 +80,13 @@ verb = "compose-collector-failure-log"
 python_module = "larch.agents.review_dispatch"
 python_function = "compose_collector_failure_log_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8118
+clean_install_test = "clean-install-agent-compose-collector-failure-log"
 
 [[commands]]
 domain = "agent"
@@ -162,11 +166,13 @@ verb = "gather-branch-context"
 python_module = "larch.agents.review_dispatch"
 python_function = "gather_branch_context_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8118
+clean_install_test = "clean-install-agent-gather-branch-context"
 
 [[commands]]
 domain = "agent"
@@ -392,11 +398,13 @@ verb = "wait-reviewers"
 python_module = "larch.agents.review_dispatch"
 python_function = "wait_reviewers_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8118
+clean_install_test = "clean-install-agent-wait-reviewers"
 
 [[commands]]
 domain = "alias"
@@ -8037,6 +8045,12 @@ python = ["render voter"]
 rust = []
 
 [[callers]]
+path = "python/larch/agents/collect_results.py"
+kind = "python-runtime"
+python = []
+rust = ["agent wait-reviewers"]
+
+[[callers]]
 path = "python/larch/core/config.py"
 kind = "python-runtime"
 python = ["stall-recovery lint"]
@@ -8211,6 +8225,12 @@ python = ["agent launch-codex-implement", "agent launch-cursor-implement", "gene
 rust = []
 
 [[callers]]
+path = "python/larch/rendering/rendering.py"
+kind = "python-runtime"
+python = []
+rust = ["agent classify-diff"]
+
+[[callers]]
 path = "python/larch/report/cleanup_implement_logs.py"
 kind = "python-runtime"
 python = ["run-log cleanup-implement-logs"]
@@ -8247,6 +8267,12 @@ python = []
 rust = ["git commit"]
 
 [[callers]]
+path = "python/larch/review/plan_review_round.py"
+kind = "python-runtime"
+python = []
+rust = ["agent compose-collector-failure-log"]
+
+[[callers]]
 path = "python/larch/review/review_aggregate.py"
 kind = "python-runtime"
 python = []
@@ -8257,6 +8283,24 @@ path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = ["stall-recovery record-escalation"]
 rust = ["git commit"]
+
+[[callers]]
+path = "python/larch/review/review_collect.py"
+kind = "python-runtime"
+python = []
+rust = ["agent wait-reviewers"]
+
+[[callers]]
+path = "python/larch/review/review_dispatch_panel.py"
+kind = "python-runtime"
+python = []
+rust = ["agent classify-diff"]
+
+[[callers]]
+path = "python/larch/review/review_gather.py"
+kind = "python-runtime"
+python = []
+rust = ["agent gather-branch-context"]
 
 [[callers]]
 path = "python/larch/review/round_runner.py"
@@ -9191,8 +9235,8 @@ rust = []
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent model-args", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
-rust = []
+python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent model-args", "agent run-external-agent", "agent run-negotiation-round"]
+rust = ["agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"

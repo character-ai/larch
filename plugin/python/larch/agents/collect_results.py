@@ -18,8 +18,9 @@ from collections.abc import Sequence
 from larch import io as larch_io
 from larch.agents import agents
 from larch.core import logging_util
+from larch.core import proc
 from larch.core import retry
-from larch.agents import review_dispatch
+from larch.core.repo_roots import larch_entrypoint
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
@@ -671,12 +672,7 @@ def _wait_retry_plans(plans: Sequence[RetryPlan]) -> None:
     for plan in plans:
         if plan.launched:
             timeout = max(timeout, plan.timeout + _RETRY_WAIT_GRACE)
-    _ = review_dispatch.wait_reviewers(
-        sentinels,
-        timeout=timeout,
-        emit_fn=lambda _line: None,
-        diagnostic_fn=lambda _line: None,
-    )
+    _ = _wait_reviewers_command(sentinels=sentinels, timeout=timeout)
     for plan in plans:
         proc = plan.process
         if proc is not None:
@@ -949,14 +945,10 @@ def _parse_wait_timeouts(lines: Sequence[str]) -> set[int]:
 
 def _initial_wait(*, timeout: int, output_files: Sequence[str]) -> tuple[int, set[int]]:
     sentinels: list[str] = [f"{path}.done" for path in output_files]
-    emitted: list[str] = []
-    diagnostics: list[str] = []
-    rc = review_dispatch.wait_reviewers(
-        sentinels,
-        timeout=timeout,
-        emit_fn=emitted.append,
-        diagnostic_fn=diagnostics.append,
-    )
+    result = _wait_reviewers_command(sentinels=sentinels, timeout=timeout)
+    emitted = result.stdout.splitlines()
+    diagnostics = result.stderr.splitlines()
+    rc = result.returncode
     if rc != 0:
         for line in diagnostics:
             if line.strip():
@@ -964,6 +956,23 @@ def _initial_wait(*, timeout: int, output_files: Sequence[str]) -> tuple[int, se
         _diagnostic(f"collect-results: wait-reviewers exited {rc}")
         return rc, set()
     return 0, _parse_wait_timeouts(emitted)
+
+
+def _wait_reviewers_command(*, sentinels: Sequence[str], timeout: int) -> proc.CommandResult:
+    """Run the Rust-owned reviewer wait loop through the verified bootstrap."""
+    environment = os.environ.copy()
+    _ = environment.setdefault("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    return proc.run(
+        [
+            str(larch_entrypoint(REPO_ROOT)),
+            "agent",
+            "wait-reviewers",
+            "--timeout",
+            str(timeout),
+            *sentinels,
+        ],
+        env=environment,
+    )
 
 
 def _build_initial_records(*, options: CollectorOptions, timed_out_indexes: set[int]) -> tuple[list[CollectorRecord], list[RetryPlan]]:

@@ -859,7 +859,7 @@ test-run-step1-plan-log:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_step_log.py
 
 test-compose-collector-failure-log:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_review_dispatch.py -k compose_collector_failure_log
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands compose_collector_failure_log_redacts_and_writes_sections
 
 test-compute-pr-line-counts:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
@@ -927,14 +927,16 @@ test-lib-design-tmpdir:
 test-implement-fork-env:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_admission.py -x -q -k 'fork_env'
 
+# Rust integration aliases remain standalone; see CARVE_OUTS in
+# scripts/test-harness-shards-coverage.sh.
 test-wait-for-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_review_dispatch.py -k wait
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands wait_reviewers_preserves_validation_and_completion_rows
 
 test-classify-diff-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_review_dispatch.py -k classify_diff
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands classify_diff_covers_modes_mixed_changes_and_bad_manifests
 
 test-gather-branch-context:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_review_dispatch.py -k gather_branch_context
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands gather_branch_context
 
 test-run-external-agent:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or run_external_agent_args or model_args or degraded_tools)'
