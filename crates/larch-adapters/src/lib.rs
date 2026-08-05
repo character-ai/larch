@@ -1,6 +1,7 @@
 //! Concrete adapters for filesystem, process, Git, time, and service boundaries.
 
 pub mod clock;
+pub mod cursor_config;
 pub mod git;
 pub mod github;
 mod github_actions;
@@ -19,6 +20,7 @@ use larch_core::BuildMetadata;
 mod file_io;
 mod filesystem;
 
+pub use cursor_config::CursorConfigContext;
 pub use file_io::{
     FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
     guarded_update_env, read_first_raw_key, read_kv_raw, read_optional_utf8_lossy,

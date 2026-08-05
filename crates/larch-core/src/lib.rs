@@ -21,6 +21,7 @@ mod session_state;
 mod telemetry;
 mod time;
 mod upgrade_larch;
+mod vendor;
 
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
@@ -105,6 +106,18 @@ pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTim
 pub use upgrade_larch::{
     ActiveRootState, InstalledVersionState, MarketplaceState, UpgradeDisposition,
     classify as classify_upgrade,
+};
+pub use vendor::{
+    CAP_HIT_PAYLOAD, CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, ClaudeEnvelopeStatus,
+    CodexEnvAuth, REQUIRED_CAPABILITIES, VENDOR_DESCRIPTORS, VendorArgv, VendorArgvError,
+    VendorArgvErrorKind, VendorCapCheckResult, VendorDescriptor, VendorDescriptorError,
+    VendorDescriptorErrorKind, VendorFamilyHooks, VendorLaunchOutcome, VendorLaunchRequest,
+    VendorLaunchStatus, VendorParsedResult, VendorProcessResult, VendorSessionError,
+    VendorSessionErrorKind, VendorSessionHandle, VendorSessionVendor, build_claude_argv,
+    build_codex_argv, build_codex_resume_argv, build_codex_session_argv, build_cursor_argv,
+    build_cursor_create_chat_argv, build_cursor_resume_argv, build_vendor_registry,
+    codex_auth_args, codex_env_auth_from_key, extract_model_from_argv, parse_claude_envelope,
+    trust_config_arg,
 };
 
 /// Immutable metadata about the running larch build.
