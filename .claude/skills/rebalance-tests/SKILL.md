@@ -15,7 +15,7 @@ allowed-tools: Bash, Read, Write
 
 Automates the procedure documented in `docs/linting.md §Refreshing harness shard balance`
 using the Rust `ci-timing harness`, `ci-timing pytest`, and `ci-timing jobs`
-commands plus the Python shard packers and file writers. Keep
+commands plus the Rust `test-shard` pack and Makefile verbs. Keep
 `scripts/rebalance.md` aligned with this prompt when the script contract
 changes.
 
@@ -46,7 +46,7 @@ Before any write, branch, commit, push, or PR:
 
 1. Selected harness work fetches baseline `LARCH_HARNESS_TIMING` rows, computes
    medians, rejects untimed shard targets, then runs `_select_packed_workload`,
-   `pack`, and warning-only `_check_feasibility` in memory.
+   `larch test-shard pack`, and warning-only `_check_feasibility` in memory.
 2. Selected Python work fetches baseline `python-tests` `call` rows, rejects
    zero parseable rows, dedupes latest attempts per `(run_id, shard)` before
    median computation, validates observed CI shard count against
@@ -118,8 +118,8 @@ Forward all args from the skill invocation to the script unchanged.
 | `larch ci-timing harness` | Typed successful-run log fetch, harness parsing, medians, shard totals, and untimed-target detection |
 | `larch ci-timing pytest` | Typed successful-run log fetch, pytest parsing, retry dedup, medians, and shard totals |
 | `larch ci-timing jobs` | Typed Actions jobs fetch and real wall-clock medians |
-| `python/harness_makefile.py` | `read_shards`, `write_shards` |
-| `python/harness_shard_packer.py` | `pack` |
+| `larch test-shard pack` | Deterministic LPT packing for harness targets and temporary Python nodeid assignment data |
+| `larch test-shard read-makefile` / `write-makefile` | Literal single-line `test-harnesses-N:` grammar parsing and atomic emission |
 | `python/pytest_sharding.py` | Assignment-map loading and pytest collection selection |
 | `python/larch/git/gh.py` | Verification workflow dispatch while that workflow remains Python-owned |
 

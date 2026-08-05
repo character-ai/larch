@@ -33,6 +33,7 @@ Commands:
   object-store   Narrow provider transports used by Python-owned run-log workflows
   release        Release-maintenance commands
   session        Session state compatibility commands
+  test-shard     Pack and rewrite deterministic test-shard assignments
   gh             GitHub workflow helper commands
   push           Push commands with typed Git network operations
   run-log        Committed run-log identity and layout helpers

@@ -19,6 +19,7 @@ import math
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -36,8 +37,6 @@ from larch.git import gh  # noqa: E402 — must come after sys.path is patched
 from larch.git import git  # noqa: E402
 from larch.core import proc  # noqa: E402
 from larch.errors import ShipError  # noqa: E402
-from harness_makefile import read_shards, write_shards  # noqa: E402
-from harness_shard_packer import pack  # noqa: E402
 
 
 class _ProcRunner:
@@ -552,6 +551,100 @@ def _run_ci_timing(
     return _parse_ci_timing_report(result.stdout, expected_kind=kind)
 
 
+def _parse_shard_map(stdout: str, *, context: str) -> dict[int, list[str]]:
+    """Parse the Rust test-shard JSON map without retaining a Python fallback."""
+    try:
+        decoded = json.loads(stdout, object_pairs_hook=_strict_json_object)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ShipError(f"test-shard {context} emitted invalid JSON: {exc}") from exc
+    if not isinstance(decoded, dict):
+        raise ShipError(f"test-shard {context} output must be a JSON object")
+    shards: dict[int, list[str]] = {}
+    for raw_shard, targets in decoded.items():
+        if not isinstance(raw_shard, str) or not raw_shard.isdecimal():
+            raise ShipError(f"test-shard {context} has an invalid shard id {raw_shard!r}")
+        shard = int(raw_shard)
+        if shard < 1 or str(shard) != raw_shard or shard in shards:
+            raise ShipError(f"test-shard {context} has an invalid shard id {raw_shard!r}")
+        if not isinstance(targets, list) or not all(isinstance(target, str) for target in targets):
+            raise ShipError(f"test-shard {context} shard {shard} must contain only strings")
+        shards[shard] = targets
+    return shards
+
+
+def _run_test_shard(
+    runner: _ProcRunner,
+    command: list[str],
+    *,
+    input_payload: object | None = None,
+) -> str:
+    """Run one Rust test-shard command through the verified bootstrap."""
+    argv = [str(_REPO_ROOT / "scripts" / "larch.sh"), "test-shard", *command]
+    input_path: Path | None = None
+    try:
+        if input_payload is not None:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, encoding="utf-8"
+            ) as handle:
+                input_path = Path(handle.name)
+                json.dump(input_payload, handle, allow_nan=False, separators=(",", ":"))
+            argv.extend(("--input", str(input_path)))
+        env = os.environ.copy()
+        env["CLAUDE_PLUGIN_ROOT"] = str(_REPO_ROOT)
+        result = runner.run(argv, cwd=str(_REPO_ROOT), env=env)
+    finally:
+        if input_path is not None:
+            input_path.unlink(missing_ok=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"returncode {result.returncode}"
+        raise ShipError(f"test-shard {command[0]} failed: {detail}")
+    if result.stderr.strip():
+        print(result.stderr.rstrip(), file=sys.stderr)
+    return result.stdout
+
+
+def _pack_shards(
+    medians: dict[str, float],
+    n_shards: int,
+    *,
+    guard: str,
+    extras: Sequence[str] = (),
+) -> dict[int, list[str]]:
+    """Delegate LPT packing to the Rust owner while preserving timing order."""
+    command = ["pack", "--n-shards", str(n_shards)]
+    if guard:
+        command.extend(("--guard", guard))
+    for extra in extras:
+        command.extend(("--extra", extra))
+    payload = [
+        {"target": target, "seconds": seconds}
+        for target, seconds in medians.items()
+    ]
+    return _parse_shard_map(
+        _run_test_shard(_RUNNER, command, input_payload=payload), context="pack"
+    )
+
+
+def _read_shards(makefile_path: Path) -> dict[int, list[str]]:
+    """Read Makefile shard lines through the Rust grammar owner."""
+    return _parse_shard_map(
+        _run_test_shard(
+            _RUNNER, ["read-makefile", "--path", str(makefile_path)]
+        ),
+        context="read-makefile",
+    )
+
+
+def _write_shards(makefile_path: Path, shards: dict[int, list[str]]) -> None:
+    """Rewrite Makefile shard lines through the Rust grammar owner."""
+    payload = {str(shard): targets for shard, targets in shards.items()}
+    _ = _run_test_shard(
+        _RUNNER,
+        ["write-makefile", "--path", str(makefile_path)],
+        input_payload=payload,
+    )
+
+
 def _print_shard_table(
     label: str,
     shards_def: dict[int, list[str]],
@@ -664,7 +757,7 @@ def _report_wall_clock_balance(
 
 def _pack_nodeids(medians: dict[str, float], n_shards: int) -> dict[str, int]:
     """Pack pytest nodeids into ``1..n`` shard ids by LPT."""
-    packed = pack(medians=medians, n_shards=n_shards, guard="")
+    packed = _pack_shards(medians, n_shards, guard="")
     assignments: dict[str, int] = {}
     for shard_id, nodeids in packed.items():
         for nodeid in nodeids:
@@ -740,7 +833,7 @@ def _paths_to_stage(kind: str, plan: RebalancePlan) -> list[str]:
 def _plan_is_noop(plan: RebalancePlan, makefile_path: Path) -> bool:
     harness_noop = plan.harness is None
     if plan.harness is not None:
-        before = read_shards(makefile_path)
+        before = _read_shards(makefile_path)
         harness_noop = before == plan.harness.new_shards
     python_noop = plan.python is None
     if plan.python is not None:
@@ -787,7 +880,7 @@ def _prepare_harness_plan(
     args: argparse.Namespace, repo: str, makefile_path: Path
 ) -> HarnessPlan:
     print("\n[gate:harness] Reading current Makefile shard layout …")
-    current_shards = read_shards(makefile_path)
+    current_shards = _read_shards(makefile_path)
     n_shards = len(current_shards)
     all_shard_targets: list[str] = []
     for targets in current_shards.values():
@@ -825,7 +918,7 @@ def _prepare_harness_plan(
 
     print(f"\n[gate:harness] Packing {n_shards} shards with round-robin LPT …")
     measured = _select_packed_workload(medians, all_shard_targets)
-    new_shards = pack(medians=measured, n_shards=n_shards, guard=_GUARD)
+    new_shards = _pack_shards(measured, n_shards, guard=_GUARD)
     _check_feasibility(new_shards, medians, args.balance_threshold)
     totals = [sum(medians.get(t, 0.0) for t in ts) for ts in new_shards.values()]
     spread = max(totals) - min(totals) if totals else 0.0
@@ -870,7 +963,7 @@ def _write_selected_artifacts(plan: RebalancePlan, makefile_path: Path) -> list[
     written: list[str] = []
     if plan.harness is not None:
         print("\n[write:harness] Writing updated shard lines to Makefile …")
-        write_shards(makefile_path=makefile_path, shards=plan.harness.new_shards)
+        _write_shards(makefile_path, plan.harness.new_shards)
         written.append("Makefile")
         print("\n[write:harness] Validating partition with test-harness-shards-coverage.sh …")
         if not _validate_partition():

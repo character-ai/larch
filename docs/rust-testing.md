@@ -190,3 +190,10 @@ globs. Assign every package to exactly one test shard, keep `--all-features`
 and `--locked` on each shard, and retain one unsharded workspace coverage run.
 Use recorded CI duration to balance package groups. Keep `rust-gate` as the
 stable aggregate check when the internal shard count changes.
+
+`larch test-shard` owns deterministic LPT packing and the literal
+single-physical-line `test-harnesses-N:` Makefile grammar. The harness
+rebalancer reaches it through `scripts/larch.sh`; any future Rust CI partition
+uses the same packer for Cargo package groups. Python pytest collection
+sharding remains a separate temporary Python owner until its test surface
+leaves the migration.

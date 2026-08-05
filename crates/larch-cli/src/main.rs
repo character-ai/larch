@@ -35,10 +35,12 @@ mod release_version;
 mod run_log_commands;
 mod session_lifecycle_commands;
 mod state_commands;
+mod test_shards;
 
 use agent_commands::AgentCommand;
 use ci_timing::CiTimingCommand;
 use git_commands::GitCommand;
+use test_shards::TestShardCommand;
 
 #[derive(Parser)]
 #[command(
@@ -89,6 +91,9 @@ enum Domain {
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
+    /// Pack and rewrite deterministic test-shard assignments.
+    #[command(subcommand)]
+    TestShard(TestShardCommand),
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
@@ -641,6 +646,7 @@ fn run(
         Domain::Session(SessionCommand::WriteId(arguments)) => {
             Ok(session_lifecycle_commands::write_id(&arguments.arguments))
         }
+        Domain::TestShard(command) => Ok(test_shards::run(command)),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)

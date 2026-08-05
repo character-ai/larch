@@ -44,12 +44,15 @@ selected workload is packed in memory only:
 
 ```python
 measured = _select_packed_workload(medians, all_shard_targets)
-new_shards = pack(measured, n_shards, guard=_GUARD)
+new_shards = _pack_shards(measured, n_shards, guard=_GUARD)
 _check_feasibility(new_shards, medians, balance_threshold)
 ```
 
 The feasibility check is warning-only. It runs on packed shard totals after
-`_select_packed_workload` and `pack`, not on raw medians alone.
+`_select_packed_workload` and Rust `larch test-shard pack`, not on raw medians
+alone. Reading and writing the `test-harnesses-N:` lines likewise enter the
+verified bootstrap through `larch test-shard read-makefile` and
+`larch test-shard write-makefile`.
 
 ### Python leg
 
@@ -98,6 +101,7 @@ non-zero exit.
 
 Keep this file aligned with `.claude/skills/rebalance-tests/SKILL.md`,
 `crates/larch-core/src/ci_timing.rs`, `crates/larch-cli/src/ci_timing.rs`,
+`crates/larch-core/src/test_shards.rs`, `crates/larch-cli/src/test_shards.rs`,
 `python/pytest_sharding.py`, `python/conftest.py`,
 `python/tests/test_rebalance_script.py`, and
 `python/tests/test_pytest_sharding.py` whenever `rebalance.py` behavior, flags,

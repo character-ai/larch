@@ -7173,6 +7173,48 @@ python_removal = "pending"
 planning_issue = 7677
 
 [[commands]]
+domain = "test-shard"
+verb = "pack"
+python_module = "harness_shard_packer"
+python_function = "pack"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8099
+clean_install_test = "clean-install-test-shard-pack"
+
+[[commands]]
+domain = "test-shard"
+verb = "read-makefile"
+python_module = "harness_makefile"
+python_function = "read_shards"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8099
+clean_install_test = "clean-install-test-shard-read-makefile"
+
+[[commands]]
+domain = "test-shard"
+verb = "write-makefile"
+python_module = "harness_makefile"
+python_function = "write_shards"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8099
+clean_install_test = "clean-install-test-shard-write-makefile"
+
+[[commands]]
 domain = "timing"
 verb = "dump"
 python_module = "larch.report.timing"
