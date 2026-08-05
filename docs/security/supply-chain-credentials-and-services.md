@@ -256,15 +256,16 @@ migration report.
 
 ### GitHub credential and transport boundary
 
-The Rust GitHub service acquires exactly one credential by invoking
-`gh auth token` through the core-owned typed process operation. The process
-runner uses a clean environment, permits the GitHub CLI configuration selectors,
-and excludes `LARCH_GH_TOKEN`, `GH_TOKEN`, and `GITHUB_TOKEN`. Missing `gh`, an
-inactive login, and empty, truncated, or non-Unicode output fail before network
-access with fixed guidance. The credential is held by a non-`Debug` wrapper,
-registered by exact value with an invocation-owned redactor, and omitted from
-child environments. Authorization diagnostics pass through that redactor. The
-Octocrab build excludes its tracing feature.
+The Rust GitHub service acquires exactly one credential by invoking the fixed
+`gh auth token --hostname github.com` command through the core-owned typed
+process operation. The process runner uses a clean environment, permits the
+GitHub CLI configuration selectors, and excludes `LARCH_GH_TOKEN`, `GH_TOKEN`,
+and `GITHUB_TOKEN`. Missing `gh`, an inactive login, and empty, truncated, or
+non-Unicode output fail before network access with fixed guidance. The
+credential is held by a non-`Debug` wrapper, registered by exact value with an
+invocation-owned redactor, and omitted from child environments. Authorization
+diagnostics pass through that redactor. The Octocrab build excludes its tracing
+feature.
 
 The adapter constructs one private Octocrab client inside the larch Tokio
 runtime. Octocrab is pinned with default features disabled and only its rustls
@@ -274,6 +275,11 @@ selects AWS-LC because the alternative RustCrypto RSA graph carries an unpatched
 advisory. `aws-lc-sys` builds its bundled C and assembly with CMake and a
 platform C compiler. It adds no dynamic system-library requirement and is built
 by the existing target release matrix.
+
+The fixed credential lookup is the only normal runtime `gh` invocation for
+Rust GitHub service access. GitHub API operations use the authenticated adapter
+directly; `gh api` is never a service fallback, and `gcloud` is never a runtime
+service fallback.
 
 Redirects and retries are disabled. Larch sets `User-Agent` and `Accept`.
 Pinned Octocrab supplies one API-version header. Both bases are pinned to

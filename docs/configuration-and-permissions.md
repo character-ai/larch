@@ -288,10 +288,11 @@ for the canonical trust boundary.
 
 ### GitHub CLI authentication
 
-Rust GitHub service calls acquire their credential by invoking `gh auth token`
-through the closed process runner. Install `gh` and run `gh auth login` before
-starting larch. A missing CLI or inactive login fails before any network
-request with install or authentication guidance.
+Rust GitHub service calls acquire their credential by invoking the fixed
+`gh auth token --hostname github.com` command through the closed process
+runner. Install `gh` and run `gh auth login` before starting larch. A missing
+CLI or inactive login fails before any network request with install or
+authentication guidance.
 
 Larch does not read `LARCH_GH_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. The
 credential returned by `gh` stays in a non-`Debug` secret wrapper, is registered
@@ -303,11 +304,12 @@ GitHub Enterprise needs a separate reviewed host policy.
 `gh` credential to verify merge-commit and immutable-release policy. It needs
 Administration write only when either setting is disabled and must be enabled.
 
-The Rust process allowlist permits `gh` only for the fixed `auth token`
-operation. GitHub API operations still use the typed Rust adapter. Larch never
-uses `gh api` as a service fallback and never executes the `gcloud` service CLI.
-The `service-ownership` repository rule rejects `gcloud` and service-credential
-child environments in production surfaces.
+The Rust process allowlist permits `gh` only for the fixed
+`auth token --hostname github.com` operation. GitHub API operations use the
+typed Rust adapter. Larch never uses `gh api` as a service fallback and never
+executes the `gcloud` service CLI. The `service-ownership` repository rule
+rejects `gcloud` and service-credential child environments in production
+surfaces.
 
 See the [GitHub credential and transport security contract](security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary)
 for the canonical trust boundary.
