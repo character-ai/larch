@@ -16,6 +16,7 @@ mod outcome;
 mod process;
 mod process_identity;
 mod redaction;
+mod report;
 mod retry;
 mod run_log;
 mod session_state;
@@ -101,6 +102,13 @@ pub use process_identity::{
     write_identity_record, write_loop_identity, write_step5_loop_identity,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
+pub use report::{
+    BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, EMPTY_GROUPS, IssueDetail,
+    IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN, WARN_CATEGORY,
+    build_issue_detail_section, count_issue_groups, count_load_result, execution_issue_identity,
+    load_issue_detail_groups, parse_markdown_execution_issues, replace_markdown_block,
+    replace_markdown_block_with_warn, render_issue_detail_block, structured_body_dedupe_keys,
+};
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,

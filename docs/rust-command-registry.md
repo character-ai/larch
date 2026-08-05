@@ -133,3 +133,17 @@ completion fields `complete`.
 Caller selectors may use `domain *` only when a production wrapper chooses the
 verb dynamically. Such a selector conservatively blocks Rust ownership for
 every command in that domain until the wrapper moves or becomes exact.
+
+## Library parity pending consumers
+
+Some leaves land Rust library parity without a command cutover. Until the last
+Python consumer moves, the Python module remains the production owner.
+
+| Library (Rust module) | Planning leaf | Pending Python consumers | Consumer cutover leaves |
+| --- | --- | --- | --- |
+| `larch.report.markdown_block` (`larch_core::report`) | #8089 | `larch.report.tokens`, `larch.report.timing` | #8088 (`report-tokens`), #8083 (`timing`) |
+| `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.report.final_report`, `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #8090 (`final-report`), #7682 (issue surfaces), later run-log leaves |
+
+#8089 ports parse/load/render and Markdown block upsert only. Claude assessment
+subprocess launching stays injectable for later consumer cutover; Python
+`assess_issue_details` remains until those consumers move.
