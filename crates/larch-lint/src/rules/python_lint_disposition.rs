@@ -245,7 +245,7 @@ fn surfaces_gone(repository: &Repository, surfaces: &[String]) -> bool {
         .all(|surface| !repository.root().join(surface).exists())
 }
 
-fn is_verb_token(token: &str) -> bool {
+pub(super) fn is_verb_token(token: &str) -> bool {
     !token.is_empty()
         && token
             .chars()

@@ -16,6 +16,9 @@ use crate::{
     syntax,
 };
 
+use super::production_cargo_run::executable_index;
+use super::python_lint_disposition::is_verb_token;
+
 const RUST_OWNED_NAME: &str = "developer-tooling-rust-owned-python";
 const RUST_OWNED_DESCRIPTION: &str =
     "Reject python/cli.py callers of Rust-owned commands on developer tooling surfaces";
@@ -282,13 +285,20 @@ fn crate_process_hits(path: &str, source: &str) -> Result<Vec<ProcessHit>, LintE
 }
 
 fn prohibited_program(words: &[String]) -> Option<String> {
-    let program = executable_basename(words)?;
-    if EXTERNAL_PRODUCTS.contains(&program.as_str()) {
+    let index = executable_index(words)?;
+    let program = words.get(index)?;
+    let base = program
+        .rsplit('/')
+        .next()
+        .unwrap_or(program)
+        .trim_end_matches(".exe")
+        .to_owned();
+    if EXTERNAL_PRODUCTS.contains(&base.as_str()) {
         return None;
     }
     CRATE_OWNED_PROGRAMS
-        .contains(&program.as_str())
-        .then_some(program)
+        .contains(&base.as_str())
+        .then_some(base)
 }
 
 fn prohibited_program_in_line(line: &str) -> Option<String> {
@@ -313,30 +323,6 @@ fn shell_like_words(text: &str) -> Vec<String> {
         .map(|word| word.trim_matches(|ch| matches!(ch, '"' | '\'' | '`' | ';')).to_owned())
         .filter(|word| !word.is_empty())
         .collect()
-}
-
-fn executable_basename(words: &[String]) -> Option<String> {
-    let mut index = 0;
-    loop {
-        while words
-            .get(index)
-            .is_some_and(|word| word.starts_with('-') || word.contains('='))
-        {
-            index += 1;
-        }
-        let program = words.get(index)?;
-        let base = program
-            .rsplit('/')
-            .next()
-            .unwrap_or(program)
-            .trim_end_matches(".exe")
-            .to_owned();
-        if matches!(base.as_str(), "command" | "env" | "exec" | "sudo" | "nice") {
-            index += 1;
-            continue;
-        }
-        return Some(base);
-    }
 }
 
 fn first_selector_line(source: &str, selector: &str) -> Option<u32> {
@@ -396,13 +382,6 @@ fn looks_like_file(surface: &str) -> bool {
     Path::new(surface).extension().is_some()
 }
 
-fn is_verb_token(token: &str) -> bool {
-    !token.is_empty()
-        && token
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
-}
-
 fn line_u32(path: &str, line: usize) -> Result<u32, LintError> {
     u32::try_from(line).map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))
 }
@@ -410,7 +389,7 @@ fn line_u32(path: &str, line: usize) -> Result<u32, LintError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        executable_basename, is_developer_tooling_surface, lint_module_path, looks_like_file,
+        executable_index, is_developer_tooling_surface, lint_module_path, looks_like_file,
         prohibited_program, prohibited_program_in_line,
     };
 
@@ -453,8 +432,8 @@ mod tests {
         assert!(looks_like_file("python/larch/lint/lint_flat_tests.py"));
         assert!(!looks_like_file("python/larch/lint"));
         assert_eq!(
-            executable_basename(&["sudo".into(), "gh".into()]),
-            Some("gh".into())
+            executable_index(&["sudo".into(), "gh".into()]),
+            Some(1)
         );
     }
 }
