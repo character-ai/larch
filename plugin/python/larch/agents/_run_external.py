@@ -295,6 +295,66 @@ def parse_codex_session_id(events_file: str | Path) -> str:
     return found
 
 
+def parse_cursor_create_chat_id(events_file: str | Path) -> str:
+    """Return one validated Cursor chat id from create-chat's JSON output.
+
+    Cursor documents this command as a structured record, not prose.  Accept
+    its two field spellings used by released clients, but never substring-scan
+    stdout or accept a duplicate record: both would make a resumed debate
+    session ambiguous.
+    """
+    path = Path(events_file)
+    if not path.is_file():
+        raise ValueError("cursor create-chat output file missing")
+    found: str | None = None
+    for line in path.read_text(encoding="utf-8", errors="strict").splitlines():
+        if not line.strip():
+            continue
+        candidate = _cursor_create_chat_id_in(line)
+        if candidate is None:
+            continue
+        if found is not None:
+            raise ValueError("duplicate cursor create-chat records")
+        found = candidate
+    if found is None:
+        raise ValueError("cursor create-chat record missing")
+    return found
+
+
+def _cursor_create_chat_id_in(line: str) -> str | None:
+    """Return the validated chat id declared by one create-chat record, if any."""
+    try:
+        record: object = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise ValueError("malformed cursor create-chat record") from exc
+    if type(record) is not dict:  # pylint: disable=unidiomatic-typecheck  # structured record must be exact object
+        raise ValueError("malformed cursor create-chat record")
+    values = [record[key] for key in ("chatId", "chat_id") if key in record]
+    if not values:
+        return None
+    if len(values) != 1 or type(values[0]) is not str:  # pylint: disable=unidiomatic-typecheck  # declared id must be exact string
+        raise ValueError("cursor create-chat record has invalid chat id")
+    try:
+        return VendorSessionHandle.create(vendor="cursor", session_id=values[0]).session_id
+    except ValueError as exc:
+        raise ValueError("cursor create-chat record has invalid chat id") from exc
+
+
+def _captured_session_result(*, tool: str, stdout_path: str | Path | None, output_path: Path, diag: Path, exit_code: int) -> RunExternalAgentResult:
+    """Turn captured bootstrap stdout into a validated explicit session handle."""
+    try:
+        capture = Path(stdout_path) if stdout_path is not None else Path()
+        session_id = parse_codex_session_id(capture) if tool == "codex" else parse_cursor_create_chat_id(capture)
+        handle = VendorSessionHandle.create(vendor=tool, session_id=session_id)
+    except ValueError as exc:
+        return _session_capture_failure_result(
+            output_path=output_path,
+            diag=diag,
+            message=f"session-capture-failed: {exc}",
+        )
+    return RunExternalAgentResult(exit_code, output_path, session_handle=handle)
+
+
 def _session_capture_failure_result(
     *,
     output_path: Path,
@@ -353,19 +413,19 @@ def run_external_agent(
     _old_sigterm: object = None
     try:
         if capture_session_handle:
-            if tool != "codex":
+            if tool not in {"codex", "cursor"}:
                 exit_code = _SESSION_CAPTURE_FAILED_RC
                 return _session_capture_failure_result(
                     output_path=output_path,
                     diag=diag,
-                    message="session capture requires tool=codex",
+                    message="session capture requires tool=cursor or codex",
                 )
             if stdout_path is None:
                 exit_code = _SESSION_CAPTURE_FAILED_RC
                 return _session_capture_failure_result(
                     output_path=output_path,
                     diag=diag,
-                    message="session capture requires Codex JSONL stdout_path",
+                    message="session capture requires structured stdout_path",
                 )
         stdin = subprocess.DEVNULL if tool == "codex" else None
         stdout_target = None
@@ -521,17 +581,7 @@ def run_external_agent(
         else:
             _err(f"✓ {tool} agent: completed (exit code 0, output {size} bytes)")
         if capture_session_handle:
-            try:
-                session_id = parse_codex_session_id(Path(stdout_path) if stdout_path is not None else Path())
-                handle = VendorSessionHandle.create(vendor="codex", session_id=session_id)
-            except ValueError as exc:
-                exit_code = _SESSION_CAPTURE_FAILED_RC
-                return _session_capture_failure_result(
-                    output_path=output_path,
-                    diag=diag,
-                    message=f"session-capture-failed: {exc}",
-                )
-            return RunExternalAgentResult(exit_code, output_path, session_handle=handle)
+            return _captured_session_result(tool=tool, stdout_path=stdout_path, output_path=output_path, diag=diag, exit_code=exit_code)
         return RunExternalAgentResult(exit_code, output_path)
     finally:
         if _old_sigterm is not None:
