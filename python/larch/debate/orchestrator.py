@@ -1,9 +1,11 @@
-# Reason for the directive below, which carries no trailing prose of its own:
-# untrusted state JSON decodes to `object`, so the explicit per-field validators
-# here carry the narrowing pyright cannot infer, and the state writers discard
-# protocol return values by design.  reportUnnecessaryComparison stays enabled so
-# the state-boundary checks keep their coverage.
-# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
+# Reason for the directive below, which carries no trailing prose of its own
+# (pyright rejects any trailing text on a file directive, so the reason cannot be
+# same-line): the `_decode_*` / `load_state` boundary decodes untrusted state JSON
+# to `object`, and the explicit per-field validators carry narrowing pyright cannot
+# infer.  Scoped to the two rules that boundary actually needs.
+# reportUnnecessaryComparison and reportUnusedCallResult both stay enabled so the
+# state-boundary checks keep their coverage and discarded results stay explicit.
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false
 """Durable, fail-closed orchestration for the two-round debate protocol.
 
 The protocol module deliberately knows nothing about files or agents.  This
@@ -181,7 +183,7 @@ def _safe_line(value: str) -> bool:
 
 def _fingerprint_payload(payload: Mapping[str, object]) -> str:
     unsigned = dict(payload)
-    unsigned.pop("fingerprint", None)
+    _ = unsigned.pop("fingerprint", None)
     return hashlib.sha256(_canonical_json(unsigned).encode("utf-8")).hexdigest()
 
 
@@ -798,16 +800,16 @@ def _envelope(*, ok: bool, operation: str, state: ProposalState | None, error_cl
 
 def _main(operation: str, argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py debate {operation}")
-    parser.add_argument("--debate-tmpdir", required=True)
-    parser.add_argument("--expected-fingerprint", required=True)
+    _ = parser.add_argument("--debate-tmpdir", required=True)
+    _ = parser.add_argument("--expected-fingerprint", required=True)
     if operation == "init":
         for name in ("repo-workdir", "log-root", "run-id", "point-universe-json", "cursor-present", "codex-present", "claude-present", "restore-issue-number", "restore-original-title", "restore-title"):
-            parser.add_argument(f"--{name}", required=True)
-        parser.add_argument("--run-local-values-json")
+            _ = parser.add_argument(f"--{name}", required=True)
+        _ = parser.add_argument("--run-local-values-json")
     elif operation in {"round-prep", "record-turn"}:
-        parser.add_argument("--round", required=True, type=int)
+        _ = parser.add_argument("--round", required=True, type=int)
     if operation == "record-turn":
-        parser.add_argument("--slot", required=True)
+        _ = parser.add_argument("--slot", required=True)
     try:
         args = parser.parse_args(argv)
         if operation == "init":
