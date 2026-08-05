@@ -145,40 +145,139 @@ def test_wall_clock_over_budget_fails_and_lists_offenders() -> None:
 def test_collect_wall_clock_takes_per_shard_median_across_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    durations_by_run = {
-        101: {1: 50.0, 2: 40.0},
-        102: {1: 54.0, 2: 42.0},
-        103: {1: 58.0, 2: 38.0},
-    }
-
-    def fake_job_durations(runner: object, run_id: int, *, repo: str) -> dict[int, float]:
+    def fake_run_ci_timing(
+        runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
         assert runner is rebalance._RUNNER
+        assert kind == "jobs"
         assert repo == "o/r"
-        return durations_by_run[run_id]
+        assert run_ids == [101, 102, 103]
+        return _ci_report("jobs", row_count=6, shard_medians={1: 54.0, 2: 40.0})
 
-    monkeypatch.setattr(rebalance.gh, "job_durations", fake_job_durations)
-    result = rebalance._collect_wall_clock(rebalance._RUNNER, [101, 102, 103], repo="o/r")
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
+    result = rebalance._collect_wall_clock(
+        rebalance._RUNNER, [101, 102, 103], repo="o/r"
+    )
     assert result == {1: 54.0, 2: 40.0}
 
 
-def test_collect_wall_clock_skips_runs_whose_jobs_api_read_fails(
+def test_collect_wall_clock_returns_empty_when_jobs_command_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_job_durations(runner: object, run_id: int, *, repo: str) -> dict[int, float]:
+    def fake_run_ci_timing(
+        runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
         assert runner is rebalance._RUNNER
+        assert kind == "jobs"
         assert repo == "o/r"
-        if run_id == 102:
-            raise rebalance.ShipError("jobs api boom")
-        return {1: 50.0}
+        assert run_ids == [101, 102]
+        raise rebalance.ShipError("jobs api boom")
 
-    monkeypatch.setattr(rebalance.gh, "job_durations", fake_job_durations)
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     result = rebalance._collect_wall_clock(rebalance._RUNNER, [101, 102], repo="o/r")
-    assert result == {1: 50.0}
-
+    assert result == {}
 
 
 def _cr(stdout: str = "", rc: int = 0) -> CommandResult:
     return CommandResult((), rc, stdout, "", 0.01)
+
+
+def _ci_report(
+    kind: str,
+    *,
+    row_count: int = 0,
+    target_medians: dict[str, float] | None = None,
+    nodeid_medians: dict[str, float] | None = None,
+    shard_medians: dict[int, float] | None = None,
+    observed_shard_count: int | None = None,
+    untimed_targets: list[str] | None = None,
+) -> object:
+    return rebalance.CiTimingReport(
+        kind=kind,
+        row_count=row_count,
+        target_medians=target_medians or {},
+        nodeid_medians=nodeid_medians or {},
+        shard_medians=shard_medians or {},
+        observed_shard_count=observed_shard_count,
+        untimed_targets=untimed_targets or [],
+        skipped_run_ids=[],
+    )
+
+
+def test_ci_timing_parser_preserves_harness_contract() -> None:
+    wire = (
+        '{"schema_version":1,"kind":"harness","rows":['
+        '{"run_id":9,"shard":2,"target":"test-a","seconds":3.5}],'
+        '"target_medians":[{"target":"test-a","seconds":3.5}],'
+        '"shard_medians":[{"shard":2,"seconds":3.5}],'
+        '"untimed_targets":["test-b"],"skipped_run_ids":[8]}\n'
+    )
+
+    report = rebalance._parse_ci_timing_report(wire, expected_kind="harness")
+
+    assert report.row_count == 1
+    assert report.target_medians == {"test-a": 3.5}
+    assert report.shard_medians == {2: 3.5}
+    assert report.untimed_targets == ["test-b"]
+    assert report.skipped_run_ids == [8]
+
+
+def test_ci_timing_parser_rejects_reordered_report_fields() -> None:
+    wire = (
+        '{"kind":"jobs","schema_version":1,"rows":[],'
+        '"shard_medians":[],"skipped_run_ids":[]}\n'
+    )
+
+    with pytest.raises(rebalance.ShipError, match="keys must be exactly"):
+        _ = rebalance._parse_ci_timing_report(wire, expected_kind="jobs")
+
+
+def test_ci_timing_parser_rejects_duplicate_object_keys() -> None:
+    wire = (
+        '{"schema_version":1,"kind":"jobs","rows":[],"rows":[],'
+        '"shard_medians":[],"skipped_run_ids":[]}\n'
+    )
+
+    with pytest.raises(rebalance.ShipError, match="duplicate object key 'rows'"):
+        _ = rebalance._parse_ci_timing_report(wire, expected_kind="jobs")
+
+
+def test_run_ci_timing_uses_verified_bootstrap_and_repeated_flags() -> None:
+    calls: list[tuple[list[str], str, dict[str, str]]] = []
+
+    class Runner:
+        def run(
+            self,
+            argv: list[str],
+            *,
+            cwd: str,
+            env: dict[str, str],
+        ) -> CommandResult:
+            calls.append((argv, cwd, env))
+            return _cr(
+                '{"schema_version":1,"kind":"harness","rows":[],'
+                '"target_medians":[],"shard_medians":[],'
+                '"untimed_targets":[],"skipped_run_ids":[]}\n'
+            )
+
+    _ = rebalance._run_ci_timing(
+        Runner(),
+        "harness",
+        repo="o/r",
+        run_ids=[11, 12],
+        required_targets=["test-a", "test-b"],
+    )
+
+    argv, cwd, env = calls[0]
+    assert argv[:3] == [
+        str(rebalance._REPO_ROOT / "scripts" / "larch.sh"),
+        "ci-timing",
+        "harness",
+    ]
+    assert argv.count("--run-id") == 2
+    assert argv.count("--required-target") == 2
+    assert cwd == str(rebalance._REPO_ROOT)
+    assert env["CLAUDE_PLUGIN_ROOT"] == str(rebalance._REPO_ROOT)
 
 
 def test_pack_nodeids_returns_assignments_covering_shards() -> None:
@@ -277,12 +376,15 @@ def test_python_verification_zero_rows_fails_with_pr_url(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fake_collect(_runner: object, run_id: int, *, repo: str) -> list[object]:
-        assert run_id == 1
+    def fake_run_ci_timing(
+        _runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
+        assert kind == "pytest"
+        assert run_ids == [1]
         assert repo == "o/r"
-        return []
+        return _ci_report("pytest")
 
-    monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
     result = rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr")
@@ -297,16 +399,15 @@ def test_python_verification_incomplete_coverage_fails(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rows = [
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 1, "a", 1.0, 1, 4),
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 2, "b", 1.0, 1, 4),
-    ]
-
-    def fake_collect(_runner: object, _run_id: int, *, repo: str) -> list[object]:
+    def fake_run_ci_timing(
+        _runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
+        assert kind == "pytest"
         assert repo == "o/r"
-        return rows
+        assert run_ids == [1]
+        return _ci_report("pytest", row_count=2, shard_medians={1: 1.0, 2: 1.0})
 
-    monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
@@ -317,18 +418,26 @@ def test_python_verification_spread_over_threshold_fails(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rows = [
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 1, "a", 20.0, 1, 2),
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 2, "b", 1.0, 1, 2),
-    ]
-
-    def fake_collect(_runner: object, _run_id: int, *, repo: str) -> list[object]:
+    def fake_run_ci_timing(
+        _runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
+        assert kind == "pytest"
         assert repo == "o/r"
-        return rows
+        assert run_ids == [1]
+        return _ci_report("pytest", row_count=2, shard_medians={1: 20.0, 2: 1.0})
 
-    monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     args = rebalance._parse_args(
-        argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2", "--balance-threshold", "5"]
+        argv=[
+            "--kind",
+            "python",
+            "--repo",
+            "o/r",
+            "--n-python-shards",
+            "2",
+            "--balance-threshold",
+            "5",
+        ]
     )
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
@@ -338,17 +447,18 @@ def test_python_verification_spread_over_threshold_fails(
 def test_python_verification_within_threshold_passes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rows = [
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 1, "a", 4.0, 1, 2),
-        rebalance.pytest_ci_timing.PytestTimingRow(1, 2, "b", 3.0, 1, 2),
-    ]
-
-    def fake_collect(_runner: object, _run_id: int, *, repo: str) -> list[object]:
+    def fake_run_ci_timing(
+        _runner: object, kind: str, *, repo: str, run_ids: list[int]
+    ) -> object:
+        assert kind == "pytest"
         assert repo == "o/r"
-        return rows
+        assert run_ids == [1]
+        return _ci_report("pytest", row_count=2, shard_medians={1: 4.0, 2: 3.0})
 
-    monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
-    args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"])
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
+    args = rebalance._parse_args(
+        argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"]
+    )
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 0
 
@@ -420,14 +530,10 @@ def test_main_python_zero_rows_aborts_before_writes(
 
     _stub_clean_git(monkeypatch)
 
-    def fake_fetch_timing_rows(*_args: object, **_kwargs: object) -> list[object]:
-        return []
+    def fake_run_ci_timing(*_args: object, **_kwargs: object) -> object:
+        return _ci_report("pytest")
 
-    monkeypatch.setattr(
-        rebalance.pytest_ci_timing,
-        "fetch_timing_rows",
-        fake_fetch_timing_rows,
-    )
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     monkeypatch.setattr(rebalance, "write_shards", track_write_shards)
     monkeypatch.setattr(rebalance, "_write_assignments_json", track_write_assignments)
 
@@ -663,11 +769,8 @@ def test_main_harness_verification_spread_failure_still_exits_zero(
     def fake_trigger_verification_runs(*_args: object, **_kwargs: object) -> list[int]:
         return [301]
 
-    def fake_collect_log_rows(*_args: object, **_kwargs: object) -> list[object]:
-        return [
-            rebalance.TimingRow(301, 1, "test-a", 50.0),
-            rebalance.TimingRow(301, 2, "test-b", 1.0),
-        ]
+    def fake_run_ci_timing(*_args: object, **_kwargs: object) -> object:
+        return _ci_report("harness", row_count=2, shard_medians={1: 50.0, 2: 1.0})
 
     def fake_collect_wall_clock(*_args: object, **_kwargs: object) -> dict[int, float]:
         return {}
@@ -677,7 +780,7 @@ def test_main_harness_verification_spread_failure_still_exits_zero(
     monkeypatch.setattr(rebalance, "_write_selected_artifacts", fake_write_selected_artifacts)
     monkeypatch.setattr(rebalance, "_commit_push_and_pr", fake_commit_push_and_pr)
     monkeypatch.setattr(rebalance, "_trigger_verification_runs", fake_trigger_verification_runs)
-    monkeypatch.setattr(rebalance, "_collect_log_rows", fake_collect_log_rows)
+    monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     monkeypatch.setattr(rebalance, "_collect_wall_clock", fake_collect_wall_clock)
 
     result = rebalance.main(["--kind", "harness", "--repo", "o/r", "--n-verify-runs", "1"])

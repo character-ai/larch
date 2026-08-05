@@ -2539,6 +2539,8 @@ name = "larch-core"
 version = "56.2.2"
 dependencies = [
  "regex",
+ "serde",
+ "serde_json",
  "zip",
 ]
 

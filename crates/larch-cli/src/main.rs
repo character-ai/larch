@@ -16,6 +16,7 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
+mod ci_timing;
 mod git_commands;
 mod github_repository_resolution;
 mod push_network;
@@ -29,6 +30,7 @@ mod release_stage;
 mod release_version;
 mod state_commands;
 
+use ci_timing::CiTimingCommand;
 use git_commands::GitCommand;
 
 #[derive(Parser)]
@@ -48,6 +50,9 @@ enum Domain {
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
+    /// Collect GitHub Actions timing inputs for test rebalancing.
+    #[command(subcommand)]
+    CiTiming(CiTimingCommand),
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
@@ -520,6 +525,7 @@ fn run(
             println!("{}", larch_core::bootstrap_self_check(metadata));
             Ok(ExitCode::SUCCESS)
         }
+        Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::Example(ExampleCommand::Echo(arguments)) => {
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
@@ -744,7 +750,7 @@ fn run_logs(arguments: &RunLogsArguments) -> ExitCode {
     ExitCode::from(output.exit_code())
 }
 
-fn parse_repository(value: &str) -> Result<larch_core::GitHubRepositoryRef, String> {
+pub(crate) fn parse_repository(value: &str) -> Result<larch_core::GitHubRepositoryRef, String> {
     let Some((owner, name)) = value.split_once('/') else {
         return Err(String::from("repository must use OWNER/REPO form"));
     };

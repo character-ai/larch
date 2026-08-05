@@ -518,6 +518,17 @@ limits archive download and decompressed output to 64 MiB, limits archive
 entries to 1,024, rejects malformed archives and oversized entries, and never
 treats archive paths as local filesystem paths.
 
+`larch ci-timing harness` and `larch ci-timing pytest` parse the same untrusted
+workflow archives entirely in memory. They apply the shared 64 MiB and 1,024
+entry limits, cap entry-name length, never extract archive paths, and emit only
+the schema-v1 timing fields consumed by the rebalancer. One timing operation
+accepts at most 20 runs and retains at most 100,000 rows, 32 MiB of label text,
+and 16,384 bytes per target or nodeid. Harness input is also capped at 4,096
+required targets. `larch ci-timing jobs` derives wall-clock durations from typed
+Actions job records. All three commands use the Actions adapter and the fixed
+GitHub credential boundary above; they do not call `gh api`, accept raw URLs,
+or expose log text in their output.
+
 ## Implementation and Verification Owners
 
 The implementation remains mixed-runtime. These owners and checks keep the

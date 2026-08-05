@@ -14,11 +14,10 @@ allowed-tools: Bash, Read, Write
 **Dev-only operator skill** (`.claude/skills/` — not exported by the plugin).
 
 Automates the procedure documented in `docs/linting.md §Refreshing harness shard balance`
-using the Python machinery in `python/ci_timing_fetch.py`,
-`python/harness_ci_timing.py`, `python/pytest_ci_timing.py`,
-`python/harness_makefile.py`, `python/harness_shard_packer.py`, and
-`python/pytest_sharding.py`. Keep `scripts/rebalance.md` aligned with this
-prompt when the script contract changes.
+using the Rust `ci-timing harness`, `ci-timing pytest`, and `ci-timing jobs`
+commands plus the Python shard packers and file writers. Keep
+`scripts/rebalance.md` aligned with this prompt when the script contract
+changes.
 
 ## Usage
 
@@ -80,8 +79,13 @@ Merge stays operator-owned.
 Run from the repository root:
 
 ```bash
+cargo build --locked --release --package larch-cli
+LARCH_BINARY="$PWD/target/release/larch" \
 python3 .claude/skills/rebalance-tests/scripts/rebalance.py [flags]
 ```
+
+The script enters every Rust command through `scripts/larch.sh`, so the local
+checkout requires the explicit release-matched `LARCH_BINARY`.
 
 Or invoke via this skill and pass flags directly to the script:
 
@@ -98,7 +102,7 @@ Forward all args from the skill invocation to the script unchanged.
 |------|---------|-------------|
 | `--kind` | `all` | Selected leg: `harness`, `python`, or `all` |
 | `--repo` | auto-detected | `owner/name` for all `gh` calls |
-| `--n-runs` | `5` | Number of baseline CI runs to sample |
+| `--n-runs` | `5` | Number of baseline CI runs to sample, from 1 through 20 |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the new git branch |
 | `--n-verify-runs` | `3` | Verification CI runs to trigger after PR creation |
 | `--n-python-shards` | `4` | Expected `python-tests` matrix shard count |
@@ -107,20 +111,21 @@ Forward all args from the skill invocation to the script unchanged.
 | `--workflow` | `ci.yaml` | Workflow file name |
 | `--baseline-branch` | `main` | Branch to fetch baseline timings from |
 
-## Python library surface
+## Implementation surface
 
-| Module | Responsibility |
+| Surface | Responsibility |
 |--------|---------------|
-| `python/ci_timing_fetch.py` | Shared successful-run log fetch loop |
-| `python/harness_ci_timing.py` | Harness timing parsing, medians, shard totals |
-| `python/pytest_ci_timing.py` | Pytest duration parsing, retry dedup, medians, shard totals |
+| `larch ci-timing harness` | Typed successful-run log fetch, harness parsing, medians, shard totals, and untimed-target detection |
+| `larch ci-timing pytest` | Typed successful-run log fetch, pytest parsing, retry dedup, medians, and shard totals |
+| `larch ci-timing jobs` | Typed Actions jobs fetch and real wall-clock medians |
 | `python/harness_makefile.py` | `read_shards`, `write_shards` |
 | `python/harness_shard_packer.py` | `pack` |
 | `python/pytest_sharding.py` | Assignment-map loading and pytest collection selection |
-| `python/gh.py` | `run_log_read`, `run_list_successful`, `workflow_dispatch`, `job_durations` |
+| `python/larch/git/gh.py` | Verification workflow dispatch while that workflow remains Python-owned |
 
-Unit tests live alongside the modules. Run with `make py-test` or targeted
-pytest commands under `python/`.
+Rust timing fixtures and wire-contract tests live in
+`crates/larch-core/src/ci_timing.rs`. Python consumer tests live in
+`python/tests/test_rebalance_script.py`.
 
 `scripts/pyrightconfig.json` sets `extraPaths` so IDEs resolve the `python/`
 imports in `scripts/rebalance.py` without following the runtime `sys.path`

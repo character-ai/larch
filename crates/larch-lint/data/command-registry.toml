@@ -1297,6 +1297,48 @@ python_removal = "pending"
 planning_issue = 7681
 
 [[commands]]
+domain = "ci-timing"
+verb = "harness"
+python_module = "harness_ci_timing"
+python_function = "fetch_timing_rows"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8098
+clean_install_test = "clean-install-ci-timing-harness"
+
+[[commands]]
+domain = "ci-timing"
+verb = "jobs"
+python_module = "larch.git.gh"
+python_function = "job_durations"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8098
+clean_install_test = "clean-install-ci-timing-jobs"
+
+[[commands]]
+domain = "ci-timing"
+verb = "pytest"
+python_module = "pytest_ci_timing"
+python_function = "fetch_timing_rows"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8098
+clean_install_test = "clean-install-ci-timing-pytest"
+
+[[commands]]
 domain = "clarify"
 verb = "comment-fetch"
 python_module = "larch.design.clarify"

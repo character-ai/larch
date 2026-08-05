@@ -22,6 +22,7 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
+  ci-timing      Collect GitHub Actions timing inputs for test rebalancing
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository commands
   kv             Exact `KEY=value` stream readers

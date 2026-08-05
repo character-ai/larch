@@ -56,13 +56,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "harness_ci_timing.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR2004",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/agents/_auth.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-except",
@@ -5240,20 +5233,6 @@
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedImport=false",
     "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "pytest_ci_timing.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR2004",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "pytest_ci_timing.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR2004",
-    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {

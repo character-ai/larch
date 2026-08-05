@@ -1452,59 +1452,6 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert "o/r" in runner.calls[0]
 
 
-_JOBS_DURATIONS_PAYLOAD = (
-    '{"jobs":['
-    '{"name":"test-harnesses (1)","startedAt":"2026-06-16T04:25:00Z",'
-    '"completedAt":"2026-06-16T04:26:00Z","conclusion":"success"},'
-    '{"name":"test-harnesses (2)","startedAt":"2026-06-16T04:25:00Z",'
-    '"completedAt":"2026-06-16T04:25:45Z","conclusion":"success"},'
-    '{"name":"lint","startedAt":"2026-06-16T04:25:00Z",'
-    '"completedAt":"2026-06-16T04:30:00Z","conclusion":"success"},'
-    '{"name":"test-harnesses (3)","startedAt":"2026-06-16T04:25:00Z",'
-    '"completedAt":"0001-01-01T00:00:00Z","conclusion":"skipped"}'
-    "]}"
-)
-
-
-def test_parse_job_durations_keys_by_shard_and_skips_unusable() -> None:
-    # shard 1 = 60s, shard 2 = 45s; the "lint" job is non-matrix and the
-    # zero-value completedAt on shard 3 (not-yet-completed) are both skipped.
-    durations = gh.parse_job_durations_json(_JOBS_DURATIONS_PAYLOAD)
-    assert durations == {1: 60.0, 2: 45.0}
-
-
-def test_parse_job_durations_accepts_snake_case_stamps() -> None:
-    payload = (
-        '{"jobs":[{"name":"test-harnesses (5)",'
-        '"started_at":"2026-06-16T04:25:00Z","completed_at":"2026-06-16T04:25:30Z"}]}'
-    )
-    assert gh.parse_job_durations_json(payload) == {5: 30.0}
-
-
-def test_parse_job_durations_raises_on_missing_jobs_key() -> None:
-    with pytest.raises(ShipError):
-        _ = gh.parse_job_durations_json('{"jobs":"not-a-list"}')
-
-
-def test_job_durations_reads_jobs_api() -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "run", "view", "11"), 0, _JOBS_DURATIONS_PAYLOAD, "", 0.01
-            ),
-        ],
-    )
-    assert gh.job_durations(runner, 11, repo="o/r") == {1: 60.0, 2: 45.0}
-
-
-def test_job_durations_raises_on_failed_read() -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "run", "view", "11"), 1, "", "boom", 0.01)],
-    )
-    with pytest.raises(ShipError):
-        _ = gh.job_durations(runner, 11, repo="o/r")
-
-
 def _write_scope_required_coverage(tmp_path: Path) -> None:
     write_required_plan_coverage(tmp_path, fingerprint="fp-required")
 

@@ -323,9 +323,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"ci_timing_fetch.py" = [
-    "PLR0913",
-]
 "clarify.py" = [
     "C901",
     "PLR0911",

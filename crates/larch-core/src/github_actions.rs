@@ -3,8 +3,6 @@
 use crate::{GitHubActionsService, GitHubRepositoryRef, ProcessCancellation, WorkflowLogArchive};
 use std::io::{Cursor, Read};
 
-const MAX_LOG_ENTRIES: usize = 1_024;
-
 /// Stable outcome for `larch gh run-logs`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunLogsOutput {
@@ -125,10 +123,7 @@ fn failure(pointer: &str, error: impl std::fmt::Display) -> RunLogsOutput {
 }
 
 fn render_archive(archive: &WorkflowLogArchive, failed_jobs: &[&str]) -> Result<Vec<u8>, ()> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(archive.as_bytes())).map_err(|_| ())?;
-    if zip.len() > MAX_LOG_ENTRIES {
-        return Err(());
-    }
+    let mut zip = bounded_workflow_log_archive(archive)?;
     let mut output = Vec::new();
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|_| ())?;
@@ -145,6 +140,21 @@ fn render_archive(archive: &WorkflowLogArchive, failed_jobs: &[&str]) -> Result<
         read_entry(&mut entry, &mut output)?;
     }
     Ok(output)
+}
+
+/// Open a workflow log ZIP after enforcing the shared entry-count limit.
+///
+/// # Errors
+///
+/// Returns `()` when the bytes are not a ZIP archive or contain too many entries.
+pub fn bounded_workflow_log_archive(
+    archive: &WorkflowLogArchive,
+) -> Result<zip::ZipArchive<Cursor<&[u8]>>, ()> {
+    let zip = zip::ZipArchive::new(Cursor::new(archive.as_bytes())).map_err(|_| ())?;
+    if zip.len() > WorkflowLogArchive::MAX_ENTRIES {
+        return Err(());
+    }
+    Ok(zip)
 }
 
 fn read_entry(

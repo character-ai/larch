@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -23,7 +24,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from statistics import median
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -35,15 +35,7 @@ sys.path.insert(0, str(_REPO_ROOT / "python"))
 from larch.git import gh  # noqa: E402 — must come after sys.path is patched
 from larch.git import git  # noqa: E402
 from larch.core import proc  # noqa: E402
-import pytest_ci_timing  # noqa: E402
-from larch.errors import ShipError, TransientNetworkError  # noqa: E402
-from harness_ci_timing import (  # noqa: E402
-    TimingRow,
-    compute_medians,
-    median_shard_totals,
-    parse_log,
-    untimed_targets,
-)
+from larch.errors import ShipError  # noqa: E402
 from harness_makefile import read_shards, write_shards  # noqa: E402
 from harness_shard_packer import pack  # noqa: E402
 
@@ -98,6 +90,18 @@ class PythonPlan:
 class RebalancePlan:
     harness: HarnessPlan | None
     python: PythonPlan | None
+
+
+@dataclass(frozen=True)
+class CiTimingReport:
+    kind: str
+    row_count: int
+    target_medians: dict[str, float]
+    nodeid_medians: dict[str, float]
+    shard_medians: dict[int, float]
+    observed_shard_count: int | None
+    untimed_targets: list[str]
+    skipped_run_ids: list[int]
 
 
 # ---------------------------------------------------------------------------
@@ -295,28 +299,257 @@ def _trigger_verification_runs(
     return new_run_ids
 
 
-def _collect_log_rows(runner: _ProcRunner, run_id: int, *, repo: str) -> list[TimingRow]:
-    result = gh.run_log_read(runner, run_id, repo=repo)
-    if result.returncode != 0:
-        print(
-            f"  WARNING: could not fetch log for run {run_id} (rc={result.returncode})",
-            file=sys.stderr,
-        )
-        return []
-    return parse_log(result.stdout, run_id)
+_REPORT_KEYS = {
+    "harness": (
+        "schema_version",
+        "kind",
+        "rows",
+        "target_medians",
+        "shard_medians",
+        "untimed_targets",
+        "skipped_run_ids",
+    ),
+    "jobs": (
+        "schema_version",
+        "kind",
+        "rows",
+        "shard_medians",
+        "skipped_run_ids",
+    ),
+    "pytest": (
+        "schema_version",
+        "kind",
+        "rows",
+        "nodeid_medians",
+        "shard_medians",
+        "observed_shard_count",
+        "skipped_run_ids",
+    ),
+}
+_ROW_KEYS = {
+    "harness": ("run_id", "shard", "target", "seconds"),
+    "jobs": ("run_id", "shard", "seconds"),
+    "pytest": ("run_id", "shard", "nodeid", "seconds", "attempt", "shard_total"),
+}
 
 
-def _collect_pytest_log_rows(
-    runner: _ProcRunner, run_id: int, *, repo: str
-) -> list[pytest_ci_timing.PytestTimingRow]:
-    result = gh.run_log_read(runner, run_id, repo=repo)
-    if result.returncode != 0:
-        print(
-            f"  WARNING: could not fetch log for run {run_id} (rc={result.returncode})",
-            file=sys.stderr,
+def _require_object_keys(
+    value: object, expected: tuple[str, ...], *, context: str
+) -> dict[str, object]:
+    if not isinstance(value, dict) or tuple(value) != expected:
+        raise ShipError(
+            f"ci-timing {context} keys must be exactly {list(expected)!r} in order"
         )
-        return []
-    return pytest_ci_timing.parse_log(result.stdout, run_id)
+    return value
+
+
+def _require_list(value: object, *, context: str) -> list[object]:
+    if not isinstance(value, list):
+        raise ShipError(f"ci-timing {context} must be a list")
+    return value
+
+
+def _require_int(value: object, *, context: str, positive: bool = False) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or (positive and value < 1)
+    ):
+        qualifier = "positive " if positive else ""
+        raise ShipError(f"ci-timing {context} must be a {qualifier}integer")
+    return value
+
+
+def _require_seconds(value: object, *, context: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ShipError(f"ci-timing {context} must be a finite number")
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ShipError(f"ci-timing {context} must be a non-negative finite number")
+    return seconds
+
+
+def _require_string(value: object, *, context: str) -> str:
+    if not isinstance(value, str):
+        raise ShipError(f"ci-timing {context} must be a string")
+    return value
+
+
+def _parse_named_medians(
+    payload: dict[str, object], *, field: str, name_field: str
+) -> dict[str, float]:
+    medians: dict[str, float] = {}
+    for index, value in enumerate(_require_list(payload.get(field), context=field)):
+        row = _require_object_keys(
+            value,
+            (name_field, "seconds"),
+            context=f"{field}[{index}]",
+        )
+        name = _require_string(
+            row[name_field], context=f"{field}[{index}].{name_field}"
+        )
+        if name in medians:
+            raise ShipError(
+                f"ci-timing {field} contains duplicate {name_field} {name!r}"
+            )
+        medians[name] = _require_seconds(
+            row["seconds"], context=f"{field}[{index}].seconds"
+        )
+    return medians
+
+
+def _parse_shard_medians(payload: dict[str, object]) -> dict[int, float]:
+    medians: dict[int, float] = {}
+    for index, value in enumerate(
+        _require_list(payload.get("shard_medians"), context="shard_medians")
+    ):
+        row = _require_object_keys(
+            value,
+            ("shard", "seconds"),
+            context=f"shard_medians[{index}]",
+        )
+        shard = _require_int(
+            row["shard"], context=f"shard_medians[{index}].shard", positive=True
+        )
+        if shard in medians:
+            raise ShipError(f"ci-timing shard_medians contains duplicate shard {shard}")
+        medians[shard] = _require_seconds(
+            row["seconds"], context=f"shard_medians[{index}].seconds"
+        )
+    return medians
+
+
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _validate_ci_timing_rows(
+    payload: dict[str, object], *, expected_kind: str
+) -> int:
+    rows = _require_list(payload["rows"], context="rows")
+    for index, value in enumerate(rows):
+        row = _require_object_keys(
+            value, _ROW_KEYS[expected_kind], context=f"rows[{index}]"
+        )
+        _require_int(row["run_id"], context=f"rows[{index}].run_id", positive=True)
+        _require_int(row["shard"], context=f"rows[{index}].shard", positive=True)
+        _require_seconds(row["seconds"], context=f"rows[{index}].seconds")
+        if expected_kind == "harness":
+            _require_string(row["target"], context=f"rows[{index}].target")
+        if expected_kind == "pytest":
+            _require_string(row["nodeid"], context=f"rows[{index}].nodeid")
+            _require_int(
+                row["attempt"], context=f"rows[{index}].attempt", positive=True
+            )
+            shard_total = row["shard_total"]
+            if shard_total is not None:
+                _require_int(
+                    shard_total, context=f"rows[{index}].shard_total", positive=True
+                )
+    return len(rows)
+
+
+def _parse_ci_timing_report(stdout: str, *, expected_kind: str) -> CiTimingReport:
+    try:
+        decoded = json.loads(stdout, object_pairs_hook=_strict_json_object)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ShipError(
+            f"ci-timing {expected_kind} emitted invalid JSON: {exc}"
+        ) from exc
+    expected_keys = _REPORT_KEYS.get(expected_kind)
+    if expected_keys is None:
+        raise ShipError(f"unsupported ci-timing report kind {expected_kind!r}")
+    payload = _require_object_keys(
+        decoded, expected_keys, context=f"{expected_kind} report"
+    )
+    if _require_int(payload["schema_version"], context="schema_version") != 1:
+        raise ShipError("ci-timing schema_version must be 1")
+    if _require_string(payload["kind"], context="kind") != expected_kind:
+        raise ShipError(f"ci-timing kind must be {expected_kind!r}")
+
+    row_count = _validate_ci_timing_rows(payload, expected_kind=expected_kind)
+
+    target_medians = (
+        _parse_named_medians(payload, field="target_medians", name_field="target")
+        if expected_kind == "harness"
+        else {}
+    )
+    nodeid_medians = (
+        _parse_named_medians(payload, field="nodeid_medians", name_field="nodeid")
+        if expected_kind == "pytest"
+        else {}
+    )
+    observed_shard_count: int | None = None
+    if expected_kind == "pytest" and payload["observed_shard_count"] is not None:
+        observed_shard_count = _require_int(
+            payload["observed_shard_count"],
+            context="observed_shard_count",
+            positive=True,
+        )
+    untimed_targets = []
+    if expected_kind == "harness":
+        untimed_targets = [
+            _require_string(value, context=f"untimed_targets[{index}]")
+            for index, value in enumerate(
+                _require_list(payload["untimed_targets"], context="untimed_targets")
+            )
+        ]
+    skipped_run_ids = [
+        _require_int(value, context=f"skipped_run_ids[{index}]", positive=True)
+        for index, value in enumerate(
+            _require_list(payload["skipped_run_ids"], context="skipped_run_ids")
+        )
+    ]
+    return CiTimingReport(
+        kind=expected_kind,
+        row_count=row_count,
+        target_medians=target_medians,
+        nodeid_medians=nodeid_medians,
+        shard_medians=_parse_shard_medians(payload),
+        observed_shard_count=observed_shard_count,
+        untimed_targets=untimed_targets,
+        skipped_run_ids=skipped_run_ids,
+    )
+
+
+def _run_ci_timing(
+    runner: _ProcRunner,
+    kind: str,
+    *,
+    repo: str,
+    n_runs: int | None = None,
+    workflow: str | None = None,
+    branch: str | None = None,
+    run_ids: Sequence[int] = (),
+    required_targets: Sequence[str] = (),
+) -> CiTimingReport:
+    argv = [str(_REPO_ROOT / "scripts" / "larch.sh"), "ci-timing", kind, "--repo", repo]
+    if run_ids:
+        for run_id in run_ids:
+            argv.extend(("--run-id", str(run_id)))
+    else:
+        if n_runs is not None:
+            argv.extend(("--n-runs", str(n_runs)))
+        if workflow is not None:
+            argv.extend(("--workflow", workflow))
+        if branch is not None:
+            argv.extend(("--branch", branch))
+    for target in required_targets:
+        argv.extend(("--required-target", target))
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(_REPO_ROOT)
+    result = runner.run(argv, cwd=str(_REPO_ROOT), env=env)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"returncode {result.returncode}"
+        raise ShipError(f"ci-timing {kind} failed: {detail}")
+    if result.stderr.strip():
+        print(result.stderr.rstrip(), file=sys.stderr)
+    return _parse_ci_timing_report(result.stdout, expected_kind=kind)
 
 
 def _print_shard_table(
@@ -387,19 +620,12 @@ def _collect_wall_clock(
     repo: str,
 ) -> dict[int, float]:
     """Return ``{shard: median real CI wall-clock seconds}`` across *run_ids*."""
-    per_shard: dict[int, list[float]] = {}
-    for run_id in run_ids:
-        try:
-            durations = gh.job_durations(runner, run_id, repo=repo)
-        except (ShipError, TransientNetworkError) as exc:
-            print(
-                f"  WARNING: could not fetch real wall-clock for run {run_id}: {exc}",
-                file=sys.stderr,
-            )
-            continue
-        for shard, seconds in durations.items():
-            per_shard.setdefault(shard, []).append(seconds)
-    return {shard: median(values) for shard, values in per_shard.items()}
+    try:
+        report = _run_ci_timing(runner, "jobs", repo=repo, run_ids=run_ids)
+    except ShipError as exc:
+        print(f"  WARNING: could not fetch real wall-clock: {exc}", file=sys.stderr)
+        return {}
+    return report.shard_medians
 
 
 def _report_wall_clock_balance(
@@ -557,7 +783,9 @@ def _create_pr_body(args: argparse.Namespace, plan: RebalancePlan) -> str:
     return "\n".join(body) + "\n"
 
 
-def _prepare_harness_plan(args: argparse.Namespace, repo: str, makefile_path: Path) -> HarnessPlan:
+def _prepare_harness_plan(
+    args: argparse.Namespace, repo: str, makefile_path: Path
+) -> HarnessPlan:
     print("\n[gate:harness] Reading current Makefile shard layout …")
     current_shards = read_shards(makefile_path)
     n_shards = len(current_shards)
@@ -570,30 +798,21 @@ def _prepare_harness_plan(args: argparse.Namespace, repo: str, makefile_path: Pa
         f"\n[gate:harness] Fetching timing from last {args.n_runs} successful CI runs "
         f"on {args.baseline_branch!r} …"
     )
-    baseline_runs = gh.run_list_successful(
+    report = _run_ci_timing(
         _RUNNER,
+        "harness",
         repo=repo,
         branch=args.baseline_branch,
         workflow=args.workflow,
-        limit=args.n_runs,
+        n_runs=args.n_runs,
+        required_targets=all_shard_targets,
     )
-    if not baseline_runs:
-        raise ShipError("no successful CI runs found on main; cannot compute harness baseline")
-
-    all_timing_rows: list[TimingRow] = []
-    for run in baseline_runs:
-        print(f"  Fetching log for run {run.database_id} …")
-        rows = _collect_log_rows(_RUNNER, run.database_id, repo=repo)
-        all_timing_rows.extend(rows)
-        print(f"    {len(rows)} timing rows")
-
-    if not all_timing_rows:
+    if report.row_count == 0:
         raise ShipError("no LARCH_HARNESS_TIMING rows found in any CI run log")
-
-    medians = compute_medians(all_timing_rows)
+    medians = report.target_medians
     print(f"  Medians computed for {len(medians)} targets")
 
-    untimed = untimed_targets(all_shard_targets=all_shard_targets, medians=medians)
+    untimed = report.untimed_targets
     if untimed:
         print(
             f"\nERROR: refusing to rebalance — {len(untimed)} shard target(s) "
@@ -618,29 +837,33 @@ def _prepare_python_plan(args: argparse.Namespace, repo: str) -> PythonPlan:
         f"\n[gate:python] Fetching pytest durations from last {args.n_runs} successful CI runs "
         f"on {args.baseline_branch!r} …"
     )
-    rows = pytest_ci_timing.fetch_timing_rows(
+    report = _run_ci_timing(
         _RUNNER,
+        "pytest",
         repo=repo,
         branch=args.baseline_branch,
         workflow=args.workflow,
         n_runs=args.n_runs,
     )
-    if not rows:
+    if report.row_count == 0:
         raise ShipError("no parseable python-tests --durations=0 call rows found")
-    observed = pytest_ci_timing.observed_shard_count(rows)
+    observed = report.observed_shard_count
     if observed is None:
-        raise ShipError("conflicting or missing python-tests shard X of N totals in CI logs")
+        raise ShipError(
+            "conflicting or missing python-tests shard X of N totals in CI logs"
+        )
     if observed != args.n_python_shards:
         raise ShipError(
             f"--n-python-shards={args.n_python_shards} does not match observed CI shard count {observed}"
         )
-    latest_rows = pytest_ci_timing.rows_latest_attempt_per_shard(rows)
-    medians = pytest_ci_timing.compute_medians(latest_rows)
+    medians = report.nodeid_medians
     if not medians:
         raise ShipError("no pytest nodeid medians after latest-attempt dedup")
     assignments = _pack_nodeids(medians, args.n_python_shards)
     print(f"  Packed {len(assignments)} nodeids across {args.n_python_shards} shards")
-    return PythonPlan(assignments=assignments, medians=medians, n_shards=args.n_python_shards)
+    return PythonPlan(
+        assignments=assignments, medians=medians, n_shards=args.n_python_shards
+    )
 
 
 def _write_selected_artifacts(plan: RebalancePlan, makefile_path: Path) -> list[str]:
@@ -717,7 +940,9 @@ def _commit_push_and_pr(
     return pr
 
 
-def _verify_harness(args: argparse.Namespace, verify_run_ids: list[int], *, repo: str, plan: HarnessPlan) -> None:
+def _verify_harness(
+    args: argparse.Namespace, verify_run_ids: list[int], *, repo: str, plan: HarnessPlan
+) -> None:
     print("\n[verify:harness] Collecting timing and verifying shard balance …")
     wall_clock = _collect_wall_clock(_RUNNER, verify_run_ids, repo=repo)
     if wall_clock:
@@ -733,17 +958,25 @@ def _verify_harness(args: argparse.Namespace, verify_run_ids: list[int], *, repo
             file=sys.stderr,
         )
 
-    verify_rows: list[TimingRow] = []
-    for run_id in verify_run_ids:
-        print(f"  Fetching log for run {run_id} …")
-        verify_rows.extend(_collect_log_rows(_RUNNER, run_id, repo=repo))
-
-    if not verify_rows:
+    try:
+        report = _run_ci_timing(
+            _RUNNER,
+            "harness",
+            repo=repo,
+            run_ids=verify_run_ids,
+        )
+    except ShipError as exc:
+        print(f"WARNING: could not collect harness timing: {exc}", file=sys.stderr)
+        return
+    if report.row_count == 0:
         if not wall_clock:
-            print("WARNING: could not collect any timing from verification runs.", file=sys.stderr)
+            print(
+                "WARNING: could not collect any timing from verification runs.",
+                file=sys.stderr,
+            )
         return
 
-    medians_verify = median_shard_totals(verify_rows)
+    medians_verify = report.shard_medians
     max_shard = max(medians_verify.values())
     min_shard = min(medians_verify.values())
     spread = max_shard - min_shard
@@ -755,7 +988,9 @@ def _verify_harness(args: argparse.Namespace, verify_run_ids: list[int], *, repo
     else:
         print(f"⚠ Sum estimate over threshold (spread {spread:.1f}s > {threshold}s)")
 
-    _print_shard_table("BEFORE (estimated from baseline medians):", plan.new_shards, plan.medians)
+    _print_shard_table(
+        "BEFORE (estimated from baseline medians):", plan.new_shards, plan.medians
+    )
     print(f"\nAFTER (measured sum median of {args.n_verify_runs} verification runs):")
     print(f"  {'Shard':>6}  {'Total (s)':>10}")
     for shard_n in sorted(medians_verify):
@@ -770,13 +1005,21 @@ def _verify_python(
     repo: str,
     pr_url: str,
 ) -> int:
-    print("\n[verify:python] Collecting python-tests timing and verifying shard balance …")
-    verify_rows: list[pytest_ci_timing.PytestTimingRow] = []
-    for run_id in verify_run_ids:
-        print(f"  Fetching log for run {run_id} …")
-        verify_rows.extend(_collect_pytest_log_rows(_RUNNER, run_id, repo=repo))
-
-    if not verify_rows:
+    print(
+        "\n[verify:python] Collecting python-tests timing and verifying shard balance …"
+    )
+    try:
+        report = _run_ci_timing(
+            _RUNNER,
+            "pytest",
+            repo=repo,
+            run_ids=verify_run_ids,
+        )
+    except ShipError as exc:
+        print(f"ERROR: could not collect python-tests timing: {exc}", file=sys.stderr)
+        print(f"  PR is at {pr_url}", file=sys.stderr)
+        return 1
+    if report.row_count == 0:
         print(
             "ERROR: zero parseable python-tests --durations=0 rows in verification runs.",
             file=sys.stderr,
@@ -784,16 +1027,21 @@ def _verify_python(
         print(f"  PR is at {pr_url}", file=sys.stderr)
         return 1
 
-    totals = pytest_ci_timing.median_shard_totals(verify_rows)
+    totals = report.shard_medians
     expected = set(range(1, args.n_python_shards + 1))
     missing = sorted(expected - set(totals))
     if missing:
-        print(f"ERROR: python-tests verification missing shard ids: {missing}", file=sys.stderr)
+        print(
+            f"ERROR: python-tests verification missing shard ids: {missing}",
+            file=sys.stderr,
+        )
         print(f"  PR is at {pr_url}", file=sys.stderr)
         return 1
 
     spread = max(totals.values()) - min(totals.values())
-    print(f"\nPython pytest duration spread: {spread:.1f}s (threshold: {args.balance_threshold}s)")
+    print(
+        f"\nPython pytest duration spread: {spread:.1f}s (threshold: {args.balance_threshold}s)"
+    )
     print(f"  {'Shard':>6}  {'Total (s)':>10}")
     for shard_n in sorted(totals):
         print(f"  {shard_n:>6}  {totals[shard_n]:>10.1f}")

@@ -248,7 +248,7 @@ The shard lists live directly in `Makefile`. After #5429 and the contract-unific
 
 Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
-Measured CI timing for the five-shard layout remains balanced enough that this reconciliation keeps five shards; do not change the workflow matrix solely because pytest and aggregates left the Bash-leaf inventory. Rebalance only when complete `python/harness_ci_timing.py` totals show material, non-local imbalance.
+Measured CI timing for the five-shard layout remains balanced enough that this reconciliation keeps five shards; do not change the workflow matrix solely because pytest and aggregates left the Bash-leaf inventory. Rebalance only when complete `larch ci-timing harness` totals show material, non-local imbalance.
 
 ### Refreshing shard balance
 
@@ -291,9 +291,9 @@ After PR creation, one shared `workflow_dispatch` loop runs for every selected
 kind before leg-specific verification collection. Python fail-closed checks run
 only after those verification runs finish.
 
-Python shard selection uses `python/pytest_ci_timing.py` to parse `call` rows and
-dedupe retried shards by duration-section attempt for both baseline packing and
-verification totals. At runtime, assigned nodeids use `python/shard-assignments.json`;
+The Rust `larch ci-timing pytest` command parses `call` rows and dedupes retried
+shards by duration-section attempt for both baseline packing and verification
+totals. At runtime, assigned nodeids use `python/shard-assignments.json`;
 unassigned nodeids keep the global collection-index round-robin fallback.
 Malformed maps, including JSON booleans as shard ids, fail closed during pytest
 collection. A non-empty map whose maximum shard id does not match the runtime
@@ -301,11 +301,12 @@ collection. A non-empty map whose maximum shard id does not match the runtime
 not reduced.
 
 See `.claude/skills/rebalance-tests/SKILL.md` for flags and full workflow
-documentation. Unit tests for the Python libraries include
-`python/test_harness_ci_timing.py`, `python/test_harness_makefile.py`,
-`python/test_harness_shard_packer.py`, `python/test_pytest_ci_timing.py`,
-`python/test_pytest_sharding.py`, and `python/test_ci_timing_fetch.py`; run with
-`make py-test`.
+documentation. Rust fixture and wire-contract tests live in
+`crates/larch-core/src/ci_timing.rs`. Python consumer and packing tests include
+`python/tests/test_rebalance_script.py`, `python/tests/test_harness_makefile.py`,
+`python/tests/test_harness_shard_packer.py`, and
+`python/tests/test_pytest_sharding.py`; run them with targeted Cargo and pytest
+commands.
 
 **`LARCH_HARNESS_TIMING` format** (from `python/larch/report/timing.py harness docs`): each
 wrapped `bash` invocation emits one tab-separated row to stdout:
