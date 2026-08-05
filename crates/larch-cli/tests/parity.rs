@@ -89,6 +89,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "agent",
         "parse-codex-usage",
     ),
+    CleanInstallCase::new("clean-install-lint-gitleaks", "lint", "gitleaks"),
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
     CleanInstallCase::new(
         "clean-install-session-cleanup-tmpdir",

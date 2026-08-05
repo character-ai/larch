@@ -65,6 +65,7 @@ Repository policy lint commands
 Usage: larch lint [OPTIONS] <COMMAND>
 
 Commands:
+  gitleaks          Verify or run the checksum-pinned Gitleaks scanner
   all               Run every registered rule
   rule              Run one registered rule
   rules             List registered rules in name order

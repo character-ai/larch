@@ -113,14 +113,6 @@ def test_dispatch_lint_duplicate_code() -> None:
     assert rc == 0
 
 
-def test_dispatch_kv_codec_lint() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.lint.lint_kv_codec": MagicMock(main=mock_main)}):
-        rc = cli.main(["lint", "kv-codec"])
-    mock_main.assert_called_once_with([])
-    assert rc == 0
-
-
 def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
     mock_main = MagicMock(return_value=0)
     module = MagicMock(sanitize_detail_main=mock_main)

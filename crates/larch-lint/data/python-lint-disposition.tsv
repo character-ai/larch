@@ -3,11 +3,9 @@
 # disposition is one of: port, retire, rust-owned
 # target_surface is a repo-relative path (comma-separated when a verb spans multiple roots).
 # Confirm surfaces by reading the owning Python module, not by verb name alone.
-codex-exec-auth	rust-owned	crates/larch-lint/src/rules/codex_exec_auth.rs	Rust rule already owns shell, Markdown, and Rust Codex dispatch sites; Makefile dual-invokes the Python compatibility shim that #8096 deletes
 complexity-baseline	retire	python	Scans production python/**/*.py complexity via ruff; dies with the Python tree rather than translating
 complexity-debt	retire	python	Operator report over python/complexity-baseline.json; no lasting non-Python surface
 duplicate-code	retire	python	Pylint duplicate-code runner over the python/ tree and its baseline; dies with Python
-em-dash-output	rust-owned	crates/larch-lint/src/rules/em_dash_output.rs	Rust rule owns Markdown and Rust output sinks; Makefile dual-invokes the Python AST shim that #8096 deletes
 engine-adoption	retire	python/larch/lint	Ratchet over python/larch/lint/lint_*.py only; dies with the Python lint tree
 env-via-config-constant	retire	python	Scans production python/**/*.py for bare os.environ literals; dies with Python
 flat-tests	retire	python	Rejects flat python/test_*.py modules; dies with the Python test layout
@@ -15,7 +13,6 @@ gh-argv-literal	retire	python	Scans Python argv lists for raw gh literals; dies 
 git-push-refspec	retire	python	Scans Python argv lists for bare git push; dies with Python
 guidelines-note-wrapper-bypass	retire	python/larch	Scans python/larch/**/*.py for direct note invalidation; dies with Python
 keyword-only	retire	python	AST keyword-only ratchet over python/ non-test sources; dies with Python
-kv-codec	port	scripts,skills	Python rule still owns the scripts/ and skills/ KEY=value ratchet; Rust kv-codec covers crates only today
 layering	retire	python/larch	Package-tier import ratchet over python/larch/**/*.py; dies with Python
 lifecycle-prefix-literal	retire	python/larch	Scans python/larch/**/*.py title-prefix literals; dies with Python
 markdown-heading-fence-state	retire	python	Python fence-state ratchet over python/**/*.py; Rust rule keeps the lasting Rust surface
@@ -26,10 +23,8 @@ pylint-skip-file	retire	python/larch	Bans skip-file and module-level duplicate-c
 renderer-golden-tests	retire	python/larch/report	Requires test references for python/larch/report renderers; dies with Python
 result-env-key-parity	retire	python/larch	Scans python/larch result-env writers; dies with Python
 root-resolution	retire	python/larch	Scans python/larch for git rev-parse ownership; dies with Python
-run-log-walkers	rust-owned	crates/larch-lint/src/rules/run_log_corpus_walkers.rs	Rust run-log-corpus-walkers owns the lasting corpus-walker policy; #8096 deletes the Python dual
 self-disarmable-gate	retire	python/larch/design	Scans python/larch/design gate modules only; dies with Python
 shared-convention-regex	retire	python/larch	Scans python/larch/**/*.py for duplicated convention regexes; dies with Python
-skill-run-lifecycle	port	skills	Scans skills/** and .claude/skills/** Markdown plus skills/shared/run-lifecycle-ownership.tsv; outlives Python
 status-routing-truthiness	retire	python/larch	Scans python/larch/**/*.py status truthiness; dies with Python
 subprocess-via-runner	retire	python	Scans production python/**/*.py for direct subprocess use; dies with Python
 suppression-reason	retire	python	Scans production python/**/*.py suppression comments; dies with Python

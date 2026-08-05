@@ -22,6 +22,7 @@ mod ci_timing;
 mod dirty_tree_commands;
 mod git_commands;
 mod github_repository_resolution;
+mod gitleaks;
 mod kill_background;
 mod progress_commands;
 mod push_network;
@@ -646,7 +647,12 @@ fn run(
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),
-        Domain::Lint(arguments) => Ok(ExitCode::from(larch_lint::run_cli(arguments).as_u8())),
+        Domain::Lint(arguments) => match arguments.into_dispatch() {
+            larch_lint::LintDispatch::Gitleaks(arguments) => Ok(gitleaks::run(&arguments)),
+            larch_lint::LintDispatch::Native(arguments) => {
+                Ok(ExitCode::from(larch_lint::run_cli(arguments).as_u8()))
+            }
+        },
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
         }

@@ -119,3 +119,59 @@ fn inline_suppression_without_reason_is_an_error() {
         .code(2)
         .stderr(predicate::str::contains("lacks a reason"));
 }
+
+#[test]
+fn python_corpus_walkers_keep_alias_and_manifest_protection() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/larch/example.py",
+        b"import os\n\
+          def scan(log_root):\n\
+              corpus = log_root\n\
+              implement = corpus / \"implement\"\n\
+              list(implement.glob(\"*\"))\n\
+              list(log_root.rglob(\"findings-classification.tsv\"))\n\
+              list(os.walk(log_root))\n\
+              list(os.scandir(log_root))\n\
+              for name in (\"manifest.json\", \"run-manifest.json\"):\n\
+                  print(name)\n",
+    );
+    repository.commit_all();
+
+    run(&repository).code(1).stdout(
+        predicate::str::contains("python/larch/example.py:5: raw corpus glob")
+            .and(predicate::str::contains(
+                "python/larch/example.py:6: raw corpus glob",
+            ))
+            .and(predicate::str::contains(
+                "python/larch/example.py:7: raw corpus directory walk",
+            ))
+            .and(predicate::str::contains(
+                "python/larch/example.py:8: raw corpus directory read",
+            ))
+            .and(predicate::str::contains(
+                "python/larch/example.py:9: dual-manifest candidate loop",
+            )),
+    );
+}
+
+#[test]
+fn python_safe_run_aliases_and_unrelated_manifest_mentions_are_not_reported() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/larch/example.py",
+        b"def scan(log_root, names):\n\
+              for run_dir in safe_child_run_dirs(log_root):\n\
+                  list(run_dir.glob(\"*\"))\n\
+              for name in names:\n\
+                  if name == \"manifest.json\":\n\
+                      print(name)\n\
+                  elif name == \"run-manifest.json\":\n\
+                      print(name)\n",
+    );
+    repository.commit_all();
+
+    run(&repository)
+        .success()
+        .stdout(predicate::str::is_empty());
+}

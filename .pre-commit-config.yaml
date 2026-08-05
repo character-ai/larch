@@ -254,7 +254,7 @@ repos:
         # history and silently passes secrets that are staged but not
         # yet committed. This full working-tree scan is manual-only. The
         # dedicated CI job owns both working-tree and commit-range scanning.
-        entry: python3 python/cli.py checks gitleaks --mode working-tree
+        entry: bash -c 'set -euo pipefail; root="$(git rev-parse --show-toplevel)"; cd "$root"; cargo build --quiet --locked --package larch-cli; export CLAUDE_PLUGIN_ROOT="$root" LARCH_BINARY="$root/target/debug/larch"; "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode working-tree'
         language: system
         pass_filenames: false
         stages: [manual]
@@ -271,14 +271,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-run-log-walkers
-        name: Reject raw run-log cache walkers
-        entry: python3 python/cli.py lint run-log-walkers
-        language: system
-        pass_filenames: false
-        stages: [manual]
-        files: ^(python/.*\.py|skills/fluff-analysis/scripts/fluff-analysis\.py|skills/voter-calibration/scripts/voter-calibration\.py)$
-
       - id: lint-keyword-only
         name: Lint keyword-only arg enforcement in python/
         entry: python3 python/cli.py lint keyword-only
@@ -526,22 +518,6 @@ repos:
         pass_filenames: false
         stages: [manual]
         files: ^(skills/shared/topology\.tsv|crates/larch-lint/(src/rules/topology_rule_paths\.rs|tests/topology_rule_paths\.rs|migration-ledger/topology-rule-paths\.toml))$
-
-      - id: lint-em-dash-output
-        name: lint emitted em dashes
-        entry: cargo run --quiet --locked --package larch-cli -- lint rule em-dash-output
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: lint-codex-exec-auth
-        name: lint unwired codex exec call sites
-        entry: make lint-codex-exec-auth
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
 
       - id: test-legacy-title-prefix-literals-scope
         name: Check legacy title-prefix literal scope

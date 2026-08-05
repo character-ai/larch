@@ -18,7 +18,7 @@ impl RepoPath {
         Self(raw.to_owned())
     }
 
-    fn parse(raw: &str) -> Result<Self, LintError> {
+    pub(crate) fn parse(raw: &str) -> Result<Self, LintError> {
         let path = Path::new(raw);
         if raw.is_empty()
             || path.is_absolute()
@@ -41,6 +41,31 @@ impl RepoPath {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegularFileStatus {
+    Missing,
+    Symlink,
+    NotRegular,
+    Regular,
+}
+
+pub fn regular_file_status(path: &Path) -> Result<RegularFileStatus, std::io::Error> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RegularFileStatus::Missing);
+        }
+        Err(error) => return Err(error),
+    };
+    if metadata.file_type().is_symlink() {
+        Ok(RegularFileStatus::Symlink)
+    } else if metadata.is_file() {
+        Ok(RegularFileStatus::Regular)
+    } else {
+        Ok(RegularFileStatus::NotRegular)
     }
 }
 
@@ -204,26 +229,25 @@ impl Repository {
                 continue;
             }
             let candidate = root.join(path.as_str());
-            let metadata = match std::fs::symlink_metadata(&candidate) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            match regular_file_status(&candidate) {
+                Ok(RegularFileStatus::Missing) => {}
+                Ok(RegularFileStatus::Symlink) => {
+                    return Err(LintError::new(format!(
+                        "{path}: tracked symlinks are not supported"
+                    )));
+                }
+                Ok(RegularFileStatus::NotRegular) => {
+                    return Err(LintError::new(format!(
+                        "{path}: tracked path is not a regular file"
+                    )));
+                }
+                Ok(RegularFileStatus::Regular) => paths.push(path),
                 Err(error) => {
                     return Err(LintError::new(format!(
                         "{path}: cannot inspect tracked path: {error}"
                     )));
                 }
-            };
-            if metadata.file_type().is_symlink() {
-                return Err(LintError::new(format!(
-                    "{path}: tracked symlinks are not supported"
-                )));
             }
-            if !metadata.is_file() {
-                return Err(LintError::new(format!(
-                    "{path}: tracked path is not a regular file"
-                )));
-            }
-            paths.push(path);
         }
         Ok(Self {
             root,

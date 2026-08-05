@@ -26,6 +26,7 @@ surface	owner	issue	operations
 .claude/skills/release/SKILL.md	later-domain	#7674	add,checkout,commit,fetch,merge,merge-base,rev-parse
 .github/workflows/ci.yaml	later-domain	#7685	diff,merge-base,rev-parse
 .github/workflows/rust-release-assets.yaml	later-domain	#7685	rev-parse
+.pre-commit-config.yaml	later-domain	#7686	rev-parse
 Makefile	later-domain	#7685	merge-base
 agents/_implementer-base.md	later-domain	#7678	commit
 agents/claude-self-reviewer.md	later-domain	#7678	merge-base
@@ -84,7 +85,6 @@ python/larch/lint/duplicate_code.py	later-domain	#7685	dynamic
 python/larch/lint/engine.py	later-domain	#7685	ls-files
 python/larch/lint/lint_common.py	later-domain	#7685	dynamic
 python/larch/lint/lint_git_push_refspec.py	later-domain	#7685	push
-python/larch/lint/lint_run_log_walkers.py	later-domain	#7685	dynamic
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base

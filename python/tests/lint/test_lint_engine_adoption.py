@@ -547,7 +547,6 @@ def test_committed_tree_projection_covers_legacy_and_spares_engine() -> None:
         f"{SCOPE}/lint_pylint_skip_file.py",
         f"{SCOPE}/lint_unreachable_branch.py",
         f"{SCOPE}/lint_markdown_heading_fence_state.py",
-        f"{SCOPE}/lint_kv_codec.py",
         f"{SCOPE}/lint_module_manifest.py",
         f"{SCOPE}/lint_tmpdir_arg_env_fallback.py",
         f"{SCOPE}/lint_self_disarmable_gate.py",

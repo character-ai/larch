@@ -86,3 +86,33 @@ fn codex_exec_auth_keeps_reasoned_suppressions_and_ignores_comments() {
         .stdout("")
         .stderr("");
 }
+
+#[test]
+fn codex_exec_auth_scans_python_dispatches_and_step_five_review_core() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/new_launcher.py",
+        b"import subprocess\nsubprocess.run([\"codex\", \"exec\", \"--full-auto\"])\n",
+    );
+    repository.write(
+        "python/larch/review/review_and_fix.py",
+        b"import subprocess\nsubprocess.run([\"review\", \"core\"])\n",
+    );
+    repository.write(
+        "python/larch/agents/agents.py",
+        b"child = [\"codex\", \"exec\", \"--full-auto\"]\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "codex-exec-auth"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python/new_launcher.py:2: unwired Python Codex dispatch",
+        ))
+        .stdout(predicate::str::contains(
+            "python/larch/review/review_and_fix.py:2: Step 5 must not subprocess review core",
+        ))
+        .stdout(predicate::str::contains("python/larch/agents/agents.py").not());
+}

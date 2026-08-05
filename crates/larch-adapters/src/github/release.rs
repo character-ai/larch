@@ -8,11 +8,11 @@
 //! and bounds the streamed body by a per-asset byte cap.
 
 use super::{
-    GitHubCompletionError, GitHubHostError, OctocrabGitHubService, octocrab_status,
-    validate_approved_url,
+    GitHubCompletionError, GitHubHostError, OctocrabGitHubService, build_public_client,
+    collect_bounded_response, octocrab_status, validate_approved_url,
 };
 use bytes::Bytes;
-use http::header::{HeaderMap, HeaderName};
+use http::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderName, LOCATION};
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Limited};
 use larch_core::{
@@ -22,13 +22,19 @@ use larch_core::{
     reconcile_mutation, require_asset_content_type, resolve_tag_object_id,
     select_release_for_staging, select_release_for_tag,
 };
-use octocrab::models::repos::{Asset, Release};
 use octocrab::repos::releases::MakeLatest;
-use std::{error::Error, fmt, future::Future, pin::Pin};
+use octocrab::{
+    Octocrab,
+    models::repos::{Asset, Release},
+};
+use std::{error::Error, fmt, future::Future, pin::Pin, time::Duration};
 use url::Url;
 
 const MAX_ASSET_REDIRECTS: usize = 5;
 const API_HOST: &str = "api.github.com";
+const PUBLIC_RELEASE_ROOT: &str = "https://github.com/";
+const PUBLIC_RELEASE_RETRIES: usize = 4;
+const PUBLIC_RELEASE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A validated `owner/repo` slug that is safe to interpolate into a typed path.
 ///
@@ -78,6 +84,7 @@ impl RepoSlug {
 
 fn is_path_segment(value: &str) -> bool {
     !value.is_empty()
+        && !matches!(value, "." | "..")
         && value.len() <= 100
         && value
             .bytes()
@@ -205,6 +212,162 @@ pub enum FetchOutcome {
     },
 }
 
+/// One validated public GitHub release asset with a bounded response body.
+///
+/// The caller supplies structured release identity rather than a URL so this
+/// adapter remains the single owner of the public GitHub release transport.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicReleaseAsset {
+    repository: RepoSlug,
+    tag: String,
+    filename: String,
+    max_bytes: u64,
+}
+
+impl PublicReleaseAsset {
+    /// Build a fixed public release-asset request.
+    ///
+    /// # Errors
+    /// Rejects unsafe repository, tag, filename, or zero-cap inputs.
+    pub fn new(
+        owner: &str,
+        repository: &str,
+        tag: &str,
+        filename: &str,
+        max_bytes: u64,
+    ) -> Result<Self, ReleaseServiceError> {
+        if !is_path_segment(tag) || !is_path_segment(filename) || max_bytes == 0 {
+            return Err(ReleaseServiceError::Host(GitHubHostError::InvalidUrl));
+        }
+        Ok(Self {
+            repository: RepoSlug::parse(owner, repository)?,
+            tag: tag.to_owned(),
+            filename: filename.to_owned(),
+            max_bytes,
+        })
+    }
+
+    fn url(&self) -> Result<Url, ReleaseServiceError> {
+        Url::parse(&format!(
+            "{PUBLIC_RELEASE_ROOT}{}/releases/download/{}/{}",
+            self.repository.path(),
+            self.tag,
+            self.filename
+        ))
+        .map_err(|_| ReleaseServiceError::Host(GitHubHostError::InvalidUrl))
+    }
+}
+
+/// Anonymous, bounded transport for checksum-pinned public release assets.
+///
+/// This deliberately has no credential path: public tool bootstraps must work
+/// in local hooks without a GitHub CLI session, and redirects never carry an
+/// authorization header.
+pub struct PublicReleaseDownloader {
+    client: Octocrab,
+}
+
+impl PublicReleaseDownloader {
+    /// Construct the public release transport inside the larch Tokio runtime.
+    ///
+    /// # Errors
+    /// Returns a redacted transport error when the fixed client cannot be
+    /// configured.
+    pub fn new() -> Result<Self, ReleaseServiceError> {
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(public_transport_error(
+                "public release transport must be constructed inside the larch Tokio runtime",
+            ));
+        }
+        let client = build_public_client(PUBLIC_RELEASE_ROOT, PUBLIC_RELEASE_TIMEOUT)
+            .map_err(|_| public_transport_error("cannot configure public release transport"))?;
+        Ok(Self { client })
+    }
+
+    /// Download one public release asset with bounded redirects and retries.
+    ///
+    /// # Errors
+    /// Returns a closed download, redirect-policy, or transport failure.
+    pub async fn download(
+        &self,
+        asset: &PublicReleaseAsset,
+    ) -> Result<Vec<u8>, ReleaseServiceError> {
+        download_asset_from(self, asset.url()?, asset.max_bytes, true).await
+    }
+
+    async fn fetch_with_retry(
+        &self,
+        request: &FetchRequest,
+    ) -> Result<FetchOutcome, ReleaseServiceError> {
+        for attempt in 0..=PUBLIC_RELEASE_RETRIES {
+            match self.fetch_hop(request).await {
+                Ok(outcome) => return Ok(outcome),
+                Err(ReleaseServiceError::Transport(_)) if attempt < PUBLIC_RELEASE_RETRIES => {
+                    let delay = 1_u64 << attempt;
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err(public_transport_error(
+            "public release download retry loop exhausted",
+        ))
+    }
+
+    async fn fetch_hop(&self, request: &FetchRequest) -> Result<FetchOutcome, ReleaseServiceError> {
+        let http_request = http::Request::builder()
+            .method(http::Method::GET)
+            .uri(request.url.as_str())
+            .header(http::header::ACCEPT, ASSET_MEDIA_TYPE)
+            .body(())
+            .map_err(|_| public_transport_error("cannot build public release request"))?;
+        let response = self
+            .client
+            .execute(http_request)
+            .await
+            .map_err(|_| public_transport_error("public release download failed"))?;
+        if response.status().is_redirection() {
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    public_transport_error("public release redirect has no valid location")
+                })?;
+            return Ok(FetchOutcome::Redirect {
+                location: location.to_owned(),
+            });
+        }
+        let status = response.status().as_u16();
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let content_length = response
+            .headers()
+            .get(CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok());
+        let cap =
+            usize::try_from(request.max_bytes).map_err(|_| ReleaseServiceError::AssetTooLarge)?;
+        let body = collect_bounded_response(response, cap)
+            .await
+            .map_err(|()| ReleaseServiceError::AssetTooLarge)?;
+        Ok(FetchOutcome::Body {
+            status,
+            content_type,
+            content_length,
+            body,
+        })
+    }
+}
+
+fn public_transport_error(message: &str) -> ReleaseServiceError {
+    ReleaseServiceError::Transport(SafeText::from_untrusted(message))
+}
+
 /// Future returned by the release transport seam.
 pub type ReleaseFuture<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, ReleaseServiceError>> + Send + 'a>>;
@@ -269,6 +432,77 @@ pub trait ReleaseTransport: Send + Sync {
     ) -> ReleaseFuture<'a, RemoteAsset>;
     /// Perform one download hop without following redirects.
     fn fetch_asset_hop<'a>(&'a self, request: &FetchRequest) -> ReleaseFuture<'a, FetchOutcome>;
+}
+
+/// Narrow shared seam for one bounded, redirect-safe asset download.
+///
+/// Public tool bootstraps and authenticated release operations share this
+/// policy while retaining separate request-construction and credential owners.
+trait AssetDownloadTransport: Send + Sync {
+    fn fetch_download_hop<'a>(
+        &'a self,
+        request: &'a FetchRequest,
+    ) -> ReleaseFuture<'a, FetchOutcome>;
+}
+
+impl AssetDownloadTransport for PublicReleaseDownloader {
+    fn fetch_download_hop<'a>(
+        &'a self,
+        request: &'a FetchRequest,
+    ) -> ReleaseFuture<'a, FetchOutcome> {
+        Box::pin(self.fetch_with_retry(request))
+    }
+}
+
+impl<T: ReleaseTransport + ?Sized> AssetDownloadTransport for T {
+    fn fetch_download_hop<'a>(
+        &'a self,
+        request: &'a FetchRequest,
+    ) -> ReleaseFuture<'a, FetchOutcome> {
+        ReleaseTransport::fetch_asset_hop(self, request)
+    }
+}
+
+async fn download_asset_from<T: AssetDownloadTransport + ?Sized>(
+    transport: &T,
+    start: Url,
+    max_bytes: u64,
+    strip_authorization: bool,
+) -> Result<Vec<u8>, ReleaseServiceError> {
+    validate_approved_url(&start)?;
+    let mut current = FetchRequest {
+        url: start,
+        strip_authorization,
+        max_bytes,
+    };
+    let mut visited = vec![current.url.as_str().to_owned()];
+    for _ in 0..=MAX_ASSET_REDIRECTS {
+        match transport.fetch_download_hop(&current).await? {
+            FetchOutcome::Redirect { location } => {
+                let next = validate_download_redirect(&current.url, &location, max_bytes)?;
+                if visited.iter().any(|seen| seen == next.url.as_str()) {
+                    return Err(ReleaseServiceError::RedirectLoop);
+                }
+                visited.push(next.url.as_str().to_owned());
+                current = next;
+            }
+            FetchOutcome::Body {
+                status,
+                content_type,
+                content_length,
+                body,
+            } => {
+                return finish_download(
+                    status,
+                    content_type.as_deref(),
+                    content_length,
+                    body,
+                    max_bytes,
+                );
+            }
+        }
+    }
+    Err(ReleaseServiceError::TooManyRedirects)
 }
 
 /// Validate one asset-download redirect target under the download host policy.
@@ -712,41 +946,13 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         asset_id: u64,
         max_bytes: u64,
     ) -> Result<Vec<u8>, ReleaseServiceError> {
-        let start = asset_download_url(repo, asset_id)?;
-        validate_approved_url(&start)?;
-        let mut current = FetchRequest {
-            url: start,
-            strip_authorization: false,
+        download_asset_from(
+            self.transport,
+            asset_download_url(repo, asset_id)?,
             max_bytes,
-        };
-        let mut visited = vec![current.url.as_str().to_owned()];
-        for _ in 0..=MAX_ASSET_REDIRECTS {
-            match self.transport.fetch_asset_hop(&current).await? {
-                FetchOutcome::Redirect { location } => {
-                    let next = validate_download_redirect(&current.url, &location, max_bytes)?;
-                    if visited.iter().any(|seen| seen == next.url.as_str()) {
-                        return Err(ReleaseServiceError::RedirectLoop);
-                    }
-                    visited.push(next.url.as_str().to_owned());
-                    current = next;
-                }
-                FetchOutcome::Body {
-                    status,
-                    content_type,
-                    content_length,
-                    body,
-                } => {
-                    return finish_download(
-                        status,
-                        content_type.as_deref(),
-                        content_length,
-                        body,
-                        max_bytes,
-                    );
-                }
-            }
-        }
-        Err(ReleaseServiceError::TooManyRedirects)
+            false,
+        )
+        .await
     }
 }
 
@@ -1983,9 +2189,30 @@ mod release_tests {
     #[test]
     fn repo_slug_rejects_hostile_segments() {
         assert!(RepoSlug::parse("o", "r").is_ok());
+        assert!(RepoSlug::parse(".", "r").is_err());
+        assert!(RepoSlug::parse("o", "..").is_err());
         assert!(RepoSlug::parse("o", "../secret").is_err());
         assert!(RepoSlug::parse("o", "a b").is_err());
         assert!(RepoSlug::parse("", "r").is_err());
+    }
+
+    #[test]
+    fn public_release_assets_keep_urls_structured_and_bounded() {
+        let asset = PublicReleaseAsset::new(
+            "gitleaks",
+            "gitleaks",
+            "v8.18.4",
+            "gitleaks_8.18.4_linux_x64.tar.gz",
+            1024,
+        )
+        .expect("safe public release asset");
+        assert_eq!(
+            asset.url().expect("structured URL").as_str(),
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz"
+        );
+        assert!(PublicReleaseAsset::new("gitleaks", "gitleaks", "..", "asset", 1024).is_err());
+        assert!(PublicReleaseAsset::new("gitleaks", "gitleaks", "v1", "../asset", 1024).is_err());
+        assert!(PublicReleaseAsset::new("gitleaks", "gitleaks", "v1", "asset", 0).is_err());
     }
 
     #[test]

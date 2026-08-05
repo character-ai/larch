@@ -23,6 +23,12 @@ pub enum VendorProgram {
     Cursor,
 }
 
+/// A checksum-pinned security scanner distributed outside the Rust workspace.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScannerProgram {
+    executable: PathBuf,
+}
+
 /// Closed host-utility allowlist for compatibility probes unavailable in-process.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostUtilityProgram {
@@ -121,6 +127,28 @@ impl VendorProgram {
     }
 }
 
+impl ScannerProgram {
+    /// Bind the Gitleaks scanner to an already-verified executable path.
+    #[must_use]
+    pub fn gitleaks(executable: impl Into<PathBuf>) -> Self {
+        Self {
+            executable: executable.into(),
+        }
+    }
+
+    /// Return the verified scanner executable path.
+    #[must_use]
+    pub fn executable(&self) -> &OsStr {
+        self.executable.as_os_str()
+    }
+
+    /// Return the allowlist rationale.
+    #[must_use]
+    pub const fn reason(&self) -> &'static str {
+        "checksum-pinned external secret scanner required by the repository security policy"
+    }
+}
+
 /// Approved installed-Git compatibility operations from issue #7671.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GitCliOperation {
@@ -199,6 +227,7 @@ impl GitCliOperation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExternalProgram {
     Vendor(VendorProgram),
+    Scanner(ScannerProgram),
     Git(GitCliOperation),
     GitHub(GitHubCliOperation),
     HostUtility(HostUtilityProgram),
@@ -283,6 +312,7 @@ impl ExternalProgram {
     pub fn executable(&self) -> &OsStr {
         match self {
             Self::Vendor(program) => OsStr::new(program.executable()),
+            Self::Scanner(program) => program.executable(),
             Self::Git(_) => OsStr::new("git"),
             Self::GitHub(_) => OsStr::new("gh"),
             Self::HostUtility(program) => OsStr::new(program.executable()),
@@ -297,6 +327,7 @@ impl ExternalProgram {
             Self::Vendor(VendorProgram::Claude) => "vendor.claude",
             Self::Vendor(VendorProgram::Codex) => "vendor.codex",
             Self::Vendor(VendorProgram::Cursor) => "vendor.cursor",
+            Self::Scanner(_) => "scanner.gitleaks",
             Self::Git(operation) => operation.subcommand(),
             Self::GitHub(operation) => operation.operation(),
             Self::HostUtility(program) => program.operation(),
@@ -309,6 +340,7 @@ impl ExternalProgram {
     pub const fn reason(&self) -> &'static str {
         match self {
             Self::Vendor(program) => program.reason(),
+            Self::Scanner(program) => program.reason(),
             Self::Git(operation) => operation.reason(),
             Self::GitHub(operation) => operation.reason(),
             Self::HostUtility(program) => program.reason(),
@@ -325,7 +357,7 @@ impl ExternalProgram {
             Self::GitHub(operation) => {
                 arguments.splice(0..0, operation.arguments().into_iter().map(OsString::from));
             }
-            Self::Vendor(_) | Self::HostUtility(_) | Self::Larch(_) => {}
+            Self::Vendor(_) | Self::Scanner(_) | Self::HostUtility(_) | Self::Larch(_) => {}
         }
     }
 }

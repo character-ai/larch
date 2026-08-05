@@ -73,7 +73,7 @@ or scanner result as a content-classification decision.
 Larch uses three distinct scanner layers:
 
 1. **Manual local working-tree scan**. The manual pre-commit stage runs
-   `python3 python/cli.py checks gitleaks --mode working-tree`. The wrapper
+   `scripts/larch.sh lint gitleaks --mode working-tree`. The Rust command
    verifies the pinned Gitleaks release archive, extracted binary, and reported
    version, then runs with the repository `.gitleaks.toml`. `--no-git` and
    `pass_filenames: false` keep the scan on the full working tree. Select it
@@ -91,7 +91,10 @@ Larch uses three distinct scanner layers:
 
 The Gitleaks wrapper currently pins `v8.18.4`. TruffleHog currently pins the
 action commit corresponding to `v3.82.13` and sets `version: 3.82.13`. Scanner
-or checksum drift fails closed.
+or checksum drift fails closed. The wrapper executes the verified Gitleaks cache
+file by its absolute path, rather than resolving a scanner from `PATH`; the
+child retains its normal `PATH` only so Gitleaks can invoke Git for bounded
+history scans.
 
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
 covers the config itself, named residual-script and skill fixtures, the broad
@@ -463,7 +466,8 @@ egress contract.
 
 | Concern | Current owners |
 |---------|----------------|
-| Python redaction and scanner wrapper | `python/larch/core/redact.py`, `python/larch/lint/gitleaks.py` |
+| Python redaction | `python/larch/core/redact.py` |
+| Rust checksum-pinned scanner | `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
 | Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns `run-log storage-preflight` plus the narrow GCS authentication transport; S3/R2 preflight still uses the AWS CLI list transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
@@ -472,7 +476,7 @@ egress contract.
 | Tracking, plan, diagram, and public-report publication | The typed Python CLI owners named by each workflow; service calls use the current typed GitHub adapter where migrated |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
-Verification includes focused redaction and run-log tests, Gitleaks wrapper
+Verification includes focused redaction and run-log tests, Rust Gitleaks command
 tests, Markdown and reference checks, the runtime-projection drift check, the
 local pattern scan when installed, and the required CI scanner jobs. Scanner
 success does not supersede the confidentiality classes in this document.
