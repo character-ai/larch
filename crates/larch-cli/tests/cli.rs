@@ -1,5 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
+    fmt::Write as _,
     fs,
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
@@ -23,6 +24,7 @@ Usage: larch <COMMAND>
 Commands:
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository commands
+  lint           Repository policy lint commands
   plugin         Plugin metadata commands
   object-store   Narrow provider transports used by Python-owned run-log workflows
   release        Release-maintenance commands
@@ -47,6 +49,23 @@ Commands:
 
 Options:
   -h, --help  Print help
+";
+
+const LINT_HELP: &str = "\
+Repository policy lint commands
+
+Usage: larch lint [OPTIONS] <COMMAND>
+
+Commands:
+  all               Run every registered rule
+  rule              Run one registered rule
+  rules             List registered rules in name order
+  command-registry  Maintain or report the Python-to-Rust command ownership ledger
+  help              Print this message or the help of the given subcommand(s)
+
+Options:
+      --root <PATH>  Resolve the repository from this directory instead of the current directory
+  -h, --help         Print help
 ";
 
 const GIT_HELP: &str = "\
@@ -356,6 +375,47 @@ fn help_has_pinned_output_and_success_exit() {
         .assert()
         .code(0)
         .stdout(ROOT_HELP)
+        .stderr("");
+}
+
+#[test]
+fn lint_rules_matches_the_library_registry_exactly() {
+    let registry = larch_lint::registered_rule_registry().expect("registered lint rules");
+    let mut expected = String::new();
+    for rule in registry.iter() {
+        writeln!(&mut expected, "{}\t{}", rule.name(), rule.description())
+            .expect("writing to a String should succeed");
+    }
+
+    larch()
+        .args(["lint", "rules"])
+        .assert()
+        .success()
+        .stdout(expected)
+        .stderr("");
+}
+
+#[test]
+fn lint_help_lists_the_complete_domain() {
+    larch()
+        .args(["lint", "--help"])
+        .assert()
+        .success()
+        .stdout(LINT_HELP)
+        .stderr("");
+}
+
+#[test]
+fn lint_rule_accepts_an_explicit_repository_root() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut command = larch();
+    command
+        .args(["lint", "--root"])
+        .arg(root)
+        .args(["rule", "command-registry"])
+        .assert()
+        .success()
+        .stdout("")
         .stderr("");
 }
 

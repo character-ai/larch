@@ -263,7 +263,7 @@ repos:
     hooks:
       - id: larch-lint
         name: larch-lint repository policy rules
-        entry: cargo run --quiet --locked --package larch-lint -- all
+        entry: cargo run --quiet --locked --package larch-cli -- lint all
         language: system
         pass_filenames: false
         always_run: true
@@ -521,7 +521,7 @@ repos:
     hooks:
       - id: check-topology-rule-paths
         name: Check topology-rule paths coverage
-        entry: cargo run --quiet --locked --package larch-lint -- rule topology-rule-paths
+        entry: cargo run --quiet --locked --package larch-cli -- lint rule topology-rule-paths
         language: system
         pass_filenames: false
         stages: [manual]
@@ -529,7 +529,7 @@ repos:
 
       - id: lint-em-dash-output
         name: lint emitted em dashes
-        entry: cargo run --quiet --locked --package larch-lint -- rule em-dash-output
+        entry: cargo run --quiet --locked --package larch-cli -- lint rule em-dash-output
         language: system
         pass_filenames: false
         always_run: true
@@ -555,7 +555,7 @@ repos:
     hooks:
       - id: lint-retired-scripts
         name: Lint references to retired script paths
-        entry: cargo run --quiet --locked --package larch-lint -- rule retired-scripts
+        entry: cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
         language: system
         pass_filenames: false
         always_run: true

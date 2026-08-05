@@ -1,11 +1,83 @@
 use std::{
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, ExitStatus, Output},
 };
 
-use assert_cmd::Command as AssertCommand;
+use assert_cmd::assert::Assert;
+use clap::Parser;
 use tempfile::TempDir;
+
+#[derive(Parser)]
+#[command(name = "larch-lint-test")]
+struct TestCli {
+    #[command(flatten)]
+    arguments: larch_lint::LintArguments,
+}
+
+pub struct LintTestCommand {
+    current_dir: PathBuf,
+    arguments: Vec<OsString>,
+}
+
+impl LintTestCommand {
+    #[allow(dead_code)] // Each integration target compiles only the shared methods it uses.
+    pub fn arg(&mut self, argument: impl Into<OsString>) -> &mut Self {
+        self.arguments.push(argument.into());
+        self
+    }
+
+    pub fn args<I, S>(&mut self, arguments: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
+        self.arguments.extend(arguments.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn assert(&self) -> Assert {
+        let parsed = TestCli::try_parse_from(
+            std::iter::once(OsString::from("larch-lint-test"))
+                .chain(self.arguments.iter().cloned()),
+        );
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = match parsed {
+            Ok(cli) => larch_lint::run_cli_with_io(
+                cli.arguments,
+                Some(&self.current_dir),
+                &mut stdout,
+                &mut stderr,
+            )
+            .as_i32(),
+            Err(error) => {
+                stderr.extend_from_slice(error.to_string().as_bytes());
+                error.exit_code()
+            }
+        };
+        Assert::new(Output {
+            status: exit_status(code),
+            stdout,
+            stderr,
+        })
+    }
+}
+
+#[cfg(unix)]
+fn exit_status(code: i32) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt as _;
+
+    ExitStatus::from_raw(code << 8)
+}
+
+#[cfg(windows)]
+fn exit_status(code: i32) -> ExitStatus {
+    use std::os::windows::process::ExitStatusExt as _;
+
+    ExitStatus::from_raw(code as u32)
+}
 
 pub struct TempRepo {
     directory: TempDir,
@@ -49,10 +121,11 @@ impl TempRepo {
         );
     }
 
-    pub fn command_from(cwd: impl Into<PathBuf>) -> AssertCommand {
-        let mut command = AssertCommand::cargo_bin("larch-lint").expect("larch-lint binary");
-        command.current_dir(cwd.into());
-        command
+    pub fn command_from(cwd: impl Into<PathBuf>) -> LintTestCommand {
+        LintTestCommand {
+            current_dir: cwd.into(),
+            arguments: Vec::new(),
+        }
     }
 }
 

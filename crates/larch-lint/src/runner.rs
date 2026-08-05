@@ -15,6 +15,12 @@ pub enum ExitCode {
 }
 
 impl ExitCode {
+    /// Return this outcome as a process status for [`std::process::ExitCode`].
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+
     /// Return this outcome as a process status.
     #[must_use]
     pub const fn as_i32(self) -> i32 {

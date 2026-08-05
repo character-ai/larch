@@ -35,12 +35,12 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Build and verify larch-lint
+      - name: Build and verify larch
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --locked --release --package larch-lint
-          ./target/release/larch-lint --version
+          cargo build --locked --release --package larch-cli
+          ./target/release/larch --version
           printf '%s\n' "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
 
       - name: Run the aggregate migration audit

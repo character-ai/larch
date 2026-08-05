@@ -279,7 +279,7 @@ fn workspace_dependency_allowed(importer: &str, dependency: &str) -> bool {
     matches!(
         (importer, dependency),
         ("larch-adapters" | "larch-test-support", "larch-core")
-            | ("larch-cli", "larch-core" | "larch-adapters")
+            | ("larch-cli", "larch-core" | "larch-adapters" | "larch-lint")
     )
 }
 
@@ -606,7 +606,8 @@ mod tests {
             "larch-core",
             "larch-adapters"
         ));
-        assert!(!workspace_dependency_allowed("larch-cli", "larch-lint"));
+        assert!(workspace_dependency_allowed("larch-cli", "larch-lint"));
+        assert!(!workspace_dependency_allowed("larch-lint", "larch-core"));
     }
 
     #[test]

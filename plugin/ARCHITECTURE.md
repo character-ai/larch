@@ -10,8 +10,8 @@ until each command moves directly to its Rust owner.
 |---|---|---|
 | `larch-core` | Effect-free domain types, use cases, and narrow ports for Git, GitHub, Google services, process execution, storage, and time. | None. |
 | `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
-| `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases. Its binary target is named `larch`. | `larch-core`, `larch-adapters`. |
-| `larch-lint` | Repository-only policy tooling. It is not linked into the product. | None of the product crates. |
+| `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases or repository-policy rules. Its binary target is named `larch`. | `larch-core`, `larch-adapters`, `larch-lint`. |
+| `larch-lint` | Library-only repository policy tooling exposed through `larch lint`. | None of the product crates. |
 | `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, HTTP responses, Git repositories, run-log corpora, and reporting parity snapshots. Product crates may use it only as a dev-dependency. | `larch-core`. |
 
 The product dependency direction is:
@@ -19,11 +19,13 @@ The product dependency direction is:
 ```text
 larch-cli -> larch-adapters -> larch-core
           \-----------------> larch-core
+          \-----------------> larch-lint
 ```
 
 Dependency direction applies to normal and build dependencies. Tests may use
-dev-dependencies across layers when an integration test needs them. Product
-crates must not depend on `larch-lint`.
+dev-dependencies across layers when an integration test needs them. Only the
+`larch-cli` composition root may depend on `larch-lint`, solely to serve the
+`lint` domain. `larch-lint` must not depend on a product crate.
 `larch-test-support` also stays outside the product graph and release binary.
 
 Add modules inside these crates. A new crate needs an independent ownership
@@ -63,8 +65,9 @@ The migration-only command registry lives in
 `crates/larch-lint/data/command-registry.toml`. It records one owner and three
 independent milestones for each command: implementation parity, production
 consumer cutover, and Python removal. `larch-lint` imports the Python registry,
-inventories production callers, and blocks ownership or caller drift. Product
-crates do not depend on this repository-only migration ledger. See
+inventories production callers, and blocks ownership or caller drift. The CLI
+composition root dispatches to this repository-only migration ledger but does
+not interpret it. See
 `docs/rust-command-registry.md` for the update workflow.
 
 Before a command advances to implementation parity, exercise its Python and
@@ -136,8 +139,9 @@ work:
   paths derive from validated plugin roots. The adapter accepts argument arrays
   only, rebuilds child environments from an allowlist, bounds output, and owns
   cancellation, timeout, termination, and reap.
-  Repository-only lint bootstrap calls stay outside the product dependency
-  graph and require reason-bearing lint suppressions.
+  Repository-only lint bootstrap calls stay confined to `larch-lint`, are
+  reachable only through the `lint` domain, and require reason-bearing lint
+  suppressions.
 - GitHub code uses a larch-owned core service port. A single core resolver
   acquires the active GitHub CLI credential through the fixed
   `gh auth token --hostname github.com` process operation. The clean child

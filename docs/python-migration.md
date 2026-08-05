@@ -130,7 +130,7 @@ Wired into `make lint` and `.pre-commit-config.yaml`.
 # Direct call — no shim.
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr [args...]
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" report-tokens analyze [args...]
-cargo run --quiet --locked --package larch-lint -- rule retired-scripts
+cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
 ```
 
 The Python CLI's `--help` flag lists all registered domain/verb pairs without importing any

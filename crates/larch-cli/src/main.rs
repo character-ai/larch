@@ -53,6 +53,8 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// Repository policy lint commands.
+    Lint(larch_lint::LintArguments),
     /// Plugin metadata commands.
     #[command(subcommand)]
     Plugin(PluginCommand),
@@ -491,6 +493,7 @@ fn run(
             Ok(ExitCode::SUCCESS)
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
+        Domain::Lint(arguments) => Ok(ExitCode::from(larch_lint::run_cli(arguments).as_u8())),
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
         }

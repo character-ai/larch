@@ -1648,16 +1648,17 @@ def collect_repository_audit_findings(
     repo_root: Path,
 ) -> tuple[AggregateFinding, ...]:
     """Invoke the canonical Rust lint owners without Cargo or target paths."""
-    lint_binary = shutil.which("larch-lint")
-    if lint_binary is None:
-        raise MigrationAuditError("required larch-lint executable is unavailable on PATH")
+    larch_binary = shutil.which("larch")
+    if larch_binary is None:
+        raise MigrationAuditError("required larch executable is unavailable on PATH")
     root = str(repo_root)
     registry_result = runner.run(
-        [lint_binary, "--root", root, "rule", "command-registry"], cwd=root
+        [larch_binary, "lint", "--root", root, "rule", "command-registry"], cwd=root
     )
     registry_lines = _safe_lint_findings(registry_result, context="command-registry audit")
     runtime_result = runner.run(
-        [lint_binary, "--root", root, "rule", "production-cargo-run"], cwd=root
+        [larch_binary, "lint", "--root", root, "rule", "production-cargo-run"],
+        cwd=root,
     )
     runtime_lines = _safe_lint_findings(runtime_result, context="production-runtime audit")
     commands = _registry_commands(repo_root=repo_root)
@@ -1679,7 +1680,8 @@ def collect_repository_audit_findings(
             larch_io.trusted_atomic_write(audit_path, audit_input, root=temp_dir)
             issue_result = runner.run(
                 [
-                    lint_binary,
+                    larch_binary,
+                    "lint",
                     "--root",
                     root,
                     "command-registry",

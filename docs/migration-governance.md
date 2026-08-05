@@ -13,10 +13,11 @@ python3 python/cli.py issue migration-audit \
   --chief 7687
 ```
 
-The command requires the repository's `larch-lint` executable on `PATH`. It
-fails with exit `2` when the executable or required GitHub or repository
-evidence is unavailable. Production Python does not build the executable or
-invoke Cargo or a `target/` path.
+The command requires the repository's `larch` executable on `PATH`. It calls
+that executable through the `lint` domain and fails with exit `2` when the
+executable or required GitHub or repository evidence is unavailable.
+Production Python does not build the executable or invoke Cargo or a `target/`
+path.
 
 The active GitHub CLI identity needs read access to issues, issue dependencies,
 and pull requests for `owner/name`. An explicit output file also needs a
@@ -59,8 +60,8 @@ comments, credentials, and arbitrary GitHub error text.
 
 Reasons come from the existing migration owners. They include plan defects,
 blocker and receipt tokens, owner-admission tokens, stale-lease tokens, and
-canonical `larch-lint` diagnostics. The aggregate calls these lint surfaces by
-their installed executable name:
+canonical `larch lint` diagnostics. The aggregate calls these subcommands
+through the installed executable:
 
 - `rule command-registry`
 - `command-registry audit`
@@ -101,7 +102,7 @@ Owner and lease findings use `missing-owner-block`,
 `active-owner-conflict owner=KEY issue=#N`, and
 `stale-implementation-lease issue=#N age_hours=H`.
 
-Repository findings preserve the exact canonical `larch-lint` line. Stable
+Repository findings preserve the exact canonical `larch lint` line. Stable
 families include `migration-issue-command-drift`, `non-atomic-rust-owner`,
 `production caller`, `ledger caller`, `python-entrypoint-still-present`,
 `python-entrypoint-still-imported`, `python-entrypoint-still-called`, and
@@ -133,8 +134,9 @@ tracking-issue lifecycle. The audit does not run that command.
 
 `.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and
 supports `workflow_dispatch`. It checks out the audited commit, loads the
-pinned Rust toolchain, builds `larch-lint` from the lockfile, verifies the
-binary, and adds only that build directory to `PATH`. It then runs:
+pinned Rust toolchain, builds the `larch-cli` package from the lockfile,
+verifies the `larch` binary, and adds only that build directory to `PATH`. It
+then runs:
 
 ```bash
 python3 python/cli.py issue migration-audit \
