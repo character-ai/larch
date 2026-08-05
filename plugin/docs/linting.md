@@ -342,11 +342,11 @@ not reduced.
 
 See `.claude/skills/rebalance-tests/SKILL.md` for flags and full workflow
 documentation. Rust fixture and wire-contract tests live in
-`crates/larch-core/src/ci_timing.rs`. Python consumer and packing tests include
-`python/tests/test_rebalance_script.py`, `python/tests/test_harness_makefile.py`,
-`python/tests/test_harness_shard_packer.py`, and
-`python/tests/test_pytest_sharding.py`; run them with targeted Cargo and pytest
-commands.
+`crates/larch-core/src/ci_timing.rs` and `crates/larch-core/src/test_shards.rs`.
+Python consumer tests are `python/tests/test_rebalance_script.py` and
+`python/tests/test_pytest_sharding.py`; the executable boundary is covered by
+`crates/larch-cli/tests/test_shards.rs`. Run the targeted Cargo and pytest
+commands before changing the rebalance contract.
 
 **`LARCH_HARNESS_TIMING` format** (from `python/larch/report/timing.py harness docs`): each
 wrapped `bash` invocation emits one tab-separated row to stdout:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
-import sys
 import io
+import json
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -45,6 +46,10 @@ def _feasibility_output(
     return stream.getvalue()
 
 
+def _skip_write_shards(_makefile_path: Path, _shards: dict[int, list[str]]) -> None:
+    """Leave the Makefile fixture unchanged when testing later failure paths."""
+
+
 def test_packed_spread_over_threshold_emits_warning() -> None:
     medians = {
         "test-a": 10.0,
@@ -52,7 +57,7 @@ def test_packed_spread_over_threshold_emits_warning() -> None:
         "test-c": 10.0,
         "test-d": 10.0,
     }
-    shards = rebalance.pack(medians=medians, n_shards=3, guard="")
+    shards = {1: ["test-a", "test-d"], 2: ["test-b"], 3: ["test-c"]}
     output = _feasibility_output(
         shards,
         medians,
@@ -72,7 +77,11 @@ def test_dominant_target_with_packed_spread_within_threshold_emits_no_warning() 
         "test-medium-a": 14.0,
         "test-medium-b": 14.0,
     }
-    shards = rebalance.pack(medians=medians, n_shards=3, guard="")
+    shards = {
+        1: ["test-slow"],
+        2: ["test-medium-a"],
+        3: ["test-medium-b"],
+    }
     output = _feasibility_output(
         shards,
         medians,
@@ -280,7 +289,55 @@ def test_run_ci_timing_uses_verified_bootstrap_and_repeated_flags() -> None:
     assert env["CLAUDE_PLUGIN_ROOT"] == str(rebalance._REPO_ROOT)
 
 
-def test_pack_nodeids_returns_assignments_covering_shards() -> None:
+def test_test_shard_uses_verified_bootstrap_and_removes_json_input() -> None:
+    calls: list[tuple[list[str], str, dict[str, str]]] = []
+
+    class Runner:
+        def run(
+            self,
+            argv: list[str],
+            *,
+            cwd: str,
+            env: dict[str, str],
+        ) -> CommandResult:
+            calls.append((argv, cwd, env))
+            input_path = Path(argv[argv.index("--input") + 1])
+            assert json.loads(input_path.read_text(encoding="utf-8")) == [
+                {"target": "test-a", "seconds": 3.5}
+            ]
+            return _cr('{"1":["test-a"]}\n')
+
+    output = rebalance._run_test_shard(
+        Runner(),
+        ["pack", "--n-shards", "1"],
+        input_payload=[{"target": "test-a", "seconds": 3.5}],
+    )
+
+    argv, cwd, env = calls[0]
+    assert output == '{"1":["test-a"]}\n'
+    assert argv[:3] == [
+        str(rebalance._REPO_ROOT / "scripts" / "larch.sh"),
+        "test-shard",
+        "pack",
+    ]
+    input_path = Path(argv[argv.index("--input") + 1])
+    assert not input_path.exists()
+    assert cwd == str(rebalance._REPO_ROOT)
+    assert env["CLAUDE_PLUGIN_ROOT"] == str(rebalance._REPO_ROOT)
+
+
+def test_pack_nodeids_returns_assignments_covering_shards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_pack(
+        medians: dict[str, float], n_shards: int, *, guard: str
+    ) -> dict[int, list[str]]:
+        assert medians == {"slow": 10.0, "mid": 5.0, "fast": 1.0, "tiny": 0.5}
+        assert n_shards == 2
+        assert guard == ""
+        return {1: ["slow", "tiny"], 2: ["mid", "fast"]}
+
+    monkeypatch.setattr(rebalance, "_pack_shards", fake_pack)
     assignments = rebalance._pack_nodeids(
         {"slow": 10.0, "mid": 5.0, "fast": 1.0, "tiny": 0.5}, 2
     )
@@ -534,7 +591,7 @@ def test_main_python_zero_rows_aborts_before_writes(
         return _ci_report("pytest")
 
     monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
-    monkeypatch.setattr(rebalance, "write_shards", track_write_shards)
+    monkeypatch.setattr(rebalance, "_write_shards", track_write_shards)
     monkeypatch.setattr(rebalance, "_write_assignments_json", track_write_assignments)
 
     result = rebalance.main(["--kind", "python", "--repo", "o/r"])
@@ -571,7 +628,7 @@ def test_main_dirty_artifact_aborts_before_writes(
         "_prepare_python_plan",
         fake_prepare_python_plan,
     )
-    monkeypatch.setattr(rebalance, "write_shards", track_write_shards)
+    monkeypatch.setattr(rebalance, "_write_shards", track_write_shards)
 
     result = rebalance.main(["--kind", "python", "--repo", "o/r"])
 
@@ -601,6 +658,7 @@ def test_main_partition_failure_skips_assignments_writer(
         return None
 
     monkeypatch.setattr(rebalance, "_ASSIGNMENTS_PATH", assignments_path)
+    monkeypatch.setattr(rebalance, "_write_shards", _skip_write_shards)
     monkeypatch.setattr(rebalance, "_validate_partition", fake_validate_partition)
     monkeypatch.setattr(rebalance, "_write_assignments_json", track_write_assignments)
     monkeypatch.setattr(rebalance, "_revert_written_paths", fake_revert_written_paths)
@@ -636,6 +694,7 @@ def test_main_assignments_write_failure_reverts_makefile(
         reverted.append(list(paths))
 
     monkeypatch.setattr(rebalance, "_ASSIGNMENTS_PATH", assignments_path)
+    monkeypatch.setattr(rebalance, "_write_shards", _skip_write_shards)
     monkeypatch.setattr(rebalance, "_validate_partition", fake_validate_partition)
     monkeypatch.setattr(rebalance, "_write_assignments_json", fail_write_assignments)
     monkeypatch.setattr(rebalance, "_revert_written_paths", track_revert_written_paths)

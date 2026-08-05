@@ -19,6 +19,7 @@ mod redaction;
 mod retry;
 mod session_state;
 mod telemetry;
+mod test_shards;
 mod text;
 mod time;
 mod upgrade_larch;
@@ -108,6 +109,9 @@ pub use session_state::{
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
+pub use test_shards::{
+    TestShardMap, TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards,
+};
 pub use text::{split_text_lines, tail_lines, truncate_utf8_bytes};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{

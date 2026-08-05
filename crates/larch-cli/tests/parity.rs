@@ -96,6 +96,17 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new("clean-install-test-shard-pack", "test-shard", "pack"),
+    CleanInstallCase::new(
+        "clean-install-test-shard-read-makefile",
+        "test-shard",
+        "read-makefile",
+    ),
+    CleanInstallCase::new(
+        "clean-install-test-shard-write-makefile",
+        "test-shard",
+        "write-makefile",
+    ),
     CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",
