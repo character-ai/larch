@@ -14,21 +14,33 @@ into protocol bindings only after the protocol parser accepts it.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fcntl
 import hashlib
 import json
+import os
+import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Final, Protocol, Self, TextIO
+from typing import Final, Protocol, Self
 
 from larch import io as larch_io
+from larch.agents import _run_external
 from larch.agents._types import VendorSessionHandle
+from larch.agents._vendor import (
+    VendorLaunchRequest,
+    build_codex_resume_argv,
+    build_codex_session_argv,
+    build_cursor_create_chat_argv,
+    build_cursor_resume_argv,
+)
 from larch.core import config, external_defaults
 from larch.debate import protocol
 
 STATE_SCHEMA_VERSION: Final[int] = 1
 UNAVAILABLE_VENDOR_LIMIT: Final[int] = 2
+VENDOR_TIMEOUT_SECONDS: Final[int] = 900
 
 # ruff: noqa: PLR0913, FBT001, FBT003 - CLI wire and frozen state constructors mirror the explicit persisted schema.
 _STATE_KEYS: Final[frozenset[str]] = frozenset(
@@ -40,7 +52,7 @@ _FINGERPRINT_HEX_LENGTH: Final[int] = 64
 class DebateError(ValueError):
     """A stable, externally visible debate failure."""
 
-    def __init__(self, error_class: str, message: str, exit_code: int = 2) -> None:
+    def __init__(self, error_class: str, message: str, exit_code: int = config.DEBATE_EXIT_VALIDATION) -> None:
         self.error_class = error_class
         self.exit_code = exit_code
         super().__init__(message)
@@ -177,21 +189,21 @@ def _point_values(raw: str) -> tuple[protocol.PointId, ...]:
     try:
         decoded: object = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise DebateError("validation", "point universe must be JSON", 2) from exc
+        raise DebateError("validation", "point universe must be JSON", config.DEBATE_EXIT_VALIDATION) from exc
     if not isinstance(decoded, list) or not decoded:
-        raise DebateError("validation", "point universe must be a nonempty array", 2)
+        raise DebateError("validation", "point universe must be a nonempty array", config.DEBATE_EXIT_VALIDATION)
     points: list[protocol.PointId] = []
     seen: set[int] = set()
     for value in decoded:
         if not _is_json_int(value):  # pylint: disable=unidiomatic-typecheck  # JSON bool is not a point id
-            raise DebateError("validation", "point universe values must be exact integers", 2)
+            raise DebateError("validation", "point universe values must be exact integers", config.DEBATE_EXIT_VALIDATION)
         if value in seen:
-            raise DebateError("validation", "point universe has duplicate values", 2)
+            raise DebateError("validation", "point universe has duplicate values", config.DEBATE_EXIT_VALIDATION)
         seen.add(value)
         try:
             points.append(protocol.PointId(value))
         except protocol.ProtocolRejection as exc:
-            raise DebateError("validation", "point universe value is out of range", 2) from exc
+            raise DebateError("validation", "point universe value is out of range", config.DEBATE_EXIT_VALIDATION) from exc
     return tuple(points)
 
 
@@ -201,22 +213,22 @@ def _run_local_values(raw: str | None) -> dict[str, str]:
     try:
         decoded: object = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise DebateError("validation", "run-local values must be JSON", 2) from exc
+        raise DebateError("validation", "run-local values must be JSON", config.DEBATE_EXIT_VALIDATION) from exc
     if not isinstance(decoded, dict):  # pylint: disable=unidiomatic-typecheck  # exact JSON object required
-        raise DebateError("validation", "run-local values must be an object", 2)
+        raise DebateError("validation", "run-local values must be an object", config.DEBATE_EXIT_VALIDATION)
     result: dict[str, str] = {}
     for key, value in decoded.items():
         if not isinstance(key, str) or not isinstance(value, str):  # pylint: disable=unidiomatic-typecheck  # wire grammar is strings only
-            raise DebateError("validation", "run-local values must contain strings", 2)
+            raise DebateError("validation", "run-local values must contain strings", config.DEBATE_EXIT_VALIDATION)
         if not _safe_line(key) or not _safe_line(value):
-            raise DebateError("validation", "run-local values must be line-safe", 2)
+            raise DebateError("validation", "run-local values must be line-safe", config.DEBATE_EXIT_VALIDATION)
         result[key] = value
     return dict(sorted(result.items()))
 
 
 def _strict_bool(value: str) -> bool:
     if value not in {"true", "false"}:
-        raise DebateError("validation", "presence flags must be true or false", 2)
+        raise DebateError("validation", "presence flags must be true or false", config.DEBATE_EXIT_VALIDATION)
     return value == "true"
 
 
@@ -450,17 +462,39 @@ def write_state(root: str | Path, state: ProposalState) -> ProposalState:
 class _StateLock:
     def __init__(self, root: Path) -> None:
         self.root = root
-        self.handle: TextIO | None = None
+        self.fd: int | None = None
 
     def __enter__(self) -> Self:
-        self.handle = (self.root / ".debate-state.lock").open("a+", encoding="utf-8")
-        fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        # The lock path sits under a caller-supplied --debate-tmpdir, so it gets
+        # the same no-follow, regular-file treatment as every other write in
+        # this module.  Mirrors the Codex probe lock in agents/_auth.py.
+        path = self.root / config.DEBATE_STATE_LOCK_FILENAME
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd: int | None = None
+        try:
+            fd = os.open(path, flags, 0o600)
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise DebateError("persistence_failure", "refusing non-regular debate state lock", config.DEBATE_EXIT_PERSISTENCE_FAILURE)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError as exc:
+            if fd is not None:
+                os.close(fd)
+            raise DebateError("persistence_failure", "unable to acquire debate state lock", config.DEBATE_EXIT_PERSISTENCE_FAILURE) from exc
+        except DebateError:
+            if fd is not None:
+                os.close(fd)
+            raise
+        self.fd = fd
         return self
 
     def __exit__(self, *_args: object) -> None:
-        if self.handle is not None:
-            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
-            self.handle.close()
+        if self.fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            os.close(self.fd)
+            self.fd = None
 
 
 def _require_fingerprint(state: ProposalState, expected: str) -> None:
@@ -473,7 +507,7 @@ def _slots(cursor: bool, codex: bool, claude: bool) -> tuple[ParticipantSlot, ..
     defaults = external_defaults.slot_defaults("debate.panel")
     slots = tuple(ParticipantSlot(item.slot, item.tool, item.transport, availability[item.tool], item.model) for item in defaults)
     if tuple(slot.slot for slot in slots) != protocol.SLOT_ORDER:
-        raise DebateError("validation", "debate role seating does not match protocol order", 2)
+        raise DebateError("validation", "debate role seating does not match protocol order", config.DEBATE_EXIT_VALIDATION)
     return slots
 
 
@@ -484,31 +518,32 @@ def initialize(
     restore_original_title: str, restore_title: str, bootstrapper: SessionBootstrapper | None = None,
 ) -> ProposalState:
     if expected_fingerprint != config.DEBATE_ABSENT_FINGERPRINT:
-        raise DebateError("validation", "init requires ABSENT fingerprint", 2)
+        raise DebateError("validation", "init requires ABSENT fingerprint", config.DEBATE_EXIT_VALIDATION)
     if not all(_safe_line(value) for value in (repo_workdir, log_root, run_id, restore_issue_number, restore_original_title, restore_title)):
-        raise DebateError("validation", "initialization strings must be line-safe", 2)
+        raise DebateError("validation", "initialization strings must be line-safe", config.DEBATE_EXIT_VALIDATION)
     debate_root = _trusted_root(root, create=True)
     try:
         workdir = larch_io.validate_trusted_directory(repo_workdir)
         trusted_log_root = _trusted_root(log_root, create=True)
     except OSError as exc:
-        raise DebateError("validation", "unsafe initialization directory", 2) from exc
+        raise DebateError("validation", "unsafe initialization directory", config.DEBATE_EXIT_VALIDATION) from exc
     with _StateLock(debate_root):
         if _state_path(debate_root).exists():
-            raise DebateError("validation", "state already exists", 2)
+            raise DebateError("validation", "state already exists", config.DEBATE_EXIT_VALIDATION)
         slots = _slots(cursor_present, codex_present, claude_present)
         missing = [slot for slot in slots if not slot.available]
         if len(missing) >= UNAVAILABLE_VENDOR_LIMIT:
-            raise DebateError("validation", "two or more debate vendors unavailable", 2)
+            raise DebateError("validation", "two or more debate vendors unavailable", config.DEBATE_EXIT_VALIDATION)
         warning = "" if not missing else f"unavailable vendor: {missing[0].slot}"
         values = dict(sorted((run_local_values or {}).items()))
         restore = RestoreMetadata(restore_issue_number, restore_original_title, restore_title)
         context = InitializationContext(tuple(point.number for point in point_universe), values, str(workdir), str(trusted_log_root), run_id, slots, restore, {}, warning)
         handles: dict[str, VendorSessionHandle] = {}
-        if bootstrapper is not None:
-            for slot in slots:
-                if slot.available and slot.transport == "subprocess":
-                    handles[slot.slot] = bootstrapper(slot, context)
+        create_session = bootstrapper or default_bootstrapper
+        subprocess_slots = [slot for slot in slots if slot.available and slot.transport == "subprocess"]
+        if subprocess_slots:
+            for slot in subprocess_slots:
+                handles[slot.slot] = create_session(slot, context)
             context = InitializationContext(
                 context.point_universe,
                 context.run_local_values,
@@ -534,12 +569,12 @@ def round_prep(*, root: str | Path, expected_fingerprint: str, round_number: int
         state = load_state(debate_root)
         _require_fingerprint(state, expected_fingerprint)
         if state.active_round is not None:
-            raise DebateError("validation", "an active round already exists", 2)
+            raise DebateError("validation", "an active round already exists", config.DEBATE_EXIT_VALIDATION)
         if state.proposal.phase is None or round_number != len(state.proposal.rounds) + 1:
-            raise DebateError("validation", "round is not admitted by proposal state", 2)
+            raise DebateError("validation", "round is not admitted by proposal state", config.DEBATE_EXIT_VALIDATION)
         live = tuple(slot.slot for slot in state.initialization.slots if slot.available)
         if len(live) < protocol.LIVE_PANEL_MINIMUM:
-            raise DebateError("validation", "insufficient live panel", 2)
+            raise DebateError("validation", "insufficient live panel", config.DEBATE_EXIT_VALIDATION)
         mailboxes: dict[str, tuple[dict[str, object], ...]] = {}
         previous = state.proposal.rounds[-1] if state.proposal.rounds else None
         for slot in live:
@@ -548,8 +583,124 @@ def round_prep(*, root: str | Path, expected_fingerprint: str, round_number: int
         return write_state(debate_root, ProposalState(state.initialization, state.proposal, active, state.drops))
 
 
-def _default_runner(_request: TurnRequest) -> TurnResult:
-    return TurnResult(False, error_class=config.DEBATE_DROP_UNSUPPORTED_TRANSPORT, detail="default runner is not configured")
+def _response_grammar() -> str:
+    actions = " | ".join(sorted(protocol.ACTION_TOKENS))
+    return (
+        f"Emit only the ledger.  One row per point, separated by a single LF, with no "
+        f"trailing newline and no other text.  Each row is exactly:\n"
+        f"{protocol.LEDGER_POINT_TOKEN} {protocol.POINT_ID_PREFIX}<id> <action> <reason>\n"
+        f"where <action> is one of: {actions}."
+    )
+
+
+def bootstrap_prompt(slot: ParticipantSlot, context: InitializationContext) -> str:
+    """Build the deterministic, versioned bootstrap seed for a subprocess slot."""
+    points = " ".join(f"{protocol.POINT_ID_PREFIX}{point}" for point in context.point_universe)
+    return (
+        f"debate-protocol-version: {protocol.PROTOCOL_VERSION}\n"
+        f"role: debate panelist in slot {slot.slot}\n"
+        f"point-universe: {points}\n"
+        f"rounds: {protocol.ROUND_LIMIT}\n"
+        f"{_response_grammar()}"
+    )
+
+
+def turn_prompt(*, slot: str, round_number: int, point_universe: Sequence[int], mailbox: Sequence[Mapping[str, object]]) -> str:
+    """Build the deterministic per-turn prompt.
+
+    Round 1 serializes an empty mailbox array; round 2 carries the other live
+    slots' validated round-1 ledgers in protocol order, already excluding the
+    recipient's own reply (``round_prep`` owns that filtering).
+    """
+    points = " ".join(f"{protocol.POINT_ID_PREFIX}{point}" for point in point_universe)
+    return (
+        f"debate-protocol-version: {protocol.PROTOCOL_VERSION}\n"
+        f"slot: {slot}\n"
+        f"round: {round_number}\n"
+        f"point-universe: {points}\n"
+        f"mailbox: {_canonical_json(list(mailbox)).rstrip()}\n"
+        f"{_response_grammar()}"
+    )
+
+
+def _cursor_final_result(raw: str) -> str:
+    """Extract Cursor's declared final-result JSON field, strictly."""
+    try:
+        payload: object = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("malformed cursor result envelope") from exc
+    if type(payload) is not dict:  # pylint: disable=unidiomatic-typecheck  # declared envelope must be exact object
+        raise ValueError("malformed cursor result envelope")
+    value = payload.get("result")
+    if type(value) is not str or value == "":  # pylint: disable=unidiomatic-typecheck  # declared result must be exact nonempty string
+        raise ValueError("cursor result envelope has no usable result")
+    return value
+
+
+def default_bootstrapper(slot: ParticipantSlot, context: InitializationContext) -> VendorSessionHandle:
+    """Create one vendor session and return only its validated explicit handle."""
+    root = Path(context.log_root)
+    capture = root / f"{slot.slot}-bootstrap-capture.txt"
+    output = root / f"{slot.slot}-bootstrap.out"
+    if slot.tool == "cursor":
+        cmd = build_cursor_create_chat_argv()
+    elif slot.tool == "codex":
+        cmd = build_codex_session_argv(
+            VendorLaunchRequest(workdir=context.repo_workdir, output=str(output), prompt=bootstrap_prompt(slot, context))
+        )
+    else:
+        raise DebateError("unsupported_transport", f"no subprocess bootstrap for {slot.tool}", config.DEBATE_EXIT_UNSUPPORTED_TRANSPORT)
+    result = _run_external.run_external_agent(
+        tool=slot.tool,
+        output=str(output),
+        timeout_seconds=VENDOR_TIMEOUT_SECONDS,
+        cmd=cmd,
+        cwd=context.repo_workdir,
+        capture_stdout=True,
+        stdout_path=capture,
+        capture_session_handle=True,
+    )
+    if result.exit_code != 0 or result.session_handle is None:
+        raise DebateError("runner_failure", f"{slot.tool} session bootstrap failed", config.DEBATE_EXIT_RUNNER_FAILURE)
+    return result.session_handle
+
+
+def _default_runner(request: TurnRequest) -> TurnResult:
+    """Drive one Cursor or Codex turn; every other transport is caller-owned."""
+    handle = request.session_handle
+    if handle is None or handle.vendor not in {"cursor", "codex"}:
+        return TurnResult(False, error_class=config.DEBATE_DROP_UNSUPPORTED_TRANSPORT, detail="default runner drives cursor and codex only")
+    launch = VendorLaunchRequest(workdir=str(request.workdir), output=str(request.output), prompt=request.prompt)
+    if handle.vendor == "cursor":
+        # Cursor writes its JSON envelope to stdout; Codex writes the final
+        # message to the --output-last-message sidecar the argv already pins.
+        capture = request.output.with_suffix(".stdout")
+        result = _run_external.run_external_agent(
+            tool="cursor",
+            output=str(capture),
+            timeout_seconds=VENDOR_TIMEOUT_SECONDS,
+            cmd=build_cursor_resume_argv(handle, launch),
+            cwd=str(request.workdir),
+            capture_stdout_only=True,
+        )
+        if result.exit_code != 0:
+            return TurnResult(False, error_class=config.DEBATE_DROP_RUNNER_FAILURE, detail="cursor turn failed")
+        try:
+            text = _cursor_final_result(capture.read_text(encoding="utf-8"))
+            _ = request.output.write_text(text, encoding="utf-8")
+        except (OSError, UnicodeDecodeError, ValueError):
+            return TurnResult(False, error_class=config.DEBATE_DROP_PROTOCOL_REJECTION, detail="cursor output is not a usable ledger")
+        return TurnResult(True, output=request.output)
+    result = _run_external.run_external_agent(
+        tool="codex",
+        output=str(request.output),
+        timeout_seconds=VENDOR_TIMEOUT_SECONDS,
+        cmd=build_codex_resume_argv(handle, launch),
+        cwd=str(request.workdir),
+    )
+    if result.exit_code != 0:
+        return TurnResult(False, error_class=config.DEBATE_DROP_RUNNER_FAILURE, detail="codex turn failed")
+    return TurnResult(True, output=request.output)
 
 
 def _drop(state: ProposalState, *, slot: str, round_number: int, reason: str) -> ProposalState:
@@ -574,13 +725,14 @@ def record_turn(*, root: str | Path, expected_fingerprint: str, round_number: in
         _require_fingerprint(state, expected_fingerprint)
         active = state.active_round
         if active is None or not active.prepared or active.round_number != round_number or state.proposal.phase is None:
-            raise DebateError("validation", "round has not been prepared", 2)
+            raise DebateError("validation", "round has not been prepared", config.DEBATE_EXIT_VALIDATION)
         if active.reserved_slot is not None or not active.pending_slots or active.pending_slots[0] != slot:
-            raise DebateError("validation", "slot is not next pending slot", 2)
+            raise DebateError("validation", "slot is not next pending slot", config.DEBATE_EXIT_VALIDATION)
         if slot not in active.live_slots:
-            raise DebateError("validation", "slot is not live", 2)
+            raise DebateError("validation", "slot is not live", config.DEBATE_EXIT_VALIDATION)
         handle = state.initialization.session_handles.get(slot)
-        request = TurnRequest(slot, round_number, "", active.mailboxes[slot], Path(state.initialization.repo_workdir), debate_root / f"{slot}-round-{round_number}.out", handle)
+        prompt = turn_prompt(slot=slot, round_number=round_number, point_universe=state.initialization.point_universe, mailbox=active.mailboxes[slot])
+        request = TurnRequest(slot, round_number, prompt, active.mailboxes[slot], Path(state.initialization.repo_workdir), debate_root / f"{slot}-round-{round_number}.out", handle)
         reserved = ActiveRound(active.round_number, active.prepared, active.mailboxes, active.live_slots, active.pending_slots, slot, active.bindings)
         state = write_state(debate_root, ProposalState(state.initialization, state.proposal, reserved, state.drops))
         result = (runner or _default_runner)(request)
@@ -679,7 +831,7 @@ def _main(operation: str, argv: list[str] | None) -> int:
         return exc.exit_code
     except SystemExit:
         print(_envelope(ok=False, operation=operation, state=None, error_class="validation"))
-        return 2
+        return config.DEBATE_EXIT_VALIDATION
 
 
 def init_main(argv: list[str] | None = None) -> int:

@@ -121,6 +121,10 @@ DEBATE_EXIT_RUNNER_FAILURE: Final = 6
 DEBATE_EXIT_UNSUPPORTED_TRANSPORT: Final = 7
 DEBATE_ABSENT_FINGERPRINT: Final = "ABSENT"
 DEBATE_STATE_FILENAME: Final = "debate-state.json"
+# Every concurrent debate process must agree on this name for the lock to
+# serialize anything, so it lives beside its sibling filenames rather than at
+# the one call site that opens it.
+DEBATE_STATE_LOCK_FILENAME: Final = ".debate-state.lock"
 DEBATE_ABORT_RESTORE_FILENAME: Final = "abort-restore.env"
 DEBATE_RESTORE_ISSUE_NUMBER_KEY: Final = "RESTORE_ISSUE_NUMBER"
 DEBATE_RESTORE_ORIGINAL_TITLE_KEY: Final = "RESTORE_ORIGINAL_TITLE"
