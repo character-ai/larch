@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "vendor": "codex",
+  "chunks": [
+    {
+      "stream": "stdout",
+      "text": "{\"type\":\"error\",\"message\":\"usage limit exceeded\"}\n"
+    },
+    {
+      "stream": "stderr",
+      "text": "You've hit your usage limit. Try again at 3pm.\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 1,
+  "exit_code": 1,
+  "never_exit": false
+}

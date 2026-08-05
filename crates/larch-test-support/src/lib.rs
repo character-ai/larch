@@ -8,6 +8,7 @@ mod http;
 mod process;
 mod run_log;
 mod snapshot_util;
+mod vendor;
 
 pub use clock::TestClock;
 pub use environment::TestEnvironment;
@@ -23,4 +24,9 @@ pub use run_log::{
     DurabilityState, LocalObjectStore, ObjectMetadata, ObjectStoreError, ObjectStoreErrorKind,
     ParityDifference, ReportSnapshot, ReportingParityOracle, RunLogFixture, RunLogSnapshot,
     RunLogTree, RunLogTreeBuilder,
+};
+pub use vendor::{
+    VENDOR_FIXTURE_SCRIPT_FILE, VendorBinarySet, VendorChunk, VendorContractFixture,
+    VendorFixtureError, VendorProcessHarness, VendorRunOptions, VendorScript, VendorStream,
+    vendor_test_binary_main,
 };

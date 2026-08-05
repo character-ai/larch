@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "claude",
+  "chunks": [
+    {
+      "stream": "stdout",
+      "text": "{\"result\":\"review ok\",\"is_error\":false,\"usage\":{\"input_tokens\":10,\"output_tokens\":4}}\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 0,
+  "never_exit": false
+}

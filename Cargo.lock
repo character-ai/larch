@@ -2572,8 +2572,12 @@ dependencies = [
 name = "larch-test-support"
 version = "56.2.2"
 dependencies = [
+ "larch-adapters",
  "larch-core",
+ "serde",
+ "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

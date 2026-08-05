@@ -15,6 +15,10 @@ crate-local tests where the dependency graph permits it.
   Sleeps advance injected time without waiting.
 - `FakeProcessRunner` records typed requests and returns queued outcomes.
   `ProcessOutputBuilder` creates byte-exact success and failure results.
+- `VendorProcessHarness` installs the Cargo-built fake `claude`, `codex`, and
+  `cursor` binaries on a private complete `PATH`. `VendorScript` replays ordered
+  stdout and stderr chunks, bounded inter-chunk delays, an exit code, or a
+  never-exit process. Recorded contracts load through `VendorContractFixture`.
 - `HttpResponseBuilder` creates in-memory responses and rejects invalid status
   codes, header names, and header line injection.
 - `GitRepository::builder` creates an owned repository through installed Git.
@@ -154,10 +158,14 @@ bind an ephemeral loopback port when it must exercise socket framing; it cannot
 resolve DNS or contact a non-loopback address.
 
 Do not depend on an installed executable unless the test covers an approved
-executable compatibility boundary. The process adapter may invoke Git, and the
+executable compatibility boundary. The process adapter may invoke Git. The
 parity harness may invoke its documented Python and Rust fixture programs.
-Everything else uses `FakeProcessRunner`. Real Claude, Codex, Cursor, service
-credentials, and remote endpoints belong only in explicit live-smoke runs.
+`VendorProcessHarness` may invoke its Cargo-built fake vendors. Everything else
+uses `FakeProcessRunner`. Real Claude, Codex, Cursor, service credentials, and
+remote endpoints belong only in explicit live-smoke runs.
+Tests that need vendor process timing use `VendorProcessHarness` with
+`TokioProcessRunner`. Never append the ambient `PATH`; a missing fake must fail
+with `ProcessErrorKind::Spawn` even when a real vendor executable is installed.
 
 ## Coverage and CI
 
