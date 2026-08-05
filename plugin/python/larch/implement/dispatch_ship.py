@@ -1050,7 +1050,6 @@ def _step8_ship_child(*, implement_tmpdir: Path, merge_result_env: str) -> int:
 
 
 def step8_ship_main(argv: list[str] | None = None) -> int:
-    from larch.bgjob import adapt as bgjob_adapt  # noqa: PLC0415 - lint-layering: ok Step 8 outer adapter uses shared bgjob adapt options
     from larch.implement.dispatch_commit_route import (  # noqa: PLC0415 - lint-layering: ok Step 8 reuses shared bgjob request helpers
         BgjobRequest,
         _bgjob_spec,
@@ -1087,7 +1086,7 @@ def step8_ship_main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, UnicodeError, ValueError):
         print("BGJOB_ERROR=invalid-input")
         return 2
-    return _run_adapter(spec, options=bgjob_adapt.AdaptOptions(replace_completed_result=True))
+    return _run_adapter(spec, replace_completed_result=True)
 
 
 def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: Path) -> None:

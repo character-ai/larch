@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import pytest
 
 from larch.agents import _vendor, collect_results
-from larch.bgjob import adapt as bgjob_adapt
 from larch.bgjob import daemon as bgjob_daemon
 from larch.core import config
 from larch.implement import (
@@ -58,38 +57,6 @@ def test_collector_records_last_wins_within_block_and_ignores_preamble() -> None
         {"REVIEWER_FILE": "a.md", "STATUS": "new"},
         {"REVIEWER_FILE": "b.md", "STATUS": "only"},
     ]
-
-
-@pytest.mark.parametrize(
-    ("text", "ok"),
-    [
-        (f"{config.BGJOB_RC_KEY}=0\nSTEP=step-a\nEXTRA=1\n", True),
-        (f"{config.BGJOB_RC_KEY}=0\nSTEP=step-a\nnot-a-kv\n", False),
-        ("=0\nSTEP=step-a\n", False),
-        ("STEP=step-a\n", False),
-        (f"{config.BGJOB_RC_KEY}=0\nSTEP=other\n", False),
-        (f"{config.BGJOB_RC_KEY}=0\nSTEP=step-a\nDUP=1\nDUP=2\n", True),
-    ],
-)
-def test_bgjob_completed_rows_fail_closed_on_malformed(text: str, ok: bool) -> None:
-    parsed = bgjob_adapt._parse_completed_rows(text=text, step="step-a")
-    if ok:
-        assert parsed is not None
-        assert dict(parsed.rows)[config.BGJOB_RC_KEY] == "0"
-    else:
-        assert parsed is None
-
-
-def test_bgjob_completed_rows_preserve_duplicate_order() -> None:
-    text = f"{config.BGJOB_RC_KEY}=0\nSTEP=step-a\nDUP=1\nDUP=2\n"
-    parsed = bgjob_adapt._parse_completed_rows(text=text, step="step-a")
-    assert parsed is not None
-    assert parsed.rows == (
-        (config.BGJOB_RC_KEY, "0"),
-        ("STEP", "step-a"),
-        ("DUP", "1"),
-        ("DUP", "2"),
-    )
 
 
 def test_bgjob_daemon_packed_rows_last_wins(tmp_path: Path) -> None:

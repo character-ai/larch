@@ -51,11 +51,13 @@ __all__ = [
     "ROOT",
     "RecordingRunner",
     "RunCall",
+    "assert_larch_bgjob_adapter_request",
     "capture_start",
     "codex_usage_stdout",
     "completed",
     "gh_pr_view",
     "gh_result",
+    "install_larch_bgjob_adapter_capture",
     "is_codex_usage_command",
     "make_adverse_push_repo",
     "make_checks_session",
@@ -123,6 +125,51 @@ def capture_start(captured: list[T]) -> Callable[..., int]:
         return 0
 
     return fake_start
+
+
+def assert_larch_bgjob_adapter_request(
+    command: Sequence[str],
+    *,
+    step: str,
+    initial_merge_rows: Sequence[tuple[str, str]],
+) -> None:
+    """Assert the shared Rust adapter request fields at a Python caller seam."""
+    assert command[command.index("--step") + 1] == step
+    assert [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--initial-merge-row"
+    ] == [f"{key}={value}" for key, value in initial_merge_rows]
+
+
+def _capture_larch_bgjob_adapter(
+    captured: list[tuple[str, ...]],
+    original_run: Callable[..., CommandResult],
+) -> Callable[..., CommandResult]:
+    """Capture Rust bgjob-adapter launches while preserving unrelated commands."""
+
+    def fake_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
+        command = tuple(argv)
+        if command[1:3] == ("bgjob", "adapt"):
+            captured.append(command)
+            return CommandResult(command, 0, "", "", 0.0)
+        return original_run(argv, **kwargs)
+
+    return fake_run
+
+
+def install_larch_bgjob_adapter_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    runner_module: Any,
+) -> list[tuple[str, ...]]:
+    """Install a Rust-adapter runner fake and return its captured commands."""
+    captured: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        runner_module,
+        "run",
+        _capture_larch_bgjob_adapter(captured, runner_module.run),
+    )
+    return captured
 
 
 @dataclass(frozen=True)
@@ -422,11 +469,11 @@ def make_checks_session(
     monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
 
     def fake_owner_identity(_pid: str | None) -> object:
-        return object()
+        return bgjob_daemon.model.OwnerIdentity(recorded=None)
 
     monkeypatch.setattr(
         bgjob_daemon, "owner_identity_from_env", fake_owner_identity
-    )  # pyright: ignore[reportArgumentType] - test double need not construct OwnerIdentity.
+    )
     return impl, repo
 
 

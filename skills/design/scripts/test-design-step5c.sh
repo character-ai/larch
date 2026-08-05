@@ -12,7 +12,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-step5c.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
-mkdir -p "$FAKE_PLUGIN/python" "$FAKE_PLUGIN/skills/design/scripts"
+mkdir -p "$FAKE_PLUGIN/python" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/design/scripts"
 ln -s "$ROOT/python/larch" "$FAKE_PLUGIN/python/larch"
 cp "$SUBJECT" "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh"
 chmod +x "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh"
@@ -108,6 +108,11 @@ if args[:2] == ["design", "step5c"]:
 raise SystemExit(2)
 PY
 chmod +x "$FAKE_PLUGIN/python/cli.py"
+cat >"$FAKE_PLUGIN/scripts/larch.sh" <<'SH'
+#!/usr/bin/env bash
+exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
+SH
+chmod +x "$FAKE_PLUGIN/scripts/larch.sh"
 
 D="$TMP/design"
 mkdir -p "$D/.completed" "$TMP/registry"

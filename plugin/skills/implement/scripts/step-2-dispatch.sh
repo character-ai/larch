@@ -30,7 +30,7 @@ if [ "${#DISPATCH_ARGS[@]}" -gt 0 ]; then
 
   [ -n "${LARCH_CLAUDE_PID:-}" ] || LARCH_CLAUDE_PID=$PPID
   if [ "$REPLACE_COMPLETED_RESULT" = true ]; then
-    exec python3 "$PLUGIN_ROOT/python/cli.py" bgjob adapt \
+    exec "$PLUGIN_ROOT/scripts/larch.sh" bgjob adapt \
       --step implement-step2-dispatch \
       --tmpdir "$IMPLEMENT_TMPDIR" \
       --budget-s 7200 \
@@ -39,7 +39,7 @@ if [ "${#DISPATCH_ARGS[@]}" -gt 0 ]; then
       -- \
       bash "$SCRIPT_DIR/step-2-dispatch.sh" "${DISPATCH_ARGS[@]}"
   fi
-  exec python3 "$PLUGIN_ROOT/python/cli.py" bgjob adapt \
+  exec "$PLUGIN_ROOT/scripts/larch.sh" bgjob adapt \
     --step implement-step2-dispatch \
     --tmpdir "$IMPLEMENT_TMPDIR" \
     --budget-s 7200 \

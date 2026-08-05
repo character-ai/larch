@@ -17,7 +17,7 @@ fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-step3b-tail.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 PLUGIN="$TMP/plugin"
-mkdir -p "$PLUGIN/python" "$PLUGIN/skills/design/scripts"
+mkdir -p "$PLUGIN/python" "$PLUGIN/scripts" "$PLUGIN/skills/design/scripts"
 ln -s "$ROOT/python/larch" "$PLUGIN/python/larch"
 cp "$SUBJECT" "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
 chmod +x "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
@@ -93,6 +93,11 @@ if args[:2] == ["plan-review", "emit-rejected"]:
 raise SystemExit(2)
 PY
 chmod +x "$PLUGIN/python/cli.py"
+cat >"$PLUGIN/scripts/larch.sh" <<'SH'
+#!/usr/bin/env bash
+exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
+SH
+chmod +x "$PLUGIN/scripts/larch.sh"
 
 D="$TMP/design"
 mkdir -p "$D/.completed" "$TMP/registry"

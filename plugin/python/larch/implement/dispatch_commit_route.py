@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
-from larch.bgjob import adapt as bgjob_adapt
 from larch.bgjob import daemon as bgjob_daemon
 from larch.bgjob import model as bgjob_model
 from larch.bgjob import registry as bgjob_registry
@@ -151,19 +150,49 @@ def _run_adapter(
     spec: bgjob_model.JobSpec,
     *,
     repo_root: Path | None = None,
-    options: bgjob_adapt.AdaptOptions | None = None,
+    clear_on_fresh: Path | None = None,
+    replace_completed_result: bool = False,
+    input_fingerprint: str = "",
 ) -> int:
     try:
-        if repo_root is None:
-            return bgjob_adapt.start_or_reattach(spec, options=options)
-        with contextlib.chdir(repo_root):
-            return bgjob_adapt.start_or_reattach(spec, options=options)
-    except bgjob_adapt.AdaptError as exc:
-        print(f"BGJOB_ERROR={exc.token}")
-        return 2
+        argv = [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "bgjob",
+            "adapt",
+            "--step",
+            spec.step,
+            "--tmpdir",
+            str(spec.tmpdir),
+            "--run-id",
+            spec.run_id,
+            "--budget-s",
+            str(spec.budget_s),
+            "--log-dir",
+            str(spec.log_dir),
+        ]
+        if spec.owner.recorded is not None:
+            argv.extend(("--owner-pid", str(spec.owner.recorded.pid)))
+        for sentinel in spec.sentinel_paths:
+            argv.extend(("--sentinel", str(sentinel)))
+        if spec.merge_result_env is not None:
+            argv.extend(("--merge-result-env", str(spec.merge_result_env)))
+        for key, value in spec.initial_merge_rows:
+            argv.extend(("--initial-merge-row", f"{key}={value}"))
+        if clear_on_fresh is not None:
+            argv.extend(("--clear-on-fresh", str(clear_on_fresh)))
+        if replace_completed_result:
+            argv.append("--replace-completed-result")
+        if input_fingerprint:
+            argv.extend(("--input-fingerprint", input_fingerprint))
+        argv.extend(("--", *spec.command))
+        result = proc.run(argv, cwd=str(repo_root) if repo_root is not None else None)
     except (OSError, RuntimeError, ValueError):
         print("BGJOB_ERROR=invalid-input")
         return 2
+    print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result.returncode
 
 
 def _capture_worker(worker: Callable[[], int]) -> tuple[int, str]:

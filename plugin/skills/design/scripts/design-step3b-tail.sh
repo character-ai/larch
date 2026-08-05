@@ -54,7 +54,7 @@ export CLAUDE_PLUGIN_ROOT
 if [ -n "${SESSION_ENV_PATH:-}" ]; then
   _resolver_args=(--resolve-session-env --session-env-path "$SESSION_ENV_PATH")
   [ -n "${CLAUDE_PID:-}" ] && _resolver_args[${#_resolver_args[@]}]=--owner-pid && _resolver_args[${#_resolver_args[@]}]="$CLAUDE_PID"
-  _resolved_session_env="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob adapt "${_resolver_args[@]}")" || {
+  _resolved_session_env="$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob adapt "${_resolver_args[@]}")" || {
       printf '%s\n' "${_resolved_session_env:-BGJOB_ERROR=session-env-resolution-failed}"
       exit 2
     }
@@ -125,7 +125,7 @@ if [ "$BGJOB_CHILD" = false ]; then
   fi
   _adapt_args[${#_adapt_args[@]}]=--input-fingerprint
   _adapt_args[${#_adapt_args[@]}]="$_tail_input_fp"
-  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${ORIGINAL_ARGS[@]}"
+  exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${ORIGINAL_ARGS[@]}"
 fi
 
 _skip_approve_requested_gatec=false

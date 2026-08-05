@@ -1,6 +1,6 @@
 """Offline harness parity for implement shell helper scripts.
 
-Adapter/bgjob behavior for Step 5/6/checks lives in python/tests/bgjob/test_bgjob_adapt.py,
+Adapter/bgjob behavior for Step 5/6/checks lives in the Rust adapter tests and
 python/tests/implement/test_implement_dispatch.py, test_run_step_checks.py, and
 test_step_6_entry.py — this module ports only the Bash harness assertions.
 """
@@ -755,20 +755,6 @@ def test_step8_symlinked_bgjob_directory_rejected(tmp_path: Path) -> None:
     result = _run_step8(impl, stub_bin)
     assert result.returncode == 2
     assert result.stdout == "BGJOB_ERROR=invalid-input\n"
-
-
-def test_step8_symlinked_result_env_rejected(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path, "implement-symlink-result")
-    target = tmp_path / "result-target.env"
-    _ = target.write_text("BGJOB_RC=0\n", encoding="utf-8")
-    result_env = impl / "bgjob" / "implement-step8-ship.result.env"
-    result_env.symlink_to(target)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_python3_stub(stub_bin, f'#!/usr/bin/env bash\nexec "{_REAL_PYTHON}" "$@"\n')
-    result = _run_step8(impl, stub_bin)
-    assert result.returncode == 2
-    assert result.stdout == "BGJOB_ERROR=unsafe-path\n"
 
 
 def test_step8_child_passes_merge_result_env_to_ship(tmp_path: Path) -> None:

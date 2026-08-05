@@ -14,10 +14,11 @@ use std::{
 
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
-use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
+use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_write};
 
 mod agent_commands;
 mod argparse_compat;
+mod bgjob_adapt;
 mod ci_timing;
 mod dirty_tree_commands;
 mod git_commands;
@@ -64,6 +65,9 @@ enum Domain {
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
+    /// Durable background-job compatibility commands.
+    #[command(subcommand)]
+    Bgjob(BgjobCommand),
     /// Collect GitHub Actions timing inputs for test rebalancing.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
@@ -121,6 +125,13 @@ enum RunLogCommand {
     /// Emit `VALID=true|false` for a run-log path slug.
     #[command(name = "validate-run-id", disable_help_flag = true)]
     ValidateRunId(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum BgjobCommand {
+    /// Start or reattach to a durable background job.
+    #[command(disable_help_flag = true)]
+    Adapt(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -621,6 +632,9 @@ fn run(
         Domain::Bootstrap(BootstrapCommand::SelfCheck) => {
             println!("{}", larch_core::bootstrap_self_check(metadata));
             Ok(ExitCode::SUCCESS)
+        }
+        Domain::Bgjob(BgjobCommand::Adapt(arguments)) => {
+            Ok(bgjob_adapt::adapt(&arguments.arguments))
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::DirtyTree(command) => Ok(match command {
@@ -1252,40 +1266,10 @@ fn write_execution_warning(log: &Path, entry: &str) -> Result<(), String> {
         let text = String::from_utf8_lossy(&bytes).into_owned();
         let new_text = insert_warning_entry(&text, entry);
         reject_symlink_path_or_ancestors(log)?;
-        let (temporary, mut file) = create_phantom_temp(log)?;
-        let replace_result = (|| {
-            file.write_all(new_text.as_bytes())
-                .map_err(|error| python_io_error(&error, &temporary))?;
-            drop(file);
-            reject_symlink_path_or_ancestors(log)?;
-            fs::rename(&temporary, log).map_err(|error| python_io_error(&error, log))
-        })();
-        if replace_result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        replace_result
+        private_atomic_write(log, &new_text, parent).map_err(|error| error.to_string())
     })();
     let _ = fs::remove_dir(&lock);
     result
-}
-
-fn create_phantom_temp(log: &Path) -> Result<(PathBuf, fs::File), String> {
-    for nonce in 0..100 {
-        let temporary = log.with_file_name(format!(".phantom-{}-{nonce}.tmp", std::process::id()));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt as _;
-            options.mode(0o600);
-        }
-        match options.open(&temporary) {
-            Ok(file) => return Ok((temporary, file)),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(python_io_error(&error, &temporary)),
-        }
-    }
-    Err(String::from("could not create warning-ledger temp file"))
 }
 
 fn insert_warning_entry(text: &str, entry: &str) -> String {

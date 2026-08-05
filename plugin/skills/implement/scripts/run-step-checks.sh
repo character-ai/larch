@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-step-checks.sh — thin wrapper delegating to the Python bgjob adapter.
+# run-step-checks.sh — thin wrapper delegating to the Rust bgjob adapter.
 
 set -euo pipefail
 

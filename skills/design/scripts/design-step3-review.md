@@ -10,7 +10,7 @@ Adapter-backed `/design` Step 3 launcher and plan-review child.
 
 ## Invariants
 
-- Resolves a supplied `--session-env-path` through `python/cli.py bgjob adapt --resolve-session-env` before result reads, resume state, pause handling, or tmpdir use. It never sources the file.
+- Resolves a supplied `--session-env-path` through `scripts/larch.sh bgjob adapt --resolve-session-env` before result reads, resume state, pause handling, or tmpdir use. It never sources the file.
 - Validates `--starting-round`, `--phase`, and `--findings-file` before writing resume state. `awaiting-vote` remains internal.
 - Keeps `--read-result-env`, resume writes, and parent pause-save outside child mode.
 - Delegates lifecycle decisions to `bgjob adapt` with explicit step `design-step3-review`, tmpdir, 21600-second budget, session path, and optional owner PID.

@@ -51,6 +51,12 @@ if [[ "\${1:-}" == session ]]; then
         require-plugin-root|validate-design-tmpdir) exit 0 ;;
     esac
 fi
+if [[ "\${1:-}" == bgjob && "\${2:-}" == adapt && "\${3:-}" == --resolve-session-env ]]; then
+    _session_env="\${5:-}"
+    [[ "\${4:-}" == --session-env-path && -f "\$_session_env" ]] || exit 2
+    awk '/^export / && \$2 !~ /^CLAUDE_PLUGIN_ROOT=/ { print }' "\$_session_env"
+    exit 0
+fi
 exit 2
 EOF_LARCH
 chmod +x "$LARCH_BINARY"

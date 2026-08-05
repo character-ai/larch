@@ -1,6 +1,7 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
 mod attestation;
+mod bgjob;
 mod ci_timing;
 mod config;
 mod context;
@@ -36,6 +37,17 @@ pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag,
     VerifiedArtifactAttestation, VerifiedReleaseAttestation,
+};
+pub use bgjob::{
+    BGJOB_ELAPSED_KEY, BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_REGISTRY_DIRNAME,
+    BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
+    BGJOB_STATUS_STARTED, BGJOB_TMP_SUBDIR, BgjobError, ENV_BGJOB_REGISTRY_ROOT, JobSpec,
+    LivenessVerdict, OwnerIdentity, RegistryEntry, ResultEnvRows, WaitResult, bgjob_dir,
+    checked_dir, child_liveness, daemon_liveness, default_run_id, ensure_under, entry_expired,
+    has_live_entry, iter_entries, log_paths, private_atomic_write, read_entry, read_for,
+    registry_path, registry_root, reject_line_value, result_env_path, startup_env_path,
+    unlink_entry, validate_initial_merge_rows, validate_merge_result_env, validate_run_id,
+    validate_slug, write_entry, write_entry_at,
 };
 pub use ci_timing::{
     CiTimingRunSelection, HarnessTimingReport, HarnessTimingRow, JobTimingReport, JobTimingRow,
