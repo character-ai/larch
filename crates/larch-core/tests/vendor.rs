@@ -12,21 +12,21 @@ use std::collections::BTreeSet;
 
 fn codex_request() -> VendorLaunchRequest {
     let mut request = VendorLaunchRequest::new("/repo", "/tmp/out.txt", "do the thing");
-    request.timing_task_kind = "codex-review".to_owned();
+    "codex-review".clone_into(&mut request.timing_task_kind);
     request
 }
 
 fn cursor_request() -> VendorLaunchRequest {
     let mut request = VendorLaunchRequest::new("/ws", "/tmp/out", "review please");
     request.model_args = vec!["--model".to_owned(), "cursor-model".to_owned()];
-    request.timing_task_kind = "cursor-review".to_owned();
+    "cursor-review".clone_into(&mut request.timing_task_kind);
     request
 }
 
 fn claude_request() -> VendorLaunchRequest {
     let mut request = VendorLaunchRequest::new("/repo", "/tmp/out", "prompt on stdin");
-    request.model = "claude-sonnet-4-6".to_owned();
-    request.timing_task_kind = "claude-review".to_owned();
+    "claude-sonnet-4-6".clone_into(&mut request.model);
+    "claude-review".clone_into(&mut request.timing_task_kind);
     request
 }
 
@@ -248,7 +248,7 @@ fn cursor_profiles_are_byte_exact() {
 #[test]
 fn claude_profiles_are_byte_exact() {
     let mut review = claude_request();
-    review.read_tools_add_dir = "/sandbox".to_owned();
+    "/sandbox".clone_into(&mut review.read_tools_add_dir);
     let base = claude_request();
     let cases: &[(&str, &VendorLaunchRequest, &[&str])] = &[
         (
