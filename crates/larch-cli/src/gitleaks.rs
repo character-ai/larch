@@ -786,6 +786,37 @@ mod tests {
     }
 
     #[test]
+    fn public_entrypoint_rejects_invalid_roots_and_config_shapes_before_download() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let missing = temporary.path().join("missing");
+        let invalid_root = GitleaksArguments::new(GitleaksMode::Verify, None, Some(missing), None);
+        assert_eq!(run(&invalid_root), ExitCode::from(2));
+
+        let repository = temporary.path().join("repository");
+        fs::create_dir(&repository).expect("repository directory");
+        let missing_config =
+            GitleaksArguments::new(GitleaksMode::Verify, None, Some(repository.clone()), None);
+        assert!(matches!(
+            run_inner(&missing_config),
+            Err(Failure::Configuration(message)) if message.contains("not a regular file")
+        ));
+
+        let config = repository.join(".gitleaks.toml");
+        fs::create_dir(&config).expect("config directory");
+        assert!(matches!(
+            require_config(&repository),
+            Err(Failure::Configuration(message)) if message.contains("not a regular file")
+        ));
+        fs::remove_dir(&config).expect("remove config directory");
+        fs::write(&config, "title = \"fixture\"\n").expect("regular config");
+        assert_eq!(
+            repository_root(Some(&repository)).expect("repository root"),
+            fs::canonicalize(&repository).expect("canonical repository")
+        );
+        require_config(&repository).expect("regular config accepted");
+    }
+
+    #[test]
     fn pinned_platform_and_scanner_argument_contracts_are_closed() {
         let platform = platform().expect("supported test platform");
         assert!(platform.artifact.filename.contains(VERSION));
@@ -882,6 +913,28 @@ mod tests {
             .expect("reuse verified scanner");
         assert_eq!(reused, installed);
         assert_eq!(*downloader.calls.lock().expect("download calls"), 1);
+    }
+
+    #[test]
+    fn verified_install_rechecks_the_binary_before_returning_its_path() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let cache = fs::canonicalize(temporary.path())
+            .expect("canonical tempdir")
+            .join("cache");
+        let binary = b"verified scanner";
+        let archive = archive("gitleaks", binary);
+        let platform = fixture_platform(&archive, binary);
+        let downloader = FakeDownloader::new(archive);
+        let runtime = LarchRuntime::new().expect("runtime");
+
+        let installed = runtime
+            .block_on(ensure_binary_with_platform(&cache, platform, &downloader))
+            .expect("install verified scanner");
+        assert_eq!(fs::read(&installed).expect("read scanner"), binary);
+        assert!(
+            is_verified_binary(&installed, platform.artifact.binary_sha256)
+                .expect("verify installed scanner")
+        );
     }
 
     #[test]
@@ -989,6 +1042,92 @@ mod tests {
             Err(Failure::Preparation(message)) if message.contains("expected gitleaks version")
         ));
         assert_eq!(runner.requests.lock().expect("requests").len(), 1);
+    }
+
+    #[test]
+    fn verify_mode_returns_after_the_verified_version_probe() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let repository = fixture_repository(&temporary);
+        let cache = fs::canonicalize(temporary.path())
+            .expect("canonical tempdir")
+            .join("cache");
+        let binary = b"verified scanner";
+        let archive = archive("gitleaks", binary);
+        let platform = fixture_platform(&archive, binary);
+        let downloader = FakeDownloader::new(archive);
+        let runner = FakeRunner::default();
+        let runtime = LarchRuntime::new().expect("runtime");
+
+        let exit = runtime
+            .block_on(run_async_with_platform(
+                &arguments(GitleaksMode::Verify, None),
+                &repository,
+                &cache,
+                platform,
+                &downloader,
+                &runner,
+            ))
+            .expect("verify result");
+        assert_eq!(exit, ExitCode::SUCCESS);
+        assert_eq!(runner.requests.lock().expect("requests").len(), 1);
+    }
+
+    #[test]
+    fn host_platform_wrapper_stops_before_scanning_when_download_is_unverified() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let repository = fixture_repository(&temporary);
+        let cache = fs::canonicalize(temporary.path())
+            .expect("canonical tempdir")
+            .join("cache");
+        let downloader = FakeDownloader::new(Vec::new());
+        let runner = FakeRunner::default();
+        let runtime = LarchRuntime::new().expect("runtime");
+
+        assert!(matches!(
+            runtime.block_on(run_async_with(
+                &arguments(GitleaksMode::Verify, None),
+                &repository,
+                &cache,
+                &downloader,
+                &runner,
+            )),
+            Err(Failure::Preparation(message)) if message.contains("checksum mismatch")
+        ));
+        assert_eq!(*downloader.calls.lock().expect("download calls"), 1);
+        assert!(runner.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn cache_file_validation_and_exit_codes_fail_closed() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = fs::canonicalize(temporary.path()).expect("canonical tempdir");
+        let binary = root.join("gitleaks");
+        let expected = sha256(b"verified scanner");
+        assert!(!is_verified_binary(&binary, &expected).expect("missing scanner"));
+
+        fs::write(&binary, b"verified scanner").expect("write scanner");
+        assert!(is_verified_binary(&binary, &expected).expect("verified scanner"));
+        assert!(!is_verified_binary(&binary, "wrong").expect("mismatched scanner"));
+        ensure_cache_destination(&binary).expect("regular destination");
+
+        let directory = root.join("directory");
+        fs::create_dir(&directory).expect("directory destination");
+        assert!(matches!(
+            ensure_cache_destination(&directory),
+            Err(Failure::Preparation(message)) if message.contains("not a regular file")
+        ));
+        assert!(matches!(
+            ensure_cache_directory(Path::new("relative-cache")),
+            Err(Failure::Preparation(message)) if message.contains("must be absolute")
+        ));
+        let no_exit_code = ProcessOutput::new(
+            ProcessStatus::new(false, None),
+            Vec::new(),
+            Vec::new(),
+            false,
+            false,
+        );
+        assert_eq!(process_exit_code(&no_exit_code), ExitCode::from(2));
     }
 
     #[test]
