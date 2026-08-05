@@ -4,6 +4,20 @@ use std::collections::BTreeSet;
 
 use proc_macro2::{TokenStream, TokenTree};
 use syn::{Attribute, Expr, Meta, Pat, UseTree};
+use tree_sitter::Node;
+
+/// Return every identifier named by a Python assignment target shape.
+pub(super) fn python_identifier_names(node: Node<'_>, source: &str) -> Vec<String> {
+    if node.kind() == "identifier" {
+        return vec![node.utf8_text(source.as_bytes()).unwrap_or("").trim().to_owned()];
+    }
+    let mut names = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        names.extend(python_identifier_names(child, source));
+    }
+    names
+}
 
 /// Imported spellings that resolve to `std` or Tokio's process `Command`.
 #[derive(Clone, Default)]

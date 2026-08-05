@@ -48,6 +48,7 @@ use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
     syntax::parse_python,
 };
+use super::syn_helpers::python_identifier_names;
 
 const NAME: &str = "run-log-corpus-walkers";
 const DESCRIPTION: &str = "Reject raw committed run-log corpus walkers outside the shared owner";
@@ -188,12 +189,8 @@ fn scan_python_source(path: &str, source: &str) -> Result<Vec<Finding>, LintErro
     detections
         .into_iter()
         .map(|(line, detection)| {
-            if suppression::reason(source.lines().nth(line.saturating_sub(1)).unwrap_or(""), SUPPRESSION_TOKEN)?.is_some() {
-                return Ok(None);
-            }
-            let line = u32::try_from(line)
-                .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
-            Ok(Some(Finding::new(path, line, detection.message())))
+            suppression::number_unless_suppressed(source, line, SUPPRESSION_TOKEN)
+                .map(|line| line.map(|line| Finding::new(path, line, detection.message())))
         })
         .filter_map(Result::transpose)
         .collect()
@@ -203,18 +200,6 @@ fn scan_python_source(path: &str, source: &str) -> Result<Vec<Finding>, LintErro
 struct PythonWalkerSymbols {
     corpus_aliases: BTreeSet<String>,
     safe_run_aliases: BTreeSet<String>,
-}
-
-fn python_target_names(node: Node<'_>, source: &str) -> Vec<String> {
-    if node.kind() == "identifier" {
-        return vec![node_text(node, source).trim().to_owned()];
-    }
-    let mut names = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        names.extend(python_target_names(child, source));
-    }
-    names
 }
 
 fn python_expression_is_safe_run(node: Node<'_>, source: &str, symbols: &PythonWalkerSymbols) -> bool {
@@ -288,7 +273,7 @@ fn record_python_assignment(node: Node<'_>, source: &str, symbols: &mut PythonWa
     let Some(right) = node.child_by_field_name("right") else {
         return;
     };
-    let names = python_target_names(left, source);
+    let names = python_identifier_names(left, source);
     if python_expression_is_safe_run(right, source, symbols) {
         for name in names {
             symbols.safe_run_aliases.insert(name.clone());
@@ -323,7 +308,7 @@ fn record_python_safe_run_loop(
     let Some(target) = node.child_by_field_name("left") else {
         return;
     };
-    for name in python_target_names(target, source) {
+    for name in python_identifier_names(target, source) {
         symbols.safe_run_aliases.insert(name.clone());
         symbols.corpus_aliases.remove(&name);
     }

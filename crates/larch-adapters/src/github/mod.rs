@@ -36,7 +36,7 @@ pub use larch_core::{
     GitHubTokenError as GitHubCredentialError, GitHubTokenErrorKind as GitHubCredentialErrorKind,
 };
 use octocrab::Octocrab;
-use std::{error::Error, fmt, future::Future, path::Path};
+use std::{error::Error, fmt, future::Future, path::Path, time::Duration};
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -352,6 +352,16 @@ fn build_client(
         builder = builder.add_header(HeaderName::from_static(name), value.to_owned());
     }
     builder.build()
+}
+
+pub(super) fn build_public_client(api_base: &str, timeout: Duration) -> octocrab::Result<Octocrab> {
+    Octocrab::builder()
+        .set_connect_timeout(Some(timeout))
+        .set_read_timeout(Some(timeout))
+        .set_write_timeout(Some(timeout))
+        .base_uri(api_base)?
+        .upload_uri(api_base)?
+        .build()
 }
 
 fn octocrab_api_version_is_exact() -> bool {

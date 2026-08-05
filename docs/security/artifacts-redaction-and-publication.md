@@ -91,7 +91,10 @@ Larch uses three distinct scanner layers:
 
 The Gitleaks wrapper currently pins `v8.18.4`. TruffleHog currently pins the
 action commit corresponding to `v3.82.13` and sets `version: 3.82.13`. Scanner
-or checksum drift fails closed.
+or checksum drift fails closed. The wrapper executes the verified Gitleaks cache
+file by its absolute path, rather than resolving a scanner from `PATH`; the
+child retains its normal `PATH` only so Gitleaks can invoke Git for bounded
+history scans.
 
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
 covers the config itself, named residual-script and skill fixtures, the broad

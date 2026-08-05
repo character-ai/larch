@@ -10,10 +10,13 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{
+    Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
+    repository::{RegularFileStatus, regular_file_status},
+};
 
 const NAME: &str = "skill-run-lifecycle";
 const DESCRIPTION: &str = "Require shared run lifecycle declarations and ownership for shipped skills";
@@ -121,22 +124,19 @@ fn collect_prompts(repository: &Repository) -> Result<Vec<Prompt>, LintError> {
                 continue;
             }
             let prompt_path = entry.path().join("SKILL.md");
-            let metadata = match fs::symlink_metadata(&prompt_path) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            match regular_file_status(&prompt_path) {
+                Ok(RegularFileStatus::Missing | RegularFileStatus::NotRegular) => continue,
+                Ok(RegularFileStatus::Symlink) => {
+                    return Err(LintError::new(format!(
+                        "{root}/{skill}/SKILL.md: skill prompt is a symlink"
+                    )));
+                }
+                Ok(RegularFileStatus::Regular) => {}
                 Err(error) => {
                     return Err(LintError::new(format!(
                         "{root}/{skill}/SKILL.md: cannot inspect skill prompt: {error}"
                     )));
                 }
-            };
-            if metadata.file_type().is_symlink() {
-                return Err(LintError::new(format!(
-                    "{root}/{skill}/SKILL.md: skill prompt is a symlink"
-                )));
-            }
-            if !metadata.is_file() {
-                continue;
             }
             let path = RepoPath::from_trusted(&format!("{root}/{skill}/SKILL.md"));
             let text = repository.read_utf8(&path)?;
@@ -250,20 +250,12 @@ fn read_ownership(
 }
 
 fn owner_path(value: &str) -> Result<PathBuf, LintError> {
-    let path = Path::new(value);
-    if path.is_absolute()
-        || path.components().any(|component| {
-            matches!(
-                component,
-                Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-    {
-        return Err(LintError::new(format!(
+    let path = RepoPath::parse(value).map_err(|_| {
+        LintError::new(format!(
             "{OWNERSHIP_REGISTRY}: owner path must be a safe repository-relative path: {value}"
-        )));
-    }
-    Ok(path.to_path_buf())
+        ))
+    })?;
+    Ok(PathBuf::from(path.as_str()))
 }
 
 fn check_registered_skills(

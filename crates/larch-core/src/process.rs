@@ -24,10 +24,9 @@ pub enum VendorProgram {
 }
 
 /// A checksum-pinned security scanner distributed outside the Rust workspace.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScannerProgram {
-    /// Gitleaks secret scanner, resolved from larch's verified local cache.
-    Gitleaks,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScannerProgram {
+    executable: PathBuf,
 }
 
 /// Closed host-utility allowlist for compatibility probes unavailable in-process.
@@ -129,22 +128,24 @@ impl VendorProgram {
 }
 
 impl ScannerProgram {
-    /// Return the fixed executable name.
+    /// Bind the Gitleaks scanner to an already-verified executable path.
     #[must_use]
-    pub const fn executable(self) -> &'static str {
-        match self {
-            Self::Gitleaks => "gitleaks",
+    pub fn gitleaks(executable: impl Into<PathBuf>) -> Self {
+        Self {
+            executable: executable.into(),
         }
+    }
+
+    /// Return the verified scanner executable path.
+    #[must_use]
+    pub fn executable(&self) -> &OsStr {
+        self.executable.as_os_str()
     }
 
     /// Return the allowlist rationale.
     #[must_use]
-    pub const fn reason(self) -> &'static str {
-        match self {
-            Self::Gitleaks => {
-                "checksum-pinned external secret scanner required by the repository security policy"
-            }
-        }
+    pub const fn reason(&self) -> &'static str {
+        "checksum-pinned external secret scanner required by the repository security policy"
     }
 }
 
@@ -311,7 +312,7 @@ impl ExternalProgram {
     pub fn executable(&self) -> &OsStr {
         match self {
             Self::Vendor(program) => OsStr::new(program.executable()),
-            Self::Scanner(program) => OsStr::new(program.executable()),
+            Self::Scanner(program) => program.executable(),
             Self::Git(_) => OsStr::new("git"),
             Self::GitHub(_) => OsStr::new("gh"),
             Self::HostUtility(program) => OsStr::new(program.executable()),
@@ -326,7 +327,7 @@ impl ExternalProgram {
             Self::Vendor(VendorProgram::Claude) => "vendor.claude",
             Self::Vendor(VendorProgram::Codex) => "vendor.codex",
             Self::Vendor(VendorProgram::Cursor) => "vendor.cursor",
-            Self::Scanner(ScannerProgram::Gitleaks) => "scanner.gitleaks",
+            Self::Scanner(_) => "scanner.gitleaks",
             Self::Git(operation) => operation.subcommand(),
             Self::GitHub(operation) => operation.operation(),
             Self::HostUtility(program) => program.operation(),

@@ -733,7 +733,7 @@ mod tests {
             ExternalProgram::Vendor(VendorProgram::Claude),
             ExternalProgram::Vendor(VendorProgram::Codex),
             ExternalProgram::Vendor(VendorProgram::Cursor),
-            ExternalProgram::Scanner(ScannerProgram::Gitleaks),
+            ExternalProgram::Scanner(ScannerProgram::gitleaks("/tmp/gitleaks")),
             ExternalProgram::Git(GitCliOperation::Version),
             ExternalProgram::GitHub(GitHubCliOperation::AuthToken),
             ExternalProgram::HostUtility(HostUtilityProgram::Lsof),

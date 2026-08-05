@@ -8,8 +8,8 @@
 //! and bounds the streamed body by a per-asset byte cap.
 
 use super::{
-    GitHubCompletionError, GitHubHostError, OctocrabGitHubService, collect_bounded_response,
-    octocrab_status, validate_approved_url,
+    GitHubCompletionError, GitHubHostError, OctocrabGitHubService, build_public_client,
+    collect_bounded_response, octocrab_status, validate_approved_url,
 };
 use bytes::Bytes;
 use http::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderName, LOCATION};
@@ -279,16 +279,7 @@ impl PublicReleaseDownloader {
                 "public release transport must be constructed inside the larch Tokio runtime",
             ));
         }
-        let builder = Octocrab::builder()
-            .set_connect_timeout(Some(PUBLIC_RELEASE_TIMEOUT))
-            .set_read_timeout(Some(PUBLIC_RELEASE_TIMEOUT))
-            .set_write_timeout(Some(PUBLIC_RELEASE_TIMEOUT))
-            .base_uri(PUBLIC_RELEASE_ROOT)
-            .map_err(|_| public_transport_error("cannot configure public release transport"))?
-            .upload_uri(PUBLIC_RELEASE_ROOT)
-            .map_err(|_| public_transport_error("cannot configure public release transport"))?;
-        let client = builder
-            .build()
+        let client = build_public_client(PUBLIC_RELEASE_ROOT, PUBLIC_RELEASE_TIMEOUT)
             .map_err(|_| public_transport_error("cannot configure public release transport"))?;
         Ok(Self { client })
     }

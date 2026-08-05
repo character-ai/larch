@@ -19,6 +19,7 @@ use crate::{
 };
 
 use super::rust_scan;
+use super::syn_helpers::python_identifier_names;
 
 const NAME: &str = "em-dash-output";
 const DESCRIPTION: &str = "Reject em dashes in Markdown templates and output sinks";
@@ -139,12 +140,8 @@ fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
     lines
         .into_iter()
         .map(|line| {
-            if suppression::reason(source.lines().nth(line.saturating_sub(1)).unwrap_or(""), SUPPRESSION_TOKEN)?.is_some() {
-                return Ok(None);
-            }
-            let line = u32::try_from(line)
-                .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
-            Ok(Some(Finding::new(path, line, "em dash in Python output literal")))
+            suppression::number_unless_suppressed(source, line, SUPPRESSION_TOKEN)
+                .map(|line| line.map(|line| Finding::new(path, line, "em dash in Python output literal")))
         })
         .filter_map(Result::transpose)
         .collect()
@@ -245,7 +242,7 @@ fn propagate_python_assignments(node: Node<'_>, source: &str, symbols: &mut Pyth
             let Some(right) = assignment.child_by_field_name("right") else {
                 continue;
             };
-            let targets = python_assignment_targets(left, source);
+            let targets = python_identifier_names(left, source);
             if targets.is_empty() {
                 continue;
             }
@@ -272,18 +269,6 @@ fn collect_nodes<'tree>(node: Node<'tree>, kind: &str, nodes: &mut Vec<Node<'tre
     for child in node.named_children(&mut cursor) {
         collect_nodes(child, kind, nodes);
     }
-}
-
-fn python_assignment_targets(node: Node<'_>, source: &str) -> Vec<String> {
-    if node.kind() == "identifier" {
-        return vec![node_text(node, source).trim().to_owned()];
-    }
-    let mut targets = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        targets.extend(python_assignment_targets(child, source));
-    }
-    targets
 }
 
 fn extend_names<'a>(names: &mut BTreeSet<String>, additions: impl Iterator<Item = &'a String>) -> bool {

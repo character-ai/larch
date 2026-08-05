@@ -10,7 +10,7 @@
 
 use std::{
     env,
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fs,
     future::Future,
     io::{Read as _, Write as _},
@@ -28,8 +28,7 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ChildEnvironment, ExternalProcessRunner, ExternalProgram, ProcessOutput, ProcessRequest,
-    ScannerProgram,
+    ExternalProcessRunner, ExternalProgram, ProcessOutput, ProcessRequest, ScannerProgram,
 };
 use larch_lint::{GitleaksArguments, GitleaksMode};
 use sha2::{Digest as _, Sha256};
@@ -158,13 +157,13 @@ where
     R: ExternalProcessRunner + ?Sized,
 {
     let binary = ensure_binary_with_platform(cache_root, platform, downloader).await?;
-    let scanner_path = scanner_path(&binary)?;
+    let scanner = ScannerProgram::gitleaks(binary);
     let cancellation = Cancellation::new();
     let version = run_scanner(
         runner,
         &cancellation,
         repository,
-        &scanner_path,
+        &scanner,
         [OsString::from("version")],
         VERSION_TIMEOUT,
     )
@@ -188,7 +187,7 @@ where
         runner,
         &cancellation,
         repository,
-        &scanner_path,
+        &scanner,
         scanner_arguments,
         SCAN_TIMEOUT,
     )
@@ -564,17 +563,6 @@ fn set_executable(path: &Path) -> Result<(), Failure> {
     Ok(())
 }
 
-fn scanner_path(binary: &Path) -> Result<OsString, Failure> {
-    let parent = binary
-        .parent()
-        .ok_or_else(|| Failure::preparation("gitleaks binary has no cache directory"))?;
-    // Do not retain the ambient PATH. If the verified cache entry disappears
-    // after its identity check, a spawn must fail rather than falling through
-    // to an unrelated system `gitleaks` binary.
-    env::join_paths([parent])
-        .map_err(|_| Failure::preparation("cannot construct gitleaks scanner PATH"))
-}
-
 fn scanner_arguments(
     arguments: &GitleaksArguments,
     repository: &Path,
@@ -638,7 +626,7 @@ async fn run_scanner<R>(
     runner: &R,
     cancellation: &Cancellation,
     repository: &Path,
-    path: &OsStr,
+    scanner: &ScannerProgram,
     arguments: impl IntoIterator<Item = OsString>,
     timeout: Duration,
 ) -> Result<ProcessOutput, Failure>
@@ -646,15 +634,14 @@ where
     R: ExternalProcessRunner + ?Sized,
 {
     let request = ProcessRequest::new(
-        ExternalProgram::Scanner(ScannerProgram::Gitleaks),
+        ExternalProgram::Scanner(scanner.clone()),
         arguments,
         repository.to_path_buf(),
         timeout,
         SHUTDOWN_GRACE,
         NonZeroUsize::new(OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN),
     )
-    .map_err(|error| Failure::preparation(error.to_string()))?
-    .with_environment(ChildEnvironment::Path, path);
+    .map_err(|error| Failure::preparation(error.to_string()))?;
     runner.run(request, cancellation).await.map_err(|error| {
         if let Some(output) = error.output() {
             let _ = relay(output);
@@ -907,7 +894,7 @@ mod tests {
                 &runner,
                 &cancellation,
                 Path::new("/tmp"),
-                OsStr::new("/tmp/gitleaks-cache"),
+                &ScannerProgram::gitleaks("/tmp/gitleaks-cache/gitleaks"),
                 [OsString::from("version")],
                 VERSION_TIMEOUT,
             ))
@@ -918,16 +905,10 @@ mod tests {
             assert_eq!(requests.len(), 1);
             assert_eq!(
                 requests[0].program(),
-                &ExternalProgram::Scanner(ScannerProgram::Gitleaks)
+                &ExternalProgram::Scanner(ScannerProgram::gitleaks("/tmp/gitleaks-cache/gitleaks"))
             );
             assert_eq!(requests[0].arguments(), &[OsString::from("version")]);
-            assert_eq!(
-                requests[0].environment(),
-                &[(
-                    ChildEnvironment::Path,
-                    OsString::from("/tmp/gitleaks-cache")
-                )]
-            );
+            assert!(requests[0].environment().is_empty());
             drop(requests);
         }
     }
@@ -1008,14 +989,6 @@ mod tests {
             Err(Failure::Preparation(message)) if message.contains("expected gitleaks version")
         ));
         assert_eq!(runner.requests.lock().expect("requests").len(), 1);
-    }
-
-    #[test]
-    fn scanner_path_contains_only_the_verified_cache_directory() {
-        assert_eq!(
-            scanner_path(Path::new("/tmp/gitleaks-cache/gitleaks")).expect("scanner path"),
-            OsString::from("/tmp/gitleaks-cache")
-        );
     }
 
     #[test]
