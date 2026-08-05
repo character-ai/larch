@@ -101,18 +101,6 @@ impl RunLogLayout {
         self.run_dir()
             .join(format!("{}{extension}", batch.as_str()))
     }
-
-    /// Return the execution-issues ndjson path.
-    #[must_use]
-    pub fn execution_issues_ndjson_path(&self) -> PathBuf {
-        self.run_dir().join("execution-issues.ndjson")
-    }
-
-    /// Return the execution-issues markdown path.
-    #[must_use]
-    pub fn execution_issues_markdown_path(&self) -> PathBuf {
-        self.run_dir().join("execution-issues.md")
-    }
 }
 
 #[cfg(test)]

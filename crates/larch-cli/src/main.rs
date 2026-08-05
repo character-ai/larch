@@ -568,6 +568,7 @@ struct EchoArguments {
     message: String,
 }
 
+#[allow(clippy::too_many_lines)] // Domain dispatch enumerates every Rust-owned command pair.
 fn run(
     cli: Cli,
     metadata: larch_core::BuildMetadata,

@@ -43,36 +43,36 @@ enum ParseOutcome {
 
 fn parse_validate_run_id(arguments: &[OsString]) -> ParseOutcome {
     let mut run_id: Option<String> = None;
-    let mut index = 0;
-    while index < arguments.len() {
-        let Some(arg) = arguments[index].to_str() else {
+    let mut pending = arguments.iter();
+    while let Some(raw) = pending.next() {
+        let Some(flag) = raw.to_str() else {
             return ParseOutcome::Error(format!(
                 "unknown argument: {}",
-                arguments[index].to_string_lossy()
+                raw.to_string_lossy()
             ));
         };
-        if arg == "-h" || arg == "--help" {
+        if matches!(flag, "-h" | "--help") {
             return ParseOutcome::Help;
         }
-        if let Some(value) = arg.strip_prefix("--run-id=") {
-            if run_id.replace(value.to_owned()).is_some() {
-                return ParseOutcome::Error("argument --run-id: conflicting values".to_owned());
-            }
-            index += 1;
-            continue;
-        }
-        if arg == "--run-id" {
-            index += 1;
-            let Some(value) = arguments.get(index).and_then(|item| item.to_str()) else {
+        let value = if let Some(inline) = flag.strip_prefix("--run-id=") {
+            inline
+        } else if flag == "--run-id" {
+            let Some(next) = pending.next() else {
                 return ParseOutcome::Error("argument --run-id: expected one argument".to_owned());
             };
-            if run_id.replace(value.to_owned()).is_some() {
-                return ParseOutcome::Error("argument --run-id: conflicting values".to_owned());
-            }
-            index += 1;
-            continue;
+            let Some(text) = next.to_str() else {
+                return ParseOutcome::Error(format!(
+                    "argument --run-id: expected one argument, got {}",
+                    next.to_string_lossy()
+                ));
+            };
+            text
+        } else {
+            return ParseOutcome::Error(format!("unrecognized arguments: {flag}"));
+        };
+        if run_id.replace(value.to_owned()).is_some() {
+            return ParseOutcome::Error("argument --run-id: conflicting values".to_owned());
         }
-        return ParseOutcome::Error(format!("unrecognized arguments: {arg}"));
     }
     run_id.map_or_else(
         || ParseOutcome::Error("the following arguments are required: --run-id".to_owned()),

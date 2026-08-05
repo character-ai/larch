@@ -1,10 +1,6 @@
 //! Execution-issue entry readers for markdown and ndjson historical shapes.
 
-use std::{
-    error::Error,
-    fmt,
-    path::Path,
-};
+use std::{error::Error, fmt};
 
 use serde_json::Value;
 
@@ -61,14 +57,10 @@ impl ExecutionIssueFormat {
 /// Why an execution-issue read failed.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionIssueReadErrorKind {
-    /// File bytes could not be read.
-    Io,
     /// An ndjson line was truncated or not JSON.
     InvalidJson,
     /// An ndjson line was not an object with string category/body.
     InvalidShape,
-    /// The path suffix did not identify a supported format.
-    UnknownFormat,
 }
 
 /// Loud execution-issue reader failure with a stable reason.
@@ -96,10 +88,8 @@ impl ExecutionIssueReadError {
     #[must_use]
     pub const fn reason(&self) -> &'static str {
         match self.kind {
-            ExecutionIssueReadErrorKind::Io => "io-error",
             ExecutionIssueReadErrorKind::InvalidJson => "invalid-json",
             ExecutionIssueReadErrorKind::InvalidShape => "invalid-shape",
-            ExecutionIssueReadErrorKind::UnknownFormat => "unknown-format",
         }
     }
 
@@ -208,32 +198,6 @@ impl ExecutionIssueLedger {
             detected_format: ExecutionIssueFormat::Ndjson,
             entries,
         })
-    }
-
-    /// Read an execution-issue file, detecting markdown vs ndjson by suffix.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ExecutionIssueReadError`] for I/O, unknown suffixes, or truncated
-    /// ndjson rows.
-    pub fn read_path(path: &Path) -> Result<Self, ExecutionIssueReadError> {
-        let text = std::fs::read_to_string(path).map_err(|error| {
-            ExecutionIssueReadError::new(
-                ExecutionIssueReadErrorKind::Io,
-                format!("{}: {error}", path.display()),
-            )
-        })?;
-        match path.extension().and_then(|ext| ext.to_str()) {
-            Some("md") => Ok(Self::parse_markdown(&text)),
-            Some("ndjson") => Self::parse_ndjson(&text),
-            _ => Err(ExecutionIssueReadError::new(
-                ExecutionIssueReadErrorKind::UnknownFormat,
-                format!(
-                    "unsupported execution-issue suffix for {}",
-                    path.display()
-                ),
-            )),
-        }
     }
 }
 
