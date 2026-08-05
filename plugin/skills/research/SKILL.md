@@ -152,14 +152,14 @@ Create the activation sentinel only after Step 0 setup and degraded-tools gate r
 ```bash
 if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
   echo "**⚠ /research: failed to activate read-only Write/Edit hook. Aborting.**"
-  CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
   exit 1
 fi
 RESEARCH_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
 RESEARCH_DENY_ACTIVE_SENTINEL="$RESEARCH_DENY_ACTIVE_DIR/research-$PPID"
 if ! mkdir -p "$RESEARCH_DENY_ACTIVE_DIR" || ! : > "$RESEARCH_DENY_ACTIVE_SENTINEL"; then
   echo "**⚠ /research: failed to activate read-only Write/Edit hook. Aborting.**"
-  CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
   exit 1
 fi
 printf 'RESEARCH_DENY_ACTIVE_SENTINEL=%s\n' "$RESEARCH_DENY_ACTIVE_SENTINEL"
@@ -423,7 +423,7 @@ Remove the session temp directory and all files within it (unconditional):
 
 ```bash
 rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
 ```
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0a binary checks, Step 1 research-phase failures/timeouts, or Step 2 validation failures) so they are visible at the end of the workflow. For example:

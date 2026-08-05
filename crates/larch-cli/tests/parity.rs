@@ -638,7 +638,10 @@ const SESSION_LIFECYCLE_CASES: &[SessionLifecycleFixture] = &[
     SessionLifecycleFixture {
         name: "session-cleanup-tmpdir-cache-sessions-root",
         command: "cleanup-tmpdir",
-        arguments: &["--dir", "{sandbox}/xdg/larch/sessions/claude-implement-cache"],
+        arguments: &[
+            "--dir",
+            "{sandbox}/xdg/larch/sessions/claude-implement-cache",
+        ],
         environment: &[("XDG_CACHE_HOME", "{sandbox}/xdg")],
         seeds: &[(
             "xdg/larch/sessions/claude-implement-cache/artifact.txt",
@@ -704,7 +707,6 @@ fn session_lifecycle_commands_have_reviewed_parity() {
     let python_fixture = fixture_directory.join("session_lifecycle_reference.py");
     let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
     let golden_directory = fixture_directory.join("goldens");
-
 
     for fixture in SESSION_LIFECYCLE_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
@@ -776,7 +778,9 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         assert!(
-            !events.lines().any(|line| line == clean_install_dispatch(case)),
+            !events
+                .lines()
+                .any(|line| line == clean_install_dispatch(case)),
             "{failure} reached selector dispatch"
         );
     }

@@ -371,4 +371,3 @@ fn session_usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
     eprintln!("{usage}{program}: error: {error}");
     ExitCode::FAILURE
 }
-

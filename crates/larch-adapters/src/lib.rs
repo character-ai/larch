@@ -47,12 +47,12 @@ pub use process::{
     NoopProcessObserver, OpenFileHolderStatus, TokioProcessRunner, probe_open_file_holder,
     probe_process_command_name,
 };
+pub use process_identity::SystemProcessIdentityHost;
 pub use session_lifecycle::{
     CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SessionIdOutcome, append_cleanup_audit,
     parent_process_id, remove_session_tmpdir, resolve_implement_tmpdir, validate_design_tmpdir,
     write_session_id,
 };
-pub use process_identity::SystemProcessIdentityHost;
 
 /// Return metadata compiled into the adapter layer.
 #[must_use]

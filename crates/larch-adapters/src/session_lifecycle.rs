@@ -340,8 +340,7 @@ fn absolute_lexical(path: &Path) -> PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();
     }
-    std::env::current_dir()
-        .map_or_else(|_error| path.to_path_buf(), |cwd| cwd.join(path))
+    std::env::current_dir().map_or_else(|_error| path.to_path_buf(), |cwd| cwd.join(path))
 }
 
 fn parent_directory(path: &Path) -> PathBuf {
@@ -430,7 +429,9 @@ mod tests {
             root,
             name,
             "design-export/manifest.env",
-            &format!("# larch session identity (hook routing)\nCLONE_PATH={clone}\nSESSION_ID={session}\n"),
+            &format!(
+                "# larch session identity (hook routing)\nCLONE_PATH={clone}\nSESSION_ID={session}\n"
+            ),
         )
     }
 
@@ -486,11 +487,14 @@ mod tests {
         let tmpdir = directory.path();
         let session = tmpdir.join("claude-design-abc");
         fs::create_dir(&session).expect("design session");
-        let outside = tempdir().expect("outside tempdir");
         let cache_root = tmpdir.join("cache/larch/sessions");
 
         assert_eq!(
-            validate_design_tmpdir(&session.to_string_lossy(), Some(tmpdir.as_os_str()), &cache_root),
+            validate_design_tmpdir(
+                &session.to_string_lossy(),
+                Some(tmpdir.as_os_str()),
+                &cache_root
+            ),
             Ok(())
         );
         assert_eq!(
@@ -501,12 +505,10 @@ mod tests {
             ),
             Ok(())
         );
-        let error = validate_design_tmpdir(
-            &outside.path().to_string_lossy(),
-            Some(OsStr::new("")),
-            &cache_root,
-        )
-        .expect_err("outside path must fail");
+        // Not a tempdir: every platform's temporary root is itself allowlisted,
+        // on Linux through `/tmp` and on macOS through `TMPDIR`.
+        let error = validate_design_tmpdir("/etc", Some(OsStr::new("")), &cache_root)
+            .expect_err("outside path must fail");
         assert!(error.starts_with("design-tmpdir: path not under allowlist after resolution: "));
     }
 
@@ -728,7 +730,10 @@ mod tests {
         );
         let roots = [root];
 
-        assert_eq!(resolve_implement_tmpdir(&query(clone, &roots, now_seconds())), "");
+        assert_eq!(
+            resolve_implement_tmpdir(&query(clone, &roots, now_seconds())),
+            ""
+        );
     }
 
     #[test]
@@ -772,7 +777,10 @@ mod tests {
         assert_eq!(
             write_session_id(&target, &[directory.path().to_path_buf()])
                 .expect_err("outside target must fail"),
-            format!("output path not under allowed session root: {}", target.display())
+            format!(
+                "output path not under allowed session root: {}",
+                target.display()
+            )
         );
         assert!(!allowed_session_roots(None, None).is_empty());
     }

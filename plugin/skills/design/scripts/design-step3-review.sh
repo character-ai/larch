@@ -311,7 +311,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   exit 1
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
 if [ "$READ_RESULT_ENV" = true ]; then
   exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env

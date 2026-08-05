@@ -205,8 +205,14 @@ mod tests {
 
     #[test]
     fn ambiguous_abbreviations_and_unknown_flags_are_unrecognized() {
-        assert_eq!(resolve_option("--dir", &["--dir", "--directory"]), Some("--dir"));
-        assert_eq!(resolve_option("--dire", &["--dir", "--directory"]), Some("--directory"));
+        assert_eq!(
+            resolve_option("--dir", &["--dir", "--directory"]),
+            Some("--dir")
+        );
+        assert_eq!(
+            resolve_option("--dire", &["--dir", "--directory"]),
+            Some("--directory")
+        );
         assert_eq!(resolve_option("--d", &["--dir", "--directory"]), None);
 
         let parsed = parse(&arguments(&["--bogus", "--dir", "x"]), &["--dir"], 0);

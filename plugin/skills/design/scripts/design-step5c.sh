@@ -79,7 +79,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
-CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
 publish_step5c_result() {
   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \

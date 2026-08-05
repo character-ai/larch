@@ -5,13 +5,12 @@
 from __future__ import annotations
 
 import contextlib
-import subprocess
 import sys
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch.bgjob import registry
-from larch.core import logging_util
+from larch.core import logging_util, proc
 from larch.core.repo_roots import larch_entrypoint
 from larch.report.progress_file import deactivate_run, resolve_owned_run_id, resolve_persisted_repo_root
 from larch.state import session_env
@@ -147,10 +146,16 @@ def _remove_design_tmpdir(design_tmpdir: Path) -> int:
     """Remove the /design session tmpdir through the Rust `session cleanup-tmpdir` owner.
 
     Kept as a module-level seam so cleanup ordering stays testable offline without
-    installing the released executable.
+    installing the released executable. The verb writes only failure diagnostics,
+    so its captured streams are forwarded verbatim to keep operator output intact.
     """
     command = [str(larch_entrypoint()), "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)]
-    return subprocess.run(command, check=False).returncode
+    result = proc.run(command)
+    if result.stdout:
+        _ = sys.stdout.write(result.stdout)
+    if result.stderr:
+        _ = sys.stderr.write(result.stderr)
+    return result.returncode
 
 
 def _step6_preservation_message(status: dict[str, str]) -> str | None:

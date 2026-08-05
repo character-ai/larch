@@ -112,7 +112,11 @@ pub fn resolve_implement_tmpdir_command(arguments: &[OsString]) -> ExitCode {
         eprintln!("resolve-implement-tmpdir: 2");
         return ExitCode::FAILURE;
     }
-    let hook_cwd = parsed.value("--cwd").unwrap_or_else(|| OsStr::new("")).to_string_lossy().into_owned();
+    let hook_cwd = parsed
+        .value("--cwd")
+        .unwrap_or_else(|| OsStr::new(""))
+        .to_string_lossy()
+        .into_owned();
     let session_id = env::var("LARCH_TOKEN_SESSION_ID").unwrap_or_default();
     let resolved = resolve_implement_tmpdir(&ImplementTmpdirQuery {
         hook_cwd: &hook_cwd,
@@ -122,7 +126,9 @@ pub fn resolve_implement_tmpdir_command(arguments: &[OsString]) -> ExitCode {
         ),
         session_id: &session_id,
         ttl_seconds: implement_tmpdir_ttl(
-            env::var("LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS").ok().as_deref(),
+            env::var("LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS")
+                .ok()
+                .as_deref(),
         ),
         now: unix_seconds(),
     });
@@ -193,9 +199,11 @@ fn invoking_command_name() -> String {
 }
 
 fn cleanup_audit_log() -> PathBuf {
-    PathBuf::from(env::var_os("TMPDIR").filter(|value| !value.is_empty()).unwrap_or_else(
-        || OsString::from(TMP_FALLBACK),
-    ))
+    PathBuf::from(
+        env::var_os("TMPDIR")
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| OsString::from(TMP_FALLBACK)),
+    )
     .join(CLEANUP_AUDIT_LOG_NAME)
 }
 

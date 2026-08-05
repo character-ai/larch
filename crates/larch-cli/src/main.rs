@@ -576,9 +576,9 @@ fn run(
         Domain::Session(SessionCommand::RequirePluginRoot(arguments)) => Ok(
             session_lifecycle_commands::require_plugin_root(&arguments.arguments),
         ),
-        Domain::Session(SessionCommand::ResolveImplementTmpdir(arguments)) => Ok(
-            session_lifecycle_commands::resolve_implement_tmpdir_command(&arguments.arguments),
-        ),
+        Domain::Session(SessionCommand::ResolveImplementTmpdir(arguments)) => {
+            Ok(session_lifecycle_commands::resolve_implement_tmpdir_command(&arguments.arguments))
+        }
         Domain::Session(SessionCommand::ValidateDesignTmpdir(arguments)) => Ok(
             session_lifecycle_commands::validate_design_tmpdir_command(&arguments.arguments),
         ),

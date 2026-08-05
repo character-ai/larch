@@ -28,9 +28,7 @@ pub const IMPLEMENT_TMPDIR_PREFIX: &str = "claude-implement-";
 pub fn implement_tmpdir_ttl(raw: Option<&str>) -> i64 {
     raw.filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
         .map_or(IMPLEMENT_TMPDIR_TTL_SECONDS, |value| {
-            value
-                .parse::<i64>()
-                .unwrap_or(i64::MAX)
+            value.parse::<i64>().unwrap_or(i64::MAX)
         })
 }
 
