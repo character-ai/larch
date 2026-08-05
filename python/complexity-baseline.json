@@ -539,7 +539,7 @@
     "file": "larch/agents/_run_external.py",
     "code": "C901",
     "qualified_symbol": "run_external_agent",
-    "metric": 34,
+    "metric": 33,
     "added_at": "legacy",
     "history": [
       {
@@ -573,7 +573,7 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0911",
     "qualified_symbol": "run_external_agent",
-    "metric": 8,
+    "metric": 7,
     "added_at": "2026-08-03",
     "history": [
       {
@@ -607,7 +607,7 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0912",
     "qualified_symbol": "run_external_agent",
-    "metric": 37,
+    "metric": 36,
     "added_at": "legacy",
     "history": [
       {
@@ -673,7 +673,7 @@
     "file": "larch/agents/_run_external.py",
     "code": "PLR0915",
     "qualified_symbol": "run_external_agent",
-    "metric": 143,
+    "metric": 138,
     "added_at": "legacy",
     "history": [
       {
@@ -8099,24 +8099,8 @@
   {
     "file": "larch/state/finalize.py",
     "code": "PLR0911",
-    "qualified_symbol": "_parse_kill_background_processes_argv",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/finalize.py",
-    "code": "PLR0911",
     "qualified_symbol": "_title_matches",
     "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/finalize.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_validate_kill_tmpdir_path",
-    "metric": 9,
     "added_at": "legacy",
     "history": []
   },

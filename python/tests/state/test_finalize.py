@@ -508,119 +508,11 @@ def test_kill_session_background_processes_skips_live_python_ancestors(
     assert ["kill", "-TERM", "50"] not in runner.calls
 
 
-def _no_kill(*_args: object) -> bool:
-    pytest.fail("should not kill")
 
 
-def test_kill_background_processes_main_rejects_missing_design_tmpdir(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
-
-    rc = finalize.kill_background_processes_main([])
-
-    assert rc == 2
-    assert "ERROR=--design-tmpdir is required" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("relative/path", "absolute path"),
-        ("/tmp/claude-design-bad\npath", "newline"),
-        ("/tmp/claude-design-bad/../other", "'..' segments"),
-    ],
-)
-def test_kill_background_processes_main_rejects_bad_paths(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    value: str,
-    expected: str,
-) -> None:
-    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
 
-    rc = finalize.kill_background_processes_main(["--design-tmpdir", value])
-
-    assert rc == 2
-    assert expected in capsys.readouterr().err
-
-
-def test_kill_background_processes_main_rejects_allowed_root_non_design_path(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    non_design = tmp_path / "x"
-    non_design.mkdir()
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
-
-    rc = finalize.kill_background_processes_main(["--design-tmpdir", str(non_design)])
-
-    assert rc == 2
-    assert "basename must start with claude-design-" in capsys.readouterr().err
-
-
-def test_kill_background_processes_main_rejects_design_path_without_marker(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    design_dir = tmp_path / "claude-design-no-marker"
-    design_dir.mkdir()
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
-
-    rc = finalize.kill_background_processes_main(["--design-tmpdir", str(design_dir)])
-
-    assert rc == 2
-    assert "source-env.sh" in capsys.readouterr().err
-
-
-def test_kill_background_processes_main_rejects_symlinked_design_tmpdir(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    victim = tmp_path / "claude-design-victim"
-    victim.mkdir()
-    _ = (victim / "source-env.sh").write_text("DESIGN_TMPDIR=x\n", encoding="utf-8")
-    link = tmp_path / "claude-design-link"
-    link.symlink_to(victim)
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
-
-    rc = finalize.kill_background_processes_main(["--design-tmpdir", str(link)])
-
-    assert rc == 2
-    assert "symlink" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("killed", [True, False])
-def test_kill_background_processes_main_calls_killer_with_design_tmpdir_context(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    killed: bool,
-) -> None:
-    design_dir = tmp_path / "claude-design-valid"
-    design_dir.mkdir()
-    _ = (design_dir / "source-env.sh").write_text("DESIGN_TMPDIR=x\n", encoding="utf-8")
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    seen: dict[str, str] = {}
-
-    def fake_kill(*, runner: object, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
-        seen["tmpdir"] = ctx.tmpdir
-        return killed
-
-    monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill)
-
-    rc = finalize.kill_background_processes_main(["--design-tmpdir", str(design_dir)])
-
-    assert rc == 0
-    assert seen["tmpdir"] == str(design_dir.resolve())
-    assert f"KILLED={str(killed).lower()}" in capsys.readouterr().out
 
 
 def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> None:

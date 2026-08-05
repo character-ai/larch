@@ -6587,11 +6587,13 @@ verb = "kill-background-processes"
 python_module = "larch.state.finalize"
 python_function = "kill_background_processes_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8061
+clean_install_test = "clean-install-session-kill-background-processes"
 
 [[commands]]
 domain = "session"

@@ -19,6 +19,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 mod ci_timing;
 mod git_commands;
 mod github_repository_resolution;
+mod kill_background;
 mod push_network;
 mod push_rebase;
 mod release_assets;
@@ -96,6 +97,9 @@ enum KvCommand {
 
 #[derive(Subcommand)]
 enum SessionCommand {
+    /// Terminate background processes scoped to a session tmpdir.
+    #[command(disable_help_flag = true)]
+    KillBackgroundProcesses(RawCompatibilityArguments),
     /// Read one value from a session environment file.
     #[command(disable_help_flag = true)]
     ReadKey(RawCompatibilityArguments),
@@ -540,6 +544,9 @@ fn run(
             Ok(object_store_commands::run(&arguments))
         }
         Domain::Release(command) => run_release(command),
+        Domain::Session(SessionCommand::KillBackgroundProcesses(arguments)) => Ok(
+            kill_background::kill_background_processes(&arguments.arguments),
+        ),
         Domain::Session(SessionCommand::ReadKey(arguments)) => {
             Ok(state_commands::read_key(&arguments.arguments))
         }
