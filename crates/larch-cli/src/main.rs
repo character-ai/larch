@@ -31,6 +31,7 @@ mod release_prepare;
 mod release_publish;
 mod release_stage;
 mod release_version;
+mod run_log_commands;
 mod session_lifecycle_commands;
 mod state_commands;
 
@@ -89,9 +90,19 @@ enum Domain {
     /// Push commands with typed Git network operations.
     #[command(subcommand)]
     Push(PushSubcommand),
+    /// Committed run-log identity and layout helpers.
+    #[command(subcommand, name = "run-log")]
+    RunLog(RunLogCommand),
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
+}
+
+#[derive(Subcommand)]
+enum RunLogCommand {
+    /// Emit `VALID=true|false` for a run-log path slug.
+    #[command(name = "validate-run-id", disable_help_flag = true)]
+    ValidateRunId(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -639,6 +650,9 @@ fn run(
         Domain::Push(PushSubcommand::Rebase(arguments)) => Ok(push_rebase::rebase(&arguments.args)),
         Domain::Push(PushSubcommand::CheckpointProbe(arguments)) => {
             Ok(push_rebase::checkpoint_probe(&arguments.args))
+        }
+        Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
+            Ok(run_log_commands::validate_run_id(&arguments.arguments))
         }
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {

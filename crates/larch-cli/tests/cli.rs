@@ -34,6 +34,7 @@ Commands:
   session        Session state compatibility commands
   gh             GitHub workflow helper commands
   push           Push commands with typed Git network operations
+  run-log        Committed run-log identity and layout helpers
   upgrade-larch  Upgrade the installed larch plugin and executable
   help           Print this message or the help of the given subcommand(s)
 

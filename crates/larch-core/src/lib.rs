@@ -17,6 +17,7 @@ mod process;
 mod process_identity;
 mod redaction;
 mod retry;
+mod run_log;
 mod session_state;
 mod telemetry;
 mod time;
@@ -97,6 +98,14 @@ pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_s
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,
+};
+pub use run_log::{
+    BatchName, ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger,
+    ExecutionIssueReadError, ExecutionIssueReadErrorKind, ManifestFormatVersion, ManifestReadError,
+    ManifestReadErrorKind, ManifestRecord, RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug,
+    RunLogSlugError, RunLogSlugErrorKind, final_summary_terminal_heading, first_nonempty_line,
+    manifest_pr_evidence_matches, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
+    validate_run_log_slug,
 };
 pub use session_state::{
     IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, IMPLEMENT_TMPDIR_TTL_SECONDS,

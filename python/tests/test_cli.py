@@ -153,13 +153,10 @@ def test_architectural_assessment_sanitizer_fails_without_echoing_stdin(extra_ar
     assert token not in completed.stderr
 
 
-def test_run_log_validate_run_id_entrypoint_is_machine_stdout() -> None:
-    assert cli._REGISTRY[("run-log", "validate-run-id")] == (  # pyright: ignore[reportPrivateUsage]
-        "larch.report.run_logs",
-        "larch_log_validate_run_id_main",
-        True,
-    )
-    assert ("run-log", "validate-run-id") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+def test_run_log_validate_run_id_entrypoint_is_retired() -> None:
+    assert ("run-log", "validate-run-id") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("run-log", "validate-run-id") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert cli.main(["run-log", "validate-run-id", "--run-id=-abc123"]) == 2
 
 
 def test_run_log_storage_preflight_entrypoint_is_machine_stdout() -> None:
@@ -342,7 +339,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         ),
         (["implement", "step-18"], "larch.implement.implement_dispatch", "step_18_main"),
         (["implement", "step-19"], "larch.implement.implement_dispatch", "step_19_main"),
-        (["run-log", "validate-run-id", "--run-id=-abc123"], "larch.report.run_logs", "larch_log_validate_run_id_main"),
     ]
     for argv, module_name, func_name in cases:
         monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)

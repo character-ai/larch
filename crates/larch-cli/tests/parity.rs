@@ -54,6 +54,7 @@ impl CleanInstallCase {
             "clean-install-session-validate-design-tmpdir" => {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
+            "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
             _ => &["--help"],
         }
     }
@@ -202,6 +203,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-release-validate-assets",
         "release",
         "validate-assets",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-validate-run-id",
+        "run-log",
+        "validate-run-id",
     ),
     CleanInstallCase::new(
         "clean-install-upgrade-larch-release-step7-root",

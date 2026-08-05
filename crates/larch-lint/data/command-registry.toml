@@ -6451,11 +6451,13 @@ verb = "validate-run-id"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_validate_run_id_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8071
+clean_install_test = "clean-install-run-log-validate-run-id"
 
 [[commands]]
 domain = "run-log"
@@ -9499,8 +9501,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["session cleanup-tmpdir"]
+python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["run-log validate-run-id", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
