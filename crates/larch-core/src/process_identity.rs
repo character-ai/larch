@@ -1181,9 +1181,11 @@ mod tests {
 
     #[test]
     fn kill_session_background_processes_skips_ancestors_and_logs() {
-        let mut host = FakeHost::default();
-        host.current_pid = 200;
-        host.parent_pid = 100;
+        let mut host = FakeHost {
+            current_pid: 200,
+            parent_pid: 100,
+            ..FakeHost::default()
+        };
         host.parents.insert(200, 100);
         host.parents.insert(100, 50);
         host.parents.insert(50, 1);
