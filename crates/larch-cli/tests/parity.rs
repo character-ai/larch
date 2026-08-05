@@ -43,7 +43,6 @@ impl CleanInstallCase {
                 "--key",
                 "KEY=clean-install",
             ],
-            "clean-install-session-kill-background-processes" => &["--help"],
             _ => &["--help"],
         }
     }
