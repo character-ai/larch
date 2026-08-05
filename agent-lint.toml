@@ -1355,18 +1355,23 @@ conditional-sources = [
   "skills/design/references/dialectic-clarifier.md",
   "skills/design/references/validator-failure.md",
 ]
-root-max-lines = 695
-root-max-tokens = 26385
-root-max-content-tokens = 26330
+# Issue #7942: current design root content is smaller than the prior reviewed
+# cap. These values match the pinned agent-lint v4.0.2 report exactly.
+root-max-lines = 694
+root-max-tokens = 26357
+root-max-content-tokens = 26303
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
 # Issue #7780 documents the executable-plan / force-admission contract in
 # docs/issue-anchored-plan.md (always-imported design closure).
 # Issue #7783 adds the shared-owner implementation-lease invariant.
 # Issue #7785 adds the atomic command-cutover invariant.
-closure-max-lines = 1680
-closure-max-tokens = 50434
-closure-max-content-tokens = 50307
+# Issue #7942: agent-lint v4.0.2 excludes `${CLAUDE_PLUGIN_ROOT}/...`
+# references from discovery through its `$`/`{` path filter, so the eager
+# closure equals the root set.
+closure-max-lines = 694
+closure-max-tokens = 26357
+closure-max-content-tokens = 26303
 # Issue #7936: the prior 661/18524/18465 conditional caps carried an
 # agent-lint v3.0.1 measurement artifact, not smaller reviewed content:
 # brainstorm.md and dialectic-clarifier.md (both branch-gated loads) were
@@ -1374,12 +1379,13 @@ closure-max-content-tokens = 50307
 # (a second-level Gate B load) and approval-gates-gate-b.md (a mainline
 # unconditional load) were over-counted transitively. The declared sources
 # never grew: their plain sum still equals the 777-line review retired with
-# python/skill-closure-baseline.json (#7593). Caps equal that sum plus
-# plan-review.md, the one SKILL.md-direct conditional load ("Load
+# python/skill-closure-baseline.json (#7593). The reconciled caps equaled that
+# sum plus plan-review.md, the one SKILL.md-direct conditional load ("Load
 # plan-review.md only for maintainer editing work") missing from the list.
-conditional-max-lines = 790
-conditional-max-tokens = 19694
-conditional-max-content-tokens = 19622
+# Issue #7942 removes later content-reduction slack from that declared set.
+conditional-max-lines = 779
+conditional-max-tokens = 19609
+conditional-max-content-tokens = 19538
 
 [[lint.prompt-source-budgets]]
 name = "implement"
@@ -1396,9 +1402,11 @@ conditional-sources = [
   "skills/implement/references/stall-recovery.md",
   "skills/implement/references/umbrella-partition.md",
 ]
-root-max-lines = 881
-root-max-tokens = 35404
-root-max-content-tokens = 35322
+# Issue #7942: current implement root content is smaller than the prior
+# reviewed cap. These values match the pinned v4.0.2 report exactly.
+root-max-lines = 880
+root-max-tokens = 35255
+root-max-content-tokens = 35173
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
@@ -1418,12 +1426,16 @@ root-max-content-tokens = 35322
 # issue #7815 adds the provider-neutral object-storage trust boundary.
 # issue #7855 loads the focused workflow-security reference only on conditional
 # private-finding and OOS routes.
-closure-max-lines = 3893
-closure-max-tokens = 146785
-closure-max-content-tokens = 146475
-conditional-max-lines = 788
-conditional-max-tokens = 22725
-conditional-max-content-tokens = 22661
+# Issue #7942: v4.0.2 applies the same filtered discovery semantics to the
+# implement closure, so it equals the root set.
+closure-max-lines = 880
+closure-max-tokens = 35255
+closure-max-content-tokens = 35173
+# Issue #7942: remeasurement of the declared conditional sources removes the
+# v3.0.1 transitive-discovery slack and matches v4.0.2 exactly.
+conditional-max-lines = 622
+conditional-max-tokens = 19384
+conditional-max-content-tokens = 19335
 
 [[lint.prompt-source-budgets]]
 name = "review"
@@ -1434,12 +1446,14 @@ conditional-sources = [
   "skills/review/references/self-review.md",
 ]
 root-max-lines = 126
-root-max-tokens = 5670
-root-max-content-tokens = 5660
+root-max-tokens = 5639
+root-max-content-tokens = 5629
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
+# Issue #7942: review root and eager closure token counts now match the pinned
+# v4.0.2 report; the line caps and exact conditional caps remain unchanged.
 closure-max-lines = 126
-closure-max-tokens = 5670
-closure-max-content-tokens = 5660
+closure-max-tokens = 5639
+closure-max-content-tokens = 5629
 conditional-max-lines = 156
 conditional-max-tokens = 3508
 conditional-max-content-tokens = 3497
@@ -1483,6 +1497,8 @@ roots = [
 # issue #7785 adds clean-install and issue-registry audit boundaries.
 # issue #7853 packages the current root policy and adds its scope and overview.
 # issue #7815 adds the provider-neutral object-storage trust boundary.
-closure-max-lines = 6181
-closure-max-tokens = 172236
-closure-max-content-tokens = 171764
+# Issue #7942: v4.0.2 applies filtered discovery to the fixed panel source
+# set, so its eager closure equals the measured roots.
+closure-max-lines = 3267
+closure-max-tokens = 61777
+closure-max-content-tokens = 61519
