@@ -1,14 +1,14 @@
 //! Table tests for codex/cursor review-result adapters (#8114).
 
 use larch_core::{
-    CURSOR_DEGRADED_RESPONSE, CURSOR_EMPTY_RESPONSE, CURSOR_NO_ISSUES_JSON, CursorResultWrite,
-    LauncherArtifactKind, LauncherArtifactPaths, ReviewAuthVerdict, codex_compact_sentinel_offset,
+    CURSOR_DEGRADED_RESPONSE, CURSOR_EMPTY_RESPONSE, CURSOR_NO_ISSUES_JSON, CodexReviewAuthPort,
+    CursorResultWrite, CursorReviewAuthPort, LauncherArtifactKind, LauncherArtifactPaths,
+    ResearchOutputValidator, ReviewAuthVerdict, VendorLaunchRequest, codex_compact_sentinel_offset,
     cursor_has_structured_findings, cursor_input_work_tokens, cursor_normalize_no_issues,
     cursor_output_tokens, effective_review_token_cap, is_cursor_empty_result,
     plan_cursor_result_write, plan_retry_artifact_reset, render_cap_hit_artifacts,
     render_cursor_empty_response, render_cursor_no_work_diag, resolve_codex_review_model,
     review_retry_delay_secs, run_codex_review_preflight, run_cursor_review_preflight,
-    CursorReviewAuthPort, CodexReviewAuthPort, ResearchOutputValidator, VendorLaunchRequest,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -68,8 +68,16 @@ impl ResearchOutputValidator for AlwaysFailValidator {
 fn normalization_table_matches_recorded_cursor_outputs() {
     let structured = fixture("structured_findings.txt");
     let cases = [
-        ("no_issues_bare.txt", CURSOR_NO_ISSUES_JSON.to_owned(), false),
-        ("no_issues_literal.txt", CURSOR_NO_ISSUES_JSON.to_owned(), false),
+        (
+            "no_issues_bare.txt",
+            CURSOR_NO_ISSUES_JSON.to_owned(),
+            false,
+        ),
+        (
+            "no_issues_literal.txt",
+            CURSOR_NO_ISSUES_JSON.to_owned(),
+            false,
+        ),
         ("structured_findings.txt", structured, true),
         (
             "embedded_prose_sentinel.txt",
@@ -84,7 +92,11 @@ fn normalization_table_matches_recorded_cursor_outputs() {
             structured,
             "{name} structured"
         );
-        assert_eq!(cursor_normalize_no_issues(&raw), expected, "{name} normalize");
+        assert_eq!(
+            cursor_normalize_no_issues(&raw),
+            expected,
+            "{name} normalize"
+        );
     }
 }
 
@@ -124,11 +136,7 @@ fn result_writes_cover_no_issues_degraded_and_empty() {
     let genuine = fixture_json("genuine_no_issues_envelope.json");
     let genuine_result = genuine["result"].as_str().expect("result");
     assert_eq!(
-        plan_cursor_result_write(
-            &cursor_normalize_no_issues(genuine_result),
-            &genuine,
-            None
-        ),
+        plan_cursor_result_write(&cursor_normalize_no_issues(genuine_result), &genuine, None),
         CursorResultWrite::Keep(CURSOR_NO_ISSUES_JSON.to_owned())
     );
 
@@ -139,7 +147,10 @@ fn result_writes_cover_no_issues_degraded_and_empty() {
     );
 
     let empty = fixture_json("empty_result_envelope.json");
-    assert!(is_cursor_empty_result(&fixture("empty_result_envelope.json"), true));
+    assert!(is_cursor_empty_result(
+        &fixture("empty_result_envelope.json"),
+        true
+    ));
     let (body, diag) = render_cursor_empty_response(&empty, 3);
     assert_eq!(body, CURSOR_EMPTY_RESPONSE);
     assert!(diag.contains("cursor-empty-result"));
@@ -183,11 +194,13 @@ fn preflight_ports_and_model_resolution_and_cap_hit() {
         run_codex_review_preflight(&FailCodexAuth, Path::new("/h"), Path::new("/i")).unwrap_err();
     assert_eq!(refused.rc, 7);
 
-    assert!(run_cursor_review_preflight(&CursorAuth {
-        ok: true,
-        preread: true
-    })
-    .is_ok());
+    assert!(
+        run_cursor_review_preflight(&CursorAuth {
+            ok: true,
+            preread: true
+        })
+        .is_ok()
+    );
     let auth_fail = run_cursor_review_preflight(&CursorAuth {
         ok: false,
         preread: true,
@@ -210,10 +223,7 @@ fn preflight_ports_and_model_resolution_and_cap_hit() {
     );
     assert_eq!(request.model_args, ["-m", "gpt"]);
 
-    assert_eq!(
-        effective_review_token_cap(None, Some("25")),
-        Some(25)
-    );
+    assert_eq!(effective_review_token_cap(None, Some("25")), Some(25));
     let cap = render_cap_hit_artifacts(25, "TOTAL=99 STATUS=cap_hit\n", None);
     assert_eq!(cap.output, "STATUS=cap_hit\n");
     assert!(cap.warning.contains("25 tokens exceeded (99"));

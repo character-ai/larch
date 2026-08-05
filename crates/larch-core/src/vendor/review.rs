@@ -139,12 +139,7 @@ pub trait DirtyTreeBaselinePort {
     /// Compare the live tree to `baseline` and write the sidecar when possible.
     ///
     /// Returns fallback lines used only when the sidecar file is still missing.
-    fn write_from_baseline(
-        &self,
-        baseline: &Path,
-        sidecar: &Path,
-        cwd: &Path,
-    ) -> Vec<String>;
+    fn write_from_baseline(&self, baseline: &Path, sidecar: &Path, cwd: &Path) -> Vec<String>;
 }
 
 /// Inputs that decide whether a Codex review prompt sidecar is compact.
@@ -294,9 +289,8 @@ pub struct DirtyBaselineCapturePlan {
     pub baseline: PathBuf,
 }
 
-static SCHEMA_VERSION_LINE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*schema_version").expect("schema_version regex")
-});
+static SCHEMA_VERSION_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*schema_version").expect("schema_version regex"));
 static EMBEDDED_NO_ISSUES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"\{[^{}]*"no_issues_found"[^{}]*\}"#).expect("embedded no_issues regex")
 });
@@ -443,11 +437,7 @@ pub fn run_codex_review_preflight(
     trusted_instructions: &Path,
 ) -> Result<(), ReviewAuthVerdict> {
     let verdict = auth.prepare_home(home, trusted_instructions);
-    if verdict.ok {
-        Ok(())
-    } else {
-        Err(verdict)
-    }
+    if verdict.ok { Ok(()) } else { Err(verdict) }
 }
 
 /// Run Cursor review auth preflight through the injected port.
@@ -523,7 +513,9 @@ pub fn cursor_launch_jitter_ms(configured_max: Option<&str>, under_test: bool, r
 
 /// Plan the unlink set and baseline path for cursor dirty-tree capture.
 #[must_use]
-pub fn plan_capture_cursor_dirty_baseline(paths: &LauncherArtifactPaths) -> DirtyBaselineCapturePlan {
+pub fn plan_capture_cursor_dirty_baseline(
+    paths: &LauncherArtifactPaths,
+) -> DirtyBaselineCapturePlan {
     DirtyBaselineCapturePlan {
         unlink: vec![
             paths.path(LauncherArtifactKind::UntrackedBaseline),
@@ -544,7 +536,11 @@ pub fn render_clean_readonly_dirty_tree() -> String {
 /// Render an unknown dirty-tree sidecar for a short-circuited launch.
 #[must_use]
 pub fn render_unknown_dirty_tree(baseline_present: bool, reason: &str) -> String {
-    let state = if baseline_present { "present" } else { "missing" };
+    let state = if baseline_present {
+        "present"
+    } else {
+        "missing"
+    };
     format!("STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE={state}\nREASON={reason}\n")
 }
 
@@ -589,7 +585,10 @@ pub fn cursor_has_structured_findings(text: &str) -> bool {
         let Ok(obj) = serde_json::from_str::<Value>(stripped) else {
             continue;
         };
-        if obj.as_object().is_some_and(|map| map.contains_key("schema_version")) {
+        if obj
+            .as_object()
+            .is_some_and(|map| map.contains_key("schema_version"))
+        {
             return true;
         }
     }
@@ -739,15 +738,19 @@ pub fn plan_cursor_result_write(
 
 /// Render the empty-result Cursor output and redacted diagnostic.
 #[must_use]
-pub fn render_cursor_empty_response(
-    obj: &Value,
-    transient_attempt: u32,
-) -> (String, String) {
+pub fn render_cursor_empty_response(obj: &Value, transient_attempt: u32) -> (String, String) {
     let retries = transient_attempt.saturating_sub(1);
     let mut reason = format!(
         "cursor-empty-result: exit 0, .result empty/null after {retries} transient retries (shared exit-code and empty-result budget)"
     );
-    for key in ["type", "subtype", "is_error", "duration", "request_id", "requestId"] {
+    for key in [
+        "type",
+        "subtype",
+        "is_error",
+        "duration",
+        "request_id",
+        "requestId",
+    ] {
         if let Some(value) = obj.get(key) {
             let rendered = json_diag_value(value).replace('\n', " ");
             let clipped: String = rendered.chars().take(200).collect();
@@ -787,9 +790,9 @@ pub fn review_retry_delay_secs(
 /// Plan one stream reset: archive content into history, then unlink.
 #[must_use]
 pub fn plan_stream_reset(label: &str, existing: Option<&str>) -> StreamResetPlan {
-    let history_append = existing
-        .filter(|text| !text.is_empty())
-        .and_then(|text| stream_reset_history_entry(label, text, VENDOR_FAILURE_DIAG_SECTION_LINES));
+    let history_append = existing.filter(|text| !text.is_empty()).and_then(|text| {
+        stream_reset_history_entry(label, text, VENDOR_FAILURE_DIAG_SECTION_LINES)
+    });
     StreamResetPlan {
         history_append,
         unlink: true,
@@ -913,26 +916,27 @@ fn usage_num(value: &Value) -> Result<i64, ()> {
     match value {
         Value::Null => Ok(0),
         Value::Bool(flag) => Ok(i64::from(*flag)),
-        Value::Number(number) => number.as_i64().or_else(|| {
-            number.as_f64().map(|float| {
-                #[allow(
-                    clippy::cast_possible_truncation,
-                    reason = "Python _num truncates floats with int()"
-                )]
-                {
-                    float as i64
-                }
+        Value::Number(number) => number
+            .as_i64()
+            .or_else(|| {
+                number.as_f64().map(|float| {
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "Python _num truncates floats with int()"
+                    )]
+                    {
+                        float as i64
+                    }
+                })
             })
-        })
-        .ok_or(()),
+            .ok_or(()),
         Value::String(text) => {
             let trimmed = text.trim();
             if trimmed.is_empty() {
                 return Err(());
             }
             if !(trimmed.starts_with('-') || trimmed.bytes().all(|b| b.is_ascii_digit()))
-                || (trimmed.starts_with('-')
-                    && !trimmed[1..].bytes().all(|b| b.is_ascii_digit()))
+                || (trimmed.starts_with('-') && !trimmed[1..].bytes().all(|b| b.is_ascii_digit()))
             {
                 return Err(());
             }
@@ -943,7 +947,9 @@ fn usage_num(value: &Value) -> Result<i64, ()> {
 }
 
 fn is_positive_int(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) && value != "0"
+    !value.is_empty()
+        && value.bytes().all(|b| b.is_ascii_digit())
+        && value != "0"
         && value.parse::<u64>().is_ok_and(|n| n > 0)
 }
 
@@ -1084,7 +1090,11 @@ mod tests {
         );
         assert_eq!(plan.history_entries.len(), 3);
         assert!(plan.unlink_kinds.contains(&LauncherArtifactKind::Events));
-        assert!(plan.history_entries.iter().all(|entry| entry.contains("=====")));
+        assert!(
+            plan.history_entries
+                .iter()
+                .all(|entry| entry.contains("====="))
+        );
         let cursor = plan_retry_artifact_reset("cursor", "attempt", Some("x"), None, Some("keep"));
         assert!(!cursor.unlink_kinds.contains(&LauncherArtifactKind::Events));
         assert_eq!(cursor.history_entries.len(), 1);
@@ -1092,16 +1102,11 @@ mod tests {
 
     #[test]
     fn cap_hit_and_token_cap_resolution() {
-        assert_eq!(
-            effective_review_token_cap(Some("10"), Some("99")),
-            Some(10)
-        );
-        assert_eq!(
-            effective_review_token_cap(None, Some("10")),
-            Some(10)
-        );
+        assert_eq!(effective_review_token_cap(Some("10"), Some("99")), Some(10));
+        assert_eq!(effective_review_token_cap(None, Some("10")), Some(10));
         assert_eq!(effective_review_token_cap(Some("0"), Some("x")), None);
-        let artifacts = render_cap_hit_artifacts(10, "STATUS=cap_hit TOTAL=42\n", Some(Path::new("/t")));
+        let artifacts =
+            render_cap_hit_artifacts(10, "STATUS=cap_hit TOTAL=42\n", Some(Path::new("/t")));
         assert_eq!(artifacts.output, "STATUS=cap_hit\n");
         assert_eq!(artifacts.done, "0\n");
         assert!(artifacts.warning.contains("10 tokens exceeded (42"));
