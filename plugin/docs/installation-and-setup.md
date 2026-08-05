@@ -22,18 +22,19 @@ Install the [GitHub CLI](https://cli.github.com/) and authenticate it:
 gh auth login
 ```
 
-Larch invokes `gh auth token` through its typed process boundary and uses the
-active `gh` session for GitHub API requests. It does not read
-`LARCH_GH_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` itself. The active session must
-hold every permission required by the operation. `/release` policy checks need
-repository Administration read permission and need Administration write only
-when they must enable a disabled setting.
+Larch invokes the fixed `gh auth token --hostname github.com` credential lookup
+through its typed process boundary. The authenticated Rust adapter uses the
+returned credential for GitHub API requests and never falls back to `gh api`.
+Larch does not read `LARCH_GH_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` itself. The
+active session must hold every permission required by the operation. `/release`
+policy checks need repository Administration read permission and need
+Administration write only when they must enable a disabled setting.
 
 Verify the setup without printing the token:
 
 ```bash
 gh auth status
-gh auth token >/dev/null
+gh auth token --hostname github.com >/dev/null
 ```
 
 The second command succeeds silently when the active `gh` session can provide
@@ -69,11 +70,12 @@ gcloud auth application-default print-access-token >/dev/null
 
 Both commands succeed silently when the expected local file is readable and
 ADC can obtain an access token. The second command is an optional operator
-setup check. Larch does not run `gcloud` during service calls; the converted
-shared GitHub commands likewise run without `gh` on a clean machine because Rust
-reaches GitHub through the authenticated adapter. The clean-install `gh` in
-`scripts/larch.sh` only downloads and verifies the release binary and is
-separate from runtime service access.
+setup check. Larch does not run `gcloud` during service calls. GitHub-backed
+Rust service calls require an authenticated `gh` session: their only runtime
+`gh` invocation is the fixed `gh auth token --hostname github.com` lookup, and
+the authenticated Rust adapter makes API requests directly. `gh api` is never a
+service fallback. The clean-install `gh` in `scripts/larch.sh` only downloads
+and verifies the release binary and is separate from runtime service access.
 
 The Rust credential boundary follows the standard ADC order: the file named by
 `GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, then the

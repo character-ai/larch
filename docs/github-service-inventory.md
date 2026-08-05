@@ -16,15 +16,17 @@ mechanically holds the boundary this inventory records: concrete clients,
 service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
 The #7843 refresh ran after the Actions-log, pull-request merge,
 issue-dependency, and credential-contract repairs. It explicitly covered `gh`,
-`gh api`, `gh auth token`, GitHub and Google service hosts, GraphQL documents,
-concrete clients, `gcloud`, and service-credential propagation.
+`gh api`, `gh auth token --hostname github.com`, GitHub and Google service
+hosts, GraphQL documents, concrete clients, `gcloud`, and service-credential
+propagation.
 
 ## Concrete client owner
 
-`crates/larch-core/src/github_auth.rs` owns the single typed `gh auth token`
-credential lookup. `crates/larch-adapters/src/github/mod.rs` is the single
-concrete GitHub client owner. `OctocrabGitHubService::from_gh` builds the one
-private Octocrab client from the core-owned result and pins the
+`crates/larch-core/src/github_auth.rs` owns the single typed
+`gh auth token --hostname github.com` credential lookup.
+`crates/larch-adapters/src/github/mod.rs` is the single concrete GitHub client
+owner. `OctocrabGitHubService::from_gh` builds the one private Octocrab client
+from the core-owned result and pins the
 `api.github.com` and `github.com` host allowlist. It verifies that pinned
 Octocrab supplies one API version header. Other adapters layer typed operations
 over that client and hide REST URLs, GraphQL documents, and the client. Only
@@ -84,8 +86,9 @@ shell-out.
 
 The only production Rust invocation of `gh` is the core-owned, fixed
 `gh auth token --hostname github.com` credential lookup. Rust performs GitHub
-API operations only through the authenticated Octocrab adapter. Residual `gh`
-CLI callers in Python, scripts, skills, and CI belong to commands still owned by
+API operations only through the authenticated Octocrab adapter, never through
+`gh api`; `gcloud` is never a runtime service fallback. Residual `gh` CLI
+callers in Python, scripts, skills, and CI belong to commands still owned by
 Python and migrate with their own leaves. The `gh-argv-literal` rule keeps raw
 `gh` construction inside approved wrappers. The clean-install `gh` usage in
 `scripts/larch.sh` downloads and verifies the release binary before runtime.
