@@ -1046,6 +1046,8 @@ def run(repo_root: Path) -> list[str]:
             "If the wrapper prints `BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>`, continue with chunked `bgjob wait` per `skills/shared/bgjob-wait.md`",
             "left an identity-checked dead bgjob registry row",
             "wait on `implement-checks-step5-self-review` with chunked `bgjob wait`",
+            "Re-run /design ISSUE_NUMBER to refresh the plan receipt against current main. No reship will run.",
+            "Substitute the issue number; do not call `record-attempt`.",
         ]:
             if needle not in stall_ref:
                 checks.append(f"stall-recovery.md missing {needle!r}")

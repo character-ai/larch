@@ -255,7 +255,10 @@ def _ship_rebase_phase(
                 rebase_count,
                 ShipResult(
                     Outcome.STALLED,
-                    detail=f"post-rebase: migration governance blocked: {tokens}",
+                    detail=(
+                        "post-rebase: "
+                        f"{config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER} {tokens}"
+                    ),
                 ),
             )
     return ShipRebasePhaseResult(rebase_count)

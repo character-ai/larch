@@ -1292,7 +1292,7 @@ def persist_plan_receipt(
 def format_gate_refusal(*, site: str, verdict: GovernanceGateVerdict) -> str:
     """Render a single-line operator refusal for a failed governance gate."""
     tokens = ",".join(verdict.blocking_reasons) or "unknown"
-    return f"**❌ {site}: migration governance blocked: `{tokens}`.**"
+    return f"**❌ {site}: {config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER} `{tokens}`.**"
 
 
 def read_issue_body(

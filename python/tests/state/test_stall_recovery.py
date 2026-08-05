@@ -10,7 +10,7 @@ from larch.bgjob import model as bgjob_model
 from larch.bgjob import registry as bgjob_registry
 from larch.core import config
 from larch.core import process_identity
-from larch.issue import issue_create
+from larch.issue import issue_create, migration_governance
 from larch.state import stall_recovery
 from larch.state import _escalation as _sr_escalation
 from larch.state import _report as _sr_report
@@ -91,6 +91,80 @@ def test_classify_transient_infra(tmp_path: Path, capsys: pytest.CaptureFixture[
     out = capsys.readouterr().out
     assert "FAILURE_CLASS=transient-infra" in out
     assert "RESUME_HINT=step8-shippr" in out
+
+
+@pytest.mark.parametrize(
+    ("site", "step"),
+    [("pre-pr", "8"), ("post-rebase", "8"), ("post-rebase", "rebase-failed")],
+)
+@pytest.mark.parametrize(
+    "reason",
+    sorted(
+        migration_governance.BLOCKING_PARITY_REASONS
+        | migration_governance.RECEIPT_STALE_REASONS
+        | {
+            migration_governance.REASON_CLOSED_RETAINED,
+            migration_governance.REASON_MISSING_OWNER_BLOCK,
+        }
+    ),
+)
+def test_classify_migration_governance_block_is_terminal_contract_failure(
+    site: str,
+    step: str,
+    reason: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        f"PHASE=ship-pr\nSTALL_TRACKING=true\nSTALL_STEP={step}\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(
+        "network timeout while collecting unrelated evidence\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+        "--bail-reason",
+        f"{site}: {config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER} {reason}",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=contract-failure" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=migration-governance-block" in out
+
+
+def test_classify_migration_governance_text_in_evidence_does_not_override_raw_reason(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=ci-initial\nSTALL_TRACKING=true\nSTALL_STEP=8\nBAIL_REASON=\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(
+        "quoted prior output: pre-pr: "
+        f"{config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER} stale-plan-base-scope\n"
+        "network timeout while contacting github\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step8-shippr" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=transient-output" in out
 
 
 def test_classify_protected_path_modification_required(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
