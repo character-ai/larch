@@ -584,9 +584,10 @@ latest_stable_version() {
     local version=""
     command -v gh >/dev/null 2>&1 || die "required tool is missing: gh"
     gh api --help >/dev/null 2>&1 || die "GitHub CLI is too old: gh api is required"
+    # This repository exceeds GitHub's 1,000-result pagination ceiling. The
+    # dedicated endpoint is bounded and excludes drafts and prereleases.
     version="$(
-        gh api --paginate "repos/$RELEASE_REPO/releases" \
-            --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' |
+        gh api "repos/$RELEASE_REPO/releases/latest" --jq '.tag_name' |
             awk '{ sub(/^v/, ""); if (found == "" && $0 ~ /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) found = $0 } END { if (found != "") print found }'
     )"
     [ -n "$version" ] || die "GitHub returned no valid stable larch release tags"

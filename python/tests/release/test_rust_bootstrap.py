@@ -192,11 +192,15 @@ if [ "$1:$2" = "api:--help" ]; then
   exit 0
 fi
 if [ "$1" = api ] && [ "$2" = --paginate ]; then
-  printf '%s\n' "v$TEST_VERSION"
-  exit 0
+  printf '%s\\n' 'gh: Only the first 1000 results are available. (HTTP 422)' >&2
+  exit 1
 fi
 if [ "$1" = api ]; then
   case "$2" in
+    */releases/latest)
+      printf 'latest-api:%s\\n' "$*" >> "$GH_LOG"
+      printf '%s\\n' "v$TEST_VERSION"
+      ;;
     */git/ref/heads/*) printf '%s\\n' "${TEST_PIN_COMMIT:-$TEST_SOURCE_COMMIT}" ;;
     *) printf '%s\\n' "$TEST_SOURCE_COMMIT" ;;
   esac
@@ -505,13 +509,19 @@ def test_symlink_ancestor_plugin_data_fails_preflight_closed(tmp_path: Path) -> 
     assert not (fixture.root / "bin").exists()
 
 
-def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path) -> None:
+def test_latest_stable_version_uses_one_bounded_latest_release_request(
+    tmp_path: Path,
+) -> None:
+    """The latest endpoint avoids GitHub's 1,000-item pagination ceiling."""
     fixture = _fixture(tmp_path)
 
     result = _run(fixture, "--latest-stable-version")
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == f"LARCH_STABLE_VERSION={VERSION}\n"
+    assert fixture.log.read_text(encoding="utf-8") == (
+        "latest-api:api repos/character-ai/larch/releases/latest --jq .tag_name\n"
+    )
 
 
 @pytest.mark.parametrize(
