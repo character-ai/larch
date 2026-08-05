@@ -39,7 +39,7 @@ def pack(
     Parameters
     ----------
     medians:
-        ``{target: median_seconds}`` from ``harness_ci_timing.compute_medians``.
+        ``{target: median_seconds}`` from ``larch ci-timing harness``.
     n_shards:
         Number of output shards (must be ≥ 1).
     guard:

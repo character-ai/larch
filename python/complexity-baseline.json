@@ -1,13 +1,5 @@
 [
   {
-    "file": "ci_timing_fetch.py",
-    "code": "PLR0913",
-    "qualified_symbol": "fetch_parsed_timing_rows",
-    "metric": 6,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/agents/_auth.py",
     "code": "C901",
     "qualified_symbol": "_run_cursor_probes",

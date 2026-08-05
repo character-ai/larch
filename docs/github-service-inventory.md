@@ -46,7 +46,7 @@ cutover without pretending that an executable atomic leaf is already assigned.
 <!-- github-service-ownership:start -->
 ```text
 operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
-actions	crates/larch-adapters/src/github_actions.rs	rust	#7676	complete	complete	complete	gh run-logs,gh workflow-path
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing pytest,gh run-logs,gh workflow-path
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
 comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify *,issue *,tracking-issue *
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	deps *
@@ -75,12 +75,12 @@ incomplete, so a partial cutover cannot land.
 
 ## Completed shared cutovers
 
-`gh remote-repo`, `gh resolve-repo` (#7764) and `gh run-logs`, `gh workflow-path`
-(#7765) have Rust parity, consumer cutover, and Python removal complete. No
-Python registration or superseded command implementation remains for them. Their
-callers now invoke the larch `gh` subcommand through `scripts/larch.sh`; that
-larch subcommand is native repository and run-log resolution, not a GitHub CLI
-shell-out.
+`gh remote-repo`, `gh resolve-repo` (#7764), `gh run-logs`, `gh workflow-path`
+(#7765), and `ci-timing harness`, `ci-timing jobs`, `ci-timing pytest` (#8098)
+have Rust parity, consumer cutover, and Python removal complete. No Python
+registration or superseded command implementation remains for them. Their
+callers enter the single larch executable through `scripts/larch.sh`; the
+subcommands use typed Rust adapters rather than GitHub CLI API shell-outs.
 
 ## CLI independence and the bootstrap exception
 

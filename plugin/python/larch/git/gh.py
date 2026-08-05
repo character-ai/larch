@@ -16,7 +16,6 @@ import re
 import tempfile
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Final, Protocol, cast
 from dataclasses import dataclass
 from pathlib import Path
@@ -1271,86 +1270,6 @@ def failed_jobs(
     if result.returncode != 0:
         _raise_read_failure(result)
     return parse_failed_jobs_json(result.stdout)
-
-
-_HARNESS_JOB_NAME_RE = re.compile(r"^test-harnesses \((\d+)\)$")
-
-
-def _job_wall_clock_seconds(*, started: object, completed: object) -> float | None:
-    """Return ``completed - started`` in seconds, or None when unusable.
-
-    Non-string stamps, unparseable timestamps, and non-positive deltas (a
-    not-yet-completed job reports a zero-value ``completedAt``) all yield None
-    so the caller skips that job rather than recording a bogus duration.
-    ``datetime.fromisoformat`` parses the trailing ``Z`` natively on Python 3.11+
-    (this repo's floor), so no offset normalization is needed.
-    """
-    if not isinstance(started, str) or not isinstance(completed, str):
-        return None
-    try:
-        start = datetime.fromisoformat(started)
-        end = datetime.fromisoformat(completed)
-    except ValueError:
-        return None
-    seconds = (end - start).total_seconds()
-    return seconds if seconds > 0 else None
-
-
-def parse_job_durations_json(stdout: str) -> dict[int, float]:
-    """Parse ``{shard: wall_clock_seconds}`` from a ``gh run view --json jobs`` payload.
-
-    Keys are the shard index parsed from ``test-harnesses (N)`` job names; values
-    are ``completedAt - startedAt`` in seconds. Jobs whose name does not match the
-    matrix pattern, or that lack usable timestamps, are skipped. Accepts the
-    camelCase stamps emitted by ``gh run view --json jobs`` and the snake_case
-    stamps from the raw ``/jobs`` REST payload.
-    """
-    payload = _as_json_object(
-        _loads_json(stdout, context="job durations"),
-        context="job durations",
-    )
-    jobs_raw = payload.get("jobs", [])
-    if not isinstance(jobs_raw, list):
-        msg = "gh JSON missing required keys ['jobs'] (job durations)"
-        raise ShipError(msg)
-    jobs = cast("list[object]", jobs_raw)
-    durations: dict[int, float] = {}
-    for job_obj in jobs:
-        if not isinstance(job_obj, dict):
-            continue
-        job = cast("dict[str, object]", job_obj)
-        name = job.get("name")
-        if not isinstance(name, str):
-            continue
-        name_match = _HARNESS_JOB_NAME_RE.match(name)
-        if name_match is None:
-            continue
-        started = job.get("startedAt") or job.get("started_at")
-        completed = job.get("completedAt") or job.get("completed_at")
-        seconds = _job_wall_clock_seconds(started=started, completed=completed)
-        if seconds is None:
-            continue
-        durations[int(name_match.group(1))] = seconds
-    return durations
-
-
-def job_durations(
-    runner: Runner,
-    run_id: int,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> dict[int, float]:
-    """Return ``{shard: wall_clock_seconds}`` for ``test-harnesses (N)`` jobs.
-
-    Reuses the ``gh run view --json jobs`` read behind ``failed_jobs_read`` and
-    derives each shard's real CI wall-clock from its ``startedAt``/``completedAt``
-    stamps. Raises ``ShipError`` / ``TransientNetworkError`` on a failed read.
-    """
-    result = failed_jobs_read(runner, run_id, repo=repo, cwd=cwd)
-    if result.returncode != 0:
-        _raise_read_failure(result)
-    return parse_job_durations_json(result.stdout)
 
 
 def run_rerun(

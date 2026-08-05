@@ -21,7 +21,7 @@ or incomplete timing data or spread above the configured threshold.
 |------|---------|-------------|
 | `--kind` | `all` | Selected leg: `harness`, `python`, or `all`. |
 | `--repo` | auto-detected | `owner/name` for GitHub CLI calls. |
-| `--n-runs` | `5` | Number of baseline CI runs to sample. |
+| `--n-runs` | `5` | Number of baseline CI runs to sample, from 1 through 20. |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch name. |
 | `--n-verify-runs` | `3` | Number of verification CI runs to trigger. |
 | `--n-python-shards` | `4` | Expected `python-tests` matrix shard count. |
@@ -35,9 +35,12 @@ or incomplete timing data or spread above the configured threshold.
 ### Harness leg
 
 When `--kind harness` or `--kind all` is selected, the script fetches baseline
-`LARCH_HARNESS_TIMING` rows, computes medians, and runs the `untimed_targets`
-hard gate. Empty harness rows or any untimed target abort non-zero before any
-write. The selected workload is packed in memory only:
+`LARCH_HARNESS_TIMING` data through `larch ci-timing harness`. The Rust command
+uses the typed Actions adapter, parses workflow archives, computes medians and
+shard totals, and identifies untimed targets. The script validates the exact
+schema-v1 field order before running the `untimed_targets` hard gate. Empty
+harness rows or any untimed target abort non-zero before any write. The
+selected workload is packed in memory only:
 
 ```python
 measured = _select_packed_workload(medians, all_shard_targets)
@@ -51,12 +54,12 @@ The feasibility check is warning-only. It runs on packed shard totals after
 ### Python leg
 
 When `--kind python` or `--kind all` is selected, the script fetches recent
-successful `ci.yaml` logs, parses `python-tests` `call` duration rows, and
-aborts non-zero on zero parseable rows. It dedupes retried shard attempts via
-`rows_latest_attempt_per_shard` before `compute_medians`. It validates
-`--n-python-shards` against `observed_shard_count`, preferring parsed `shard X
-of N` totals and aborting on conflicts or mismatch. Nodeids are LPT-packed into
-shard ids `1..n` in memory only.
+successful `ci.yaml` timing through `larch ci-timing pytest` and validates its
+exact schema-v1 field order. Rust parses `python-tests` `call` rows, dedupes
+retried shard attempts, computes nodeid and shard medians, and reports the
+observed shard count. The script aborts on zero rows, conflicting or mismatched
+shard counts, or empty medians. Nodeids are LPT-packed into shard ids `1..n` in
+memory only.
 
 ### Artifact cleanliness
 
@@ -94,8 +97,8 @@ non-zero exit.
 ## Edit in sync
 
 Keep this file aligned with `.claude/skills/rebalance-tests/SKILL.md`,
-`python/ci_timing_fetch.py`, `python/harness_ci_timing.py`,
-`python/pytest_ci_timing.py`, `python/pytest_sharding.py`, `python/conftest.py`,
-`python/test_rebalance_script.py`, `python/test_pytest_ci_timing.py`,
-`python/test_pytest_sharding.py`, and `python/test_ci_timing_fetch.py` whenever
-`rebalance.py` behavior, flags, or output contracts change.
+`crates/larch-core/src/ci_timing.rs`, `crates/larch-cli/src/ci_timing.rs`,
+`python/pytest_sharding.py`, `python/conftest.py`,
+`python/tests/test_rebalance_script.py`, and
+`python/tests/test_pytest_sharding.py` whenever `rebalance.py` behavior, flags,
+or output contracts change.
