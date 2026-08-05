@@ -152,20 +152,20 @@ fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
 
 #[derive(Debug)]
 struct PythonSymbols {
-    sink_names: BTreeSet<String>,
-    breadcrumb_writer_names: BTreeSet<String>,
-    logging_util_names: BTreeSet<String>,
+    sinks: BTreeSet<String>,
+    breadcrumb_writers: BTreeSet<String>,
+    logging_utils: BTreeSet<String>,
 }
 
 impl Default for PythonSymbols {
     fn default() -> Self {
         Self {
-            sink_names: PYTHON_NAME_SINKS.into_iter().map(str::to_owned).collect(),
-            breadcrumb_writer_names: ["BreadcrumbWriter", "breadcrumb_writer", "writer"]
+            sinks: PYTHON_NAME_SINKS.into_iter().map(str::to_owned).collect(),
+            breadcrumb_writers: ["BreadcrumbWriter", "breadcrumb_writer", "writer"]
                 .into_iter()
                 .map(str::to_owned)
                 .collect(),
-            logging_util_names: ["logging_util"].into_iter().map(str::to_owned).collect(),
+            logging_utils: BTreeSet::from([String::from("logging_util")]),
         }
     }
 }
@@ -180,7 +180,7 @@ fn collect_python_imports(node: Node<'_>, source: &str, symbols: &mut PythonSymb
                         [_, "as", alias] => *alias,
                         _ => "logging_util",
                     };
-                    symbols.logging_util_names.insert(name.to_owned());
+                    symbols.logging_utils.insert(name.to_owned());
                 }
             }
         }
@@ -218,13 +218,13 @@ fn record_python_from_import(statement: &str, symbols: &mut PythonSymbols) {
         };
         match module {
             "larch.core" if imported == "logging_util" => {
-                symbols.logging_util_names.insert(local.to_owned());
+                symbols.logging_utils.insert(local.to_owned());
             }
             "larch.core.logging_util" if LOGGING_UTIL_SINKS.contains(&imported) => {
-                symbols.sink_names.insert(local.to_owned());
+                symbols.sinks.insert(local.to_owned());
             }
             "larch.core.logging_util" if imported == "BreadcrumbWriter" => {
-                symbols.breadcrumb_writer_names.insert(local.to_owned());
+                symbols.breadcrumb_writers.insert(local.to_owned());
             }
             _ => {}
         }
@@ -251,14 +251,14 @@ fn propagate_python_assignments(node: Node<'_>, source: &str, symbols: &mut Pyth
             }
             if python_breadcrumb_constructor(right, source, symbols)
                 || symbols
-                    .breadcrumb_writer_names
+                    .breadcrumb_writers
                     .contains(node_text(right, source).trim())
             {
-                changed |= extend_names(&mut symbols.breadcrumb_writer_names, targets.iter());
+                changed |= extend_names(&mut symbols.breadcrumb_writers, targets.iter());
             } else if python_logging_sink_reference(right, source, symbols)
-                || symbols.sink_names.contains(node_text(right, source).trim())
+                || symbols.sinks.contains(node_text(right, source).trim())
             {
-                changed |= extend_names(&mut symbols.sink_names, targets.iter());
+                changed |= extend_names(&mut symbols.sinks, targets.iter());
             }
         }
     }
@@ -314,7 +314,7 @@ fn python_call_is_output_sink(call: Node<'_>, source: &str, symbols: &PythonSymb
         return false;
     };
     let text = node_text(function, source).trim();
-    if symbols.sink_names.contains(text) {
+    if symbols.sinks.contains(text) {
         return true;
     }
     if matches!(text, "sys.stdout.write" | "sys.stderr.write") {
@@ -324,13 +324,13 @@ fn python_call_is_output_sink(call: Node<'_>, source: &str, symbols: &PythonSymb
         return false;
     };
     (method == "emit" && python_breadcrumb_receiver(receiver, symbols))
-        || (LOGGING_UTIL_SINKS.contains(&method) && symbols.logging_util_names.contains(receiver))
+        || (LOGGING_UTIL_SINKS.contains(&method) && symbols.logging_utils.contains(receiver))
 }
 
 fn python_logging_sink_reference(node: Node<'_>, source: &str, symbols: &PythonSymbols) -> bool {
     let text = node_text(node, source).trim();
     text.rsplit_once('.').is_some_and(|(module, name)| {
-        symbols.logging_util_names.contains(module) && LOGGING_UTIL_SINKS.contains(&name)
+        symbols.logging_utils.contains(module) && LOGGING_UTIL_SINKS.contains(&name)
     })
 }
 
@@ -345,14 +345,14 @@ fn python_breadcrumb_constructor(node: Node<'_>, source: &str, symbols: &PythonS
 }
 
 fn python_breadcrumb_constructor_text(text: &str, symbols: &PythonSymbols) -> bool {
-    symbols.breadcrumb_writer_names.contains(text)
+    symbols.breadcrumb_writers.contains(text)
         || text.rsplit_once('.').is_some_and(|(module, name)| {
-            name == "BreadcrumbWriter" && symbols.logging_util_names.contains(module)
+            name == "BreadcrumbWriter" && symbols.logging_utils.contains(module)
         })
 }
 
 fn python_breadcrumb_receiver(receiver: &str, symbols: &PythonSymbols) -> bool {
-    if symbols.breadcrumb_writer_names.contains(receiver) {
+    if symbols.breadcrumb_writers.contains(receiver) {
         return true;
     }
     if let Some(constructor) = receiver.strip_suffix(')') {

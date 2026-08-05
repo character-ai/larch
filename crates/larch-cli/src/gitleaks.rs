@@ -82,7 +82,7 @@ trait ReleaseAssetDownloader: Send + Sync {
 
 impl ReleaseAssetDownloader for PublicReleaseDownloader {
     fn download<'a>(&'a self, asset: &'a PublicReleaseAsset) -> DownloadFuture<'a> {
-        Box::pin(PublicReleaseDownloader::download(self, asset))
+        Box::pin(Self::download(self, asset))
     }
 }
 
@@ -201,13 +201,16 @@ fn repository_root(value: Option<&Path>) -> Result<PathBuf, Failure> {
     let current = env::current_dir().map_err(|error| {
         Failure::configuration(format!("cannot resolve current directory: {error}"))
     })?;
-    let candidate = value.map_or(current.clone(), |path| {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            current.join(path)
-        }
-    });
+    let candidate = value.map_or_else(
+        || current.clone(),
+        |path| {
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                current.join(path)
+            }
+        },
+    );
     fs::canonicalize(&candidate).map_err(|error| {
         Failure::configuration(format!("cannot resolve gitleaks repository root: {error}"))
     })
@@ -524,7 +527,7 @@ fn sha256_file(path: &Path) -> Result<String, Failure> {
         Failure::preparation(format!("cannot read cached gitleaks binary: {error}"))
     })?;
     let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let read = file.read(&mut buffer).map_err(|error| {
             Failure::preparation(format!("cannot read cached gitleaks binary: {error}"))
@@ -910,20 +913,23 @@ mod tests {
             ))
             .expect("run scanner");
         assert_eq!(output.stdout(), format!("{VERSION}\n").as_bytes());
-        let requests = runner.requests.lock().expect("requests");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(
-            requests[0].program(),
-            &ExternalProgram::Scanner(ScannerProgram::Gitleaks)
-        );
-        assert_eq!(requests[0].arguments(), &[OsString::from("version")]);
-        assert_eq!(
-            requests[0].environment(),
-            &[(
-                ChildEnvironment::Path,
-                OsString::from("/tmp/gitleaks-cache")
-            )]
-        );
+        {
+            let requests = runner.requests.lock().expect("requests");
+            assert_eq!(requests.len(), 1);
+            assert_eq!(
+                requests[0].program(),
+                &ExternalProgram::Scanner(ScannerProgram::Gitleaks)
+            );
+            assert_eq!(requests[0].arguments(), &[OsString::from("version")]);
+            assert_eq!(
+                requests[0].environment(),
+                &[(
+                    ChildEnvironment::Path,
+                    OsString::from("/tmp/gitleaks-cache")
+                )]
+            );
+            drop(requests);
+        }
     }
 
     #[test]
@@ -954,23 +960,26 @@ mod tests {
             ))
             .expect("scan result");
         assert_eq!(exit, ExitCode::from(1));
-        let requests = runner.requests.lock().expect("requests");
-        assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].arguments(), &[OsString::from("version")]);
-        assert_eq!(
-            requests[1].arguments(),
-            &[
-                OsString::from("detect"),
-                OsString::from("--source"),
-                OsString::from("."),
-                OsString::from("--config"),
-                repository.join(".gitleaks.toml").into_os_string(),
-                OsString::from("--redact"),
-                OsString::from("--no-banner"),
-                OsString::from("--log-opts"),
-                OsString::from("base..HEAD"),
-            ]
-        );
+        {
+            let requests = runner.requests.lock().expect("requests");
+            assert_eq!(requests.len(), 2);
+            assert_eq!(requests[0].arguments(), &[OsString::from("version")]);
+            assert_eq!(
+                requests[1].arguments(),
+                &[
+                    OsString::from("detect"),
+                    OsString::from("--source"),
+                    OsString::from("."),
+                    OsString::from("--config"),
+                    repository.join(".gitleaks.toml").into_os_string(),
+                    OsString::from("--redact"),
+                    OsString::from("--no-banner"),
+                    OsString::from("--log-opts"),
+                    OsString::from("base..HEAD"),
+                ]
+            );
+            drop(requests);
+        }
     }
 
     #[test]

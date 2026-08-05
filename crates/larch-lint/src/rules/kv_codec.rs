@@ -200,27 +200,35 @@ fn collect_python_findings(
     emitter_guarded: bool,
     pending: &mut BTreeSet<(usize, ViolationKind)>,
 ) {
-    collect_python_findings_inner(
-        node,
-        source,
+    let options = PythonScanOptions {
         scan_readers,
         scan_emitter_definition,
         emitter_guarded,
+    };
+    collect_python_findings_inner(
+        node,
+        source,
+        options,
         false,
         pending,
     );
 }
 
-fn collect_python_findings_inner(
-    node: Node<'_>,
-    source: &str,
+#[derive(Clone, Copy)]
+struct PythonScanOptions {
     scan_readers: bool,
     scan_emitter_definition: bool,
     emitter_guarded: bool,
+}
+
+fn collect_python_findings_inner(
+    node: Node<'_>,
+    source: &str,
+    options: PythonScanOptions,
     within_reader_loop: bool,
     pending: &mut BTreeSet<(usize, ViolationKind)>,
 ) {
-    if scan_emitter_definition
+    if options.scan_emitter_definition
         && node.kind() == "function_definition"
         && node
             .child_by_field_name("name")
@@ -229,10 +237,10 @@ fn collect_python_findings_inner(
         pending.insert((node.start_position().row + 1, ViolationKind::EmitterDef));
     }
     if node.kind() == "call" {
-        if scan_readers && within_reader_loop && python_is_equals_split(node, source) {
+        if options.scan_readers && within_reader_loop && python_is_equals_split(node, source) {
             pending.insert((node.start_position().row + 1, ViolationKind::Split));
         }
-        if emitter_guarded && python_is_kv_print(node, source) {
+        if options.emitter_guarded && python_is_kv_print(node, source) {
             pending.insert((node.start_position().row + 1, ViolationKind::PrintWrapper));
         }
     }
@@ -242,9 +250,7 @@ fn collect_python_findings_inner(
         collect_python_findings_inner(
             child,
             source,
-            scan_readers,
-            scan_emitter_definition,
-            emitter_guarded,
+            options,
             loop_scope,
             pending,
         );
@@ -274,7 +280,11 @@ fn python_is_equals_split(call: Node<'_>, source: &str) -> bool {
     let Some(function) = call.child_by_field_name("function") else {
         return false;
     };
-    if !node_text(function, source).trim_end().ends_with(".split") {
+    if node_text(function, source)
+        .trim_end()
+        .rsplit_once('.')
+        .is_none_or(|(_, method)| method != "split")
+    {
         return false;
     }
     let Some(arguments) = call.child_by_field_name("arguments") else {

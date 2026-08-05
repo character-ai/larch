@@ -395,15 +395,12 @@ fn check_owner(
 ) -> Result<Vec<Finding>, LintError> {
     let path = repository.root().join(relative);
     let display = relative.to_string_lossy();
-    let metadata = match fs::symlink_metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(_) => {
-            return Ok(vec![Finding::new(
-                OWNERSHIP_REGISTRY,
-                1,
-                format!("{skill} {role} owner is missing or unsafe: {display}"),
-            )]);
-        }
+    let Ok(metadata) = fs::symlink_metadata(&path) else {
+        return Ok(vec![Finding::new(
+            OWNERSHIP_REGISTRY,
+            1,
+            format!("{skill} {role} owner is missing or unsafe: {display}"),
+        )]);
     };
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Ok(vec![Finding::new(
@@ -446,7 +443,7 @@ fn check_publishers(repository: &Repository, prompts: &[Prompt]) -> Result<Vec<F
         }
     }
     for path in repository.paths().iter().filter(|path| {
-        path.as_str().starts_with("python/larch/") && path.as_str().ends_with(".py")
+        path.as_str().starts_with("python/larch/") && path.as_str().strip_suffix(".py").is_some()
     }) {
         if PYTHON_PUBLISHER_ALLOWLIST.contains(&path.as_str()) {
             continue;

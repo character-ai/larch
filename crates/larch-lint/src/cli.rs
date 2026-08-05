@@ -23,14 +23,26 @@ pub struct LintArguments {
 }
 
 impl LintArguments {
-    /// Borrow the Gitleaks request when this invocation owns the scanner.
+    /// Split out a Gitleaks request without losing other lint invocations.
     #[must_use]
-    pub fn gitleaks_arguments(&self) -> Option<&GitleaksArguments> {
-        match &self.command {
-            Command::Gitleaks(arguments) => Some(arguments),
-            Command::All | Command::Rule { .. } | Command::Rules | Command::Registry(_) => None,
+    pub fn into_dispatch(self) -> LintDispatch {
+        match self {
+            Self {
+                command: Command::Gitleaks(arguments),
+                ..
+            } => LintDispatch::Gitleaks(arguments),
+            arguments => LintDispatch::Native(arguments),
         }
     }
+}
+
+/// A lint command split between the Rust-native scanner and rule engine.
+#[derive(Debug)]
+pub enum LintDispatch {
+    /// Invoke the Gitleaks scanner owned by the CLI binary.
+    Gitleaks(GitleaksArguments),
+    /// Invoke a regular repository lint rule.
+    Native(LintArguments),
 }
 
 /// Arguments for the checksum-pinned Gitleaks scanner.
@@ -53,7 +65,7 @@ pub struct GitleaksArguments {
 impl GitleaksArguments {
     /// Build a scanner request for an embedding caller or focused test.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         mode: GitleaksMode,
         log_opts: Option<String>,
         repo_root: Option<PathBuf>,

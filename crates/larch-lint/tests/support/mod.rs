@@ -163,15 +163,7 @@ fn seed_tracked_tree(repository: &TempRepo) {
         "skills/shared/topology-authority.md",
         b"fixture authority\n",
     );
-    repository.write(
-        "skills/shared/run-lifecycle.md",
-        b"lifecycle-start lifecycle-finalize lifecycle-failure lifecycle-cancel lifecycle-early-return\n",
-    );
-    repository.write(
-        "skills/shared/run-lifecycle-ownership.tsv",
-        b"skill\tstart_owner\tterminal_owner\tno_archive_exception\n*\tskills/shared/run-lifecycle.md\tskills/shared/run-lifecycle.md\t-\n",
-    );
-    repository.write(".claude/skills/.keep", b"fixture\n");
+    seed_skill_run_lifecycle_fixture(repository);
     repository.write(
         "README.md",
         b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n</table>\n",
@@ -221,6 +213,18 @@ fn seed_tracked_tree(repository: &TempRepo) {
             b"**MANDATORY: READ ENTIRE FILE before composing fixture text: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**\n`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`\n",
         );
     }
+}
+
+fn seed_skill_run_lifecycle_fixture(repository: &TempRepo) {
+    repository.write(
+        "skills/shared/run-lifecycle.md",
+        b"lifecycle-start lifecycle-finalize lifecycle-failure lifecycle-cancel lifecycle-early-return\n",
+    );
+    repository.write(
+        "skills/shared/run-lifecycle-ownership.tsv",
+        b"skill\tstart_owner\tterminal_owner\tno_archive_exception\n*\tskills/shared/run-lifecycle.md\tskills/shared/run-lifecycle.md\t-\n",
+    );
+    repository.write(".claude/skills/.keep", b"fixture\n");
     for (skill, path) in [
         ("review", "skills/review/SKILL.md"),
         ("design", "skills/design/SKILL.md"),
@@ -233,12 +237,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
             .as_bytes(),
         );
     }
-    for path in ["python/larch/rendering/rendering.py"] {
-        repository.write(
-            path,
-            b"code-quality / risk-integration / correctness / architecture / security\n",
-        );
-    }
+    repository.write(
+        "python/larch/rendering/rendering.py",
+        b"code-quality / risk-integration / correctness / architecture / security\n",
+    );
 }
 
 fn copy_tree(repository: &TempRepo, source_dir: &Path, destination_prefix: &str) {
