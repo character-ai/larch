@@ -52,11 +52,11 @@ Before adding or materially expanding behavior, run a targeted repository search
 
 ## Runtime type validation
 
-Follow G-Py-11: every lint or type suppression needs an inline reason. Use `# type: ignore[code]  # reason`, `# noqa: CODE - reason`, or `# pylint: disable=check  # reason`; bare suppressions fail architectural review.
+Follow G-Py-11: every lint or type suppression needs an inline reason. Use `# type: ignore[code]  # reason`, `# noqa: CODE - reason`, or `# pyright: ignore[rule]  # reason`; bare suppressions fail architectural review.
 
 Treat a declared type as the contract for internal values. Do not add a runtime type check after a type annotation and surrounding guards already narrow the value; remove the check instead. Add validation only at an untyped or untrusted boundary where it enforces a runtime property the annotation alone cannot.
 
-When exact-type validation is genuinely required, such as rejecting `bool` or subclasses for an `int` input, use `type(value) is not int` with `# pylint: disable=unidiomatic-typecheck  # exact runtime type rejects bool and subclasses`. When `isinstance()` remains necessary at a dynamic boundary but pyright cannot see that boundary, use `# type: ignore[reportUnnecessaryIsInstance]  # runtime value originates outside the typed boundary`. Do not add both suppressions or suppress a check that can be omitted. See `docs/linting.md#runtime-type-validation` before introducing either form.
+When exact-type validation is genuinely required, such as rejecting `bool` or subclasses for an `int` input, use `type(value) is not int` with `# exact runtime type rejects bool and subclasses`. When `isinstance()` remains necessary at a dynamic boundary but Pyright cannot see that boundary, use `# type: ignore[reportUnnecessaryIsInstance]  # runtime value originates outside the typed boundary`. Do not suppress a check that can be omitted. See `docs/linting.md#runtime-type-validation` before introducing a suppression.
 
 ## Hard guards
 

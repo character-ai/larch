@@ -1825,7 +1825,7 @@ def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatc
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return ok(tuple(argv), " M python/markdown-heading-fence-state-baseline.json\n")
+            return ok(tuple(argv), " M python/ruff.toml\n")
         committed_calls.append(argv)
         return ok(tuple(argv))
 

@@ -1545,14 +1545,6 @@ def test_run_lint_fix_records_exception_timing(
     assert call[call.index("--status") + 1] == "complete"
 
 
-def _assert_complexity_fast_fail(outcome: checks.FixOutcome, log: Path) -> None:
-    assert outcome.status == "main-agent-required"
-    assert outcome.failure_reason == "complexity-baseline-regression"
-    assert outcome.ledger_ready is True
-    assert outcome.ledger_dispatcher == "lint-fix-loop"
-    assert outcome.ledger_exit_code == 1
-    assert outcome.ledger_failure_detail_log == str(log.resolve())
-
 
 def _assert_structural_fast_fail(outcome: checks.FixOutcome, log: Path) -> None:
     assert outcome.status == "main-agent-required"
@@ -1660,231 +1652,6 @@ def test_run_lint_fix_structural_ruff_human_block_fast_fail(
     assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
-def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
-        encoding="utf-8",
-    )
-    dispatch_calls: list[str] = []
-
-    def fail_claude(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("claude")
-        raise AssertionError("claude must not run")
-
-    def fail_codex(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("codex")
-        raise AssertionError("codex must not run")
-
-    def fail_cursor(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("cursor")
-        raise AssertionError("cursor must not run")
-
-    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
-    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
-    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
-    runner = StubRunner()
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=True,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    _assert_complexity_fast_fail(outcome, log)
-    assert not dispatch_calls
-    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
-
-
-def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "proc.py:run PLR0912 (new)\n",
-        encoding="utf-8",
-    )
-    dispatch_calls: list[str] = []
-
-    def fail_claude(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("claude")
-        raise AssertionError("claude must not run")
-
-    def fail_codex(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("codex")
-        raise AssertionError("codex must not run")
-
-    def fail_cursor(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("cursor")
-        raise AssertionError("cursor must not run")
-
-    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
-    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
-    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
-    runner = StubRunner()
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=True,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    _assert_complexity_fast_fail(outcome, log)
-    assert not dispatch_calls
-    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
-
-
-def test_run_lint_fix_complexity_baseline_plr0911_new_fast_fail(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "larch/git/gh.py:pr_checks_not_ready_detail PLR0911 (new)\n",
-        encoding="utf-8",
-    )
-    dispatch_calls = _install_lint_fix_dispatch_failures(monkeypatch)
-    runner = StubRunner()
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=True,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    _assert_complexity_fast_fail(outcome, log)
-    assert not dispatch_calls
-    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
-
-
-def test_run_lint_fix_complexity_baseline_plr0911_new_with_metric_fast_fail(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "larch/git/gh.py:pr_checks_not_ready_detail PLR0911 (new)\n"
-        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
-        encoding="utf-8",
-    )
-    dispatch_calls: list[str] = []
-
-    def fail_claude(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("claude")
-        raise AssertionError("claude must not run")
-
-    def fail_codex(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("codex")
-        raise AssertionError("codex must not run")
-
-    def fail_cursor(*_args: object, **_kwargs: object) -> int:
-        dispatch_calls.append("cursor")
-        raise AssertionError("cursor must not run")
-
-    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
-    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
-    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
-    runner = StubRunner()
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=True,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    _assert_complexity_fast_fail(outcome, log)
-    assert not dispatch_calls
-    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
-
-
-def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "lint-complexity-baseline: ruff exited 2: boom\n",
-        encoding="utf-8",
-    )
-    codex_calls: list[str] = []
-
-    def fail_codex(*_args: object, **_kwargs: object) -> int:
-        codex_calls.append("codex")
-        return 1
-
-    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
-    runner = StubRunner([
-        _ok(""),  # baseline tracked diff
-        _ok(""),  # baseline cached diff
-        _ok(""),  # baseline untracked status
-        _ok(""),  # baseline snapshot git diff --raw
-        _ok(""),  # baseline snapshot git diff --cached --raw
-        _ok("abc123\n"),  # rev-parse HEAD
-        _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach (prompt)
-        _ok(""),  # submodule foreach (forbidden paths)
-    ])
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=True,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    assert codex_calls == ["codex"]
-    assert outcome.status == "failed"
-    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
-    assert outcome.failure_reason != "complexity-baseline-regression"
-
 
 @pytest.mark.parametrize(
     "log_text",
@@ -1937,34 +1704,6 @@ def test_run_lint_fix_structural_false_positives_use_normal_fixer(
     assert outcome.status == "failed"
     assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
-
-def test_run_lint_fix_complexity_baseline_no_tools_fast_fail(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    log = tmp_path / "checks.log"
-    _ = log.write_text(
-        "python3 python/cli.py lint complexity-baseline\n"
-        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
-        encoding="utf-8",
-    )
-    runner = StubRunner()
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(repo),
-        claude_present=False,
-        codex_present=False,
-        cursor_present=False,
-        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
-        run_parent=_lint_fix_dirs(tmp_path)[1],
-    )
-
-    _assert_complexity_fast_fail(outcome, log)
-    assert outcome.failure_reason is not None
-    assert outcome.ledger_exit_code == 1
-    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
 def test_run_lint_fix_structural_ruff_no_tools_fast_fail(tmp_path: Path) -> None:
@@ -3953,7 +3692,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-build-test:", 1)[0]
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
-    lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  # Python duplicate-code", 1)[0]
+    lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
     lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
     lint_local_skip = lint_local.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
 
@@ -3979,7 +3718,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
         assert "cargo run" not in entry
     assert "contains-pins:" in workflow
     assert "python3 python/cli.py checks contains-pins" in workflow
-    assert "python-lint:" in workflow
+    assert "python-lint:" not in workflow
     assert "python-pyright:" in workflow
     assert "agent-lint:" in workflow
     assert "rust-lint:" in workflow
@@ -4005,6 +3744,8 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     ):
         assert hook in lint_skip
         assert hook in lint_local_skip
+    assert "ruff" in lint_skip
+    assert "ruff" not in lint_local_skip
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

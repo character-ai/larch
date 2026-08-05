@@ -31,7 +31,7 @@ env:
 
 jobs:
   # External-tool linters only: markdownlint, jsonlint, and actionlint.
-  # All local bash/python linters run in the parallel `lint-local` job.
+  # Local bash linters and Ruff run in the parallel `lint-local` job.
   # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in their dedicated jobs.
   # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
   # from this job's critical path. Test harnesses run in the separate
@@ -66,9 +66,9 @@ jobs:
       - name: Run pre-commit linters (external tools)
         # Runs markdownlint, jsonlint, and actionlint only.
         # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in dedicated jobs.
-        # `gitleaks` moved to the `gitleaks` job. Scoped ruff/pyright hooks
-        # are covered by the Python jobs. Local bash/python linters run in
-        # `lint-local`. If a dedicated job is removed, drop its hook
+        # `gitleaks` moved to the `gitleaks` job. Ruff runs in `lint-local`,
+        # and Pyright runs in its dedicated Python job. Local bash linters run
+        # in `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
           SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-retired-scripts
@@ -95,7 +95,7 @@ jobs:
             sleep 10
           done
 
-  # Local bash/python linters — split from `lint` into a parallel job so
+  # Local bash linters and Ruff — split from `lint` into a parallel job so
   # both halves run concurrently. Runs local hooks while `lint` runs the
   # external-tool hooks (markdownlint, jsonlint, agent-lint, actionlint).
   lint-local:
@@ -125,57 +125,15 @@ jobs:
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters (local)
-        # Runs only local bash/python linters. External tools (markdownlint,
+        # Runs local bash linters and Ruff. External tools (markdownlint,
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
-        # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright, and Rust
+        # (gitleaks, agnix, shellcheck, agent-lint, pyright, and Rust
         # hooks covered by rust-gate) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
-
-  # Python duplicate-code CI is disabled during the Rust migration. Keep the
-  # old jobs visible for reference. The Rust-native duplicate-code rule remains
-  # required through rust-lint.
-  # duplicate-code:
-  #   if: ${{ github.event_name == 'pull_request' }}
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #       with:
-  #         fetch-depth: 0
-  #     - uses: actions/setup-python@v6
-  #       with:
-  #         python-version: "3.11"
-  #         cache: pip
-  #         cache-dependency-path: python/requirements-dev.txt
-  #     - name: Install Python lint dependencies
-  #       env:
-  #         PIP_RETRIES: "5"
-  #         PIP_DEFAULT_TIMEOUT: "30"
-  #       run: pip install -r python/requirements-dev.txt
-  #     - name: Gate diff-introduced duplicate code
-  #       run: make py-lint-duplicate-code-diff
-
-  # duplicate-code-full:
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 25
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: actions/setup-python@v6
-  #       with:
-  #         python-version: "3.11"
-  #         cache: pip
-  #         cache-dependency-path: python/requirements-dev.txt
-  #     - name: Install Python lint dependencies
-  #       env:
-  #         PIP_RETRIES: "5"
-  #         PIP_DEFAULT_TIMEOUT: "30"
-  #       run: pip install -r python/requirements-dev.txt
-  #     - name: Run full pylint duplicate-code ratchet
-  #       run: make py-lint-duplicate-code
 
   # Dedicated shellcheck job — installs the pinned shellcheck-py==0.11.0.1
   # binary directly (no pre-commit overhead) and runs shellcheck -x in
@@ -715,55 +673,6 @@ jobs:
           version: 3.82.13
           path: ./
           extra_args: --only-verified
-
-  # pylint is ~90% of the Python lint wall time and CI already runs it with all
-  # cores, so the remaining lever is parallelism across runners. The matrix
-  # shards pylint by file basename (python/pylint_sharding.py); shard 1 also runs
-  # the ruff + AST ratchet checks once. Cut points are tuned for even
-  # per-shard wall time. python-lint-gate below is the stable required check, so
-  # the shard count can change without editing branch protection.
-  python-lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # CI forces all pylint workers; the Makefile sysconf fallback stays local.
-    env:
-      PYLINT_JOBS: "0"
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/
-          sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: python/requirements-dev.txt
-      - name: Install Python lint dependencies
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-dev.txt
-      - name: Run Python linters (shard ${{ matrix.shard }} of 3)
-        run: make py-lint-shard PYLINT_SHARD_ID=${{ matrix.shard }} PYLINT_SHARD_COUNT=3
-
-  # Aggregate gate for the python-lint matrix (see test-harnesses-gate for the
-  # rationale: one stable required check independent of shard count).
-  python-lint-gate:
-    name: python-lint-gate
-    needs: [python-lint]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require all python-lint shards to pass
-        run: |
-          result="${{ needs.python-lint.result }}"
-          [ "$result" = success ] || { echo "::error::python-lint result=$result"; exit 1; }
 
   python-pyright:
     runs-on: ubuntu-latest

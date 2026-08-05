@@ -1633,7 +1633,18 @@ def test_rerun_failed_submitted_and_already_running() -> None:
     ("name", "shard", "expected"),
     [
         ("lint", "", ("env", "SKIP=agnix,shellcheck", "make", "lint-only")),
-        ("python-lint", "", ("make", "py-lint-main")),
+        (
+            "lint-local",
+            "",
+            (
+                "env",
+                "SKIP=agnix,shellcheck,gitleaks,pyright,markdownlint,jsonlint,"
+                "agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,"
+                "check-topology-rule-paths,lint-retired-scripts",
+                "make",
+                "lint-only",
+            ),
+        ),
         ("python-pyright", "", ("make", "py-typecheck")),
         ("test-harnesses", "2", ("make", "test-harnesses-2")),
         ("unknown", "", None),
@@ -1647,24 +1658,32 @@ def test_per_job_command_table(
     assert ci_monitor.per_job_command(name=name, shard=shard) == expected
 
 
+def test_lint_local_replay_uses_ci_skip_contract() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
+    skip = lint_local.split("SKIP: ", 1)[1].split("\n", 1)[0]
+
+    assert ci_monitor.per_job_command(name="lint-local", shard="") == (
+        "env",
+        f"SKIP={skip}",
+        "make",
+        "lint-only",
+    )
+
+
 def test_verify_job_locally_rc() -> None:
     runner = RecordingRunner(
         {
-            ("make", "py-lint-main"): ok(("make", "py-lint-main")),
             ("make", "py-typecheck"): ok(("make", "py-typecheck")),
         },
     )
-    assert ci_monitor.verify_job_locally(runner=runner, name="python-lint", shard="", cwd="/tmp") is True
     assert ci_monitor.verify_job_locally(runner=runner, name="python-pyright", shard="", cwd="/tmp") is True
 
 
-def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], CommandResult]:
+def _python_toolchain_stubs(name: str = "python-pyright") -> dict[tuple[str, ...], CommandResult]:
     req_dev = str(REPO_ROOT / "python" / "requirements-dev.txt")
     tools_by_name = {
-        "python-lint": ("ruff", "pylint"),
         "python-pyright": ("pyright",),
-        "python-lint-duplicate-code": ("pylint",),
-        "duplicate-code-full": ("pylint",),
     }
     responses: dict[tuple[str, ...], CommandResult] = {
         ("python3", "-m", "pip", "install", "-q", "-r", req_dev): ok(("python3", "-m", "pip", "install")),
@@ -1677,10 +1696,7 @@ def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], 
 @pytest.mark.parametrize(
     ("name", "expected_tools"),
     [
-        ("python-lint", ("ruff", "pylint")),
         ("python-pyright", ("pyright",)),
-        ("python-lint-duplicate-code", ("pylint",)),
-        ("duplicate-code-full", ("pylint",)),
     ],
 )
 def test_prepare_python_toolchain_split_tools(
@@ -1728,7 +1744,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
     responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
     responses[("git", "push", "origin", "feature")] = ok(("git", "push"))
-    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
+    responses[("make", "py-typecheck")] = ok(("make", "py-typecheck"))
 
     runner = RecordingRunner(responses)
     # baseline captured before vendor runs (empty); vendor adds fixed.py; delta sees it
@@ -1744,7 +1760,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
     ]
 
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     logs = ci_monitor.LogCollectResult(text="log line\n", state="ready")
     fix = ci_monitor.run_ci_fix(
@@ -1773,7 +1789,7 @@ def test_stage_and_push_defer_rebase_uses_verified_rust_entrypoint(tmp_path: Any
         ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),
         ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
         _RUST_REBASE: ok(_RUST_REBASE),
-        ("make", "py-lint-main"): ok(("make", "py-lint-main")),
+        ("make", "py-typecheck"): ok(("make", "py-typecheck")),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remote\trefs/heads/feature\n"),
         ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
         ("git", "status", "--porcelain", "--untracked-files=all"): ok(("git", "status")),
@@ -1786,7 +1802,7 @@ def test_stage_and_push_defer_rebase_uses_verified_rust_entrypoint(tmp_path: Any
         ): ok(("git", "push")),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     runner = RecordingRunner(responses)
     pushed, _head, _delta, did_rebase, pending = ci_monitor.stage_and_push(
@@ -1815,7 +1831,7 @@ def test_stage_and_push_defer_rebase_preserves_rust_conflict_for_retry(tmp_path:
         _RUST_REBASE: _cr(_RUST_REBASE, rc=1, stdout="CONFLICT_FILES=fixed.py\n"),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     runner = RecordingRunner(responses)
 
@@ -1847,7 +1863,7 @@ def test_stage_and_push_defer_rebase_aborts_rust_failure(tmp_path: Any) -> None:
         _RUST_REBASE_ABORT: ok(_RUST_REBASE_ABORT),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     runner = RecordingRunner(responses)
 
@@ -1963,7 +1979,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "abc123\trefs/heads/feature\n"),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
     _ = run_log_manifest.init_run(ctx)
@@ -2025,7 +2041,7 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "abc123\trefs/heads/feature\n"),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
 
     def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_log_manifest.RefreshSkip:
@@ -2062,10 +2078,10 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
     responses = {
         ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
-        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 1),
+        ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 1),
     }
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -2130,7 +2146,7 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
     responses = {
         ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
-        ("make", "py-lint-main"): ok(("make", "py-lint-main")),
+        ("make", "py-typecheck"): ok(("make", "py-typecheck")),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remoteoid\trefs/heads/feature\n"),
         ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
         ("git", "status", "--porcelain", "--untracked-files=all"): ok(("git", "status")),
@@ -2145,7 +2161,7 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
         ci_fix_rebase_pending=True,
         context=ci_monitor.StagePushContext(
             classified=ci_monitor.classify_failed_jobs(
-                (FailedJob(name="python-lint", conclusion="failure"),),
+                (FailedJob(name="python-pyright", conclusion="failure"),),
             ),
         ),
     )
@@ -2159,14 +2175,14 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
     tmp_path: Any,
 ) -> None:
     monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     responses = {
         ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), "FAIL\n"),
         ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
         ("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs"): ok(("gh", "run", "view"), jobs_json),
         ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
-        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), rc=1),
+        ("make", "py-typecheck"): _cr(("make", "py-typecheck"), rc=1),
     }
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
@@ -2181,7 +2197,7 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
         ci_fix_rebase_pending=True,
     )
     assert fix.ci_fix_rebase_pending is False
-    assert ("make", "py-lint-main") in runner.calls
+    assert ("make", "py-typecheck") in runner.calls
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
@@ -2249,7 +2265,7 @@ def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
 
     responses = _baseline_responses(head)
     responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
-    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
+    responses[("make", "py-typecheck")] = ok(("make", "py-typecheck"))
     commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
     responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
@@ -2268,7 +2284,7 @@ def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
         ok(("git", "rev-parse", "HEAD"), f"{head}\n"),
     ]
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     logs = ci_monitor.LogCollectResult(text="", state="ready")
     fix = ci_monitor.run_ci_fix(
@@ -2296,10 +2312,10 @@ def test_run_ci_fix_non_pending_verify_case_fails_closed() -> None:
         )
 
     responses = _baseline_responses()
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 1)
+    responses[("make", "py-typecheck")] = _cr(("make", "py-typecheck"), 1)
     runner = RecordingRunner(responses)
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     fix = ci_monitor.run_ci_fix(
         runner,
@@ -2470,11 +2486,11 @@ def test_evaluate_failure_deterministic_no_rerun() -> None:
 
 @pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     responses = _baseline_responses()
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
+    responses[("make", "py-typecheck")] = _cr(("make", "py-typecheck"), rc=1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -2497,17 +2513,17 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     assert fix.status == "fix-exhausted"
     assert fix.detail is not None
     assert fix.detail.startswith("ci-fix-exhausted")
-    assert "python-lint" in fix.detail
+    assert "python-pyright" in fix.detail
     assert "FAIL test" in fix.detail
 
 
 @pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     responses = _baseline_responses()
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
+    responses[("make", "py-typecheck")] = _cr(("make", "py-typecheck"), rc=1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -2527,11 +2543,11 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_calls
-    assert ("make", "py-lint-main") in runner.calls
+    assert ("make", "py-typecheck") in runner.calls
     assert fix.status == "fix-exhausted"
     assert fix.detail is not None
     assert fix.detail.startswith("ci-fix-exhausted")
-    assert "python-lint" in fix.detail
+    assert "python-pyright" in fix.detail
     assert "FAIL test" in fix.detail
 
 
@@ -2571,7 +2587,7 @@ def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> 
 
 @pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     responses = _baseline_responses()
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
@@ -2655,11 +2671,11 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
         return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
 
     baseline_head = "deadbeef" * 5
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     responses = _baseline_responses(baseline_head)
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
-    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
+    responses[("make", "py-typecheck")] = ok(("make", "py-typecheck"))
     responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
     commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
@@ -2692,19 +2708,19 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     assert fix.status == "fix-exhausted"
     assert fix.detail is not None
     assert fix.detail.startswith("ci-fix-exhausted")
-    assert "python-lint" in fix.detail
+    assert "python-pyright" in fix.detail
     assert "FAIL test" in fix.detail
 
 
 @pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
     """fix-exhausted detail carries the failing job name and redacted log tail."""
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
     log_tail = "ruff check failed on foo.py:42\nE501 line too long in bar.py\n"
     responses = _baseline_responses()
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), log_tail)
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
+    responses[("make", "py-typecheck")] = _cr(("make", "py-typecheck"), rc=1)
 
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
@@ -2723,7 +2739,7 @@ def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
     # Stable reason token stays the prefix so a BAIL_REASON bridge survives.
     assert fix.detail.startswith("ci-fix-exhausted")
     # Failing job name is surfaced so the main agent knows what broke.
-    assert "python-lint" in fix.detail
+    assert "python-pyright" in fix.detail
     # Redacted CI log tail (with its run pointer) is surfaced, not just the token.
     assert "ruff check failed on foo.py:42" in fix.detail
     assert "E501 line too long in bar.py" in fix.detail
@@ -2919,14 +2935,14 @@ def test_run_ci_fix_non_pending_head_changed_fails_closed() -> None:
         return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
 
     responses = _baseline_responses()
-    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
+    responses[("make", "py-typecheck")] = ok(("make", "py-typecheck"))
     runner = RecordingRunner(responses)
     runner.sequential[("git", "rev-parse", "HEAD")] = [
         ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
         ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
     ]
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     fix = ci_monitor.run_ci_fix(
         runner,
@@ -2958,7 +2974,7 @@ def test_run_ci_fix_non_pending_short_circuit_fails_closed() -> None:
     responses = _baseline_responses()
     runner = RecordingRunner(responses)
     classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-lint", conclusion="failure"),),
+        (FailedJob(name="python-pyright", conclusion="failure"),),
     )
     fix = ci_monitor.run_ci_fix(
         runner,
@@ -2990,7 +3006,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
     baseline_head = "abcd" * 10
     new_head = "efgh" * 10
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    jobs_json = json.dumps({"jobs": [{"name": "python-pyright", "conclusion": "failure"}]})
 
     commit_script = "cli.py git commit"
     responses: dict[tuple[str, ...], CommandResult] = {
@@ -3026,10 +3042,10 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
         ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
     ]
-    # make py-lint-main: fail on attempt 1, pass on attempt 2
-    runner.sequential[("make", "py-lint-main")] = [
-        _cr(("make", "py-lint-main"), rc=1),
-        ok(("make", "py-lint-main")),
+    # make py-typecheck: fail on attempt 1, pass on attempt 2
+    runner.sequential[("make", "py-typecheck")] = [
+        _cr(("make", "py-typecheck"), rc=1),
+        ok(("make", "py-typecheck")),
     ]
 
     sleeps: list[float] = []

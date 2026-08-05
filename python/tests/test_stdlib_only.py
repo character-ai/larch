@@ -40,9 +40,7 @@ SIBLING_ROOTS = frozenset(
     {mod.split(".")[0] for mod in RUNTIME_MODULES} | {PACKAGE_NAME},
 )
 
-NON_STDLIB_ALLOWLIST: dict[str, frozenset[str]] = {
-    "larch.lint.duplicate_code": frozenset({"astroid", "pylint"}),
-}
+NON_STDLIB_ALLOWLIST: dict[str, frozenset[str]] = {}
 
 
 def _resolve_import(module_name: str, *, package: str | None) -> str:

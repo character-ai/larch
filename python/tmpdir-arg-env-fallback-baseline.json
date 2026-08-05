@@ -1,9 +1,0 @@
-[
-  {
-    "file": "larch/bgjob/cli.py",
-    "qualified_symbol": "_build_spec",
-    "pattern_name": "Path",
-    "occurrence": 1,
-    "reason": "_build_spec receives a value already normalized by start_main (explicit --tmpdir or IMPLEMENT_TMPDIR) and by _prepare_adapt_args / _adapt_tmpdir on the adapt path; keep the direct Path(args.tmpdir) conversion after those callers."
-  }
-]

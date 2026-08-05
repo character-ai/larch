@@ -70,6 +70,20 @@ fn clean_matching_ledger_passes() {
 }
 
 #[test]
+fn header_only_ledger_without_python_lint_targets_passes() {
+    let repository = TempRepo::new();
+    write_cli(&repository, &[]);
+    write_ledger(&repository, &[]);
+    repository.write(MAKEFILE, b"py-lint:\n\tcd python && ruff check .\n");
+    repository.commit_all();
+
+    run(&repository)
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
 fn fails_when_registered_verb_has_no_row() {
     let repository = TempRepo::new();
     write_cli(&repository, &["complexity-baseline", "keyword-only"]);

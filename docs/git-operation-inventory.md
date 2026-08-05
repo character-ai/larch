@@ -27,7 +27,6 @@ surface	owner	issue	operations
 .github/workflows/ci.yaml	later-domain	#7685	diff,merge-base,rev-parse
 .github/workflows/rust-release-assets.yaml	later-domain	#7685	rev-parse
 .pre-commit-config.yaml	later-domain	#7686	rev-parse
-Makefile	later-domain	#7685	merge-base
 agents/_implementer-base.md	later-domain	#7678	commit
 agents/claude-self-reviewer.md	later-domain	#7678	merge-base
 skills/implement/prompts/codex-implementer.md	later-domain	#7681	commit
@@ -81,10 +80,6 @@ python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7682	dynamic
 python/larch/issue/triage.py	later-domain	#7682	--version
-python/larch/lint/duplicate_code.py	later-domain	#7685	dynamic
-python/larch/lint/engine.py	later-domain	#7685	ls-files
-python/larch/lint/lint_common.py	later-domain	#7685	dynamic
-python/larch/lint/lint_git_push_refspec.py	later-domain	#7685	push
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base

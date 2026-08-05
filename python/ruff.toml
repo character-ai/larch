@@ -269,7 +269,7 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"larch/issue/_report.py" = [
+"**/larch/issue/_report.py" = [
     "C901",
     "PLR0912",
     "PLR0915",
@@ -560,9 +560,6 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0913",
-]
-"lint_unreachable_branch.py" = [
-    "F401",
 ]
 "merge.py" = [
     "C901",

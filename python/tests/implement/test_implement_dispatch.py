@@ -5185,13 +5185,13 @@ def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     impl = make_implement_tmpdir(tmp_path)
-    baseline = repo / "python" / "suppression-reason-baseline.json"
+    baseline = repo / "python" / "ruff.toml"
     baseline.parent.mkdir()
     baseline.write_text('{"reasons": []}\n', encoding="utf-8")
     unrelated = repo / "unrelated.txt"
     unrelated.write_text("base\n", encoding="utf-8")
     _git(repo, "add", str(baseline.relative_to(repo)), "unrelated.txt")
-    _git(repo, "commit", "-m", "add baselines")
+    _git(repo, "commit", "-m", "add lint config")
     baseline.write_text('{"reasons": ["lint-fix"]}\n', encoding="utf-8")
     unrelated.write_text("external change\n", encoding="utf-8")
     _ = self_edit_log.record_self_edits(
@@ -5217,7 +5217,7 @@ def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
     assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
     assert calls[0][-2] == str(impl / "step4-commit-paths.nul")
     assert (impl / "step4-commit-paths.nul").read_bytes() == (
-        b"README.md\0python/suppression-reason-baseline.json\0"
+        b"README.md\0python/ruff.toml\0"
     )
 
 
@@ -5226,11 +5226,11 @@ def test_step4_pathspec_excludes_stale_unallowlisted_self_edit(
     tmp_path: Path,
 ) -> None:
     impl = make_implement_tmpdir(tmp_path)
-    path = repo / "python" / "suppression-reason-baseline.json"
+    path = repo / "python" / "ruff.toml"
     path.parent.mkdir()
     path.write_text('{"revision": 0}\n', encoding="utf-8")
     _git(repo, "add", str(path.relative_to(repo)))
-    _git(repo, "commit", "-m", "add ordinary baseline")
+    _git(repo, "commit", "-m", "add ordinary lint config")
     path.write_text('{"revision": 1}\n', encoding="utf-8")
     _ = self_edit_log.record_self_edits(
         tmpdir=impl,

@@ -42,7 +42,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: thin CLI dispatch glue with nothing to test.
 
 ### G-Py-6: Pythonic judgment (PEP 20) is the scope; PEP 8 mechanics are not
-- Why: ruff, pylint, and pyright own the deterministic style layer.
+- Why: Ruff and Pyright own the deterministic style and type-checking layer.
 - Deviate when: an uncovered mechanical requirement needs a new lint rule.
 
 ### G-Py-7: Wrap external CLIs (git, gh) as typed functions over the injected Runner; read helpers raise ShipError, mutating helpers return CommandResult
@@ -62,11 +62,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: the function legitimately returns a default after the loop, and that default is intended.
 
 ### G-Py-11: Give every lint or type suppression an inline reason and the narrowest scope that works
-- Why: the reason lets a reviewer, and the `/design` and `/implement` assessments, tell a deliberate carve-out from a silenced defect. Use `# noqa: CODE - reason`, `# pylint: disable=check  # reason`, or `# type: ignore[code]  # reason`. This codebase annotates suppressions densely, so a bare one reads as unexplained debt.
+- Why: the reason lets a reviewer, and the `/design` and `/implement` assessments, tell a deliberate carve-out from a silenced defect. Use `# noqa: CODE - reason`, `# pyright: ignore[rule]  # reason`, or `# type: ignore[code]  # reason`. This codebase annotates suppressions densely, so a bare one reads as unexplained debt.
 - Deviate when: generated or vendored code cannot carry local suppressions; exclude that bounded surface with a reason.
 
 ### G-Py-12: Break an import cycle at the call site with a documented function-level import, not by collapsing the leaf/domain layering
-- Why: `larch.core` leaf modules must not import domain modules at top level; a local import with a `# lint-layering: ok <reason>` note keeps the graph acyclic without merging modules or hoisting logic to the wrong layer.
+- Why: `larch.core` leaf modules must not import domain modules at top level; a local import with a narrow `# noqa: PLC0415 - <reason>` keeps the graph acyclic without merging modules or hoisting logic to the wrong layer.
 - Deviate when: the cycle signals real mislayering; move the code to the correct module instead of importing through the seam.
 
 ### G-Py-13: Acquire every external resource through a context manager so cleanup runs on every path
@@ -85,7 +85,6 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Configuration and protocol literals
 
 ### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in config.py as a Final; build token sets from prior sets rather than re-listing
-- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only; exit codes, tunables, and other wire literals remain review-guided.
 - Why: one edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
 - Deviate when: a module-private constant used at one call site with no cross-module contract.
 

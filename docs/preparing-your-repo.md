@@ -190,7 +190,7 @@ own for your architecture.
 
 ### 5. Keep the always-loaded context lean
 
-*Larch source: `python/cli.py lint tier1a-size`. Disposition: **Pattern**.*
+*Larch source: agent-lint D004. Disposition: **Pattern**.*
 
 Everything imported by `CLAUDE.md` loads on every turn. That context is a standing
 tax: it costs tokens on each request, and it dilutes the agent's attention across
