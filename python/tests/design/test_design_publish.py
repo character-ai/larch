@@ -296,6 +296,21 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_fake_bootstrap(path)
+
+
+def _write_fake_bootstrap(cli: Path) -> None:
+    """Point the plugin's bootstrap script at the fake CLI beside it.
+
+    `session write-design-env` is Rust-owned as of issue #8058, so /design reaches
+    it through `scripts/larch.sh`; forwarding keeps one recorded argv log.
+    """
+    bootstrap = cli.parents[1] / "scripts" / "larch.sh"
+    bootstrap.parent.mkdir(parents=True, exist_ok=True)
+    _ = bootstrap.write_text(
+        f'#!/usr/bin/env bash\nexec python3 "{cli}" "$@"\n', encoding="utf-8"
+    )
+    bootstrap.chmod(bootstrap.stat().st_mode | stat.S_IXUSR)
 
 
 def _write_recording_cli(path: Path) -> None:
@@ -384,6 +399,7 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_fake_bootstrap(path)
 
 
 def _write_difficulty_recording_cli(path: Path) -> None:

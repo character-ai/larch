@@ -784,6 +784,13 @@ def _make_step18_plugin(tmp_path: Path) -> Path:
     python_dir.mkdir(parents=True)
     cli = python_dir / "cli.py"
     _write_executable(cli, _STEP18_STUB_CLI)
+    # Step 19 reaches the Rust-owned session verbs through the verified bootstrap
+    # script (issue #8058); forwarding to the stub keeps one recorded argv log.
+    (plugin / "scripts").mkdir(parents=True, exist_ok=True)
+    _write_executable(
+        plugin / "scripts" / "larch.sh",
+        f'#!/usr/bin/env bash\nexec python3 "{cli}" "$@"\n',
+    )
     return plugin
 
 
@@ -1428,9 +1435,33 @@ def test_step18_post_terminal_logs_flush(tmp_path: Path) -> None:
     assert "FINALIZE_SUBCOMMAND=teardown" in cleanup.stdout
 
 
-def _token_prop_env() -> dict[str, str]:
+def _write_session_writer_plugin(tmp_path: Path) -> Path:
+    """Return a plugin root whose bootstrap script stands in for the Rust writers.
+
+    Issue #8058 moved the session-env writers out of Python, so `session setup`
+    dispatches them through the verified bootstrap script. These cases assert on
+    the written file, so the stand-in forwards to the frozen writer reference the
+    Rust parity goldens pin byte for byte, keeping them hermetic.
+    """
+    reference = _REPO / "fixtures" / "rust-parity" / "session_env_reference.py"
+    plugin = tmp_path / "writer-plugin"
+    (plugin / "scripts").mkdir(parents=True, exist_ok=True)
+    _write_executable(
+        plugin / "scripts" / "larch.sh",
+        "#!/usr/bin/env bash\n"
+        'if [ "${1:-}" != session ]; then\n'
+        '  printf \'%s\\n\' "unexpected larch command: $*" >&2\n'
+        "  exit 64\n"
+        "fi\n"
+        "shift\n"
+        f'exec python3 "{reference}" "$@"\n',
+    )
+    return plugin
+
+
+def _token_prop_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(_REPO)
+    env["CLAUDE_PLUGIN_ROOT"] = str(_write_session_writer_plugin(tmp_path))
     env["PYTHONPATH"] = str(_REPO / "python")
     for key in list(env):
         if key.startswith("LARCH_QUIET"):
@@ -1450,7 +1481,7 @@ def _read_session_key(env_file: Path, key: str, default: str = "") -> str:
 
 
 def test_token_propagation_session_setup_forwarding(tmp_path: Path) -> None:
-    env = _token_prop_env()
+    env = _token_prop_env(tmp_path)
     timing_ledger = tmp_path / "timing-ledger.tsv"
     implement_env = tmp_path / "implement-session-env.sh"
     review_env = tmp_path / "review-session-env.sh"
@@ -1492,7 +1523,7 @@ def test_token_propagation_session_setup_forwarding(tmp_path: Path) -> None:
 
 
 def test_token_propagation_unsafe_ledger_rejection(tmp_path: Path) -> None:
-    env = _token_prop_env()
+    env = _token_prop_env(tmp_path)
     claude_source = tmp_path / "claude-source.env"
     _ = claude_source.write_text("SOURCE_FILE=/tmp/mock-transcript.jsonl\n", encoding="utf-8")
     unsafe_env = tmp_path / "unsafe-implement-session-env.sh"
@@ -1541,7 +1572,7 @@ def _write_review_core_stub(tmp_path: Path) -> Path:
 
 
 def test_token_propagation_review_and_fix_step5_default_moderate(tmp_path: Path) -> None:
-    env = _token_prop_env()
+    env = _token_prop_env(tmp_path)
     timing_ledger = tmp_path / "timing-ledger.tsv"
     review_env = tmp_path / "review-session-env.sh"
     claude_source = tmp_path / "claude-source.env"
@@ -1655,7 +1686,7 @@ def test_token_propagation_difficulty_routing(
     expected_shape: str,
     expected_cap: str,
 ) -> None:
-    env = _token_prop_env()
+    env = _token_prop_env(tmp_path)
     timing_ledger = tmp_path / "timing-ledger.tsv"
     review_env = tmp_path / "review-session-env.sh"
     claude_source = tmp_path / "claude-source.env"

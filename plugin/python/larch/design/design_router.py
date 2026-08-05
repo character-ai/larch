@@ -9,6 +9,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch import io as larch_io
+from larch.core import repo_roots
 from larch.issue import issue_wire
 
 
@@ -204,8 +205,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     write_design = subprocess.run(
         [
-            sys.executable,
-            str(root / "python" / "cli.py"),
+            str(repo_roots.larch_entrypoint(root)),
             "session",
             "write-design-env",
             "--output",
@@ -259,8 +259,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     write_params = subprocess.run(
         [
-            sys.executable,
-            str(root / "python" / "cli.py"),
+            str(repo_roots.larch_entrypoint(root)),
             "session",
             "write-run-params",
             "--partition-requested",

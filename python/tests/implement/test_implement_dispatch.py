@@ -2635,12 +2635,22 @@ def test_step19_runs_only_cleanup_after_terminalization(tmp_path: Path, monkeypa
         forwarded.append(list(args))
         return 0
 
-    monkeypatch.setattr(dispatch_step19, "_invoke_cli", fake_invoke)
+    # `session clear-implement-pointer` is Rust-owned (issue #8058), so Step 19
+    # reaches it through the verified bootstrap script rather than the Python CLI.
+    monkeypatch.setattr(dispatch_step19, "_run_larch", fake_invoke)
     monkeypatch.setattr(dispatch_step19, "_run_cli_forward", fake_forward)
 
     assert implement_dispatch.step_19_main(["--implement-tmpdir", str(tmp)]) == 0
     assert not any(call[:1] == ["run-log"] for call in invoked + forwarded)
-    assert invoked == [["session", "clear-implement-pointer", "--claude-pid", str(os.getppid())]]
+    assert invoked == [
+        [
+            str(dispatch_step19._larch_entrypoint()),  # pyright: ignore[reportPrivateUsage]  # shared dispatch helper
+            "session",
+            "clear-implement-pointer",
+            "--claude-pid",
+            str(os.getppid()),
+        ]
+    ]
     assert forwarded == [
         [
             "implement-finalize",

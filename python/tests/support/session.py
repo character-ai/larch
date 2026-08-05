@@ -199,7 +199,7 @@ def seed_feature_description(
 
 
 def run_params_text(*, overrides: Mapping[str, object] | None = None) -> str:
-    """Return schema-v3 ``run-params.json`` text matching ``write_run_params_main`` defaults."""
+    """Return schema-v3 ``run-params.json`` text matching ``session write-run-params`` defaults."""
     payload: dict[str, object] = dict(_RUN_PARAMS_SCHEMA_V3)
     if overrides:
         payload.update(overrides)
@@ -211,7 +211,7 @@ def seed_run_params(
     *,
     overrides: Mapping[str, object] | None = None,
 ) -> Path:
-    """Write schema-v3 ``run-params.json`` matching ``write_run_params_main`` defaults."""
+    """Write schema-v3 ``run-params.json`` matching ``session write-run-params`` defaults."""
     path = Path(tmpdir) / "run-params.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(run_params_text(overrides=overrides), encoding="utf-8")

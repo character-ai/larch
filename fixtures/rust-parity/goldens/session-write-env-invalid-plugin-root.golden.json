@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    },
+    "writer-session/session-env.sh": {
+      "text": "REPO=prior/repo\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -25,7 +25,7 @@ from larch.design.design_terminal import (
     phase_driver_write_result_env,
     stage_terminal_state_core,
 )
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 
 PUBLISH_RESULT_ENV_ALLOW = frozenset({
     "ARCHITECTURE_SOURCE",
@@ -884,8 +884,7 @@ def _materialize_claude_source_snapshot(
 def _refresh_design_source_env(*, ctx: TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:
     result = proc.run(
         [
-            sys.executable,
-            str(ctx.plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(ctx.plugin_root)),
             "session",
             "write-design-env",
             "--output",

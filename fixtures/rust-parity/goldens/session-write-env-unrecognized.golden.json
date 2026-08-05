@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session write-env [--output OUTPUT] [--repo REPO]\n                         [--repo-root REPO_ROOT]\n                         [--repo-unavailable REPO_UNAVAILABLE]\n                         [--codex-present CODEX_PRESENT]\n                         [--cursor-present CURSOR_PRESENT]\n                         [--codex-available CODEX_AVAILABLE]\n                         [--cursor-available CURSOR_AVAILABLE]\n                         [--claude-binary-found CLAUDE_BINARY_FOUND]\n                         [--codex-binary-found CODEX_BINARY_FOUND]\n                         [--cursor-binary-found CURSOR_BINARY_FOUND]\n                         [--auto-mode AUTO_MODE]\n                         [--forked-target FORKED_TARGET]\n                         [--timing-ledger TIMING_LEDGER]\n                         [--token-session-id TOKEN_SESSION_ID]\n                         [--claude-source-file CLAUDE_SOURCE_FILE]\n                         [--prev-implement-tmpdir PREV_IMPLEMENT_TMPDIR]\n                         [--dynamic-archetypes DYNAMIC_ARCHETYPES]\n                         [--run-id RUN_ID]\n                         [--live-mutation-ok LIVE_MUTATION_OK]\n                         [--plugin-root-only] [--value VALUE]\nsession write-env: error: unrecognized arguments: --bogus\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -16,4 +16,4 @@ node group).
 
 ## Edit-in-sync
 
-Update with `python/cli.py session setup`, `python/session_env.py (session setup)`, `python/cli.py session write-env`, `python/cli.py review-and-fix step5`, `python/cli.py review core`, `python/tests/implement/test_implement_shell_scripts.py`, and `skills/shared/subskill-invocation.md` when changing nested review session-env propagation.
+Update with `python/cli.py session setup`, `python/session_env.py (session setup)`, `scripts/larch.sh session write-env`, `python/cli.py review-and-fix step5`, `python/cli.py review core`, `python/tests/implement/test_implement_shell_scripts.py`, and `skills/shared/subskill-invocation.md` when changing nested review session-env propagation.

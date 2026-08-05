@@ -25,7 +25,6 @@ from larch.design import design_dialectic
 from larch.design import plan_grammar
 from larch.design import design_core
 from larch.design import design_postplan
-from larch.design import design_router
 from larch.design import (
     design_session,
     design_step0,
@@ -50,6 +49,7 @@ from larch.state import session_env
 from larch.state import stall_recovery
 from larch.design.design_step0_env import load_bash_quoted_env
 from larch.design.design_terminal import phase_driver_read_result_env
+from test_support import write_design_source_env
 
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -769,7 +769,7 @@ def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Pa
 
     assert design_step0.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
     assert captured
-    write_cmd = next(cmd for cmd in captured if cmd[2:4] == ["session", "write-design-env"])
+    write_cmd = next(cmd for cmd in captured if cmd[1:3] == ["session", "write-design-env"])
     progress_cmd = next(cmd for cmd in captured if cmd[2:4] == ["progress", "activate"])
     assert "--repo-root" in write_cmd
     assert _cmd_arg(write_cmd, "--repo-root") == str(repo.resolve())
@@ -864,88 +864,32 @@ def test_step0_session_refreshes_reviewer_values_before_writing_env(
 
     assert design_step0.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
     probe_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["agent", "check-reviewers"])
-    write_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["session", "write-design-env"])
+    write_idx = next(index for index, cmd in enumerate(commands) if cmd[1:3] == ["session", "write-design-env"])
     write_cmd = commands[write_idx]
     assert probe_idx < write_idx
     assert _cmd_arg(write_cmd, "--codex-present") == "true"
     assert _cmd_arg(write_cmd, "--cursor-present") == "true"
 
 
-def test_init_runparams_refresh_preserves_step0_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(CLI.parent.parent)}
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
-    monkeypatch.delenv("REPO_ROOT", raising=False)
-    initial = session_env.write_design_env_main(
-        [
-            "--output",
-            str(design / "source-env.sh"),
-            "--design-tmpdir",
-            str(design),
-            "--session-id",
-            "sid-1",
-            "--repo-root",
-            str(repo),
-            "--claude-pid",
-            "12345",
-        ]
+def _write_design_env_stand_in(argv: list[str]) -> int:
+    """Stand in for the Rust-owned `session write-design-env` inside a fake runner.
+
+    Issue #8058 moved the writer out of Python. These resume cases only need the
+    refreshed `source-env.sh` the routed step reads back, so the shared fixture
+    writer renders it from the same flags.
+    """
+    flags = dict(zip(argv[::2], argv[1::2], strict=False))
+    overrides = {
+        key: flags[flag]
+        for flag, key in (("--repo", "REPO"), ("--issue-number", "ISSUE_NUMBER"))
+        if flags.get(flag)
+    }
+    _ = write_design_source_env(
+        flags["--design-tmpdir"],
+        overrides=overrides,
+        session_id=flags.get("--session-id", ""),
     )
-    assert initial == 0
-
-    real_run = subprocess.run
-
-    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        joined = " ".join(cmd)
-        if "session" in joined and "write-design-env" in joined:
-            start = cmd.index("write-design-env") + 1
-            rc = session_env.write_design_env_main(cmd[start:])
-            return subprocess.CompletedProcess(cmd, rc, "", "")
-        if "tracking-issue" in joined and "rename" in joined:
-            return subprocess.CompletedProcess(cmd, 0, "RENAMED=false\n", "")
-        if "session" in joined and "write-run-params" in joined:
-            start = cmd.index("write-run-params") + 1
-            rc = session_env.write_run_params_main(cmd[start:])
-            return subprocess.CompletedProcess(cmd, rc, "", "")
-        return subprocess.CompletedProcess(cmd, 0, "", "")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    rc = design_router.init_runparams_main(
-        [
-            "--design-tmpdir",
-            str(design),
-            "--issue",
-            "42",
-            "--session-id",
-            "sid-2",
-            "--claude-pid",
-            "12345",
-            "--partition-requested",
-            "false",
-            "--brainstorm-requested",
-            "false",
-            "--approve-requested",
-            "false",
-            "--skip-approve-requested",
-            "false",
-        ]
-    )
-    assert rc == 0
-    source = real_run(
-        ["bash", "-c", f"source {design / 'source-env.sh'}; printf '%s' \"$REPO_ROOT\""],
-        text=True,
-        capture_output=True,
-        env={**os.environ, **env},
-        check=False,
-    )
-    assert source.stdout == str(repo)
+    return 0
 
 
 def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, **extra: str) -> Path:
@@ -2137,7 +2081,7 @@ def test_step0_route_resume_rehydrates_source_env_from_route_state(tmp_path: Pat
                 env_mapping = cast("Mapping[object, object]", env_value)
                 for key, value in env_mapping.items():
                     patch.setenv(str(key), str(value))
-            rc = session_env.write_design_env_main(args[args.index("write-design-env") + 1 :])
+            rc = _write_design_env_stand_in(args[args.index("write-design-env") + 1 :])
         return proc_module.CommandResult(tuple(args), rc, "", "", 0.0)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -2186,7 +2130,7 @@ def test_step0_route_resume_rehydrates_source_env_from_ctx_env(tmp_path: Path, m
                 env_mapping = cast("Mapping[object, object]", env_value)
                 for key, value in env_mapping.items():
                     patch.setenv(str(key), str(value))
-            rc = session_env.write_design_env_main(args[args.index("write-design-env") + 1 :])
+            rc = _write_design_env_stand_in(args[args.index("write-design-env") + 1 :])
         return proc_module.CommandResult(tuple(args), rc, "", "", 0.0)
 
     monkeypatch.setattr(subprocess, "run", fake_run)

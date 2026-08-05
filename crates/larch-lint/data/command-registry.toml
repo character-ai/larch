@@ -6293,11 +6293,13 @@ verb = "clear-implement-pointer"
 python_module = "larch.state.session_env"
 python_function = "clear_implement_pointer_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-clear-implement-pointer"
 
 [[commands]]
 domain = "session"
@@ -6343,11 +6345,13 @@ verb = "persist-run-flags"
 python_module = "larch.state.session_env"
 python_function = "persist_run_flags_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-persist-run-flags"
 
 [[commands]]
 domain = "session"
@@ -6411,11 +6415,13 @@ verb = "resolve-trusted-design-env"
 python_module = "larch.state.session_env"
 python_function = "resolve_trusted_design_env_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-resolve-trusted-design-env"
 
 [[commands]]
 domain = "session"
@@ -6423,11 +6429,13 @@ verb = "restore-finalize-state"
 python_module = "larch.state.session_env"
 python_function = "restore_finalize_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-restore-finalize-state"
 
 [[commands]]
 domain = "session"
@@ -6461,11 +6469,13 @@ verb = "write-design-env"
 python_module = "larch.state.session_env"
 python_function = "write_design_env_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-write-design-env"
 
 [[commands]]
 domain = "session"
@@ -6473,11 +6483,13 @@ verb = "write-env"
 python_module = "larch.state.session_env"
 python_function = "write_env_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-write-env"
 
 [[commands]]
 domain = "session"
@@ -6498,11 +6510,13 @@ verb = "write-implement-env"
 python_module = "larch.state.session_env"
 python_function = "write_implement_env_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-write-implement-env"
 
 [[commands]]
 domain = "session"
@@ -6510,11 +6524,13 @@ verb = "write-run-params"
 python_module = "larch.state.session_env"
 python_function = "write_run_params_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8058
+clean_install_test = "clean-install-session-write-run-params"
 
 [[commands]]
 domain = "ship"
@@ -8104,19 +8120,19 @@ rust = []
 path = "python/larch/design/design_publish.py"
 kind = "python-runtime"
 python = ["diagrams upsert"]
-rust = []
+rust = ["session write-design-env"]
 
 [[callers]]
 path = "python/larch/design/design_router.py"
 kind = "python-runtime"
 python = ["tracking-issue rename"]
-rust = []
+rust = ["session write-design-env", "session write-run-params"]
 
 [[callers]]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["run-log storage-preflight", "session cleanup-tmpdir"]
+rust = ["run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8326,7 +8342,7 @@ rust = ["gh remote-repo", "git check-main-sync", "git clean-tree"]
 path = "python/larch/state/bootstrap.py"
 kind = "python-runtime"
 python = ["implement kill-active-leg"]
-rust = ["git snapshot-untracked"]
+rust = ["git snapshot-untracked", "session persist-run-flags", "session write-implement-env"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
@@ -8337,8 +8353,8 @@ rust = []
 [[callers]]
 path = "python/larch/state/session_env.py"
 kind = "python-runtime"
-python = ["design *", "design failure-report", "design stage-terminal-state", "design step-final-summary", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step35-settle", "design step3b-entry", "design step6", "design step6-cleanup", "design step6-prelude", "plan validator-autofix"]
-rust = []
+python = []
+rust = ["session write-env"]
 
 [[callers]]
 path = "scripts/cleanup-sessionstart.sh"
@@ -8451,8 +8467,8 @@ rust = ["kv get"]
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params"]
-rust = ["dirty-tree checkpoint"]
+python = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure"]
+rust = ["dirty-tree checkpoint", "session write-run-params"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -8529,8 +8545,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/flags.md"
 kind = "skill"
-python = ["design parse-flags", "design postplan-emit", "design step5c", "plan check-size", "session write-run-params"]
-rust = []
+python = ["design parse-flags", "design postplan-emit", "design step5c", "plan check-size"]
+rust = ["session write-run-params"]
 
 [[callers]]
 path = "skills/design/references/oos-step5b-dispatch.md"
@@ -8691,8 +8707,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session read-key"]
+python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"

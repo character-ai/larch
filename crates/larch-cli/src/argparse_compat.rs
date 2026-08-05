@@ -17,6 +17,7 @@ use std::{
 pub struct ParsedCommandLine {
     values: Vec<(&'static str, OsString)>,
     positionals: Vec<OsString>,
+    flags: Vec<&'static str>,
     unrecognized: Vec<OsString>,
     error: Option<String>,
 }
@@ -29,6 +30,12 @@ impl ParsedCommandLine {
             .rev()
             .find(|(name, _value)| *name == option)
             .map(|(_name, value)| value.as_os_str())
+    }
+
+    /// Return whether a valueless `store_true` flag was supplied.
+    #[must_use]
+    pub fn flag(&self, name: &str) -> bool {
+        self.flags.contains(&name)
     }
 
     /// Return the positional argument at `index`, when one was supplied.
@@ -65,6 +72,20 @@ pub fn parse(
     options: &[&'static str],
     max_positionals: usize,
 ) -> ParsedCommandLine {
+    parse_with_flags(arguments, options, &[], max_positionals)
+}
+
+/// Parse `arguments` where `flags` name valueless `store_true` actions.
+///
+/// A flag supplied as `--name=value` is the `argparse` "ignored explicit
+/// argument" error, not a value assignment.
+#[must_use]
+pub fn parse_with_flags(
+    arguments: &[OsString],
+    options: &[&'static str],
+    flags: &[&'static str],
+    max_positionals: usize,
+) -> ParsedCommandLine {
     let mut parsed = ParsedCommandLine::default();
     let mut positional_only = false;
     let mut index = 0;
@@ -88,6 +109,16 @@ pub fn parse(
             continue;
         }
         let (name, inline) = split_inline_option(&text);
+        if let Some(flag) = resolve_option(name, flags) {
+            if let Some(value) = inline {
+                parsed.error = Some(format!(
+                    "argument {flag}: ignored explicit argument '{value}'"
+                ));
+                return parsed;
+            }
+            parsed.flags.push(flag);
+            continue;
+        }
         let Some(option) = resolve_option(name, options) else {
             parsed.unrecognized.push(argument.clone());
             continue;

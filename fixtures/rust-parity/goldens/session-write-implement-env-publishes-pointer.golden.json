@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/current-implement-env-4242.sh": {
+      "text": "IMPLEMENT_TMPDIR=<SANDBOX>/writer-session\nREPO_CWD=/\nSKILL_KIND=implement\n"
+    },
+    ".home/.cache/larch/sessions/implement-run-4242.sh": {
+      "text": "#!/usr/bin/env bash\nset -uo pipefail\nPOINTER=\"$HOME/.cache/larch/sessions/current-implement-env-4242.sh\"\n[ -f \"$POINTER\" ] && [ ! -L \"$POINTER\" ] || { printf '%s\\n' \"implement-run: missing current-env pointer: $POINTER\" >&2; exit 2; }\nIMPLEMENT_TMPDIR=$(awk 'BEGIN{p=\"IMPLEMENT_TMPDIR=\"} index($0,p)==1{print substr($0,length(p)+1); found=1; exit} END{exit found ? 0 : 1}' \"$POINTER\" 2>/dev/null) || { printf '%s\\n' \"implement-run: IMPLEMENT_TMPDIR missing from pointer: $POINTER\" >&2; exit 2; }\n[ -n \"$IMPLEMENT_TMPDIR\" ] || { printf '%s\\n' \"implement-run: IMPLEMENT_TMPDIR empty in pointer: $POINTER\" >&2; exit 2; }\ncase \"$IMPLEMENT_TMPDIR\" in /*) ;; *) printf '%s\\n' \"implement-run: IMPLEMENT_TMPDIR must be absolute: $IMPLEMENT_TMPDIR\" >&2; exit 2 ;; esac\nLARCH_RUN_SH=\"$IMPLEMENT_TMPDIR/larch-run.sh\"\n[ -f \"$LARCH_RUN_SH\" ] || { printf '%s\\n' \"implement-run: missing larch-run.sh: $LARCH_RUN_SH\" >&2; exit 2; }\n[ -x \"$LARCH_RUN_SH\" ] || { printf '%s\\n' \"implement-run: larch-run.sh is not executable: $LARCH_RUN_SH\" >&2; exit 2; }\nexport IMPLEMENT_TMPDIR\nexport LARCH_CLAUDE_PID=\"${LARCH_CLAUDE_PID:-4242}\"\nexec \"$LARCH_RUN_SH\" \"$@\"\n"
+    },
+    "writer-session/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

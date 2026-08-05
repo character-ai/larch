@@ -6,12 +6,28 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-WRITE_RUN_PARAMS=(python3 "$ROOT/python/cli.py" session write-run-params)
 CLI="$ROOT/python/cli.py"
 POSTPLAN_CLI=(python3 "$CLI" design postplan-emit)
 SETTLE=(python3 "$CLI" design step35-settle)
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
+
+# `session write-run-params` moved to the Rust owner in issue #8058, and its own
+# coverage lives in the Rust parity goldens. This harness only needs the schema v3
+# fixture the Gate B selector reads, so it writes one directly and stays hermetic.
+write_run_params() {
+  local output="$1" approve="$2"
+  cat >"$output" <<JSON
+{
+  "schema_version": 3,
+  "partition_requested": false,
+  "brainstorm_requested": false,
+  "approve_requested": $approve,
+  "skip_approve_requested": false,
+  "difficulty_override": ""
+}
+JSON
+}
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -47,8 +63,7 @@ mk_design() {
   local d="$1" body_lines="${2:-20}" diff_lines="${3:-10}"
   mkdir -p "$d/.completed"
   : >"$d/.completed/step-2b"
-  "${WRITE_RUN_PARAMS[@]}" --partition-requested false --brainstorm-requested false \
-    --approve-requested false --output "$d/run-params.json" >/dev/null
+  write_run_params "$d/run-params.json" false
   {
     printf '%s\n' '# Plan'
     printf '%s\n' '## Files to modify/create'
@@ -78,8 +93,7 @@ mk_design "$D_AUTO"
 
 D_APPROVE="$TMP/approve"
 mk_design "$D_APPROVE"
-"${WRITE_RUN_PARAMS[@]}" --partition-requested false --brainstorm-requested false \
-  --approve-requested true --output "$D_APPROVE/run-params.json" >/dev/null
+write_run_params "$D_APPROVE/run-params.json" true
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
 python3 "$CLI" design render-gate --gate B --accepted-count 3 --approve-requested false \

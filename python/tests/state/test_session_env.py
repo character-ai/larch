@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -15,7 +14,6 @@ import pytest
 from larch.core import config
 from larch.state import finalize
 from larch.core import proc
-from larch.report import progress_file
 from larch.state import session_env
 
 from test_support import CLI, make_design_tmpdir, seed_run_params, write_design_source_env
@@ -46,1040 +44,27 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
     )
 
 
-def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
-    out = tmp_path / "session-env.sh"
-    ok = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo",
-        "owner/repo",
-        "--repo-unavailable",
-        "false",
-        "--codex-present",
-        "true",
-        "--cursor-present",
-        "false",
-        "--claude-binary-found",
-        "true",
-        "--run-id",
-        "RUN_1",
-        env={"CLAUDE_PLUGIN_ROOT": "/tmp/larch-plugin"},
-    )
-    assert ok.returncode == 0, ok.stderr
-    text = out.read_text(encoding="utf-8")
-    assert "REPO=owner/repo\n" in text
-    assert "CLAUDE_BINARY_FOUND=true\n" in text
-    assert "CODEX_AVAILABLE" not in text
-    assert "CODEX_PRESENT" not in text
-    assert "LARCH_RUN_ID=RUN_1\n" in text
-    assert (tmp_path / "plugin-root.env").read_text(encoding="utf-8") == "CLAUDE_PLUGIN_ROOT=/tmp/larch-plugin\nexport CLAUDE_PLUGIN_ROOT\n"
-    bad = run_cli("write-env", "--output", "/etc/larch-session-env", "--repo-unavailable", "false")
-    assert bad.returncode == 1
-    null = run_cli("write-env", "--output", "/dev/null", "--repo-unavailable", "false")
-    assert null.returncode == 0
-    plugin = tmp_path / "plugin-root.env"
-    only = run_cli("write-env", "--plugin-root-only", "--output", str(plugin), "--value", "/tmp/plugin-root")
-    assert only.returncode == 0
-    assert "CLAUDE_PLUGIN_ROOT=/tmp/plugin-root" in plugin.read_text(encoding="utf-8")
-
-
-def test_write_env_writer_guard_rejects_cr_lf_symlink_and_disallowed_keys(tmp_path: Path) -> None:
-    out = tmp_path / "session-env.sh"
-    for bad_value, flag in (("token\nid", "--token-session-id"), ("token\rid", "--token-session-id"), ("run\nid", "--run-id")):
-        result = run_cli("write-env", "--output", str(out), "--repo-unavailable", "false", flag, bad_value)
-        assert result.returncode == 1, (bad_value, result.stderr)
-        assert "newline or carriage return" in result.stderr or "Invalid" in result.stderr
-    with pytest.raises(ValueError, match="disallowed writer key"):
-        session_env._validate_writer_keys(data={"EVIL_KEY": "x"}, allowed=session_env.WRITE_ENV_KEYS)  # pyright: ignore[reportPrivateUsage]
-    link = tmp_path / "session-env-link"
-    link.symlink_to(out)
-    symlink = run_cli("write-env", "--output", str(link), "--repo-unavailable", "false")
-    assert symlink.returncode == 1
-
-
-def test_write_env_persists_explicit_repo_root(tmp_path: Path) -> None:
-    repo_root = tmp_path / "consumer-repo"
-    repo_root.mkdir()
-    out = tmp_path / "session-env.sh"
-    result = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo",
-        "owner/repo",
-        "--repo-unavailable",
-        "false",
-        "--repo-root",
-        str(repo_root),
-        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
-    )
-    assert result.returncode == 0, result.stderr
-    text = out.read_text(encoding="utf-8")
-    assert f"REPO_ROOT={repo_root}\n" in text
-    # The ship driver resolves the consumer root from this persisted value (issue #6880).
-    assert progress_file.resolve_persisted_repo_root(tmpdir=tmp_path) == repo_root.resolve()
-
-
-def test_write_env_repo_root_resolves_from_claude_project_dir(tmp_path: Path) -> None:
-    repo_root = tmp_path / "project-dir"
-    repo_root.mkdir()
-    out = tmp_path / "session-env.sh"
-    result = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo-unavailable",
-        "false",
-        env={"CLAUDE_PROJECT_DIR": str(repo_root), "REPO_ROOT": ""},
-    )
-    assert result.returncode == 0, result.stderr
-    assert f"REPO_ROOT={repo_root}\n" in out.read_text(encoding="utf-8")
-
-
-def test_write_env_explicit_repo_root_wins_over_env(tmp_path: Path) -> None:
-    explicit_root = tmp_path / "explicit"
-    explicit_root.mkdir()
-    ambient_root = tmp_path / "ambient"
-    ambient_root.mkdir()
-    out = tmp_path / "session-env.sh"
-    result = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo-unavailable",
-        "false",
-        "--repo-root",
-        str(explicit_root),
-        env={"CLAUDE_PROJECT_DIR": str(ambient_root), "REPO_ROOT": str(ambient_root)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert f"REPO_ROOT={explicit_root}\n" in out.read_text(encoding="utf-8")
-
-
-def test_write_env_rejects_relative_repo_root(tmp_path: Path) -> None:
-    out = tmp_path / "session-env.sh"
-    result = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo-unavailable",
-        "false",
-        "--repo-root",
-        "relative/path",
-        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
-    )
-    assert result.returncode == 1
-    assert result.stderr.count("ERROR=") == 1
-    assert "Invalid --repo-root: must be an absolute path" in result.stderr
-
-
-def test_write_env_omits_repo_root_when_unset(tmp_path: Path) -> None:
-    out = tmp_path / "session-env.sh"
-    result = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo-unavailable",
-        "false",
-        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "REPO_ROOT" not in out.read_text(encoding="utf-8")
-
-
-def test_external_timeout_default_invalid_empty_zero_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, raising=False)
-    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
-
-    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "bad")
-    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
-
-    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "")
-    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
-
-    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "0")
-    assert session_env._external_timeout() == "0"  # pyright: ignore[reportPrivateUsage]
-
-    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "45")
-    assert session_env._external_timeout() == "45"  # pyright: ignore[reportPrivateUsage]
-
-
-def test_write_design_env_relative_tmpdir_stderr_parity(tmp_path: Path) -> None:
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        "relative/path",
-        "--session-id",
-        "sid-1",
-        env={"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 1
-    assert result.stderr.count("ERROR=") == 1
-    assert "ERROR=Invalid --design-tmpdir: must be an absolute path" in result.stderr
-
-
-def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    xdg = tmp_path / "xdg"
-    design = tmp_path / "design dir"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(xdg), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--codex-present",
-        "true",
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert result.returncode == 0, result.stderr
-    source = subprocess.run(["bash", "-c", f"source {out}; printf '%s|%s|%s' \"$DESIGN_TMPDIR\" \"${{CODEX_PRESENT:-}}\" \"$CLAUDE_PLUGIN_ROOT\""], text=True, capture_output=True, env=clean_env(), check=False)
-    assert source.stdout == f"{design}||/tmp/plugin"
-    link = home / ".cache" / "larch" / "sessions" / "current-design-env-12345.sh"
-    assert link.is_symlink()
-    assert link.readlink() == out
-    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
-    assert launcher.is_file()
-    launcher_text = launcher.read_text(encoding="utf-8")
-    assert launcher_text.startswith("#!/usr/bin/env bash\n")
-    assert launcher.stat().st_mode & 0o111
-    assert 'SESSION_ENV_PATH="$HOME/.cache/larch/sessions/current-design-env-12345.sh"' in launcher_text
-    assert 'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"' in launcher_text
-    assert '--session-env-path "$SESSION_ENV_PATH"' in launcher_text
-    assert '--claude-pid "$CLAUDE_PID"' in launcher_text
-    assert "skills/design/scripts/$script" in launcher_text
-    assert 'design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
-    assert 'design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
-    assert 'design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
-    assert 'plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
-    assert 'design stage-terminal-state "$@"' in launcher_text
-    assert 'design failure-report "$@"' in launcher_text
-    assert 'design step-final-summary --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
-
-
-def test_resolve_trusted_design_env_refuses_swapped_symlink(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    sessions = home / ".cache" / "larch" / "sessions"
-    sessions.mkdir(parents=True)
-    real_target = sessions / "real-env-12345.sh"
-    real_target.write_text("export DESIGN_TMPDIR=/tmp\n", encoding="utf-8")
-    link = sessions / "current-design-env-12345.sh"
-    link.symlink_to(real_target)
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg")}
-
-    valid = run_cli(
-        "resolve-trusted-design-env",
-        "--session-env-path",
-        str(link),
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert valid.returncode == 0, valid.stderr
-    assert valid.stdout.startswith("TRUSTED_SOURCE=")
-    resolved_path = Path(valid.stdout[len("TRUSTED_SOURCE=") :].strip())
-    assert resolved_path.is_file()
-    assert resolved_path.samefile(real_target)
-
-    swapped = sessions / "current-design-env-99999.sh"
-    swapped.symlink_to(real_target)
-    refused = run_cli(
-        "resolve-trusted-design-env",
-        "--session-env-path",
-        str(swapped),
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert refused.returncode == 1
-
-    link.unlink()
-    link.symlink_to(sessions / "missing.sh")
-    refused_target = run_cli(
-        "resolve-trusted-design-env",
-        "--session-env-path",
-        str(link),
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert refused_target.returncode == 1
-
-    no_pid = run_cli("resolve-trusted-design-env", "--session-env-path", str(swapped), env=env)
-    assert no_pid.returncode == 1
-
-
-def test_write_design_env_exports_explicit_repo_root(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    repo_root = tmp_path / "repo"
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--repo-root",
-        str(repo_root),
-        "--claude-pid",
-        "12345",
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 0, result.stderr
-    source = subprocess.run(
-        ["bash", "-c", f"source {out}; printf '%s' \"$REPO_ROOT\""],
-        text=True,
-        capture_output=True,
-        env=clean_env(),
-        check=False,
-    )
-    assert source.stdout == str(repo_root)
-
-
-def test_write_design_env_explicit_repo_root_wins_over_ambient(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    explicit_root = tmp_path / "explicit"
-    ambient_root = tmp_path / "ambient"
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--repo-root",
-        str(explicit_root),
-        "--claude-pid",
-        "12345",
-        env={
-            "HOME": str(home),
-            "XDG_CACHE_HOME": str(tmp_path / "xdg"),
-            "CLAUDE_PLUGIN_ROOT": "/tmp/plugin",
-            "CLAUDE_PROJECT_DIR": str(ambient_root),
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert f"export REPO_ROOT={explicit_root}" in out.read_text(encoding="utf-8")
-
-
-def test_write_design_env_refresh_prefers_prior_repo_root_over_ambient(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    prior_root = tmp_path / "prior"
-    ambient_project = tmp_path / "ambient-project"
-    ambient_repo = tmp_path / "ambient-repo"
-    out = tmp_path / "source-env.sh"
-    base_env = {
-        "HOME": str(home),
-        "XDG_CACHE_HOME": str(tmp_path / "xdg"),
-        "CLAUDE_PLUGIN_ROOT": "/tmp/plugin",
-        "CLAUDE_PROJECT_DIR": str(ambient_project),
-        "REPO_ROOT": str(ambient_repo),
-    }
-    seed = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--repo-root",
-        str(prior_root),
-        "--claude-pid",
-        "12345",
-        env=base_env,
-    )
-    assert seed.returncode == 0, seed.stderr
-    refresh = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env=base_env,
-    )
-    assert refresh.returncode == 0, refresh.stderr
-    source = subprocess.run(
-        ["bash", "-c", f"source {out}; printf '%s' \"$REPO_ROOT\""],
-        text=True,
-        capture_output=True,
-        env=clean_env(),
-        check=False,
-    )
-    assert source.stdout == str(prior_root)
-    assert f"export REPO_ROOT={prior_root}" in out.read_text(encoding="utf-8")
-
-
-def test_write_design_env_refresh_recovers_prior_quoted_repo_root(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    repo_root = tmp_path / "repo root's dir"
-    out = tmp_path / "source-env.sh"
-    out.write_text(f"#!/usr/bin/env bash\nexport REPO_ROOT={shlex.quote(str(repo_root))}\n", encoding="utf-8")
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin", "CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
-    )
-    assert result.returncode == 0, result.stderr
-    source = subprocess.run(
-        ["bash", "-c", f"source {out}; printf '%s' \"$REPO_ROOT\""],
-        text=True,
-        capture_output=True,
-        env=clean_env(),
-        check=False,
-    )
-    assert source.stdout == str(repo_root)
-
-
-def test_write_design_env_rejects_invalid_repo_root_once(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--repo-root",
-        "relative/path",
-        "--claude-pid",
-        "12345",
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 1
-    assert result.stderr.count("ERROR=") == 1
-    assert "Invalid --repo-root: must be an absolute path" in result.stderr
-
-
-def test_write_design_env_requires_plugin_root_with_claude_pid(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": ""}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert result.returncode == 1
-    assert "ERROR=" in result.stderr
-    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
-
-    invalid = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env={**env, "CLAUDE_PLUGIN_ROOT": "relative/plugin"},
-    )
-    assert invalid.returncode == 1
-    assert "ERROR=" in invalid.stderr
-    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
-
-
-def test_write_design_env_launcher_rejects_symlink_ancestor(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    cache = home / ".cache"
-    cache.mkdir(parents=True)
-    redirected = tmp_path / "redirected"
-    redirected.mkdir()
-    (cache / "larch").symlink_to(redirected)
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 1
-    assert "ERROR=" in result.stderr
-    assert not (redirected / "sessions" / "design-run-12345.sh").exists()
-
-
-def test_write_design_env_legacy_pid_omission_does_not_create_launcher(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 0, result.stderr
-    assert (home / ".cache" / "larch" / "sessions" / "current-design-env.sh").is_symlink()
-    assert not (home / ".cache" / "larch" / "sessions" / "design-run-.sh").exists()
-
-
-def _write_launcher_for_test(tmp_path: Path) -> tuple[Path, Path]:
-    home = tmp_path / "home"
-    home.mkdir()
-    plugin_root = tmp_path / "plugin"
-    script_dir = plugin_root / "skills" / "design" / "scripts"
-    script_dir.mkdir(parents=True)
-    wrapper = script_dir / "fake-wrapper.sh"
-    wrapper.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf 'root=%s\n' \"$CLAUDE_PLUGIN_ROOT\"\n"
-        "printf 'argv=%s\n' \"$*\"\n",
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    cli = plugin_root / "python" / "cli.py"
-    cli.parent.mkdir(parents=True)
-    cli.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        "print('cliargv=' + ' '.join(sys.argv[1:]))\n",
-        encoding="utf-8",
-    )
-    cli.chmod(0o755)
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert result.returncode == 0, result.stderr
-    return home / ".cache" / "larch" / "sessions" / "design-run-12345.sh", home
-
-
-def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
-    launcher, home = _write_launcher_for_test(tmp_path)
-    dispatch = subprocess.run(
-        [str(launcher), "fake-wrapper.sh", "--example", "value"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert dispatch.returncode == 0, dispatch.stderr
-    assert "root=" in dispatch.stdout
-    assert "argv=--session-env-path " in dispatch.stdout
-    assert "current-design-env-12345.sh --claude-pid 12345 --example value" in dispatch.stdout
-
-
-def test_design_run_launcher_dispatches_verb(tmp_path: Path) -> None:
-    launcher, home = _write_launcher_for_test(tmp_path)
-    dispatch = subprocess.run(
-        [str(launcher), "step0-route", "--issue-number", "42"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert dispatch.returncode == 0, dispatch.stderr
-    assert "cliargv=design step0-route --session-env-path " in dispatch.stdout
-    assert "current-design-env-12345.sh --claude-pid 12345 --issue-number 42" in dispatch.stdout
-
-
-def test_design_run_launcher_maps_retired_step2_wrappers_to_cli_with_tail(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    plugin_root = tmp_path / "plugin"
-    cli_py = plugin_root / "python" / "cli.py"
-    cli_py.parent.mkdir(parents=True)
-    cli_py.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        "print('ARGV=' + ' '.join(sys.argv[1:]))\n",
-        encoding="utf-8",
-    )
-    cli_py.chmod(0o755)
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env=env,
-    )
-    assert result.returncode == 0, result.stderr
-    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
-    postplan = subprocess.run(
-        [str(launcher), "design-step2b-postplan.sh", "--site", "gate-b", "--snapshot-original"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert postplan.returncode == 0, postplan.stderr
-    assert "ARGV=design step2b-postplan --session-env-path" in postplan.stdout
-    assert "--site gate-b --snapshot-original" in postplan.stdout
-    settle = subprocess.run(
-        [str(launcher), "design-step35-settle.sh", "--site", "gate-c"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert settle.returncode == 0, settle.stderr
-    assert "ARGV=design step35-settle --session-env-path" in settle.stdout
-    assert "--site gate-c" in settle.stdout
-    validator = subprocess.run(
-        [str(launcher), "design-step-validator-autofix.sh", "--validator-target-file", "target.md", "--validate-defect-count", "3"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert validator.returncode == 0, validator.stderr
-    assert "ARGV=plan validator-autofix --session-env-path" in validator.stdout
-    assert "--validator-target-file target.md --validate-defect-count 3" in validator.stdout
-    stage = subprocess.run(
-        [str(launcher), "design-stage-terminal-state.sh", "--design-tmpdir", str(design), "--outcome", "failed-clarify"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert stage.returncode == 0, stage.stderr
-    assert "ARGV=design stage-terminal-state --design-tmpdir" in stage.stdout
-    failure = subprocess.run(
-        [str(launcher), "design-failure-report.sh", "--design-tmpdir", str(design), "--outcome", "approved"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert failure.returncode == 0, failure.stderr
-    assert "ARGV=design failure-report --design-tmpdir" in failure.stdout
-    final = subprocess.run(
-        [str(launcher), "design-step-final-summary.sh", "--outcome", "approved"],
-        text=True,
-        capture_output=True,
-        env={**os.environ, "HOME": str(home)},
-        check=False,
-    )
-    assert final.returncode == 0, final.stderr
-    assert "ARGV=design step-final-summary --session-env-path" in final.stdout
-    assert "--claude-pid 12345 --outcome approved" in final.stdout
-
-
-def test_design_run_launcher_dispatches_non_hyphenated_verbs(tmp_path: Path) -> None:
-    launcher, home = _write_launcher_for_test(tmp_path)
-    for verb in ("step0c", "step1d5", "step1d7"):
-        dispatch = subprocess.run([str(launcher), verb], text=True, capture_output=True, env={**os.environ, "HOME": str(home)}, check=False)
-        assert dispatch.returncode == 0, dispatch.stderr
-        assert f"cliargv=design {verb} --session-env-path " in dispatch.stdout
-
-
-def test_design_run_launcher_rejects_invalid_script_names(tmp_path: Path) -> None:
-    launcher, home = _write_launcher_for_test(tmp_path)
-    bad_args = ([], ["dir/script.sh"], ["../script.sh"], ["script.py"], ["step0-route.sh"], ["not-ported"], ["bad;name.sh"])
-    for args in bad_args:
-        bad = subprocess.run([str(launcher), *args], text=True, capture_output=True, env={**os.environ, "HOME": str(home)}, check=False)
-        assert bad.returncode == 2, args
-        assert "ERROR=" in bad.stderr
-
-def test_write_design_env_launcher_write_failure_is_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
-    real_atomic_write = session_env._atomic_write  # pyright: ignore[reportPrivateUsage]
-
-    def fake_atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: int = 0o600) -> None:
-        if path.name == "design-run-12345.sh":
-            raise OSError("launcher write failed")
-        real_atomic_write(path=path, text=text, create_parent=create_parent, mode=mode)
-
-    monkeypatch.setattr(session_env, "_atomic_write", fake_atomic_write)
-    rc = session_env.write_design_env_main(
-        [
-            "--output",
-            str(out),
-            "--design-tmpdir",
-            str(design),
-            "--session-id",
-            "sid-1",
-            "--claude-pid",
-            "12345",
-        ]
-    )
-    assert rc == 1
-    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
-
-
-def test_write_run_params(tmp_path: Path) -> None:
-    out = tmp_path / "run-params.json"
-    result = run_cli(
-        "write-run-params",
-        "--output",
-        str(out),
-        "--partition-requested",
-        "true",
-    )
-    assert result.returncode == 0
-    assert f"RUN_PARAMS_WRITTEN={out}" in result.stdout
-    data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 3
-    assert data["partition_requested"] is True
-    missing_parent = run_cli("write-run-params", "--output", str(tmp_path / "nope" / "x.json"))
-    assert missing_parent.returncode == 1
-
-
-def test_persist_run_flags_and_entry_gate(tmp_path: Path) -> None:
-    flags = run_cli(
-        "persist-run-flags",
-        "--implement-tmpdir",
-        str(tmp_path),
-        "--no-issues",
-        "false",
-        "--force-requested",
-        "true",
-        "--self-implement-requested",
-        "true",
-    )
-    assert flags.returncode == 0
-    assert flags.stdout == "RUN_FLAGS_PERSISTED=true\n"
-    run_flags_text = (tmp_path / "run-flags.sh").read_text(encoding="utf-8")
-    assert "FORCE_REQUESTED=true\n" in run_flags_text
-    assert "SELF_IMPLEMENT_REQUESTED=true\n" in run_flags_text
-    missing = run_cli("persist-run-flags", "--implement-tmpdir", str(tmp_path))
-    assert missing.returncode == 2
+def record_write_env(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    returncode: int = 0,
+    stderr: str = "",
+) -> list[session_env.WriteEnvParams]:
+    """Capture the parameters setup hands the Rust-owned session-env writer."""
+    recorded: list[session_env.WriteEnvParams] = []
+
+    def fake_run_write_env(params: session_env.WriteEnvParams) -> proc.CommandResult:
+        recorded.append(params)
+        return proc.CommandResult(("larch", "session", "write-env"), returncode, "", stderr, 0.0)
+
+    monkeypatch.setattr(session_env, "run_write_env", fake_run_write_env)
+    return recorded
+
+
+def test_entry_gate_cli_reports_a_user_branch_continue() -> None:
     gate = run_cli("entry-gate", "--mode", "implement", "--current-branch", "feature", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "user")
     assert gate.returncode == 0
     assert "ENTRY_GATE=continue" in gate.stdout
-
-
-def test_restore_finalize_state_raw_rhs_and_20_keys(tmp_path: Path) -> None:
-    (tmp_path / "ship-pr-state.sh").write_text(
-        "BRANCH_NAME=feature\nPR_TITLE=Implement $(echo x)=y\nSTALL_TRACKING=false\nBAIL_REASON=needs=user\nRUN_ID=RUN1\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "finalize-state.sh").write_text("STALL_TRACKING=true\nSTALL_STEP=18a\n", encoding="utf-8")
-    result = run_cli("restore-finalize-state", "--implement-tmpdir", str(tmp_path))
-    assert result.returncode == 0
-    lines = (tmp_path / "finalize-state.sh").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 20
-    assert "PR_TITLE=Implement $(echo x)=y" in lines
-    assert "STALL_TRACKING=true" in lines
-    assert "STALL_STEP=18a" in lines
-    assert (tmp_path / "final-bail-reason.txt").read_text(encoding="utf-8") == "needs=user"
-
-
-def test_restore_finalize_state_missing_finalize_file(tmp_path: Path) -> None:
-    (tmp_path / "ship-pr-state.sh").write_text("BRANCH_NAME=feature\nBAIL_REASON=\nRUN_ID=\n", encoding="utf-8")
-    result = run_cli("restore-finalize-state", "--implement-tmpdir", str(tmp_path))
-    assert result.returncode == 0
-    assert (tmp_path / "finalize-state.sh").is_file()
-
-
-def test_write_design_env_legacy_symlink_warning(tmp_path: Path) -> None:
-    home = tmp_path / "shim-home"
-    home.mkdir()
-    design = tmp_path / "shim" / "design"
-    design.mkdir(parents=True)
-    out = tmp_path / "shim" / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "SHIM-1",
-        env=env,
-    )
-    assert result.returncode == 0, result.stderr
-    legacy = home / ".cache" / "larch" / "sessions" / "current-design-env.sh"
-    assert legacy.is_symlink()
-    assert legacy.readlink() == out
-    assert "claude-pid omitted" in result.stderr
-
-
-def test_write_design_env_partial_codex_override_clears_binary(tmp_path: Path) -> None:
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    design = tmp_path / "design"
-    design.mkdir()
-    seed = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "PARTIAL-SEED",
-        "--codex-present",
-        "true",
-        "--cursor-present",
-        "true",
-        "--codex-available",
-        "false",
-        "--cursor-available",
-        "true",
-        "--codex-binary-found",
-        "true",
-        "--cursor-binary-found",
-        "false",
-        "--claude-pid",
-        "8888881",
-        env=env,
-    )
-    assert seed.returncode == 0, seed.stderr
-    override = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "PARTIAL-OVERRIDE",
-        "--codex-present",
-        "false",
-        "--claude-pid",
-        "8888881",
-        env=env,
-    )
-    assert override.returncode == 0, override.stderr
-    source = subprocess.run(
-        ["bash", "-c", f"set -u; source {out}; printf '%s|%s|%s|%s|%s|%s' \"$SESSION_ID\" \"${{CODEX_PRESENT:-}}\" \"${{CODEX_AVAILABLE:-}}\" \"${{CURSOR_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\" \"${{CURSOR_BINARY_FOUND:-}}\""],
-        text=True,
-        capture_output=True,
-        env=clean_env(),
-        check=False,
-    )
-    assert source.returncode == 0, source.stderr
-    assert source.stdout == "PARTIAL-OVERRIDE|||||false"
-    text = out.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT" not in text
-    assert "CODEX_AVAILABLE" not in text
-
-
-def test_write_design_env_strict_boolean_recovery(tmp_path: Path) -> None:
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    out.write_text(
-        "#!/usr/bin/env bash\n"
-        "export CODEX_PRESENT=true\n"
-        "export CURSOR_PRESENT=$(touch /tmp/larch-wdce-should-not-exist)\n"
-        "export CODEX_AVAILABLE=maybe\n"
-        "export CURSOR_AVAILABLE=false\n",
-        encoding="utf-8",
-    )
-    marker = Path("/tmp/larch-wdce-should-not-exist")
-    marker.unlink(missing_ok=True)
-    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "STRICT-RECOVERY",
-        "--claude-pid",
-        "42",
-        env=env,
-    )
-    assert result.returncode == 0, result.stderr
-    assert not marker.exists()
-    source = subprocess.run(
-        ["bash", "-c", f"set -u; source {out}; printf '%s|%s' \"${{CODEX_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\""],
-        text=True,
-        capture_output=True,
-        env=clean_env(),
-        check=False,
-    )
-    assert source.returncode == 0, source.stderr
-    assert source.stdout == "|"
-    text = out.read_text(encoding="utf-8")
-    assert "CURSOR_PRESENT" not in text
-    assert "CODEX_AVAILABLE" not in text
-
-
-def test_write_env_xdg_session_root_and_design_symlink_under_home_cache(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    xdg = tmp_path / "xdg-cache"
-    xdg.mkdir()
-    session_root = xdg / "larch" / "sessions" / "claude-design-test"
-    session_root.mkdir(parents=True)
-    design = session_root / "design"
-    design.mkdir()
-    session_env = session_root / "session-env.sh"
-    source_env = session_root / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(xdg), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    write_env = run_cli(
-        "write-env",
-        "--output",
-        str(session_env),
-        "--repo-unavailable",
-        "false",
-        env=env,
-    )
-    assert write_env.returncode == 0, write_env.stderr
-    write_design = run_cli(
-        "write-design-env",
-        "--output",
-        str(source_env),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "xdg-root",
-        "--claude-pid",
-        "55555",
-        env=env,
-    )
-    assert write_design.returncode == 0, write_design.stderr
-    home_link = home / ".cache" / "larch" / "sessions" / "current-design-env-55555.sh"
-    xdg_link = xdg / "larch" / "sessions" / "current-design-env-55555.sh"
-    assert home_link.is_symlink()
-    assert home_link.readlink() == source_env
-    assert not xdg_link.exists()
-
-
-def test_write_design_env_refresh_preserves_prior_bools(tmp_path: Path) -> None:
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    design = tmp_path / "design"
-    design.mkdir()
-    first = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--codex-present",
-        "true",
-        "--cursor-present",
-        "false",
-        "--claude-pid",
-        "42",
-        env=env,
-    )
-    assert first.returncode == 0, first.stderr
-    second = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "42",
-        env=env,
-    )
-    assert second.returncode == 0, second.stderr
-    text = out.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT" not in text
-    assert "CURSOR_PRESENT" not in text
-
-
-def test_write_env_rejects_invalid_run_id(tmp_path: Path) -> None:
-    out = tmp_path / "session-env.sh"
-    bad = run_cli(
-        "write-env",
-        "--output",
-        str(out),
-        "--repo-unavailable",
-        "false",
-        "--run-id",
-        "bad id",
-        env={"CLAUDE_PLUGIN_ROOT": "/tmp/larch-plugin"},
-    )
-    assert bad.returncode == 1
 
 
 def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
@@ -1108,27 +93,26 @@ def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
 def test_setup_uses_caller_env_repo_without_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     caller = tmp_path / "caller.env"
     caller.write_text("REPO=caller/repo\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
-    out = tmp_path / "session-env.sh"
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    result = run_cli(
-        "setup",
-        "--prefix",
-        "pytest-",
-        "--skip-preflight",
-        "--skip-branch-check",
-        "--write-session-env",
-        str(out),
-        "--caller-env",
-        str(caller),
+    recorded = record_write_env(monkeypatch)
+
+    result = session_env.setup(
+        prefix="pytest-",
+        skip_preflight=True,
+        skip_branch_check=True,
+        write_session_env=str(tmp_path / "session-env.sh"),
+        caller_env=str(caller),
     )
-    assert result.returncode == 0, result.stderr
-    assert "REPO=caller/repo" in out.read_text(encoding="utf-8")
+
+    assert result.exit_code == 0
+    assert result.session_env_written is True
+    assert [params.repo for params in recorded] == ["caller/repo"]
 
 
 def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    out = tmp_path / "session-env.sh"
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    recorded = record_write_env(monkeypatch)
 
     def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
         if argv and argv[0] == "gh":
@@ -1145,11 +129,12 @@ def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.Monk
             "--skip-preflight",
             "--skip-branch-check",
             "--write-session-env",
-            str(out),
+            str(tmp_path / "session-env.sh"),
         ],
     )
+
     assert rc == 0
-    assert "REPO=git-owner/repo" in out.read_text(encoding="utf-8")
+    assert [params.repo for params in recorded] == ["git-owner/repo"]
 
 
 def test_setup_runs_admission_preflight_without_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1319,112 +304,52 @@ def test_setup_carry_forward_drops_placeholder_run_dirs(tmp_path: Path, monkeypa
 def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
-    (stub_bin / "codex").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (stub_bin / "cursor").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (stub_bin / "codex").chmod(0o755)
-    (stub_bin / "cursor").chmod(0o755)
-    cache = tmp_path / "cache"
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    reviewer_env = {
-        "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-        "LARCH_LIB_CURSOR_AUTH_TEST_MODE": "1",
-        "LIB_CURSOR_AUTH_TEST_UNAME": "Linux",
-    }
+    for tool in ("codex", "cursor"):
+        (stub_bin / tool).write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        (stub_bin / tool).chmod(0o755)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("PATH", f"{stub_bin}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Linux")
+    for key in TOOL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
-    env1 = tmp_path / "env1.txt"
-    env1.write_text("", encoding="utf-8")
-    out1 = tmp_path / "session-env1.txt"
-    result1 = run_cli(
-        "setup",
-        "--prefix",
-        "test-presence-1",
-        "--skip-preflight",
-        "--skip-repo-check",
-        "--caller-env",
-        str(env1),
-        "--check-reviewers",
-        "--write-session-env",
-        str(out1),
-        env=reviewer_env,
-    )
-    assert result1.returncode == 0, result1.stderr
-    for key in ("CODEX_PRESENT=true", "CURSOR_PRESENT=true", "CODEX_BINARY_FOUND=true", "CURSOR_BINARY_FOUND=true"):
-        assert key in result1.stdout
-    assert "CODEX_AVAILABLE" not in result1.stdout
-    text1 = out1.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT" not in text1
-    assert "CURSOR_PRESENT" not in text1
-    assert "CODEX_BINARY_FOUND=true\n" in text1
-    assert "CURSOR_BINARY_FOUND=true\n" in text1
+    def probe(caller_text: str, prefix: str) -> tuple[session_env.SessionSetupResult, list[session_env.WriteEnvParams]]:
+        caller = tmp_path / f"{prefix}.env"
+        caller.write_text(caller_text, encoding="utf-8")
+        recorded = record_write_env(monkeypatch)
+        result = session_env.setup(
+            prefix=prefix,
+            skip_preflight=True,
+            skip_repo_check=True,
+            check_reviewers=True,
+            caller_env=str(caller),
+            write_session_env=str(tmp_path / f"{prefix}-session-env.sh"),
+        )
+        assert result.exit_code == 0
+        return result, recorded
 
-    env2 = tmp_path / "env2.txt"
-    env2.write_text("CODEX_PRESENT=false\nCURSOR_PRESENT=true\n", encoding="utf-8")
-    out2 = tmp_path / "session-env2.txt"
-    result2 = run_cli(
-        "setup",
-        "--prefix",
-        "test-presence-2",
-        "--skip-preflight",
-        "--skip-repo-check",
-        "--caller-env",
-        str(env2),
-        "--check-reviewers",
-        "--write-session-env",
-        str(out2),
-        env=reviewer_env,
-    )
-    assert result2.returncode == 0, result2.stderr
-    assert "CODEX_PRESENT=true" in result2.stdout
-    assert "CURSOR_PRESENT=true" in result2.stdout
-    text2 = out2.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT" not in text2
-    assert "CURSOR_PRESENT" not in text2
-    assert "CODEX_BINARY_FOUND=true\n" in text2
+    # Probed presence reaches stdout; only the binary-found rows reach the writer.
+    result1, recorded1 = probe("", "test-presence-1")
+    emitted1 = {e.key: e.value for e in result1.stdout_emissions if e.kind == "kv"}
+    for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
+        assert emitted1[key] == "true"
+    assert "CODEX_AVAILABLE" not in emitted1
+    assert (recorded1[0].codex_binary_found, recorded1[0].cursor_binary_found) == ("true", "true")
 
-    env3 = tmp_path / "env3.txt"
-    env3.write_text(
-        "CODEX_PRESENT=true\nCURSOR_PRESENT=false\nLARCH_DYNAMIC_ARCHETYPES_MAX=1\n",
-        encoding="utf-8",
-    )
-    out3 = tmp_path / "session-env3.txt"
-    result3 = run_cli(
-        "setup",
-        "--prefix",
-        "test-presence-3",
-        "--skip-preflight",
-        "--skip-repo-check",
-        "--caller-env",
-        str(env3),
-        "--check-reviewers",
-        "--write-session-env",
-        str(out3),
-        env=reviewer_env,
-    )
-    assert result3.returncode == 0, result3.stderr
-    assert "LARCH_DYNAMIC_ARCHETYPES_MAX=1\n" in out3.read_text(encoding="utf-8")
+    # A caller-supplied presence value never suppresses the live probe.
+    result2, recorded2 = probe("CODEX_PRESENT=false\nCURSOR_PRESENT=true\n", "test-presence-2")
+    emitted2 = {e.key: e.value for e in result2.stdout_emissions if e.kind == "kv"}
+    assert emitted2["CODEX_PRESENT"] == "true"
+    assert emitted2["CURSOR_PRESENT"] == "true"
+    assert recorded2[0].codex_binary_found == "true"
 
-    env4 = tmp_path / "env4.txt"
-    env4.write_text(
-        "CODEX_PRESENT=true\nCURSOR_PRESENT=false\nLARCH_DYNAMIC_ARCHETYPES_MAX=9\n",
-        encoding="utf-8",
-    )
-    out4 = tmp_path / "session-env4.txt"
-    result4 = run_cli(
-        "setup",
-        "--prefix",
-        "test-presence-4",
-        "--skip-preflight",
-        "--skip-repo-check",
-        "--caller-env",
-        str(env4),
-        "--check-reviewers",
-        "--write-session-env",
-        str(out4),
-        env=reviewer_env,
-    )
-    assert result4.returncode == 0, result4.stderr
-    assert "LARCH_DYNAMIC_ARCHETYPES_MAX=" not in out4.read_text(encoding="utf-8")
-    assert "ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX" in result4.stderr
+    # A bounded dynamic-archetypes value carries; an out-of-range one is dropped.
+    _result3, recorded3 = probe("LARCH_DYNAMIC_ARCHETYPES_MAX=1\n", "test-presence-3")
+    assert recorded3[0].dynamic_archetypes == "1"
+    result4, recorded4 = probe("LARCH_DYNAMIC_ARCHETYPES_MAX=9\n", "test-presence-4")
+    assert recorded4[0].dynamic_archetypes == ""
+    assert any("LARCH_DYNAMIC_ARCHETYPES_MAX" in line for line in result4.stderr_diagnostics)
 
 
 def test_entry_gate_accepts_explicit_empty_current_branch() -> None:
@@ -1501,19 +426,6 @@ def test_entry_gate_failure_matrix() -> None:
     expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "true")
     expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "false")
     expect_failure("unknown argument", *base, "--bogus")
-
-
-def test_write_run_params_rejects_empty_boolean_flags(tmp_path: Path) -> None:
-    out = tmp_path / "run-params.json"
-    invalid = run_cli(
-        "write-run-params",
-        "--output",
-        str(out),
-        "--partition-requested",
-        "",
-    )
-    assert invalid.returncode == 2
-    assert "requires a value" in invalid.stderr
 
 
 def _git(args: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -1635,167 +547,6 @@ def test_local_cleanup_reports_branch_delete_failure(tmp_path: Path) -> None:
     assert _git(["branch", "--show-current"], cwd=worktree).stdout.strip() == "feature"
 
 
-def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(home))
-    impl = tmp_path / "sessions" / "impl"
-    impl.mkdir(parents=True)
-    cwd = tmp_path / "repo"
-    cwd.mkdir()
-
-    rc = session_env.write_implement_env_main(
-        ["--claude-pid", "12345", "--implement-tmpdir", str(impl), "--cwd", str(cwd)]
-    )
-
-    pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-12345.sh"
-    runner = home / ".cache" / "larch" / "sessions" / "implement-run-12345.sh"
-    assert rc == 0
-    assert pointer.read_text(encoding="utf-8") == (
-        f"IMPLEMENT_TMPDIR={impl}\nREPO_CWD={cwd}\nSKILL_KIND=implement\n"
-    )
-    assert runner.is_file()
-    assert os.access(runner, os.X_OK)
-
-    larch_run = impl / "larch-run.sh"
-    larch_run.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        'printf "tmp=%s\\npid=%s\\nargc=%s\\narg1=%s\\narg2=%s\\n" '
-        '"$IMPLEMENT_TMPDIR" "$LARCH_CLAUDE_PID" "$#" "$1" "$2" > "$IMPLEMENT_TMPDIR/runner.out"\n',
-        encoding="utf-8",
-    )
-    larch_run.chmod(0o755)
-    env = os.environ.copy()
-    env.pop("IMPLEMENT_TMPDIR", None)
-    env.pop("LARCH_CLAUDE_PID", None)
-    invoked = subprocess.run(
-        [str(runner), "alpha", "two words"],
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-    )
-
-    assert invoked.returncode == 0, invoked.stderr
-    assert (impl / "runner.out").read_text(encoding="utf-8") == (
-        f"tmp={impl}\npid=12345\nargc=2\narg1=alpha\narg2=two words\n"
-    )
-
-    inherited_env = env.copy()
-    inherited_env["LARCH_CLAUDE_PID"] = "67890"
-    inherited = subprocess.run(
-        [str(runner), "beta", "inherited pid"],
-        text=True,
-        capture_output=True,
-        env=inherited_env,
-        check=False,
-    )
-
-    assert inherited.returncode == 0, inherited.stderr
-    assert (impl / "runner.out").read_text(encoding="utf-8") == (
-        f"tmp={impl}\npid=67890\nargc=2\narg1=beta\narg2=inherited pid\n"
-    )
-
-    clear_rc = session_env.clear_implement_pointer_main(["--claude-pid", "12345"])
-
-    assert clear_rc == 0
-    assert not pointer.exists()
-    assert runner.exists()
-
-
-def test_write_implement_env_rejects_bad_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(home))
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    cwd = tmp_path / "repo"
-    cwd.mkdir()
-
-    rc = session_env.write_implement_env_main(
-        ["--claude-pid", "0", "--implement-tmpdir", str(impl), "--cwd", str(cwd)]
-    )
-
-    assert rc == 1
-    assert not (home / ".cache" / "larch" / "sessions").exists()
-
-
-def test_write_design_env_persists_claude_source_file(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    source_file = design / "claude-source.env"
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        "--claude-source-file",
-        str(source_file),
-        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
-    )
-    assert result.returncode == 0, result.stderr
-    assert f"LARCH_CLAUDE_SOURCE_FILE={source_file}\n" in out.read_text(encoding="utf-8")
-
-
-def test_write_design_env_persists_larch_run_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """write-design-env --run-id writes LARCH_RUN_ID to the output source-env."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    result = session_env.write_design_env_main([
-        "--output", str(out),
-        "--design-tmpdir", str(design),
-        "--session-id", "sid-1",
-        "--run-id", "custom-run-42",
-        "--claude-pid", "12345",
-        "--repo-root", str(tmp_path),
-    ])
-    assert result == 0
-    content = out.read_text(encoding="utf-8")
-    assert "LARCH_RUN_ID=custom-run-42" in content
-
-
-def test_write_design_env_preserves_prior_larch_run_id_on_refresh(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Refreshing write-design-env without --run-id keeps the prior LARCH_RUN_ID."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    _ = session_env.write_design_env_main([
-        "--output", str(out),
-        "--design-tmpdir", str(design),
-        "--session-id", "sid-1",
-        "--run-id", "initial-run-id",
-        "--claude-pid", "12345",
-        "--repo-root", str(tmp_path),
-    ])
-    _ = session_env.write_design_env_main([
-        "--output", str(out),
-        "--design-tmpdir", str(design),
-        "--session-id", "sid-1",
-        "--claude-pid", "12345",
-        "--repo-root", str(tmp_path),
-    ])
-    content = out.read_text(encoding="utf-8")
-    assert "LARCH_RUN_ID=initial-run-id" in content
-
-
 def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test-deny blocks session-backed auth but not operator-invoked."""
     monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
@@ -1898,42 +649,6 @@ def test_check_live_mutation_auth_missing_key(tmp_path: Path, monkeypatch: pytes
     assert not authorized
 
 
-def test_write_env_includes_live_mutation_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
-    sessions_root = tmp_path / "xdg" / "larch" / "sessions"
-    sessions_root.mkdir(parents=True)
-    out = sessions_root / "session-env.sh"
-    rc = session_env.write_env_main([
-        "--output", str(out),
-        "--repo", "owner/repo",
-        "--repo-unavailable", "false",
-        "--live-mutation-ok", "true",
-    ])
-    assert rc == 0
-    content = out.read_text(encoding="utf-8")
-    assert f"{config.LIVE_MUTATION_AUTH_KEY}=true" in content
-
-
-def test_write_design_env_includes_live_mutation_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    rc = session_env.write_design_env_main([
-        "--output", str(out),
-        "--design-tmpdir", str(design),
-        "--session-id", "sid-1",
-        "--live-mutation-ok", "true",
-        "--claude-pid", "12345",
-        "--repo-root", str(tmp_path),
-    ])
-    assert rc == 0
-    content = out.read_text(encoding="utf-8")
-    assert f"{config.LIVE_MUTATION_AUTH_KEY}=true" in content
-
 def test_design_source_helper_matches_writer_key_contract(tmp_path: Path) -> None:
     """Fixture helper stays on WRITE_DESIGN_ENV_KEYS and omits implement-only aliases."""
     design = make_design_tmpdir(tmp_path)
@@ -1947,44 +662,6 @@ def test_design_source_helper_matches_writer_key_contract(tmp_path: Path) -> Non
     assert json.loads(params.read_text(encoding="utf-8"))["schema_version"] == 3
     refreshed = write_design_source_env(design, overrides={"REPO": "owner/name"})
     assert "export REPO=owner/name\n" in refreshed.read_text(encoding="utf-8")
-
-
-def test_write_env_direct_returns_frozen_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
-    out = tmp_path / "session-env.sh"
-    result = session_env.write_env(session_env.WriteEnvParams(output=str(out), repo_unavailable="false", repo="owner/repo"))
-    assert isinstance(result, session_env.WriteEnvResult)
-    assert result.wrote is True
-    assert result.output == out
-    assert result.plugin_root_only is False
-    text = out.read_text(encoding="utf-8")
-    assert "REPO=owner/repo\n" in text
-    assert "REPO_UNAVAILABLE=false\n" in text
-    with pytest.raises(FrozenInstanceError):
-        result.wrote = False  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
-
-
-def test_write_env_direct_dev_null_does_not_write(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
-    result = session_env.write_env(session_env.WriteEnvParams(output="/dev/null", repo_unavailable="false"))
-    assert result.wrote is False
-    assert result.output is None
-
-
-def test_write_env_direct_plugin_root_only(tmp_path: Path) -> None:
-    out = tmp_path / "plugin-root.env"
-    result = session_env.write_env(session_env.WriteEnvParams(output=str(out), repo_unavailable=None, plugin_root_only=True, value="/abs/plugin/root"))
-    assert result.plugin_root_only is True
-    assert result.wrote is True
-    assert out.read_text(encoding="utf-8").startswith("CLAUDE_PLUGIN_ROOT=/abs/plugin/root")
-    skipped = session_env.write_env(session_env.WriteEnvParams(output=str(tmp_path / "skip.env"), repo_unavailable=None, plugin_root_only=True, value="not-absolute"))
-    assert skipped.wrote is False
-    assert skipped.output is None
-
-
-def test_write_env_direct_missing_output_raises() -> None:
-    with pytest.raises(ValueError, match="Missing required"):
-        session_env.write_env(session_env.WriteEnvParams(output="", repo_unavailable="false"))
 
 
 def test_write_id_direct_writes_then_preserves(tmp_path: Path) -> None:
@@ -2027,22 +704,6 @@ def test_entry_gate_direct_error_paths() -> None:
         session_env.entry_gate(mode="implement", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied="true")
 
 
-def test_write_implement_env_direct_returns_frozen_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    result = session_env.write_implement_env(claude_pid="123", implement_tmpdir=str(impl), cwd=str(tmp_path))
-    assert isinstance(result, session_env.WriteImplementEnvResult)
-    assert result.pointer.is_file()
-    assert result.run_script.is_file()
-    assert result.implement_tmpdir == impl
-    assert f"IMPLEMENT_TMPDIR={impl}" in result.pointer.read_text(encoding="utf-8")
-    with pytest.raises(ValueError, match="claude-pid"):
-        session_env.write_implement_env(claude_pid="", implement_tmpdir=str(impl), cwd=str(tmp_path))
-
-
 def test_setup_direct_returns_emission_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True)
@@ -2066,28 +727,55 @@ def test_setup_direct_writes_session_env_and_repo(tmp_path: Path, monkeypatch: p
     caller = tmp_path / "caller.env"
     caller.write_text("REPO=owner/repo\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
     out = tmp_path / "session-env.sh"
+    recorded = record_write_env(monkeypatch)
+
     result = session_env.setup(prefix="pytest", skip_preflight=True, write_session_env=str(out), caller_env=str(caller))
+
     assert result.exit_code == 0
     assert result.repo_checked is True
     assert result.repo == "owner/repo"
-    assert result.write_env_result is not None
-    assert result.write_env_result.wrote is True
-    assert "REPO=owner/repo" in out.read_text(encoding="utf-8")
+    assert result.session_env_written is True
+    assert [(params.output, params.repo, params.repo_unavailable) for params in recorded] == [
+        (str(out), "owner/repo", "false")
+    ]
     kv_keys = [e.key for e in result.stdout_emissions if e.kind == "kv"]
     assert "REPO" in kv_keys
     assert "REPO_UNAVAILABLE" in kv_keys
+
+
+def test_setup_direct_reports_a_failed_writer_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    _ = record_write_env(monkeypatch, returncode=1, stderr="ERROR=output parent is not a writable directory: /nope\n")
+
+    result = session_env.setup(
+        prefix="pytest",
+        skip_preflight=True,
+        skip_repo_check=True,
+        write_session_env=str(tmp_path / "session-env.sh"),
+    )
+
+    assert result.exit_code == 1
+    assert result.session_env_written is False
+    assert result.stderr_diagnostics[-1] == "ERROR=output parent is not a writable directory: /nope"
 
 
 def test_setup_emits_and_persists_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.delenv("REPO_ROOT", raising=False)
-    out = tmp_path / "session-env.sh"
-    result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True, write_session_env=str(out))
+    recorded = record_write_env(monkeypatch)
+
+    result = session_env.setup(
+        prefix="pytest",
+        skip_preflight=True,
+        skip_repo_check=True,
+        write_session_env=str(tmp_path / "session-env.sh"),
+    )
+
     assert result.exit_code == 0
     kv = {e.key: e.value for e in result.stdout_emissions if e.kind == "kv"}
     assert kv["REPO_ROOT"] == str(Path.cwd())
-    assert f"REPO_ROOT={Path.cwd()}" in out.read_text(encoding="utf-8")
+    assert [params.repo_root for params in recorded] == [str(Path.cwd())]
 
 
 def test_setup_repo_root_prefers_caller_env_then_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

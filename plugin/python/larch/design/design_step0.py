@@ -312,7 +312,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
         check=False,
     )
     reviewer_kv = _reviewer_probe_kv(reviewer_probe)
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root), "--live-mutation-ok", "true")
+    wdce = [str(repo_roots.larch_entrypoint(plugin_root)), "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root), "--live-mutation-ok", "true"]
     for flag, value in (
         ("--codex-present", reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", [""]))[-1]),
         ("--cursor-present", reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", [""]))[-1]),
@@ -567,8 +567,8 @@ def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
     if not issue_number or not issue_number.isdigit():
         print("**⚠ Step 0b: resume route could not recover numeric ISSUE_NUMBER; aborting /design**", file=sys.stderr)
         return 1
-    command = _cli_cmd(
-        ctx.plugin_root,
+    command = [
+        str(repo_roots.larch_entrypoint(ctx.plugin_root)),
         "session",
         "write-design-env",
         "--output",
@@ -583,7 +583,7 @@ def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
         issue_number,
         "--claude-pid",
         ctx.claude_pid,
-    )
+    ]
     repo = recovered.get("REPO", "")
     if repo:
         command.extend(["--repo", repo])

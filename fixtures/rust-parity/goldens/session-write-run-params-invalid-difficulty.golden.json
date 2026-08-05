@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "write-run-params.sh: invalid --difficulty: NOPE\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

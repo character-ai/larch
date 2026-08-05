@@ -22,6 +22,7 @@ mod report;
 mod retry;
 mod review_dispatch;
 mod run_log;
+mod session_env;
 mod session_state;
 mod storage;
 mod telemetry;
@@ -98,7 +99,8 @@ pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
     HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,
     ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
-    ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, ScannerProgram, VendorProgram,
+    ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, PythonVerbProgram, ScannerProgram,
+    VendorProgram,
 };
 pub use process_identity::{
     COMMAND_LOG_LIMIT, DESIGN_STEP3_KILL_LOG_FILE, DESIGN_STEP3_LOOP_IDENTITY_FILE,
@@ -151,6 +153,15 @@ pub use run_log::{
     RunLogSlugError, RunLogSlugErrorKind, final_summary_terminal_heading, first_nonempty_line,
     manifest_pr_evidence_matches, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
     validate_run_log_slug,
+};
+pub use session_env::{
+    DIFFICULTY_CHOICES, MAX_PATH_VALUE_LEN, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams,
+    WRITE_DESIGN_ENV_KEYS, WRITE_ENV_KEYS, design_run_launcher_text, export_line, external_timeout,
+    implement_run_launcher_text, is_bool, is_strict_run_id, is_valid_claude_pid,
+    is_valid_plugin_root_value, is_valid_repo_value, is_valid_run_id, is_valid_session_id,
+    parse_bool_arg, plugin_root_env_text, posix_path_display, restore_finalize_default,
+    run_params_json, validate_no_newlines, validate_path_arg_value, validate_repo_root_value,
+    validate_writer_keys,
 };
 pub use session_state::{
     IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, IMPLEMENT_TMPDIR_TTL_SECONDS,

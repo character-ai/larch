@@ -4,18 +4,25 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 from larch.core import config
 from larch.implement.dispatch_helpers import (
     _emit_kv,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
-    _invoke_cli,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
+    _larch_entrypoint,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
+    _run,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
     _read_kv_file,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
     _rehydrate_larch_triplet,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
     _rehydrate_plugin_root,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
     _run_cli_forward,  # pyright: ignore[reportPrivateUsage]  # Shared dispatch helper.
 )
+
+
+def _run_larch(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run one Rust-owned verb through the verified bootstrap script."""
+    return _run(argv)
 
 
 _TRUTHY = frozenset(
@@ -103,8 +110,9 @@ def step_19_main(argv: list[str] | None = None) -> int:
         return config.EXIT_INTERNAL_ERROR
 
     if _should_restore_finalize(implement_tmpdir):
-        restore = _invoke_cli(
+        restore = _run_larch(
             [
+                str(_larch_entrypoint()),
                 "session",
                 "restore-finalize-state",
                 "--implement-tmpdir",
@@ -118,8 +126,9 @@ def step_19_main(argv: list[str] | None = None) -> int:
             )
 
     claude_pid = os.environ.get("LARCH_CLAUDE_PID") or str(os.getppid())
-    _ = _invoke_cli(
+    _ = _run_larch(
         [
+            str(_larch_entrypoint()),
             "session",
             "clear-implement-pointer",
             "--claude-pid",
