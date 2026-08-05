@@ -304,6 +304,7 @@ def _safe_matched_pattern_value(value: str) -> str:
         "same-cause-repeat", "fallback", "bail-token", "lint-fix-bail-token",
         "checks-leg-abandoned", "checks-child-sigterm", "design-publish-tail-current-attempt",
         "postmerge-flush-expected", "postmerge-flush-failure",
+        config.STALL_RECOVERY_PATTERN_MIGRATION_GOVERNANCE_BLOCK,
     }
     return value if value in allowed else "redacted"
 

@@ -158,6 +158,16 @@ def _ship_refresh_preterminal_stall(*, lower: str, step: str) -> bool:
     )
 
 
+def _migration_governance_blocked_bail(bail: str) -> bool:
+    """Match the machine-authored governance marker only in the raw bail field."""
+    first_line: str = bail.partition("\n")[0].casefold()
+    marker: str = config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER
+    marker_index: int = first_line.find(marker)
+    if marker_index < 0:
+        return False
+    return bool(first_line[marker_index + len(marker):].strip())
+
+
 def _classify_text(
     *,
     text: str,
@@ -206,6 +216,30 @@ def _classify_text(
     ):
         return "transient-infra", "step8-shippr", "transient-output"
     return "unrecoverable", "none", "fallback"
+
+
+def _classify_implement_text(
+    *,
+    text: str,
+    bail: str,
+    step: str,
+    detail_log_valid: bool,
+    exit_code: str,
+) -> tuple[str, str, str]:
+    """Classify an implement stall with raw governance bail precedence."""
+    if _migration_governance_blocked_bail(bail):
+        return (
+            "contract-failure",
+            "none",
+            config.STALL_RECOVERY_PATTERN_MIGRATION_GOVERNANCE_BLOCK,
+        )
+    return _classify_text(
+        text=text,
+        bail=bail,
+        step=step,
+        detail_log_valid=detail_log_valid,
+        exit_code=exit_code,
+    )
 
 
 def _resolve_step_with_abandoned_bgjob(*, tmpdir: Path, any_stall: bool, step: str) -> tuple[bool, str, str | None]:
@@ -334,7 +368,7 @@ def classify(args: argparse.Namespace) -> int:
         result = ("operator-action", "none", "postmerge-flush-expected")
         final_hint = True
     if result is None:
-        result = _classify_text(
+        result = _classify_implement_text(
             text=evidence,
             bail=bail,
             step=step,

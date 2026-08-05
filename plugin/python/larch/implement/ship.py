@@ -201,7 +201,7 @@ def _governance_gate_result(
     tokens = ",".join(verdict.blocking_reasons) or "unknown"
     return ShipResult(
         Outcome.STALLED,
-        detail=f"{site}: migration governance blocked: {tokens}",
+        detail=f"{site}: {config.MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER} {tokens}",
     )
 
 
