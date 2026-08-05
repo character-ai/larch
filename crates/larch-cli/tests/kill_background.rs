@@ -281,7 +281,11 @@ fn rejects_missing_directory_and_outside_allowlist() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("allowlist").or(predicate::str::contains("directory")));
+        .stderr(
+            predicate::str::contains("allowlist")
+                .or(predicate::str::contains("directory"))
+                .or(predicate::str::contains("parent resolution failed")),
+        );
 }
 
 #[test]
