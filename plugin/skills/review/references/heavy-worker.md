@@ -59,7 +59,7 @@ NEVER return to the parent while any reviewer you launched is still running. The
 
 ## Mid-Run Dirty-Tree Probe Contract
 
-After each external collection point (Step 2 launch → Step 3a collect), scan `${OUTPUT}.dirty-tree` sidecars and run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint`. On `STATUS=dirty` or `STATUS=unknown`, automatically log and discard the reviewer-introduced changes — do NOT stash them and do NOT prompt the operator (same auto-discard flow as the inline path in `skills/review/SKILL.md` Step 3a). Track `RECOVERY_TAKEN` across the loop and write it into `review-dirty-tree-summary.env`.
+After each external collection point (Step 2 launch → Step 3a collect), scan `${OUTPUT}.dirty-tree` sidecars and run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" dirty-tree checkpoint`. On `STATUS=dirty` or `STATUS=unknown`, automatically log and discard the reviewer-introduced changes — do NOT stash them and do NOT prompt the operator (same auto-discard flow as the inline path in `skills/review/SKILL.md` Step 3a). Track `RECOVERY_TAKEN` across the loop and write it into `review-dirty-tree-summary.env`.
 
 ## Return Value
 

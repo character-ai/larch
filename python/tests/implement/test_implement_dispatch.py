@@ -5472,12 +5472,13 @@ def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
 
     monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
     monkeypatch.setattr(dispatch_commit_route, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
-    monkeypatch.setattr(
-        implement_dispatch,
-        "_invoke_cli",
-        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
-    )
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"))
+    command: list[str] = []
+
+    def fake_scope_check(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        command.extend(args)
+        return subprocess.CompletedProcess(args, 1, "", "scope fail")
+
+    monkeypatch.setattr(dispatch_commit_route.proc, "run", fake_scope_check)
 
     rc = implement_dispatch._run_step4_recovery_recompute(impl, repo_root=Path("/repo"))
 
@@ -5485,6 +5486,8 @@ def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
     assert rc == 1
     assert "BAIL_REASON=recovery-out-of-scope\n" in out.out
     assert "NEXT_ACTION=" not in out.out
+    assert command[0].endswith("/scripts/larch.sh")
+    assert command[1:3] == ["dirty-tree", "scope-check"]
 
 
 def test_step4_composite_recovery_out_of_scope_emits_bail_without_next_action(

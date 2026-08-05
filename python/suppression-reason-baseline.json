@@ -5131,13 +5131,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/state/dirty_tree.py",
-    "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnusedCallResult=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/state/session_env.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportAttributeAccessIssue]",

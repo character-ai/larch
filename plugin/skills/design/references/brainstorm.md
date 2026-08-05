@@ -135,7 +135,7 @@ If the env file contains `RECOVERY_REQUIRED=true`, run the non-skippable operato
 
 - Use `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the once-per-boundary sentinel; do not fire `AskUserQuestion` when the sentinel already exists.
 - When prompting, offer exactly **Restore a clean tree and continue** and **Cancel this design run**.
-- On **Restore a clean tree and continue**: re-run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint` and continue only when it reports `STATUS=clean`; then rewrite `dirty-tree-detected.env` with `RECOVERY_REQUIRED=false` and proceed to synthesis.
+- On **Restore a clean tree and continue**: re-run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" dirty-tree checkpoint` and continue only when it reports `STATUS=clean`; then rewrite `dirty-tree-detected.env` with `RECOVERY_REQUIRED=false` and proceed to synthesis.
 - On **Cancel this design run**: preserve `$DESIGN_TMPDIR` and exit `/design`.
 - Do not proceed to synthesis, the discussion loop, or Step 1d.7 while `RECOVERY_REQUIRED=true`.
 

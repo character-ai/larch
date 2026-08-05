@@ -123,7 +123,7 @@ External implementer launches use a fixed 7200-second wall-clock timeout. `skill
 - `skills/implement/SKILL.md` Step 2 — the caller; any change to the KV envelope must be mirrored in Step 2's parser.
 - `python/test_implement_dispatch.py` — the offline harness; any new outcome / reason token must be exercised.
 - `python/cli.py plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
-- `python/cli.py dirty-tree scope-check` — fail-closed recovery scope verifier for malformed-manifest preservation.
+- `scripts/larch.sh dirty-tree scope-check` — fail-closed recovery scope verifier for malformed-manifest preservation.
 - `python/cli.py implement recovery-paths` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path; `--capture-postlaunch` refreshes the postlaunch porcelain before diffing for orchestrator-owned fallback pathspecs.
 - `scripts/external-tool-registry.md` — update its "Sourced by" list when this script's source-list status changes.
 

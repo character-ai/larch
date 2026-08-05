@@ -159,7 +159,7 @@ def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, mo
         lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
     )
     monkeypatch.setattr(bootstrap.run_logs, "log_init", lambda *args, **kwargs: calls.append((args, kwargs)))
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
         implement_tmpdir=str(tmp_path),
@@ -182,7 +182,7 @@ def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> 
         lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
     )
     monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fake_rename)
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
         implement_tmpdir=str(tmp_path),
@@ -293,7 +293,7 @@ def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatc
     order: list[str] = []
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: order.append("bypass") or True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: order.append("flags") or True)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_publish_plan_review_tally", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_upsert_plan_summary", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     _ = seed_feature_description(tmp_path, "Title\n")
@@ -350,7 +350,7 @@ def test_resume_plan_tail_stops_after_run_flags_failure(tmp_path, monkeypatch) -
     def dirty_checkpoint() -> list[str]:
         raise AssertionError("dirty checkpoint should not run after run flag persistence failure")
 
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", dirty_checkpoint)
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", dirty_checkpoint)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
         implement_tmpdir=str(tmp_path),
@@ -434,7 +434,7 @@ def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
     def dirty_checkpoint() -> list[str]:
         raise AssertionError("dirty checkpoint should not run after run flag persistence failure")
 
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", dirty_checkpoint)
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", dirty_checkpoint)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
@@ -466,7 +466,7 @@ def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, m
     )
     plan_src = preflight / "plan-from-issue.txt"
     plan_src.write_text(source_text, encoding="utf-8")
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
 
@@ -526,7 +526,7 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
     preflight = tmp_path / "preflight"
     preflight.mkdir()
     (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
 
     def unexpected_issue_view(*_args: object, **_kwargs: object) -> CommandResult:
@@ -563,7 +563,7 @@ def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_pa
     monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
 
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(

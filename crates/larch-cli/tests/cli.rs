@@ -23,6 +23,7 @@ Usage: larch <COMMAND>
 
 Commands:
   ci-timing      Collect GitHub Actions timing inputs for test rebalancing
+  dirty-tree     Working-tree checkpoint and scope compatibility commands
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository commands
   kv             Exact `KEY=value` stream readers

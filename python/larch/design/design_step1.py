@@ -15,7 +15,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 
 from larch.design.design_router import _extract_args, _normalize_step, _parse_stdout_kv
 from larch.design.design_step0 import (
@@ -71,7 +71,12 @@ def _brainstorm_dirty_checkpoint(*, plugin_root: Path, design_tmpdir: Path, path
                 reason = side
     stdout_path = design_tmpdir / "brainstorm-dirty-tree.checkpoint.out"
     stderr_path = design_tmpdir / "brainstorm-dirty-tree.checkpoint.err"
-    proc = subprocess.run(_cli_cmd(plugin_root, "dirty-tree", "checkpoint"), capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        [str(larch_entrypoint(plugin_root)), "dirty-tree", "checkpoint"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     stdout_path.write_text(proc.stdout, encoding="utf-8")
     stderr_path.write_text(proc.stderr, encoding="utf-8")
     status = _parse_stdout_kv(proc.stdout).get("STATUS", [""])[-1]

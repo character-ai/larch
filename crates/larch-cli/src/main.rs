@@ -17,6 +17,7 @@ use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod ci_timing;
+mod dirty_tree_commands;
 mod git_commands;
 mod github_repository_resolution;
 mod kill_background;
@@ -54,6 +55,9 @@ enum Domain {
     /// Collect GitHub Actions timing inputs for test rebalancing.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
+    /// Working-tree checkpoint and scope compatibility commands.
+    #[command(subcommand)]
+    DirtyTree(DirtyTreeCommand),
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
@@ -106,6 +110,22 @@ enum SessionCommand {
     /// Read several values from one session environment file.
     #[command(disable_help_flag = true)]
     ReadKeys(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DirtyTreeCommand {
+    /// Classify tracked and new untracked paths against a baseline.
+    #[command(disable_help_flag = true)]
+    Baseline(RawCompatibilityArguments),
+    /// Report whether a consumer worktree is clean.
+    #[command(disable_help_flag = true)]
+    Checkpoint(RawCompatibilityArguments),
+    /// Reject recovered paths that are outside the plan scope.
+    #[command(disable_help_flag = true)]
+    ScopeCheck(RawCompatibilityArguments),
+    /// Detect a scope-reduction review marker.
+    #[command(disable_help_flag = true)]
+    ScopeMarker(RawCompatibilityArguments),
 }
 
 #[derive(Args)]
@@ -530,6 +550,24 @@ fn run(
             Ok(ExitCode::SUCCESS)
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
+        Domain::DirtyTree(command) => Ok(match command {
+            DirtyTreeCommand::Baseline(arguments) => {
+                let raw = dirty_tree_raw_arguments("baseline");
+                dirty_tree_commands::baseline(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+            DirtyTreeCommand::Checkpoint(arguments) => {
+                let raw = dirty_tree_raw_arguments("checkpoint");
+                dirty_tree_commands::checkpoint(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+            DirtyTreeCommand::ScopeCheck(arguments) => {
+                let raw = dirty_tree_raw_arguments("scope-check");
+                dirty_tree_commands::scope_check(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+            DirtyTreeCommand::ScopeMarker(arguments) => {
+                let raw = dirty_tree_raw_arguments("scope-marker");
+                dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+        }),
         Domain::Example(ExampleCommand::Echo(arguments)) => {
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
@@ -589,6 +627,13 @@ fn run(
             }
         },
     }
+}
+
+fn dirty_tree_raw_arguments(command: &str) -> Option<Vec<OsString>> {
+    let mut values = env::args_os().skip(1);
+    (values.next()?.as_os_str() == OsStr::new("dirty-tree")).then_some(())?;
+    (values.next()?.as_os_str() == OsStr::new(command)).then_some(())?;
+    Some(values.collect())
 }
 
 fn run_release(
@@ -1233,7 +1278,7 @@ fn valid_step(step: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
 }
 
-fn valid_meta_path(path: &OsStr) -> bool {
+pub(crate) fn valid_meta_path(path: &OsStr) -> bool {
     let bytes = path.as_encoded_bytes();
     !bytes.is_empty()
         && bytes

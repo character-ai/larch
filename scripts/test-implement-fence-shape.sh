@@ -453,7 +453,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
     original_entry_gate = session_env.entry_gate
     original_current_branch = git.current_branch
     original_summary = bootstrap._upsert_plan_summary
-    original_checkpoint = bootstrap.dirty_tree.checkpoint
+    original_checkpoint = bootstrap._dirty_tree_checkpoint
 
     def fake_branch_state(*_args: object, **_kwargs: object) -> pr.CreateBranchResult:
         return pr.CreateBranchResult(
@@ -473,7 +473,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         session_env.entry_gate = fake_entry_gate
         git.current_branch = lambda *_args, **_kwargs: "feature/resume"
         bootstrap._upsert_plan_summary = lambda _st: None
-        bootstrap.dirty_tree.checkpoint = lambda: ["STATUS=clean"]
+        bootstrap._dirty_tree_checkpoint = lambda: ["STATUS=clean"]
         opts = bootstrap.BootstrapOptions(
             up_to_phase="plan",
             issue_number="4104",
@@ -489,7 +489,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         session_env.entry_gate = original_entry_gate
         git.current_branch = original_current_branch
         bootstrap._upsert_plan_summary = original_summary
-        bootstrap.dirty_tree.checkpoint = original_checkpoint
+        bootstrap._dirty_tree_checkpoint = original_checkpoint
         os.environ.clear()
         os.environ.update(original_env)
 

@@ -19,13 +19,13 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from larch.state import dirty_tree
 from larch.review import findings_ledger
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 from larch.report.tokens import (
     append_panel_prompt_size,
@@ -582,15 +582,15 @@ def _review_write_cursor_dirty_tree_from_baseline(
     *, output: Path, baseline: Path, workdir: str = ""
 ) -> None:
     baseline_workdir = workdir or _resolve_review_codex_workdir(str(Path.cwd()))
-    lines = dirty_tree.baseline(
+    sidecar = output.with_suffix(output.suffix + ".dirty-tree")
+    result = rust_runtime.dirty_tree_baseline(
+        proc,
         baseline_path=str(baseline),
-        sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")),
+        sidecar=str(sidecar),
         cwd=baseline_workdir,
     )
-    _write(
-        path=output.with_suffix(output.suffix + ".dirty-tree"),
-        text="\n".join(lines) + "\n",
-    )
+    if not sidecar.is_file():
+        _write(path=sidecar, text="\n".join(result.lines) + "\n")
 
 
 def _review_failure_source(output: Path, *, sink: str = "") -> Path:

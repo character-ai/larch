@@ -449,7 +449,7 @@ Use the `NEXT_ACTION` routing table for every Step 3 resume after `DONE` and suc
 
 In loop mode, Step 3 does not return after every round. Happy path revises `plan.txt` inside `python/larch/review/plan_review.py`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Any plan revision must run `python/cli.py design postplan-emit` so `diff-lines.txt` and validation use the shared result contract.
 
-The driver runs `python/cli.py dirty-tree checkpoint` after reviewer collection and voter dispatch. Use launcher `${OUTPUT}.dirty-tree` sidecars for dirty/unknown recovery, deduped by `.dirty-tree-prompted-plan-review`.
+Driver runs `scripts/larch.sh dirty-tree checkpoint` after reviewer collection and voter dispatch. Use launcher `${OUTPUT}.dirty-tree` sidecars for dirty/unknown recovery, deduped by `.dirty-tree-prompted-plan-review`.
 
 If **all reviewers** report no in-scope issues and no OOS observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input`, `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`) and normalized `NEXT_ACTION` routes onward.
 

@@ -33,6 +33,7 @@ skills/implement/prompts/codex-implementer.md	later-domain	#7681	commit
 skills/implement/prompts/cursor-implementer.md	later-domain	#7681	commit
 crates/larch-adapters/src/git/mod.rs	git-cli	#7671	closed-cli-owner
 crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
+crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
@@ -99,7 +100,6 @@ python/larch/review/review_gather.py	later-domain	#7679	ls-files
 python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,ls-files,restore
 python/larch/state/admission.py	later-domain	#7677	fetch,rebase,remote,rev-parse,stash,status,symbolic-ref
 python/larch/state/bootstrap.py	later-domain	#7677	status
-python/larch/state/dirty_tree.py	later-domain	#7677	diff,ls-files,status
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
 python/larch/state/session_env.py	later-domain	#7677	branch,checkout,fetch,pull,rev-list,show-ref,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse

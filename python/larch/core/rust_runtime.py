@@ -18,6 +18,23 @@ class PhantomProbeOutput:
 
 
 @dataclass(frozen=True)
+class DirtyTreeOutput:
+    """Validated result rows from a Rust-owned dirty-tree command."""
+
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirtyTreeRequest:
+    """One validated Rust dirty-tree invocation contract."""
+
+    command: str
+    arguments: tuple[str, ...]
+    mode: str
+    fallback: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PushOutput:
     """Validated result from the Rust-owned branch push command."""
 
@@ -99,6 +116,72 @@ def phantom_probe(runner: Runner, *, step: str, cwd: str | None = None) -> Phant
             lines=("PHANTOM_STATUS=unknown", "PHANTOM_REASON=phantom-probe-failed"),
         )
     return PhantomProbeOutput(lines=lines)
+
+
+def dirty_tree_checkpoint(runner: Runner, *, cwd: str | None = None) -> DirtyTreeOutput:
+    """Invoke the Rust checkpoint owner and fail closed without a status envelope."""
+    return _dirty_tree(
+        runner,
+        DirtyTreeRequest(
+            command="checkpoint",
+            arguments=(),
+            mode="checkpoint",
+            fallback=("STATUS=unknown", "MODE=checkpoint", "REASON=dirty-tree-checkpoint-failed"),
+        ),
+        cwd=cwd,
+    )
+
+
+def dirty_tree_baseline(
+    runner: Runner,
+    *,
+    baseline_path: str,
+    sidecar: str = "",
+    cwd: str | None = None,
+) -> DirtyTreeOutput:
+    """Invoke the Rust baseline owner and retain its byte-path sidecar contract."""
+    arguments = ["--baseline", baseline_path]
+    if sidecar:
+        arguments.extend(["--sidecar", sidecar])
+    baseline_state = "present" if Path(baseline_path).is_file() else "missing"
+    return _dirty_tree(
+        runner,
+        DirtyTreeRequest(
+            command="baseline",
+            arguments=tuple(arguments),
+            mode="baseline",
+            fallback=(
+                "STATUS=unknown",
+                "MODE=baseline",
+                f"UNTRACKED_BASELINE={baseline_state}",
+                "REASON=dirty-tree-baseline-failed",
+            ),
+        ),
+        cwd=cwd,
+    )
+
+
+def _dirty_tree(
+    runner: Runner,
+    request: DirtyTreeRequest,
+    *,
+    cwd: str | None,
+) -> DirtyTreeOutput:
+    result = runner.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "dirty-tree",
+            request.command,
+            *request.arguments,
+        ],
+        cwd=cwd,
+    )
+    lines = tuple(line for line in result.stdout.splitlines() if line)
+    if result.returncode != 0 or f"MODE={request.mode}" not in lines or not any(
+        line.startswith("STATUS=") for line in lines
+    ):
+        return DirtyTreeOutput(lines=request.fallback)
+    return DirtyTreeOutput(lines=lines)
 
 
 def push_branch(runner: Runner, *, cwd: str | None = None) -> PushOutput:

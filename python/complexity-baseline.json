@@ -8033,38 +8033,6 @@
     "history": []
   },
   {
-    "file": "larch/state/dirty_tree.py",
-    "code": "C901",
-    "qualified_symbol": "baseline",
-    "metric": 15,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/dirty_tree.py",
-    "code": "PLR0911",
-    "qualified_symbol": "baseline",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/dirty_tree.py",
-    "code": "PLR0912",
-    "qualified_symbol": "baseline",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/dirty_tree.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_result_lines",
-    "metric": 6,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/state/finalize.py",
     "code": "C901",
     "qualified_symbol": "_validate_finalize_cli_args",
