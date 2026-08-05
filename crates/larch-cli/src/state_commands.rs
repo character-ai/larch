@@ -58,9 +58,7 @@ pub fn kv_get(arguments: &[OsString]) -> ExitCode {
         let Some(text) = argument.to_str() else {
             continue;
         };
-        let (name, explicit) = text
-            .split_once('=')
-            .map_or((text, None), |(name, value)| (name, Some(value)));
+        let (name, explicit) = split_inline_option(text);
         if name == "-h" || name.starts_with("-h") || (name.len() > 2 && "--help".starts_with(name))
         {
             if let Some(value) = explicit {
@@ -274,10 +272,7 @@ fn parse_arguments(arguments: &[OsString], mode: ParseMode) -> Result<ParsedArgu
             parsed.unknown.extend_from_slice(&arguments[index..]);
             break;
         }
-        let (name, inline) = text.split_once('=').map_or_else(
-            || (text.as_ref(), None),
-            |(name, value)| (name, Some(value)),
-        );
+        let (name, inline) = split_inline_option(&text);
         let option = scalar_option(name, mode == ParseMode::Kv)
             .filter(|option| mode != ParseMode::ReadKeys || matches!(*option, "--file" | "--key"));
         let Some(option) = option else {
@@ -322,6 +317,12 @@ fn scalar_option(name: &str, kv_options: bool) -> Option<&'static str> {
         .into_iter()
         .filter(|option| kv_options || !matches!(*option, "--match" | "--cr-strip"))
         .find(|option| *option == name || (name.len() > 2 && option.starts_with(name)))
+}
+
+fn split_inline_option(option: &str) -> (&str, Option<&str>) {
+    option
+        .split_once('=')
+        .map_or((option, None), |(name, value)| (name, Some(value)))
 }
 
 fn validate_choice(option: &str, value: &str) -> Result<(), String> {
