@@ -35,7 +35,10 @@ crate-local tests where the dependency graph permits it.
 
 Never call `set_current_dir`, `set_var`, or `remove_var` in a test. Do not use a
 shared fixed path, port, clock, response queue, or mutable static. Give each
-test its own fixture and let Cargo run it in parallel.
+test its own fixture and let Cargo run it in parallel. Cursor config isolation
+uses `CursorConfigContext`, which returns a private directory and a
+`ChildEnvironment::CursorConfigDir` override for the child request; it must not
+mutate `CURSOR_CONFIG_DIR` in the test process.
 
 ## Git oracle and semantic snapshots
 

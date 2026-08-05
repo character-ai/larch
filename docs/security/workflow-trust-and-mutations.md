@@ -90,7 +90,10 @@ required second line of defense.
 environment allowlists, timeouts, bounded capture, termination, and reaping for
 their respective current commands. Captured external output remains untrusted
 and may contain secrets. Keep raw streams in session-local state and use the
-owning redaction and publication boundary before egress.
+owning redaction and publication boundary before egress. Rust Cursor isolation
+creates a private config directory and injects `CURSOR_CONFIG_DIR` only into the
+child `ProcessRequest` environment; it does not mutate the parent process
+environment, so parallel tests and parallel clones stay isolated.
 
 ### Same-user state and sandbox limits
 

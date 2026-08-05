@@ -723,6 +723,7 @@ mod tests {
         assert!(!inherited.contains(&"GITHUB_TOKEN"));
         assert!(!inherited.contains(&"GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!inherited.contains(&"OPENAI_API_KEY"));
+        assert!(!inherited.contains(&"CURSOR_CONFIG_DIR"));
     }
 
     #[test]

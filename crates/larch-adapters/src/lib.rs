@@ -1,6 +1,7 @@
 //! Concrete adapters for filesystem, process, Git, time, and service boundaries.
 
 pub mod clock;
+pub mod cursor_config;
 pub mod git;
 pub mod github;
 mod github_actions;
@@ -29,6 +30,7 @@ pub use filesystem::{
     path_strictly_under, path_under, resolve_allow_missing, safe_output_parent,
     writer_target_allowed,
 };
+pub use cursor_config::CursorConfigContext;
 pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
     CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,
