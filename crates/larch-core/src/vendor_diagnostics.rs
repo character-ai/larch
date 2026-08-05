@@ -70,6 +70,16 @@ pub enum LauncherArtifactKind {
     SidecarHistory,
     /// Rolled-over event history across attempts.
     EventsHistory,
+    /// Mid-run dirty-tree status sidecar.
+    DirtyTree,
+    /// Pre-launch untracked-file baseline for cursor dirty-tree comparison.
+    UntrackedBaseline,
+    /// Tracked dirty paths recorded beside a dirty-tree sidecar.
+    DirtyTreeTrackedPaths,
+    /// New untracked paths recorded beside a dirty-tree sidecar.
+    DirtyTreeNewUntrackedPaths,
+    /// Token-budget cap-hit carrier written beside the output.
+    CapHit,
 }
 
 impl LauncherArtifactKind {
@@ -93,6 +103,11 @@ impl LauncherArtifactKind {
             Self::LauncherStderr => ".launcher-stderr",
             Self::SidecarHistory => ".sidecar.history",
             Self::EventsHistory => ".events.history",
+            Self::DirtyTree => ".dirty-tree",
+            Self::UntrackedBaseline => ".untracked-baseline",
+            Self::DirtyTreeTrackedPaths => ".dirty-tree.tracked-paths",
+            Self::DirtyTreeNewUntrackedPaths => ".dirty-tree.new-untracked-paths",
+            Self::CapHit => ".cap-hit",
         }
     }
 }
@@ -366,6 +381,18 @@ mod tests {
         assert_eq!(
             LauncherArtifactPaths::new("/session/out").path(LauncherArtifactKind::Done),
             PathBuf::from("/session/out.done")
+        );
+        assert_eq!(
+            paths().path(LauncherArtifactKind::DirtyTree),
+            PathBuf::from("/session/review.txt.dirty-tree")
+        );
+        assert_eq!(
+            paths().path(LauncherArtifactKind::CapHit),
+            PathBuf::from("/session/review.txt.cap-hit")
+        );
+        assert_eq!(
+            paths().path(LauncherArtifactKind::UntrackedBaseline),
+            PathBuf::from("/session/review.txt.untracked-baseline")
         );
     }
 
