@@ -45,6 +45,42 @@ from larch.debate.protocol import (
     reject_forbidden_plan_content,
 )
 
+# Stateful orchestration is intentionally available only by explicit import.
+# Keep __all__ below protocol-only so ``from larch.debate import *`` cannot
+# accidentally expose transition implementation details.
+from larch.debate.orchestrator import (
+    ActiveRound,
+    DebateError,
+    DropRecord,
+    InitializationContext,
+    ParticipantSlot,
+    ProposalState,
+    RestoreMetadata,
+    SessionBootstrapper,
+    TurnRequest,
+    TurnResult,
+    TurnRunner,
+    abort,
+    abort_main,
+    init_main,
+    initialize,
+    load_state,
+    record_turn,
+    record_turn_main,
+    round_prep,
+    round_prep_main,
+    write_state,
+)
+
+# These direct names are deliberately outside __all__: explicit imports are the
+# supported facade while wildcard imports remain protocol-only.
+_ORCHESTRATOR_FACADE = (
+    ActiveRound, DebateError, DropRecord, InitializationContext, ParticipantSlot,
+    ProposalState, RestoreMetadata, SessionBootstrapper, TurnRequest, TurnResult,
+    TurnRunner, abort, abort_main, init_main, initialize, load_state, record_turn,
+    record_turn_main, round_prep, round_prep_main, write_state,
+)
+
 __all__ = [
     "ACTION_AGREE",
     "ACTION_CONCEDE",

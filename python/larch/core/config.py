@@ -110,6 +110,41 @@ RUN_LOG_INCOMPLETE_RC: Final = 7
 # report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
+# Debate orchestration has a machine-readable exit partition.  Keep these
+# separate from the generic workflow outcomes: callers use them to decide
+# whether a stale invocation can be retried without inspecting diagnostics.
+DEBATE_EXIT_VALIDATION: Final = 2
+DEBATE_EXIT_STALE_FINGERPRINT: Final = 3
+DEBATE_EXIT_CORRUPT_STATE: Final = 4
+DEBATE_EXIT_PERSISTENCE_FAILURE: Final = 5
+DEBATE_EXIT_RUNNER_FAILURE: Final = 6
+DEBATE_EXIT_UNSUPPORTED_TRANSPORT: Final = 7
+DEBATE_ABSENT_FINGERPRINT: Final = "ABSENT"
+DEBATE_STATE_FILENAME: Final = "debate-state.json"
+# Every concurrent debate process must agree on this name for the lock to
+# serialize anything, so it lives beside its sibling filenames rather than at
+# the one call site that opens it.
+DEBATE_STATE_LOCK_FILENAME: Final = ".debate-state.lock"
+DEBATE_ABORT_RESTORE_FILENAME: Final = "abort-restore.env"
+DEBATE_RESTORE_ISSUE_NUMBER_KEY: Final = "RESTORE_ISSUE_NUMBER"
+DEBATE_RESTORE_ORIGINAL_TITLE_KEY: Final = "RESTORE_ORIGINAL_TITLE"
+DEBATE_RESTORE_TITLE_KEY: Final = "RESTORE_TITLE"
+DEBATE_SOURCE_FINGERPRINT_KEY: Final = "SOURCE_FINGERPRINT"
+# Slot-drop reasons are a cross-module wire contract: record-turn persists them
+# as the DropRecord reason and re-emits them as the envelope error_class and
+# slot_result, so the writer and every selector share these constants.  The map
+# is the sole registry of drop classes: every class is terminal for the slot
+# (the drop is durably recorded, so a retry would consume the slot again) and
+# carries its own exit code, and a reason outside it is not a drop class.
+DEBATE_DROP_RUNNER_FAILURE: Final = "runner_failure"
+DEBATE_DROP_UNSUPPORTED_TRANSPORT: Final = "unsupported_transport"
+DEBATE_DROP_PROTOCOL_REJECTION: Final = "protocol_rejection"
+DEBATE_DROP_EXIT_CODES: Final[dict[str, int]] = {
+    DEBATE_DROP_RUNNER_FAILURE: DEBATE_EXIT_RUNNER_FAILURE,
+    DEBATE_DROP_UNSUPPORTED_TRANSPORT: DEBATE_EXIT_UNSUPPORTED_TRANSPORT,
+    DEBATE_DROP_PROTOCOL_REJECTION: DEBATE_EXIT_VALIDATION,
+}
+DEBATE_ENVELOPE_SCHEMA_VERSION: Final = 1
 OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
     Outcome.OK: EXIT_OK,
     Outcome.NEEDS_USER_INPUT: EXIT_NEEDS_USER_INPUT,

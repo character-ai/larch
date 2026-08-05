@@ -2275,6 +2275,54 @@ python_removal = "pending"
 planning_issue = 7680
 
 [[commands]]
+domain = "debate"
+verb = "abort"
+python_module = "larch.debate.orchestrator"
+python_function = "abort_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "init"
+python_module = "larch.debate.orchestrator"
+python_function = "init_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "record-turn"
+python_module = "larch.debate.orchestrator"
+python_function = "record_turn_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "round-prep"
+python_module = "larch.debate.orchestrator"
+python_function = "round_prep_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
 domain = "difficulty"
 verb = "extract-plan-metadata"
 python_module = "larch.calibration.difficulty"
