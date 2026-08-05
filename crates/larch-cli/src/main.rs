@@ -110,6 +110,9 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum RunLogCommand {
+    /// Resolve storage configuration and run provider prefix preflight.
+    #[command(name = "storage-preflight", disable_help_flag = true)]
+    StoragePreflight(RawCompatibilityArguments),
     /// Emit `VALID=true|false` for a run-log path slug.
     #[command(name = "validate-run-id", disable_help_flag = true)]
     ValidateRunId(RawCompatibilityArguments),
@@ -663,6 +666,9 @@ fn run(
         Domain::Push(PushSubcommand::Rebase(arguments)) => Ok(push_rebase::rebase(&arguments.args)),
         Domain::Push(PushSubcommand::CheckpointProbe(arguments)) => {
             Ok(push_rebase::checkpoint_probe(&arguments.args))
+        }
+        Domain::RunLog(RunLogCommand::StoragePreflight(arguments)) => {
+            Ok(run_log_commands::storage_preflight(&arguments.arguments))
         }
         Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
             Ok(run_log_commands::validate_run_id(&arguments.arguments))

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import hashlib
 import json
 import os
 import re
-import sys
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, cast
@@ -771,36 +769,3 @@ def preflight_tool_repository(
             f"{storage.scheme} prefix preflight failed for the configured larch repository "
             "namespace; verify provider credentials and prefix-scoped list access"
         ) from exc
-
-
-def storage_preflight_main(argv: Sequence[str]) -> int:
-    """Run the configured provider's prefix-scoped startup preflight."""
-    parser = argparse.ArgumentParser(prog="cli.py run-log storage-preflight")
-    _ = parser.add_argument("--repo-root", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
-    start: Path | None = Path(args.repo_root) if args.repo_root else None
-    try:
-        resolution: RunLogStorageResolution = discover_run_log_storage(start=start)
-        if resolution.storage is not None:
-            preflight_tool_repository(storage=resolution.storage)
-    except StorageConfigurationError as exc:
-        print(f"storage preflight failed: {exc}", file=sys.stderr)
-        return config.EXIT_STORAGE_CONFIG
-    except StoragePreflightError as exc:
-        print(f"storage preflight failed: {exc}", file=sys.stderr)
-        return config.EXIT_STORAGE_PREFLIGHT
-    storage: ToolRepositoryStorage | None = resolution.storage
-    print(f"RUN_LOG_STORAGE={resolution.mode}")
-    print(f"RUN_LOG_STORAGE_REASON={resolution.reason}")
-    print(f"STORAGE_BASE_URI={storage.base.uri if storage is not None else ''}")
-    print(f"CLIENT_REPO={resolution.client_repo}")
-    print(f"TOOL_REPO_URI={storage.uri if storage is not None else ''}")
-    print(f"RUN_LOGS_URI={storage.run_logs_uri if storage is not None else ''}")
-    print(
-        f"STORAGE_PREFLIGHT={'ok' if storage is not None else 'skipped-disabled'}"
-    )
-    print("PREFLIGHT_OK=true")
-    return config.EXIT_OK

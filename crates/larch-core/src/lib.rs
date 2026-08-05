@@ -19,6 +19,7 @@ mod redaction;
 mod retry;
 mod run_log;
 mod session_state;
+mod storage;
 mod telemetry;
 mod test_shards;
 mod text;
@@ -116,6 +117,16 @@ pub use session_state::{
     IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, IMPLEMENT_TMPDIR_TTL_SECONDS,
     allowed_session_roots, cleanup_cache_sessions_root, design_tmpdir_syntax_error,
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
+};
+pub use storage::{
+    ENV_LARCH_LOGS_URI, ENV_LARCH_R2_ACCOUNT_ID, ENV_LARCH_R2_ENDPOINT, ENV_LARCH_STORAGE_BASE_URI,
+    LARCH_TOOL_NAME, LOCAL_NAMESPACE_DOMAIN, RUN_LOGS_DATA_TYPE, RunLogStorageMode,
+    RunLogStorageReason, RunLogStorageResolution, STORAGE_BASE_URI_FIELD, STORAGE_CONFIG_RELPATH,
+    STORAGE_URI_SCHEMES, StorageBase, StorageConfigurationError, StoragePreflightError,
+    ToolRepositoryStorage, format_preflight_stdout, injected_storage_resolution,
+    local_namespace_id, parse_storage_base_uri, parse_tool_repository_uri,
+    repository_leaf_from_remote, require_enabled_storage, resolve_run_log_storage,
+    validate_client_repo,
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use test_shards::{

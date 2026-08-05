@@ -226,6 +226,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "validate-run-id",
     ),
     CleanInstallCase::new(
+        "clean-install-run-log-storage-preflight",
+        "run-log",
+        "storage-preflight",
+    ),
+    CleanInstallCase::new(
         "clean-install-upgrade-larch-release-step7-root",
         "upgrade-larch",
         "release-step7-root",

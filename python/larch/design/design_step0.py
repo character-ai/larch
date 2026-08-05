@@ -169,13 +169,13 @@ def step0_session_entry_main(argv: Sequence[str]) -> int:
     plugin_root = require_plugin_root(ns.plugin_root)
     repo_root = repo_roots.consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
     storage_preflight = proc.run(
-        _cli_cmd(
-            plugin_root,
+        [
+            str(repo_roots.larch_entrypoint(plugin_root)),
             "run-log",
             "storage-preflight",
             "--repo-root",
             str(repo_root),
-        ),
+        ],
         check=False,
     )
     if storage_preflight.returncode != 0:
