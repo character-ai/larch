@@ -6,8 +6,9 @@
 
 use super::VendorLaunchRequest;
 use crate::{
-    LauncherArtifactKind, LauncherArtifactPaths, VENDOR_FAILURE_DIAG_SECTION_LINES,
-    redaction::redact, stream_reset_history_entry,
+    DuplicatePolicy, KvDocument, LauncherArtifactKind, LauncherArtifactPaths, ParseOptions,
+    VENDOR_FAILURE_DIAG_SECTION_LINES, json_usage_number, redaction::redact,
+    stream_reset_history_entry,
 };
 use regex::Regex;
 use serde_json::Value;
@@ -660,9 +661,7 @@ pub fn cursor_input_work_tokens(obj: &Value) -> i64 {
     };
     let mut total = 0_i64;
     for key in ["inputTokens", "cacheReadTokens"] {
-        if let Some(value) = usage.get(key)
-            && let Ok(n) = usage_num(value)
-        {
+        if let Ok(n) = json_usage_number(usage.get(key)) {
             total += n;
         }
     }
@@ -675,9 +674,7 @@ pub fn cursor_output_tokens(obj: &Value) -> i64 {
     let Some(usage) = obj.get("usage").and_then(Value::as_object) else {
         return 0;
     };
-    usage
-        .get("outputTokens")
-        .map_or(0, |value| usage_num(value).unwrap_or(0))
+    json_usage_number(usage.get("outputTokens")).unwrap_or(0)
 }
 
 /// Render a redacted Cursor degraded-response diagnostic.
@@ -883,13 +880,9 @@ pub fn render_cap_hit_artifacts(
 }
 
 fn parse_sentinel_kv(text: &str) -> BTreeMap<String, String> {
-    let mut values = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-            values.insert(key.to_owned(), value.to_owned());
-        }
-    }
-    values
+    KvDocument::parse(text, ParseOptions::legacy())
+        .map(|document| document.select(DuplicatePolicy::Last))
+        .unwrap_or_default()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -909,40 +902,6 @@ fn json_diag_value(value: &Value) -> String {
         Value::Number(number) => number.to_string(),
         Value::String(text) => text.clone(),
         other => other.to_string(),
-    }
-}
-
-fn usage_num(value: &Value) -> Result<i64, ()> {
-    match value {
-        Value::Null => Ok(0),
-        Value::Bool(flag) => Ok(i64::from(*flag)),
-        Value::Number(number) => number
-            .as_i64()
-            .or_else(|| {
-                number.as_f64().map(|float| {
-                    #[allow(
-                        clippy::cast_possible_truncation,
-                        reason = "Python _num truncates floats with int()"
-                    )]
-                    {
-                        float as i64
-                    }
-                })
-            })
-            .ok_or(()),
-        Value::String(text) => {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                return Err(());
-            }
-            if !(trimmed.starts_with('-') || trimmed.bytes().all(|b| b.is_ascii_digit()))
-                || (trimmed.starts_with('-') && !trimmed[1..].bytes().all(|b| b.is_ascii_digit()))
-            {
-                return Err(());
-            }
-            trimmed.parse().map_err(|_| ())
-        }
-        _ => Err(()),
     }
 }
 

@@ -214,7 +214,7 @@ pub use vendor_failure::{
     detect_codex_cli_gate, effective_failure_class, is_quota_failure, is_transient_infra_failure,
     parse_launcher_exit_text, parse_launcher_failure_class, resolve_launcher_exit,
 };
-pub use vendor_usage::{UsageParseError, UsageTotals, parse_codex_usage};
+pub use vendor_usage::{UsageParseError, UsageTotals, json_usage_number, parse_codex_usage};
 
 /// Immutable metadata about the running larch build.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
