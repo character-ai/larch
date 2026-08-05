@@ -68,27 +68,22 @@ impl CursorConfigContext {
     }
 }
 
-/// Test helper: create a temporary root and build a context beneath it.
-///
-/// # Errors
-/// Propagates temporary-root resolution and context creation failures.
-#[cfg(test)]
-fn create_for_tests(
-    home: &Path,
-) -> Result<(tempfile::TempDir, CursorConfigContext), std::io::Error> {
-    let temp = tempfile::tempdir()?;
-    let root = TemporaryRoot::resolve(Some(temp.path()))
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
-    let context = CursorConfigContext::create(&root, home)
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
-    Ok((temp, context))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::create_for_tests;
+    use super::{CursorConfigContext, TemporaryRoot};
     use larch_core::{ChildEnvironment, env};
-    use std::fs;
+    use std::{fs, path::Path};
+
+    fn create_for_tests(
+        home: &Path,
+    ) -> Result<(tempfile::TempDir, CursorConfigContext), std::io::Error> {
+        let temp = tempfile::tempdir()?;
+        let root = TemporaryRoot::resolve(Some(temp.path()))
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let context = CursorConfigContext::create(&root, home)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        Ok((temp, context))
+    }
 
     #[test]
     fn copies_regular_config_and_exposes_child_env_without_process_mutation() {

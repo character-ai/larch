@@ -1,13 +1,13 @@
-use super::{
+use larch_core::{
     CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, ClaudeEnvelopeStatus, CodexEnvAuth,
     REQUIRED_CAPABILITIES, VENDOR_DESCRIPTORS, VendorArgvErrorKind, VendorDescriptor,
-    VendorDescriptorErrorKind, VendorFamilyHooks, VendorLaunchRequest, VendorSessionErrorKind,
-    VendorSessionHandle, build_claude_argv, build_codex_argv, build_codex_resume_argv,
-    build_codex_session_argv, build_cursor_argv, build_cursor_create_chat_argv,
-    build_cursor_resume_argv, build_vendor_registry, codex_auth_args, codex_env_auth_from_key,
-    extract_model_from_argv, parse_claude_envelope, trust_config_arg,
+    VendorDescriptorErrorKind, VendorFamilyHooks, VendorLaunchRequest, VendorProgram,
+    VendorSessionErrorKind, VendorSessionHandle, build_claude_argv, build_codex_argv,
+    build_codex_resume_argv, build_codex_session_argv, build_cursor_argv,
+    build_cursor_create_chat_argv, build_cursor_resume_argv, build_vendor_registry,
+    codex_auth_args, codex_env_auth_from_key, extract_model_from_argv, parse_claude_envelope,
+    trust_config_arg,
 };
-use crate::VendorProgram;
 use std::collections::BTreeSet;
 
 fn codex_request() -> VendorLaunchRequest {

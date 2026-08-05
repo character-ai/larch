@@ -27,6 +27,3 @@ pub use types::{
     VendorLaunchOutcome, VendorLaunchRequest, VendorLaunchStatus, VendorParsedResult,
     VendorProcessResult,
 };
-
-#[cfg(test)]
-mod tests;
