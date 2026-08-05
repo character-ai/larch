@@ -2288,9 +2288,33 @@ planning_issue = 8043
 
 [[commands]]
 domain = "debate"
+verb = "adjudicate"
+python_module = "larch.debate.orchestrator"
+python_function = "adjudicate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
 verb = "init"
 python_module = "larch.debate.orchestrator"
 python_function = "init_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "publish-prepare"
+python_module = "larch.debate.orchestrator"
+python_function = "publish_prepare_main"
 machine_stdout = true
 owner = "python"
 implementation_parity = "pending"
@@ -2315,6 +2339,18 @@ domain = "debate"
 verb = "round-prep"
 python_module = "larch.debate.orchestrator"
 python_function = "round_prep_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "synthesize"
+python_module = "larch.debate.orchestrator"
+python_function = "synthesize_main"
 machine_stdout = true
 owner = "python"
 implementation_parity = "pending"

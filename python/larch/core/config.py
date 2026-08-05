@@ -119,6 +119,9 @@ DEBATE_EXIT_CORRUPT_STATE: Final = 4
 DEBATE_EXIT_PERSISTENCE_FAILURE: Final = 5
 DEBATE_EXIT_RUNNER_FAILURE: Final = 6
 DEBATE_EXIT_UNSUPPORTED_TRANSPORT: Final = 7
+DEBATE_EXIT_ADJUDICATION_FAILURE: Final = 8
+DEBATE_EXIT_SYNTHESIS_EXHAUSTED: Final = 9
+DEBATE_EXIT_PUBLICATION_FAILURE: Final = 10
 DEBATE_ABSENT_FINGERPRINT: Final = "ABSENT"
 DEBATE_STATE_FILENAME: Final = "debate-state.json"
 # Every concurrent debate process must agree on this name for the lock to
@@ -130,6 +133,23 @@ DEBATE_RESTORE_ISSUE_NUMBER_KEY: Final = "RESTORE_ISSUE_NUMBER"
 DEBATE_RESTORE_ORIGINAL_TITLE_KEY: Final = "RESTORE_ORIGINAL_TITLE"
 DEBATE_RESTORE_TITLE_KEY: Final = "RESTORE_TITLE"
 DEBATE_SOURCE_FINGERPRINT_KEY: Final = "SOURCE_FINGERPRINT"
+DEBATE_STALEMATE_VOTER_DIRNAME: Final = "stalemate-voters"
+DEBATE_STALEMATE_BALLOT_FILENAME: Final = "stalemate-ballot.md"
+DEBATE_STALEMATE_TALLY_FILENAME: Final = "stalemate-tally.json"
+DEBATE_SYNTHESIS_INPUT_MAX_BYTES: Final = 64 * 1024
+DEBATE_PROPOSAL_TITLE_FILENAME: Final = "proposal-title.txt"
+DEBATE_PROPOSAL_BODY_FILENAME: Final = "proposal-body.md"
+DEBATE_SYNTHESIS_PROMPT_FILENAME: Final = "synthesis-prompt.md"
+DEBATE_SYNTHESIS_MANIFEST_FILENAME: Final = "synthesizer-slots.ndjson"
+DEBATE_SYNTHESIS_OUTPUT_FILENAME: Final = "synthesizer-output.md"
+DEBATE_SYNTHESIS_MARKER_FILENAME: Final = "synthesis-complete.json"
+DEBATE_PUBLISH_PREPARE_FILENAME: Final = "publish-prepare.env"
+DEBATE_SOURCE_ISSUE_NUMBER_KEY: Final = "SOURCE_ISSUE_NUMBER"
+DEBATE_CROSS_LINK_ISSUE_NUMBER_KEY: Final = "CROSS_LINK_ISSUE_NUMBER"
+DEBATE_RUN_LOG_SKILL: Final = "debate"
+DEBATE_ERROR_ADJUDICATION_REJECTED: Final = "adjudication_rejected"
+DEBATE_ERROR_SYNTHESIS_EXHAUSTED: Final = "synthesis_exhausted"
+DEBATE_ERROR_PUBLICATION_FAILURE: Final = "publication_failure"
 # Slot-drop reasons are a cross-module wire contract: record-turn persists them
 # as the DropRecord reason and re-emits them as the envelope error_class and
 # slot_result, so the writer and every selector share these constants.  The map
@@ -144,7 +164,7 @@ DEBATE_DROP_EXIT_CODES: Final[dict[str, int]] = {
     DEBATE_DROP_UNSUPPORTED_TRANSPORT: DEBATE_EXIT_UNSUPPORTED_TRANSPORT,
     DEBATE_DROP_PROTOCOL_REJECTION: DEBATE_EXIT_VALIDATION,
 }
-DEBATE_ENVELOPE_SCHEMA_VERSION: Final = 1
+DEBATE_ENVELOPE_SCHEMA_VERSION: Final = 2
 OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
     Outcome.OK: EXIT_OK,
     Outcome.NEEDS_USER_INPUT: EXIT_NEEDS_USER_INPUT,

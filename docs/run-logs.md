@@ -684,10 +684,12 @@ JSON reports may include an additive `rounds` array on a matching per-step row. 
 
 ### Debate durable records
 
-These four batches register archive carriers for a future `/debate` engine.
-This change does **not** add debate-engine producers, CLI verbs, or skills.
-When that engine lands, it will write these artifacts so an archive-only reader
-can reconstruct the debate without the session tmpdir.
+These four batches are archive carriers for the `/debate` engine. The
+`debate adjudicate --vote-stalemates` verb writes the local stalemate tally to
+`debate-stalemate-tally`; `debate synthesize` writes the redacted proposal body
+to `debate-proposal`. The surrounding debate flow owns the participant and
+round-ledger producers. Together the carriers let an archive-only reader
+reconstruct the debate without the session tmpdir.
 
 | Batch | Extension | Mode | Sanitizer | Reconstruction role |
 |---|---|---|---|---|
