@@ -79,6 +79,8 @@ git_op!(VersionRequest, Version);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactDiffRequest {
     pub cached: bool,
+    /// Fixed unified-context width for callers that need patch text.
+    pub unified_context: Option<u16>,
     pub name_only: bool,
     pub name_status: bool,
     pub quiet: bool,
@@ -98,6 +100,9 @@ impl ExactDiffRequest {
         let mut a = Vec::new();
         if self.cached {
             a.push("--cached".into());
+        }
+        if let Some(context) = self.unified_context {
+            a.push(format!("-U{context}").into());
         }
         if self.name_only {
             a.push("--name-only".into());

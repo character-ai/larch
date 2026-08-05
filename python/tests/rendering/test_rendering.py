@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
+from larch.core import proc
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
 from larch.rendering import _rendering_generators as generators
 from larch.rendering import _rendering_helpers as helpers
-from larch.agents import review_dispatch
 from larch.review import voting
 from tests.support.design_wire import plan_body, run_params_json
 
@@ -28,6 +28,13 @@ PYTHON_DIR = Path(__file__).resolve().parents[2]
 def _reset_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     logging_util.reset_quiet_state()
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+
+
+def _stub_rust_diff_classifier(monkeypatch: pytest.MonkeyPatch, *, mode: str = "generic") -> None:
+    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(tuple(argv), 0, f"DIFF_MODE={mode}\n", "", 0.0)
+
+    monkeypatch.setattr(rendering.proc, "run", fake_run)
 
 
 def _patch_architectural_guidelines(
@@ -477,6 +484,7 @@ def test_render_specialist_payload_sidecar_counts_inline_diff_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_architectural_guidelines(monkeypatch, "absent", "")
+    _stub_rust_diff_classifier(monkeypatch)
     agent = _specialist_agent(tmp_path)
     plan = tmp_path / "plan.md"
     feature = tmp_path / "feature.md"
@@ -569,6 +577,7 @@ def test_render_specialist_payload_sidecar_counts_competition_notice_only_when_r
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_architectural_guidelines(monkeypatch, "absent", "")
+    _stub_rust_diff_classifier(monkeypatch)
     agent = _specialist_agent(tmp_path)
     diff = tmp_path / "diff.txt"
     notice = tmp_path / "notice.md"
@@ -1348,6 +1357,7 @@ def _render_diff(tmp_path: Path, line: str) -> Path:
 
 def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
+    _stub_rust_diff_classifier(monkeypatch)
     text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
         rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
             ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--competition-notice", "--diff-file", str(_render_diff(tmp_path, "diff --git a/a b/a\n"))]
@@ -1359,25 +1369,43 @@ def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, mo
     assert "non-fileable OOS is logged only" in text
 
 
-def test_render_specialist_uses_inprocess_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_specialist_uses_rust_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
-    def fail_run(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("rendering must not shell out to the retired diff classifier")
+    calls: list[list[str]] = []
 
-    monkeypatch.setattr(rendering.subprocess, "run", fail_run)
+    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
+        calls.append(argv)
+        return proc.CommandResult(tuple(argv), 0, "DIFF_MODE=docs-only\n", "", 0.0)
+
+    monkeypatch.setattr(rendering.proc, "run", fake_run)
     text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
         rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
             ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n"))]
         )
     )
     assert "Review this docs-only diff" in text
+    assert calls[0][1:3] == ["agent", "classify-diff"]
 
 
-def test_render_specialist_uses_inprocess_test_and_generated_classifiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_specialist_rejects_a_failed_rust_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
-    generated_tsv = tmp_path / "generators.tsv"
-    generated_tsv.write_text("gen\tagents/generated.md\n", encoding="utf-8")
-    monkeypatch.setattr(review_dispatch, "GENERATORS_TSV", generated_tsv)
+
+    def failed_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(tuple(argv), 1, "", "manifest malformed", 0.0)
+
+    monkeypatch.setattr(rendering.proc, "run", failed_run)
+    with pytest.raises(rendering.RenderError, match="diff classification failed"):
+        _ = rendering._classify_diff_mode(str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n")))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_render_specialist_uses_rust_test_and_generated_classifiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
+        diff = Path(argv[-1]).read_text(encoding="utf-8")
+        mode = "test-only" if "scripts/test-a.sh" in diff else "generated-only"
+        return proc.CommandResult(tuple(argv), 0, f"DIFF_MODE={mode}\n", "", 0.0)
+
+    monkeypatch.setattr(rendering.proc, "run", fake_run)
     agent = _specialist_agent(tmp_path)
     test_text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
         rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
@@ -1395,10 +1423,10 @@ def test_render_specialist_uses_inprocess_test_and_generated_classifiers(tmp_pat
 
 def test_render_specialist_diff_mode_override_skips_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
-    def fail_classifier(_path: str) -> str:
+    def fail_classifier(*_args: object, **_kwargs: object) -> proc.CommandResult:
         raise AssertionError("override should skip classifier")
 
-    monkeypatch.setattr(review_dispatch, "classify_diff", fail_classifier)
+    monkeypatch.setattr(rendering.proc, "run", fail_classifier)
     text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
         rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
             ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n")), "--diff-mode", "test-only"]

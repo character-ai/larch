@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "python" / "cli.py"
 GIT = shutil.which("git") or "git"
+RUST_AGENT_STUB = ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"
 
 
 def run_review(
@@ -28,6 +29,8 @@ def run_review(
         _ = merged.pop("LARCH_QUIET_DISABLE", None)
     if env:
         merged.update(env)
+    if args and args[0] in {"gather-context", "dispatch-panel", "collect-findings"}:
+        _ = merged.setdefault("LARCH_BINARY", str(RUST_AGENT_STUB))
     return subprocess.run(
         [sys.executable, str(CLI), "review", *args],
         cwd=cwd or ROOT,

@@ -5,6 +5,7 @@
 
 use std::{
     env, fmt,
+    fmt::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -19,7 +20,7 @@ use larch_core::{
 };
 
 use crate::{
-    FileIoError, TemporaryRoot, atomic_write_utf8_in, read_optional_utf8_lossy,
+    FileIoError, TemporaryRoot, atomic_write_utf8, atomic_write_utf8_in, read_optional_utf8_lossy,
     remove_optional_file,
 };
 
@@ -74,6 +75,99 @@ pub fn parse_codex_usage_file(path: &Path) -> Result<UsageTotals, CodexUsageErro
         .map_err(CodexUsageError::Io)?
         .ok_or(CodexUsageError::Parse(UsageParseError::EventsMissing))?;
     parse_codex_usage(&text).map_err(CodexUsageError::Parse)
+}
+
+/// Compose and atomically publish the collector's failure-log carrier.
+///
+/// Every source is read with the legacy replacement decoder. The final body is
+/// redacted through the shared core owner before its private publication.
+///
+/// # Errors
+/// Returns [`FileIoError`] when an input cannot be read or the confined output
+/// cannot be published.
+pub fn write_collector_failure_log(
+    reviewer_file: Option<&Path>,
+    structured_record: &str,
+    output: &crate::ConfinedPath,
+) -> Result<(), FileIoError> {
+    let reviewer_label = reviewer_file
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    let mut body = format!("## Structured collector record\n\n{structured_record}\n\n");
+    body.push_str(&collector_section(
+        &format!("Reviewer output ({reviewer_label})"),
+        reviewer_file,
+        false,
+    )?);
+    if let Some(reviewer_file) = reviewer_file {
+        let reviewer_path = reviewer_file.display();
+        let diagnostic = suffixed_path(reviewer_file, ".diag");
+        let stderr_tail = suffixed_path(reviewer_file, ".stderr-tail");
+        let launch_stderr = suffixed_path(reviewer_file, ".launch-stderr");
+        body.push_str(&collector_section(
+            &format!("Reviewer stderr ({reviewer_path}.diag)"),
+            Some(&diagnostic),
+            false,
+        )?);
+        body.push_str(&collector_section(
+            &format!("Failed-agent stderr tail ({reviewer_path}.stderr-tail)"),
+            Some(&stderr_tail),
+            true,
+        )?);
+        body.push_str(&collector_section(
+            &format!("Launcher stderr ({reviewer_path}.launch-stderr)"),
+            Some(&launch_stderr),
+            true,
+        )?);
+    }
+    atomic_write_utf8(output, redact(&body).text(), DIAGNOSTIC_FILE_MODE)
+}
+
+fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut rendered = path.as_os_str().to_owned();
+    rendered.push(suffix);
+    PathBuf::from(rendered)
+}
+
+fn collector_section(
+    header: &str,
+    path: Option<&Path>,
+    bounded_tail: bool,
+) -> Result<String, FileIoError> {
+    let mut section = format!("## {header}\n\n");
+    let Some(path) = path else {
+        section.push_str("(no path provided)\n\n");
+        return Ok(section);
+    };
+    let label = path.display();
+    let Some(text) = read_optional_utf8_lossy(path)? else {
+        let _ = write!(section, "(file missing: {label})\n\n");
+        return Ok(section);
+    };
+    if text.is_empty() {
+        let _ = write!(section, "(empty: {label})\n\n");
+        return Ok(section);
+    }
+    if bounded_tail {
+        let rendered = render_failed_agent_stderr_tail(
+            &text,
+            failed_agent_stderr_tail_lines(),
+            FAILED_AGENT_STDERR_TAIL_BYTE_CAP,
+        );
+        if rendered.is_empty() {
+            let _ = write!(
+                section,
+                "(launcher stderr redaction unavailable or empty: {label})"
+            );
+        } else {
+            section.push_str(&rendered);
+        }
+        section.push_str("\n\n");
+    } else {
+        section.push_str(&text);
+        section.push('\n');
+    }
+    Ok(section)
 }
 
 /// Read a launcher exit from the `.done` sidecar, then the output capture.

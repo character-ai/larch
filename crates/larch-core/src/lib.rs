@@ -19,6 +19,7 @@ mod progress;
 mod redaction;
 mod report;
 mod retry;
+mod review_dispatch;
 mod run_log;
 mod session_state;
 mod storage;
@@ -124,6 +125,12 @@ pub use report::{
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,
+};
+pub use review_dispatch::{
+    DiffMode, GENERATORS_TSV_COLUMNS, GeneratorsTsvError, ReviewerWaitConfig, ReviewerWaitHost,
+    ReviewerWaitResult, ReviewerWaitRow, SUSPEND_REFUND_SECONDS,
+    WAIT_DEFAULT_POLL_INTERVAL_SECONDS, WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff,
+    parse_generated_paths, wait_for_reviewers, wait_max_polls,
 };
 pub use run_log::{
     BatchName, ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger,

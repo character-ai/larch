@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from larch.agents import collect_results
-from larch.core import logging_util
+from larch.core import logging_util, proc
 
 if TYPE_CHECKING:
     import pytest
+
+
+RUST_AGENT_STUB = Path(__file__).resolve().parents[3] / "python" / "tests" / "support" / "rust_agent_stub.py"
 
 
 def _reset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -20,6 +23,7 @@ def _reset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", "0.01")
     monkeypatch.setenv("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "0.01")
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "0")
+    monkeypatch.setenv("LARCH_BINARY", str(RUST_AGENT_STUB))
     monkeypatch.setattr(collect_results, "_RETRY_WAIT_FLOOR", 5)
     monkeypatch.setattr(collect_results, "_RETRY_WAIT_GRACE", 5)
 
@@ -39,6 +43,12 @@ def _parse_blocks(stdout: str) -> list[dict[str, str]]:
 
 def _write_done(path: Path, code: str = "0\n") -> None:
     _ = path.with_suffix(path.suffix + ".done").write_text(code, encoding="utf-8")
+
+
+def _done_wait(*, sentinels: tuple[str, ...] | list[str], timeout: int) -> proc.CommandResult:
+    _ = timeout
+    rows = [f"DONE {index} {Path(path).name.removesuffix('.done')}: exit=0" for index, path in enumerate(sentinels, start=1)]
+    return proc.CommandResult((), 0, "\n".join(rows) + "\n", "", 0.0)
 
 
 def _write_meta(path: Path, *, tool: str = "cursor", timeout: str = "60", cmd: list[str] | None = None, capture_stdout_only: bool = True) -> None:
@@ -158,6 +168,7 @@ def test_transient_retry_requires_diag(capsys: pytest.CaptureFixture[str], monke
         return _Proc()
 
     monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(collect_results, "_wait_reviewers_command", _done_wait)
 
     assert collect_results.collect_results_main(["--timeout", "2", str(transient), str(non_diag)]) == 0
     blocks = _parse_blocks(capsys.readouterr().out)
@@ -491,6 +502,7 @@ def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.
     _write_done(output)
     _write_meta(output, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
     monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(collect_results, "_wait_reviewers_command", _done_wait)
     monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda records, plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]  # noqa: ARG005
     assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0

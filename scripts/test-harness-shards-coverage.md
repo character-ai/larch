@@ -8,7 +8,9 @@ shard lists, checks the umbrella target references all shard targets, and
 requires the shard containing this guard to list it first so partition failures
 surface before longer harness work. Standalone aliases that deliberately stay
 outside the shards, including `test-classify-bump`, `test-promote-release`,
-`test-release-prepare`, and `test-release-set-version`, must be listed in
+`test-release-prepare`, `test-release-set-version`, and the Rust agent-command
+aliases `test-compose-collector-failure-log`, `test-wait-for-reviewers`,
+`test-classify-diff-mode`, and `test-gather-branch-context`, must be listed in
 `CARVE_OUTS` and documented beside their Makefile targets. Keep this sibling doc
 in sync with the harness whenever shard parsing or Makefile target contracts
 change.
