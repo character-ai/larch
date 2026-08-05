@@ -1,10 +1,12 @@
 //! `run-log` command boundary.
 
+use larch_adapters::git::GixRepository;
 use larch_adapters::runtime::LarchRuntime;
 use larch_core::{
-    ObjectStore, ObjectStoreError, StorageConfigurationError, StoragePreflightError,
-    ToolRepositoryStorage, format_preflight_stdout, repository_leaf_from_remote,
-    resolve_run_log_storage, validate_run_log_slug,
+    ConfigKey, ConfigScope, ObjectStore, ObjectStoreError, RepositoryRead,
+    StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage,
+    format_preflight_stdout, repository_leaf_from_remote, resolve_run_log_storage,
+    validate_run_log_slug,
 };
 use std::{
     collections::HashMap,
@@ -92,13 +94,7 @@ fn run_storage_preflight(repo_root_flag: Option<&str>) -> Result<String, Preflig
                 "could not discover a Git repository root from startup CWD",
             ))
         })?;
-    let repo_root = discover_repo_root(&start).ok_or_else(|| {
-        PreflightFailure::Configuration(StorageConfigurationError::new(format!(
-            "could not discover a Git repository root from startup CWD {}",
-            start.display()
-        )))
-    })?;
-    let origin = read_origin_url(&repo_root)?;
+    let (repo_root, origin) = discover_repo_identity(&start)?;
     let environ: HashMap<String, String> = env::vars().collect();
     let resolution = resolve_run_log_storage(&repo_root, &environ, &origin)
         .map_err(PreflightFailure::Configuration)?;
@@ -146,7 +142,9 @@ fn preflight_aws_cli(
     environ: &HashMap<String, String>,
     prefix: &str,
 ) -> Result<(), StoragePreflightError> {
-    let mut command = Command::new("aws");
+    // Temporary S3/R2 transport matching Python `object_store` until a native
+    // adapter clears cargo-deny duplicate review (#8076 / #8080).
+    let mut command = Command::new("aws"); // lint-subprocess-via-runner: ok temporary AWS CLI S3/R2 preflight transport until native adapter
     command.args([
         "s3api",
         "list-objects-v2",
@@ -202,8 +200,9 @@ fn validate_r2_endpoint(
         .unwrap_or_default();
     let expected_host = format!("{account}.r2.cloudflarestorage.com");
     let valid = account.len() == 32
-        && account.bytes().all(|byte| byte.is_ascii_hexdigit())
-        && account.bytes().all(|byte| !byte.is_ascii_uppercase())
+        && account
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
         && endpoint.starts_with("https://")
         && {
             let rest = &endpoint["https://".len()..];
@@ -235,65 +234,48 @@ fn map_object_store_error(scheme: &str, error: ObjectStoreError) -> StoragePrefl
     }
 }
 
-fn discover_repo_root(start: &Path) -> Option<PathBuf> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            &start.to_string_lossy(),
-            "rev-parse",
-            "--show-toplevel",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if text.is_empty() {
-        return None;
-    }
-    let path = PathBuf::from(text);
-    path.canonicalize().ok().filter(|root| root.is_dir())
+fn discover_repo_identity(start: &Path) -> Result<(PathBuf, String), PreflightFailure> {
+    let repository = GixRepository::discover(start).map_err(|_| {
+        PreflightFailure::Configuration(StorageConfigurationError::new(format!(
+            "could not discover a Git repository root from startup CWD {}",
+            start.display()
+        )))
+    })?;
+    let location = repository.location();
+    let work_dir = location.work_dir.as_ref().ok_or_else(|| {
+        PreflightFailure::Configuration(StorageConfigurationError::new(format!(
+            "could not discover a Git repository root from startup CWD {}",
+            start.display()
+        )))
+    })?;
+    let repo_root = PathBuf::from(String::from_utf8_lossy(work_dir.as_bytes()).into_owned());
+    let origin = read_origin_url(&repository)?;
+    Ok((repo_root, origin))
 }
 
-fn read_origin_url(repo_root: &Path) -> Result<String, PreflightFailure> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            &repo_root.to_string_lossy(),
-            "config",
-            "--local",
-            "--get",
-            "remote.origin.url",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|_| {
+fn read_origin_url(repository: &GixRepository) -> Result<String, PreflightFailure> {
+    let key = ConfigKey::new("remote.origin.url").map_err(|_| {
+        PreflightFailure::Configuration(StorageConfigurationError::new(
+            "could not read local remote.origin.url; configure an origin repository remote",
+        ))
+    })?;
+    let values = repository.config_values(&key).map_err(|_| {
+        PreflightFailure::Configuration(StorageConfigurationError::new(
+            "could not read local remote.origin.url; configure an origin repository remote",
+        ))
+    })?;
+    let remote = values
+        .iter()
+        .rev()
+        .find(|value| matches!(value.scope, ConfigScope::Repository | ConfigScope::Worktree))
+        .or_else(|| values.last())
+        .map(|value| String::from_utf8_lossy(&value.value).trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
             PreflightFailure::Configuration(StorageConfigurationError::new(
-                "could not read local remote.origin.url; configure an origin repository remote",
+                "local remote.origin.url is missing; configure an origin repository remote",
             ))
         })?;
-    if !output.status.success() {
-        return Err(PreflightFailure::Configuration(
-            StorageConfigurationError::new(
-                "local remote.origin.url is missing; configure an origin repository remote",
-            ),
-        ));
-    }
-    let remote = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if remote.is_empty() {
-        return Err(PreflightFailure::Configuration(
-            StorageConfigurationError::new(
-                "local remote.origin.url is missing; configure an origin repository remote",
-            ),
-        ));
-    }
-    // Validate early so discovery failures stay configuration-class.
     let _ = repository_leaf_from_remote(&remote).map_err(PreflightFailure::Configuration)?;
     Ok(remote)
 }
