@@ -458,8 +458,21 @@ atomic replacement. Active-round queues and completed bindings are persisted
 before the protocol advances, so recovery never repeats a completed turn.
 
 Cursor and Codex reuse the read-only external launcher and explicit persisted
-session handles. Claude transport is caller-owned: the default debate runner
-fails before dispatch unless a caller injects its Agent-tool runner. A dropped
-slot is recorded before panel membership changes. `debate abort` makes only a
-fixed local title-restore handoff; these verbs make no GitHub mutation and do
-not create a same-user security boundary.
+session handles. The public skill gives every slot the same bounded, redacted
+subject in its round-1 input as base64 data with a data-not-instructions preamble; round 2 carries only the validated mailbox delta. Claude runs in one
+read-only `debater` Agent session and continues only through `SendMessage`; its
+exact final ledger enters the protocol through a contained, bounded input file.
+A dropped slot is recorded before panel membership changes.
+
+The protocol verbs do not mutate GitHub. `python/larch/debate/publication.py`
+owns the public title lifecycle through the shared issue-mutation compare-and-
+swap and read-back boundary. Preparation snapshots one open, unowned source;
+start requires the unchanged snapshot; finish accepts only its exact
+`[DEBATING]` title; restore changes only that same title and skips a foreign
+replacement. Missing `SendMessage`, two unavailable external vendors, and
+failed persistent-session bootstrap stop before start. Free-form source and
+proposal creation use `/issue` machine counters plus caller-owned sentinels.
+Proposal and source links must both verify before finish. Abort comments use a
+run-keyed upsert marker and fixed sanitized text, so retries cannot publish raw
+vendor output or create duplicate abort records. These controls do not create
+a security boundary between processes running as the same user.

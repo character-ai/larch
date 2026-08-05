@@ -31,6 +31,7 @@ named domain issue cuts them over atomically.
 "Skill(block-issue)",
 "Skill(bug)",
 "Skill(cleanup)",
+"Skill(debate)",
 "Skill(design)",
 "Skill(difficulty-calibration)",
 "Skill(im)",
@@ -40,6 +41,7 @@ named domain issue cuts them over atomically.
 "Skill(larch:block-issue)",
 "Skill(larch:bug)",
 "Skill(larch:cleanup)",
+"Skill(larch:debate)",
 "Skill(larch:design)",
 "Skill(larch:difficulty-calibration)",
 "Skill(larch:im)",
@@ -60,6 +62,8 @@ named domain issue cuts them over atomically.
 ```
 
 Strict-permissions consumers invoking `/rejected-analysis` also need `Skill(issue)` and `Skill(larch:issue)` for the child filing skill, plus Agent tool authorization and the external reviewer binaries used by `python/cli.py agent launch-review`.
+
+Strict-permissions consumers invoking `/debate` need `Skill(issue)` and `Skill(larch:issue)` for free-form source creation and proposal filing. They must also expose the Agent and `SendMessage` tool surfaces for the persistent Claude seat. Missing `SendMessage` is a pre-title hard failure, not a fresh-agent fallback.
 
 Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, all `larch:`-prefixed entries sort **before** `Skill(research)` and `Skill(review)` (whose first letters are `r` and `r`). Sort the whole block with `sort -u` to verify if you extend it. This section reflects currently-documented Claude Code behavior; consult the upstream docs above if matching semantics change in a future release.
 

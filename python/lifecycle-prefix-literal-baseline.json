@@ -52,41 +52,5 @@
     "context": "startswith",
     "occurrence": 1,
     "reason": "grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet"
-  },
-  {
-    "file": "larch/state/admission.py",
-    "qualified_symbol": "_has_managed_prefix",
-    "token": "[DESIGNING]",
-    "constant": "config.TRACKING_ISSUE_PREFIX_BY_STATE[\"designing\"]",
-    "context": "startswith",
-    "occurrence": 1,
-    "reason": "grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet"
-  },
-  {
-    "file": "larch/state/admission.py",
-    "qualified_symbol": "_has_managed_prefix",
-    "token": "[DONE]",
-    "constant": "config.TRACKING_ISSUE_PREFIX_BY_STATE[\"done\"]",
-    "context": "startswith",
-    "occurrence": 1,
-    "reason": "grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet"
-  },
-  {
-    "file": "larch/state/admission.py",
-    "qualified_symbol": "_has_managed_prefix",
-    "token": "[IMPLEMENTING]",
-    "constant": "config.TRACKING_ISSUE_PREFIX_BY_STATE[\"implementing\"]",
-    "context": "startswith",
-    "occurrence": 1,
-    "reason": "grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet"
-  },
-  {
-    "file": "larch/state/admission.py",
-    "qualified_symbol": "_has_managed_prefix",
-    "token": "[STALLED]",
-    "constant": "config.TRACKING_ISSUE_PREFIX_BY_STATE[\"stalled\"]",
-    "context": "startswith",
-    "occurrence": 1,
-    "reason": "grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet"
   }
 ]

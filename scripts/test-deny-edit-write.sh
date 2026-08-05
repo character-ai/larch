@@ -289,6 +289,16 @@ reset_activation
 stale_activation umbrella
 assert_allow "T12m stale umbrella sentinel stays inactive" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 
+# T12n - debate has the same isolated scratch-only token contract.
+reset_activation
+activate debate
+assert_deny "T12n debate token denies repo path" debate "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_allow "T12o debate token allows canonical /tmp" debate "{\"tool_input\":{\"file_path\":\"$TMP_FILE\"}}"
+assert_allow "T12p debate sentinel does not activate umbrella token" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+reset_activation
+stale_activation debate
+assert_allow "T12q stale debate sentinel stays inactive" debate "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+
 # T13 — activation is PID-agnostic; a foreign-PID sentinel activates.
 reset_activation
 activate research 999999

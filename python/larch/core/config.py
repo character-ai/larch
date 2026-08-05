@@ -140,8 +140,16 @@ DEBATE_STALEMATE_VOTER_DIRNAME: Final = "stalemate-voters"
 DEBATE_STALEMATE_BALLOT_FILENAME: Final = "stalemate-ballot.md"
 DEBATE_STALEMATE_TALLY_FILENAME: Final = "stalemate-tally.json"
 DEBATE_SYNTHESIS_INPUT_MAX_BYTES: Final = 64 * 1024
+DEBATE_SUBJECT_MAX_BYTES: Final = 24 * 1024
+DEBATE_TURN_OUTPUT_MAX_BYTES: Final = 4 * 1024
+DEBATE_SUBJECT_VALUE_KEY: Final = "larch.debate.subject-base64"
+DEBATE_SUBJECT_FILENAME: Final = "debate-subject.md"
+DEBATE_TURN_PROMPT_FILENAME_TEMPLATE: Final = "{slot}-round-{round_number}-prompt.md"
+DEBATE_ADJUDICATION_PREVIEW_FILENAME: Final = "adjudication-preview.json"
+DEBATE_PROPOSAL_TITLE_PREFIX: Final = "[PROPOSAL]"
 DEBATE_PROPOSAL_TITLE_FILENAME: Final = "proposal-title.txt"
 DEBATE_PROPOSAL_BODY_FILENAME: Final = "proposal-body.md"
+DEBATE_LINKED_PROPOSAL_BODY_FILENAME: Final = "proposal-linked-body.md"
 DEBATE_SYNTHESIS_PROMPT_FILENAME: Final = "synthesis-prompt.md"
 DEBATE_SYNTHESIS_MANIFEST_FILENAME: Final = "synthesizer-slots.ndjson"
 DEBATE_SYNTHESIS_OUTPUT_FILENAME: Final = "synthesizer-output.md"
@@ -1087,6 +1095,12 @@ TRACKING_ISSUE_STATES: Final[tuple[str, ...]] = (
     "done",
     "stalled",
 )
+TRACKING_BUSY_STATES: Final[tuple[str, ...]] = (
+    "designing",
+    "implementing",
+    "done",
+    "stalled",
+)
 TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     "designing": "[DESIGNING] ",
     "designed": "[DESIGNED] ",
@@ -1094,16 +1108,8 @@ TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     "done": "[DONE] ",
     "stalled": "[STALLED] ",
 }
-# Reserved debate title states. Title selectors (rejection, signal insertion,
-# triage stripping) and the prefix-literal ratchets consume these tokens. No
-# tracking-issue transition writes them, so they stay out of
-# TRACKING_ISSUE_STATES and TRACKING_ISSUE_PREFIX_BY_STATE.
-# Two sibling selectors over the same convention are deliberately excluded
-# until a /debate writer exists: state/admission.py `_has_managed_prefix` and
-# issue/combine_issues.py `_BUSY_RE`. Both hand-list grandfathered literals
-# recorded in python/lifecycle-prefix-literal-baseline.json. Nothing produces a
-# [DEBATING] or [DEBATED] title yet, so the busy-state drift is unreachable
-# today; sweep both onto DEBATE_TITLE_STATES when the debate engine lands.
+# Debate title states stay separate from tracking-issue transitions, while
+# shared title selectors consume their prefixes from this owner.
 DEBATE_TITLE_STATES: Final[tuple[str, ...]] = ("DEBATING", "DEBATED")
 DEBATE_TITLE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     state: f"[{state}] " for state in DEBATE_TITLE_STATES

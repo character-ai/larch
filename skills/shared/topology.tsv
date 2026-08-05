@@ -1,3 +1,7 @@
+debate.panel	debate.panel	persistent Cursor subprocess + Codex subprocess + Claude Agent session	python/larch/debate/orchestrator.py
+debate.rounds	two-round debate protocol	blind position round + validated mailbox negotiation round	python/larch/debate/orchestrator.py
+debate.adjudication	AskUserQuestion	default operator decisions or autonomous anonymized voter panel	skills/debate/SKILL.md
+debate.publication	/issue	verified source creation + proposal filing + bidirectional links	skills/debate/SKILL.md
 design.plan_review.cursor_archetypes	Cursor	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review-runtime.md
 design.plan_review.codex_archetypes	Codex	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review-runtime.md
 design.plan_review.dynamic_archetypes	up to 1	scout proposes specialists fanned into Cursor+Codex dyn slots	python/larch/design/plan_scout.py

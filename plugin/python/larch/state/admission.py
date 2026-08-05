@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.core import proc
 from larch.core import retry
 from larch.core.repo_roots import larch_entrypoint
@@ -45,7 +45,14 @@ def _normal_issue(value: str) -> int | None:
 
 
 def _has_managed_prefix(title: str) -> bool:
-    return title.startswith(("[DESIGNING] ", "[IMPLEMENTING] ", "[DONE] ", "[STALLED] ", "[IN PROGRESS] ", "[PLANNED] "))
+    return title.startswith(
+        (
+            *(config.TRACKING_ISSUE_PREFIX_BY_STATE[state] for state in config.TRACKING_BUSY_STATES),
+            *config.DEBATE_TITLE_PREFIX_BY_STATE.values(),
+            "[IN PROGRESS] ",
+            "[PLANNED] ",
+        )
+    )
 
 
 def _has_designed_prefix(title: str) -> bool:

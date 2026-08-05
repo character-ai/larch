@@ -269,6 +269,14 @@ proposal before it calls the batch writer. Dispatcher paths, vendor output
 paths, and publication-handoff paths remain local control data and are not
 embedded in either durable batch.
 
+The source metadata, redacted subject, per-slot turn prompts, raw vendor
+ledgers, Claude input files, operator-decision TSV, and publication handoffs
+remain ephemeral session artifacts. They can contain public issue text,
+repository evidence, or model output that is still sensitive in aggregate.
+They are never copied into a public comment or selected as a run-log batch.
+Normal success removes the debate scratch tree. Failed runs retain it only for
+local diagnosis and then fall under the bounded session-retention cleanup.
+
 ### Breadcrumb security invariants
 
 Session `breadcrumbs/` directories are publication hints, not content roots.
@@ -397,6 +405,21 @@ Issue-anchored plan and clarification writers validate issue and repository
 identifiers, redact outbound bodies, confine temporary files, and redact errors.
 Fetched issue and comment content remains untrusted data. These helpers do not
 replace repository permissions, branch protection, or editorial review.
+
+### Debate proposals
+
+`/debate` publishes only the redacted synthesized proposal, a deterministic
+source backlink, a fixed round-status digest, and fixed marker-keyed source
+comments. Proposal filing uses `/issue`, so title and body secret redaction and
+creation read-back remain in force. Round comments may name slots and stable
+drop classes but never quote ledger reasons, prompts, paths, or raw output.
+
+The source title mutation is separate from content publication. A typed owner
+re-reads the issue before every start, finish, or restore transition and
+verifies the title after a write. The proposal forward link and backward link
+must verify before `[DEBATED]` is applied. An aborted run upserts one fixed
+sanitized comment and restores the original title only when the live title is
+still the exact debate-owned value.
 
 ### Research reports
 

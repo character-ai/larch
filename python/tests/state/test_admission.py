@@ -36,6 +36,8 @@ def test_normal_issue_rejects_zero() -> None:
 
 def test_prefix_helpers() -> None:
     assert admission._has_managed_prefix("[IMPLEMENTING] Thing")  # pyright: ignore[reportPrivateUsage]
+    assert admission._has_managed_prefix("[DEBATING] Thing")  # pyright: ignore[reportPrivateUsage]
+    assert admission._has_managed_prefix("[DEBATED] Thing")  # pyright: ignore[reportPrivateUsage]
     assert admission._has_designed_prefix("[DESIGNED] Thing")  # pyright: ignore[reportPrivateUsage]
     assert admission._has_report_prefix("[Audit Report] Thing")  # pyright: ignore[reportPrivateUsage]
 
