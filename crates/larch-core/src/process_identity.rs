@@ -1200,4 +1200,318 @@ mod tests {
         let text = host.files.borrow().get(&log).cloned().unwrap();
         assert!(text.contains("\"pid\":999"));
     }
+
+    #[test]
+    fn loop_identity_write_await_and_teardown_cover_happy_paths() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        let matching = ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run");
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                matching.clone(),             // write_loop_identity
+                IdentityProbeOutput::Missing, // await sees exit
+                matching.clone(),             // teardown pre-signal validate
+                IdentityProbeOutput::Missing, // teardown post-SIGTERM
+                matching,                     // write_step5_loop_identity
+            ],
+        );
+        let tmp = PathBuf::from("/tmp/design-loop");
+        assert_eq!(
+            write_loop_identity(&host, tmp.to_str().unwrap(), "123", "plan-review run"),
+            0
+        );
+        let sidecar = tmp.join(DESIGN_STEP3_LOOP_IDENTITY_FILE);
+        assert!(host.is_regular_file(&sidecar));
+        host.files.borrow_mut().insert(
+            tmp.join(DESIGN_STEP3_WRAPPER_DETACHED_FILE),
+            "PID=123\n".to_owned(),
+        );
+        host.mtimes.borrow_mut().insert(sidecar.clone(), 2_000);
+        host.files.borrow_mut().insert(
+            tmp.join(".step3-review-result.env"),
+            "STEP3_REVIEW_LOOP_STATUS=complete\n".to_owned(),
+        );
+        host.mtimes
+            .borrow_mut()
+            .insert(tmp.join(".step3-review-result.env"), 3_000);
+        assert_eq!(
+            await_loop_identity(&host, tmp.to_str().unwrap(), "123", "1", false),
+            0
+        );
+        assert_eq!(
+            teardown_loop_identity(&host, tmp.to_str().unwrap(), "123"),
+            0
+        );
+        assert!(!host.is_regular_file(&sidecar));
+        assert_eq!(
+            write_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "review-and-fix step5"),
+            0
+        );
+        assert!(host.is_regular_file(&tmp.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE)));
+    }
+
+    #[test]
+    fn parse_and_collect_helpers_cover_edge_inputs() {
+        assert!(parse_ps_identity(1, 1, "", "").is_none());
+        assert_eq!(
+            parse_ps_identity(1, 1, "Fri Jul  3 17:01:02 2026 cmd with spaces\n", "cmd")
+                .unwrap()
+                .command_signature,
+            "cmd with spaces"
+        );
+        let mut host = FakeHost::default();
+        host.children.insert(1, vec![2]);
+        host.children.insert(2, Vec::new());
+        host.groups.insert(9, vec![9, 10, 10]);
+        assert_eq!(collect_descendants(&host, 1), vec![2]);
+        assert_eq!(collect_process_group_members(&host, 9), vec![9, 10]);
+        assert!(probe_process_identity(&host, 0, "").identity.is_none());
+        assert_eq!(
+            probe_process_identity(&host, 5, "").failure_reason,
+            "missing-pid"
+        );
+        host.pgid.insert(5, 5);
+        host.ps
+            .borrow_mut()
+            .insert(5, vec![IdentityProbeOutput::Timeout]);
+        assert_eq!(
+            probe_process_identity(&host, 5, "").failure_reason,
+            "identity-probe-timeout"
+        );
+        host.ps
+            .borrow_mut()
+            .insert(5, vec![IdentityProbeOutput::Error]);
+        assert_eq!(
+            probe_process_identity(&host, 5, "").failure_reason,
+            "identity-probe-error"
+        );
+        assert!(!result_env_has_step3_status(&host, Path::new("/tmp/x"), 1));
+        assert_eq!(await_loop_identity(&host, "relative", "1", "1", false), 1);
+        assert_eq!(await_loop_identity(&host, "/tmp/x", "abc", "1", false), 1);
+        assert_eq!(await_loop_identity(&host, "/tmp/x", "1", "0", false), 1);
+        assert_eq!(TerminateSignal::Term.name(), "SIGTERM");
+        assert_eq!(TerminateSignal::Kill.name(), "SIGKILL");
+    }
+
+    #[test]
+    fn await_loop_poll_accepts_degraded_panel_status() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(7, 7);
+        let recorded = RecordedProcessIdentity {
+            pid: 7,
+            pgid: 7,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "loop".to_owned(),
+            expected_signature: "loop".to_owned(),
+        };
+        host.ps
+            .borrow_mut()
+            .insert(7, vec![IdentityProbeOutput::Missing]);
+        let tmp = PathBuf::from("/tmp/await-degraded");
+        host.files.borrow_mut().insert(
+            tmp.join(".step3-review-result.env"),
+            "LOOP_STATUS=zero-findings-degraded-panel\n".to_owned(),
+        );
+        host.mtimes
+            .borrow_mut()
+            .insert(tmp.join(".step3-review-result.env"), 5_000);
+        assert_eq!(
+            await_loop_poll(&host, &recorded, &tmp, 1_000, Duration::from_secs(1), true),
+            0
+        );
+    }
+
+    #[test]
+    fn terminate_with_descendants_and_identity_record_round_trip() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(50, 50);
+        host.pgid.insert(51, 50);
+        host.children.insert(50, vec![51]);
+        host.children.insert(51, Vec::new());
+        let matching = ps_stdout("worker cmd");
+        host.ps.borrow_mut().insert(
+            50,
+            vec![matching.clone(), matching, IdentityProbeOutput::Missing],
+        );
+        host.ps.borrow_mut().insert(
+            51,
+            vec![
+                ps_stdout("child cmd"),
+                ps_stdout("child cmd"),
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        let recorded = RecordedProcessIdentity {
+            pid: 50,
+            pgid: 50,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "worker cmd".to_owned(),
+            expected_signature: "worker".to_owned(),
+        };
+        let path = PathBuf::from("/tmp/identity-roundtrip.json");
+        write_identity_record(&host, &path, &recorded, None).expect("write");
+        assert_eq!(read_identity_record(&host, &path), Some(recorded.clone()));
+        let validation = terminate_validated_process_group(
+            &host,
+            &recorded,
+            Some(&PathBuf::from("/tmp/kill.jsonl")),
+            "test",
+            "unit",
+        );
+        assert!(validation.ok);
+        assert!(!host.signals.borrow().is_empty());
+    }
+
+    #[test]
+    fn validation_covers_pgid_and_expected_command_mismatches() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(8, 9);
+        host.ps.borrow_mut().insert(
+            8,
+            vec![IdentityProbeOutput::Stdout(
+                "Fri Jul  3 17:01:02 2026 matching command\n".to_owned(),
+            )],
+        );
+        let recorded = RecordedProcessIdentity {
+            pid: 8,
+            pgid: 8,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "matching command".to_owned(),
+            expected_signature: "matching".to_owned(),
+        };
+        assert_eq!(
+            validate_process_identity(&host, &recorded).reason,
+            "pgid-mismatch"
+        );
+
+        host.pgid.insert(8, 8);
+        host.ps.borrow_mut().insert(
+            8,
+            vec![IdentityProbeOutput::Stdout(
+                "Fri Jul  3 17:01:02 2026 matching command\n".to_owned(),
+            )],
+        );
+        let mut expected_bad = recorded;
+        expected_bad.expected_signature = "missing-token".to_owned();
+        assert_eq!(
+            validate_process_identity(&host, &expected_bad).reason,
+            "expected-command-mismatch"
+        );
+
+        append_kill_log(
+            &host,
+            None,
+            &KillLogEvent {
+                event: "signal".to_owned(),
+                signal: "SIGTERM".to_owned(),
+                pid: 1,
+                pgid: 1,
+                command: "x".to_owned(),
+                caller: "t".to_owned(),
+                reason: "t".to_owned(),
+                descendants: Vec::new(),
+                tmpdir_needle: String::new(),
+                physical_needle: String::new(),
+            },
+        );
+    }
+
+    #[test]
+    fn terminate_covers_missing_leader_with_validated_members() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(8, 8);
+        host.pgid.insert(80, 8);
+        host.groups.insert(8, vec![80]);
+        let recorded = RecordedProcessIdentity {
+            pid: 8,
+            pgid: 8,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "matching command".to_owned(),
+            expected_signature: "matching".to_owned(),
+        };
+        host.ps
+            .borrow_mut()
+            .insert(8, vec![IdentityProbeOutput::Missing]);
+        host.ps.borrow_mut().insert(
+            80,
+            vec![
+                IdentityProbeOutput::Stdout(
+                    "Fri Jul  3 17:01:02 2026 matching command\n".to_owned(),
+                ),
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        let validation = terminate_validated_process_group(
+            &host,
+            &recorded,
+            Some(Path::new("/tmp/missing-leader.jsonl")),
+            "test",
+            "missing-leader",
+        );
+        assert!(validation.ok);
+    }
+
+    #[test]
+    fn await_and_helpers_cover_grace_and_invalid_inputs() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(8, 8);
+        let recorded = RecordedProcessIdentity {
+            pid: 8,
+            pgid: 8,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "matching command".to_owned(),
+            expected_signature: "matching".to_owned(),
+        };
+        host.ps.borrow_mut().insert(
+            8,
+            vec![
+                IdentityProbeOutput::Missing,
+                IdentityProbeOutput::Stdout(
+                    "Fri Jul  3 17:01:02 2026 matching command\n".to_owned(),
+                ),
+            ],
+        );
+        assert!(read_stable_process_identity(&host, 8, "matching", true).is_some());
+
+        host.now.store(0, Ordering::Relaxed);
+        host.ps.borrow_mut().insert(
+            8,
+            (0..20)
+                .map(|_| IdentityProbeOutput::Missing)
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            await_loop_poll(
+                &host,
+                &recorded,
+                Path::new("/tmp/await-grace"),
+                0,
+                Duration::from_secs(10),
+                false,
+            ),
+            0
+        );
+
+        host.files.borrow_mut().insert(
+            PathBuf::from("/tmp/await-grace/.step3-review-result.env"),
+            "STEP3_REVIEW_LOOP_STATUS=\n".to_owned(),
+        );
+        host.mtimes.borrow_mut().insert(
+            PathBuf::from("/tmp/await-grace/.step3-review-result.env"),
+            10,
+        );
+        assert!(!result_env_has_step3_status(
+            &host,
+            Path::new("/tmp/await-grace"),
+            1
+        ));
+
+        assert_eq!(write_loop_identity(&host, "", "1", "x"), 0);
+        assert_eq!(write_loop_identity(&host, "/tmp/x", "nope", "x"), 0);
+        assert_eq!(teardown_loop_identity(&host, "", "1"), 0);
+        assert_eq!(teardown_loop_identity(&host, "/tmp/x", "nope"), 0);
+        assert_eq!(write_step5_loop_identity(&host, "", "1", "x"), 0);
+        assert_eq!(write_step5_loop_identity(&host, "/tmp/x", "nope", "x"), 0);
+    }
 }
