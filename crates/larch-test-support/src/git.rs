@@ -675,8 +675,8 @@ impl GitRepository {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionSnapshot {
     pub exit_class: ExitClass,
-    stdout: BoundedBytes,
-    stderr: BoundedBytes,
+    pub stdout: BoundedBytes,
+    pub stderr: BoundedBytes,
 }
 
 impl ExecutionSnapshot {
@@ -686,6 +686,24 @@ impl ExecutionSnapshot {
             exit_class: ExitClass::Success,
             stdout: BoundedBytes::new(&[]),
             stderr: BoundedBytes::new(&[]),
+        }
+    }
+
+    #[must_use]
+    pub fn failure(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Self {
+        Self {
+            exit_class: ExitClass::Failure(code),
+            stdout: BoundedBytes::new(stdout),
+            stderr: BoundedBytes::new(stderr),
+        }
+    }
+
+    #[must_use]
+    pub fn interrupted(stdout: &[u8], stderr: &[u8]) -> Self {
+        Self {
+            exit_class: ExitClass::Interrupted,
+            stdout: BoundedBytes::new(stdout),
+            stderr: BoundedBytes::new(stderr),
         }
     }
 

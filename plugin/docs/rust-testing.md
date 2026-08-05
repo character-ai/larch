@@ -25,6 +25,9 @@ crate-local tests where the dependency graph permits it.
   `GitFixtureError::Skip` and print its `FixtureCapability` and reason when the
   host lacks a feature. Never turn a capability skip into an unreported early
   return.
+- `RunLogTree::builder` creates isolated run-log staging, cache, pending, and
+  object-store doubles. `RunLogFixture` names the historical and durability
+  corpora used by reporting parity tests.
 
 Never call `set_current_dir`, `set_var`, or `remove_var` in a test. Do not use a
 shared fixed path, port, clock, response queue, or mutable static. Give each
@@ -94,6 +97,38 @@ It injects direct process creation, arbitrary Git arguments, `gix` bypasses,
 duplicate owners, a new CLI exception, non-atomic command state, and inventory
 drift. The adapter and CLI suites supply the SHA-1/SHA-256, case, path, filter,
 hook, credential, worktree, interruption, recovery, and `git fsck` fixtures.
+
+## Run-log fixtures and reporting parity
+
+`larch-test-support` owns offline run-log corpora for the #7683 reporting
+migration. `RunLogTree::builder` creates an isolated temporary root with
+staging (`larch-logs/<skill>/<run-id>/`), cache, pending-publication, and a
+local object-store double. Named `RunLogFixture` values cover absent, partial,
+corrupt, checkpoint, interrupted, committed, archive-pending, batch-corpus,
+token/timing/progress, credential-bearing transcript, and historical shapes
+the tolerant reader still accepts: manifest v1, lifecycle schema v1, and the
+legacy panel-prompt-sizes TSV header.
+
+`RunLogSnapshot::capture` builds one bounded semantic snapshot of a run-log
+tree: relative paths, modes, byte content or digests, ordering, durability
+markers, and the supplied `ExecutionSnapshot`. Capture replaces the temporary
+root with `<ROOT>` and redacts credential-bearing lines and URL userinfo.
+`ReportSnapshot::capture` records exact machine fields from JSON reports plus
+normalized prose from final-summary, final-report, and run-statistics files,
+including RFC3339 timestamp substitution.
+
+Use `ReportingParityOracle` to compare two run-log or report snapshots and
+report only differing channels. Prefer typed snapshot equality in tests; use
+`render` only for checked-in review artifacts (`larch-run-log-snapshot-v1`,
+`larch-report-snapshot-v1`). Snapshot reviews must explain every changed
+semantic field. Test success, injected failure, interruption, and corruption
+separately so those states stay distinguishable.
+
+`LocalObjectStore` is a filesystem double for the documented object-store
+operations (`preflight_prefix`, `list`, `upload_create`, `metadata`,
+`download`). It stays offline, rejects unsafe keys, and never contacts a
+network endpoint. Fixture code must not call `set_current_dir`, `set_var`, or
+`remove_var`.
 
 ## Test boundaries
 
