@@ -1557,24 +1557,6 @@
     "reason": "grandfathered existing debt in moved larch.state modules"
   },
   {
-    "file": "larch/state/dirty_tree.py",
-    "qualified_symbol": "baseline_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.state modules"
-  },
-  {
-    "file": "larch/state/dirty_tree.py",
-    "qualified_symbol": "checkpoint_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.state modules"
-  },
-  {
     "file": "larch/state/session_env.py",
     "qualified_symbol": "_safe_timing_ledger_path",
     "env_name": "DESIGN_TMPDIR",

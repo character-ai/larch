@@ -278,13 +278,13 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-read-result-env test-design-multi-round-integration test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose test-git-commit-only step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-check-scope-reduction-marker test-read-result-env test-design-multi-round-integration test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose test-git-commit-only step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
 test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts flush-execution-issues-bash-harness
 
-test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-file-failure-report-cross-repo test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip test-check-phantom-dirty test-phantom-probe-with-warn
+test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-file-failure-report-cross-repo test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip test-check-mid-run-dirty-tree test-check-phantom-dirty test-phantom-probe-with-warn
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -385,7 +385,7 @@ test-check-main-sync:
 
 
 test-check-scope-reduction-marker:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_dirty_tree.py -x -q -k 'scope_check or scope_marker'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test dirty_tree scope_
 
 test-plan-review:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status or write_atomic'
@@ -1070,7 +1070,7 @@ test-review-and-fix-check-changes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k check_changes
 
 test-check-mid-run-dirty-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_dirty_tree.py -x -q -k 'not (scope_check or scope_marker)'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test dirty_tree
 
 test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty

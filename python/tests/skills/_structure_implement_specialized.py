@@ -1139,7 +1139,7 @@ def run(repo_root: Path) -> list[str]:
             "RECOVERY_REQUIRED=true",
             "RECOVERY_REQUIRED=false",
             "STATUS=clean",
-            "python/cli.py dirty-tree checkpoint",
+            "scripts/larch.sh dirty-tree checkpoint",
             "Restore a clean tree and continue",
             "Cancel this implement run",
             "unset IMPLEMENT_BAIL_REASON",

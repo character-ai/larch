@@ -57,16 +57,62 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
     )
 
 
-def _mock_rust_snapshot(monkeypatch: pytest.MonkeyPatch, contents: bytes) -> None:
-    """Provide the Rust snapshot side effect without requiring a released binary."""
+def _mock_rust_dirty_tree(monkeypatch: pytest.MonkeyPatch, contents: bytes) -> None:
+    """Provide the Rust dirty-tree side effects without requiring a released binary."""
     original_run = _review_launcher.proc.run
 
-    def run(argv: list[str], **_kwargs: object) -> CommandResult:
-        if argv[1:3] != ["git", "snapshot-untracked"]:
-            return original_run(argv, **_kwargs)
-        output = Path(argv[argv.index("--output") + 1])
-        output.write_bytes(contents)
-        return CommandResult(tuple(argv), 0, "", "", 0.0)
+    def run(argv: list[str], **kwargs: object) -> CommandResult:
+        if argv[1:3] == ["git", "snapshot-untracked"]:
+            output = Path(argv[argv.index("--output") + 1])
+            output.write_bytes(contents)
+            return CommandResult(tuple(argv), 0, "", "", 0.0)
+        if argv[1:3] != ["dirty-tree", "baseline"]:
+            return original_run(argv, **kwargs)
+        baseline = Path(argv[argv.index("--baseline") + 1])
+        sidecar = Path(argv[argv.index("--sidecar") + 1])
+        cwd = str(kwargs.get("cwd", ""))
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            lines = ["STATUS=unknown", "MODE=baseline", "UNTRACKED_BASELINE=missing", "REASON=git-status-failed"]
+            sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return CommandResult(tuple(argv), 0, "\n".join(lines) + "\n", "", 0.0)
+        tracked = {
+            path
+            for command in (["diff", "--name-only", "-z"], ["diff", "--name-only", "--cached", "-z"])
+            for path in subprocess.run(["git", *command], cwd=cwd, capture_output=True, check=False).stdout.split(b"\0")
+            if path
+        }
+        current_untracked = {
+            path
+            for path in subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                cwd=cwd,
+                capture_output=True,
+                check=False,
+            ).stdout.split(b"\0")
+            if path
+        }
+        baseline_paths = {path for path in baseline.read_bytes().split(b"\0") if path}
+        new_untracked = sorted(current_untracked - baseline_paths)
+        lines = ["STATUS=clean", "MODE=baseline", "UNTRACKED_BASELINE=present"]
+        if tracked:
+            tracked_path = sidecar.with_name(sidecar.name + ".tracked-paths")
+            tracked_path.write_bytes(b"\0".join(sorted(tracked)) + b"\0")
+            lines.extend([f"TRACKED_PATHS_FILE={tracked_path}"])
+        if new_untracked:
+            new_path = sidecar.with_name(sidecar.name + ".new-untracked-paths")
+            new_path.write_bytes(b"\0".join(new_untracked) + b"\0")
+            lines.extend([f"NEW_UNTRACKED_PATHS_FILE={new_path}"])
+        if tracked or new_untracked:
+            lines[0] = "STATUS=dirty"
+            lines.append("REASON=working-tree-dirty")
+        sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return CommandResult(tuple(argv), 0, "\n".join(lines) + "\n", "", 0.0)
 
     monkeypatch.setattr(_review_launcher.proc, "run", run)
 
@@ -1397,7 +1443,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
-    _mock_rust_snapshot(monkeypatch, b"preexisting.txt\0")
+    _mock_rust_dirty_tree(monkeypatch, b"preexisting.txt\0")
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1420,7 +1466,7 @@ def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypa
     out = tmp_path / "out.txt"
     monkeypatch.chdir(repo)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
-    _mock_rust_snapshot(monkeypatch, b"preexisting.txt\0")
+    _mock_rust_dirty_tree(monkeypatch, b"preexisting.txt\0")
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     (repo / "reviewer-new.txt").write_text("reviewer\n", encoding="utf-8")
     agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
@@ -1443,7 +1489,7 @@ def test_cursor_dirty_tree_resolves_consumer_repo_from_non_git_cwd(tmp_path: Pat
     out = tmp_path / "out.txt"
     monkeypatch.chdir(plugin_cache)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(consumer))
-    _mock_rust_snapshot(monkeypatch, b"")
+    _mock_rust_dirty_tree(monkeypatch, b"")
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")

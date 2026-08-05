@@ -1519,13 +1519,6 @@
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/dirty_tree.py",
-    "qualified_symbol": "_run_bytes",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt"
-  },
-  {
     "file": "larch/state/stall_recovery.py",
     "qualified_symbol": "is_larch_dev_clone",
     "callee": "run",

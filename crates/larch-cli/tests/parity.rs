@@ -55,6 +55,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new(
+        "clean-install-dirty-tree-baseline",
+        "dirty-tree",
+        "baseline",
+    ),
+    CleanInstallCase::new(
+        "clean-install-dirty-tree-checkpoint",
+        "dirty-tree",
+        "checkpoint",
+    ),
+    CleanInstallCase::new(
+        "clean-install-dirty-tree-scope-check",
+        "dirty-tree",
+        "scope-check",
+    ),
+    CleanInstallCase::new(
+        "clean-install-dirty-tree-scope-marker",
+        "dirty-tree",
+        "scope-marker",
+    ),
     CleanInstallCase::new("clean-install-gh-remote-repo", "gh", "remote-repo"),
     CleanInstallCase::new("clean-install-gh-resolve-repo", "gh", "resolve-repo"),
     CleanInstallCase::new("clean-install-gh-run-logs", "gh", "run-logs"),

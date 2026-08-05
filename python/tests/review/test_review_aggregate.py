@@ -6,13 +6,11 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.review import review_aggregate
 import review_test_support as rts
-
-if TYPE_CHECKING:
-    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -22,11 +20,83 @@ def run_review(*args: str, env: dict[str, str] | None = None) -> subprocess.Comp
     return rts.run_review(*args, env=env)
 
 
+def _scope_marker_binary(tmp_path: Path) -> Path:
+    """Write a verified-entrypoint test binary for plan-mode aggregation tests."""
+    binary = tmp_path / "larch-scope-marker"
+    version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    rts.write_executable(
+        path=binary,
+        body=f"""#!/usr/bin/env bash
+set -euo pipefail
+case "${{1:-}}" in
+  --version)
+    printf 'larch {version}\\n'
+    ;;
+  bootstrap)
+    [ "${{2:-}}" = self-check ] || exit 2
+    case "$(uname -s):$(uname -m)" in
+      Darwin:arm64|Darwin:aarch64) target=aarch64-apple-darwin ;;
+      Darwin:x86_64|Darwin:amd64) target=x86_64-apple-darwin ;;
+      Linux:arm64|Linux:aarch64) target=aarch64-unknown-linux-gnu ;;
+      Linux:x86_64|Linux:amd64) target=x86_64-unknown-linux-gnu ;;
+      *) exit 2 ;;
+    esac
+    printf '{{"schema_version":1,"version":"{version}","target":"%s"}}\\n' "$target"
+    ;;
+  dirty-tree)
+    [ "${{2:-}}" = scope-marker ] || exit 2
+    shift 2
+    [ "${{1:-}}" = --file ] && [ -f "${{2:-}}" ] || exit 1
+    grep -Fq '[SCOPE-REDUCTION]' "$2"
+    ;;
+  *) exit 2 ;;
+esac
+""",
+    )
+    return binary
+
+
 def _aggregate_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     return {
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "LARCH_BINARY": str(_scope_marker_binary(tmp_path)),
         "LARCH_EXECUTION_ISSUES_LOG": str(tmp_path / "execution-issues.md"),
         **extra,
     }
+
+
+def test_scope_marker_uses_verified_rust_entrypoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command: list[str] = []
+
+    def fake_scope_marker(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        command.extend(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_scope_marker)
+
+    assert review_aggregate._run_scope_marker(  # pyright: ignore[reportPrivateUsage] - verifies Rust cutover
+        "### FINDING_1: [SCOPE-REDUCTION] tighten scope\n",
+        review_tmpdir=tmp_path,
+    )
+    assert command[0].endswith("/scripts/larch.sh")
+    assert command[1:3] == ["dirty-tree", "scope-marker"]
+
+
+def test_scope_marker_stderr_failure_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def failed_scope_marker(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 1, "", "larch bootstrap: unavailable")
+
+    monkeypatch.setattr(subprocess, "run", failed_scope_marker)
+
+    with pytest.raises(RuntimeError, match="scope marker helper failed"):
+        review_aggregate._run_scope_marker(  # pyright: ignore[reportPrivateUsage] - verifies fail-closed Rust boundary
+            "### FINDING_1: [SCOPE-REDUCTION] tighten scope\n",
+            review_tmpdir=tmp_path,
+        )
 
 
 # Issue #4868 reproduction fixtures: cursor-b-output.txt raises only an [OUT_OF_SCOPE]-tagged finding

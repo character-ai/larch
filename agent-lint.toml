@@ -580,10 +580,6 @@ exclude = [
   # Codex and Cursor review launcher paths. Referenced only from
   # Makefile (test-launch-review target).
   "python/test_launch_review.py",
-  # python/test_dirty_tree.py is the regression harness for the
-  # dirty-tree detector. Referenced only from Makefile
-  # (test-check-mid-run-dirty-tree target) and its sibling contract.
-  "python/test_dirty_tree.py",
   # skills/implement/references/rebase-checkpoint-routing.md is a lazy reference
   # target invoked only from skills/implement/SKILL.md foreground fences (G004
   # does not follow markdown invocations). The rebase checkpoint command itself
@@ -924,8 +920,6 @@ exclude = [
   # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
   # by generated implementer prompts, not an invokable agent with frontmatter.
   "agents/_implementer-base.md",
-  "python/dirty_tree.py",
-  "python/test_dirty_tree.py",
   "scripts/check-stale-plugin.sh",
   "scripts/check-stale-plugin.md",
   "scripts/test-hook-anti-read-poll.md",

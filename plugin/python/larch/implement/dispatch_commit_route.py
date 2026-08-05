@@ -25,6 +25,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core import rust_runtime
+from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
 from larch.implement import checks
 from larch.implement import checks_result_identity
@@ -1363,8 +1364,9 @@ def _run_step4_recovery_recompute(implement_tmpdir: Path, *, repo_root: Path) ->
     )
     if rc != 0:
         return rc
-    scope = _invoke_cli(
+    scope = proc.run(
         [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
             "dirty-tree",
             "scope-check",
             "--plan-file",
@@ -1372,10 +1374,14 @@ def _run_step4_recovery_recompute(implement_tmpdir: Path, *, repo_root: Path) ->
             "--paths-file",
             str(final_paths),
         ],
-        cwd=repo_root,
+        cwd=str(repo_root),
     )
     if scope.returncode != 0:
-        _forward_child_output_to_stderr(scope)
+        if scope.stdout:
+            sys.stderr.write(scope.stdout)
+        if scope.stderr:
+            sys.stderr.write(scope.stderr)
+        sys.stderr.flush()
         _emit_kv(key="BAIL_REASON", value="recovery-out-of-scope")
         return scope.returncode or 1
     return 0

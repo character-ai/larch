@@ -1401,6 +1401,31 @@ def test_step1d5_collect_launch_failure_result_env_idempotent(tmp_path: Path, mo
     assert append_calls == 1
 
 
+def test_brainstorm_dirty_checkpoint_uses_verified_rust_entrypoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    command: list[str] = []
+
+    def fake_checkpoint(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        command.extend(args)
+        return subprocess.CompletedProcess(args, 0, "STATUS=clean\nMODE=checkpoint\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_checkpoint)
+    design_step1._brainstorm_dirty_checkpoint(  # pyright: ignore[reportPrivateUsage] - verifies Rust cutover
+        plugin_root=tmp_path,
+        design_tmpdir=design,
+        paths=(),
+    )
+
+    assert command[0].endswith("/scripts/larch.sh")
+    assert command[1:] == ["dirty-tree", "checkpoint"]
+    assert (design / "dirty-tree-detected.env").read_text(encoding="utf-8") == (
+        "STAGE=brainstorm-collection\nRECOVERY_REQUIRED=false\n"
+    )
+
+
 def test_step0_parse_rejects_rc3_validation_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     home = tmp_path / "home"
     home.mkdir()

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from larch.calibration.difficulty import resolve_step2_effective_difficulty
-from larch.state import dirty_tree, session_env
+from larch.state import session_env
 from larch.core import config, external_defaults, proc, rust_runtime
 from larch import io as larch_io
 from larch.core import logging_util, redact
@@ -125,6 +125,11 @@ def _checkpoint_status(lines: list[str]) -> str:
         if line.startswith("STATUS="):
             return line.removeprefix("STATUS=")
     return "unknown"
+
+
+def _dirty_tree_checkpoint() -> list[str]:
+    """Read the Rust-owned checkpoint envelope at the bootstrap boundary."""
+    return list(rust_runtime.dirty_tree_checkpoint(proc).lines)
 
 
 def _atomic_text(*, path: Path, text: str) -> None:
@@ -598,7 +603,7 @@ def _phase_tracking(st: BootstrapState) -> None:
                 st.run_id = run_id
                 if st.opts.resume_plan_tail:
                     return
-                dirty_lines = dirty_tree.checkpoint()
+                dirty_lines = _dirty_tree_checkpoint()
                 if _checkpoint_status(dirty_lines) in {"dirty", "unknown"}:
                     st.implement_bail_reason = "dirty-tree"
                     return
@@ -635,7 +640,7 @@ def _adopt_tracking_issue(st: BootstrapState) -> None:
     if state.state != "OPEN":
         st.emit_step_failed("get-issue-state")
         return
-    dirty_lines = dirty_tree.checkpoint()
+    dirty_lines = _dirty_tree_checkpoint()
     if _checkpoint_status(dirty_lines) in {"dirty", "unknown"}:
         st.implement_bail_reason = "dirty-tree"
         return
@@ -934,7 +939,7 @@ def _phase_plan(st: BootstrapState) -> None:
             return
     elif not _materialize_initial_plan(st, feature_file=feature_file):
         return
-    dirty_lines = dirty_tree.checkpoint()
+    dirty_lines = _dirty_tree_checkpoint()
     if _checkpoint_status(dirty_lines) in {"dirty", "unknown"}:
         st.implement_bail_reason = "dirty-tree"
         return

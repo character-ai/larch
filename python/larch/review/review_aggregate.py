@@ -15,6 +15,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.issue.oos import is_security_tagged
 from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 from larch.review.review_types import is_canonical_heading, parse_blocks, parse_findings_text, parse_findings
@@ -189,14 +190,16 @@ def _run_scope_marker(block: str, *, review_tmpdir: Path) -> bool:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(block)
         proc = subprocess.run(
-            [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "dirty-tree", "scope-marker", "--file", str(tmp_path)],
+            [str(larch_entrypoint(_PLUGIN_ROOT)), "dirty-tree", "scope-marker", "--file", str(tmp_path)],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             check=False,
         )
         if proc.returncode == 0:
             return True
         if proc.returncode == 1:
+            if proc.stderr:
+                raise RuntimeError("scope marker helper failed during plan aggregation split")
             return False
         raise RuntimeError(f"scope marker helper failed during plan aggregation split (rc={proc.returncode})")
     finally:
