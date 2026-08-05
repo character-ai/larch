@@ -8,7 +8,7 @@ Step 8+ Python ship-driver bgjob launcher. Foreground mode starts or rejoins bgj
 
 ## Stdout and result-env contract
 
-Foreground mode delegates start-or-reattach, result replacement, and merge-result publication to `python/cli.py bgjob adapt`. The child rehydrates the durable ship argv, runs the Python-version guard and advisory phantom probe, then invokes `ship pr` with its adapter-provided `--merge-result-env` as `--result-env-path`.
+Foreground mode delegates start-or-reattach, result replacement, and merge-result publication to `scripts/larch.sh bgjob adapt`. The child rehydrates the durable ship argv, runs the Python-version guard and advisory phantom probe, then invokes `ship pr` with its adapter-provided `--merge-result-env` as `--result-env-path`.
 
 `ship pr` writes its outcome KVs before it emits its human-readable JSON contract. The bgjob daemon merges those KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; `ship route-exit` reads that one authoritative result env after bgjob `DONE`.
 

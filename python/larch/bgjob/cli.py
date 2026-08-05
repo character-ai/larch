@@ -4,23 +4,11 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 from pathlib import Path
-from typing import Never
 
-from larch.bgjob import adapt, daemon, model, registry, wait
+from larch.bgjob import daemon, model, registry, wait
 from larch.core import config, process_identity
 from larch.report.progress_file import resolve_owned_run_id, validate_run_id
-from larch.state import session_env
-
-
-_DESIGN_SESSION_ENV_KEYS = session_env.WRITE_DESIGN_ENV_KEYS
-
-
-class _MachineArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> Never:
-        _ = message
-        raise ValueError("invalid command arguments")
 
 
 def _add_common_job_args(parser: argparse.ArgumentParser, *, tmpdir_required: bool = True) -> None:
@@ -88,163 +76,6 @@ def start_main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"BGJOB_ERROR={type(exc).__name__}:{exc}")
         return 2
-
-
-def _adapt_parser() -> _MachineArgumentParser:
-    parser = _MachineArgumentParser(prog="cli.py bgjob adapt")
-    _add_common_job_args(parser, tmpdir_required=False)
-    _ = parser.add_argument("--budget-s", type=int)
-    _ = parser.add_argument("--log-dir", default="")
-    _ = parser.add_argument("--owner-pid", default="")
-    _ = parser.add_argument("--sentinel", action="append", default=[])
-    _ = parser.add_argument("--session-env-path", default="")
-    _ = parser.add_argument("--clear-on-fresh", default="")
-    _ = parser.add_argument("--replace-completed-result", action="store_true")
-    _ = parser.add_argument("--input-fingerprint", default="")
-    _ = parser.add_argument("command", nargs=argparse.REMAINDER)
-    return parser
-
-
-def _adapt_contract_error(args: argparse.Namespace) -> str:
-    if not args.command:
-        return "missing-command"
-    if args.budget_s is None:
-        return "invalid-input"
-    if args.budget_s <= 0:
-        return "invalid-budget"
-    return ""
-
-
-def _adapt_tmpdir(*, args: argparse.Namespace, session_values: dict[str, str]) -> str:
-    explicit = str(args.tmpdir)
-    session_tmpdir = session_values.get(config.ENV_DESIGN_TMPDIR, "")
-    if session_tmpdir and explicit and Path(session_tmpdir).resolve() != Path(explicit).resolve():
-        raise adapt.AdaptError("session-env-tmpdir-mismatch")
-    tmpdir = (
-        explicit
-        or session_tmpdir
-        or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
-        or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    )
-    if not tmpdir:
-        raise adapt.AdaptError("missing-tmpdir")
-    return tmpdir
-
-
-def _prepare_adapt_args(argv: list[str] | None) -> argparse.Namespace:
-    try:
-        args = _adapt_parser().parse_args(argv)
-    except (argparse.ArgumentError, ValueError) as exc:
-        raise adapt.AdaptError("invalid-input") from exc
-    if args.command and args.command[0] == "--":
-        args.command = args.command[1:]
-    error_token = _adapt_contract_error(args)
-    if error_token:
-        raise adapt.AdaptError(error_token)
-    session_values = (
-        _resolve_session_env(
-            path=Path(args.session_env_path),
-            claude_pid=str(args.owner_pid),
-        )
-        if args.session_env_path
-        else {}
-    )
-    for key, value in session_values.items():
-        os.environ[key] = value
-    args.tmpdir = _adapt_tmpdir(args=args, session_values=session_values)
-    args.merge_result_env = ""
-    return args
-
-
-def adapt_main(argv: list[str] | None = None) -> int:
-    raw_argv = list(argv or [])
-    if "--resolve-session-env" in raw_argv:
-        return _resolve_session_env_argv(raw_argv)
-    try:
-        args = _prepare_adapt_args(argv)
-        options = adapt.AdaptOptions(
-            clear_on_fresh=Path(args.clear_on_fresh) if args.clear_on_fresh else None,
-            replace_completed_result=bool(args.replace_completed_result),
-            input_fingerprint=str(args.input_fingerprint),
-        )
-        return adapt.start_or_reattach(_build_spec(args), options=options)
-    except adapt.AdaptError as exc:
-        print(f"BGJOB_ERROR={exc.token}")
-        return 2
-    except (OSError, RuntimeError, ValueError):
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-
-
-def _session_env_source(*, path: Path, claude_pid: str) -> Path:
-    if path.is_symlink():
-        resolved = session_env.resolve_trusted_design_session_env_source(
-            path=path,
-            claude_pid=claude_pid,
-        )
-        if resolved is None:
-            raise adapt.AdaptError("session-env-unsafe")
-        return resolved
-    if not path.is_file():
-        raise adapt.AdaptError("session-env-missing")
-    return path
-
-
-def _resolve_session_env(*, path: Path, claude_pid: str) -> dict[str, str]:
-    source = _session_env_source(path=path, claude_pid=claude_pid)
-    try:
-        text = source.read_text(encoding="utf-8", errors="strict")
-    except (OSError, UnicodeError) as exc:
-        raise adapt.AdaptError("session-env-unsafe") from exc
-    values: dict[str, str] = {}
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or line == "#!/usr/bin/env bash":
-            continue
-        pair = session_env.parse_allowlisted_env_line(
-            raw=line,
-            allowlist=_DESIGN_SESSION_ENV_KEYS,
-            reject_newline_rhs=True,
-        )
-        if pair is None:
-            raise adapt.AdaptError("session-env-malformed")
-        if pair[0] == config.ENV_CLAUDE_PLUGIN_ROOT:
-            continue
-        values[pair[0]] = pair[1]
-    raw_tmpdir = values.get(config.ENV_DESIGN_TMPDIR, "")
-    ok, _message = session_env.validate_design_tmpdir(raw_tmpdir)
-    if not raw_tmpdir:
-        raise adapt.AdaptError("design-tmpdir-missing")
-    if not ok or not Path(raw_tmpdir).is_dir():
-        raise adapt.AdaptError("design-tmpdir-invalid")
-    values[config.ENV_DESIGN_TMPDIR] = str(Path(raw_tmpdir).resolve())
-    return values
-
-
-def _resolve_session_env_argv(argv: list[str]) -> int:
-    parser = _MachineArgumentParser(prog="cli.py bgjob adapt --resolve-session-env")
-    _ = parser.add_argument("--resolve-session-env", action="store_true")
-    _ = parser.add_argument("--session-env-path", default="")
-    _ = parser.add_argument("--owner-pid", default="")
-    try:
-        args = parser.parse_args(argv)
-    except (argparse.ArgumentError, ValueError):
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-    if not args.resolve_session_env or not args.session_env_path:
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-    try:
-        values = _resolve_session_env(
-            path=Path(args.session_env_path),
-            claude_pid=str(args.owner_pid),
-        )
-    except adapt.AdaptError as exc:
-        print(f"BGJOB_ERROR={exc.token}")
-        return 2
-    for key, value in values.items():
-        print(f"export {key}={shlex.quote(value)}")
-    return 0
 
 
 def wait_main(argv: list[str] | None = None) -> int:

@@ -13,11 +13,12 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pytest
 
 from larch import io as larch_io
+from larch.bgjob import model as bgjob_model
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
@@ -49,10 +50,6 @@ from larch.report import run_log_batch
 from larch.state import finalize
 
 from test_support import make_implement_tmpdir
-
-if TYPE_CHECKING:
-    from larch.bgjob import model as bgjob_model
-
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
@@ -193,19 +190,25 @@ def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
-    captured: list[bgjob_model.JobSpec] = []
+    monkeypatch.setattr(
+        dispatch_commit_route.bgjob_daemon,
+        "owner_identity_from_env",
+        lambda _pid: bgjob_model.OwnerIdentity(recorded=None),
+    )
+    captured: list[tuple[str, ...]] = []
 
-    def fake_start(spec: bgjob_model.JobSpec, *, options: object | None = None) -> int:
-        del options
-        captured.append(spec)
-        return 0
+    def fake_run(argv: object, **_kwargs: object) -> CommandResult:
+        command = tuple(cast("list[str]", argv))
+        captured.append(command)
+        return CommandResult(command, 0, "", "", 0.0)
 
-    monkeypatch.setattr(dispatch_commit_route.bgjob_adapt, "start_or_reattach", fake_start)
+    monkeypatch.setattr(dispatch_commit_route.proc, "run", fake_run)
 
     assert dispatch_commit_route.step5_review_main([]) == 0
-    assert captured[0].merge_result_env == tmp_path / ".step5-review-result.env"
-    assert captured[0].command[-2:] == ("implement", "step-5-review")
+    command = captured[-1]
+    assert "--merge-result-env" in command
+    assert command[command.index("--merge-result-env") + 1] == str(tmp_path / ".step5-review-result.env")
+    assert command[-2:] == ("implement", "step-5-review")
 
 
 def test_bgjob_contract_unification_review_and_resume_classifiers_are_distinct(
@@ -265,7 +268,11 @@ def test_step5_review_stale_result_is_cleared_but_unsafe_result_is_refused(
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
+    monkeypatch.setattr(
+        dispatch_commit_route.bgjob_daemon,
+        "owner_identity_from_env",
+        lambda _pid: bgjob_model.OwnerIdentity(recorded=None),
+    )
     bgjob = tmp_path / "bgjob"
     bgjob.mkdir()
     result = bgjob / "implement-step5-review.result.env"

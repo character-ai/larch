@@ -67,7 +67,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("debate", "synthesize"): ("larch.debate.orchestrator", "synthesize_main", True),
     ("debate", "title-transition"): ("larch.debate.publication", "title_transition_main", True),
     ("bgjob", "start"): ("larch.bgjob.cli", "start_main", True),
-    ("bgjob", "adapt"): ("larch.bgjob.cli", "adapt_main", True),
     ("bgjob", "wait"): ("larch.bgjob.cli", "wait_main", True),
     ("bgjob", "status"): ("larch.bgjob.cli", "status_main", True),
     ("bgjob", "reap"): ("larch.bgjob.cli", "reap_main", True),

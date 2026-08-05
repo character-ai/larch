@@ -2524,6 +2524,7 @@ dependencies = [
  "larch-core",
  "larch-lint",
  "larch-test-support",
+ "nix",
  "predicates",
  "regex",
  "serde",

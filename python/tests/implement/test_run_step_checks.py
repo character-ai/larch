@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
-from test_support import capture_start as _capture_spec
-from test_support import make_checks_session
-
-if TYPE_CHECKING:
-    from larch.bgjob import model
+from test_support import (
+    assert_larch_bgjob_adapter_request,
+    install_larch_bgjob_adapter_capture,
+    make_checks_session,
+)
 
 
 def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
@@ -24,8 +23,7 @@ def test_step3_composite_preserves_site_budget_and_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _impl, repo = _session(tmp_path, monkeypatch)
-    captured: list[model.JobSpec] = []
-    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+    captured = install_larch_bgjob_adapter_capture(monkeypatch, route.proc)
 
     assert route.run_step_checks_main([
         "--site", "step3",
@@ -34,13 +32,16 @@ def test_step3_composite_preserves_site_budget_and_flags(
         "--forked-target", "true",
     ]) == 0
 
-    spec = captured[0]
+    command = captured[-1]
     launch = identity.compute_identity(repo_root=repo)
-    assert spec.step == "implement-step3-checks"
-    assert spec.budget_s == 15600
-    assert spec.initial_merge_rows == tuple(launch.as_rows())
-    assert "--commit-site" in spec.command
-    assert "--rebase-checkpoint-4r" in spec.command
+    assert_larch_bgjob_adapter_request(
+        command,
+        step="implement-step3-checks",
+        initial_merge_rows=launch.as_rows(),
+    )
+    assert command[command.index("--budget-s") + 1] == "15600"
+    assert "--commit-site" in command
+    assert "--rebase-checkpoint-4r" in command
 
 
 def test_relay_scope_coverage_passes_none_manifest_when_absent(
@@ -98,12 +99,11 @@ def test_self_review_uses_distinct_step_and_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ = _session(tmp_path, monkeypatch)
-    captured: list[model.JobSpec] = []
-    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+    captured = install_larch_bgjob_adapter_capture(monkeypatch, route.proc)
 
     assert route.run_step_checks_main(["--site", "step5-self-review"]) == 0
-    assert captured[0].step == "implement-checks-step5-self-review"
-    assert captured[0].budget_s == 14700
+    assert captured[-1][captured[-1].index("--step") + 1] == "implement-checks-step5-self-review"
+    assert captured[-1][captured[-1].index("--budget-s") + 1] == "14700"
 
 
 def test_bgjob_spec_uses_parent_pid_when_claude_pid_is_unset(

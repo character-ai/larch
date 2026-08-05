@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
-from test_support import capture_start as _capture_spec
-from test_support import make_checks_session
-
-if TYPE_CHECKING:
-    from larch.bgjob import model
-
-
-def _start_ok(_spec: model.JobSpec, *, options: object | None = None) -> int:
-    del options
-    return 0
+from test_support import (
+    assert_larch_bgjob_adapter_request,
+    install_larch_bgjob_adapter_capture,
+    make_checks_session,
+)
 
 
 def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
@@ -28,16 +22,18 @@ def test_parent_seeds_identity_and_forwards_child_arguments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _impl, repo = _session(tmp_path, monkeypatch)
-    captured: list[model.JobSpec] = []
-    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+    captured = install_larch_bgjob_adapter_capture(monkeypatch, route.proc)
 
     assert route.step6_entry_main(["--forked-target", "true"]) == 0
 
     launch = identity.compute_identity(repo_root=repo)
-    spec = captured[0]
-    assert spec.step == "implement-step6-checks"
-    assert spec.initial_merge_rows == tuple(launch.as_rows())
-    assert spec.command[-8:] == (
+    command = captured[-1]
+    assert_larch_bgjob_adapter_request(
+        command,
+        step="implement-step6-checks",
+        initial_merge_rows=launch.as_rows(),
+    )
+    assert command[-8:] == (
         "--repo-root", str(repo),
         "--launch-head", launch.head_sha,
         "--launch-fp", launch.tree_fingerprint,
@@ -84,7 +80,7 @@ def test_matching_completed_result_is_reused_without_seed_rewrite(
         *launch.as_rows(),
     ]
     _ = result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
-    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _start_ok)
+    _ = install_larch_bgjob_adapter_capture(monkeypatch, route.proc)
 
     assert route.step6_entry_main([]) == 0
     assert result.is_file()
@@ -109,12 +105,11 @@ def test_stale_completed_result_is_cleared_before_parent_relaunch(
     _ = result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
     _ = merge.write_text("stale\n", encoding="utf-8")
     _ = (repo / "tracked").write_text("drift\n", encoding="utf-8")
-    captured: list[model.JobSpec] = []
-    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+    captured = install_larch_bgjob_adapter_capture(monkeypatch, route.proc)
 
     assert route.step6_entry_main([]) == 0
     assert not result.exists()
-    assert captured[0].step == "implement-step6-checks"
+    assert captured[-1][captured[-1].index("--step") + 1] == "implement-step6-checks"
 
 
 def test_live_step6_job_reattaches_only_when_its_seed_matches(

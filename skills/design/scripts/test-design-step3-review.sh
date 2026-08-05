@@ -12,25 +12,14 @@ pass() { printf 'PASS: %s\n' "$*"; }
 
 make_fake_step3_plugin() {
   local dir="$1"
-  mkdir -p "$dir/python"
+  mkdir -p "$dir/python" "$dir/scripts"
   ln -s "$ROOT/python/larch" "$dir/python/larch"
-  # The wrappers reach the Rust session verbs through the verified bootstrap.
-  mkdir -p "$dir/scripts"
-  cat >"$dir/scripts/larch.sh" <<'LARCH_STUB'
-#!/usr/bin/env bash
-  set -uo pipefail
-  case "${1:-} ${2:-}" in
-    "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
-  esac
-  printf '%s\n' "unexpected larch command: $*" >&2
-  exit 64
-LARCH_STUB
-  chmod +x "$dir/scripts/larch.sh"
   cat >"$dir/python/cli.py" <<'CLIPY'
 #!/usr/bin/env python3
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 
@@ -41,7 +30,17 @@ def delegate() -> int:
     return subprocess.call([sys.executable, REAL_CLI, *sys.argv[1:]])
 
 if len(sys.argv) >= 4 and sys.argv[1:4] == ["bgjob", "adapt", "--resolve-session-env"]:
-    raise SystemExit(delegate())
+    source = sys.argv[sys.argv.index("--session-env-path") + 1]
+    for raw in open(source, encoding="utf-8"):
+        line = raw.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in {"DESIGN_TMPDIR", "SESSION_TMPDIR", "SESSION_ID", "REPO", "REPO_ROOT", "ISSUE_NUMBER", "LARCH_RUN_ID"}:
+            print(f"export {key}={shlex.quote(value)}")
+    raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "adapt":
     step = sys.argv[sys.argv.index("--step") + 1]
     tmpdir = sys.argv[sys.argv.index("--tmpdir") + 1]
@@ -133,6 +132,14 @@ if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
 raise SystemExit(delegate())
 CLIPY
   chmod +x "$dir/python/cli.py"
+  cat >"$dir/scripts/larch.sh" <<'LARCH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+esac
+exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
+LARCH
+  chmod +x "$dir/scripts/larch.sh"
 }
 
 wait_for_done() {
@@ -158,7 +165,7 @@ grep -Fq 'design-step3-review.result.env' "$NORMALIZE_MODULE" || fail 'normalize
 grep -Fq 'bgjob/design-step3-review.result.env' "$SKILL_MD" || fail 'SKILL must name bgjob Step 3 result env'
 grep -Fq 'BGJOB_RC=0' "$SKILL_MD" || fail 'SKILL must gate Step 3 success on BGJOB_RC=0'
 grep -Fq 'bgjob wait --step design-step3-review' "$SKILL_MD" || fail 'SKILL must use chunked bgjob wait for Step 3'
-grep -Fq 'python/cli.py" bgjob adapt' "$WRAPPER" || fail 'wrapper must launch through bgjob adapt'
+grep -Fq 'scripts/larch.sh" bgjob adapt' "$WRAPPER" || fail 'wrapper must launch through bgjob adapt'
 # shellcheck disable=SC2016
 grep -Fq -- '--clear-on-fresh' "$WRAPPER" || fail 'wrapper must request fresh-only clearing'
 grep -Fq "\"\$DESIGN_TMPDIR/.completed/step-3\"" "$WRAPPER" || fail 'wrapper must name the Step 3 marker for fresh-only clearing'

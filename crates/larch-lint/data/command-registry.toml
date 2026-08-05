@@ -952,11 +952,13 @@ verb = "adapt"
 python_module = "larch.bgjob.cli"
 python_function = "adapt_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8062
+clean_install_test = "clean-install-bgjob-adapt"
 
 [[commands]]
 domain = "bgjob"
@@ -8174,7 +8176,7 @@ rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
-rust = ["dirty-tree scope-check"]
+rust = ["bgjob adapt", "dirty-tree scope-check"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_recovery.py"
@@ -8623,14 +8625,14 @@ rust = ["kv get", "session require-plugin-root", "session validate-design-tmpdir
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
 kind = "skill"
-python = ["bgjob adapt"]
-rust = []
+python = []
+rust = ["bgjob adapt"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
-python = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate"]
-rust = ["session require-plugin-root", "session validate-design-tmpdir"]
+python = ["design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate"]
+rust = ["bgjob adapt", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
@@ -8641,8 +8643,8 @@ rust = ["session require-plugin-root"]
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "timing mark"]
-rust = ["session validate-design-tmpdir"]
+python = ["design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "timing mark"]
+rust = ["bgjob adapt", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -8677,8 +8679,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step5c.sh"
 kind = "skill"
-python = ["bgjob adapt", "design step5c"]
-rust = ["session validate-design-tmpdir"]
+python = ["design step5c"]
+rust = ["bgjob adapt", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/difficulty-calibration/SKILL.md"
@@ -8971,8 +8973,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-2-dispatch.sh"
 kind = "skill"
-python = ["bgjob adapt", "implement run-dispatch"]
-rust = []
+python = ["implement run-dispatch"]
+rust = ["bgjob adapt"]
 
 [[callers]]
 path = "skills/implement/scripts/step-2-post-dispatch.md"
@@ -9061,8 +9063,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.md"
 kind = "skill"
-python = ["bgjob adapt", "implement clone-tag", "ship pr"]
-rust = []
+python = ["implement clone-tag", "ship pr"]
+rust = ["bgjob adapt"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.sh"

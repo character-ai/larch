@@ -1,8 +1,8 @@
 # Step 5 review coverage (pytest)
 
-Coverage for the `/implement` Step 5 Python adapter contract lives in
+Coverage for the `/implement` Step 5 wrapper and Python implementation contract lives in
 `python/tests/implement/test_implement_shell_scripts.py` (Step 5 wrapper-shape
-nodes) plus the existing Python adapter modules.
+nodes) plus the Rust-owned adapter module.
 
 The shell wrapper is only strict-mode delegation. `bgjob adapt` owns launch and
 reattachment. The Python implement verb owns separate canonical review and

@@ -212,6 +212,13 @@ cut those callers over. A fixed-string comparison, field equality, or closed
 parser must handle interpolated labels, markers, refs, and identifiers. Do not
 interpolate untrusted data into a regular expression or shell program.
 
+Rust owns durable bgjob registry records and `bgjob adapt`
+(`crates/larch-core/src/bgjob.rs` and `crates/larch-cli/src/bgjob_adapt.rs`).
+The adapter confines its state files and holds a pinned decision lock before it
+reattaches or launches. Its only Python subprocess is the retained
+Python-owned `bgjob start` compatibility seam; daemon `wait`, `status`, and
+`reap` remain Python-owned until #8063 completes their cutover.
+
 ## Workflow Boundaries
 
 ### Design

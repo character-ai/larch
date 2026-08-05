@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-6-entry.sh — thin wrapper delegating to the Python bgjob adapter.
+# step-6-entry.sh — thin wrapper delegating to the Rust bgjob adapter.
 
 set -euo pipefail
 
