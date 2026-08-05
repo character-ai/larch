@@ -1048,6 +1048,15 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
             "make",
             "lint-only",
         )
+    if name == "lint-local":
+        return (
+            "env",
+            "SKIP=agnix,shellcheck,gitleaks,pyright,markdownlint,jsonlint,"
+            "agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,"
+            "check-topology-rule-paths,lint-retired-scripts",
+            "make",
+            "lint-only",
+        )
     if name == "shellcheck":
         return ("make", "shellcheck")
     if name == "test-harnesses":
@@ -1060,12 +1069,8 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
         return ("make", "agnix")
     if name == "agent-sync":
         return ("make", "agent-sync")
-    if name == "python-lint":
-        return ("make", "py-lint-main")
     if name == "python-pyright":
         return ("make", "py-typecheck")
-    if name in ("python-lint-duplicate-code", "duplicate-code-full"):
-        return ("make", "py-lint-duplicate-code")
     if name == "python-tests":
         return ("make", "py-test")
     return None
@@ -1073,30 +1078,15 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
 
 def prepare_python_toolchain(*, runner: Runner, name: str, cwd: str | None = None) -> bool:
     """Port of _prepare_python_job_toolchain."""
-    if name in (
-        "python-lint",
-        "python-pyright",
-        "python-lint-duplicate-code",
-        "duplicate-code-full",
-    ):
+    if name == "python-pyright":
         req = _REPO_ROOT / "python" / "requirements-dev.txt"
         if req.is_file():
             _ = runner.run(
                 ["python3", "-m", "pip", "install", "-q", "-r", str(req)],
                 cwd=cwd,
             )
-        # Each split Python lint job verifies only the tools it runs.
-        if name in ("python-lint-duplicate-code", "duplicate-code-full"):
-            tools = ("pylint",)
-        elif name == "python-pyright":
-            tools = ("pyright",)
-        else:
-            tools = ("ruff", "pylint")
-        for tool in tools:
-            which = runner.run(["command", "-v", tool], cwd=cwd)
-            if which.returncode != 0:
-                return False
-        return True
+        which = runner.run(["command", "-v", "pyright"], cwd=cwd)
+        return which.returncode == 0
     if name == "python-tests":
         req = _REPO_ROOT / "python" / "requirements-test.txt"
         if req.is_file():

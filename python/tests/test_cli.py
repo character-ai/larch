@@ -105,14 +105,6 @@ def test_dispatch_session_entry_gate() -> None:
     assert rc == 0
 
 
-def test_dispatch_lint_duplicate_code() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.lint.duplicate_code": MagicMock(duplicate_code_main=mock_main)}):
-        rc = cli.main(["lint", "duplicate-code", "--root", "python"])
-    mock_main.assert_called_once_with(["--root", "python"])
-    assert rc == 0
-
-
 def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
     mock_main = MagicMock(return_value=0)
     module = MagicMock(sanitize_detail_main=mock_main)

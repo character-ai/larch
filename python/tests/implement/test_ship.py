@@ -5674,7 +5674,7 @@ def test_ctx_from_args_rehydrates_cli_state_file(tmp_path: Path, monkeypatch: py
 def test_ci_fix_exhausted_write_detail_log_returns_path(tmp_path: Path) -> None:
     """_write_ci_fix_detail_log writes the detail text and returns the file path."""
     ctx = _ctx(tmp_path)
-    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
+    ci_detail = "ci-fix-exhausted: python-pyright\nFAIL test_foo.py\n"
     path = ship._write_ci_fix_detail_log(ctx=ctx, detail=ci_detail)  # pyright: ignore[reportPrivateUsage]
     assert path
     assert Path(path).read_text(encoding="utf-8") == ci_detail
@@ -5683,7 +5683,7 @@ def test_ci_fix_exhausted_write_detail_log_returns_path(tmp_path: Path) -> None:
 def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> None:
     """_write_terminal_state for NEEDS_USER_INPUT/ci-fix-exhausted persists BAIL_REASON, BAIL_FAILURE_DETAIL_LOG, STALL_STEP."""
     state_file = tmp_path / "ship-pr-state.sh"
-    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
+    ci_detail = "ci-fix-exhausted: python-pyright\nFAIL test_foo.py\n"
     ctx = _ctx(tmp_path, state_file=str(state_file), final_bail_reason="ci-fix-exhausted")
     detail_log_path = ship._write_ci_fix_detail_log(ctx=ctx, detail=ci_detail)  # pyright: ignore[reportPrivateUsage]
 
@@ -5704,7 +5704,7 @@ def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path
     """Stall-recovery classifier on the new envelope yields unrecoverable/none."""
     stall_recovery = Path(__file__).resolve().parents[3] / "python" / "cli.py"
 
-    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py asserted False\n"
+    ci_detail = "ci-fix-exhausted: python-pyright\nFAIL test_foo.py asserted False\n"
     detail_log = tmp_path / "ci-fix-exhausted-detail.log"
     _ = detail_log.write_text(ci_detail, encoding="utf-8")
 

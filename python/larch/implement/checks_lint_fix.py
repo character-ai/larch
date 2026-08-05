@@ -99,31 +99,11 @@ _PROMPT_TAIL_BYTES: Final = 60000
 _EMPTY_FAILURE_CAP: Final = 2
 _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
-_COMPLEXITY_CODES: Final = frozenset({"C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915"})
 _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
 _REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S: Final = 2.0
 # Module-scoped sink for optional bgjob merge-result-env capture (child mode).
 _result_rows: list[tuple[str, str]] | None = None
-_COMPLEXITY_BASELINE_CODES_RE: Final = "|".join(
-    re.escape(code) for code in _COMPLEXITY_CODES
-)
-_COMPLEXITY_BASELINE_PATH_RE: Final = r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py"
-_COMPLEXITY_BASELINE_SYMBOL_RE: Final = (
-    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
-)
-_COMPLEXITY_BASELINE_COMMAND_RE: Final = re.compile(
-    r"(?:^|\s)(?:python3?\s+)?python/cli\.py\s+lint\s+complexity-baseline(?:\s|$)"
-)
-_COMPLEXITY_BASELINE_METRIC_REGRESSION_RE: Final = re.compile(
-    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:{_COMPLEXITY_BASELINE_SYMBOL_RE} "
-    rf"(?:{_COMPLEXITY_BASELINE_CODES_RE}) metric \d+ > baseline \d+$",
-    re.MULTILINE,
-)
-_COMPLEXITY_BASELINE_NEW_REGRESSION_RE: Final = re.compile(
-    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:{_COMPLEXITY_BASELINE_SYMBOL_RE} "
-    rf"(?P<code>{_COMPLEXITY_BASELINE_CODES_RE}) \(new\)$",
-    re.MULTILINE,
-)
+_PYTHON_PATH_RE: Final = r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py"
 _STRUCTURAL_RUFF_CODES: Final[frozenset[str]] = frozenset({
     "C901",
     "PLR0911",
@@ -138,7 +118,7 @@ _STRUCTURAL_RUFF_HUMAN_HEADER_RE: Final = re.compile(
     re.MULTILINE,
 )
 _STRUCTURAL_RUFF_DIAGNOSTIC_RE: Final = re.compile(
-    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:\d+(?::\d+)?: "
+    rf"^{_PYTHON_PATH_RE}:\d+(?::\d+)?: "
     rf"(?P<code>{_STRUCTURAL_RUFF_CODES_RE})\b",
     re.MULTILINE,
 )
@@ -642,24 +622,10 @@ def _read_log_tail(*, path: Path, max_bytes: int) -> str:
     return text
 
 
-def _is_complexity_baseline_regression_text(text: str) -> bool:
-    if _COMPLEXITY_BASELINE_COMMAND_RE.search(text) is None:
-        return False
-    if _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE.search(text) is not None:
-        return True
-    new_codes = tuple(
-        match.group("code")
-        for match in _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.finditer(text)
-    )
-    return bool(new_codes)
-
-
 def _lint_fix_fast_fail_reason(log_path: Path) -> str | None:
     text = _read_log_text_bounded(path=log_path, max_bytes=_PROMPT_TAIL_BYTES)
     if text is None:
         return None
-    if _is_complexity_baseline_regression_text(text):
-        return "complexity-baseline-regression"
     if _STRUCTURAL_RUFF_HUMAN_HEADER_RE.search(text) is not None:
         return "structural-ruff-failure"
     if _STRUCTURAL_RUFF_DIAGNOSTIC_RE.search(text) is not None:

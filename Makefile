@@ -2,13 +2,10 @@
 # Thin wrapper around pre-commit. Linter definitions live in .pre-commit-config.yaml.
 
 PYTHON ?= python3
-PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NSEMS_MAX") >= 0 else 1)' 2>/dev/null || printf '1')
 CARGO_DENY_VERSION ?= 0.20.2
 
-.PHONY: py-lint py-lint-main py-lint-checks-fast py-lint-shard py-typecheck py-lint-duplicate-code py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-implement-fork-env test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis test-rejected-analysis
+.PHONY: py-lint py-typecheck py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-implement-fork-env test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis test-rejected-analysis
 
-.PHONY: regen-duplicate-code-baseline
-.PHONY: py-lint-duplicate-code-diff
 .PHONY: test-findings-classification test-review-findings-classification test-review-and-fix-step5-starting-round test-bug-structure test-learn-from-bugs-structure
 .PHONY: test-prompt-template-invariants
 .PHONY: test-larch-log-write-round
@@ -19,7 +16,6 @@ CARGO_DENY_VERSION ?= 0.20.2
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: agent-sync
-.PHONY: lint-flat-tests test-lint-flat-tests
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: test-step-7a step-7a-py-harness step-7a-bash-harness test-step-8-oos-checkpoint
 .PHONY: test-oos-disposition-gate oos-disposition-gate-py-harness oos-disposition-gate-bash-harness
@@ -36,177 +32,18 @@ CARGO_DENY_VERSION ?= 0.20.2
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses rust-lint lint-lifecycle-prefix-literal lint-module-manifest lint-only
+lint: test-harnesses rust-lint lint-only
 
-py-lint: py-lint-main py-typecheck
-
-# Fast Python lints (ruff + custom AST ratchets). Shared by the local full lint
-# (py-lint-main) and the Python CI shards so the check set is defined once.
-#
-# Timed locally under the same concurrent process shape as CI, then LPT-packed
-# into three 110–111-second groups. Keep every check in the master list and in
-# exactly one three-way group. One-way mode remains the local default.
-PY_LINT_FAST_CHECKS := ruff complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests module-manifest engine-adoption
-PY_LINT_FAST_CHECKS_SHARD_1 := ruff subprocess-via-runner layering result-env-key-parity env-via-config-constant shared-convention-regex tmpdir-arg-env-fallback self-disarmable-gate
-PY_LINT_FAST_CHECKS_SHARD_2 := monkeypatch-facade-binding git-push-refspec wire-artifact-pairing gh-argv-literal suppression-reason root-resolution complexity-baseline renderer-golden-tests module-manifest keyword-only
-PY_LINT_FAST_CHECKS_SHARD_3 := status-routing-truthiness lifecycle-prefix-literal tempfile-dir pylint-skip-file unreachable-branch guidelines-note-wrapper-bypass flat-tests engine-adoption markdown-heading-fence-state
-PY_LINT_FAST_SHARD_ID ?= 1
-PY_LINT_FAST_SHARD_COUNT ?= 1
-
-py-lint-checks-fast:
+py-lint:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| (printf '%s\n' "ERROR: make py-lint-checks-fast requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	@# ruff + the AST ratchet checks are independent read-only checks. Run them
-	@# concurrently (each to its own log) and aggregate exit codes so wall time is
-	@# the slowest single check, not the serial sum. CI distributes the checks
-	@# across its three pylint shards. Logs replay in deterministic order after all finish,
-	@# so parallelism never muddies which check failed. POSIX sh only (CI /bin/sh
-	@# is dash): no pipefail, no arrays.
-	@case "$(PY_LINT_FAST_SHARD_COUNT):$(PY_LINT_FAST_SHARD_ID)" in \
-		1:1) checks="$(PY_LINT_FAST_CHECKS)" ;; \
-		3:1) checks="$(PY_LINT_FAST_CHECKS_SHARD_1)" ;; \
-		3:2) checks="$(PY_LINT_FAST_CHECKS_SHARD_2)" ;; \
-		3:3) checks="$(PY_LINT_FAST_CHECKS_SHARD_3)" ;; \
-		*) printf '%s\n' "ERROR: unsupported PY_LINT_FAST_SHARD_COUNT:PY_LINT_FAST_SHARD_ID=$(PY_LINT_FAST_SHARD_COUNT):$(PY_LINT_FAST_SHARD_ID)" >&2; exit 2 ;; \
-	esac; \
-	tmp=$$(mktemp -d); rc=0; pids=""; \
-	for chk in $$checks; do \
-		if [ "$$chk" = ruff ]; then ( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1; else $(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1; fi & \
-		pids="$$pids $$!:$$chk"; \
-	done; \
-	for entry in $$pids; do \
-		p=$${entry%%:*}; name=$${entry#*:}; \
-		if wait "$$p"; then cat "$$tmp/$$name.log"; else rc=1; printf '\n=== %s FAILED ===\n' "$$name"; cat "$$tmp/$$name.log"; fi; \
-	done; \
-	rm -rf "$$tmp"; \
-	exit "$$rc"
-
-# Local full Python lint: fast checks + pylint over the whole tree. pylint runs
-# with all cores when the host supports the required process-pool semaphore
-# query. Some restricted local sandboxes deny that query, so they fall back to a
-# single worker. duplicate-code is disabled here (.pylintrc) and runs in the
-# dedicated py-lint-duplicate-code target.
-py-lint-main: py-lint-checks-fast
-	cd python && pylint -j $(PYLINT_JOBS) .
-
-# CI per-shard Python lint (matrix PYLINT_SHARD_ID of PYLINT_SHARD_COUNT). Fast
-# checks and pylint both run on each shard. The fast checks are an exact three-way
-# partition; pylint runs on its basename subset (python/pylint_sharding.py). A
-# python-lint-gate job aggregates the matrix so the required status check name
-# stays stable across resharding.
-py-lint-shard:
-	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| (printf '%s\n' "ERROR: make py-lint-shard requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	@$(MAKE) py-lint-checks-fast PY_LINT_FAST_SHARD_ID=$(PYLINT_SHARD_ID) PY_LINT_FAST_SHARD_COUNT=$(PYLINT_SHARD_COUNT)
-	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
-
-.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline
-regen-complexity-baseline:
-	# Mechanically regenerate python/complexity-baseline.json from live ruff
-	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
-	# REASON is required when regeneration adds a row or grows a metric.
-	$(PYTHON) python/cli.py lint complexity-baseline --write $(if $(REASON),--reason "$(REASON)")
-
-lint-complexity-debt:
-	$(PYTHON) python/cli.py lint complexity-debt --report
-
-regen-keyword-only-baseline:
-	# Regenerate python/keyword-only-baseline.json from live AST scan.
-	$(PYTHON) python/cli.py lint keyword-only --write
-
-# Generic baseline descriptors use target|filename|bootstrap-reason, with +
-# representing spaces in the reason. The template preserves reasons during
-# routine regeneration and supplies the exact bootstrap reason only when the
-# baseline is absent.
-REGEN_BASELINE_DESCRIPTORS := \
-	subprocess-via-runner|subprocess-via-runner-baseline.json|grandfathered+direct+subprocess+usage+pre-G-Py-9+ratchet \
-	wire-artifact-pairing|wire-artifact-pairing-baseline.json|grandfathered+one-sided+wire+artifact+pre-pairing+ratchet \
-	tempfile-dir|tempfile-dir-baseline.json|grandfathered+ambient+tempfile+usage+pre-tempfile-dir+ratchet \
-	result-env-key-parity|result-env-key-parity-baseline.json|grandfathered+divergent+result-env+writers+pre-parity+ratchet \
-	tmpdir-arg-env-fallback|tmpdir-arg-env-fallback-baseline.json|grandfathered+direct+args.tmpdir+consumption+pre-tmpdir-arg-env-fallback+ratchet \
-	monkeypatch-facade-binding|monkeypatch-facade-binding-baseline.json|grandfathered+monkeypatch+facade+binding+pre-ratchet \
-	env-via-config-constant|env-via-config-constant-baseline.json|grandfathered+bare+env+literal+pre-G-Cfg-2+ratchet \
-	lifecycle-prefix-literal|lifecycle-prefix-literal-baseline.json|grandfathered+lifecycle+prefix+literal+pre-lifecycle-prefix+ratchet \
-	renderer-golden-tests|renderer-golden-tests-baseline.json|grandfathered+current+report+helper+before+renderer+golden-test+coverage+ratchet \
-	suppression-reason|suppression-reason-baseline.json|grandfathered+pre-G-Py-11+suppression+without+inline+reason \
-	pylint-skip-file|pylint-skip-file-baseline.json|deferred+module+debt:+grandfathered+pylint+skip-file+pending+duplicate-code+burndown \
-	layering|layering-baseline.json|grandfathered+upward+import+pre-layering-ratchet \
-	unreachable-branch|unreachable-branch-baseline.json|grandfathered+unreachable+branch+pre-unreachable-branch+ratchet \
-	status-routing-truthiness|status-routing-truthiness-baseline.json|pre-existing+status+truthiness+before+the+status-routing-truthiness+ratchet \
-	markdown-heading-fence-state|markdown-heading-fence-state-baseline.json|grandfathered+heading+regex+without+fence+state+pre-G-Md-3+ratchet
-
-empty :=
-space := $(empty) $(empty)
-regen_descriptor_parts = $(subst |,$(space),$1)
-regen_descriptor_reason = $(subst +,$(space),$(word 3,$(call regen_descriptor_parts,$1)))
-
-define GENERIC_REGEN_BASELINE
-.PHONY: regen-$(word 1,$(call regen_descriptor_parts,$1))-baseline
-regen-$(word 1,$(call regen_descriptor_parts,$1))-baseline:
-	@$(PYTHON) python/cli.py lint $(word 1,$(call regen_descriptor_parts,$1)) --write $(if $(wildcard python/$(word 2,$(call regen_descriptor_parts,$1))),,--initial-reason '$(call regen_descriptor_reason,$1)')
-endef
-
-$(foreach descriptor,$(REGEN_BASELINE_DESCRIPTORS),$(eval $(call GENERIC_REGEN_BASELINE,$(descriptor))))
-
-.PHONY: FORCE
-FORCE:
-
-lint-%: FORCE
-	$(PYTHON) python/cli.py lint $*
-
-# Common lint-test descriptors use target|pytest-module. The template keeps the
-# established timing-harness envelope while giving every standard focused test
-# one owner. Bash harnesses and tests requiring selectors stay explicit below.
-LINT_TEST_DESCRIPTORS := \
-	markdown-heading-fence-state|python/tests/lint/test_lint_markdown_heading_fence_state.py \
-	self-disarmable-gate|python/tests/lint/test_lint_self_disarmable_gate.py \
-	unreachable-branch|python/tests/lint/test_lint_unreachable_branch.py \
-	status-routing-truthiness|python/tests/lint/test_lint_status_routing_truthiness.py \
-	pylint-skip-file|python/tests/lint/test_lint_pylint_skip_file.py \
-	module-manifest|python/tests/lint/test_lint_module_manifest.py \
-	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
-	flat-tests|python/tests/lint/test_lint_flat_tests.py
-
-lint_test_descriptor_parts = $(subst |,$(space),$1)
-
-define COMMON_LINT_TEST
-.PHONY: test-lint-$(word 1,$(call lint_test_descriptor_parts,$1))
-test-lint-$(word 1,$(call lint_test_descriptor_parts,$1)):
-	$(PYTHON) python/cli.py timing harness-mark --label $$@ -- $(PYTHON) -m pytest $(word 2,$(call lint_test_descriptor_parts,$1)) -q
-endef
-
-$(foreach descriptor,$(LINT_TEST_DESCRIPTORS),$(eval $(call COMMON_LINT_TEST,$(descriptor))))
+		|| (printf '%s\n' "ERROR: make py-lint requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
+	cd python && ruff check .
+	cd python && pyright
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-typecheck requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
 	cd python && pyright
-
-py-lint-duplicate-code:
-	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| (printf '%s\n' "ERROR: make py-lint-duplicate-code requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	# Duplicate-code (R0801) runs through the larch runner. It uses Pylint
-	# 4.0.5's symilar engine via PyLinter plus SimilaritiesChecker.process_module
-	# ingestion with astroid Module nodes, then parallelizes pair comparisons by
-	# explicit combinations indices on the configured checker-owned Symilar
-	# instance. It does not shard file slices or pre-scan through _iter_sims. Kept
-	# out of `py-lint` (which disables duplicate-code via .pylintrc) so the main
-	# lint pass parallelizes. The dedicated full CI job enforces the committed baseline.
-	$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc --baseline python/duplicate-code-baseline.json
-
-py-lint-duplicate-code-diff:
-	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| (printf '%s\n' "ERROR: make py-lint-duplicate-code-diff requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	@base="$$(git merge-base origin/main HEAD)"; \
-	$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc --diff-base "$$base"
-
-regen-duplicate-code-baseline:
-	# Regenerate the shrink-only baseline. A bootstrap reason is allowed only when absent.
-	@if [ -f python/duplicate-code-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc --baseline python/duplicate-code-baseline.json --write; \
-	else \
-		$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc --baseline python/duplicate-code-baseline.json --write --initial-reason 'findings predate the duplicate-code shrink-only ratchet'; \
-	fi
 
 py-test:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -242,9 +79,6 @@ rust-deny:
 
 lint-only:
 	pre-commit run --all-files
-
-lint-flat-tests:
-	python3 python/cli.py lint flat-tests
 
 # Bash regression-harness shards (#1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349, #2366,
 # #2386, #5429 — originally 20 shards mixing pytest wrappers with bash scripts; collapsed to 6, then 5
@@ -654,11 +488,6 @@ test-step0b-router-flag-recovery:
 
 test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
-
-.PHONY: test-lint-makefile-contracts
-test-lint-makefile-contracts:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_makefile_contracts.py -q
-
 
 test-launch-codex-exec:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k launch_codex_exec

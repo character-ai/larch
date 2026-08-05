@@ -281,8 +281,8 @@ assert_contains "codex implementer G-Py-11 suppression guidance" \
     'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer G-Py-11 suppression guidance" \
     'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
-assert_contains "cursor implementer pylint type-check suppression guidance" \
-    'pylint: disable=unidiomatic-typecheck' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+assert_contains "cursor implementer exact-type reason guidance" \
+    'type(value) is not int` with `# exact runtime type rejects bool and subclasses' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "cursor implementer pyright type-check suppression guidance" \
     'type: ignore[reportUnnecessaryIsInstance]' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural acknowledgment field" \

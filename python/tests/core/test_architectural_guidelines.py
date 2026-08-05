@@ -1082,8 +1082,8 @@ def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None
 
 def test_parse_guideline_entries_slims_marked_guideline_to_mechanized_line() -> None:
     parsed = ag.parse_guideline_entries(
-        """### G-Cfg-1: Define config literals once
-- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only.
+        """### G-Bash-3: Keep shell scripts portable
+- Mechanized: `make agent-lint` covers Bash 3.2 constructs.
 - Why: this must not appear.
 - Deviate when: this carve-out must not appear.
 """
@@ -1091,8 +1091,8 @@ def test_parse_guideline_entries_slims_marked_guideline_to_mechanized_line() -> 
 
     assert (
         parsed
-        == """### G-Cfg-1: Define config literals once
-- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only."""
+        == """### G-Bash-3: Keep shell scripts portable
+- Mechanized: `make agent-lint` covers Bash 3.2 constructs."""
     )
 
 

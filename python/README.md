@@ -39,13 +39,13 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   repository-scoped cache synchronization, the bounded operator migration,
   and the universal per-skill start and terminal lifecycle.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
-- `test_support.py`: intentionally remains at `python/` root as a shared pytest helper exempted by `python3 python/cli.py lint flat-tests`. It provides the shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
+- `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 
 ## Dependencies
 
 | File | Purpose |
 |------|---------|
-| `requirements-dev.txt` | ruff, pylint, pyright (Python Lint CI / `make py-lint`) |
+| `requirements-dev.txt` | Ruff, Pyright, and Pytest (`make py-lint` and development tests) |
 | `requirements-test.txt` | pytest only (Python Tests CI / `make py-test`; no Node) |
 
 ## Run locally
@@ -54,15 +54,14 @@ From the repository root (after `pip install -r python/requirements-dev.txt` and
 `python/requirements-test.txt`):
 
 ```bash
-make py-lint   # cd python && ruff check . && pylint -j 0 . && pyright
+make py-lint   # cd python && ruff check . && pyright
 make py-test   # cd python && pytest
 ```
 
-`make lint` does not invoke `py-lint` or `py-test`; use those targets explicitly or rely on
-CI `python-lint` / `python-tests` jobs. Per-job CI replay (`make py-lint` / `make py-test` from
-ship-pr failed-job tables) needs the same toolchain as CI: `pip install -r python/requirements-dev.txt`
-for lint (including **Node** on PATH for pyright) and `pip install -r python/requirements-test.txt`
-for tests.
+`make lint` does not invoke `py-lint` or `py-test`; use those targets explicitly. CI runs
+Ruff in `lint-local`, Pyright in `python-pyright`, and tests in `python-tests`. Install
+`python/requirements-dev.txt` for linting (including **Node** on PATH for Pyright) and
+`python/requirements-test.txt` for tests.
 
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
@@ -94,7 +93,7 @@ fail closed. See `skills/implement/references/conflict-resolution.md` and issue
 
 ## Phase 1 wiring outside `python/`
 
-Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). The Python ship driver also maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test`; keep that wiring with the ship path.
+Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). The Python ship driver maps `python-pyright` and `python-tests` CI jobs to `make py-typecheck` and `make py-test`; keep that wiring with the ship path.
 
 ## Phase 4 scope note (branch hygiene)
 
