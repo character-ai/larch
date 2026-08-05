@@ -6429,11 +6429,13 @@ verb = "storage-preflight"
 python_module = "larch.report.storage_config"
 python_function = "storage_preflight_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8076
+clean_install_test = "clean-install-run-log-storage-preflight"
 
 [[commands]]
 domain = "run-log"
@@ -8388,19 +8390,19 @@ rust = []
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["session cleanup-tmpdir"]
-
-[[callers]]
-path = "python/larch/design/design_step6.py"
-kind = "python-runtime"
-python = []
-rust = ["session cleanup-tmpdir"]
+rust = ["run-log storage-preflight", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
 kind = "python-runtime"
 python = []
 rust = ["dirty-tree checkpoint"]
+
+[[callers]]
+path = "python/larch/design/design_step6.py"
+kind = "python-runtime"
+python = []
+rust = ["session cleanup-tmpdir"]
 
 [[callers]]
 path = "python/larch/design/design_step_log.py"

@@ -159,13 +159,10 @@ def test_run_log_validate_run_id_entrypoint_is_retired() -> None:
     assert cli.main(["run-log", "validate-run-id", "--run-id=-abc123"]) == 2
 
 
-def test_run_log_storage_preflight_entrypoint_is_machine_stdout() -> None:
-    assert cli._REGISTRY[("run-log", "storage-preflight")] == (  # pyright: ignore[reportPrivateUsage]
-        "larch.report.storage_config",
-        "storage_preflight_main",
-        True,
-    )
-    assert ("run-log", "storage-preflight") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+def test_run_log_storage_preflight_entrypoint_is_retired() -> None:
+    assert ("run-log", "storage-preflight") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("run-log", "storage-preflight") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert cli.main(["run-log", "storage-preflight", "--repo-root", "/tmp"]) == 2
 
 
 def test_run_log_sync_entrypoint_is_machine_stdout() -> None:

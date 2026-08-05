@@ -236,11 +236,15 @@ Pause rejects disabled storage before writing a GitHub pause marker.
 
 ## Rust handoff
 
-Python owns configuration, archive, publication, cache, sync, and orchestration.
-Rust owns only the narrow GCS authentication transport. That split does not
-authorize another archive, layout, error, or provider contract.
+Python owns archive, publication, cache, sync, and most orchestration.
+`run-log storage-preflight` is Rust-owned: configuration resolution and the
+startup prefix probe live in `larch-core` / `larch-cli`. GCS preflight uses
+`GoogleCloudStorage` from #7676. S3 and R2 preflight keep the existing AWS CLI
+list transport behind the same credential-free error classes until a native
+S3 adapter clears workspace dependency review. That split does not authorize
+another archive, layout, error, or provider contract.
 
-When the run-log domain migrates, follow `docs/python-migration.md` and
+When remaining run-log commands migrate, follow `docs/python-migration.md` and
 I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
 switch every production caller to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`,
 remove the Python registration and implementation, and prove clean-install

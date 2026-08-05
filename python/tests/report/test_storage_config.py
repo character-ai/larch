@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 import subprocess
 import tomllib
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -541,59 +541,20 @@ def test_discovery_uses_linked_worktree_git_identity(tmp_path: Path) -> None:
     assert storage.uri == "s3://zhupanov/larch/agent-lint"
 
 
-def test_preflight_machine_envelope_names_derived_namespaces(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_preflight_machine_envelope_names_derived_namespaces() -> None:
     storage = storage_config.ToolRepositoryStorage(
         storage_config.StorageBase("s3", "company-data", "prod/tools"),
         "service-a",
     )
-    preflighted: list[storage_config.ToolRepositoryStorage] = []
-
-    def discover_storage(**_kwargs: object) -> storage_config.RunLogStorageResolution:
-        return storage_config.injected_storage_resolution(storage)
-
-    def preflight_storage(**kwargs: object) -> None:
-        preflighted.append(
-            cast(
-                "storage_config.ToolRepositoryStorage",
-                kwargs["storage"],
-            )
-        )
-
-    monkeypatch.setattr(
-        storage_config,
-        "discover_run_log_storage",
-        discover_storage,
-    )
-    monkeypatch.setattr(
-        storage_config,
-        "preflight_tool_repository",
-        preflight_storage,
-    )
-
-    assert storage_config.storage_preflight_main(["--repo-root", str(tmp_path)]) == 0
-
-    assert preflighted == [storage]
-    assert capsys.readouterr().out.splitlines() == [
-        "RUN_LOG_STORAGE=enabled",
-        "RUN_LOG_STORAGE_REASON=injected-storage",
-        "STORAGE_BASE_URI=s3://company-data/prod/tools",
-        "CLIENT_REPO=service-a",
-        "TOOL_REPO_URI=s3://company-data/prod/tools/larch/service-a",
-        "RUN_LOGS_URI=s3://company-data/prod/tools/larch/service-a/run-logs/",
-        "STORAGE_PREFLIGHT=ok",
-        "PREFLIGHT_OK=true",
-    ]
+    resolution = storage_config.injected_storage_resolution(storage)
+    assert resolution.mode == "enabled"
+    assert resolution.reason == "injected-storage"
+    assert storage.base.uri == "s3://company-data/prod/tools"
+    assert storage.uri == "s3://company-data/prod/tools/larch/service-a"
+    assert storage.run_logs_uri == "s3://company-data/prod/tools/larch/service-a/run-logs/"
 
 
-def test_disabled_preflight_skips_provider_and_emits_explicit_state(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_disabled_resolution_skips_provider_state() -> None:
     resolution = storage_config.RunLogStorageResolution(
         mode="disabled",
         reason="config-file-missing",
@@ -601,38 +562,9 @@ def test_disabled_preflight_skips_provider_and_emits_explicit_state(
         client_repo="service-a",
         local_namespace_id="a" * 64,
     )
-
-    def discover_disabled(
-        **_kwargs: object,
-    ) -> storage_config.RunLogStorageResolution:
-        return resolution
-
-    monkeypatch.setattr(
-        storage_config,
-        "discover_run_log_storage",
-        discover_disabled,
-    )
-
-    def unexpected_preflight(**_kwargs: object) -> None:
-        pytest.fail("disabled storage must not call provider preflight")
-
-    monkeypatch.setattr(
-        storage_config,
-        "preflight_tool_repository",
-        unexpected_preflight,
-    )
-
-    assert storage_config.storage_preflight_main(["--repo-root", str(tmp_path)]) == 0
-    assert capsys.readouterr().out.splitlines() == [
-        "RUN_LOG_STORAGE=disabled",
-        "RUN_LOG_STORAGE_REASON=config-file-missing",
-        "STORAGE_BASE_URI=",
-        "CLIENT_REPO=service-a",
-        "TOOL_REPO_URI=",
-        "RUN_LOGS_URI=",
-        "STORAGE_PREFLIGHT=skipped-disabled",
-        "PREFLIGHT_OK=true",
-    ]
+    assert resolution.mode == "disabled"
+    assert resolution.storage is None
+    assert resolution.local_namespace_id == "a" * 64
 
 
 def test_checked_config_and_published_examples_match_executable_contract() -> None:

@@ -55,6 +55,10 @@ impl CleanInstallCase {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
             "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
+            "clean-install-run-log-storage-preflight" => &[
+                "--repo-root",
+                "/larch-clean-install-storage-preflight-missing",
+            ],
             _ => &["--help"],
         }
     }
@@ -213,6 +217,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-run-log-validate-run-id",
         "run-log",
         "validate-run-id",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-storage-preflight",
+        "run-log",
+        "storage-preflight",
     ),
     CleanInstallCase::new(
         "clean-install-upgrade-larch-release-step7-root",

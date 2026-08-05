@@ -443,7 +443,7 @@ egress contract.
 | Python redaction and scanner wrapper | `python/larch/core/redact.py`, `python/larch/lint/gitleaks.py` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
-| Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns only the narrow GCS authentication transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
+| Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns `run-log storage-preflight` plus the narrow GCS authentication transport; S3/R2 preflight still uses the AWS CLI list transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tracking, plan, diagram, and public-report publication | The typed Python CLI owners named by each workflow; service calls use the current typed GitHub adapter where migrated |

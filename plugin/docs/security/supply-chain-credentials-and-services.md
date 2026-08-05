@@ -239,9 +239,11 @@ the Cloud Storage client, scope, permissions, operations, and mixed-runtime
 consumer path.
 
 Python currently owns run-log orchestration, S3 and R2 CLI transport, archive
-publication, cache promotion, and sync. Rust owns only the narrow GCS
-authentication transport. Both sides pass the shared provider fixture and use
-the same machine error mapping. The complete mixed-runtime and future hard
+publication, cache promotion, and sync. Rust owns `run-log storage-preflight`
+and the narrow GCS authentication transport; S3/R2 startup preflight still uses
+the AWS CLI list transport with credential-free error classes. Both sides pass
+the shared provider fixture and use the same machine error mapping. The complete
+mixed-runtime and future hard
 cutover boundary lives in
 [Run-log storage contracts](../run-log-archive.md#rust-handoff).
 
