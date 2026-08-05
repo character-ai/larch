@@ -3663,11 +3663,13 @@ verb = "get"
 python_module = "larch.core.kv_cli"
 python_function = "get_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8056
+clean_install_test = "clean-install-kv-get"
 
 [[commands]]
 domain = "learn-from-bugs"
@@ -6531,11 +6533,13 @@ verb = "read-key"
 python_module = "larch.state.session_env"
 python_function = "read_key_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8056
+clean_install_test = "clean-install-session-read-key"
 
 [[commands]]
 domain = "session"
@@ -6543,11 +6547,13 @@ verb = "read-keys"
 python_module = "larch.state.session_env"
 python_function = "read_keys_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8056
+clean_install_test = "clean-install-session-read-keys"
 
 [[commands]]
 domain = "session"
@@ -8508,8 +8514,8 @@ rust = []
 [[callers]]
 path = "scripts/hook-deny-run-in-background.sh"
 kind = "hook"
-python = ["kv get"]
-rust = []
+python = []
+rust = ["kv get"]
 
 [[callers]]
 path = "scripts/pre-commit-bash-syntax.sh"
@@ -8532,8 +8538,8 @@ rust = []
 [[callers]]
 path = "scripts/sessionstart-health.sh"
 kind = "hook"
-python = ["kv get", "session resolve-implement-tmpdir"]
-rust = []
+python = ["session resolve-implement-tmpdir"]
+rust = ["kv get"]
 
 [[callers]]
 path = "scripts/sessionstart-statusline.sh"
@@ -8574,8 +8580,8 @@ rust = ["gh resolve-repo"]
 [[callers]]
 path = "skills/deps/SKILL.md"
 kind = "skill"
-python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "session setup", "untrusted file-block"]
-rust = []
+python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "session setup", "untrusted file-block"]
+rust = ["kv get"]
 
 [[callers]]
 path = "skills/design/SKILL.md"
@@ -8748,8 +8754,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "kv get", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "voting findings-classification-header"]
-rust = []
+python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "voting findings-classification-header"]
+rust = ["kv get"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -8820,8 +8826,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase"]
+python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session read-key"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9036,14 +9042,14 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/post-tracking-issue.sh"
 kind = "skill"
-python = ["kv get", "tracking-issue *"]
-rust = ["plugin read-version"]
+python = ["tracking-issue *"]
+rust = ["kv get", "plugin read-version"]
 
 [[callers]]
 path = "skills/implement/scripts/refresh-execution-issues.sh"
 kind = "skill"
-python = ["kv get", "tracking-issue *"]
-rust = ["plugin read-version"]
+python = ["tracking-issue *"]
+rust = ["kv get", "plugin read-version"]
 
 [[callers]]
 path = "skills/implement/scripts/run-step-checks.md"
@@ -9216,8 +9222,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-architectural-guidelines-write-staged.sh"
 kind = "skill"
-python = ["architectural-guidelines write-staged-assessment", "kv get"]
-rust = []
+python = ["architectural-guidelines write-staged-assessment"]
+rust = ["kv get"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-invariants-write-compose.md"
@@ -9258,8 +9264,8 @@ rust = []
 [[callers]]
 path = "skills/pause/SKILL.md"
 kind = "skill"
-python = ["design pause-save", "kv get"]
-rust = ["gh resolve-repo"]
+python = ["design pause-save"]
+rust = ["gh resolve-repo", "kv get"]
 
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"

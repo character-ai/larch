@@ -65,9 +65,9 @@ while IFS= read -r setup_line; do case "$setup_line" in SESSION_TMPDIR=*) DEPS_T
 RESOLVE_ARGS=()
 [[ -n "$REPO_ARG" ]] && RESOLVE_ARGS+=(--repo "$REPO_ARG")
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" deps resolve-repo "${RESOLVE_ARGS[@]}" > "$DEPS_TMPDIR/resolve.env"
-REPO=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key REPO)
-ORIGIN_MATCHES=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_MATCHES)
-ORIGIN_SLUG=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_SLUG)
+REPO=$(CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --file "$DEPS_TMPDIR/resolve.env" --key REPO)
+ORIGIN_MATCHES=$(CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_MATCHES)
+ORIGIN_SLUG=$(CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_SLUG)
 [[ -n "$REPO" ]] || { echo "**ERROR: could not resolve repository.**" >&2; exit 1; }
 
 REGULAR_REFRESH_ALLOWED=true

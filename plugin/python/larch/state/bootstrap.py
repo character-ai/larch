@@ -249,10 +249,10 @@ def _resolve_resume_implement_tmpdir(*, claude_pid: str) -> str:
 
 def _read_key(*, path: Path, key: str, default: str = "") -> str:
     try:
-        return session_env.read_key(
-            file=str(path), key=key, default=default, file_flag_present=True
-        ).value
-    except ValueError:
+        text = larch_io.read_text(path, errors="replace", reject_cr=True)
+        value = larch_io.kv_value(text=text, key=key, default=default, duplicate_policy="first")
+        return default if value == "" else value
+    except (OSError, ValueError):
         return default
 
 

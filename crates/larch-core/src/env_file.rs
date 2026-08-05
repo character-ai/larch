@@ -339,6 +339,88 @@ impl KvDocument {
     }
 }
 
+/// Select one exact byte value from legacy `KEY=value` input.
+///
+/// Unlike [`KvDocument`], this helper does not require UTF-8. It preserves the
+/// legacy stdin contract while still treating one carriage return before LF as
+/// record framing.
+#[must_use]
+pub fn select_kv_bytes(
+    text: &[u8],
+    key: &[u8],
+    default: &[u8],
+    duplicate_policy: DuplicatePolicy,
+    cr_strip: CrStrip,
+) -> Vec<u8> {
+    let mut selected = None;
+    let mut lines = text.split(|byte| *byte == b'\n').peekable();
+    while let Some(raw_line) = lines.next() {
+        let line = if lines.peek().is_some() {
+            raw_line.strip_suffix(b"\r").unwrap_or(raw_line)
+        } else {
+            raw_line
+        };
+        let Some(value) = line
+            .strip_prefix(key)
+            .and_then(|remaining| remaining.strip_prefix(b"="))
+        else {
+            continue;
+        };
+        let value = strip_cr_bytes(value, cr_strip);
+        match duplicate_policy {
+            DuplicatePolicy::First => return value.to_vec(),
+            DuplicatePolicy::Last => selected = Some(value),
+            DuplicatePolicy::LastNonEmpty if !value.is_empty() => selected = Some(value),
+            DuplicatePolicy::LastNonEmpty => {}
+        }
+    }
+    selected.unwrap_or(default).to_vec()
+}
+
+/// Render caller-ordered `KEY=value\n` rows after rejecting line forgery.
+///
+/// # Errors
+///
+/// Returns [`KvError`] when a key or value cannot safely occupy one row.
+pub fn kv_text(rows: &[(&str, &str)]) -> Result<String, KvError> {
+    let rows = rows
+        .iter()
+        .map(|(key, value)| KvRow::new(*key, *value, KeyPolicy::Wire))
+        .collect::<Result<Vec<_>, _>>()?;
+    KvDocument::from_rows(rows).render(RenderOptions::wire())
+}
+
+/// Parse one allowlisted `KEY=value` or `export KEY=value` shell assignment.
+///
+/// The right-hand side must decode to at most one POSIX shell token. Comments
+/// are disabled, matching Python's `shlex.split(..., comments=False)` behavior.
+#[must_use]
+pub fn parse_allowlisted_env_line(
+    raw: &str,
+    allowed_keys: &[&str],
+    key_policy: Option<KeyPolicy>,
+    reject_newline_rhs: bool,
+) -> Option<(String, String)> {
+    let mut line = raw.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    line = line.strip_prefix("export ").unwrap_or(line);
+    let (raw_key, rhs) = line.split_once('=')?;
+    let key = raw_key.trim();
+    if !allowed_keys.contains(&key)
+        || key_policy.is_some_and(|policy| validate_key(key, policy, 0).is_err())
+        || (reject_newline_rhs && rhs.contains(['\n', '\r']))
+    {
+        return None;
+    }
+    let value = split_one_shell_token(rhs)?;
+    if value.contains(['\n', '\r']) {
+        return None;
+    }
+    Some((key.to_owned(), value))
+}
+
 /// A strict, deterministic environment file ready for guarded updates.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnvFile {
@@ -491,6 +573,103 @@ fn strip_cr(value: &str, policy: CrStrip) -> &str {
     }
 }
 
+fn strip_cr_bytes(value: &[u8], policy: CrStrip) -> &[u8] {
+    match policy {
+        CrStrip::None => value,
+        CrStrip::Suffix => value.strip_suffix(b"\r").unwrap_or(value),
+        CrStrip::End => {
+            &value[..value
+                .iter()
+                .rposition(|byte| *byte != b'\r')
+                .map_or(0, |index| index + 1)]
+        }
+        CrStrip::Both => {
+            let start = value
+                .iter()
+                .position(|byte| *byte != b'\r')
+                .unwrap_or(value.len());
+            let end = value
+                .iter()
+                .rposition(|byte| *byte != b'\r')
+                .map_or(start, |index| index + 1);
+            &value[start..end]
+        }
+    }
+}
+
+fn split_one_shell_token(input: &str) -> Option<String> {
+    #[derive(Clone, Copy, Eq, PartialEq)]
+    enum Quote {
+        None,
+        Single,
+        Double,
+    }
+
+    let mut quote = Quote::None;
+    let mut escaped = false;
+    let mut token_started = false;
+    let mut complete_token = false;
+    let mut value = String::new();
+    for character in input.chars() {
+        if escaped {
+            if character == '\n' {
+                return None;
+            }
+            if quote == Quote::Double && !matches!(character, '$' | '`' | '"' | '\\') {
+                value.push('\\');
+            }
+            value.push(character);
+            escaped = false;
+            token_started = true;
+            continue;
+        }
+        match quote {
+            Quote::Single if character == '\'' => quote = Quote::None,
+            Quote::Double if character == '"' => quote = Quote::None,
+            Quote::Double if character == '\\' => escaped = true,
+            Quote::Single | Quote::Double => value.push(character),
+            Quote::None if character == '\'' => {
+                if complete_token {
+                    return None;
+                }
+                token_started = true;
+                quote = Quote::Single;
+            }
+            Quote::None if character == '"' => {
+                if complete_token {
+                    return None;
+                }
+                token_started = true;
+                quote = Quote::Double;
+            }
+            Quote::None if character == '\\' => {
+                if complete_token {
+                    return None;
+                }
+                escaped = true;
+                token_started = true;
+            }
+            Quote::None if matches!(character, ' ' | '\t' | '\r' | '\n') => {
+                if token_started {
+                    complete_token = true;
+                }
+            }
+            Quote::None => {
+                if complete_token {
+                    return None;
+                }
+                token_started = true;
+                value.push(character);
+            }
+        }
+    }
+    if escaped || quote != Quote::None {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 fn validate_row(row: &KvRow, policy: KeyPolicy, line: usize) -> Result<(), KvError> {
     validate_key(&row.key, policy, line)?;
     if row.value.contains(['\n', '\r']) {
@@ -527,7 +706,8 @@ fn validate_key(key: &str, policy: KeyPolicy, line: usize) -> Result<(), KvError
 mod tests {
     use super::{
         CommentPolicy, CrStrip, DuplicatePolicy, EmptyKeyPolicy, EnvFile, KeyPolicy, KvDocument,
-        KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions, RenderOptions,
+        KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions, RenderOptions, kv_text,
+        parse_allowlisted_env_line, select_kv_bytes,
     };
 
     #[test]
@@ -642,6 +822,80 @@ mod tests {
         assert_eq!(
             EnvFile::parse("A=1\r\n")
                 .expect_err("CR should fail")
+                .kind(),
+            KvErrorKind::UnsafeValue
+        );
+    }
+
+    #[test]
+    fn byte_selection_preserves_invalid_utf8_and_duplicate_policies() {
+        let input = b"KEY=first\r\nKEY=\xff\r\r\nKEY=\n";
+
+        assert_eq!(
+            select_kv_bytes(
+                input,
+                b"KEY",
+                b"fallback",
+                DuplicatePolicy::First,
+                CrStrip::None
+            ),
+            b"first"
+        );
+        assert_eq!(
+            select_kv_bytes(
+                input,
+                b"KEY",
+                b"fallback",
+                DuplicatePolicy::Last,
+                CrStrip::None
+            ),
+            b""
+        );
+        assert_eq!(
+            select_kv_bytes(
+                input,
+                b"KEY",
+                b"fallback",
+                DuplicatePolicy::LastNonEmpty,
+                CrStrip::Both,
+            ),
+            b"\xff"
+        );
+    }
+
+    #[test]
+    fn allowlisted_shell_assignments_match_legacy_token_rules() {
+        let allowed = ["SAFE", "OTHER"];
+
+        assert_eq!(
+            parse_allowlisted_env_line(
+                " export SAFE='two words' ",
+                &allowed,
+                Some(KeyPolicy::Environment),
+                true,
+            ),
+            Some(("SAFE".to_owned(), "two words".to_owned()))
+        );
+        assert_eq!(
+            parse_allowlisted_env_line("SAFE=#literal", &allowed, None, false),
+            Some(("SAFE".to_owned(), "#literal".to_owned()))
+        );
+        assert!(parse_allowlisted_env_line("SAFE=two words", &allowed, None, false).is_none());
+        assert!(parse_allowlisted_env_line("SAFE='unterminated", &allowed, None, false).is_none());
+        assert!(parse_allowlisted_env_line("SAFE=a\\\nb", &allowed, None, false).is_none());
+        assert!(parse_allowlisted_env_line("NOPE=value", &allowed, None, false).is_none());
+        assert!(parse_allowlisted_env_line("SAFE='line\nbreak'", &allowed, None, false).is_none());
+    }
+
+    #[test]
+    fn kv_text_preserves_order_and_rejects_newlines() {
+        assert_eq!(
+            kv_text(&[("B", "two"), ("A", "one=1")]).expect("safe rows should render"),
+            "B=two\nA=one=1\n"
+        );
+        assert_eq!(
+            kv_text(&[("A", "one\nFORGED=yes")])
+                .expect_err("line forging should fail")
                 .kind(),
             KvErrorKind::UnsafeValue
         );

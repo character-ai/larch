@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "session.env": {
+      "text": "IGNORED=valueKEY=first\nKEY=last\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "first\n"
+  }
+}

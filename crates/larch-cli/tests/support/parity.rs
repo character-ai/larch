@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Component, Path, PathBuf},
     process::{Command, Output, Stdio},
     sync::OnceLock,
@@ -41,6 +41,7 @@ pub struct Program {
     executable: PathBuf,
     arguments: Vec<String>,
     environment: BTreeMap<String, String>,
+    stdin: Option<Vec<u8>>,
     timeout: Duration,
 }
 
@@ -50,18 +51,27 @@ impl Program {
             executable: executable.into(),
             arguments: Vec::new(),
             environment: BTreeMap::new(),
+            stdin: None,
             timeout: DEFAULT_TIMEOUT,
         }
     }
 
-    pub fn args<const N: usize>(mut self, arguments: [&str; N]) -> Self {
-        self.arguments
-            .extend(arguments.into_iter().map(ToOwned::to_owned));
+    pub fn args<I, S>(mut self, arguments: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arguments.extend(arguments.into_iter().map(Into::into));
         self
     }
 
     pub fn env(mut self, key: &str, value: &str) -> Self {
         self.environment.insert(key.to_owned(), value.to_owned());
+        self
+    }
+
+    pub fn stdin(mut self, input: &[u8]) -> Self {
+        self.stdin = Some(input.to_vec());
         self
     }
 
@@ -234,13 +244,21 @@ fn run_program(
         .env("PATH", sandbox.root().join(".bin"))
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("TMPDIR", sandbox.root().join(".tmp"));
+    if let Some(profile) = env::var_os("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", profile);
+    }
     for argument in &program.arguments {
         command.arg(expand_sandbox(argument, sandbox.root()));
     }
     for (key, value) in &program.environment {
         command.env(key, expand_sandbox(value, sandbox.root()));
     }
-    let output = output_with_timeout(command, &program.executable, program.timeout)?;
+    let output = output_with_timeout(
+        command,
+        &program.executable,
+        program.stdin.as_deref(),
+        program.timeout,
+    )?;
     let (files, side_effects) = capture_tree(sandbox.root(), record_paths)?;
     Ok(Capture {
         exit_code: output.status.code(),
@@ -254,12 +272,28 @@ fn run_program(
 fn output_with_timeout(
     mut command: Command,
     executable: &Path,
+    stdin: Option<&[u8]>,
     timeout: Duration,
 ) -> Result<Output, String> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|error| format!("launch parity command {}: {error}", executable.display()))?;
+    if let Some(input) = stdin {
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| "write parity command stdin: pipe unavailable".to_owned())?
+            .write_all(input)
+            .map_err(|error| format!("write parity command stdin: {error}"))?;
+    }
     let stdout = child
         .stdout
         .take()

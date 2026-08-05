@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from larch import io as larch_io
 from larch.core import config
 from tests.support.repo_contract import repo_root
 
@@ -90,8 +91,8 @@ def read_key(args: list[str]) -> int:
 
 
 def kv_get(args: list[str]) -> int:
-    # Minimal stub for cli.py kv get used by step-18.sh kv_value(). Mirrors
-    # larch.core.kv_cli.get_main / larch.io.read_kv: always exits 0, printing
+    # Minimal stub for the legacy-compatible kv get used by step-18.sh kv_value(). Mirrors
+    # larch.io.read_kv always exits 0 through the CLI, printing
     # the default when the key (or file) is absent.
     key = args[args.index("--key") + 1]
     default = args[args.index("--default") + 1] if "--default" in args else ""
@@ -1452,14 +1453,14 @@ def _token_prop_env() -> dict[str, str]:
 
 
 def _read_session_key(env_file: Path, key: str, default: str = "") -> str:
-    result = subprocess.run(
-        [_REAL_PYTHON, str(_CLI), "session", "read-key", "--file", str(env_file), "--key", key, "--default", default],
-        env={**os.environ, "PYTHONPATH": str(_REPO / "python"), "CLAUDE_PLUGIN_ROOT": str(_REPO)},
-        text=True,
-        capture_output=True,
-        check=True,
+    return larch_io.read_kv(
+        path=env_file,
+        key=key,
+        default=default,
+        duplicate_policy="first",
+        on_error_default=True,
+        empty_value_means_default=True,
     )
-    return result.stdout.rstrip("\n")
 
 
 def test_token_propagation_session_setup_forwarding(tmp_path: Path) -> None:

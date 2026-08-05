@@ -22,7 +22,7 @@ DIFF_FILE="$IMPLEMENT_TMPDIR/architectural-guideline-materialized-diff.txt"
 
 read_materialize_key() {
   local key=$1
-  python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$MATERIALIZE_ENV" --key "$key" --match last 2>/dev/null || true
+  CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" kv get --file "$MATERIALIZE_ENV" --key "$key" --match last 2>/dev/null || true
 }
 
 BASE_REF=""

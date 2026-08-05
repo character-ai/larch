@@ -1,7 +1,7 @@
 //! UTF-8 filesystem and same-directory atomic publication adapters.
 
-use crate::{ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind};
-use larch_core::{EnvFile, KvError};
+use crate::{ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, TemporaryRoot};
+use larch_core::{CommentPolicy, EnvFile, KvDocument, KvError, ParseOptions};
 use std::{
     error::Error,
     fmt,
@@ -83,6 +83,93 @@ pub fn read_utf8(path: &ConfinedPath) -> Result<String, FileIoError> {
     })
 }
 
+/// Read an arbitrary legacy CLI input file with UTF-8 replacement semantics.
+///
+/// Missing and non-regular paths return `None`, matching `Path.is_file()`.
+/// This compatibility reader intentionally follows symlinks; state-bearing
+/// writes and trusted reads must use [`ConfinedPath`] instead.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] when metadata or file reading fails.
+pub fn read_optional_utf8_lossy(path: &Path) -> Result<Option<String>, FileIoError> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => fs::read(path)
+            .map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned()))
+            .map_err(|error| io_error(path, &error)),
+        Ok(_) => Ok(None),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(io_error(path, &error)),
+    }
+}
+
+/// Read a legacy session KV file and reject every carriage return.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for I/O failure or carriage-return injection.
+pub fn read_session_kv_text(path: &Path) -> Result<Option<String>, FileIoError> {
+    let text = read_optional_utf8_lossy(path)?;
+    if text.as_ref().is_some_and(|value| value.contains('\r')) {
+        return Err(FileIoError::new(
+            FileIoErrorKind::InvalidWireFormat,
+            path,
+            format!(
+                "session env file contains carriage return: {}",
+                path.display()
+            ),
+        ));
+    }
+    Ok(text)
+}
+
+/// Read a session KV file with comment skipping and last-key-wins semantics.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for I/O failure or carriage-return injection.
+pub fn read_kv_raw(path: &Path) -> Result<Vec<(String, String)>, FileIoError> {
+    let Some(text) = read_session_kv_text(path)? else {
+        return Ok(Vec::new());
+    };
+    let mut options = ParseOptions::legacy();
+    options.comments = CommentPolicy::Skip;
+    let document = KvDocument::parse(&text, options).map_err(|error| wire_error(path, &error))?;
+    let mut selected = Vec::new();
+    for row in document.rows() {
+        match selected.iter_mut().find(|(key, _value)| key == row.key()) {
+            Some((_key, value)) => row.value().clone_into(value),
+            None => selected.push((row.key().to_owned(), row.value().to_owned())),
+        }
+    }
+    Ok(selected)
+}
+
+/// Read the first raw value for one key from a session KV file.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for I/O failure or carriage-return injection.
+pub fn read_first_raw_key(path: &Path, key: &str) -> Result<Option<String>, FileIoError> {
+    let Some(text) = read_session_kv_text(path)? else {
+        return Ok(None);
+    };
+    let document = KvDocument::parse(&text, ParseOptions::legacy())
+        .map_err(|error| wire_error(path, &error))?;
+    Ok(document
+        .rows()
+        .iter()
+        .find(|row| row.key() == key)
+        .map(|row| row.value().to_owned()))
+}
+
 /// Atomically publish UTF-8 text to a path confined with [`PathIntent::Write`].
 ///
 /// The parent must already exist. The temporary file is flushed and synced before
@@ -104,15 +191,41 @@ pub fn atomic_write_utf8(path: &ConfinedPath, text: &str, mode: u32) -> Result<(
 /// Returns [`FileIoError`] for unsafe paths or any failed filesystem operation.
 pub fn atomic_write_bytes(path: &ConfinedPath, data: &[u8], mode: u32) -> Result<(), FileIoError> {
     atomic_write_with(path, mode, |file| file.write_all(data))?;
-    let written = fs::read(path.path()).map_err(|error| io_error(path.path(), &error))?;
-    if written != data {
-        return Err(FileIoError::new(
-            FileIoErrorKind::Io,
-            path.path(),
-            "post-write verification failed",
-        ));
-    }
     Ok(())
+}
+
+/// Atomically publish UTF-8 below a trusted temporary root.
+///
+/// When `create_parent` is true, missing parent directories are created as
+/// private directories through [`TemporaryRoot::ensure_directory`].
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for unsafe paths, directory creation, or publication
+/// failures.
+pub fn atomic_write_utf8_in(
+    root: &TemporaryRoot,
+    target: &Path,
+    text: &str,
+    create_parent: bool,
+    mode: u32,
+) -> Result<(), FileIoError> {
+    let joined = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        root.path().join(target)
+    };
+    if create_parent {
+        let parent = joined.parent().ok_or_else(|| {
+            FileIoError::new(FileIoErrorKind::InvalidPath, &joined, "path has no parent")
+        })?;
+        root.ensure_directory(parent)
+            .map_err(|error| path_safety_error(parent, &error))?;
+    }
+    let confined = root
+        .confine(&joined, PathIntent::Write)
+        .map_err(|error| path_safety_error(&joined, &error))?;
+    atomic_write_utf8(&confined, text, mode)
 }
 
 /// Rename a regular file over a same-directory destination.
@@ -307,11 +420,22 @@ fn path_safety_error(path: &Path, error: &PathSafetyError) -> FileIoError {
 #[cfg(test)]
 mod tests {
     use super::{
-        FileIoErrorKind, atomic_write_utf8, atomic_write_with, durability_error,
-        guarded_update_env, read_utf8, rename_same_directory,
+        FileIoErrorKind, atomic_write_utf8, atomic_write_utf8_in, atomic_write_with,
+        durability_error, guarded_update_env, read_first_raw_key, read_kv_raw,
+        read_session_kv_text, read_utf8, rename_same_directory,
     };
     use crate::{PathIntent, PathSafetyErrorKind, TemporaryRoot};
-    use std::{fs, io, io::Write, os::unix::fs::PermissionsExt, path::Path};
+    use std::{
+        fs, io,
+        io::Write,
+        os::unix::fs::PermissionsExt,
+        path::Path,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        thread,
+    };
 
     #[test]
     fn atomic_write_publishes_exact_bytes_and_mode() {
@@ -507,6 +631,112 @@ mod tests {
 
         assert_eq!(error.kind(), FileIoErrorKind::Durability);
         assert_eq!(error.path(), path);
+    }
+
+    #[test]
+    fn session_read_primitives_preserve_duplicate_comment_and_replacement_rules() {
+        let directory = tempfile::tempdir().expect("tempdir should create");
+        let path = directory.path().join("state.env");
+        fs::write(&path, b"#COMMENT=value\nA=first\nA=last\nBAD=\xff\n")
+            .expect("fixture should write");
+
+        let raw = read_kv_raw(&path).expect("raw KV should read");
+        assert_eq!(
+            raw,
+            [
+                ("A".to_owned(), "last".to_owned()),
+                ("BAD".to_owned(), "\u{fffd}".to_owned())
+            ]
+        );
+        assert_eq!(
+            read_first_raw_key(&path, "A").expect("first key should read"),
+            Some("first".to_owned())
+        );
+        fs::write(&path, b"A=one\r\n").expect("CR fixture should write");
+        assert_eq!(
+            read_session_kv_text(&path)
+                .expect_err("carriage returns should fail")
+                .kind(),
+            FileIoErrorKind::InvalidWireFormat
+        );
+    }
+
+    #[test]
+    fn rooted_atomic_write_creates_private_parents_and_files() {
+        let directory = tempfile::tempdir().expect("tempdir should create");
+        let root = temporary_root(&directory);
+        let target = root.path().join("nested/state.env");
+
+        atomic_write_utf8_in(&root, &target, "A=one\n", true, 0o600)
+            .expect("rooted write should succeed");
+
+        assert_eq!(fs::read(&target).expect("state should read"), b"A=one\n");
+        assert_eq!(
+            fs::metadata(target.parent().expect("target parent"))
+                .expect("parent metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&target)
+                .expect("file metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn concurrent_atomic_writers_never_publish_partial_or_interleaved_bytes() {
+        let directory = tempfile::tempdir().expect("tempdir should create");
+        let root = temporary_root(&directory);
+        let target = root.path().join("state.env");
+        let values = Arc::new(vec![
+            "A=aaaaaaaaaaaaaaaa\n".to_owned(),
+            "B=bbbbbbbbbbbbbbbb\n".to_owned(),
+            "C=cccccccccccccccc\n".to_owned(),
+            "D=dddddddddddddddd\n".to_owned(),
+        ]);
+        fs::write(&target, values[0].as_bytes()).expect("initial value should write");
+        let active = Arc::new(AtomicUsize::new(values.len()));
+        let reader_target = target.clone();
+        let reader_values = Arc::clone(&values);
+        let reader_active = Arc::clone(&active);
+        let reader = thread::spawn(move || {
+            while reader_active.load(Ordering::Acquire) != 0 {
+                let observed =
+                    fs::read_to_string(&reader_target).expect("published value should read");
+                assert!(
+                    reader_values.contains(&observed),
+                    "partial value: {observed:?}"
+                );
+            }
+        });
+        let writers = values
+            .iter()
+            .map(|value| {
+                let value = value.clone();
+                let writer_root = root.clone();
+                let writer_target = target.clone();
+                let writer_active = Arc::clone(&active);
+                thread::spawn(move || {
+                    for _ in 0..20 {
+                        atomic_write_utf8_in(&writer_root, &writer_target, &value, false, 0o600)
+                            .expect("concurrent write should succeed");
+                    }
+                    writer_active.fetch_sub(1, Ordering::Release);
+                })
+            })
+            .collect::<Vec<_>>();
+        for writer in writers {
+            writer.join().expect("writer should not panic");
+        }
+        reader.join().expect("reader should not panic");
+        let final_value = fs::read_to_string(&target).expect("final value should read");
+        assert!(values.contains(&final_value));
     }
 
     fn assert_no_temporary_files(directory: &Path) {

@@ -9,6 +9,7 @@
 //! of use to catch changes after initial validation.
 
 use std::{
+    env,
     error::Error,
     fmt,
     fs::{self, File},
@@ -335,6 +336,91 @@ root_type!(
     "A canonical, non-symlinked root owned for temporary and cache resources."
 );
 
+impl TemporaryRoot {
+    /// Create a private directory tree below this trusted root.
+    ///
+    /// Every existing and newly created component is checked without following
+    /// symlinks. The root identity is revalidated before and after mutation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathSafetyError`] for escape, symlink, wrong-type, race, or I/O
+    /// failures.
+    pub fn ensure_directory(
+        &self,
+        candidate: impl AsRef<Path>,
+    ) -> Result<PathBuf, PathSafetyError> {
+        self.0.revalidate()?;
+        let joined = if candidate.as_ref().is_absolute() {
+            candidate.as_ref().to_path_buf()
+        } else {
+            self.path().join(candidate)
+        };
+        let directory = normalize_path(joined)?;
+        let relative = directory.strip_prefix(self.path()).map_err(|_error| {
+            PathSafetyError::new(PathSafetyErrorKind::EscapesRoot, Some(directory.clone()))
+        })?;
+        let mut current = self.path().to_path_buf();
+        for component in relative.components() {
+            current.push(component.as_os_str());
+            match fs::symlink_metadata(&current) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    return Err(PathSafetyError::new(
+                        PathSafetyErrorKind::Symlink,
+                        Some(current),
+                    ));
+                }
+                Ok(metadata) if metadata.is_dir() => {}
+                Ok(_) => {
+                    return Err(PathSafetyError::new(
+                        PathSafetyErrorKind::NotDirectory,
+                        Some(current),
+                    ));
+                }
+                Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                    match fs::create_dir(&current) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                        Err(error) => {
+                            return Err(PathSafetyError::io(
+                                "create trusted directory",
+                                &current,
+                                error,
+                            ));
+                        }
+                    }
+                    let metadata = fs::symlink_metadata(&current).map_err(|error| {
+                        PathSafetyError::io("inspect created directory", &current, error)
+                    })?;
+                    if metadata.file_type().is_symlink() {
+                        return Err(PathSafetyError::new(
+                            PathSafetyErrorKind::Symlink,
+                            Some(current),
+                        ));
+                    }
+                    if !metadata.is_dir() {
+                        return Err(PathSafetyError::new(
+                            PathSafetyErrorKind::NotDirectory,
+                            Some(current),
+                        ));
+                    }
+                    #[cfg(unix)]
+                    set_unix_permissions(&current, 0o700)?;
+                }
+                Err(source) => {
+                    return Err(PathSafetyError::io(
+                        "inspect trusted directory",
+                        &current,
+                        source,
+                    ));
+                }
+            }
+        }
+        self.0.revalidate()?;
+        Ok(directory)
+    }
+}
+
 /// A normalized path whose containment, type, and symlink policy were checked.
 ///
 /// Validation is a snapshot. Call [`Self::revalidate`] immediately before an
@@ -569,6 +655,128 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, PathSafetyError
     Ok(normalized)
 }
 
+/// Resolve existing symlinks while permitting a missing final suffix.
+///
+/// # Errors
+///
+/// Returns [`PathSafetyError`] when no existing ancestor can be resolved or an
+/// operating-system lookup fails.
+pub fn resolve_allow_missing(path: impl AsRef<Path>) -> Result<PathBuf, PathSafetyError> {
+    let supplied = path.as_ref();
+    let absolute = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|source| PathSafetyError::io("resolve current directory", supplied, source))?
+            .join(supplied)
+    };
+    let mut existing = absolute.as_path();
+    let mut suffix = Vec::new();
+    let mut second_pass = false;
+    loop {
+        match fs::symlink_metadata(existing) {
+            Ok(metadata) => {
+                let mut resolved = match fs::canonicalize(existing) {
+                    Ok(path) => path,
+                    Err(source)
+                        if source.kind() == io::ErrorKind::NotFound
+                            && metadata.file_type().is_symlink() =>
+                    {
+                        let target = fs::read_link(existing).map_err(|error| {
+                            PathSafetyError::io("read dangling symlink", existing, error)
+                        })?;
+                        let target = if target.is_absolute() {
+                            target
+                        } else {
+                            existing
+                                .parent()
+                                .unwrap_or_else(|| Path::new("/"))
+                                .join(target)
+                        };
+                        resolve_allow_missing(target)?
+                    }
+                    Err(source) => {
+                        return Err(PathSafetyError::io(
+                            "resolve existing path",
+                            existing,
+                            source,
+                        ));
+                    }
+                };
+                for component in suffix.iter().rev() {
+                    resolved.push(component);
+                }
+                let resolved = normalize_path(resolved)?;
+                return if second_pass {
+                    resolve_allow_missing(resolved)
+                } else {
+                    Ok(resolved)
+                };
+            }
+            Err(source)
+                if matches!(
+                    source.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                let component = existing.components().next_back().ok_or_else(|| {
+                    PathSafetyError::new(PathSafetyErrorKind::Missing, Some(absolute.clone()))
+                })?;
+                second_pass |= matches!(component, Component::ParentDir | Component::CurDir);
+                suffix.push(component.as_os_str().to_os_string());
+                existing = existing.parent().ok_or_else(|| {
+                    PathSafetyError::new(PathSafetyErrorKind::Missing, Some(absolute.clone()))
+                })?;
+            }
+            Err(source) => {
+                return Err(PathSafetyError::io("resolve path", existing, source));
+            }
+        }
+    }
+}
+
+/// Return whether a resolved candidate equals or descends from a resolved root.
+#[must_use]
+pub fn path_under(path: impl AsRef<Path>, root: impl AsRef<Path>) -> bool {
+    resolve_allow_missing(path)
+        .and_then(|candidate| resolve_allow_missing(root).map(|root| candidate.starts_with(root)))
+        .unwrap_or(false)
+}
+
+/// Return whether a resolved candidate is a strict descendant of a resolved root.
+#[must_use]
+pub fn path_strictly_under(path: impl AsRef<Path>, root: impl AsRef<Path>) -> bool {
+    resolve_allow_missing(path)
+        .and_then(|candidate| {
+            resolve_allow_missing(root).map(|root| candidate != root && candidate.starts_with(root))
+        })
+        .unwrap_or(false)
+}
+
+/// Check the legacy strict-descendant policy for a session temporary directory.
+#[must_use]
+pub fn is_allowed_session_tmpdir(path: impl AsRef<Path>, roots: &[PathBuf]) -> bool {
+    !path.as_ref().as_os_str().is_empty()
+        && roots
+            .iter()
+            .any(|root| path_strictly_under(path.as_ref(), root))
+}
+
+/// Check the legacy equal-or-descendant policy for a session writer target.
+#[must_use]
+pub fn writer_target_allowed(path: impl AsRef<Path>, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path_under(path.as_ref(), root))
+}
+
+/// Return whether an output parent is an existing non-symlinked directory.
+#[must_use]
+pub fn safe_output_parent(path: impl AsRef<Path>) -> bool {
+    path.as_ref().parent().is_some_and(|parent| {
+        fs::symlink_metadata(parent)
+            .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+    })
+}
+
 fn validate_confined(confined: &ConfinedPath) -> Result<(), PathSafetyError> {
     if !confined.path.is_absolute() || !confined.root.path().is_absolute() {
         return Err(PathSafetyError::new(
@@ -734,7 +942,8 @@ fn set_unix_permissions(path: &Path, mode: u32) -> Result<(), PathSafetyError> {
 mod tests {
     use super::{
         PathIntent, PathSafetyErrorKind, PluginRoot, RepositoryRoot, SecureTempDir, SecureTempFile,
-        TemporaryRoot, normalize_path,
+        TemporaryRoot, is_allowed_session_tmpdir, normalize_path, path_strictly_under, path_under,
+        resolve_allow_missing, safe_output_parent, writer_target_allowed,
     };
     use std::{
         fs,
@@ -773,6 +982,76 @@ mod tests {
                 .expect("existing root")
                 .path(),
             directory.path().canonicalize().expect("canonical fixture")
+        );
+    }
+
+    #[test]
+    fn session_paths_resolve_symlinks_and_distinguish_strict_containment() {
+        let directory = tempdir().expect("fixture tempdir");
+        let root = directory.path().join("root");
+        let outside = directory.path().join("outside");
+        fs::create_dir(&root).expect("root should create");
+        fs::create_dir(&outside).expect("outside should create");
+        std::os::unix::fs::symlink(&outside, root.join("escape"))
+            .expect("escape symlink should create");
+
+        assert_eq!(
+            resolve_allow_missing(root.join("missing/file"))
+                .expect("missing suffix should resolve"),
+            fs::canonicalize(&root)
+                .expect("root should canonicalize")
+                .join("missing/file")
+        );
+        assert!(path_under(&root, &root));
+        assert!(!path_strictly_under(&root, &root));
+        assert!(path_strictly_under(root.join("child"), &root));
+        fs::write(root.join("file"), b"x").expect("file should create");
+        assert!(path_under(root.join("file/child"), &root));
+        assert!(!path_under(root.join("escape/file"), &root));
+        assert!(!path_under(root.join("escape/../file"), &root));
+        std::os::unix::fs::symlink(root.join("missing-target"), root.join("dangling"))
+            .expect("dangling symlink should create");
+        assert_eq!(
+            resolve_allow_missing(root.join("dangling/child"))
+                .expect("dangling target should resolve"),
+            fs::canonicalize(&root)
+                .expect("root should canonicalize")
+                .join("missing-target/child")
+        );
+        assert!(writer_target_allowed(&root, std::slice::from_ref(&root)));
+        assert!(!is_allowed_session_tmpdir(
+            &root,
+            std::slice::from_ref(&root)
+        ));
+        assert!(is_allowed_session_tmpdir(
+            root.join("child"),
+            std::slice::from_ref(&root)
+        ));
+    }
+
+    #[test]
+    fn safe_output_parent_and_directory_creation_reject_symlinks_and_wrong_types() {
+        let directory = tempdir().expect("fixture tempdir");
+        let root = TemporaryRoot::resolve(Some(directory.path())).expect("root should resolve");
+        let created = root
+            .ensure_directory("nested/private")
+            .expect("nested directory should create");
+        assert!(safe_output_parent(created.join("state.env")));
+        fs::write(root.path().join("file"), b"x").expect("file should create");
+        assert_eq!(
+            root.ensure_directory("file/child")
+                .expect_err("file ancestor should fail")
+                .kind(),
+            PathSafetyErrorKind::NotDirectory
+        );
+        std::os::unix::fs::symlink(&created, root.path().join("linked"))
+            .expect("link should create");
+        assert!(!safe_output_parent(root.path().join("linked/state.env")));
+        assert_eq!(
+            root.ensure_directory("linked/child")
+                .expect_err("symlink ancestor should fail")
+                .kind(),
+            PathSafetyErrorKind::Symlink
         );
     }
 

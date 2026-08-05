@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "session.env": {
+      "text": "KEY=value\r\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "session env file contains carriage return: <SANDBOX>/session.env\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

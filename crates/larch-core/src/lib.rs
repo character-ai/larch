@@ -15,6 +15,7 @@ mod outcome;
 mod process;
 mod redaction;
 mod retry;
+mod session_state;
 mod telemetry;
 mod time;
 mod upgrade_larch;
@@ -29,7 +30,7 @@ pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
     KeyPolicy, KvDocument, KvError, KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions,
-    RenderOptions, WhitespacePolicy,
+    RenderOptions, WhitespacePolicy, kv_text, parse_allowlisted_env_line, select_kv_bytes,
 };
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
@@ -72,6 +73,9 @@ pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_s
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,
+};
+pub use session_state::{
+    allowed_session_roots, cleanup_cache_sessions_root, implement_session_roots,
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};

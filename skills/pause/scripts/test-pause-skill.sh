@@ -71,18 +71,24 @@ if [[ "${1:-}" == "gh" && "${2:-}" == "resolve-repo" ]]; then
   printf '%s\n' "owner/repo"
   exit 0
 fi
+if [[ "${1:-}" == "kv" && "${2:-}" == "get" ]]; then
+  shift 2
+  key="" value=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --key) key="$2"; shift 2 ;; *) shift ;; esac
+  done
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in "$key="*) value="${line#*=}" ;; esac
+  done
+  printf '%s\n' "$value"
+  exit 0
+fi
 printf 'unexpected larch args: %s\n' "$*" >&2
 exit 1
 EOF_LARCH3
 chmod +x "$PLUGIN3/scripts/larch.sh"
 cat >"$PLUGIN3/python/cli.py" <<'EOF_SAVE3'
 #!/usr/bin/env python3
-import sys
-if sys.argv[1:3] == ["kv", "get"]:
-    key = sys.argv[sys.argv.index("--key") + 1]
-    matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]
-    print(matches[-1] if "--match" in sys.argv and sys.argv[sys.argv.index("--match") + 1] == "last" and matches else matches[0] if matches else "")
-    raise SystemExit(0)
 print("PAUSE_OK=true")
 print("STEP=2b")
 print("RUN_ID=RUNPAUSE3")
@@ -113,18 +119,24 @@ if [[ "${1:-}" == "gh" && "${2:-}" == "resolve-repo" ]]; then
   printf '%s\n' "owner/repo"
   exit 0
 fi
+if [[ "${1:-}" == "kv" && "${2:-}" == "get" ]]; then
+  shift 2
+  key="" value=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --key) key="$2"; shift 2 ;; *) shift ;; esac
+  done
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in "$key="*) value="${line#*=}" ;; esac
+  done
+  printf '%s\n' "$value"
+  exit 0
+fi
 printf 'unexpected larch args: %s\n' "$*" >&2
 exit 1
 EOF_LARCH4
 chmod +x "$PLUGIN4/scripts/larch.sh"
 cat >"$PLUGIN4/python/cli.py" <<'EOF_SAVE4'
 #!/usr/bin/env python3
-import sys
-if sys.argv[1:3] == ["kv", "get"]:
-    key = sys.argv[sys.argv.index("--key") + 1]
-    matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]
-    print(matches[-1] if "--match" in sys.argv and sys.argv[sys.argv.index("--match") + 1] == "last" and matches else matches[0] if matches else "")
-    raise SystemExit(0)
 print("PAUSE_OK=false")
 print("ERROR=publish-and-recovery-failed")
 EOF_SAVE4

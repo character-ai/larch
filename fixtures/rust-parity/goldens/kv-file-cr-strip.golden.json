@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "values.env": {
+      "text": "KEY=first\r\nKEY=\rvalue\r\r\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "value\n"
+  }
+}

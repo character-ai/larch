@@ -298,12 +298,28 @@ def _is_default_production_source(*, path: str, package: CargoPackage) -> bool:
     return path == f"{prefix}build.rs" or path.startswith(f"{prefix}src/")
 
 
-def _path_selection(*, path: str, package: CargoPackage) -> TargetSelection | None:
+def _shared_target_selections(*, path: str, package: CargoPackage) -> tuple[TargetSelection, ...]:
+    prefix = f"{package.root_path}/" if package.root_path else ""
+    for directory, kind in (("tests", "test"), ("examples", "example"), ("benches", "bench")):
+        if not path.startswith(f"{prefix}{directory}/"):
+            continue
+        return tuple(
+            TargetSelection(kind=kind, name=target.name)
+            for target in package.targets
+            if target.selection_kind == kind
+        )
+    return ()
+
+
+def _path_selection(*, path: str, package: CargoPackage) -> tuple[TargetSelection, ...] | None:
     if path == package.manifest_path:
         return None
     target = _target_for_path(path=path, package=package)
     if target is not None:
-        return target
+        return (target,)
+    shared_targets = _shared_target_selections(path=path, package=package)
+    if shared_targets:
+        return shared_targets
     if _is_default_production_source(path=path, package=package):
         return None
     raise RustClippyError(f"unmappable Rust path: {path}")
@@ -324,11 +340,11 @@ def build_rust_clippy_plan(*, metadata_text: str, repo_root: Path, changed_paths
     package_by_id = {package.package_id: package for package in workspace.packages}
     for path in normalized:
         package = _package_for_path(path=path, workspace=workspace)
-        target = _path_selection(path=path, package=package)
-        if target is None:
+        path_targets = _path_selection(path=path, package=package)
+        if path_targets is None:
             defaults.add(package.package_id)
         else:
-            targets.setdefault(package.package_id, set()).add(target)
+            targets.setdefault(package.package_id, set()).update(path_targets)
     selected_ids = sorted({*defaults, *targets}, key=lambda package_id: (package_by_id[package_id].name, package_id))
     packages: list[PackageSelection] = []
     for package_id in selected_ids:
