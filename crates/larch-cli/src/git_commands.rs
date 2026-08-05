@@ -26,8 +26,23 @@ use larch_core::{
 const CURRENT_BRANCH_DETACHED: &str =
     "git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)";
 const COUNT_MISSING_MAIN: &str = "WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0.";
-const TRANSIENT_ATTEMPTS: u32 = 3;
+pub const TRANSIENT_ATTEMPTS: u32 = 3;
 const TRANSIENT_BACKOFF_SECS: [u64; 2] = [2, 4];
+
+/// Wait before retrying a transient Git network failure, or stop retrying.
+///
+/// One owner for the schedule every Git network retry follows, so a change here
+/// reaches every caller instead of leaving one loop on the old cadence.
+pub fn sleep_before_retry(failed_attempt: u32) -> bool {
+    if failed_attempt >= TRANSIENT_ATTEMPTS {
+        return false;
+    }
+    let index = (failed_attempt as usize).saturating_sub(1);
+    thread::sleep(Duration::from_secs(
+        TRANSIENT_BACKOFF_SECS[index.min(TRANSIENT_BACKOFF_SECS.len() - 1)],
+    ));
+    true
+}
 
 #[derive(Debug)]
 pub enum GitCommand {
@@ -98,75 +113,89 @@ pub fn run(command: GitCommand) -> ExitCode {
     ExitCode::from(code)
 }
 
+/// How local `main` stands against `origin/main`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainSync {
+    /// `HEAD` is not the local `main` branch.
+    NotMain,
+    /// Local `main` carries nothing `origin/main` lacks.
+    Ok,
+    /// Local `main` is ahead by this many commits.
+    Blocked { ahead: u64 },
+    /// The repository, `HEAD`, or a revision could not be read.
+    ProbeError,
+}
+
+/// Classify local `main` against `origin/main` without emitting anything.
+#[must_use]
+pub fn main_sync() -> MainSync {
+    let Some(repo) = open_cwd_repository() else {
+        return MainSync::ProbeError;
+    };
+    let Ok(head) = repo.head() else {
+        return MainSync::ProbeError;
+    };
+    let Head::Symbolic { name, .. } = head else {
+        return MainSync::NotMain;
+    };
+    if short_branch_name(&name).as_deref() != Some("main") {
+        return MainSync::NotMain;
+    }
+    let (Some(origin_main), Some(current)) = (
+        resolve_optional(&repo, "origin/main"),
+        resolve_optional(&repo, "HEAD"),
+    ) else {
+        return MainSync::ProbeError;
+    };
+    let Ok(ahead) = repo.commit_count_range(&origin_main, &current) else {
+        return MainSync::ProbeError;
+    };
+    if ahead == 0 {
+        MainSync::Ok
+    } else {
+        MainSync::Blocked { ahead }
+    }
+}
+
+/// Render the message a blocked local `main` reports to its caller.
+#[must_use]
+pub fn main_sync_blocked_message(ahead: u64) -> String {
+    format!(
+        "local main is {ahead} commit(s) ahead of origin/main; push or reconcile before re-running"
+    )
+}
+
 fn check_main_sync(args: &[String]) -> u8 {
     if let Some(arg) = args.first() {
         let _ = writeln!(io::stderr(), "check-main-sync.sh: unknown flag: {arg}");
         return 2;
     }
-    let Some(repo) = open_cwd_repository() else {
-        emit_main_sync(
-            "probe-error",
-            None,
-            Some("git rev-list failed or produced empty output (exit 128)"),
-        );
-        return 2;
-    };
-    let Ok(head) = repo.head() else {
-        emit_main_sync(
-            "probe-error",
-            None,
-            Some("git rev-list failed or produced empty output (exit 128)"),
-        );
-        return 2;
-    };
-    let Head::Symbolic { name, .. } = head else {
-        emit_main_sync("not-main", None, None);
-        return 0;
-    };
-    if short_branch_name(&name).as_deref() != Some("main") {
-        emit_main_sync("not-main", None, None);
-        return 0;
+    match main_sync() {
+        MainSync::NotMain => {
+            emit_main_sync("not-main", None, None);
+            0
+        }
+        MainSync::Ok => {
+            emit_main_sync("ok", Some(0), None);
+            0
+        }
+        MainSync::Blocked { ahead } => {
+            emit_main_sync(
+                "blocked",
+                Some(ahead),
+                Some(&main_sync_blocked_message(ahead)),
+            );
+            1
+        }
+        MainSync::ProbeError => {
+            emit_main_sync(
+                "probe-error",
+                None,
+                Some("git rev-list failed or produced empty output (exit 128)"),
+            );
+            2
+        }
     }
-    let Some(origin_main) = resolve_optional(&repo, "origin/main") else {
-        emit_main_sync(
-            "probe-error",
-            None,
-            Some("git rev-list failed or produced empty output (exit 128)"),
-        );
-        return 2;
-    };
-    let Some(current) = resolve_optional(&repo, "HEAD") else {
-        emit_main_sync(
-            "probe-error",
-            None,
-            Some("git rev-list failed or produced empty output (exit 128)"),
-        );
-        return 2;
-    };
-    let Ok(ahead) = repo.commit_count_range(&origin_main, &current) else {
-        emit_main_sync(
-            "probe-error",
-            None,
-            Some("git rev-list failed or produced empty output (exit 128)"),
-        );
-        return 2;
-    };
-    if ahead == 0 {
-        emit_main_sync("ok", Some(ahead), None);
-        return 0;
-    }
-    check_main_sync_ahead(ahead)
-}
-
-fn check_main_sync_ahead(ahead: u64) -> u8 {
-    emit_main_sync(
-        "blocked",
-        Some(ahead),
-        Some(&format!(
-            "local main is {ahead} commit(s) ahead of origin/main; push or reconcile before re-running"
-        )),
-    );
-    1
 }
 
 fn emit_main_sync(status: &str, ahead: Option<u64>, error: Option<&str>) {
@@ -1123,12 +1152,9 @@ fn probe_remote_branch(branch: &str, remote: &str) -> RemoteProbe {
                 transient,
             } => {
                 last = RemoteProbe::Error { rc, error };
-                if !transient || attempt == TRANSIENT_ATTEMPTS {
+                if !transient || !sleep_before_retry(attempt) {
                     break;
                 }
-                let backoff = TRANSIENT_BACKOFF_SECS
-                    [(attempt as usize - 1).min(TRANSIENT_BACKOFF_SECS.len() - 1)];
-                thread::sleep(Duration::from_secs(backoff));
             }
         }
     }

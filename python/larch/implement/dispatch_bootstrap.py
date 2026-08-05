@@ -115,7 +115,7 @@ def _apply_resume_rehydration(*, implement_tmpdir: Path, args: argparse.Namespac
 
 
 def _apply_fork_env(args: argparse.Namespace) -> int:  # noqa: C901 - fork-env fanout maps each optional KV to a distinct arg or env assignment
-    result = _invoke_cli(["admission", "fork-env"])
+    result = _invoke_larch(["admission", "fork-env"])
     if result.returncode != 0:
         if result.stdout:
             sys.stdout.write(result.stdout)

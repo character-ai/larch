@@ -817,7 +817,7 @@ fn build_run_external_agent_arguments(options: RunExternalAgentOptions) -> RunEx
             "ERROR: --stderr-sink contains unsupported characters".to_owned(),
         );
     }
-    let Some(timeout_seconds) = parse_run_external_positive_integer(&options.timeout_raw) else {
+    let Some(timeout_seconds) = larch_core::positive_integer(&options.timeout_raw) else {
         return RunExternalAgentParse::Error(format!(
             "ERROR: --timeout must be a positive integer, got '{}'",
             options.timeout_raw
@@ -882,13 +882,6 @@ fn run_external_agent_poll_interval() -> Result<Duration, String> {
         ));
     };
     Ok(Duration::from_secs_f64(seconds))
-}
-
-fn parse_run_external_positive_integer(value: &str) -> Option<u64> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    value.parse::<u64>().ok().filter(|parsed| *parsed > 0)
 }
 
 fn prepare_run_external_agent_files(

@@ -97,14 +97,6 @@ def test_dispatch_report_tokens_analyze() -> None:
     assert rc == 0
 
 
-def test_dispatch_session_entry_gate() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.state.session_env": MagicMock(entry_gate_main=mock_main)}):
-        rc = cli.main(["session", "entry-gate", "--mode", "design"])
-    mock_main.assert_called_once_with(["--mode", "design"])
-    assert rc == 0
-
-
 def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
     mock_main = MagicMock(return_value=0)
     module = MagicMock(sanitize_detail_main=mock_main)

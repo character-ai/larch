@@ -464,6 +464,22 @@ def _refresh_reviewer_state(st: BootstrapState) -> None:
     _write_base_session_env(st)
 
 
+def _resolve_entry_gate(st: BootstrapState) -> bool:
+    """Record the Rust-owned entry-gate decision, reporting whether it resolved."""
+    gate = proc.run([
+        str(larch_entrypoint(_REPO_ROOT)), "session", "entry-gate",
+        "--mode", "implement", "--current-branch", st.current_branch,
+        "--is-main", st.is_main, "--is-user-branch", st.is_user_branch,
+        "--user-prefix", st.user_prefix,
+    ])
+    if gate.returncode != 0:
+        return False
+    fields = larch_io.parse_kv(gate.stdout, duplicate_policy="last")
+    st.entry_gate = fields.get("ENTRY_GATE", "")
+    st.skip_branch_check = fields.get("SKIP_BRANCH_CHECK", "")
+    return True
+
+
 def _phase_infra(st: BootstrapState) -> None:
     _ = progress_file.clear_active_run(Path.cwd())
     branch = pr.check_branch_state(proc)
@@ -473,17 +489,9 @@ def _phase_infra(st: BootstrapState) -> None:
     st.is_main = str(branch.is_main).lower()
     st.is_user_branch = str(branch.is_user_branch).lower()
     st.user_prefix = branch.user_prefix
-    try:
-        gate = session_env.entry_gate(
-            mode="implement", is_main=st.is_main,
-            is_user_branch=st.is_user_branch, user_prefix=st.user_prefix,
-            branch_info_supplied=None,
-        )
-    except ValueError:
+    if not _resolve_entry_gate(st):
         st.emit_step_failed("session-entry-gate")
         return
-    st.entry_gate = gate.entry_gate
-    st.skip_branch_check = gate.skip_branch_check
 
     if st.opts.resume_plan_tail and st.implement_tmpdir and st.session_env().is_file():
         st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (Path(st.implement_tmpdir) / "session-id").is_file() else ""

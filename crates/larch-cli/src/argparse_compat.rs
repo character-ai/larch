@@ -44,6 +44,16 @@ impl ParsedCommandLine {
         self.positionals.get(index).map(OsString::as_os_str)
     }
 
+    /// Return only the error `argparse` raises while consuming the line.
+    ///
+    /// This precedes the required-argument and unrecognized-argument checks, so
+    /// a command with required options reports it first, exactly as `argparse`
+    /// does when it fails mid-parse.
+    #[must_use]
+    pub fn value_error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
     /// Return the `argparse` error text, or `None` when the line parsed cleanly.
     #[must_use]
     pub fn error(&self) -> Option<String> {

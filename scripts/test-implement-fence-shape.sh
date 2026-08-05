@@ -460,7 +460,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
 
     original_env = os.environ.copy()
     original_branch_state = pr.check_branch_state
-    original_entry_gate = session_env.entry_gate
+    original_entry_gate = bootstrap._resolve_entry_gate
     original_current_branch = git.current_branch
     original_summary = bootstrap._upsert_plan_summary
     original_checkpoint = bootstrap._dirty_tree_checkpoint
@@ -484,8 +484,13 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
             is_user_branch=True, user_prefix="user",
         )
 
-    def fake_entry_gate(**_kwargs: object) -> session_env.GateResult:
-        return session_env.GateResult(entry_gate="ok", skip_branch_check="false")
+    # Issue #8059 moved the entry gate to Rust, and this sandbox has no
+    # installed binary. The Rust parity matrix owns its coverage; here it only
+    # needs to report a resolved gate.
+    def fake_entry_gate(st: object) -> bool:
+        st.entry_gate = "ok"
+        st.skip_branch_check = "false"
+        return True
 
     try:
         os.environ.clear()
@@ -493,7 +498,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         os.environ["IMPLEMENT_TMPDIR"] = str(impl)
         os.environ["LARCH_CLAUDE_PID"] = "12345"
         pr.check_branch_state = fake_branch_state
-        session_env.entry_gate = fake_entry_gate
+        bootstrap._resolve_entry_gate = fake_entry_gate
         session_env.run_write_env = fake_run_write_env
         bootstrap.proc.run = fake_proc_run
         git.current_branch = lambda *_args, **_kwargs: "feature/resume"
@@ -511,7 +516,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
             rc = bootstrap.run_bootstrap(opts)
     finally:
         pr.check_branch_state = original_branch_state
-        session_env.entry_gate = original_entry_gate
+        bootstrap._resolve_entry_gate = original_entry_gate
         session_env.run_write_env = original_write_env
         bootstrap.proc.run = original_proc_run
         git.current_branch = original_current_branch

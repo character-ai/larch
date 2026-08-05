@@ -16,10 +16,12 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_write};
 
+mod admission_commands;
 mod agent_commands;
 mod argparse_compat;
 mod bgjob_adapt;
 mod bgjob_commands;
+mod blocker_commands;
 mod ci_timing;
 mod dirty_tree_commands;
 mod external_defaults_commands;
@@ -40,6 +42,7 @@ mod release_version;
 mod run_lifecycle_commands;
 mod run_log_commands;
 mod session_env_commands;
+mod session_gate_commands;
 mod session_lifecycle_commands;
 mod slack_commands;
 mod stall_recovery_commands;
@@ -67,9 +70,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Domain {
+    /// `/implement` entry admission, preflight, and fork bootstrap.
+    #[command(subcommand)]
+    Admission(AdmissionCommand),
     /// Vendor-agent launch and diagnostic commands.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Issue blocker discovery.
+    #[command(subcommand)]
+    Blocker(BlockerCommand),
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
@@ -216,6 +225,26 @@ enum ProgressCommand {
 }
 
 #[derive(Subcommand)]
+enum AdmissionCommand {
+    /// Publish the fork metadata a `--forked` run consumes before Step 0.
+    #[command(disable_help_flag = true)]
+    ForkEnv(RawCompatibilityArguments),
+    /// Decide whether one issue may enter a `/implement` run.
+    #[command(disable_help_flag = true)]
+    Gate(RawCompatibilityArguments),
+    /// Enforce the clean-main entry contract and sync with `origin/main`.
+    #[command(disable_help_flag = true)]
+    Preflight(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum BlockerCommand {
+    /// Emit the space-joined open blockers for one issue.
+    #[command(disable_help_flag = true)]
+    AllOpen(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum KvCommand {
     /// Extract one value from `KEY=value` input.
     #[command(disable_help_flag = true)]
@@ -227,6 +256,12 @@ enum SessionCommand {
     /// Remove a session temporary directory confined to the session roots.
     #[command(disable_help_flag = true)]
     CleanupTmpdir(RawCompatibilityArguments),
+    /// Authorize one live GitHub issue mutation for a session-backed caller.
+    #[command(disable_help_flag = true)]
+    CheckLiveMutationAuth(RawCompatibilityArguments),
+    /// Resolve the `/implement` or `/design` entry gate from branch facts.
+    #[command(disable_help_flag = true)]
+    EntryGate(RawCompatibilityArguments),
     /// Terminate background processes scoped to a session tmpdir.
     #[command(disable_help_flag = true)]
     KillBackgroundProcesses(RawCompatibilityArguments),
@@ -705,6 +740,12 @@ struct EchoArguments {
 /// Dispatch one `session` verb to its command module.
 fn run_session(command: SessionCommand) -> ExitCode {
     match command {
+        SessionCommand::CheckLiveMutationAuth(arguments) => {
+            session_gate_commands::check_live_mutation_auth_command(&arguments.arguments)
+        }
+        SessionCommand::EntryGate(arguments) => {
+            session_gate_commands::entry_gate(&arguments.arguments)
+        }
         SessionCommand::KillBackgroundProcesses(arguments) => {
             kill_background::kill_background_processes(&arguments.arguments)
         }
@@ -801,6 +842,18 @@ fn run(
         Domain::Example(ExampleCommand::Echo(arguments)) => {
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
+        }
+        Domain::Admission(AdmissionCommand::ForkEnv(arguments)) => {
+            Ok(admission_commands::fork_env(&arguments.arguments))
+        }
+        Domain::Admission(AdmissionCommand::Gate(arguments)) => {
+            Ok(admission_commands::gate(&arguments.arguments))
+        }
+        Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
+            Ok(admission_commands::preflight(&arguments.arguments))
+        }
+        Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {
+            Ok(blocker_commands::all_open(&arguments.arguments))
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),

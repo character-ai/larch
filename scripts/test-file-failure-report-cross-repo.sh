@@ -16,6 +16,37 @@ cp -R "$SCRIPT_DIR/../python" "$HARNESS_PLUGIN_ROOT/"
 cat >"$HARNESS_PLUGIN_ROOT/scripts/larch.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+# The Rust `session check-live-mutation-auth` owner stands in here the same way
+# the Tier-B validator does below. Its real containment and run-identity rules
+# are covered by crates/larch-adapters/src/github/mutation_auth.rs and the
+# session-check-live-mutation-auth-* parity goldens; this stub only has to make
+# the refusal matrix's accept and refuse cases reachable.
+if [ "${1:-}" = session ] && [ "${2:-}" = check-live-mutation-auth ]; then
+    shift 2
+    context_file=""
+    run_id=""
+    trusted_root=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --context-file) context_file=${2:-}; shift 2 ;;
+            --run-id) run_id=${2:-}; shift 2 ;;
+            --trusted-root) trusted_root=${2:-}; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [ "${LARCH_ISSUE_MUTATION_DENY:-}" = true ] && exit 5
+    [ -n "$context_file" ] && [ -n "$run_id" ] && [ -n "$trusted_root" ] || exit 5
+    [ -f "$context_file" ] && [ ! -L "$context_file" ] || exit 5
+    [ -d "$trusted_root" ] || exit 5
+    case "$(basename "$trusted_root")" in
+        claude-design-*|claude-implement-*) ;;
+        *) exit 5 ;;
+    esac
+    [ "$(cd "$(dirname "$context_file")" && pwd -P)" = "$(cd "$trusted_root" && pwd -P)" ] || exit 5
+    grep -qx "LARCH_LIVE_MUTATION_OK=true" "$context_file" || exit 5
+    grep -qx "LARCH_RUN_ID=$run_id" "$context_file" || exit 5
+    exit 0
+fi
 [ "${1:-}" = stall-recovery ] && [ "${2:-}" = validate-tier-b-public-file ] || exit 2
 shift 2
 public_file=""
@@ -299,6 +330,8 @@ fake_root="$dir/fake-plugin"
 mkdir -p "$fake_root/scripts"
 cp "$SOURCE_SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
 chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
+cp "$HARNESS_PLUGIN_ROOT/scripts/larch.sh" "$fake_root/scripts/larch.sh"
+chmod +x "$fake_root/scripts/larch.sh"
 mkdir -p "$fake_root/python"
 cp "$SCRIPT_DIR/../python/cli.py" "$fake_root/python/cli.py"
 cp -R "$SCRIPT_DIR/../python/larch" "$fake_root/python/"

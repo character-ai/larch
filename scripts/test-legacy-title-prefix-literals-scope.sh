@@ -20,12 +20,12 @@ ALLOW=(
   SECURITY.md
   docs/linting.md
   docs/skills.md
-  python/larch/state/admission.py
+  crates/larch-core/src/admission.rs
+  crates/larch-cli/src/admission_commands.rs
   python/preflight.py
   python/issue_wire.py
   python/larch/issue/title_match.py
   python/larch/issue/tracking_issue.py
-  python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   python/tests/issue/test_tracking_issue.py

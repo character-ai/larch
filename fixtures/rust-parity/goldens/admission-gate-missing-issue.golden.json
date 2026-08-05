@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: admission gate [-h] --issue ISSUE [--repo REPO]\nadmission gate: error: the following arguments are required: --issue\n"
+  },
+  "stdout": {
+    "text": "ADMISSION_ERROR=argument validation failed\n"
+  }
+}

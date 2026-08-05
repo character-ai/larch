@@ -1422,9 +1422,11 @@ def _run_phase_infra_for_progress(
         calls.append(("branch",))
         return bootstrap.pr.CreateBranchResult("checked", current_branch="feature", is_user_branch=True, user_prefix="user")
 
-    def fake_gate(**_kwargs: object) -> bootstrap.session_env.GateResult:
+    def fake_gate(st: bootstrap.BootstrapState) -> bool:
         calls.append(("entry-gate",))
-        return bootstrap.session_env.GateResult("user-branch", "true")
+        st.entry_gate = "user-branch"
+        st.skip_branch_check = "true"
+        return True
 
     def fake_setup(**kwargs: object) -> bootstrap.session_env.SessionSetupResult:
         calls.append(("setup", str(kwargs["skip_codex_probe"]), str(kwargs["skip_cursor_probe"])))
@@ -1451,7 +1453,7 @@ def _run_phase_infra_for_progress(
         return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(bootstrap.pr, "check_branch_state", fake_branch)
-    monkeypatch.setattr(bootstrap.session_env, "entry_gate", fake_gate)
+    monkeypatch.setattr(bootstrap, "_resolve_entry_gate", fake_gate)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
     monkeypatch.setattr(bootstrap.progress_file, "activate_run", fake_activate)
     monkeypatch.setattr(bootstrap.timing, "mark", fake_timing)

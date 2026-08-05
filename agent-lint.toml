@@ -459,15 +459,6 @@ exclude = [
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
-  # python/session_env.py invokes python/cli.py admission preflight through proc.Runner for session setup.
-  "python/admission.py",
-  # python/test_admission.py is the regression harness for
-  # python/cli.py admission preflight flag semantics and stalled-run sentinel clearing.
-  # Referenced only from Makefile (test-preflight-args target) and
-  # python/test_admission.py (sibling contract), matching the same
-  # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
-  "python/test_admission.py",
-  # python/session_env.py invokes these preflight dependencies through python/cli.py admission preflight.
   # (sibling contract), matching the same Makefile-only pattern.
   # (sibling contract), matching the same Makefile-only pattern.
   # python/test_plan_review.py and
@@ -493,8 +484,8 @@ exclude = [
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
   # The Rust `session cleanup-tmpdir` invoke-time audit log. Referenced only from
-  # (sibling contract), matching the same Makefile-only pattern as
-  # python/test_admission.py above.
+  # (sibling contract), matching the same Makefile-only pattern as the other
+  # Makefile-only harnesses above.
   # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
   # (make py-test), matching the Makefile-only harness pattern above.
   # python/cli.py session entry-gate. Referenced only from Makefile
@@ -646,7 +637,6 @@ exclude = [
   "python/test_agents.py",
   "python/test_agents.py",
   "python/test_bootstrap.py",
-  "python/test_admission.py",
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
@@ -950,20 +940,14 @@ exclude = [
   "scripts/test-cache-key-discipline.md",
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
-  # scripts/larch.sh gh remote-repo is the one-URL/one-remote-name parser used
-  # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
-  # via shell variable indirection through larch_entrypoint().
+  # scripts/larch.sh gh remote-repo is the one-URL/one-remote-name parser the
+  # Rust `admission fork-env` owner reuses in process, and that remaining Python
+  # callers reach through shell variable indirection via larch_entrypoint().
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
   # indirection (same exclusion shape as python/cli.py agent launch-codex-implement
   # above). Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
   "scripts/larch.sh gh remote-repo",
-  # python/test_admission.py is the offline regression harness for
-  # python/cli.py admission fork-env (the pre-Step-0 fork bootstrap helper used
-  # by /implement --forked). Referenced only from Makefile
-  # (test-implement-fork-env target) and the sibling contract
-  # python/test_admission.py.
-  "python/test_admission.py",
   # The pr/gh/ci Python CLI regression tests for --repo threading, rerun,
   # status, behind-count, and decide are Makefile-only pytest shards with no
   # direct skill-prose invocation edge.

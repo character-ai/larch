@@ -45,8 +45,8 @@ from larch.git import gh
 from larch.core.proc import Runner
 from larch.core.repo_roots import larch_entrypoint
 
-_BOOL = {"true", "false"}
 _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./~+-]+$")
+_BOOL = {"true", "false"}
 _SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # Non-unique placeholder run-log directory names (e.g. ``run-1``). These must
@@ -285,12 +285,6 @@ class SessionSetupError(Exception):
         self.output = output
 
 
-@dataclass(frozen=True)
-class GateResult:
-    entry_gate: str
-    skip_branch_check: str
-
-
 def _scripts_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "scripts"
 
@@ -301,14 +295,6 @@ def _emit(text: str) -> None:
 
 def _err(message: str) -> None:
     logging_util.BreadcrumbWriter().emit(message)
-
-
-def _plain_err(message: str) -> None:
-    print(message, file=sys.stderr)
-
-
-def _is_bool(value: str) -> bool:
-    return value in _BOOL
 
 
 def _read_kv_file_text(path: Path) -> str:
@@ -401,24 +387,6 @@ def _is_canonical_mutation_session_root(path: Path) -> bool:
         Path("/private/var/folders"),
     )
     return any(_strictly_under(path=resolved, root=root) for root in roots)
-
-
-def check_live_mutation_auth_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session check-live-mutation-auth", add_help=False)
-    parser.add_argument("--context-file", required=True)
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--trusted-root", required=True)
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return 1
-    authorized, _reason = check_live_mutation_auth(
-        context_file=Path(args.context_file),
-        operator_mode=False,
-        run_id=args.run_id,
-        trusted_root=Path(args.trusted_root),
-    )
-    return 0 if authorized else config.EXIT_MUTATION_REFUSED
 
 
 def _resolved(path: Path) -> Path:
@@ -777,84 +745,6 @@ def write_id(*, output: Path) -> WriteIdResult:
     return WriteIdResult(output=output, session_id=session_id, wrote=True)
 
 
-def entry_gate_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session entry-gate", add_help=False)
-    parser.add_argument("--mode", default="")
-    parser.add_argument("--current-branch", default="")
-    parser.add_argument("--is-main", default="")
-    parser.add_argument("--is-user-branch", default="")
-    parser.add_argument("--user-prefix", default="")
-    parser.add_argument("--branch-info-supplied", default=None)
-    try:
-        args, extra = parser.parse_known_args(argv)
-    except SystemExit:
-        return 4
-    def fail(message: str) -> int:
-        _plain_err(f"GATE_ERROR={message}")
-        return 4
-    if extra:
-        return fail(f"unknown argument: {extra[0]}")
-    supplied = {
-        "--mode": "--mode" in argv,
-        "--current-branch": "--current-branch" in argv,
-        "--user-prefix": "--user-prefix" in argv,
-        "--is-main": "--is-main" in argv,
-        "--is-user-branch": "--is-user-branch" in argv,
-    }
-    for flag, was_supplied in supplied.items():
-        if not was_supplied:
-            return fail(f"missing required flag {flag}")
-    try:
-        result = entry_gate(
-            mode=args.mode,
-            is_main=args.is_main,
-            is_user_branch=args.is_user_branch,
-            user_prefix=args.user_prefix,
-            branch_info_supplied=args.branch_info_supplied,
-        )
-    except ValueError as exc:
-        return fail(str(exc))
-    logging_util.quiet_init(argv0="session-entry-gate.sh")
-    logging_util.emit_kv(key="ENTRY_GATE", value=result.entry_gate)
-    logging_util.emit_kv(key="SKIP_BRANCH_CHECK", value=result.skip_branch_check)
-    return 0
-
-
-def entry_gate(
-    *,
-    mode: str,
-    is_main: str,
-    is_user_branch: str,
-    user_prefix: str,
-    branch_info_supplied: str | None,
-) -> GateResult:
-    """Resolve the entry-gate decision from validated branch inputs.
-
-    Raises ``ValueError`` (carrying the exact ``GATE_ERROR`` message) for an
-    invalid mode, empty user prefix, non-boolean flag, or a
-    ``--branch-info-supplied`` misused under ``mode=implement``.
-    """
-    if mode not in {"implement", "design"}:
-        raise ValueError(f"invalid mode: {mode}")
-    if not user_prefix:
-        raise ValueError("--user-prefix must be non-empty")
-    if not _is_bool(is_main):
-        raise ValueError(f"invalid value for --is-main: {is_main}")
-    if not _is_bool(is_user_branch):
-        raise ValueError(f"invalid value for --is-user-branch: {is_user_branch}")
-    if mode == "implement" and branch_info_supplied is not None:
-        raise ValueError("--branch-info-supplied not allowed for mode=implement")
-    branch_info = branch_info_supplied or "false"
-    if not _is_bool(branch_info):
-        raise ValueError(f"invalid value for --branch-info-supplied: {branch_info}")
-    resolved_gate = "strict"
-    skip_branch_check = "false"
-    if (mode == "design" and branch_info == "true") or is_user_branch == "true":
-        resolved_gate = "continue"
-        skip_branch_check = "true"
-    return GateResult(entry_gate=resolved_gate, skip_branch_check=skip_branch_check)
-
-
 def _repo_from_gh_or_git(runner: Runner) -> str:
     try:
         return gh.resolve_repo(runner) or ""
@@ -1015,7 +905,7 @@ def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip
     diagnostics: list[str] = []
     caller = _parse_key_value_file(caller_env)
     if not skip_preflight:
-        cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "admission", "preflight"]
+        cmd = [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "admission", "preflight"]
         if skip_branch_check:
             cmd.append("--skip-branch-check")
         preflight = runner.run(cmd)

@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session check-live-mutation-auth --context-file CONTEXT_FILE --run-id\n                                        RUN_ID --trusted-root TRUSTED_ROOT\nsession check-live-mutation-auth: error: the following arguments are required: --context-file, --trusted-root\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

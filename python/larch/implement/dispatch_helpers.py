@@ -94,9 +94,12 @@ def _binary_available(*, session_env: Path, key: str, binary: str) -> str:
     return "true" if shutil.which(binary) is not None else "false"
 
 
+def _current_plugin_root() -> Path:
+    return Path(os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT") or os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT) or _PLUGIN_ROOT)
+
+
 def _current_cli_path() -> Path:
-    root = Path(os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT") or os.environ.get("CLAUDE_PLUGIN_ROOT") or _PLUGIN_ROOT)
-    return root / "python" / "cli.py"
+    return _current_plugin_root() / "python" / "cli.py"
 
 
 def _invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

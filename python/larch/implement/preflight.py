@@ -538,7 +538,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
 
     admission_stdout = preflight_tmpdir / "admission.stdout"
     admission_stderr = preflight_tmpdir / "admission.stderr"
-    admission_argv = [sys.executable, str(cli_path), "admission", "gate", "--issue", issue]
+    admission_argv = [str(larch_entrypoint(plugin_root)), "admission", "gate", "--issue", issue]
     if repo:
         admission_argv.extend(["--repo", repo])
     admission_env: dict[str, str] = {**env, "LARCH_QUIET_DISABLE": "1"}
