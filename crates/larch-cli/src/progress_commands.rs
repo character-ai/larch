@@ -204,10 +204,7 @@ pub fn install_statusline(arguments: &[OsString]) -> ExitCode {
 }
 
 fn announce_first_install(sentinel: &Path) {
-    if sentinel.exists() {
-        return;
-    }
-    if std::fs::write(sentinel, "installed\n").is_ok() {
+    if statusline::publish_notice_sentinel(sentinel) {
         println!(
             "larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)"
         );

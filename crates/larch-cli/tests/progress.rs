@@ -14,24 +14,32 @@ use std::{
 use tempfile::TempDir;
 
 struct Clone {
-    sandbox: TempDir,
+    _sandbox: TempDir,
+    /// Canonical sandbox root. macOS hands out `/var/folders/...`, whose `/var`
+    /// is a symlink, and the Python writer refuses every symlinked ancestor.
+    root: PathBuf,
     path: PathBuf,
 }
 
 impl Clone {
     fn create() -> Self {
         let sandbox = TempDir::new().expect("sandbox");
-        let path = sandbox.path().join("clone");
+        let root = sandbox.path().canonicalize().expect("canonical sandbox");
+        let path = root.join("clone");
         fs::create_dir_all(&path).expect("clone directory");
-        Self { sandbox, path }
+        Self {
+            _sandbox: sandbox,
+            root,
+            path,
+        }
     }
 
     fn cache_home(&self) -> PathBuf {
-        self.sandbox.path().join("cache")
+        self.root.join("cache")
     }
 
     fn home(&self) -> PathBuf {
-        self.sandbox.path().join("home")
+        self.root.join("home")
     }
 
     fn payload(&self) -> String {
@@ -49,10 +57,7 @@ impl Clone {
             .env("LARCH_TEST_CACHE_HOME", self.cache_home())
             .env("HOME", self.home())
             // No registry root exists, so no background job is ever live.
-            .env(
-                "LARCH_BGJOB_REGISTRY_ROOT",
-                self.sandbox.path().join("no-registry"),
-            )
+            .env("LARCH_BGJOB_REGISTRY_ROOT", self.root.join("no-registry"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -85,11 +90,12 @@ impl Clone {
             .join("run-1/breadcrumbs.log")
     }
 
-    /// Return the breadcrumb log's mtime with sub-second precision.
+    /// Return the whole second at or after the breadcrumb log's mtime.
     ///
-    /// Whole seconds are not enough: an age computed from a truncated mtime
-    /// lands just under each threshold and silently reads as fresh.
-    fn log_mtime(&self) -> f64 {
+    /// Callers add a threshold offset to this base, so the age the renderer
+    /// computes is always at least that offset. Using the raw fractional mtime
+    /// instead lands the age a hair under each threshold and reads as fresh.
+    fn log_mtime_ceiling(&self) -> f64 {
         fs::metadata(self.breadcrumb_log())
             .expect("breadcrumb metadata")
             .modified()
@@ -97,6 +103,7 @@ impl Clone {
             .duration_since(UNIX_EPOCH)
             .expect("epoch")
             .as_secs_f64()
+            .ceil()
     }
 }
 
@@ -141,7 +148,7 @@ fn the_statusline_reports_active_stale_and_hidden_state() {
             .code,
         0
     );
-    let modified = clone.log_mtime();
+    let modified = clone.log_mtime_ceiling();
     let payload = clone.payload();
     let render = |offset: f64| {
         clone
@@ -180,7 +187,7 @@ fn the_statusline_reports_active_stale_and_hidden_state() {
 #[test]
 fn installation_publishes_a_bootstrap_launcher_and_stays_idempotent() {
     let clone = Clone::create();
-    let plugin_root = clone.sandbox.path().join("plugin");
+    let plugin_root = clone.root.join("plugin");
     fs::create_dir_all(plugin_root.join("scripts")).expect("plugin scripts");
     fs::write(plugin_root.join("scripts/larch.sh"), "#!/bin/sh\n").expect("entrypoint");
     fs::create_dir_all(clone.home()).expect("home");
@@ -245,6 +252,56 @@ fn installation_publishes_a_bootstrap_launcher_and_stays_idempotent() {
     assert_eq!(
         fs::read_to_string(&settings_path).expect("settings"),
         "{ not json"
+    );
+}
+
+/// Pin the on-disk breadcrumb format across both live implementations.
+///
+/// `progress_file.py` survives this cutover as a library that Python-owned
+/// commands still call in process, so Python remains a writer while Rust is the
+/// only reader. This test writes with the live Python helpers and reads with the
+/// Rust binary, so a change to the clone hash, the pointer file, the directory
+/// layout, or the breadcrumb line shape on either side fails here instead of
+/// silently blanking the statusline. Retiring the Python writers is tracked
+/// separately; until then this is the seam that keeps them honest.
+#[test]
+fn python_written_breadcrumbs_are_readable_by_the_rust_statusline() {
+    let clone = Clone::create();
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository root");
+    // The clone path is interpolated as a JSON string, which is also a valid
+    // Python string literal for every character a temp path can contain.
+    let literal = serde_json::to_string(&clone.path.to_string_lossy()).expect("clone literal");
+    let program = format!(
+        "from larch.report import progress_file\n\
+         progress_file.activate_run({literal}, 'run-1')\n\
+         assert progress_file.append_breadcrumb_for_run({literal}, 'run-1', 'design', '3', 'python wrote this')\n"
+    );
+    let written = Command::new("python3")
+        .args(["-c", &program])
+        .current_dir(&repository)
+        .env("PYTHONPATH", repository.join("python"))
+        .env("LARCH_TEST_CACHE_HOME", clone.cache_home())
+        .env("HOME", clone.home())
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .output()
+        .expect("run the Python writer");
+
+    assert!(
+        written.status.success(),
+        "python writer failed: {}",
+        String::from_utf8_lossy(&written.stderr)
+    );
+
+    let rendered = clone
+        .run(&["statusline"], None, Some(&clone.payload()))
+        .stdout;
+
+    assert!(
+        rendered.contains("[design 3] python wrote this"),
+        "the Rust reader must see Python-written breadcrumbs, got {rendered:?}"
     );
 }
 

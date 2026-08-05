@@ -18,7 +18,7 @@ use nix::fcntl::{Flock, FlockArg};
 use std::{
     ffi::OsStr,
     fs::{self, OpenOptions},
-    io::Write as _,
+    io::{Read as _, Write as _},
     os::unix::fs::OpenOptionsExt as _,
     path::{Path, PathBuf},
 };
@@ -106,14 +106,22 @@ fn canonical_clone_root(repo_root: &Path) -> PathBuf {
 }
 
 /// Return the active run ID for a clone without creating progress state.
+///
+/// The pointer is opened once with `O_NOFOLLOW` and its type is confirmed on
+/// that same descriptor, so a symlink swapped in after an inspection cannot
+/// redirect the read the way a check-then-open pair would allow.
 #[must_use]
 pub fn read_active_run_id(paths: &ProgressPaths) -> Option<String> {
-    let pointer = paths.current_pointer();
-    let metadata = fs::symlink_metadata(&pointer).ok()?;
-    if !metadata.file_type().is_file() {
+    let mut handle = OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW)
+        .open(paths.current_pointer())
+        .ok()?;
+    if !handle.metadata().ok()?.file_type().is_file() {
         return None;
     }
-    let bytes = fs::read(&pointer).ok()?;
+    let mut bytes = Vec::new();
+    handle.read_to_end(&mut bytes).ok()?;
     let text = String::from_utf8_lossy(&bytes);
     let first_line = text.split_inclusive('\n').next().unwrap_or_default();
     validate_progress_run_id(first_line.trim_end()).map(ToOwned::to_owned)

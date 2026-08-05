@@ -182,6 +182,20 @@ pub fn install(
     }
 }
 
+/// Publish the one-time first-install notice sentinel.
+///
+/// Returns whether this call created it, so the caller announces the notice
+/// exactly once. An existing entry of any type, including a symlink, is left
+/// alone: the sentinel is written through the same confinement as every other
+/// installer target and never follows a link.
+#[must_use]
+pub fn publish_notice_sentinel(sentinel: &Path) -> bool {
+    if fs::symlink_metadata(sentinel).is_ok() {
+        return false;
+    }
+    write_confined(sentinel, "installed\n", 0o600).is_ok()
+}
+
 fn read_breadcrumb_log(paths: &ProgressPaths, run_id: &str) -> Option<String> {
     let root = TemporaryRoot::resolve(Some(paths.clone_dir())).ok()?;
     let target = root.path().join(run_id).join(RUN_BREADCRUMB_FILENAME);
@@ -444,6 +458,26 @@ mod tests {
         );
         assert!(session_reset(&with_source("startup"), &environment));
         assert_eq!(progress_state::read_active_run_id(&paths), None);
+    }
+
+    #[test]
+    fn the_notice_sentinel_is_written_once_and_never_through_a_symlink() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let sentinel = sandbox.path().join("cache/.statusline-install-notice");
+        let decoy = sandbox.path().join("decoy");
+
+        assert!(super::publish_notice_sentinel(&sentinel));
+        assert_eq!(
+            fs::read_to_string(&sentinel).expect("sentinel"),
+            "installed\n"
+        );
+        assert!(!super::publish_notice_sentinel(&sentinel));
+
+        let planted = sandbox.path().join("cache/planted-notice");
+        std::os::unix::fs::symlink(&decoy, &planted).expect("dangling symlink");
+
+        assert!(!super::publish_notice_sentinel(&planted));
+        assert!(!decoy.exists(), "a dangling symlink must not be followed");
     }
 
     #[test]
