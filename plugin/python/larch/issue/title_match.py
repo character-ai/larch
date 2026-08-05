@@ -13,9 +13,11 @@ BUG_TITLE_LIFECYCLE_PREFIXES: Final = (
     config.TRACKING_ISSUE_PREFIX_BY_STATE["designed"],
     config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"],
     config.TRACKING_ISSUE_PREFIX_BY_STATE["stalled"],
+    *config.DEBATE_TITLE_PREFIX_BY_STATE.values(),
 )
 LIFECYCLE_PREFIXES: Final = (
     *config.TRACKING_ISSUE_PREFIX_BY_STATE.values(),
+    *config.DEBATE_TITLE_PREFIX_BY_STATE.values(),
     "[IN PROGRESS] ",
     "[PLANNED] ",
 )

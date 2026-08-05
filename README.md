@@ -8,8 +8,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 1. Create an issue describing the task/problem with `/issue` or `/bug`, or manually
 2. Verify an existing report with `/triage` when its diagnosis needs evidence before planning
-3. Design it with `/design` (the detailed reviewed design is stored in the issue)
-4. Implement it with `/implement`
+3. For contested or open-ended work, use `/debate` to produce a three-vendor proposal
+4. Design it with `/design` (the detailed reviewed design is stored in the issue)
+5. Implement it with `/implement`
 
 ## Support Skills
 
@@ -55,6 +56,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 - **[Direct design planning and plan reviews](docs/collaborative-sketches.md)** — Step 2b drafts the plan directly, then the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews it.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
+- **[Persistent proposal debates](docs/skills.md#debate)**: Cursor, Codex, and Claude negotiate from read-only repository evidence, then publish a cross-linked prose proposal before design.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
 - **[Tracked runs](docs/run-logs.md)** — Every skill invocation keeps local lifecycle bookkeeping. With run-log storage enabled, it publishes one terminal archive below the derived tool and client-repository root, such as `s3://zhupanov/larch/larch/run-logs/<skill>/<run-id>.tar.gz`. Without storage configuration, it warns and completes without a remote archive, synchronized cache entry, or pending publication. Nested and alias invocations keep distinct parent-linked run identities.
 - **[Progress statusline](docs/progress-reporting.md)** — clone-local breadcrumbs show live larch progress without adding report text to model context.
@@ -112,6 +114,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><code>[--repo owner/name] [--pair-cap N]</code></td>
     </tr>
     <tr><td colspan="2">Audit open issues by in-flight title prefix, conservatively refresh mutable REGULAR bodies, propose stale REGULAR closes, and infer dependencies with an explicit-ref scan plus latent semantic pass. Mutates only after <code>AskUserQuestion</code> approval. Dependency writes use <code>/block-issue</code>. <code>--pair-cap</code> is explicit partial-audit mode.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#debate"><code>/debate</code></a></td>
+      <td><code>[-s|--vote-stalemates] &lt;issue-number | free-form description&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Run a read-only, persistent Cursor/Codex/Claude negotiation and publish a cross-linked <code>[PROPOSAL]</code> issue. Default mode asks the operator to decide stalemates; <code>-s</code> uses the anonymized voter panel without operator input.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>

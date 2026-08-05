@@ -1,6 +1,6 @@
 # Progress Reporting Contract
 
-Shared formatting rules for step progress output across all larch skills. Each **orchestrator skill** (design, implement, review, research) maintains its own **Step Name Registry** (mapping step numbers to short names) in `skills/<name>/scripts/step-name-registry.tsv` (tab-separated, `step` and `name` columns, header row first, UTF-8 LF). These skills load the file via a MANDATORY directive at session start and reference it for breadcrumb name resolution.
+Shared formatting rules for step progress output across all larch skills. Each **orchestrator skill** (debate, design, implement, review, research) maintains its own **Step Name Registry** (mapping step numbers to short names) in `skills/<name>/scripts/step-name-registry.tsv` (tab-separated, `step` and `name` columns, header row first, UTF-8 LF). These skills load the file via a MANDATORY directive at session start and reference it for breadcrumb name resolution.
 
 ## Breadcrumb Format
 
@@ -93,6 +93,12 @@ Examples:
 **`/design` Step 3 exception**: Step 3 and Step 3 resume fences do not format reviewer tables in the orchestrator. Python writes the pre-rendered single line to `$DESIGN_TMPDIR/reviewer-status-table.txt`; the orchestrator Read tool emits that file verbatim after the completion gate. If the file is absent or a symlink, print the SKILL.md missing-table warning. Do not apply the manual formatting rules below to Step 3.
 
 For other skills and phases, include elapsed time immediately after each `✅` and `❌`. The timer for each entry starts when that agent/reviewer was launched.
+
+`/debate` reports the fixed persistent panel with slot names and preserves unavailable slots explicitly:
+
+```text
+📊 Panel: | Cursor: ✅ 2m31s | Codex: ⊘ | Claude: ✅ 1m4s |
+```
 
 Voting-Protocol skills (`/design`, `/review`) use the 3-reviewer composition:
 

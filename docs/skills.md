@@ -38,6 +38,7 @@ permissions or hooks only to silence the compatibility warning.
 - [`/bug`](#bug)
 - [`/cleanup`](#cleanup)
 - [`/combine-issues`](#combine-issues)
+- [`/debate`](#debate)
 - [`/deps`](#deps)
 - [`/design`](#design)
 - [`/difficulty-calibration`](#difficulty-calibration)
@@ -103,6 +104,18 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/`, `/t
 **Source**: [`skills/combine-issues/SKILL.md`](../skills/combine-issues/SKILL.md)
 
 Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination scheme.
+
+### `/debate`
+
+**Arguments**: `[-s|--vote-stalemates] <issue-number | free-form description>`
+
+**Source**: [`skills/debate/SKILL.md`](../skills/debate/SKILL.md)
+
+Debate an open issue through three persistent, read-only vendor seats: Cursor, Codex, and an in-session Claude `debater` agent. Round 1 stakes independent repository-grounded positions. Round 2 routes only the other validated ledgers through per-slot mailboxes. The durable Python protocol owns ordering, fingerprints, per-slot drops, quorum, adjudication, synthesis, and rejection of implementation-plan wire syntax.
+
+One unavailable external vendor proceeds with a named warning; two unavailable externals or missing `SendMessage` stop before the source title changes. Default mode asks the operator to decide any remaining positions. `-s` and `--vote-stalemates` use the anonymized voter panel and never ask the operator. Non-interactive default mode returns a prompt-required envelope instead of blocking.
+
+An issue source moves from its original title to `[DEBATING]` only after all admission and persistent-session gates pass. Success publishes one `[PROPOSAL]` issue with a backward link, adds the forward link to the source, and changes the source title to `[DEBATED]`. Abort restores the exact original title only while the live title remains owned by that run and upserts one sanitized abort comment. A free-form source is first created through `/issue` with its stdout and caller sentinel verified. The skill never calls `/design`; operators may run `/design` on the resulting proposal separately.
 
 ### `/design`
 

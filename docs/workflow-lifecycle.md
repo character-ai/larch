@@ -7,7 +7,10 @@ Skills are not invoked in a flat sequence. They form a hierarchical call graph w
 
 ```text
 graph TD
+    DEBATE["/debate"]
     DESIGN["/design"]
+    DEBATE -->|free-form source and proposal| ISSUE_DEBATE["/issue"]
+    DEBATE -.->|proposal may be designed later| DESIGN
     DESIGN -.->|issue-body larch:plan| IMPLEMENT["/implement"]
     DESIGN -->|approved multi-issue partition| UMBRELLA["/umbrella"]
     IMPLEMENT -->|target replacement with 2+ issues| UMBRELLA
@@ -16,6 +19,8 @@ graph TD
     IMPLEMENT -->|runs helper for| CHECKS["project relevant-checks script"]
     IMPLEMENT -->|invokes| ISSUE_OOS["/issue (OOS filing)"]
 ```
+
+- **`/debate`**: optional pre-design orchestrator. It creates a free-form source through `/issue` when needed, keeps one persistent read-only seat for each vendor, routes two bounded ledger rounds, adjudicates unresolved positions, and files one cross-linked `[PROPOSAL]` through `/issue`. Missing `SendMessage` or two unavailable external vendors stop before `[DEBATING]`. A one-vendor degradation retains two live seats and emits a named warning.
 
 - **`/implement`**: top-level orchestrator. Runs the full design → code → review → PR workflow by default; Step 2 supplies valid `ARCHITECTURAL_INVARIANTS.md` before valid `ARCHITECTURAL_GUIDELINES.md` to external coders as untrusted, plan-scoped evidence and requires a manifest acknowledgment when knowledge was present. If it decides to replace the target with two or more implementation issues, it hands the exact approved partition to `/umbrella`; it does not file the partition or close the original itself. The one scope-disposition follow-up and accepted OOS issues are not target partitions. Step 5 invokes `review-and-fix step5`, which uses a fixed round cap of **2** rounds (hard ceiling), does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix CLI` → `review core` (see [Review Agents](review-agents.md) Note A for the **review panel**, **specialists per vendor**, round 2 pruned on round-1 productivity, no generic Codex row, and `--no-fallback` reviewer-dispatch contract). Step 8 architectural assessment is authored by a read-only `larch:arch-assessor` subagent (invariants before guidelines) and persisted fail-closed by `architectural-assessment submit`; an invariant `violation` or guideline `deviation` routes through the subagent fix ladder (a `larch:claude-implementer` coder, then the main agent), an unresolved invariant `violation` hard-stops the run with `invariant-violation-unresolved` and creates no PR, and an unresolved guideline `deviation` needs a documented `Exception:` block to clear the ship gate. With the `--merge` flag, also runs the CI+rebase+merge loop and local cleanup after PR creation. Preflight runs `python/cli.py admission gate` before Step 0; Step 0 resolves tracking-issue state (sentinel reuse, positional issue adoption, or `Closes #<N>` recovery from the current branch's PR body) and materializes the plan from the issue body. **Phase 1 (#3364):** `/implement` does not invoke `/release` or write `release notes` on the ship path. Versioning and release notes updates move to the operator-run `/release` skill (Phase 3). The published run archive is the single source of truth for full report content (voting tallies, rejected findings, diagrams, OOS observation links, execution issues, run statistics), with the PR body as a slim projection (Summary + diagrams + Test plan + `Closes #<N>`; diagrams appear in both places by design). Step 9a.1 additionally invokes `/issue` in batch mode to file accepted OOS findings as GitHub issues.
 
@@ -83,6 +88,7 @@ flowchart TD
 
 Not every task requires the full `/implement` pipeline. Skills can be used independently:
 
+- **`/debate [-s|--vote-stalemates] <issue-number | free-form description>`**: Run a read-only persistent three-seat negotiation and publish a cross-linked prose proposal. Default mode asks the operator to decide unresolved positions. `-s` routes them to the voter panel and is safe for non-interactive execution. The proposal contains no implementation-plan wire syntax and does not invoke `/design`.
 - **`/design [-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] <issue-N | feature description>`**: Author or refresh an issue-anchored implementation plan in GitHub (`larch:plan` markers in the issue body per [Issue-anchored plan](issue-anchored-plan.md)). After Round 1 discussion (and optional Step 1d.5 brainstorm), the **Step 1d.7 outline-approval gate** presents a 5-section design outline for operator Approve / Refine / Cancel before launching plan writing; `--skip-approve`/`-s` auto-approves this outline and the Gate C final plan approval without prompting. `/design` uses a single direct-drafting flow: Step 2a prepares sentinels, Step 2b drafts the plan, and Step 3 runs its multi-round plan-review loop via `design-step3-review.sh` (process-group wrapper around `python/cli.py plan-review run --mode loop`), applying accepted findings with `python/cli.py plan revise-waterfall`. An approved multi-issue partition delegates its exact prepared leaves and dependency graph to `/umbrella`, which converts the original issue in place and leaves it open. Gate B auto-applies accepted findings by default; `--per-round-approval` restores the explicit per-round prompt, and the former `--approve` flag is rejected. Finalize (**Step 5**) includes optional OOS filing (**5b**) before the `larch:plan` write (**5c**) and tmpdir cleanup (**Step 6**). The `[DESIGNED]` prefix is an `/implement` admission signal, not a global "design finished" mutex.
 - **Step 3 external-stop recovery** — If the Claude Code harness stops the immediate-background Step 3 wrapper while the detached plan-review loop is still running, the wrapper records `.step3-wrapper-detached` and leaves the loop plus reviewer dispatches alive. The next Step 3 wrapper entry reattaches to the validated loop identity or persisted result env, normalizes the original result, and avoids spending another review round. Normal loop completion and explicit abort cleanup still own full process teardown.
 - **Step 5 external-stop recovery** — If a signal-induced Step 5 wrapper stop detaches the review worker, the wrapper records `$IMPLEMENT_TMPDIR/.step5-wrapper-detached`, keeps the worker alive, and withholds a complete Step 5 result env. The next Step 5 wrapper entry reattaches to the recorded identity, normalizes the captured stdout, performs tmpdir-scoped cleanup, and records completion through `bgjob/implement-step5-review.result.env`. Normal completion and explicit abort cleanup still own full process teardown.
@@ -102,6 +108,7 @@ Flags modify behavior across the skill hierarchy:
 
 | Flag | Available on | Effect |
 |---|---|---|
+| `-s`, `--vote-stalemates` | `/debate` | Sends unresolved positions to the anonymized voter panel and never asks the operator. |
 | `--no-issue` | `/research` | Skips the Step 3.5 auto-archive that files the full report as a GitHub issue. Default off (issue is filed). |
 
 ## Conditional Steps
@@ -111,6 +118,7 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 - **CI monitoring** — Requires repository identification. When unavailable, CI monitoring is skipped.
 - **Version bump / release notes** — Not part of `/implement` after Phase 1 (#3364). Use the `/release` skill (Phase 3) when the repo defines versioning; legacy `/release` under `.claude/skills/` remains available for manual or release-driven bumps but is not invoked from the `/implement` ship path.
 - **External reviewers (Cursor, Codex)**: Voter, coder, and `/research` research/validation lanes still use waterfall or Claude backfill where documented in [agents.md](agents.md), [review-agents.md](review-agents.md). In `/review`, `/implement` Step 5, and `/design` plan-review **reviewer** panels dispatch with `--no-fallback`: missing or failed vendor rows drop instead of cross-vendor or Claude reviewer backfill; round 2 prunes on round-1 productivity and may converge prune-to-empty under the fixed cap of 2. Code-review voters are separate: when both external tools are unavailable, the code-review voter panel falls back to a single Claude floor voter rather than keeping its three-voter shape (see [review-agents.md](review-agents.md)).
+- **Debate panel**: `/debate` is fixed to Cursor, Codex, and Claude. One unavailable external seat proceeds; two unavailable externals fail before title mutation. Runtime drops abort when fewer than two seats survive.
 
 ## Run-log lifecycle
 

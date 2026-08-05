@@ -74,7 +74,7 @@ sessions_root() {
 activation_is_live() {
   local token="$1"
   case "$token" in
-    research|bug|triage|umbrella) ;;
+    research|bug|debate|triage|umbrella) ;;
     *) return 1 ;;
   esac
 

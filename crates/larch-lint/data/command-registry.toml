@@ -1546,6 +1546,30 @@ planning_issue = 8043
 
 [[commands]]
 domain = "debate"
+verb = "adjudication-preview"
+python_module = "larch.debate.orchestrator"
+python_function = "adjudication_preview_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8032
+
+[[commands]]
+domain = "debate"
+verb = "comment-verify"
+python_module = "larch.debate.publication"
+python_function = "comment_verify_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8032
+
+[[commands]]
+domain = "debate"
 verb = "init"
 python_module = "larch.debate.orchestrator"
 python_function = "init_main"
@@ -1555,6 +1579,30 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "issue-prepare"
+python_module = "larch.debate.publication"
+python_function = "issue_prepare_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8032
+
+[[commands]]
+domain = "debate"
+verb = "proposal-link"
+python_module = "larch.debate.publication"
+python_function = "proposal_link_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8032
 
 [[commands]]
 domain = "debate"
@@ -1603,6 +1651,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 8043
+
+[[commands]]
+domain = "debate"
+verb = "title-transition"
+python_module = "larch.debate.publication"
+python_function = "title_transition_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8032
 
 [[commands]]
 domain = "decompose"
@@ -8793,6 +8853,12 @@ path = "skills/combine-issues/SKILL.md"
 kind = "skill"
 python = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "issue add-blocked-by"]
 rust = ["gh resolve-repo"]
+
+[[callers]]
+path = "skills/debate/SKILL.md"
+kind = "skill"
+python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
+rust = []
 
 [[callers]]
 path = "skills/deps/SKILL.md"

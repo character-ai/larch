@@ -845,6 +845,11 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
     assert "larch:combined-away source=#2 target=#99" in close_calls[0][7]
 
 
+def test_debate_lifecycle_titles_are_busy() -> None:
+    assert combine_issues._BUSY_RE.match("[DEBATING] active")  # pyright: ignore[reportPrivateUsage]
+    assert combine_issues._BUSY_RE.match("[DEBATED] complete")  # pyright: ignore[reportPrivateUsage]
+
+
 def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     class CloseSourcesFailRunner:
         def run(self, argv, **_kwargs):

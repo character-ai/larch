@@ -10,6 +10,8 @@ from larch.issue import title_match
     [
         ("[PLANNED] [DONE] Work", "[PLANNED] ", "[DONE] Work"),
         ("[DONE] Work", "[DONE] ", "Work"),
+        ("[DEBATING] Work", "[DEBATING] ", "Work"),
+        ("[DEBATED] Work", "[DEBATED] ", "Work"),
         ("[done] Work", "", "[done] Work"),
         ("Work", "", "Work"),
     ],
@@ -45,3 +47,8 @@ def test_leading_square_bracket_prefix(title: str, expected: str) -> None:
 )
 def test_insert_tag_after_bug_prefix(title: str, expected: str) -> None:
     assert title_match.insert_tag_after_bug_prefix(title, "[TRIAGED]") == expected
+
+
+def test_bug_match_strips_debate_lifecycle_prefixes() -> None:
+    assert title_match.bug_title_match("[DEBATING] [BUG] active")
+    assert title_match.bug_title_match("[DEBATED] [BUG] complete")

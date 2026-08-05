@@ -1,6 +1,7 @@
 """Focused durable-state coverage for the debate orchestration boundary."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import stat
@@ -55,6 +56,7 @@ def _initialize(root: Path) -> ProposalState:
         restore_issue_number="1",
         restore_original_title="old",
         restore_title="new",
+        subject="# Subject\n\nChoose a safe implementation.",
         bootstrapper=_fake_bootstrapper,
     )
 
@@ -105,6 +107,11 @@ def test_canonical_state_and_turn_progression(tmp_path: Path) -> None:
     payload = json.loads((tmp_path / "debate-state.json").read_text(encoding="utf-8"))
     assert payload["fingerprint"] == state.fingerprint
     state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+    prompt_path = tmp_path / config.DEBATE_TURN_PROMPT_FILENAME_TEMPLATE.format(
+        slot="cursor", round_number=1
+    )
+    assert prompt_path.is_file()
+    assert "<debate-subject-base64>" in prompt_path.read_text(encoding="utf-8")
 
     def runner(request: TurnRequest) -> TurnResult:
         output = request.output
@@ -117,6 +124,107 @@ def test_canonical_state_and_turn_progression(tmp_path: Path) -> None:
     state, error = record_turn(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1, slot="codex", runner=runner)
     assert error == ""
     assert state.proposal.terminal_outcome is protocol.TerminalOutcome.CONVERGED
+
+
+def test_subject_is_bound_into_first_turn_and_synthesis_inputs(tmp_path: Path) -> None:
+    state = _initialize(tmp_path)
+    encoded = state.initialization.run_local_values[config.DEBATE_SUBJECT_VALUE_KEY]
+    assert base64.b64decode(encoded).decode() == "# Subject\n\nChoose a safe implementation."
+    slot = next(item for item in state.initialization.slots if item.slot == "cursor")
+    assert encoded not in orchestrator.bootstrap_prompt(slot, state.initialization)
+    first_prompt = turn_prompt(
+        slot="cursor",
+        round_number=1,
+        point_universe=(1,),
+        mailbox=(),
+        run_local_values=state.initialization.run_local_values,
+    )
+    second_prompt = turn_prompt(
+        slot="cursor",
+        round_number=2,
+        point_universe=(1,),
+        mailbox=(),
+        run_local_values=state.initialization.run_local_values,
+    )
+    assert encoded in first_prompt
+    assert encoded not in second_prompt
+    synthesis = json.loads(orchestrator._synthesis_input(state))  # pyright: ignore[reportPrivateUsage]  # verifies the persisted subject reaches the synthesis boundary
+    assert synthesis["subject"] == "# Subject\n\nChoose a safe implementation."
+
+
+def test_cli_ingests_claude_ledger_from_a_bounded_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = initialize(
+        root=tmp_path,
+        expected_fingerprint="ABSENT",
+        repo_workdir=str(Path.cwd()),
+        log_root=str(tmp_path / "logs"),
+        run_id="test-run",
+        point_universe=(protocol.PointId(1),),
+        run_local_values={},
+        cursor_present=True,
+        codex_present=True,
+        claude_present=True,
+        restore_issue_number="1",
+        restore_original_title="old",
+        restore_title="new",
+        subject="Choose one approach.",
+        bootstrapper=_fake_bootstrapper,
+    )
+    state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+
+    def runner(request: TurnRequest) -> TurnResult:
+        _ = request.output.write_text("POINT POINT_1 HOLD keep evaluating", encoding="utf-8")
+        return TurnResult(ok=True, output=request.output)
+
+    for slot in ("cursor", "codex"):
+        state, error = record_turn(
+            root=tmp_path,
+            expected_fingerprint=state.fingerprint,
+            round_number=1,
+            slot=slot,
+            runner=runner,
+        )
+        assert error == ""
+    supplied = tmp_path / "claude-round-1.input"
+    _ = supplied.write_text("POINT POINT_1 AGREE keep evaluating", encoding="utf-8")
+
+    assert orchestrator.record_turn_main(
+        [
+            "--debate-tmpdir",
+            str(tmp_path),
+            "--expected-fingerprint",
+            state.fingerprint,
+            "--round",
+            "1",
+            "--slot",
+            "claude",
+            "--input-file",
+            str(supplied),
+        ]
+    ) == 0
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope["ok"] is True
+    assert orchestrator.load_state(tmp_path).active_round is None
+
+
+def test_non_utf8_turn_output_becomes_a_protocol_drop(tmp_path: Path) -> None:
+    state = _initialize(tmp_path)
+    state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+
+    def runner(request: TurnRequest) -> TurnResult:
+        _ = request.output.write_bytes(b"\xff")
+        return TurnResult(ok=True, output=request.output)
+
+    state, error = record_turn(
+        root=tmp_path,
+        expected_fingerprint=state.fingerprint,
+        round_number=1,
+        slot="cursor",
+        runner=runner,
+    )
+
+    assert error == config.DEBATE_DROP_PROTOCOL_REJECTION
+    assert state.proposal.terminal_outcome is protocol.TerminalOutcome.ABORTED
 
 
 def test_stale_mutation_does_not_change_state(tmp_path: Path) -> None:
@@ -213,6 +321,29 @@ def test_default_bootstrapper_fails_closed_without_a_handle(tmp_path: Path, monk
     assert excinfo.value.exit_code == config.DEBATE_EXIT_RUNNER_FAILURE
 
 
+def test_default_bootstrapper_applies_the_codex_debate_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    handle = VendorSessionHandle.create(vendor="codex", session_id=_CODEX_SESSION_ID)
+    fake = _FakeRun(handle=handle)
+    monkeypatch.setattr(_run_external, "run_external_agent", fake)
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    context = InitializationContext((1,), {}, str(tmp_path), str(logs), "run", (), orchestrator.RestoreMetadata("1", "a", "b"))
+
+    _ = default_bootstrapper(
+        ParticipantSlot(
+            "codex",
+            "codex",
+            "subprocess",
+            available=True,
+            model=config.DEBATE_CODEX_MODEL,
+        ),
+        context,
+    )
+
+    argv = _argv(fake.calls[0])
+    assert argv[argv.index("-m") + 1] == config.DEBATE_CODEX_MODEL
+
+
 def test_default_runner_rejects_claude_before_any_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRun()
     monkeypatch.setattr(_run_external, "run_external_agent", fake)
@@ -229,7 +360,16 @@ def test_default_runner_resumes_codex_with_the_explicit_handle(tmp_path: Path, m
     fake = _FakeRun(output_text="POINT POINT_1 AGREE agreed")
     monkeypatch.setattr(_run_external, "run_external_agent", fake)
     handle = VendorSessionHandle.create(vendor="codex", session_id=_CODEX_SESSION_ID)
-    request = TurnRequest("codex", 1, "prompt", (), tmp_path, tmp_path / "out.txt", handle)
+    request = TurnRequest(
+        "codex",
+        1,
+        "prompt",
+        (),
+        tmp_path,
+        tmp_path / "out.txt",
+        handle,
+        config.DEBATE_CODEX_MODEL,
+    )
 
     result = orchestrator._default_runner(request)  # pyright: ignore[reportPrivateUsage]
 
@@ -238,6 +378,7 @@ def test_default_runner_resumes_codex_with_the_explicit_handle(tmp_path: Path, m
     assert argv[:4] == ["codex", "exec", "resume", _CODEX_SESSION_ID]
     assert "--last" not in argv
     assert 'sandbox_mode="read-only"' in argv
+    assert argv[argv.index("-m") + 1] == config.DEBATE_CODEX_MODEL
 
 
 def test_default_runner_extracts_the_cursor_result_field(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,7 +386,16 @@ def test_default_runner_extracts_the_cursor_result_field(tmp_path: Path, monkeyp
     fake = _FakeRun(output_text=envelope)
     monkeypatch.setattr(_run_external, "run_external_agent", fake)
     handle = VendorSessionHandle.create(vendor="cursor", session_id=_CURSOR_CHAT_ID)
-    request = TurnRequest("cursor", 1, "prompt", (), tmp_path, tmp_path / "out.txt", handle)
+    request = TurnRequest(
+        "cursor",
+        1,
+        "prompt",
+        (),
+        tmp_path,
+        tmp_path / "out.txt",
+        handle,
+        config.DEBATE_CURSOR_MODEL,
+    )
 
     result = orchestrator._default_runner(request)  # pyright: ignore[reportPrivateUsage]
 
@@ -254,6 +404,7 @@ def test_default_runner_extracts_the_cursor_result_field(tmp_path: Path, monkeyp
     argv = _argv(fake.calls[0])
     assert argv[:5] == ["cursor", "agent", "-p", "--resume", _CURSOR_CHAT_ID]
     assert "plan" in argv
+    assert argv[argv.index("--model") + 1] == config.DEBATE_CURSOR_MODEL
 
 
 def test_default_runner_rejects_a_malformed_cursor_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,6 +424,13 @@ def test_turn_prompt_round_one_mailbox_is_an_empty_array() -> None:
     assert "mailbox: []" in prompt
     assert f"debate-protocol-version: {protocol.PROTOCOL_VERSION}" in prompt
     assert "POINT_1 POINT_2" in prompt
+    assert "Independently inspect read-only repository evidence" in prompt
+    assert "CONCEDE changes position and cites POINT POINT_N" in prompt
+
+
+def test_turn_prompt_round_two_requires_mailbox_negotiation() -> None:
+    prompt = turn_prompt(slot="codex", round_number=2, point_universe=(1,), mailbox=())
+    assert "Use the validated mailbox delta to negotiate" in prompt
 
 
 def test_state_lock_refuses_a_non_regular_lock_path(tmp_path: Path) -> None:
@@ -512,6 +670,17 @@ def test_synthesis_rejects_plan_grammar_and_remains_retriable(
     assert attempts == 2
 
 
+@pytest.mark.parametrize("title", ["--force", "[PROPOSAL] --force", "[proposal] --force"])
+def test_synthesis_rejects_an_option_shaped_proposal_title(title: str) -> None:
+    with pytest.raises(DebateError, match="invalid title"):
+        _ = orchestrator._proposal_parts(f"# {title}\n\nSafe body")  # pyright: ignore[reportPrivateUsage]  # /issue receives the title as a positional argument
+
+
+def test_synthesis_normalizes_a_case_variant_proposal_prefix() -> None:
+    title, body = orchestrator._proposal_parts("# [proposal] Safe queue\n\nUse bounds.")  # pyright: ignore[reportPrivateUsage]  # validates the canonical title passed to /issue
+    assert (title, body) == ("Safe queue", "Use bounds.")
+
+
 def test_synthesis_waterfall_exhaustion_is_retriable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -593,6 +762,17 @@ def test_new_debate_verbs_emit_machine_envelopes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     state = _drive_stalemate(tmp_path)
+    assert orchestrator.adjudication_preview_main(
+        ["--debate-tmpdir", str(tmp_path), "--expected-fingerprint", state.fingerprint]
+    ) == 0
+    preview_envelope = json.loads(capsys.readouterr().out)
+    assert preview_envelope["operation"] == "adjudication-preview"
+    preview = json.loads(Path(preview_envelope["artifact_path"]).read_text(encoding="utf-8"))
+    assert preview["points"][0]["point"] == "POINT_1"
+    assert preview["points"][0]["positions"] == [
+        "adopt approach cursor",
+        "adopt approach codex",
+    ]
     decisions = tmp_path / "decisions.tsv"
     _ = decisions.write_text("POINT_1\tSELECTED\tadopt approach cursor\n", encoding="utf-8")
 
