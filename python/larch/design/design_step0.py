@@ -842,7 +842,8 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
     if run_id and repo_root is not None:
         _ = progress_file.deactivate_run(repo_root, run_id)
-    cleanup_rc = subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
+    cleanup_cmd = [str(repo_roots.larch_entrypoint(plugin_root)), "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)]
+    cleanup_rc = subprocess.run(cleanup_cmd, check=False).returncode
     if cleanup_rc != 0:
         return cleanup_rc
     try:

@@ -260,6 +260,40 @@ pub enum OpenFileHolderStatus {
     Unverifiable,
 }
 
+/// Read the command name of one process identifier for an audit record.
+///
+/// Whitespace runs collapse to `_` so the name stays one field in a
+/// space-separated record. Returns `None` when the probe fails or the process is
+/// gone, which callers render as the unknown marker rather than failing.
+pub async fn probe_process_command_name<R: ExternalProcessRunner>(
+    runner: &R,
+    process_id: u32,
+    working_directory: &Path,
+    cancellation: &dyn ProcessCancellation,
+) -> Option<String> {
+    let request = ProcessRequest::new(
+        ExternalProgram::HostUtility(HostUtilityProgram::Ps),
+        [
+            OsString::from("-o"),
+            OsString::from("comm="),
+            OsString::from("-p"),
+            OsString::from(process_id.to_string()),
+        ],
+        working_directory.to_path_buf(),
+        Duration::from_secs(3),
+        Duration::from_secs(1),
+        NonZeroUsize::new(16 * 1024).unwrap_or(NonZeroUsize::MIN),
+    )
+    .ok()?;
+    let output = runner.run(request, cancellation).await.ok()?;
+    let name = std::str::from_utf8(output.stdout())
+        .ok()?
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_");
+    (!name.is_empty()).then_some(name)
+}
+
 /// Determine whether another process has one absolute file path open.
 pub async fn probe_open_file_holder<R: ExternalProcessRunner>(
     runner: &R,

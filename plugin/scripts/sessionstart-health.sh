@@ -197,8 +197,8 @@ if [[ -n "$HOOK_CWD" ]]; then
         unset LARCH_TOKEN_SESSION_ID || true
     fi
     IMPLEMENT_TMPDIR=""
-    if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then
-        IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+    if implement_session_dir_exists; then
+        IMPLEMENT_TMPDIR=$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
     fi
     if [[ -n "$IMPLEMENT_TMPDIR" ]]; then
         if [[ ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then

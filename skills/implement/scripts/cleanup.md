@@ -1,6 +1,6 @@
 # cleanup.sh
 
-Thin Step 19 wrapper around `python/cli.py session cleanup-tmpdir`.
+Thin Step 19 wrapper around `scripts/larch.sh session cleanup-tmpdir`.
 
 Usage:
 

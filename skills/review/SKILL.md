@@ -123,4 +123,4 @@ Transcript capture remains separate from `review log-phase`: with a valid run ID
 <!-- step:5 — Cleanup -->
 ## Step 5 — Cleanup
 
-Print `> **🔶 /review 5: cleanup**`. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir "$REVIEW_TMPDIR"` unless a parent owns the tmpdir, then emit the final nested-mode machine footer.
+Print `> **🔶 /review 5: cleanup**`. Run `CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir "$REVIEW_TMPDIR"` unless a parent owns the tmpdir, then emit the final nested-mode machine footer.

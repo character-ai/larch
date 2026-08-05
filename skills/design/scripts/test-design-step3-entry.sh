@@ -7,6 +7,40 @@ ENTRY="$ROOT/skills/design/scripts/design-step3-entry.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
+# The wrappers reach the Rust session verbs through the verified bootstrap,
+# which refuses to install inside a source checkout. Supply a version-matched
+# fake so the harness stays offline; the verbs themselves are pinned by the
+# Rust unit tests and the session-lifecycle parity goldens.
+FAKE_BIN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/test-step3-entry-bin.XXXXXX")"
+FAKE_BIN_DIR="$(cd "$FAKE_BIN_DIR" && pwd -P)"
+trap 'rm -rf "$FAKE_BIN_DIR"' EXIT
+BASH_BIN="$(command -v bash)"
+PLUGIN_VERSION="$(awk -F '"' '$2 == "version" { print $4 }' "$ROOT/.claude-plugin/plugin.json")"
+case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) LARCH_TARGET=aarch64-apple-darwin ;;
+    Darwin:x86_64|Darwin:amd64) LARCH_TARGET=x86_64-apple-darwin ;;
+    Linux:arm64|Linux:aarch64) LARCH_TARGET=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64|Linux:amd64) LARCH_TARGET=x86_64-unknown-linux-gnu ;;
+    *) echo "FAIL: unsupported harness target" >&2; exit 1 ;;
+esac
+export LARCH_BINARY="$FAKE_BIN_DIR/larch-fixture"
+cat >"$LARCH_BINARY" <<EOF_LARCH
+#!$BASH_BIN
+set -u
+if [[ "\${1:-}" == --version ]]; then printf '%s\n' 'larch $PLUGIN_VERSION'; exit 0; fi
+if [[ "\${1:-}" == bootstrap && "\${2:-}" == self-check ]]; then
+    printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+    exit 0
+fi
+if [[ "\${1:-}" == session ]]; then
+    case "\${2:-}" in
+        require-plugin-root|validate-design-tmpdir) exit 0 ;;
+    esac
+fi
+exit 2
+EOF_LARCH
+chmod +x "$LARCH_BINARY"
+
 prepare_entry_tmpdir() {
   local d="$1"
   printf 'plan body\n' >"$d/plan.txt"

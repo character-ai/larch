@@ -21,6 +21,18 @@ mkdir -p "$PLUGIN/python" "$PLUGIN/skills/design/scripts"
 ln -s "$ROOT/python/larch" "$PLUGIN/python/larch"
 cp "$SUBJECT" "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
 chmod +x "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
+# The wrappers reach the Rust session verbs through the verified bootstrap.
+mkdir -p "$PLUGIN/scripts"
+cat >"$PLUGIN/scripts/larch.sh" <<'LARCH_STUB'
+#!/usr/bin/env bash
+set -uo pipefail
+case "${1:-} ${2:-}" in
+  "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+esac
+printf '%s\n' "unexpected larch command: $*" >&2
+exit 64
+LARCH_STUB
+chmod +x "$PLUGIN/scripts/larch.sh"
 cat >"$PLUGIN/python/cli.py" <<'PY'
 #!/usr/bin/env python3
 from __future__ import annotations

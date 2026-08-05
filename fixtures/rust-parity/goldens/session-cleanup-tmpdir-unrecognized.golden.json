@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session cleanup-tmpdir [--dir DIR] [pos]\nsession cleanup-tmpdir: error: unrecognized arguments: --bogus\nUsage: cleanup-tmpdir.sh --dir <path>\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -99,7 +99,9 @@ pub use retry::{
     RetryPolicy, RetryPolicyError, StopReason,
 };
 pub use session_state::{
-    allowed_session_roots, cleanup_cache_sessions_root, implement_session_roots,
+    IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, IMPLEMENT_TMPDIR_TTL_SECONDS,
+    allowed_session_roots, cleanup_cache_sessions_root, design_tmpdir_syntax_error,
+    implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};

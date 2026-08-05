@@ -34,7 +34,7 @@ done
 
 [ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
 
-if python3 "$PLUGIN_ROOT/python/cli.py" session cleanup-tmpdir --dir "$IMPLEMENT_TMPDIR"; then
+if CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" session cleanup-tmpdir --dir "$IMPLEMENT_TMPDIR"; then
     emit_kv CLEANED true
     exit 0
 else

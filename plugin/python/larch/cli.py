@@ -771,19 +771,14 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("session", "write-env"): ("larch.state.session_env", "write_env_main", False),
     ("session", "write-design-env"): ("larch.state.session_env", "write_design_env_main", False),
     ("session", "check-live-mutation-auth"): ("larch.state.session_env", "check_live_mutation_auth_main", False),
-    ("session", "validate-design-tmpdir"): ("larch.state.session_env", "validate_design_tmpdir_main", False),
-    ("session", "require-plugin-root"): ("larch.state.session_env", "require_plugin_root_main", False),
     ("session", "resolve-trusted-design-env"): ("larch.state.session_env", "resolve_trusted_design_env_main", False),
     ("session", "write-implement-env"): ("larch.state.session_env", "write_implement_env_main", False),
     ("session", "clear-implement-pointer"): ("larch.state.session_env", "clear_implement_pointer_main", False),
     ("session", "write-run-params"): ("larch.state.session_env", "write_run_params_main", False),
-    ("session", "write-id"): ("larch.state.session_env", "write_id_main", False),
     ("session", "persist-run-flags"): ("larch.state.session_env", "persist_run_flags_main", False),
     ("session", "restore-finalize-state"): ("larch.state.session_env", "restore_finalize_state_main", False),
-    ("session", "cleanup-tmpdir"): ("larch.state.session_env", "cleanup_tmpdir_main", False),
     ("session", "local-cleanup"): ("larch.state.session_env", "local_cleanup_main", False),
     ("session", "entry-gate"): ("larch.state.session_env", "entry_gate_main", False),
-    ("session", "resolve-implement-tmpdir"): ("larch.state.session_env", "resolve_implement_tmpdir_main", True),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

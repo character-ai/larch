@@ -32,7 +32,8 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   printf '%s\n' "/design Step 3 entry: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-python3 "$SCRIPT_DIR/../../../python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+_step3_entry_plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+CLAUDE_PLUGIN_ROOT="$_step3_entry_plugin_root" "$_step3_entry_plugin_root/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 if [ "$REENTRY" = true ]; then
   : > "$DESIGN_TMPDIR/.step3-reentry"

@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/claude-implement-alpha/.larch-keepalive": {
+      "text": "CLONE_PATH=/clone/for/parity\nSESSION_ID=S1\n"
+    },
+    ".home/.cache/larch/sessions/claude-implement-alpha/design-export/manifest.env": {
+      "text": "MANIFEST=1\n"
+    },
+    ".home/.cache/larch/sessions/claude-implement-beta/.larch-keepalive": {
+      "text": "CLONE_PATH=/clone/for/parity\nSESSION_ID=S2\n"
+    },
+    ".home/.cache/larch/sessions/claude-implement-beta/review-round-summary.md": {
+      "text": "# round\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "<SANDBOX>/.home/.cache/larch/sessions/claude-implement-alpha"
+  }
+}

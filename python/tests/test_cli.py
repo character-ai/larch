@@ -97,11 +97,11 @@ def test_dispatch_report_tokens_analyze() -> None:
     assert rc == 0
 
 
-def test_dispatch_session_resolve_implement_tmpdir() -> None:
+def test_dispatch_session_entry_gate() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.state.session_env": MagicMock(resolve_implement_tmpdir_main=mock_main)}):
-        rc = cli.main(["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"])
-    mock_main.assert_called_once_with(["--cwd", "/tmp/repo"])
+    with patch.dict("sys.modules", {"larch.state.session_env": MagicMock(entry_gate_main=mock_main)}):
+        rc = cli.main(["session", "entry-gate", "--mode", "design"])
+    mock_main.assert_called_once_with(["--mode", "design"])
     assert rc == 0
 
 
@@ -315,11 +315,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     cases = [
         (["dirty-tree", "checkpoint"], "larch.state.dirty_tree", "checkpoint_main"),
         (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
-        (
-            ["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"],
-            "larch.state.session_env",
-            "resolve_implement_tmpdir_main",
-        ),
         (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
         (
             ["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"],

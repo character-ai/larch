@@ -6001,9 +6001,9 @@ def test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_be
         order.append("require")
         return 0
 
-    def fake_cleanup(argv: list[str]) -> int:
+    def fake_cleanup(design_tmpdir: Path) -> int:
         assert order == ["validate", "require"]
-        assert argv == ["--dir", str(design)]
+        assert design_tmpdir == design
         assert (design / ".completed" / "step-6").is_file()
         order.append("cleanup")
         return 0
@@ -6015,7 +6015,7 @@ def test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_be
 
     monkeypatch.setattr(design_step6, "_validate_design_tmpdir_arg", fake_validate)
     monkeypatch.setattr(design_step6, "_design_require_plugin_root", fake_require)
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+    monkeypatch.setattr(design_step6, "_remove_design_tmpdir", fake_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
     assert design_step6.step6_cleanup_core(_step6_args(env_path)) == 0
@@ -6032,6 +6032,12 @@ def test_step6_cleanup_reaps_pid_residuals_after_success(
     design, env_path = _step6_design(tmp_path, monkeypatch)
     _write_step5c_status(design)
     residuals = _write_pid_residuals(home, target=design / "source-env.sh")
+
+    def local_cleanup(design_tmpdir: Path) -> int:
+        shutil.rmtree(design_tmpdir)
+        return 0
+
+    monkeypatch.setattr(design_step6, "_remove_design_tmpdir", local_cleanup)
 
     assert design_step6.step6_cleanup_core(_step6_args(env_path)) == 0
     assert not design.exists()
@@ -6060,13 +6066,13 @@ def test_step6_cleanup_does_not_reap_when_tmpdir_cleanup_fails(
     design, env_path = _step6_design(tmp_path, monkeypatch)
     _write_step5c_status(design)
 
-    def fail_cleanup(_argv: list[str]) -> int:
+    def fail_cleanup(_design_tmpdir: Path) -> int:
         return 1
 
     def fail_reap(_claude_pid: str) -> None:
         raise AssertionError("failed tmpdir cleanup must not reap PID residuals")
 
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
+    monkeypatch.setattr(design_step6, "_remove_design_tmpdir", fail_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
     assert design_step6.step6_cleanup_core(_step6_args(env_path)) == 1
 
@@ -6079,13 +6085,13 @@ def test_step6_cleanup_rejects_invalid_claude_pid_before_touch_or_cleanup(
     design, env_path = _step6_design(tmp_path, monkeypatch)
     _write_step5c_status(design)
 
-    def fail_cleanup(_argv: list[str]) -> int:
+    def fail_cleanup(_design_tmpdir: Path) -> int:
         raise AssertionError("cleanup must not run after invalid --claude-pid")
 
     def fail_reap(_claude_pid: str) -> None:
         raise AssertionError("reap must not run after invalid --claude-pid")
 
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
+    monkeypatch.setattr(design_step6, "_remove_design_tmpdir", fail_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
 
     rc = design_step6.step6_cleanup_core(["--session-env-path", str(env_path), "--claude-pid", "bogus"])
@@ -6982,14 +6988,14 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
         deactivate_calls.append((_repo_root, run_id))
         return True
 
-    def fake_cleanup(_argv: list[str]) -> int:
+    def fake_cleanup(_design_tmpdir: Path) -> int:
         return 0
 
     def fake_reap(_pid: str) -> None:
         pass
 
     monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)  # lint-monkeypatch-binding: ok direct-from-import-binding-in-design_step6
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+    monkeypatch.setattr(design_step6, "_remove_design_tmpdir", fake_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
     rc = design_step6.step6_cleanup_core(_step6_args(env_path))

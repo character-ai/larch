@@ -65,7 +65,7 @@ if [[ -t 0 ]]; then
     abort)
       echo "**⚠ /research: aborted by operator at Step 1.1.c.**"
       rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"
-      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+      CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
       exit 0
       ;;
     edit)
@@ -92,14 +92,14 @@ if [[ -t 0 ]]; then
         REASON=$(printf '%s\n' "$VALIDATOR_OUT" | sed -n 's/^REASON=//p' | head -1)
         echo "**⚠ /research: edited subquestions failed validation (REASON=$REASON). Aborting.**"
         rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"
-        python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+        CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
         exit 0
       fi
       ;;
     *)
       echo "**⚠ /research: invalid choice '$CHOICE' (expected Enter, edit, or abort). Aborting.**"
       rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"
-      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+      CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
       exit 1
       ;;
   esac

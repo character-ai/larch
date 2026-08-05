@@ -77,7 +77,7 @@ case "${_cpr_cli_root}" in
         ;;
 esac
 export CLAUDE_PLUGIN_ROOT
-python3 "$_cpr_cli_root/python/cli.py" session require-plugin-root || exit $?
+CLAUDE_PLUGIN_ROOT="$_cpr_cli_root" "$_cpr_cli_root/scripts/larch.sh" session require-plugin-root || exit $?
 
 if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
     # shellcheck source=/dev/null
@@ -99,7 +99,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
     exit 1
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 larch_quiet_init
 
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then

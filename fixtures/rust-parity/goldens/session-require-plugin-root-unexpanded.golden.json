@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${CLAUDE_PLUGIN_ROOT}; abort\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
