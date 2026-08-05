@@ -137,7 +137,11 @@ pub fn build_vendor_registry(
     Ok(registry)
 }
 
-fn built_in(key: &'static str, program: VendorProgram, profiles: &[&'static str]) -> VendorDescriptor {
+fn built_in(
+    key: &'static str,
+    program: VendorProgram,
+    profiles: &[&'static str],
+) -> VendorDescriptor {
     validate_descriptor(VendorDescriptor::new(
         key,
         program,
@@ -149,9 +153,8 @@ fn built_in(key: &'static str, program: VendorProgram, profiles: &[&'static str]
 }
 
 /// Codex family descriptor.
-pub static CODEX_DESCRIPTOR: std::sync::LazyLock<VendorDescriptor> = std::sync::LazyLock::new(|| {
-    built_in("codex", VendorProgram::Codex, CODEX_PROFILES)
-});
+pub static CODEX_DESCRIPTOR: std::sync::LazyLock<VendorDescriptor> =
+    std::sync::LazyLock::new(|| built_in("codex", VendorProgram::Codex, CODEX_PROFILES));
 
 /// Cursor family descriptor.
 pub static CURSOR_DESCRIPTOR: std::sync::LazyLock<VendorDescriptor> =

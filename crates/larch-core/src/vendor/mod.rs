@@ -23,8 +23,9 @@ pub use session::{
     VendorSessionError, VendorSessionErrorKind, VendorSessionHandle, VendorSessionVendor,
 };
 pub use types::{
-    CAP_HIT_PAYLOAD, VendorCapCheckResult, VendorDescriptor, VendorFamilyHooks, VendorLaunchOutcome,
-    VendorLaunchRequest, VendorLaunchStatus, VendorParsedResult, VendorProcessResult,
+    CAP_HIT_PAYLOAD, VendorCapCheckResult, VendorDescriptor, VendorFamilyHooks,
+    VendorLaunchOutcome, VendorLaunchRequest, VendorLaunchStatus, VendorParsedResult,
+    VendorProcessResult,
 };
 
 #[cfg(test)]

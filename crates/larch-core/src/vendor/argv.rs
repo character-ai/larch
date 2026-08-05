@@ -37,10 +37,7 @@ impl VendorArgv {
     /// Build from a closed program and its trailing arguments.
     #[must_use]
     pub const fn new(program: VendorProgram, arguments: Vec<String>) -> Self {
-        Self {
-            program,
-            arguments,
-        }
+        Self { program, arguments }
     }
 
     /// Closed vendor program for the process port.
@@ -223,7 +220,10 @@ pub fn build_codex_resume_argv(
     if handle.vendor() != VendorSessionVendor::Codex {
         return Err(VendorArgvError::new(
             VendorArgvErrorKind::WrongVendor,
-            format!("wrong vendor for codex resume: {}", handle.vendor().as_str()),
+            format!(
+                "wrong vendor for codex resume: {}",
+                handle.vendor().as_str()
+            ),
         ));
     }
     let validated = VendorSessionHandle::create(handle.vendor().as_str(), handle.session_id())

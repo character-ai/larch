@@ -98,9 +98,7 @@ pub enum VendorSessionErrorKind {
 impl fmt::Display for VendorSessionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self.kind {
-            VendorSessionErrorKind::UnsupportedVendor => {
-                "unsupported vendor session handle vendor"
-            }
+            VendorSessionErrorKind::UnsupportedVendor => "unsupported vendor session handle vendor",
             VendorSessionErrorKind::InvalidSessionId => "invalid vendor session id",
         })
     }
@@ -151,9 +149,7 @@ fn session_id_re() -> &'static Regex {
 fn codex_session_uuid_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(
-            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-        )
-        .expect("codex uuid regex")
+        Regex::new(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+            .expect("codex uuid regex")
     })
 }

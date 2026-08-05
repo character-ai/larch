@@ -58,10 +58,7 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             is_error: false,
         };
     };
-    if object
-        .get("is_error")
-        .is_some_and(json_truthy)
-    {
+    if object.get("is_error").is_some_and(json_truthy) {
         return VendorParsedResult {
             status: ClaudeEnvelopeStatus::IsError,
             text: String::new(),

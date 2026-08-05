@@ -135,7 +135,11 @@ fn codex_auth_args_are_explicit_and_byte_exact() {
     let omitted = build_codex_argv("read-only", &codex_request(), CodexEnvAuth::Omit)
         .expect("argv")
         .full_argv();
-    assert!(!omitted.iter().any(|token| token.contains("openai-larch-env")));
+    assert!(
+        !omitted
+            .iter()
+            .any(|token| token.contains("openai-larch-env"))
+    );
     assert_eq!(
         codex_env_auth_from_key(Some("sk-test")),
         CodexEnvAuth::Include
@@ -392,10 +396,7 @@ fn session_create_and_resume_argv_are_byte_exact() {
     );
     let cursor = VendorSessionHandle::create("cursor", "chat-abc123").expect("cursor");
     let mut request = VendorLaunchRequest::new("/repo", "/tmp/out.txt", "continue the debate");
-    request.model_args = vec![
-        "--model".to_owned(),
-        "cursor-grok-4.5-high".to_owned(),
-    ];
+    request.model_args = vec!["--model".to_owned(), "cursor-grok-4.5-high".to_owned()];
     assert_eq!(
         build_cursor_resume_argv(&cursor, &request)
             .expect("resume")
@@ -427,8 +428,7 @@ fn session_create_and_resume_argv_are_byte_exact() {
     );
     let codex = VendorSessionHandle::create("codex", "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0")
         .expect("codex");
-    let mut resume_request =
-        VendorLaunchRequest::new("/repo", "/tmp/out.txt", "resume please");
+    let mut resume_request = VendorLaunchRequest::new("/repo", "/tmp/out.txt", "resume please");
     resume_request.model_args = vec!["-m".to_owned(), "gpt-5.6-sol".to_owned()];
     let resume = build_codex_resume_argv(&codex, &resume_request)
         .expect("resume")
@@ -442,9 +442,21 @@ fn session_create_and_resume_argv_are_byte_exact() {
             "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0"
         ]
     );
-    assert!(!resume.iter().any(|token| token == "--sandbox" || token == "-C"));
-    assert!(resume.iter().any(|token| token == "sandbox_mode=\"read-only\""));
-    assert!(resume.iter().any(|token| token == &trust_config_arg("/repo")));
+    assert!(
+        !resume
+            .iter()
+            .any(|token| token == "--sandbox" || token == "-C")
+    );
+    assert!(
+        resume
+            .iter()
+            .any(|token| token == "sandbox_mode=\"read-only\"")
+    );
+    assert!(
+        resume
+            .iter()
+            .any(|token| token == &trust_config_arg("/repo"))
+    );
     assert_eq!(resume.last().map(String::as_str), Some("resume please"));
 }
 
@@ -530,9 +542,7 @@ fn descriptors_name_vendor_programs_and_reject_invalid_registry() {
         VendorFamilyHooks,
     );
     assert_eq!(
-        build_vendor_registry([missing])
-            .expect_err("caps")
-            .kind(),
+        build_vendor_registry([missing]).expect_err("caps").kind(),
         VendorDescriptorErrorKind::MissingCapabilities
     );
     let empty_profiles = VendorDescriptor::new(
@@ -570,9 +580,21 @@ fn claude_envelope_statuses_match_recorded_fixtures() {
             ClaudeEnvelopeStatus::IsError,
             None,
         ),
-        ("{\"result\":\"\"}\n", ClaudeEnvelopeStatus::EmptyResult, None),
-        ("{\"is_error\":false}\n", ClaudeEnvelopeStatus::MissingResult, None),
-        ("{\"result\":42}\n", ClaudeEnvelopeStatus::NonStringResult, None),
+        (
+            "{\"result\":\"\"}\n",
+            ClaudeEnvelopeStatus::EmptyResult,
+            None,
+        ),
+        (
+            "{\"is_error\":false}\n",
+            ClaudeEnvelopeStatus::MissingResult,
+            None,
+        ),
+        (
+            "{\"result\":42}\n",
+            ClaudeEnvelopeStatus::NonStringResult,
+            None,
+        ),
         ("{not-json\n", ClaudeEnvelopeStatus::MalformedJson, None),
         ("[\"result\"]\n", ClaudeEnvelopeStatus::NonObject, None),
     ];

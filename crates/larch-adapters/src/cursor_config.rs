@@ -73,14 +73,14 @@ impl CursorConfigContext {
 /// # Errors
 /// Propagates temporary-root resolution and context creation failures.
 #[cfg(test)]
-fn create_for_tests(home: &Path) -> Result<(tempfile::TempDir, CursorConfigContext), std::io::Error> {
+fn create_for_tests(
+    home: &Path,
+) -> Result<(tempfile::TempDir, CursorConfigContext), std::io::Error> {
     let temp = tempfile::tempdir()?;
-    let root = TemporaryRoot::resolve(Some(temp.path())).map_err(|error| {
-        std::io::Error::other(error.to_string())
-    })?;
-    let context = CursorConfigContext::create(&root, home).map_err(|error| {
-        std::io::Error::other(error.to_string())
-    })?;
+    let root = TemporaryRoot::resolve(Some(temp.path()))
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let context = CursorConfigContext::create(&root, home)
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
     Ok((temp, context))
 }
 
