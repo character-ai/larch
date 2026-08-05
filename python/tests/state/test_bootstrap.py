@@ -111,21 +111,20 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert "/*|*..*)" in text
 
 
-def test_install_statusline_best_effort_relays_notice(monkeypatch, capsys) -> None:
-    calls: list[tuple[Path, Path, bool]] = []
+def test_install_statusline_best_effort_routes_through_the_rust_owner(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
 
-    def fake_install(*, plugin_root: Path, repo_root: Path, notice: bool) -> bootstrap.statusline_install.StatuslineInstallResult:
-        calls.append((plugin_root, repo_root, notice))
-        print("larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)")
-        return bootstrap.statusline_install.StatuslineInstallResult(installed=True)
+    def fake_install(runner, *, plugin_root: str, repo_root: str, notice: bool = False, _cwd=None) -> bool:
+        calls.append({"runner": runner, "plugin_root": plugin_root, "repo_root": repo_root, "notice": notice})
+        return True
 
-    monkeypatch.setattr(bootstrap.statusline_install, "install_statusline", fake_install)
+    monkeypatch.setattr(bootstrap.rust_runtime, "install_statusline", fake_install)
 
     bootstrap._install_statusline_best_effort()  # pyright: ignore[reportPrivateUsage]
 
-    out = capsys.readouterr().out
-    assert "installed progress statusline" in out
-    assert calls[0][2] is True
+    assert calls[0]["notice"] is True
+    assert calls[0]["plugin_root"] == str(bootstrap._REPO_ROOT)  # pyright: ignore[reportPrivateUsage]
+    assert calls[0]["repo_root"] == str(Path.cwd())
 
 
 def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, monkeypatch) -> None:

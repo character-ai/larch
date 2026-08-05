@@ -46,8 +46,13 @@ impl CleanInstallCase {
             "clean-install-session-cleanup-tmpdir" => {
                 &["--dir", "/tmp/larch-clean-install-session-missing"]
             }
-            // The verb rejects every argument, so a clean dispatch carries none.
-            "clean-install-session-require-plugin-root" => &[],
+            // `require-plugin-root` rejects every argument, and the three
+            // progress stdin readers see an empty payload, so all four dispatch
+            // with no arguments at all.
+            "clean-install-session-require-plugin-root"
+            | "clean-install-progress-statusline"
+            | "clean-install-progress-session-reset"
+            | "clean-install-progress-install-statusline" => &[],
             "clean-install-session-resolve-implement-tmpdir" => {
                 &["--cwd", "/larch-clean-install-clone-missing"]
             }
@@ -55,6 +60,24 @@ impl CleanInstallCase {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
             "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
+            "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
+                "--repo-root",
+                "/larch-clean-install-clone-missing",
+                "--run-id",
+                "clean-install",
+            ],
+            "clean-install-progress-clear" => {
+                &["--repo-root", "/larch-clean-install-clone-missing"]
+            }
+            "clean-install-progress-note" => &[
+                "--repo-root",
+                "/larch-clean-install-clone-missing",
+                "--skill",
+                "clean",
+                "--step",
+                "install",
+                "dispatch",
+            ],
             _ => &["--help"],
         }
     }
@@ -224,6 +247,29 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-run-log-validate-run-id",
         "run-log",
         "validate-run-id",
+    ),
+    CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
+    CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
+    CleanInstallCase::new(
+        "clean-install-progress-deactivate",
+        "progress",
+        "deactivate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-progress-install-statusline",
+        "progress",
+        "install-statusline",
+    ),
+    CleanInstallCase::new("clean-install-progress-note", "progress", "note"),
+    CleanInstallCase::new(
+        "clean-install-progress-session-reset",
+        "progress",
+        "session-reset",
+    ),
+    CleanInstallCase::new(
+        "clean-install-progress-statusline",
+        "progress",
+        "statusline",
     ),
     CleanInstallCase::new(
         "clean-install-run-log-storage-preflight",
@@ -750,6 +796,310 @@ const SESSION_LIFECYCLE_CASES: &[SessionLifecycleFixture] = &[
     },
 ];
 
+/// One `progress` verb compared against the frozen Python reference.
+///
+/// Every case pins `--repo-root` to a path that cannot exist, so the clone hash
+/// and therefore every seeded and asserted cache path stay sandbox independent.
+struct ProgressFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    stdin: Option<&'static str>,
+    seeds: &'static [(&'static str, &'static str)],
+    normalization: &'static [NormalizationRule],
+}
+
+impl ProgressFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python)
+            .args(
+                std::iter::once(path_text(fixture))
+                    .chain(std::iter::once(self.command))
+                    .chain(self.arguments.iter().copied()),
+            )
+            .env("LARCH_TEST_CACHE_HOME", PROGRESS_CACHE_HOME);
+        let mut rust_program = Program::new(rust)
+            .args(
+                ["progress", self.command]
+                    .into_iter()
+                    .chain(self.arguments.iter().copied()),
+            )
+            .env("LARCH_TEST_CACHE_HOME", PROGRESS_CACHE_HOME);
+        if let Some(input) = self.stdin {
+            python_program = python_program.stdin(input.as_bytes());
+            rust_program = rust_program.stdin(input.as_bytes());
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: self.normalization.to_vec(),
+        }
+    }
+}
+
+const PROGRESS_CACHE_HOME: &str = "{sandbox}/cache";
+/// A clone path that cannot exist, so its hash is identical in every sandbox.
+const PROGRESS_CLONE: &str = "/larch-parity-clone";
+/// `sha256("/larch-parity-clone")[:16]`, the clone directory both owners derive.
+const PROGRESS_CLONE_DIR: &str = "cache/larch/progress/d8b96cde3cb3f56e";
+const PROGRESS_POINTER: &str = "cache/larch/progress/d8b96cde3cb3f56e/current";
+const PROGRESS_LOG: &str = "cache/larch/progress/d8b96cde3cb3f56e/run-1/breadcrumbs.log";
+const PROGRESS_ACTIVE_SEED: &[(&str, &str)] = &[
+    (PROGRESS_POINTER, "run-1\n"),
+    (PROGRESS_LOG, "[design 1] first\n[implement 5] second\n"),
+];
+const STAMP_ONLY: &[NormalizationRule] = &[NormalizationRule::StatuslineStamp];
+const STARTUP_PAYLOAD: &str =
+    r#"{"workspace": {"current_dir": "/larch-parity-clone"}, "source": "startup"}"#;
+const RESUME_PAYLOAD: &str =
+    r#"{"workspace": {"current_dir": "/larch-parity-clone"}, "source": "resume"}"#;
+const STATUSLINE_PAYLOAD: &str = r#"{"workspace": {"current_dir": "/larch-parity-clone"}}"#;
+
+const PROGRESS_CASES: &[ProgressFixture] = &[
+    ProgressFixture {
+        name: "progress-activate",
+        command: "activate",
+        arguments: &["--repo-root", PROGRESS_CLONE, "--run-id", "run-1"],
+        stdin: None,
+        seeds: &[],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-activate-missing-run-id",
+        command: "activate",
+        arguments: &["--repo-root", PROGRESS_CLONE],
+        stdin: None,
+        seeds: &[],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-activate-reserved-run-id",
+        command: "activate",
+        arguments: &["--repo-root", PROGRESS_CLONE, "--run-id", "current"],
+        stdin: None,
+        seeds: &[],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-note-active-run",
+        command: "note",
+        arguments: &[
+            "--repo-root",
+            PROGRESS_CLONE,
+            "--skill",
+            "implement",
+            "--step",
+            "5",
+            "code",
+            "review",
+            "started",
+        ],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-note-rejects-a-url",
+        command: "note",
+        arguments: &[
+            "--repo-root",
+            PROGRESS_CLONE,
+            "--skill",
+            "implement",
+            "--step",
+            "5",
+            "see",
+            "https://example.invalid/pr",
+        ],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-note-missing-skill",
+        command: "note",
+        arguments: &["--repo-root", PROGRESS_CLONE, "--step", "5", "text"],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-note-explicit-run",
+        command: "note",
+        arguments: &[
+            "--repo-root",
+            PROGRESS_CLONE,
+            "--run-id",
+            "run-2",
+            "--skill",
+            "design",
+            "--step",
+            "3",
+            "other",
+            "run",
+        ],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-note-without-an-active-pointer",
+        command: "note",
+        arguments: &[
+            "--repo-root",
+            PROGRESS_CLONE,
+            "--skill",
+            "design",
+            "--step",
+            "3",
+            "no",
+            "pointer",
+        ],
+        stdin: None,
+        seeds: &[(PROGRESS_LOG, "[design 1] first\n")],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-deactivate-wrong-owner",
+        command: "deactivate",
+        arguments: &["--repo-root", PROGRESS_CLONE, "--run-id", "run-2"],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-deactivate-owner",
+        command: "deactivate",
+        arguments: &["--repo-root", PROGRESS_CLONE, "--run-id", "run-1"],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-clear",
+        command: "clear",
+        arguments: &["--repo-root", PROGRESS_CLONE],
+        stdin: None,
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-clear-without-state",
+        command: "clear",
+        arguments: &["--repo-root", PROGRESS_CLONE],
+        stdin: None,
+        seeds: &[],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-statusline-active",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(STATUSLINE_PAYLOAD),
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: STAMP_ONLY,
+    },
+    ProgressFixture {
+        name: "progress-statusline-torn-log",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(STATUSLINE_PAYLOAD),
+        seeds: &[
+            (PROGRESS_POINTER, "run-1\n"),
+            (
+                PROGRESS_LOG,
+                "[design 1] first\n[implement 5] partial without a newline",
+            ),
+        ],
+        normalization: STAMP_ONLY,
+    },
+    ProgressFixture {
+        name: "progress-statusline-non-breadcrumb-log",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(STATUSLINE_PAYLOAD),
+        seeds: &[
+            (PROGRESS_POINTER, "run-1\n"),
+            (PROGRESS_LOG, "garbage without a marker\n"),
+        ],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-statusline-missing-state",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(STATUSLINE_PAYLOAD),
+        seeds: &[],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-statusline-torn-pointer",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(STATUSLINE_PAYLOAD),
+        seeds: &[
+            (PROGRESS_POINTER, "run"),
+            (PROGRESS_LOG, "[design 1] first\n"),
+        ],
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-statusline-empty-payload",
+        command: "statusline",
+        arguments: &[],
+        stdin: Some(""),
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-session-reset-startup",
+        command: "session-reset",
+        arguments: &[],
+        stdin: Some(STARTUP_PAYLOAD),
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+    ProgressFixture {
+        name: "progress-session-reset-resume",
+        command: "session-reset",
+        arguments: &[],
+        stdin: Some(RESUME_PAYLOAD),
+        seeds: PROGRESS_ACTIVE_SEED,
+        normalization: &[],
+    },
+];
+
+#[test]
+fn progress_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("progress_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in PROGRESS_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
+fn the_parity_clone_hash_is_pinned_to_its_path() {
+    assert!(
+        PROGRESS_CLONE_DIR.ends_with(&larch_core::progress_clone_digest(PROGRESS_CLONE)),
+        "the pinned parity clone directory no longer matches its clone hash"
+    );
+    assert!(!Path::new(PROGRESS_CLONE).exists());
+}
+
 #[test]
 fn session_lifecycle_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
@@ -936,6 +1286,8 @@ fn run_clean_install_case(
         .env("LARCH_BINARY", &fixture.wrapper)
         .env("REAL_LARCH", &fixture.binary)
         .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        // Progress verbs write clone-scoped cache state; confine it to the fixture.
+        .env("LARCH_TEST_CACHE_HOME", &fixture.root)
         .env("CLEAN_INSTALL_FAILURE", failure.unwrap_or_default());
     command.output().expect("run clean-install selector")
 }

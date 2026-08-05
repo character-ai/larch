@@ -552,13 +552,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("clarify", "comment-fetch"): ("larch.design.clarify", "clarify_comment_fetch_main", False),
     ("clarify", "comment-post"): ("larch.design.clarify", "clarify_comment_post_main", False),
     ("clarify", "label"): ("larch.design.clarify", "clarify_label_main", False),
-    ("progress", "statusline"): ("larch.report.statusline", "statusline_main", True),
-    ("progress", "session-reset"): ("larch.report.statusline", "session_reset_main", False),
-    ("progress", "activate"): ("larch.report.progress_file", "progress_activate_main", False),
-    ("progress", "deactivate"): ("larch.report.progress_file", "progress_deactivate_main", False),
-    ("progress", "clear"): ("larch.report.progress_file", "progress_clear_main", False),
-    ("progress", "note"): ("larch.report.progress_file", "progress_note_main", True),
-    ("progress", "install-statusline"): ("larch.report.statusline_install", "install_statusline_main", True),
     ("progress", "render-phase-detail"): ("larch.report.progress_report", "render_phase_detail_main", False),
     ("progress", "write-design-round-meta"): ("larch.report.progress_report", "write_design_round_meta_main", False),
     ("progress", "write-implement-round-meta"): (

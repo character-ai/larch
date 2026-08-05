@@ -26,34 +26,22 @@ else
     fail 'hooks.json must register sessionstart-statusline.sh under SessionStart'
 fi
 
-mkdir -p "$tmp/no-python"
-ln -s /bin/cat "$tmp/no-python/cat"
-ln -s /bin/bash "$tmp/no-python/bash"
-out=$(PATH="$tmp/no-python" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SCRIPT" <<<'{"cwd":"/tmp/repo"}')
-assert_empty "$out" 'missing python3 is silent'
+mkdir -p "$tmp/plugin-missing/scripts"
+cp "$SCRIPT" "$tmp/plugin-missing/scripts/sessionstart-statusline.sh"
+chmod +x "$tmp/plugin-missing/scripts/sessionstart-statusline.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$tmp/plugin-missing" "$tmp/plugin-missing/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
+assert_empty "$out" 'missing bootstrap entrypoint is silent'
 
-mkdir -p "$tmp/plugin/scripts" "$tmp/plugin/python" "$tmp/bin"
-cp "$SCRIPT" "$tmp/plugin/scripts/sessionstart-statusline.sh"
-chmod +x "$tmp/plugin/scripts/sessionstart-statusline.sh"
-ln -s "$(command -v python3)" "$tmp/bin/python3"
-out=$(PATH="$tmp/bin:/bin:/usr/bin" CLAUDE_PLUGIN_ROOT="$tmp/plugin" "$tmp/plugin/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
-assert_empty "$out" 'missing cli.py is silent'
-
-mkdir -p "$tmp/plugin-ok/scripts" "$tmp/plugin-ok/python"
+mkdir -p "$tmp/plugin-ok/scripts"
 cp "$SCRIPT" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh"
 chmod +x "$tmp/plugin-ok/scripts/sessionstart-statusline.sh"
-cat > "$tmp/plugin-ok/python/cli.py" <<'PY'
-#!/usr/bin/env python3
-from __future__ import annotations
-import os
-import pathlib
-import sys
-with pathlib.Path(os.environ['ARG_FILE']).open('a', encoding='utf-8') as handle:
-    _ = handle.write(' '.join(sys.argv[1:]) + '\n')
-PY
-chmod +x "$tmp/plugin-ok/python/cli.py"
+cat > "$tmp/plugin-ok/scripts/larch.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$ARG_FILE"
+SH
+chmod +x "$tmp/plugin-ok/scripts/larch.sh"
 arg_file="$tmp/args.txt"
-out=$(ARG_FILE="$arg_file" PATH="$tmp/bin:/bin:/usr/bin" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
+out=$(ARG_FILE="$arg_file" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
 assert_empty "$out" 'normal path is silent'
 expected_args="$tmp/expected-args.txt"
 cat > "$expected_args" <<EOF
@@ -61,18 +49,18 @@ progress session-reset
 progress install-statusline --plugin-root $tmp/plugin-ok
 EOF
 if cmp -s "$expected_args" "$arg_file"; then
-    pass 'stub cli receives reset before install-statusline'
+    pass 'bootstrap entrypoint receives reset before install-statusline'
 else
-    fail "stub cli argv mismatch: $(cat "$arg_file" 2>/dev/null || true)"
+    fail "bootstrap argv mismatch: $(cat "$arg_file" 2>/dev/null || true)"
 fi
 
 : > "$arg_file"
-out=$(LARCH_STATUSLINE_DISABLE=1 ARG_FILE="$arg_file" PATH="$tmp/bin:/bin:/usr/bin" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
+out=$(LARCH_STATUSLINE_DISABLE=1 ARG_FILE="$arg_file" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
 assert_empty "$out" 'statusline opt out is silent'
 if [ ! -s "$arg_file" ]; then
-    pass 'statusline opt out skips cli invocations'
+    pass 'statusline opt out skips bootstrap invocations'
 else
-    fail "statusline opt out should skip cli invocations: $(cat "$arg_file" 2>/dev/null || true)"
+    fail "statusline opt out should skip bootstrap invocations: $(cat "$arg_file" 2>/dev/null || true)"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

@@ -3,14 +3,12 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import hashlib
 import fcntl
 import os
 import re
 import stat
-import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -697,61 +695,3 @@ def cleanup_old_progress_files(*, retention_days: int, root: Path | None = None,
     for clone_dir in sorted(clone_dirs):
         removed += _cleanup_run_dirs_for_clone(clone_dir, cutoff=cutoff)
     return removed
-
-
-def progress_note_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py progress note")
-    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
-    _ = parser.add_argument("--run-id")
-    _ = parser.add_argument("--skill", required=True)
-    _ = parser.add_argument("--step", required=True)
-    _ = parser.add_argument("text", nargs="+")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    text = " ".join(args.text)
-    if args.run_id is None:
-        _ = append_breadcrumb(args.repo_root, args.skill, args.step, text)
-    else:
-        _ = append_breadcrumb_for_run(args.repo_root, args.run_id, args.skill, args.step, text)
-    return 0
-
-
-def progress_activate_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py progress activate")
-    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
-    _ = parser.add_argument("--run-id", required=True)
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    try:
-        activate_run(args.repo_root, args.run_id)
-    except (OSError, TypeError, ValueError) as exc:
-        print(f"progress activate failed: {exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
-def progress_deactivate_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py progress deactivate")
-    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
-    _ = parser.add_argument("--run-id", required=True)
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    _ = deactivate_run(args.repo_root, args.run_id)
-    return 0
-
-
-def progress_clear_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py progress clear")
-    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    _ = clear_active_run(args.repo_root)
-    return 0
