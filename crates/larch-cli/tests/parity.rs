@@ -536,12 +536,15 @@ const SESSION_LIFECYCLE_CASES: &[SessionLifecycleFixture] = &[
         seeds: &[(".tmp/claude-design-parity/.keep", "")],
         normalization: SANDBOX_ONLY,
     },
+    // Not a sandbox path: every platform's temporary root is itself allowlisted,
+    // on Linux through `/tmp` and on macOS through `TMPDIR`. `/usr` is a real
+    // directory on both, so the rejected path resolves to itself either way.
     SessionLifecycleFixture {
         name: "session-validate-design-tmpdir-outside-allowlist",
         command: "validate-design-tmpdir",
-        arguments: &["{sandbox}/outside-session"],
+        arguments: &["/usr/larch-parity-not-a-session"],
         environment: PLUGIN_ROOT_ENVIRONMENT,
-        seeds: &[("outside-session/.keep", "")],
+        seeds: &[],
         normalization: SANDBOX_ONLY,
     },
     SessionLifecycleFixture {
