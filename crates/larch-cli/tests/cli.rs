@@ -1,5 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
+    fmt::Write as _,
     fs,
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
@@ -380,10 +381,11 @@ fn help_has_pinned_output_and_success_exit() {
 #[test]
 fn lint_rules_matches_the_library_registry_exactly() {
     let registry = larch_lint::registered_rule_registry().expect("registered lint rules");
-    let expected = registry
-        .iter()
-        .map(|rule| format!("{}\t{}\n", rule.name(), rule.description()))
-        .collect::<String>();
+    let mut expected = String::new();
+    for rule in registry.iter() {
+        writeln!(&mut expected, "{}\t{}", rule.name(), rule.description())
+            .expect("writing to a String should succeed");
+    }
 
     larch()
         .args(["lint", "rules"])
