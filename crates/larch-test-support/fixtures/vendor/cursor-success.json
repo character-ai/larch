@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "cursor",
+  "chunks": [
+    {
+      "stream": "stdout",
+      "text": "{\"result\":\"review ok\",\"usage\":{\"inputTokens\":5,\"outputTokens\":3,\"cacheReadTokens\":2,\"cacheWriteTokens\":1}}\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 0,
+  "never_exit": false
+}

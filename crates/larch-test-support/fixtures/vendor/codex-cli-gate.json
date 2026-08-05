@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "codex",
+  "chunks": [
+    {
+      "stream": "stderr",
+      "text": "The 'gpt-5.6-terra' model requires a newer version of Codex.\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 1,
+  "never_exit": false
+}

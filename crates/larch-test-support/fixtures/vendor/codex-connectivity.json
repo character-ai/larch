@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "codex",
+  "chunks": [
+    {
+      "stream": "stderr",
+      "text": "stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 7,
+  "never_exit": false
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "cursor",
+  "chunks": [
+    {
+      "stream": "stderr",
+      "text": "vendor diagnostic carried sk-ant-abcdefghijklmnopqrstuvwxyz0123456789\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 1,
+  "never_exit": false
+}

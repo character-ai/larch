@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "vendor": "codex",
+  "chunks": [
+    {
+      "stream": "stdout",
+      "text": "{\"type\":\"thread.started\",\"thread_id\":\"019fc6b3-e6c4-7892-a97a-c80b30a7f5b0\"}\n"
+    },
+    {
+      "stream": "stdout",
+      "text": "{\"type\":\"agent.message\",\"text\":\"review ok\"}\n"
+    },
+    {
+      "stream": "stdout",
+      "text": "{\"msg\":{\"usage\":{\"input_tokens\":12,\"input_tokens_details\":{\"cached_tokens\":5},\"output_tokens\":7}}}\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 1,
+  "exit_code": 0,
+  "never_exit": false
+}

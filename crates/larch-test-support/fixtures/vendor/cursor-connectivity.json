@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "vendor": "cursor",
+  "chunks": [
+    {
+      "stream": "stderr",
+      "text": "Failed to reach the Cursor API. If you are behind a corporate proxy, set HTTPS_PROXY.\n"
+    }
+  ],
+  "inter_chunk_delay_ms": 0,
+  "exit_code": 8,
+  "never_exit": false
+}
