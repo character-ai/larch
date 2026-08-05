@@ -382,6 +382,29 @@ pub fn registered_python_lint_verbs(
         .collect())
 }
 
+/// Return every `domain verb` selector the command registry marks Rust-owned.
+///
+/// Shared with developer-tooling migration guards so caller drift detection
+/// cannot diverge from the ownership ledger importer.
+pub fn rust_owned_selectors(repository: &Repository) -> Result<BTreeSet<String>, LintError> {
+    let ledger = read_ledger(repository)?;
+    Ok(ledger
+        .commands
+        .iter()
+        .filter(|record| record.owner == Owner::Rust)
+        .map(|record| record.key().selector())
+        .collect())
+}
+
+/// Extract `domain verb` selectors that follow a `python/cli.py` marker.
+///
+/// Shared with developer-tooling guards so Makefile, workflow, pre-commit, and
+/// script scans use the same selector grammar as the command-registry caller
+/// inventory.
+pub fn python_cli_selectors(content: &str) -> Vec<String> {
+    extract_selectors(content, "python/cli.py")
+}
+
 fn read_python_registry(
     repository: &Repository,
 ) -> Result<BTreeMap<CommandKey, PythonCommand>, LintError> {
