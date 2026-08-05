@@ -241,7 +241,7 @@ rust-test:
 	cargo test --workspace --all-features --locked
 
 rust-lint:
-	cargo run --quiet --locked --package larch-lint -- all
+	cargo run --quiet --locked --package larch-cli -- lint all
 
 rust-deny:
 	@test "$$(cargo deny --version)" = "cargo-deny $(CARGO_DENY_VERSION)" \
@@ -256,11 +256,11 @@ lint-run-log-walkers:
 
 lint-em-dash-output:
 	python3 python/cli.py lint em-dash-output
-	cargo run --quiet --locked --package larch-lint -- rule em-dash-output
+	cargo run --quiet --locked --package larch-cli -- lint rule em-dash-output
 
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
-	cargo run --quiet --locked --package larch-lint -- rule codex-exec-auth
+	cargo run --quiet --locked --package larch-cli -- lint rule codex-exec-auth
 
 lint-flat-tests:
 	python3 python/cli.py lint flat-tests
@@ -891,7 +891,7 @@ test-token-cost:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k token_cost
 
 lint-retired-scripts:
-	cargo run --quiet --locked --package larch-lint -- rule retired-scripts
+	cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
 
 test-render-cost-line:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line
@@ -1134,8 +1134,8 @@ test-run-external-agent:
 
 agent-sync:
 	python3 python/cli.py generate check
-	cargo run --quiet --locked --package larch-lint -- rule topology-rule-paths
-	cargo run --quiet --locked --package larch-lint -- rule focus-area-enum
+	cargo run --quiet --locked --package larch-cli -- lint rule topology-rule-paths
+	cargo run --quiet --locked --package larch-cli -- lint rule focus-area-enum
 
 # Opt-in /research evaluation harness (closes #419 under umbrella #413). NOT a
 # lint prerequisite — runs ~20 questions × ~30-60s each, costs real tokens.

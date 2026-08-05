@@ -19,7 +19,7 @@ Use one workflow for registry or caller changes:
    any newly added command:
 
    ```bash
-   cargo run --quiet --locked --package larch-lint -- command-registry sync --planning-issue ISSUE
+   cargo run --quiet --locked --package larch-cli -- lint command-registry sync --planning-issue ISSUE
    ```
 
 3. Edit only the affected command rows to advance `owner`,
@@ -31,8 +31,8 @@ Use one workflow for registry or caller changes:
 4. Validate the ledger and render the Chief issue progress block:
 
    ```bash
-   cargo run --quiet --locked --package larch-lint -- rule command-registry
-   cargo run --quiet --locked --package larch-lint -- command-registry report
+   cargo run --quiet --locked --package larch-cli -- lint rule command-registry
+   cargo run --quiet --locked --package larch-cli -- lint command-registry report
    ```
 
 5. For issue-registry parity audits, build schema-v1 JSON with
@@ -40,7 +40,7 @@ Use one workflow for registry or caller changes:
    `render_command_audit_input`, then run:
 
    ```bash
-   cargo run --quiet --locked --package larch-lint -- command-registry audit --input INPUT.json
+   cargo run --quiet --locked --package larch-cli -- lint command-registry audit --input INPUT.json
    ```
 
 The caller ledger inventories `skill`, `hook`, `script`, `ci`, `agent`, and
@@ -76,7 +76,7 @@ rollout.
 
 ## Final release and upgrade boundary
 
-`larch-lint rule release-python-free` pins the final #7674 command set. It
+`larch lint rule release-python-free` pins the final #7674 command set. It
 requires every `release` and `upgrade-larch` row, plus `plugin read-version`,
 to keep Rust ownership, complete parity, complete caller cutover, complete
 Python removal, and its owning leaf. It also pins each applicable clean-install

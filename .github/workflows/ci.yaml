@@ -383,7 +383,7 @@ jobs:
         run: make rust-fmt
       - name: Run Clippy with warnings denied
         run: make rust-clippy
-      - name: Run larch-lint repository rules
+      - name: Run repository policy rules
         run: make rust-lint
       # cargo-deny-action v2.1.1. Pin the full SHA so dependency policy cannot
       # change without a reviewed workflow edit.

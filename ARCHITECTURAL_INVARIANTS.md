@@ -68,7 +68,7 @@ command, select between implementations, invoke `cargo run`, or reproduce
 command behavior. Evidence of violation: the first Rust Git command cutover
 added `larch_binary()` callers that bypassed the documented first-use installer,
 so a clean plugin cache could reach a missing `bin/larch`. Mechanical backing:
-`larch-lint rule larch-runtime-entrypoint` rejects direct production callers
+`larch lint rule larch-runtime-entrypoint` rejects direct production callers
 outside the bootstrap and upgrade allowlist; the command-registry caller
 inventory recognizes `scripts/larch.sh`; clean-install tests prove first use.
 

@@ -305,7 +305,7 @@ def test_snapshot_transport_has_no_mutation_path(tmp_path: Path) -> None:
     assert all(call[0] in {"gh", "git"} for call in runner.calls)
 
 
-def test_repository_audit_invokes_installed_lint_binary(
+def test_repository_audit_invokes_installed_larch_binary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo, head = _git_repo(tmp_path)
@@ -316,10 +316,12 @@ def test_repository_audit_invokes_installed_lint_binary(
         encoding="utf-8",
     )
     runner = RecordingRunner.default_queue(
-        CommandResult(("larch-lint",), 0, "", "", 0.01)
+        CommandResult(("larch",), 0, "", "", 0.01)
     )
-    def find_lint(_name: str) -> str:
-        return "/opt/bin/larch-lint"
+
+    def find_lint(name: str) -> str:
+        assert name == "larch"
+        return "/opt/bin/larch"
 
     monkeypatch.setattr(mg.shutil, "which", find_lint)
 
@@ -331,28 +333,31 @@ def test_repository_audit_invokes_installed_lint_binary(
 
     assert not findings
     assert runner.calls[0] == [
-        "/opt/bin/larch-lint",
+        "/opt/bin/larch",
+        "lint",
         "--root",
         str(repo),
         "rule",
         "command-registry",
     ]
     assert runner.calls[1] == [
-        "/opt/bin/larch-lint",
+        "/opt/bin/larch",
+        "lint",
         "--root",
         str(repo),
         "rule",
         "production-cargo-run",
     ]
-    assert runner.calls[2][:6] == [
-        "/opt/bin/larch-lint",
+    assert runner.calls[2][:7] == [
+        "/opt/bin/larch",
+        "lint",
         "--root",
         str(repo),
         "command-registry",
         "audit",
         "--input",
     ]
-    assert len(runner.calls[2]) == 7
+    assert len(runner.calls[2]) == 8
 
 
 @pytest.mark.parametrize(

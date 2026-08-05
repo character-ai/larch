@@ -1,6 +1,6 @@
 # lint-readability-preamble.tsv
 
-Tab-separated manifest consumed by `cargo run --locked --package larch-lint -- rule readability-preamble` and `crates/larch-lint/tests/readability_preamble.rs`.
+Tab-separated manifest consumed by `cargo run --locked --package larch-cli -- lint rule readability-preamble` and `crates/larch-lint/tests/readability_preamble.rs`.
 
 ## Schema
 

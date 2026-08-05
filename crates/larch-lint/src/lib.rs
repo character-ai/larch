@@ -1,9 +1,10 @@
-//! Shared execution support for larch repository-policy rules.
+//! Library-only execution support for `larch lint` repository-policy rules.
 //!
 //! This crate owns the command contract, tracked-file discovery,
 //! repository-relative path selection, shared syntax support, and testable
 //! rule execution. Rules register from their own modules; no central registry
-//! must change when a later rule is added.
+//! must change when a later rule is added. The `larch` executable links this
+//! crate through its composition root; this crate does not ship a binary.
 
 mod cli;
 mod command_registry;
@@ -17,7 +18,9 @@ mod rules {
     automod::dir!("src/rules");
 }
 
-pub use cli::run_cli;
+#[doc(hidden)]
+pub use cli::run_cli_with_io;
+pub use cli::{LintArguments, run_cli};
 pub use command_registry::{
     audit_migration_issue_commands, render_command_progress, sync_command_registry,
 };

@@ -41,14 +41,14 @@ def test_triggers_permissions_and_concurrency_are_narrow() -> None:
 def test_builds_verified_repository_binary_and_runs_exact_audit() -> None:
     """The audit uses the lockfile-built lint binary through PATH."""
     workflow = _workflow()
-    build = _step_body(workflow, "Build and verify larch-lint")
+    build = _step_body(workflow, "Build and verify larch")
     audit = _step_body(workflow, "Run the aggregate migration audit")
 
-    assert "cargo build --locked --release --package larch-lint" in build
-    assert "./target/release/larch-lint --version" in build
+    assert "cargo build --locked --release --package larch-cli" in build
+    assert "./target/release/larch --version" in build
     assert '"$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"' in build
     assert "cargo run" not in audit
-    assert "target/release/larch-lint" not in audit
+    assert "target/release/larch" not in audit
     assert "GH_TOKEN: ${{ github.token }}" in audit
     assert (
         "python3 python/cli.py issue migration-audit \\\n"

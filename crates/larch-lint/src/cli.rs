@@ -1,19 +1,19 @@
 use std::{
     env,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Subcommand};
 
 use crate::{
-    GitCli, Repository, registered_rule_registry,
+    GitCli, LintError, Repository, registered_rule_registry,
     runner::{ExitCode, render_error, render_findings, render_rule_list, render_warnings, run},
 };
 
-/// Check larch repository policy.
-#[derive(Debug, Parser)]
-#[command(name = "larch-lint", version)]
-struct Cli {
+/// Arguments for the `larch lint` command domain.
+#[derive(Debug, Args)]
+pub struct LintArguments {
     /// Resolve the repository from this directory instead of the current directory.
     #[arg(long, value_name = "PATH")]
     root: Option<PathBuf>,
@@ -56,152 +56,190 @@ enum CommandRegistryCommand {
     },
 }
 
-/// Run the production command-line interface.
+/// Run `larch lint` with the process working directory and standard streams.
 #[must_use]
-pub fn run_cli() -> i32 {
-    let cli = Cli::parse();
-    match cli.command {
+pub fn run_cli(arguments: LintArguments) -> ExitCode {
+    let mut stdout = io::stdout().lock();
+    let mut stderr = io::stderr().lock();
+    run_cli_with_io(arguments, None, &mut stdout, &mut stderr)
+}
+
+/// Run the lint domain with explicit process boundaries.
+///
+/// This is public so integration tests can preserve per-command working
+/// directories without changing global process state.
+#[doc(hidden)]
+#[must_use]
+pub fn run_cli_with_io(
+    arguments: LintArguments,
+    current_dir: Option<&Path>,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> ExitCode {
+    match arguments.command {
         Command::Rules => match registered_rule_registry() {
-            Ok(registry) => match render_rule_list(&registry, &mut std::io::stdout()) {
-                Ok(()) => ExitCode::Clean.as_i32(),
-                Err(error) => render_error(&error, &mut std::io::stderr()).as_i32(),
+            Ok(registry) => match render_rule_list(&registry, stdout) {
+                Ok(()) => ExitCode::Clean,
+                Err(error) => render_error(&error, stderr),
             },
-            Err(error) => render_error(&error, &mut std::io::stderr()).as_i32(),
+            Err(error) => render_error(&error, stderr),
         },
-        Command::All => execute_all(cli.root.as_deref()),
-        Command::Rule { name } => execute_named(&name, cli.root.as_deref()),
-        Command::Registry(command) => execute_command_registry(command, cli.root.as_deref()),
+        Command::All => execute_all(arguments.root.as_deref(), current_dir, stdout, stderr),
+        Command::Rule { name } => execute_named(
+            &name,
+            arguments.root.as_deref(),
+            current_dir,
+            stdout,
+            stderr,
+        ),
+        Command::Registry(command) => execute_command_registry(
+            command,
+            arguments.root.as_deref(),
+            current_dir,
+            stdout,
+            stderr,
+        ),
     }
 }
 
-fn execute_command_registry(command: CommandRegistryCommand, root: Option<&Path>) -> i32 {
-    let repository = match discover_repository(root) {
+fn execute_command_registry(
+    command: CommandRegistryCommand,
+    root: Option<&Path>,
+    current_dir: Option<&Path>,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> ExitCode {
+    let repository = match discover_repository(root, current_dir, stderr) {
         Ok(repository) => repository,
         Err(exit) => return exit,
     };
     let result = match command {
         CommandRegistryCommand::Sync { planning_issue } => {
-            crate::sync_command_registry(&repository, planning_issue).map(|summary| {
-                print!("{summary}");
-            })
+            crate::sync_command_registry(&repository, planning_issue)
+                .and_then(|summary| write_command_output(stdout, &summary))
         }
-        CommandRegistryCommand::Report => {
-            crate::render_command_progress(&repository).map(|report| {
-                print!("{report}");
-            })
-        }
+        CommandRegistryCommand::Report => crate::render_command_progress(&repository)
+            .and_then(|report| write_command_output(stdout, &report)),
         CommandRegistryCommand::Audit { input } => {
             match crate::audit_migration_issue_commands(&repository, &input) {
                 Ok(output) => {
-                    if let Err(error) = render_findings(output.findings(), &mut std::io::stdout()) {
-                        return render_error(&error, &mut std::io::stderr()).as_i32();
+                    if let Err(error) = render_findings(output.findings(), stdout) {
+                        return render_error(&error, stderr);
                     }
-                    return crate::finding_exit_code(output.findings()).as_i32();
+                    return crate::finding_exit_code(output.findings());
                 }
                 Err(error) => Err(error),
             }
         }
     };
     match result {
-        Ok(()) => ExitCode::Clean.as_i32(),
-        Err(error) => render_error(&error, &mut std::io::stderr()).as_i32(),
+        Ok(()) => ExitCode::Clean,
+        Err(error) => render_error(&error, stderr),
     }
 }
 
-fn execute_all(root: Option<&Path>) -> i32 {
-    let repository = match discover_repository(root) {
+fn write_command_output(output: &mut impl Write, value: &str) -> Result<(), LintError> {
+    output
+        .write_all(value.as_bytes())
+        .map_err(|error| LintError::new(format!("cannot write command output: {error}")))
+}
+
+fn execute_all(
+    root: Option<&Path>,
+    current_dir: Option<&Path>,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> ExitCode {
+    let repository = match discover_repository(root, current_dir, stderr) {
         Ok(repository) => repository,
         Err(exit) => return exit,
     };
     let registry = match registered_rule_registry() {
         Ok(registry) => registry,
-        Err(error) => return render_error(&error, &mut std::io::stderr()).as_i32(),
+        Err(error) => return render_error(&error, stderr),
     };
     if let Err(error) = crate::validate_migration_ledger(&repository, &registry) {
-        return render_error(&error, &mut std::io::stderr()).as_i32();
+        return render_error(&error, stderr);
     }
-    execute(&repository, registry.iter(), false)
+    execute(&repository, registry.iter(), false, stdout, stderr)
 }
 
-fn execute_named(name: &str, root: Option<&Path>) -> i32 {
+fn execute_named(
+    name: &str,
+    root: Option<&Path>,
+    current_dir: Option<&Path>,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> ExitCode {
     let registry = match registered_rule_registry() {
         Ok(registry) => registry,
-        Err(error) => return render_error(&error, &mut std::io::stderr()).as_i32(),
+        Err(error) => return render_error(&error, stderr),
     };
     let Some(rule) = registry.get(name) else {
-        return render_error(
-            &crate::runner::LintError::new(format!("unknown rule: {name}")),
-            &mut std::io::stderr(),
-        )
-        .as_i32();
+        return render_error(&LintError::new(format!("unknown rule: {name}")), stderr);
     };
-    let repository = match discover_repository(root) {
+    let repository = match discover_repository(root, current_dir, stderr) {
         Ok(repository) => repository,
         Err(exit) => return exit,
     };
     if let Err(error) = crate::validate_migration_ledger(&repository, &registry) {
-        return render_error(&error, &mut std::io::stderr()).as_i32();
+        return render_error(&error, stderr);
     }
     execute(
         &repository,
         std::iter::once(rule),
         name == "retired-scripts",
+        stdout,
+        stderr,
     )
 }
 
-fn discover_repository(root: Option<&Path>) -> Result<Repository, i32> {
-    let cwd = match root
-        .map(Path::to_path_buf)
-        .map_or_else(env::current_dir, Ok)
-    {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            return Err(render_error(
-                &crate::runner::LintError::new(format!("cannot read current directory: {error}")),
-                &mut std::io::stderr(),
-            )
-            .as_i32());
+fn discover_repository(
+    root: Option<&Path>,
+    current_dir: Option<&Path>,
+    stderr: &mut impl Write,
+) -> Result<Repository, ExitCode> {
+    let start = match (root, current_dir) {
+        (Some(root), _) if root.is_absolute() => root.to_path_buf(),
+        (Some(root), Some(current_dir)) => current_dir.join(root),
+        (None, Some(current_dir)) => current_dir.to_path_buf(),
+        (root, None) => {
+            let current_dir = env::current_dir().map_err(|error| {
+                render_error(
+                    &LintError::new(format!("cannot read current directory: {error}")),
+                    stderr,
+                )
+            })?;
+            root.map_or_else(|| current_dir.clone(), |root| current_dir.join(root))
         }
     };
-    Repository::discover(&GitCli, &cwd)
-        .map_err(|error| render_error(&error, &mut std::io::stderr()).as_i32())
+    Repository::discover(&GitCli, &start).map_err(|error| render_error(&error, stderr))
 }
 
 fn execute<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn crate::Rule>,
     render_contract: bool,
-) -> i32 {
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> ExitCode {
     let report = match run(repository, rules) {
         Ok(report) => report,
-        Err(error) => return render_error(&error, &mut std::io::stderr()).as_i32(),
+        Err(error) => return render_error(&error, stderr),
     };
-    if let Err(error) = render_warnings(report.warnings(), &mut std::io::stderr()) {
-        return render_error(&error, &mut std::io::stderr()).as_i32();
+    if let Err(error) = render_warnings(report.warnings(), stderr) {
+        return render_error(&error, stderr);
     }
-    let exit = crate::runner::finding_exit_code(report.findings());
+    let exit = crate::finding_exit_code(report.findings());
     if exit == ExitCode::Findings
-        && let Err(error) = render_findings(report.findings(), &mut std::io::stdout())
+        && let Err(error) = render_findings(report.findings(), stdout)
     {
-        return render_error(&error, &mut std::io::stderr()).as_i32();
+        return render_error(&error, stderr);
     }
     if render_contract
-        && let Err(error) =
-            crate::render_contract_lines(report.contract_lines(), &mut std::io::stdout())
+        && let Err(error) = crate::render_contract_lines(report.contract_lines(), stdout)
     {
-        return render_error(&error, &mut std::io::stderr()).as_i32();
+        return render_error(&error, stderr);
     }
-    exit.as_i32()
-}
-
-#[cfg(test)]
-mod tests {
-    use clap::CommandFactory;
-
-    use super::Cli;
-
-    #[test]
-    fn command_definition_is_valid() {
-        Cli::command().debug_assert();
-    }
+    exit
 }

@@ -2521,6 +2521,7 @@ dependencies = [
  "flate2",
  "larch-adapters",
  "larch-core",
+ "larch-lint",
  "larch-test-support",
  "predicates",
  "regex",

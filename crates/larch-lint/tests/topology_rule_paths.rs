@@ -3,7 +3,6 @@ mod support;
 use std::fs;
 use std::path::Path;
 
-use assert_cmd::Command as AssertCommand;
 use predicates::prelude::*;
 use support::TempRepo;
 
@@ -131,9 +130,7 @@ fn validates_the_live_repository_from_a_non_root_working_directory() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let nested = root.join("crates/larch-lint/src");
 
-    let mut command = AssertCommand::cargo_bin("larch-lint").expect("larch-lint binary");
-    command
-        .current_dir(nested)
+    TempRepo::command_from(nested)
         .args(["rule", "topology-rule-paths"])
         .assert()
         .success()

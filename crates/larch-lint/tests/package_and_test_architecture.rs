@@ -63,7 +63,7 @@ fn package_layering_allows_downward_and_test_only_dependencies() {
 }
 
 #[test]
-fn package_layering_rejects_product_dependencies_on_repository_tooling() {
+fn package_layering_allows_cli_dependency_on_repository_tooling() {
     let repository = TempRepo::new();
     repository.write(
         "Cargo.toml",
@@ -84,8 +84,35 @@ fn package_layering_rejects_product_dependencies_on_repository_tooling() {
     TempRepo::command_from(repository.path())
         .args(["rule", "layering"])
         .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn package_layering_rejects_other_product_dependencies_on_repository_tooling() {
+    let repository = TempRepo::new();
+    repository.write(
+        "Cargo.toml",
+        b"[workspace]\nmembers = [\"crates/larch-core\", \"crates/larch-lint\"]\nresolver = \"3\"\n",
+    );
+    repository.write(
+        "crates/larch-core/Cargo.toml",
+        b"[package]\nname = \"larch-core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[dependencies]\nlarch-lint = { path = \"../larch-lint\" }\n",
+    );
+    repository.write("crates/larch-core/src/lib.rs", b"");
+    repository.write(
+        "crates/larch-lint/Cargo.toml",
+        b"[package]\nname = \"larch-lint\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    repository.write("crates/larch-lint/src/lib.rs", b"");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "layering"])
+        .assert()
         .code(1)
-        .stdout("crates/larch-cli/Cargo.toml:1: package larch-cli may not depend on larch-lint\n")
+        .stdout("crates/larch-core/Cargo.toml:1: package larch-core may not depend on larch-lint\n")
         .stderr(predicate::str::is_empty());
 }
 
