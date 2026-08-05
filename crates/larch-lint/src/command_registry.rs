@@ -367,6 +367,21 @@ fn read_clean_install_cases(
     Ok(by_id)
 }
 
+/// Return every registered Python `lint <verb>` name from `python/larch/cli.py`.
+///
+/// Shared with the python-lint-disposition rule so the verb inventory has one
+/// importer for the `_REGISTRY` shape.
+pub fn registered_python_lint_verbs(
+    repository: &Repository,
+) -> Result<BTreeSet<String>, LintError> {
+    let python = read_python_registry(repository)?;
+    Ok(python
+        .into_keys()
+        .filter(|key| key.domain == "lint")
+        .map(|key| key.verb)
+        .collect())
+}
+
 fn read_python_registry(
     repository: &Repository,
 ) -> Result<BTreeMap<CommandKey, PythonCommand>, LintError> {

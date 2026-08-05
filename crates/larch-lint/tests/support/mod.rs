@@ -174,6 +174,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
     );
     repository.write("python/migrated-scripts.tsv", b"# retired paths\n");
     repository.write(
+        "crates/larch-lint/data/python-lint-disposition.tsv",
+        b"# verb\tdisposition\ttarget_surface\trationale\n",
+    );
+    repository.write(
         "python/larch/cli.py",
         b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
     );
