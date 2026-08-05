@@ -2,9 +2,10 @@ use std::{
     error::Error,
     ffi::OsString,
     fmt, fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     num::NonZeroUsize,
     path::{Path, PathBuf},
+    process::Command,
     sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::Duration,
@@ -22,6 +23,7 @@ const MAX_SCRIPT_FILE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SCRIPT_OUTPUT_BYTES: usize = 1024 * 1024;
 const MAX_CHUNKS: usize = 256;
 const MAX_INTER_CHUNK_DELAY_MS: u64 = 60_000;
+const MAX_DESCENDANT_DEPTH: u8 = 2;
 const FIXTURE_ERROR_EXIT_CODE: i32 = 125;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
@@ -29,6 +31,10 @@ const DEFAULT_OUTPUT_LIMIT: NonZeroUsize = NonZeroUsize::new(1024 * 1024).unwrap
 
 /// Fixed script name read from the fake vendor process working directory.
 pub const VENDOR_FIXTURE_SCRIPT_FILE: &str = ".larch-vendor-script.json";
+/// Per-invocation PID ledger written by descendant test doubles.
+const VENDOR_FIXTURE_PID_FILE: &str = ".larch-vendor-pids";
+
+const VENDOR_FIXTURE_DESCENDANT_DEPTH: &str = "LARCH_VENDOR_FIXTURE_DESCENDANT_DEPTH";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -117,6 +123,8 @@ pub struct VendorScript {
     exit_code: i32,
     #[serde(default)]
     never_exit: bool,
+    #[serde(default)]
+    descendant_depth: u8,
 }
 
 impl VendorScript {
@@ -130,6 +138,7 @@ impl VendorScript {
             inter_chunk_delay_ms: 0,
             exit_code: 0,
             never_exit: false,
+            descendant_depth: 0,
         }
     }
 
@@ -158,6 +167,13 @@ impl VendorScript {
     #[must_use]
     pub const fn with_never_exit(mut self, never_exit: bool) -> Self {
         self.never_exit = never_exit;
+        self
+    }
+
+    /// Spawn a bounded chain of descendant test doubles before parking.
+    #[must_use]
+    pub const fn with_descendant_depth(mut self, descendant_depth: u8) -> Self {
+        self.descendant_depth = descendant_depth;
         self
     }
 
@@ -246,6 +262,16 @@ impl VendorScript {
         if !(0..=255).contains(&self.exit_code) {
             return Err(VendorFixtureError::Invalid(
                 "vendor script exit code must be between 0 and 255",
+            ));
+        }
+        if self.descendant_depth > MAX_DESCENDANT_DEPTH {
+            return Err(VendorFixtureError::Invalid(
+                "vendor script descendant depth exceeds 2",
+            ));
+        }
+        if self.descendant_depth != 0 && !self.never_exit {
+            return Err(VendorFixtureError::Invalid(
+                "vendor script descendants require never-exit mode",
             ));
         }
         Ok(())
@@ -554,6 +580,14 @@ impl VendorProcessHarness {
     pub fn binary_directory(&self) -> &Path {
         &self.binary_directory
     }
+
+    /// Return the PID ledger for one zero-based invocation.
+    #[must_use]
+    pub fn pid_file(&self, invocation: usize) -> PathBuf {
+        self.workspace
+            .root()
+            .join(format!("runs/{invocation}/{VENDOR_FIXTURE_PID_FILE}"))
+    }
 }
 
 /// Run one Cargo-built fake vendor process. This function does not return.
@@ -579,6 +613,21 @@ fn replay_script(expected: VendorProgram) -> Result<i32, VendorFixtureError> {
             actual: script.vendor(),
         });
     }
+    let descendant_depth = std::env::var(VENDOR_FIXTURE_DESCENDANT_DEPTH)
+        .ok()
+        .and_then(|value| value.parse::<u8>().ok())
+        .unwrap_or(script.descendant_depth);
+    if script.descendant_depth != 0 {
+        record_fixture_pid()?;
+    }
+    if descendant_depth != 0 {
+        let mut child = Command::new(std::env::current_exe()?); // lint-subprocess-via-runner: ok test-only fake vendor creates bounded descendants for group-cleanup coverage
+        child.env(
+            VENDOR_FIXTURE_DESCENDANT_DEPTH,
+            (descendant_depth - 1).to_string(),
+        );
+        let _descendant = child.spawn()?;
+    }
     let _stdin_bytes = io::copy(&mut io::stdin().lock(), &mut io::sink())?;
     let stdout = io::stdout();
     let stderr = io::stderr();
@@ -601,6 +650,16 @@ fn replay_script(expected: VendorProgram) -> Result<i32, VendorFixtureError> {
         }
     }
     Ok(script.exit_code())
+}
+
+fn record_fixture_pid() -> Result<(), VendorFixtureError> {
+    let mut ledger = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(VENDOR_FIXTURE_PID_FILE)?;
+    writeln!(ledger, "{}", std::process::id())?;
+    ledger.flush()?;
+    Ok(())
 }
 
 fn read_script_file() -> Result<Vec<u8>, VendorFixtureError> {

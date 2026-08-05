@@ -2577,6 +2577,7 @@ version = "56.2.2"
 dependencies = [
  "larch-adapters",
  "larch-core",
+ "nix",
  "serde",
  "serde_json",
  "tempfile",

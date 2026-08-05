@@ -15,6 +15,7 @@ pub mod retry;
 pub mod runtime;
 pub mod upgrade_larch;
 pub mod vendor_diagnostics;
+pub mod vendor_lifecycle;
 
 use larch_core::BuildMetadata;
 

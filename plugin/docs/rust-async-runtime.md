@@ -47,6 +47,12 @@ clock, cancellation token, optional deadline, and observation sink. Retry
 observations contain only closed classes, attempt counts, and bounded delays.
 They never contain the operation error or response payload.
 
+The inactive vendor migration surface keeps one narrower compatibility loop in
+`larch-core::run_with_vendor_retries`. It preserves the legacy independent
+authentication, transient, and empty-response budgets and their precedence.
+Execution and delay remain injected effects. This domain contract does not
+select a runtime, spawn a process, or replace `RetryExecutor` for services.
+
 ## Task ownership and concurrency
 
 Use `TaskSet` for concurrent work. Its non-zero capacity is the explicit
@@ -87,8 +93,10 @@ and shutdown grace period. The adapter clears the ambient environment and
 copies only common allowlisted keys. Vendor credentials require an explicit
 typed override and never enter the common inheritance list. On Unix, each
 child starts in its own process group; cancellation and timeout send SIGTERM
-to the group, escalate to SIGKILL, and reap the direct child. Other platforms
-use Tokio's safest available direct-child kill and reap path.
+to the group, escalate to SIGKILL, and reap the direct child. If the leader
+exits during the graceful interval, shutdown sends one final SIGKILL to the
+owned group so a descendant that ignored SIGTERM cannot survive. Other
+platforms use Tokio's safest available direct-child kill and reap path.
 
 ## Deterministic tests
 

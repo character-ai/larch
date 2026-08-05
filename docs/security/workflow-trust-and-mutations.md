@@ -95,6 +95,19 @@ creates a private config directory and injects `CURSOR_CONFIG_DIR` only into the
 child `ProcessRequest` environment; it does not mutate the parent process
 environment, so parallel tests and parallel clones stay isolated.
 
+The Rust vendor lifecycle is inactive adapter parity and does not cut over a
+launcher command. Its hook port preserves cap, preflight, execution, retry, and
+postprocessing order while the shared process runner remains the only Rust
+product-spawn and live process-group owner. On cancellation or timeout, a final
+group kill follows a gracefully exited leader so a surviving descendant cannot
+escape cleanup. Darwin startup locking uses a caller-selected temporary root,
+a bounded retry budget, a confined lock directory, and an owned delayed-release
+handle. Stall writers reuse `LauncherArtifactPaths` for the `.stall.json` path,
+bound and redact captured transcript and Git status text, and publish through the shared
+confined atomic writer. A detailed Cursor compatibility sidecar remains
+best-effort and cannot turn a successfully published primary artifact into a
+launch failure.
+
 ### Same-user state and sandbox limits
 
 Session directories, cache files, startup locks, `.meta` files, result envs,
