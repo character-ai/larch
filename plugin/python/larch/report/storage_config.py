@@ -8,7 +8,7 @@ import json
 import os
 import re
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, cast
