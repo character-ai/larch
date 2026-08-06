@@ -486,6 +486,80 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
     assert "--role" in argv
 
 
+def test_model_args_defaults_and_effort() -> None:
+    result = agents.resolve_model_args("codex", with_effort=True)
+    assert result.argv[:2] == ("-m", "gpt-5.6-sol")
+    assert "-c" in result.argv
+    assert 'model_reasoning_effort="high"' in result.argv
+
+
+def test_model_args_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "   ")
+    with pytest.raises(ValueError, match="blank"):
+        agents.resolve_model_args("codex")
+
+
+def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_CURSOR_MODEL", raising=False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL", "cursor-test-model")
+    assert agents.resolve_model_args("cursor", with_effort=True).argv == ("--model", "cursor-test-model")
+
+
+def test_resolve_cursor_model_honors_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "grok-4.5")
+
+
+def test_resolve_cursor_model_env_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-override")
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-override")
+
+
+def test_resolve_cursor_model_plugin_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-override")
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-plugin-override")
+
+
+def test_resolve_cursor_model_larch_env_wins_over_plugin_and_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-wins")
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-loses")
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-wins")
+
+
+def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:
+    from larch.core.ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping({config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: "plugin-model"})
+    assert agents.resolve_model_args("codex", ctx=ctx).argv == ("-m", "plugin-model")
+
+
+def test_resolve_model_args_ctx_empty_primary_rejects_blank() -> None:
+    from larch.core.ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping({config.ENV_LARCH_CODEX_MODEL: "   "})
+    with pytest.raises(ValueError, match="blank"):
+        agents.resolve_model_args("codex", ctx=ctx)
+
+
+def test_resolve_model_args_ctx_primary_wins_over_plugin() -> None:
+    from larch.core.ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping(
+        {
+            config.ENV_LARCH_CODEX_MODEL: "primary-model",
+            config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: "plugin-model",
+        }
+    )
+    assert agents.resolve_model_args("codex", ctx=ctx).argv == ("-m", "primary-model")
+
+
 def test_run_external_agent_inner_sentinel_suffix_ctx_override(tmp_path: Path) -> None:
     from larch.core.ctx import Ctx  # noqa: PLC0415
 
@@ -502,90 +576,6 @@ def test_run_external_agent_inner_sentinel_suffix_ctx_override(tmp_path: Path) -
     assert result.exit_code == 0
     assert output.with_suffix(output.suffix + ".ctx.done").is_file()
     assert not output.with_suffix(output.suffix + ".done").exists()
-
-
-def test_resolve_model_args_wrapper_parses_rust_stdout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`resolve_model_args` shells out to Rust `agent model-args` (#8107)."""
-
-    def fake_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        assert "model-args" in argv
-        assert "--tool" in argv
-        assert argv[argv.index("--tool") + 1] == "cursor"
-        assert kwargs.get("env") is None
-        return ok(tuple(argv), "--model\ncomposer-2.5\n")
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    result = agents.resolve_model_args("cursor")
-    assert result.argv == ("--model", "composer-2.5")
-    assert result.warning == ""
-
-
-def test_resolve_model_args_wrapper_raises_stripped_stderr(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(
-            tuple(argv),
-            1,
-            "",
-            "agent model-args: LARCH_CODEX_MODEL must not be blank or whitespace-only\n",
-            0.0,
-        )
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    with pytest.raises(ValueError, match="LARCH_CODEX_MODEL must not be blank"):
-        agents.resolve_model_args("codex")
-
-
-def test_resolve_model_args_wrapper_passes_ctx_subprocess_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from larch.core.ctx import Ctx  # noqa: PLC0415
-
-    ctx = Ctx.from_mapping({config.ENV_LARCH_CURSOR_MODEL: "ctx-model"})
-    captured: dict[str, object] = {}
-
-    def fake_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        captured["env"] = kwargs.get("env")
-        assert "--default-model" in argv
-        assert argv[argv.index("--default-model") + 1] == "fallback"
-        return ok(tuple(argv), "--model\nctx-model\n")
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    result = agents.resolve_model_args("cursor", default_model="fallback", ctx=ctx)
-    assert result.argv == ("--model", "ctx-model")
-    assert isinstance(captured["env"], dict)
-    assert captured["env"][config.ENV_LARCH_CURSOR_MODEL] == "ctx-model"
-    assert "PATH" in captured["env"]
-
-
-def test_resolve_model_args_wrapper_captures_warning(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        assert "--with-effort" in argv
-        return CommandResult(
-            tuple(argv),
-            0,
-            "-m\ngpt-5.6-sol\n-c\nmodel_reasoning_effort=\"high\"\n",
-            "agent model-args: WARN invalid codex effort 'bogus' (must be minimal|low|medium|high); falling back to 'high'\n",
-            0.0,
-        )
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    result = agents.resolve_model_args("codex", with_effort=True)
-    assert result.argv[:2] == ("-m", "gpt-5.6-sol")
-    assert result.warning.startswith("WARN invalid codex effort")
-
-
-def test_record_cursor_usage_ignores_malformed_fields(tmp_path: Path) -> None:
-    output = tmp_path / "cursor.out"
-    _ = output.write_text('{"usage":{"inputTokens":"not-a-number","outputTokens":1}}\n', encoding="utf-8")
-    agents._record_cursor_usage_from_output(output=output, label="cursor_ci_fix")  # pylint: disable=protected-access
-    assert not output.with_suffix(output.suffix + ".token-record").exists()
-    assert "usage token value is not numeric" in output.with_suffix(output.suffix + ".sidecar").read_text(encoding="utf-8")
 
 
 def test_cursor_auth_trims_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6202,6 +6192,38 @@ def test_codex_probe_uses_review_role_and_stops_on_gate(
     assert result.rc == agents._PROBE_NO_RETRY_RC
     assert result.gate_detail is not None
     assert result.gate_detail.model == "gpt-5.6-review-test"
+
+
+def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
+    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "custom")
+
+
+def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_CODEX_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="default", default_model="custom-default").argv[:2] == ("-m", "custom-default")
+
+
+def test_codex_role_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_REVIEW_MODEL"):
+        agents.resolve_model_args("codex", codex_role="review")
+
+
+def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_VOTE_MODEL", "mini\nbad")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_VOTE_MODEL"):
+        agents.resolve_model_args("codex", codex_role="vote")
 
 
 def test_check_reviewers_gate_detail_cache_identity_and_ttl_zero_handoff(

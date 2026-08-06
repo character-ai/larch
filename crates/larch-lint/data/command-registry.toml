@@ -9368,8 +9368,3 @@ python = []
 rust = ["agent cursor-wrap-prompt"]
 
 
-[[callers]]
-path = "python/larch/agents/_launch_failure.py"
-kind = "python-runtime"
-python = []
-rust = ["agent model-args"]

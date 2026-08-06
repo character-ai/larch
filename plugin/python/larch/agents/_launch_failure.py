@@ -11,8 +11,6 @@ from typing import Literal
 from larch.core import config
 from larch.core.ctx import Ctx
 from larch import io as larch_io
-from larch.core import proc
-from larch.core.repo_roots import larch_entrypoint
 
 from larch.agents import _types
 from larch.agents._types import (
@@ -285,16 +283,6 @@ def classify_launch_failure(
     )
 
 
-_MODEL_ARGS_PREFIX = "agent model-args: "
-
-
-def _strip_model_args_prefix(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith(_MODEL_ARGS_PREFIX):
-        return stripped[len(_MODEL_ARGS_PREFIX) :].strip()
-    return stripped
-
-
 def resolve_model_args(
     tool: str,
     *,
@@ -303,36 +291,65 @@ def resolve_model_args(
     codex_role: Literal["default", "review", "vote", "fix"] = "default",
     ctx: Ctx | None = None,
 ) -> ModelArgResult:
-    """Resolve vendor model argv via the Rust `agent model-args` command."""
     if tool not in {"cursor", "codex"}:
         raise ValueError(f"--tool must be 'cursor' or 'codex' (got: {tool})")
     if codex_role not in {"default", "review", "vote", "fix"}:
         raise ValueError(f"--codex-role must be default|review|vote|fix (got: {codex_role})")
 
-    argv = [
-        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-        "agent",
-        "model-args",
-        "--tool",
-        tool,
-        "--codex-role",
-        codex_role,
-    ]
-    if with_effort:
-        argv.append("--with-effort")
-    if default_model:
-        argv.extend(["--default-model", default_model])
+    def reject_bad_arg(*, value: str, context: str) -> None:
+        if _CTRL_RE.search(value):
+            raise ValueError(f"{context} must not contain POSIX [[:cntrl:]] characters")
 
-    env = None
-    if ctx is not None:
-        # Overlay ctx onto the process env so sparse Ctx snapshots still leave
-        # PATH/HOME (and other bootstrap keys) intact for scripts/larch.sh.
-        env = dict(os.environ)
-        env.update(ctx.subprocess_env())
-    result = proc.run(argv, env=env)
-    stderr_text = result.stderr.strip()
-    if result.returncode != 0:
-        raise ValueError(_strip_model_args_prefix(stderr_text) or "agent model-args failed")
-    tokens = tuple(line for line in result.stdout.splitlines() if line)
-    warning = _strip_model_args_prefix(stderr_text) if stderr_text else ""
-    return ModelArgResult(tokens, warning)
+    def reject_blank(*, value: str, context: str) -> str:
+        reject_bad_arg(value=value, context=context)
+        if not value.strip():
+            raise ValueError(f"{context} must not be blank or whitespace-only")
+        return value
+
+    def resolve(*, env_name: str, plugin_name: str, default_value: str) -> str:
+        if ctx is not None:
+            if ctx.contains(env_name):
+                return reject_blank(value=ctx.str_value(key=env_name), context=env_name)
+            if ctx.contains(plugin_name):
+                return reject_blank(value=ctx.str_value(key=plugin_name), context=plugin_name)
+            return reject_blank(value=default_value, context="default model")
+        if env_name in os.environ:
+            return reject_blank(value=os.environ[env_name], context=env_name)
+        if plugin_name in os.environ:
+            return reject_blank(value=os.environ[plugin_name], context=plugin_name)
+        return reject_blank(value=default_value, context="default model")
+
+    if tool == "cursor":
+        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value=default_model or config.CURSOR_DEFAULT_MODEL)
+        return ModelArgResult(("--model", model))
+
+    role_defaults = {
+        "review": (config.ENV_LARCH_CODEX_REVIEW_MODEL, config.CODEX_REVIEW_MODEL_DEFAULT),
+        "vote": (config.ENV_LARCH_CODEX_VOTE_MODEL, config.CODEX_VOTE_MODEL_DEFAULT),
+        "fix": (config.ENV_LARCH_CODEX_FIX_MODEL, config.CODEX_FIX_MODEL_DEFAULT),
+    }
+    if codex_role == "default":
+        model = resolve(env_name=config.ENV_LARCH_CODEX_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_value=default_model or config.CODEX_DEFAULT_MODEL)
+    else:
+        env_name, default_value = role_defaults[codex_role]
+        effective_default = default_model or default_value
+        if ctx is not None:
+            model = reject_blank(value=ctx.str_value(key=env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=effective_default, context="default model")
+        else:
+            model = reject_blank(value=os.environ[env_name], context=env_name) if env_name in os.environ else reject_blank(value=effective_default, context="default model")
+    argv = ["-m", model]
+    warning = ""
+    if with_effort:
+        if ctx is not None:
+            effort = (
+                ctx.str_value(key=config.ENV_LARCH_CODEX_EFFORT)
+                if ctx.contains(config.ENV_LARCH_CODEX_EFFORT)
+                else ctx.str_value(key=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, default="high")
+            )
+        else:
+            effort = os.environ.get(config.ENV_LARCH_CODEX_EFFORT, os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, "high"))
+        if effort not in {"minimal", "low", "medium", "high"}:
+            warning = f"WARN invalid codex effort '{effort}' (must be minimal|low|medium|high); falling back to 'high'"
+            effort = "high"
+        argv.extend(["-c", f'model_reasoning_effort="{effort}"'])
+    return ModelArgResult(tuple(argv), warning)
