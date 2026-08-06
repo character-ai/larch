@@ -22,7 +22,7 @@ from larch.core.ctx import Ctx
 from larch.design import plan_grammar, design_postplan
 from larch.issue import issue_wire
 from larch.core import architectural_guidelines
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 from larch.state.session_env import validate_design_tmpdir
 from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
 
@@ -786,8 +786,7 @@ def _warn_step2b_missing_scout_if_needed(*, status_text: str, design_tmpdir: Pat
     # lint-subprocess-via-runner: ok Step 2b scout warning contract pins silent subprocess.run.
     subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "run-log",
             "append-entry",
             "--log",
@@ -910,8 +909,7 @@ def _handle_step2b_drafter_inline_fallback(*, design_tmpdir: Path, plugin_root: 
     # lint-subprocess-via-runner: ok Step 2b fallback contract pins silent subprocess.run.
     subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "run-log",
             "append-failure",
             "--log",

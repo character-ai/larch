@@ -1584,8 +1584,7 @@ def _validator_operator_cancel_audit(*, forced: bool = False, ctx: Ctx | None = 
     plugin_root = ctx.claude_plugin_root if ctx is not None and ctx.claude_plugin_root else os.environ["CLAUDE_PLUGIN_ROOT"]
     subprocess.run(
         [
-            sys.executable,
-            str(Path(plugin_root) / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "run-log",
             "append-failure",
             "--log",
@@ -1742,8 +1741,7 @@ def validator_autofix_main(argv: list[str]) -> int:
     if status == "ok" and _validator_require_plugin_root() == 0 and design_tmpdir.is_dir():
         append = subprocess.run(
             [
-                sys.executable,
-                str(Path(ctx.claude_plugin_root or os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+                str(larch_entrypoint(ctx.claude_plugin_root or os.environ["CLAUDE_PLUGIN_ROOT"])),
                 "run-log",
                 "append-failure",
                 "--log",

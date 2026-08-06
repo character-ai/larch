@@ -1468,7 +1468,7 @@ def publish_core(argv: Sequence[str]) -> int:
             if run_id:
                 _ = subprocess.run(
                     [
-                        sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "write",
+                        str(larch_entrypoint(plugin_root)), "run-log", "write",
                         "--skill", "design", "--run-id", run_id, "--batch", "difficulty-rating",
                         "--input-file", str(record_path),
                     ],
@@ -1530,8 +1530,7 @@ def publish_core(argv: Sequence[str]) -> int:
         if upsert_status == "failed" or upsert.returncode != 0:
             _ = proc.run(
                 [
-                    sys.executable,
-                    str(plugin_root / "python" / "cli.py"),
+                    str(larch_entrypoint(plugin_root)),
                     "run-log",
                     "append-failure",
                     "--log",

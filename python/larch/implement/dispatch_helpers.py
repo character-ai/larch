@@ -20,7 +20,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
 from larch.core.rust_runtime import phantom_probe
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -112,7 +112,12 @@ def _larch_entrypoint() -> Path:
 
 
 def _invoke_larch(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return _run([str(_larch_entrypoint()), *args], cwd=cwd)
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    return _run(
+        [str(_larch_entrypoint()), *args],
+        cwd=cwd,
+        env=larch_entrypoint_env(_current_cli_path().parents[1]),
+    )
 
 
 def _resolve_repo_root() -> Path | None:

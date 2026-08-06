@@ -22,7 +22,7 @@ from larch.design import design_pause
 from larch.design import design_summary
 from larch.git import gh
 from larch.issue import issue_mutation
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
@@ -803,6 +803,25 @@ def _run_cli(
     return result
 
 
+def _run_larch(
+    plugin_root: Path,
+    env: dict[str, str],
+    *args: str,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> CommandResult:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    result = proc.run(
+        [str(larch_entrypoint(plugin_root)), *args],
+        env=larch_entrypoint_env(plugin_root, base={**os.environ, **env}),
+    )
+    if stdout_path is not None:
+        _write_text(path=stdout_path, text=result.stdout)
+    if stderr_path is not None:
+        _write_text(path=stderr_path, text=result.stderr)
+    return result
+
+
 def _append_clarify_failure(
     *,
     plugin_root: Path,
@@ -1170,7 +1189,7 @@ def _handle_design_clarify_publish(
         difficulty.write_record(record_path, record)
         session_id_for_batch = env.get("SESSION_ID", "")
         if session_id_for_batch:
-            _ = _run_cli(
+            _ = _run_larch(
                 plugin_root,
                 env,
                 "run-log",

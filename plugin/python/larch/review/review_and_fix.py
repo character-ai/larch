@@ -712,8 +712,7 @@ def _restage_difficulty_batch(*, implement_tmpdir: Path, run_id: str) -> None:
     if record.is_symlink() or not record.is_file():
         return
     result = _run([
-        sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(larch_entrypoint(_plugin_root())),
         "run-log",
         "write",
         "--log-root",
@@ -1460,7 +1459,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
         if tally_result.stderr:
             _err(tally_result.stderr.rstrip())
     findings_result = _run([
-        "python3", str(_PY_CLI), "run-log", "write",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "write",
         "--log-root", str(log_root),
         "--skill", "implement",
         "--run-id", args.run_id,

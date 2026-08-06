@@ -116,7 +116,7 @@ def _execution_issues_log(*, review_tmpdir: Path, session_env_path: str) -> Path
 
 def _append_warning(*, review_tmpdir: Path, session_env_path: str, entry: str) -> None:
     log = _execution_issues_log(review_tmpdir=review_tmpdir, session_env_path=session_env_path)
-    cmd = [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "run-log", "append-entry", "--log", str(log), "--category", "External Reviewer Issues", "--entry", entry]
+    cmd = [str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "append-entry", "--log", str(log), "--category", "External Reviewer Issues", "--entry", entry]
     with suppress(OSError):
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 

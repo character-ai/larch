@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable, Mapping
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.core import redact
+from larch.core.repo_roots import larch_entrypoint
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -263,7 +264,7 @@ def append_failure(
 ) -> bool:
     """Append one failure record through the canonical run-log command."""
     result = runner(
-        _cli_cmd(request.plugin_root, "run-log", "append-failure", "--log", str(request.design_tmpdir / "execution-issues.md"), "--site", request.site, "--tool", request.tool, "--exit-code", str(request.exit_code), "--category", request.category, "--output-file", str(request.output_file), "--redact"),
+        [str(larch_entrypoint(request.plugin_root)), "run-log", "append-failure", "--log", str(request.design_tmpdir / "execution-issues.md"), "--site", request.site, "--tool", request.tool, "--exit-code", str(request.exit_code), "--category", request.category, "--output-file", str(request.output_file), "--redact"],
         env={**os.environ, **env} if env is not None else None,
     )
     return result.returncode == 0

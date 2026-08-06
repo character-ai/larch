@@ -38,6 +38,7 @@ from larch.implement.dispatch_helpers import (
     _git,
     _git_stdout,
     _invoke_cli,
+    _invoke_larch,
     _maybe_mark_step2_telemetry,
     _parse_kv,
     _rehydrate_larch_triplet,
@@ -414,7 +415,7 @@ def _append_warning(*, st: DispatchState, text: str) -> None:
     # exec_issue_detail counts/renders only lines that start with "- "; normalize
     # plain warning text to a bullet so it is not dropped from the final summary.
     entry = text if text.startswith("- ") else f"- {text}"
-    _invoke_cli(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", entry])
+    _invoke_larch(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", entry])
 
 
 def _snapshot_architectural_knowledge_required(tmpdir: Path, repo_root: Path) -> bool:
@@ -588,7 +589,7 @@ def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, obj
         args.extend(["--panel-skipped", skipped])
     result = _invoke_cli(args, cwd=st.repo_root)
     if result.returncode == 0 and out.is_file():
-        _invoke_cli([
+        _invoke_larch([
             "run-log",
             "write",
             "--log-root",

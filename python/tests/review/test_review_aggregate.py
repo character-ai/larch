@@ -49,6 +49,24 @@ case "${{1:-}}" in
     [ "${{1:-}}" = --file ] && [ -f "${{2:-}}" ] || exit 1
     grep -Fq '[SCOPE-REDUCTION]' "$2"
     ;;
+  run-log)
+    # Narrow append-entry double: aggregation records warnings through the
+    # Rust-owned verb, and these tests assert the recorded text.
+    [ "${{2:-}}" = append-entry ] || exit 2
+    shift 2
+    log=""; category=""; entry=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --log) log="$2"; shift 2 ;;
+        --category) category="$2"; shift 2 ;;
+        --entry) entry="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [ -n "$log" ] && [ -n "$category" ] && [ -n "$entry" ] || exit 1
+    {{ printf '### %s\\n\\n' "$category"; printf '%s\\n' "$entry"; }} >>"$log"
+    printf 'APPENDED=true\\nLOG=%s\\n' "$log"
+    ;;
   *) exit 2 ;;
 esac
 """,

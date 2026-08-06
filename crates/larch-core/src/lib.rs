@@ -159,7 +159,10 @@ pub use progress::{
     statusline_launcher_text, statusline_payload_directory, truncate_columns,
     validate_progress_run_id,
 };
-pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
+pub use redaction::{
+    RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
+    redact_run_log_payload, redact_sensitive_paths,
+};
 pub use report::{
     BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, EMPTY_GROUPS, IssueDetail,
     IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN,
@@ -183,15 +186,23 @@ pub use review_dispatch::{
     parse_generated_paths, wait_for_reviewers, wait_max_polls,
 };
 pub use run_log::{
-    BatchName, ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger,
-    ExecutionIssueReadError, ExecutionIssueReadErrorKind, LIFECYCLE_CONTEXT_BASENAME,
+    AssessmentKind, BATCH_GUIDELINE_SHIP_OUTCOME, BATCH_INVARIANT_SHIP_OUTCOME, BatchInfo,
+    BatchMode, BatchName, BatchPayloadError, CompletenessOutcome, EXECUTION_ISSUE_CATEGORIES,
+    ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger, ExecutionIssueReadError,
+    ExecutionIssueReadErrorKind, FAILURE_CATEGORIES, FailureEntry, LIFECYCLE_CONTEXT_BASENAME,
     LIFECYCLE_CONTEXT_SCHEMA_VERSION, LIFECYCLE_SCHEMA_VERSION, LifecycleContext, LifecycleError,
     LifecycleOutcome, ManifestDocument, ManifestFormatVersion, ManifestReadError,
     ManifestReadErrorKind, ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,
-    RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError, RunLogSlugErrorKind,
-    UNIVERSAL_EXECUTION_ISSUES, UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT,
-    final_summary_terminal_heading, first_nonempty_line, manifest_pr_evidence_matches,
-    stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal, validate_run_log_slug,
+    ReachabilityContext, ResidualSecretError, RoundNumber, RoundNumberError, RunLogLayout,
+    RunLogSlug, RunLogSlugError, RunLogSlugErrorKind, Sanitizer, UNIVERSAL_EXECUTION_ISSUES,
+    UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT, compose_execution_issue,
+    compose_failure_entry, condition_reached, failure_retry_suffix, final_summary_terminal_heading,
+    first_nonempty_line, glob_matches, implementation_plan_body, is_round_sidecar_file,
+    lookup_batch, manifest_pr_evidence_matches, normalize_run_log_text, round_artifact_included,
+    sanitize_diagram_capture, scan_required_files, stage_round_artifact,
+    stale_bail_heading_with_pr_evidence, strip_diagram_sections, terminal_bail_skip_signal,
+    validate_batch_payload, validate_failure_counts, validate_run_log_slug,
+    validate_ship_outcome_record,
 };
 pub use session_env::{
     DIFFICULTY_CHOICES, MAX_PATH_VALUE_LEN, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams,

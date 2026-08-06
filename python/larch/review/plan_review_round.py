@@ -18,7 +18,7 @@ from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.report import progress_file
-from larch.core.repo_roots import larch_entrypoint, plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.review import review_aggregate
 from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
@@ -69,6 +69,19 @@ def _run_larch_cli(argv: list[str], *, env: dict[str, str] | None = None) -> pro
     return proc.run(
         argv,
         cwd=str(_REPO_ROOT),
+        env=merged,
+    )
+
+
+def _run_larch(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    merged = larch_entrypoint_env(_REPO_ROOT, base={**os.environ, **(env or {})})
+    return subprocess.run(
+        [str(larch_entrypoint(_REPO_ROOT)), *argv],
+        cwd=str(_REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
         env=merged,
     )
 
@@ -296,7 +309,7 @@ def _log_reviewer_status_failure(*, design: Path, exc: OSError, tool: str) -> No
     fail_log = design / "reviewer-status-write.failure.log"
     with contextlib.suppress(OSError):
         _ = fail_log.write_text(str(exc), encoding="utf-8")
-    _ = _run_cli(
+    _ = _run_larch(
         argv=[
             "run-log",
             "append-failure",
@@ -513,7 +526,7 @@ def _compose_findings_from_collector(
                     str(fail_log),
                 ]
             )
-            _ = _run_cli(
+            _ = _run_larch(
                 argv=[
                     "run-log",
                     "append-failure",
@@ -598,7 +611,7 @@ def _log_dispatcher_dropped_slots(*, design: Path, dropped_slots_file: str) -> N
             f"reviewer slot {slot} ({tool}) dropped by waterfall dispatcher before collection: {reason}\n{detail}\n",
             encoding="utf-8",
         )
-        _ = _run_cli(
+        _ = _run_larch(
             argv=[
                 "run-log",
                 "append-failure",
@@ -633,7 +646,7 @@ def _log_insufficient_input_warning(*, design: Path, round_num: int) -> None:
         "review coverage.\n",
         encoding="utf-8",
     )
-    _ = _run_cli(
+    _ = _run_larch(
         argv=[
             "run-log",
             "append-failure",

@@ -283,6 +283,10 @@ def _environment(fixture: BootstrapFixture, **updates: str) -> dict[str, str]:
         "TEST_UNAME_S": os_name,
         "TEST_VERSION": VERSION,
     }
+    # These tests exercise the bootstrap's own install and verification path, so
+    # the session-wide `LARCH_BINARY` double must not short-circuit it. Cases
+    # that need an override pass one through `updates`.
+    _ = environment.pop("LARCH_BINARY", None)
     environment.update(updates)
     return environment
 

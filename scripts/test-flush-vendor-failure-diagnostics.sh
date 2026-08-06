@@ -58,7 +58,7 @@ T3="$TMPROOT/run3"; mkdir -p "$T3/vendor-failure-diagnostics.parts"
 printf '===== gamma =====\ngamma body\n' > "$T3/vendor-failure-diagnostics.parts/part.ccc"
 LOG_ROOT="$T3/larch-logs"
 RUN_ID="TEST-RUN-3713"
-python3 "$REPO_ROOT/python/cli.py" run-log init --log-root "$LOG_ROOT" --skill implement --run-id "$RUN_ID" >/dev/null 2>&1 || true
+"$REPO_ROOT/scripts/larch.sh" run-log init --log-root "$LOG_ROOT" --skill implement --run-id "$RUN_ID" >/dev/null 2>&1 || true
 out=$("$SCRIPT" --tmpdir "$T3" --run-id "$RUN_ID" --log-root "$LOG_ROOT" 2>&1 || true)
 assert_kv "log-root flush reports flushed" "$out" "FLUSH_STATUS=flushed"
 staged="$LOG_ROOT/implement/$RUN_ID/vendor-failure-diagnostics.txt"

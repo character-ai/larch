@@ -24,6 +24,7 @@ from larch.implement.dispatch_helpers import (
     _git,
     _git_stdout,
     _invoke_cli,
+    _invoke_larch,
     _parse_kv,
     _rehydrate_plugin_root,
     resolve_tmpdir_path,
@@ -462,7 +463,7 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
 
 
 def _append_materialize_oos_failure(*, st: DispatchState, log: Path, exit_code: int) -> None:
-    _invoke_cli([
+    _invoke_larch([
         "run-log",
         "append-failure",
         "--log",

@@ -36,7 +36,7 @@ from larch.implement.dispatch_helpers import (
     _env_value,
     _first_nonempty,
     _forward_child_output_to_stderr,
-    _invoke_cli,
+    _invoke_larch,
     _read_kv_file,
     _read_session_key_default,
     _rehydrate_plugin_root,
@@ -1107,7 +1107,7 @@ def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: P
         already = "step-8-oos-checkpoint-validation" in log_text
     if rc != 0 and not already:
         site = "step-8-oos-checkpoint" if rc == 1 else "step-8-oos-checkpoint-validation"
-        _invoke_cli([
+        _invoke_larch([
             "run-log",
             "append-failure",
             "--log",

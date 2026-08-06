@@ -464,7 +464,16 @@ fn manifest_integer(value: &str) -> bool {
     !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-fn resolve_log_root(raw: &str) -> Result<PathBuf, String> {
+/// Resolve `--log-root` against `LARCH_LOG_ROOT` and `IMPLEMENT_TMPDIR`.
+///
+/// Shared with the entry-write commands so one owner decides where a run-log
+/// tree lives.
+///
+/// # Errors
+///
+/// Returns the operator-facing message when no root can be resolved, when the
+/// temporary root is relative, or when the requested root escapes it.
+pub fn resolve_log_root(raw: &str) -> Result<PathBuf, String> {
     let raw = if raw.is_empty() {
         env::var("LARCH_LOG_ROOT").unwrap_or_default()
     } else {
@@ -519,14 +528,19 @@ fn manifest_failure(message: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn emit_log_envelope(path: Option<&Path>, written: bool, unchanged: bool, error: &str) {
-    let bytes = path
-        .and_then(|path| fs::read(path).ok())
-        .unwrap_or_default();
-    let size = path
+/// Emit the shared `run-log` stdout envelope.
+///
+/// `BYTES` and `SHA256` describe `path` only when it names a regular file, so a
+/// missing path or a directory (the `write-round` destination) reports `0` and
+/// an empty digest exactly as the Python owner did.
+pub fn emit_log_envelope(path: Option<&Path>, written: bool, unchanged: bool, error: &str) {
+    let regular_file = path.filter(|path| path.is_file());
+    let size = regular_file
         .and_then(|path| fs::metadata(path).ok())
         .map_or(0, |metadata| metadata.len());
-    let sha256 = path.map_or_else(String::new, |_| format!("{:x}", Sha256::digest(bytes)));
+    let sha256 = regular_file
+        .and_then(|path| fs::read(path).ok())
+        .map_or_else(String::new, |bytes| format!("{:x}", Sha256::digest(bytes)));
     println!("LOG_WRITTEN={}", if written { "true" } else { "false" });
     println!(
         "LOG_PATH={}",

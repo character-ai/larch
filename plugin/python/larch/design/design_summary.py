@@ -21,7 +21,7 @@ from larch.report import review_phase_detail
 from larch.report import storage_config
 from larch.design.design_publish import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.report.report_tokens_cost import CODEX_MINI_MODELS, CURSOR_GROK_MODELS
 
 
@@ -50,6 +50,16 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(root / "python" / "cli.py"), *args],
         capture_output=True, text=True, check=False,
+    )
+
+
+def _run_larch(*args: str) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    root = Path(__file__).resolve().parents[3]
+    return subprocess.run(
+        [str(larch_entrypoint(root)), *args],
+        capture_output=True, text=True, check=False,
+        env=larch_entrypoint_env(root),
     )
 
 
@@ -285,7 +295,7 @@ def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
             )
             difficulty.write_record(record_path, record)
     with contextlib.suppress(OSError, ValueError):
-        _ = _run_cli(
+        _ = _run_larch(
             "run-log",
             "write",
             "--skill",
@@ -499,7 +509,7 @@ def _run_design_failure_report_gate(
 
     gate_rc = capture_contract_stream_to_paths(failure_report_core, out_file, err_file, cmd)
     if gate_rc != 0:
-        _run_cli(  # pyright: ignore[reportUnusedCallResult]
+        _run_larch(  # pyright: ignore[reportUnusedCallResult]
             "run-log", "append-failure",
             "--log", str(ex_log),
             "--site", "design failure report gate",

@@ -190,7 +190,7 @@ def _append_producer_scout_warning_once(*, status: str, fail_reason: str) -> Non
     if sentinel.exists():
         return
     reason = f" ({fail_reason})" if fail_reason else ""
-    result = review_pipeline_shared.run_python_cli(
+    result = review_pipeline_shared.run_larch(
         [
             "run-log",
             "append-entry",

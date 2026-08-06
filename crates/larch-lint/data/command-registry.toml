@@ -5864,11 +5864,13 @@ verb = "append"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_append_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-append"
 
 [[commands]]
 domain = "run-log"
@@ -5876,11 +5878,13 @@ verb = "append-entry"
 python_module = "larch.report.run_logs"
 python_function = "append_entry_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-append-entry"
 
 [[commands]]
 domain = "run-log"
@@ -5888,11 +5892,13 @@ verb = "append-failure"
 python_module = "larch.report.run_logs"
 python_function = "append_failure_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-append-failure"
 
 [[commands]]
 domain = "run-log"
@@ -5948,11 +5954,13 @@ verb = "exists"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_exists_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-exists"
 
 [[commands]]
 domain = "run-log"
@@ -5973,11 +5981,13 @@ verb = "init"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_init_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-init"
 
 [[commands]]
 domain = "run-log"
@@ -6217,11 +6227,13 @@ verb = "verify-completeness"
 python_module = "larch.report.run_logs"
 python_function = "verify_completeness_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-verify-completeness"
 
 [[commands]]
 domain = "run-log"
@@ -6229,11 +6241,13 @@ verb = "write"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_write_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-write"
 
 [[commands]]
 domain = "run-log"
@@ -6241,11 +6255,13 @@ verb = "write-round"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_write_round_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8073
+clean_install_test = "clean-install-run-log-write-round"
 
 [[commands]]
 domain = "scope-anchor"
@@ -8133,6 +8149,18 @@ python = ["generate reviewer-testing-agent"]
 rust = []
 
 [[callers]]
+path = "python/larch/agents/_auth.py"
+kind = "python-runtime"
+python = []
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "agent resolve-model-pins"]
+
+[[callers]]
+path = "python/larch/agents/_ci_launcher.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append-entry", "run-log append-failure"]
+
+[[callers]]
 path = "python/larch/agents/_review_launcher.py"
 kind = "python-runtime"
 python = []
@@ -8142,13 +8170,7 @@ rust = ["git snapshot-untracked"]
 path = "python/larch/agents/_run_external.py"
 kind = "python-runtime"
 python = []
-rust = ["agent parse-codex-usage"]
-
-[[callers]]
-path = "python/larch/agents/_auth.py"
-kind = "python-runtime"
-python = []
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "agent resolve-model-pins"]
+rust = ["agent parse-codex-usage", "run-log append-failure"]
 
 [[callers]]
 path = "python/larch/agents/agent_voters.py"
@@ -8193,6 +8215,18 @@ python = ["tracking-issue rename"]
 rust = []
 
 [[callers]]
+path = "python/larch/design/decompose.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append-failure"]
+
+[[callers]]
+path = "python/larch/design/design_core.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append-failure"]
+
+[[callers]]
 path = "python/larch/design/design_oos.py"
 kind = "python-runtime"
 python = ["design file-oos-annotate", "design file-oos-prepare", "oos file-conflict-deps", "oos issue-cap"]
@@ -8208,7 +8242,7 @@ rust = []
 path = "python/larch/design/design_publish.py"
 kind = "python-runtime"
 python = ["diagrams upsert"]
-rust = ["session write-design-env"]
+rust = ["run-log append-failure", "run-log write", "session write-design-env"]
 
 [[callers]]
 path = "python/larch/design/design_router.py"
@@ -8229,6 +8263,12 @@ python = []
 rust = ["dirty-tree checkpoint"]
 
 [[callers]]
+path = "python/larch/design/design_step2b.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append-entry", "run-log append-failure"]
+
+[[callers]]
 path = "python/larch/design/design_step6.py"
 kind = "python-runtime"
 python = []
@@ -8237,8 +8277,8 @@ rust = ["session cleanup-tmpdir"]
 [[callers]]
 path = "python/larch/design/design_step_log.py"
 kind = "python-runtime"
-python = ["run-log write"]
-rust = []
+python = []
+rust = ["run-log append-failure"]
 
 [[callers]]
 path = "python/larch/design/design_summary.py"
@@ -8256,7 +8296,7 @@ rust = ["stall-recovery is-larch-dev-clone", "stall-recovery validate-terminal-s
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent run-external-agent"]
+rust = ["agent cursor-wrap-prompt", "agent run-external-agent", "run-log append-failure"]
 
 [[callers]]
 path = "python/larch/git/rebase.py"
@@ -8325,6 +8365,12 @@ python = ["analyze-bugs ledger", "analyze-bugs prefetch", "analyze-bugs report",
 rust = []
 
 [[callers]]
+path = "python/larch/issue/execution_issues.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append"]
+
+[[callers]]
 path = "python/larch/issue/migration_governance.py"
 kind = "python-runtime"
 python = ["tracking-issue rename"]
@@ -8346,7 +8392,7 @@ rust = []
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []
-rust = ["agent classify-diff"]
+rust = ["agent classify-diff", "run-log append-entry"]
 
 [[callers]]
 path = "python/larch/report/cleanup_implement_logs.py"
@@ -8381,8 +8427,14 @@ rust = []
 [[callers]]
 path = "python/larch/report/run_logs.py"
 kind = "python-runtime"
-python = ["run-log append-failure"]
-rust = []
+python = []
+rust = ["run-log write-round"]
+
+[[callers]]
+path = "python/larch/review/batch_report.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log write", "run-log write-round"]
 
 [[callers]]
 path = "python/larch/review/coder_runner.py"
@@ -8406,13 +8458,13 @@ rust = ["agent compose-collector-failure-log"]
 path = "python/larch/review/review_aggregate.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree scope-marker"]
+rust = ["dirty-tree scope-marker", "run-log append-entry"]
 
 [[callers]]
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = ["stall-recovery record-escalation"]
-rust = ["git commit"]
+rust = ["git commit", "run-log write"]
 
 [[callers]]
 path = "python/larch/review/review_collect.py"
@@ -8431,6 +8483,12 @@ path = "python/larch/review/review_gather.py"
 kind = "python-runtime"
 python = []
 rust = ["agent gather-branch-context"]
+
+[[callers]]
+path = "python/larch/review/review_tally.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log append", "run-log append-entry", "run-log write"]
 
 [[callers]]
 path = "python/larch/review/round_runner.py"
@@ -8454,7 +8512,7 @@ rust = ["git snapshot-untracked", "session entry-gate", "session persist-run-fla
 path = "python/larch/state/closeout.py"
 kind = "python-runtime"
 python = ["final-report write"]
-rust = ["slack issue-announce"]
+rust = ["run-log append-failure", "slack issue-announce"]
 
 [[callers]]
 path = "python/larch/state/session_env.py"
@@ -8479,12 +8537,6 @@ path = "scripts/file-failure-report-cross-repo.sh"
 kind = "script"
 python = ["redact secrets"]
 rust = ["session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
-
-[[callers]]
-path = "scripts/flush-vendor-failure-diagnostics.sh"
-kind = "script"
-python = ["run-log write"]
-rust = []
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"
@@ -8573,8 +8625,8 @@ rust = ["kv get"]
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["agent collect-results", "architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure"]
-rust = ["agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "session write-run-params"]
+python = ["agent collect-results", "architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
+rust = ["agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "run-log append-failure", "session write-run-params"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -8645,8 +8697,8 @@ rust = ["stall-recovery validate-terminal-state", "stall-recovery validate-token
 [[callers]]
 path = "skills/design/references/finalize-step5.md"
 kind = "skill"
-python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "mermaid sanitize", "run-log append-failure"]
-rust = []
+python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "mermaid sanitize"]
+rust = ["run-log append-failure"]
 
 [[callers]]
 path = "skills/design/references/flags.md"
@@ -8699,8 +8751,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/validator-failure.md"
 kind = "skill"
-python = ["design step2b-postplan", "named-block write", "plan validator-autofix", "run-log append-failure"]
-rust = []
+python = ["design step2b-postplan", "named-block write", "plan validator-autofix"]
+rust = ["run-log append-failure"]
 
 [[callers]]
 path = "skills/design/scripts/check-plan-size.md"
@@ -8741,8 +8793,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "run-log append-failure", "voting findings-classification-header"]
-rust = ["kv get", "session require-plugin-root", "session validate-design-tmpdir"]
+python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "voting findings-classification-header"]
+rust = ["kv get", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -8813,8 +8865,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -8867,8 +8919,8 @@ rust = ["git rebase-abort", "push rebase"]
 [[callers]]
 path = "skills/implement/references/execution-issues-tracking.md"
 kind = "skill"
-python = ["issue parse-input", "oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest", "run-log append-failure"]
-rust = []
+python = ["issue parse-input", "oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
+rust = ["run-log append-failure"]
 
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
@@ -9227,8 +9279,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/write-final-report.md"
 kind = "skill"
-python = ["audit-runs scan-run", "final-report write", "render run-summary", "run-log refresh", "run-log verify-completeness", "stall-recovery normalize-outcome"]
-rust = []
+python = ["audit-runs scan-run", "final-report write", "render run-summary", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["run-log verify-completeness"]
 
 [[callers]]
 path = "skills/implement/scripts/write-final-report.sh"

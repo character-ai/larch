@@ -248,7 +248,7 @@ fn read_claude_model() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn resolve_claude_model_from_environment() -> String {
+pub fn resolve_claude_model_from_environment() -> String {
     if let Some(model) = model_from_claude_source_file() {
         return model;
     }

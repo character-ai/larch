@@ -70,12 +70,15 @@ impl PathPattern {
     }
 }
 
-static PATH_PATTERNS: LazyLock<Vec<PathPattern>> = LazyLock::new(|| {
+/// Session-tmpdir patterns only. Operator repository roots are deliberately
+/// excluded: callers use these to detect a *session* pointer that must never be
+/// persisted, and an operator path is redacted rather than refused.
+static SESSION_TMPDIR_PATTERNS: LazyLock<Vec<PathPattern>> = LazyLock::new(|| {
     let session =
         r"(?:claude|larch)-(?:implement|design|review|research|fix-issue|issue)-[A-Za-z0-9_.-]+";
     let boundary = r"[^A-Za-z0-9_./-]";
     let not_path = r#"[^/\s"\\]"#;
-    let mut patterns = vec![
+    vec![
         PathPattern::new(
             &format!(
                 r#"(?m)(^|{boundary})/(?:private/)?tmp/+(?:{not_path}+/)*larch-report-tokens[.-][^/\s"\\]+"#
@@ -116,7 +119,13 @@ static PATH_PATTERNS: LazyLock<Vec<PathPattern>> = LazyLock::new(|| {
             ),
             "$1<TMPDIR>",
         ),
-    ];
+    ]
+});
+
+/// Operator repository-root patterns applied after the session-tmpdir set.
+static OPERATOR_PATH_PATTERNS: LazyLock<Vec<PathPattern>> = LazyLock::new(|| {
+    let boundary = r"[^A-Za-z0-9_./-]";
+    let mut patterns = Vec::new();
     let operator_specs = [
         (r#"[^/\s"\\]+/"#, "$1<OPERATOR_REPO_PATH>/"),
         (r#"[^/\s"\\,]+,"#, "$1<OPERATOR_REPO_PATH>,"),
@@ -287,13 +296,40 @@ pub fn redact_secrets(text: &str) -> RedactionResult {
 #[must_use]
 pub fn redact_sensitive_paths(text: &str) -> String {
     let mut scrubbed = String::from(text);
-    for pattern in PATH_PATTERNS.iter() {
+    for pattern in SESSION_TMPDIR_PATTERNS
+        .iter()
+        .chain(&*OPERATOR_PATH_PATTERNS)
+    {
         scrubbed = pattern
             .pattern
             .replace_all(&scrubbed, pattern.replacement)
             .into_owned();
     }
     scrubbed
+}
+
+/// True when `text` carries a recognized session-tmpdir pointer.
+///
+/// Operator repository paths do not count: they are redacted downstream, while
+/// a session pointer is refused outright by the batches that reject it.
+#[must_use]
+pub fn contains_recognized_session_tmpdir_pointer(text: &str) -> bool {
+    SESSION_TMPDIR_PATTERNS
+        .iter()
+        .any(|pattern| pattern.pattern.is_match(text))
+}
+
+/// Redact paths then secrets, ending the body with exactly one newline.
+///
+/// This is the line-oriented shape run-log batch payloads and `--redact`
+/// failure bodies persist; [`redact`] preserves the caller's newline intent.
+#[must_use]
+pub fn redact_run_log_payload(text: &str) -> String {
+    let mut redacted = redact(text).text;
+    if !redacted.is_empty() && !redacted.ends_with('\n') {
+        redacted.push('\n');
+    }
+    redacted
 }
 
 /// Redact sensitive paths first, then all secret families.

@@ -287,16 +287,13 @@ def _flush_round_log(*, review_tmpdir: Path, run_id: str, round_num: int) -> Non
     _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
     from larch.report import run_logs  # noqa: PLC0415 - avoids the report finalization import cycle during review-core module loading.
 
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        _ = run_logs.larch_log_write_round_main(
-            [
-                "--log-root", str(Path(implement) / "larch-logs"),
-                "--skill", "implement",
-                "--run-id", run_id,
-                "--round", str(round_num),
-                "--source-dir", str(review_tmpdir),
-            ]
-        )
+    _ = run_logs.log_write_round(
+        log_root=Path(implement) / "larch-logs",
+        skill="implement",
+        run_id=run_id,
+        round_number=round_num,
+        source_dir=review_tmpdir,
+    )
 
 
 def _parse_nonnegative_int(value: str, *, default: int = 0) -> int:

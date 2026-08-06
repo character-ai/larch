@@ -36,6 +36,7 @@ from larch.implement.dispatch_helpers import (
     _forward_child_output_to_stderr,
     _forward_result,
     _invoke_cli,
+    _invoke_larch,
     _read_kv_file,
     _read_session_key_default,
     _rehydrate_larch_triplet,
@@ -835,7 +836,7 @@ def _commit_route_log_failure(
     # "step" from these commit-route site keys (step7 -> 7, step5-self-review ->
     # 5-self-review) so the rendered bullet reads "Step 7:", not "Step step7:".
     display_site = site_name.removeprefix("step") or site_name
-    result = _invoke_cli(
+    result = _invoke_larch(
         [
             "run-log",
             "append-failure",
@@ -1281,7 +1282,7 @@ def _step4_commit_failure(
         stderr=stderr,
     )
     failure_log = _write_commit_route_failure_log(implement_tmpdir, failure=failure)
-    result = _invoke_cli(
+    result = _invoke_larch(
         [
             "run-log",
             "append-failure",

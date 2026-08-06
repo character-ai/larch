@@ -52,6 +52,29 @@ separate leaves. Shared Python helpers may remain while a Python-owned command
 still consumes them; they are not fallback implementations for the six
 Rust-owned commands.
 
+**Initialization and entry writes cut over in #8073.** `run-log init`, `write`,
+`write-round`, `append`, `append-entry`, `append-failure`, `exists`, and
+`verify-completeness` are Rust-owned; `crates/larch-core/src/run_log/` owns the
+batch registry, sanitizers, execution-issue composition, round-artifact tables,
+and the verify-completeness reachability chain, and
+`crates/larch-cli/src/run_log_entry_commands.rs` owns the command boundaries.
+`python/larch/report/run_logs.py` survives only as a Rust consumer: its
+`log_init` / `log_write` / `log_append` / `log_write_round` /
+`log_append_failure` helpers build an argv, execute `scripts/larch.sh`, and
+translate the exit code into the `ValueError` / `OSError` contract their
+existing callers already handle. `log_manifest_update` is unrelated to this
+leaf and still writes the manifest in Python.
+
+Two parts of `larch.report.run_log_batch` outlive their production callers on
+purpose. The batch registry still backs the Python-owned flush, archive, and
+publication verbs, and
+`python/tests/report/test_run_log_batch_registry_parity.py` fails if it drifts
+from the authoritative Rust table. The round-artifact tables and
+`_stage_round_artifact` have no Python production caller left; they are retained
+only as the shared source for the `run-log write-round` test double in
+`python/tests/support/rust_agent_stub.py`, so the double cannot become a second
+implementation. Delete both when the remaining run-log verbs cut over.
+
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py` (the gzip-embedded `tally-plan-review.sh` body is retained for contract tests but no longer executed). Treat the remaining delegated Python entry points as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.

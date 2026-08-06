@@ -1400,6 +1400,21 @@ def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkey
     assert st.stall_tracking == "true"
 
 
+def _fake_append_failure(argv: Sequence[str]) -> proc.CommandResult:
+    """Record a bootstrap-dispatched `run-log append-failure` entry."""
+    values = list(argv)
+    read = lambda name: values[values.index(name) + 1] if name in values else ""  # noqa: E731 - local argv reader
+    log = Path(read("--log"))
+    log.parent.mkdir(parents=True, exist_ok=True)
+    entry = (
+        f"- **Step {read('--site')}: {read('--tool')} "
+        f"{read('--status-label') or 'failed'} (exit {read('--exit-code')})**:\n"
+    )
+    with log.open("a", encoding="utf-8") as handle:
+        _ = handle.write(f"### {read('--category')}\n\n{entry}")
+    return proc.CommandResult(tuple(values), 0, f"APPENDED=true\nLOG={log}\n", "", 0.0)
+
+
 def _run_phase_infra_for_progress(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1445,6 +1460,10 @@ def _run_phase_infra_for_progress(
         calls.append(("timing", label))
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+        # `run-log append-failure` is Rust-owned, so the bootstrap fallback record
+        # now arrives as a bootstrap dispatch rather than an in-process write.
+        if list(argv[1:3]) == ["run-log", "append-failure"]:
+            return _fake_append_failure(argv)
         if list(argv[1:3]) != ["session", "write-implement-env"]:
             return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
         calls.append(("write-implement-env",))

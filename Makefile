@@ -839,8 +839,11 @@ test-larch-log-write-round:
 test-capture-session-transcript:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k capture_transcript
 
+# `run-log verify-completeness` is Rust-owned (#8073), so this is a standalone
+# Rust integration-test alias, not a test-harnesses prerequisite; see CARVE_OUTS
+# in scripts/test-harness-shards-coverage.sh.
 test-verify-run-log-completeness:
-	env -u LARCH_VERIFY_MANIFEST python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k verify_completeness
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test run_log_entry verify_completeness
 
 test-larch-logs-manifest:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k manifest

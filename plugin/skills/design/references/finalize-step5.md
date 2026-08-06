@@ -26,7 +26,7 @@ Priority labels: after `/larch:issue` succeeds, `python/cli.py design file-oos-a
 
 When a priority label is outstanding, annotate writes `.oos-priority-label-pending` and durable cache sidecars before the first `gh label create` or `gh issue edit`. Sidecars hold sentinel URLs, post-cap combined text, and filing order. Later `NEXT_ACTION=label-only` labels from them without calling `/larch:issue`; `oos-accepted-design.md` and `oos-issue.stdout.txt` are not required.
 
-If the prepare wrapper exits non-zero, parse only `NEXT_ACTION=` and `STEP5B_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. For `NEXT_ACTION=unknown-oos-status` or `STEP5B_STATUS=unknown-oos-status`, preserve the warning and stop for repair. Otherwise append captured stderr with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, warn that OOS filing was skipped due to helper failure, and continue to Step 5b.5 without invoking `/larch:issue`.
+If the prepare wrapper exits non-zero, parse only `NEXT_ACTION=` and `STEP5B_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. For `NEXT_ACTION=unknown-oos-status` or `STEP5B_STATUS=unknown-oos-status`, preserve the warning and stop for repair. Otherwise append captured stderr with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log append-failure` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, warn that OOS filing was skipped due to helper failure, and continue to Step 5b.5 without invoking `/larch:issue`.
 
 When prepare output has `STEP5B_STATUS=prepare-failed-continue`, preserve the warning and continue to Step 5b.5 without invoking `/larch:issue`.
 

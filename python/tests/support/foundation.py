@@ -72,6 +72,7 @@ __all__ = [
     "operator_repo_with_remote",
     "repo_root",
     "run_cli",
+    "run_larch",
     "run_params_text",
     "seed_feature_description",
     "seed_plan",
@@ -309,6 +310,32 @@ def run_cli(
         merged.update(env)
     return subprocess.run(
         [sys.executable, str(CLI), *args],
+        cwd=ROOT,
+        env=merged,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def run_larch(
+    *args: str,
+    env: dict[str, str] | None = None,
+    quiet_disable: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run one Rust-owned command through the verified bootstrap script.
+
+    `LARCH_BINARY` comes from the session-wide test double unless the caller
+    supplies its own, so a Python-only test run needs no Rust build.
+    """
+    merged = os.environ.copy()
+    merged["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+    if quiet_disable:
+        merged["LARCH_QUIET_DISABLE"] = "1"
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        [str(ROOT / "scripts" / "larch.sh"), *args],
         cwd=ROOT,
         env=merged,
         text=True,

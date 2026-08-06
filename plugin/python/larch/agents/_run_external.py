@@ -24,7 +24,7 @@ from larch.core.ctx import Ctx
 from larch.core import logging_util
 from larch.core.env_file import read_env_file
 from larch.core import proc
-from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
 from larch.core import redact
 from larch.core.proc import CommandResult
 
@@ -1078,7 +1078,8 @@ def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str
 def append_execution_log_failure(failure: ExecutionLogFailure) -> None:
     """Record one external launcher failure in the shared execution-issues log."""
     argv = [
-        sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(failure.log),
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "run-log", "append-failure", "--log", str(failure.log),
         "--site", failure.site, "--tool", failure.tool, "--exit-code", str(failure.exit_code),
         "--category", failure.category, "--output-file", str(failure.source), "--verdict", failure.verdict,
     ]
@@ -1087,7 +1088,7 @@ def append_execution_log_failure(failure: ExecutionLogFailure) -> None:
     if failure.transient_attempt is not None:
         argv.extend(("--transient-retry-count", str(failure.transient_attempt)))
     argv.append("--redact")
-    proc.run(argv, check=False)
+    proc.run(argv, check=False, env=larch_entrypoint_env(Path(__file__).resolve().parents[3]))
 
 
 def _write_preflight_bundle(

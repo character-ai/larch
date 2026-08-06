@@ -78,17 +78,7 @@ impl CleanInstallCase {
             "clean-install-session-validate-design-tmpdir" => {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
-            "clean-install-run-log-manifest" => &[
-                "--log-root",
-                "manifest-logs",
-                "--skill",
-                "clean",
-                "--run-id",
-                "clean-install",
-                "--field",
-                "steps_ran.install=true",
-            ],
-            "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
+            id if id.starts_with("clean-install-run-log-") => run_log_arguments(id),
             "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
                 "--repo-root",
                 "/larch-clean-install-clone-missing",
@@ -194,6 +184,106 @@ fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static s
             Some(&["--round-dir", "/larch-clean-install-round-missing"])
         }
         _ => None,
+    }
+}
+
+/// Argument sets for every Rust-owned `run-log` clean-install case.
+///
+/// The entry-write verbs run against the fixture's seeded session inputs, so a
+/// clean install proves each whole route rather than only the argument
+/// rejection in front of it. Split out of `CleanInstallCase::arguments` so that
+/// matcher stays readable.
+fn run_log_arguments(id: &str) -> &'static [&'static str] {
+    match id {
+        "clean-install-run-log-manifest" => &[
+            "--log-root",
+            "manifest-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+            "--field",
+            "steps_ran.install=true",
+        ],
+        "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
+        "clean-install-run-log-init" => &[
+            "--log-root",
+            "%SESSION%/larch-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+        ],
+        "clean-install-run-log-write" => &[
+            "--log-root",
+            "%SESSION%/larch-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+            "--batch",
+            "review-context",
+            "--input-file",
+            "%SESSION%/payload.md",
+        ],
+        "clean-install-run-log-write-round" => &[
+            "--log-root",
+            "%SESSION%/larch-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+            "--round",
+            "1",
+            "--source-dir",
+            "%SESSION%/round-src",
+        ],
+        "clean-install-run-log-append" => &[
+            "--log-root",
+            "%SESSION%/larch-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+            "--batch",
+            "execution-issues",
+            "--record-file",
+            "%SESSION%/record.ndjson",
+        ],
+        "clean-install-run-log-exists" => &[
+            "--log-root",
+            "%SESSION%/larch-logs",
+            "--skill",
+            "clean",
+            "--run-id",
+            "clean-install",
+            "--batch",
+            "run-statistics",
+        ],
+        "clean-install-run-log-append-entry" => &[
+            "--log",
+            "%SESSION%/execution-issues.md",
+            "--category",
+            "Warnings",
+            "--entry",
+            "clean-install",
+        ],
+        "clean-install-run-log-append-failure" => &[
+            "--log",
+            "%SESSION%/execution-issues.md",
+            "--site",
+            "clean",
+            "--tool",
+            "install",
+            "--exit-code",
+            "0",
+            "--category",
+            "Warnings",
+            "--output-file",
+            "%SESSION%/payload.md",
+        ],
+        "clean-install-run-log-verify-completeness" => &["%SESSION%/verify-run"],
+        _ => &["--help"],
     }
 }
 
@@ -554,6 +644,30 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-stall-recovery-validate-token",
         "stall-recovery",
         "validate-token",
+    ),
+    CleanInstallCase::new("clean-install-run-log-init", "run-log", "init"),
+    CleanInstallCase::new("clean-install-run-log-write", "run-log", "write"),
+    CleanInstallCase::new(
+        "clean-install-run-log-write-round",
+        "run-log",
+        "write-round",
+    ),
+    CleanInstallCase::new("clean-install-run-log-append", "run-log", "append"),
+    CleanInstallCase::new("clean-install-run-log-exists", "run-log", "exists"),
+    CleanInstallCase::new(
+        "clean-install-run-log-append-entry",
+        "run-log",
+        "append-entry",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-append-failure",
+        "run-log",
+        "append-failure",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-verify-completeness",
+        "run-log",
+        "verify-completeness",
     ),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
@@ -3315,6 +3429,7 @@ exec "$REAL_LARCH" "$@"
         sessions_cache.join("current-design-env-4242.sh"),
     )
     .expect("seed clean-install design pointer");
+    seed_clean_install_run_log_inputs(&root, &session);
     CleanInstallFixture {
         events: temporary_root.join("events.log"),
         binary: PathBuf::from(env!("CARGO_BIN_EXE_larch")),
@@ -3324,6 +3439,33 @@ exec "$REAL_LARCH" "$@"
         session,
         wrapper,
     }
+}
+
+/// Seed the payloads, round source, run directory, and required-files manifest
+/// the `run-log` entry-write verbs read on a clean install.
+fn seed_clean_install_run_log_inputs(root: &Path, session: &Path) {
+    fs::write(session.join("payload.md"), "clean-install payload\n")
+        .expect("seed clean-install batch payload");
+    fs::write(session.join("record.ndjson"), "{\"clean\":\"install\"}\n")
+        .expect("seed clean-install append record");
+    let round_source = session.join("round-src");
+    fs::create_dir_all(&round_source).expect("create clean-install round source");
+    fs::write(round_source.join("coder-prompt.md"), "prompt\n")
+        .expect("seed clean-install round artifact");
+    let run_directory = session.join("verify-run");
+    fs::create_dir_all(&run_directory).expect("create clean-install verify run directory");
+    fs::write(
+        run_directory.join("manifest.json"),
+        "{\"schema_version\":2,\"status\":\"merged\",\"run_id\":\"clean-install\",\"steps_ran\":{}}\n",
+    )
+    .expect("seed clean-install verify manifest");
+    let documents = root.join("docs");
+    fs::create_dir_all(&documents).expect("create clean-install docs directory");
+    fs::write(
+        documents.join("run-logs-required-files.tsv"),
+        "relative_path\tcondition\nmanifest.json\talways\n",
+    )
+    .expect("seed clean-install required-files manifest");
 }
 
 /// Expand one case's static arguments against the fixture's seeded session.

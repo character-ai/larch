@@ -11,7 +11,8 @@ outside the shards, including `test-classify-bump`, `test-promote-release`,
 `test-release-prepare`, `test-release-set-version`, and the Rust agent-command
 aliases `test-compose-collector-failure-log`, `test-wait-for-reviewers`,
 `test-classify-diff-mode`, `test-gather-branch-context`,
-`test-run-external-agent-args`, `test-check-reviewers`, and
-`test-degraded-tools-gate`, must be listed in `CARVE_OUTS` and documented
+`test-run-external-agent-args`, `test-check-reviewers`,
+`test-degraded-tools-gate`, and the Rust run-log alias
+`test-verify-run-log-completeness`, must be listed in `CARVE_OUTS` and documented
 beside their Makefile targets. Keep this sibling doc in sync with the harness
 whenever shard parsing or Makefile target contracts change.

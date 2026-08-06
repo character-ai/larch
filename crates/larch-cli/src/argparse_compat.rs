@@ -212,10 +212,18 @@ pub fn utf8_arguments(
         .collect()
 }
 
-/// Return whether `value` reads as an option rather than a negative number.
+/// Return whether `value` reads as an option rather than a value.
+///
+/// Mirrors `argparse._parse_optional`: a `-`-prefixed token is a value when it
+/// looks like a negative number, or when it contains a space. No declared long
+/// option contains a space, so the space rule can never hide a real flag, and
+/// it is what lets `--entry "- **Step 2 …**"` pass a leading-dash bullet.
 #[must_use]
 pub fn looks_like_option(value: &OsStr) -> bool {
     let text = value.to_string_lossy();
+    if text.contains(' ') {
+        return false;
+    }
     let negative_number = text.strip_prefix('-').is_some_and(|number| {
         number.bytes().any(|byte| byte.is_ascii_digit())
             && number
@@ -343,6 +351,7 @@ mod tests {
         assert!(looks_like_option(OsStr::new("--flag")));
         assert!(!looks_like_option(OsStr::new("-12")));
         assert!(looks_like_option(OsStr::new("-1.2.3")));
+        assert!(!looks_like_option(OsStr::new("- **Step 2: tool failed**")));
         assert_eq!(join_arguments(&arguments(&["a", "b"])), "a b");
     }
 }

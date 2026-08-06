@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +11,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch import io as larch_io
+from larch.core.repo_roots import larch_entrypoint
 
 
 def _fail(msg: str) -> int:
@@ -48,13 +48,12 @@ def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_i
 
 
 def _append_log_write_failure(*, plugin_root: Path, implement_tmpdir: Path, site: str, tool: str, output_file: Path) -> None:
-    helper = plugin_root / "python" / "cli.py"
+    helper = larch_entrypoint(plugin_root)
     if not helper.is_file():
         print(f"run-step1-plan-log.sh: best-effort log write failed for {tool} (see {output_file})", file=sys.stderr)
         return
     _ = subprocess.run(
         [
-            sys.executable,
             str(helper),
             "run-log",
             "append-failure",
@@ -150,12 +149,10 @@ def step1_log_main(argv: Sequence[str]) -> int:
             return _fail(f"run-log override not executable: {larch_log_override}")
         larch_log_cmd: list[str] = [larch_log_override]
     else:
-        if shutil.which("python3") is None:
-            return _fail("python3 not found")
-        cli_py = plugin_root / "python" / "cli.py"
-        if not cli_py.is_file():
-            return _fail(f"python CLI missing: {cli_py}")
-        larch_log_cmd = [sys.executable, str(cli_py), "run-log"]
+        entrypoint = larch_entrypoint(plugin_root)
+        if not entrypoint.is_file():
+            return _fail(f"larch bootstrap missing: {entrypoint}")
+        larch_log_cmd = [str(entrypoint)]
 
     output_file = implement_tmpdir / "plan-goals-test.md"
     fd, tmp_name = tempfile.mkstemp(prefix="plan-goals-test.md.tmp.", dir=str(implement_tmpdir))
@@ -180,6 +177,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
     write_result: subprocess.CompletedProcess[str] = subprocess.run(
         [
             *larch_log_cmd,
+            "run-log",
             "write",
             "--log-root",
             str(implement_tmpdir / "larch-logs"),
@@ -209,6 +207,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
         parent_write: subprocess.CompletedProcess[str] = subprocess.run(
             [
                 *larch_log_cmd,
+                "run-log",
                 "write",
                 "--log-root",
                 str(implement_tmpdir / "larch-logs"),
@@ -234,7 +233,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
                 plugin_root=plugin_root,
                 implement_tmpdir=implement_tmpdir,
                 site="1",
-                tool="python3 python/cli.py run-log write parent-issue",
+                tool="scripts/larch.sh run-log write parent-issue",
                 output_file=parent_issue_fail_log,
             )
     return 0

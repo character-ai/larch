@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Verified-bootstrap test double for Rust-owned reviewer agent commands.
+# pyright: reportPrivateUsage=false, reportArgumentType=false
+# The run-log verbs deliberately reuse the shared private helpers in
+# `larch.report.run_log_batch` / `run_log_manifest` rather than restating their
+# behavior, and the manifest record crosses this module as an opaque value.
+"""Verified-bootstrap test double for Rust-owned agent and run-log commands.
 
-Python review integration tests exercise callers through ``scripts/larch.sh``.
-This executable supplies only the narrow command behavior those caller tests
-need; the real command contracts live in Rust integration tests.
+Python integration tests exercise their callers through ``scripts/larch.sh``,
+which needs a version-matching executable that a Python-only test run does not
+build. This executable supplies the narrow command behavior those caller tests
+need; the real command contracts live in Rust integration tests
+(``crates/larch-cli/tests/``).
+
+The ``run-log`` verbs delegate to the surviving `larch.report.run_log_batch`
+and `larch.report.run_log_manifest` helpers, which the still-Python flush,
+archive, and publication verbs also use, so the double stays short and cannot
+drift into a second implementation.
 """
 
 from __future__ import annotations
@@ -228,6 +239,309 @@ def _run_external_agent(arguments: list[str]) -> int:
     return result.returncode
 
 
+def _flag(arguments: list[str], name: str, default: str = "") -> str:
+    """Read one long option, accepting both the split and inline `=` spellings."""
+    for index, token in enumerate(arguments):
+        if token == name and index + 1 < len(arguments):
+            return arguments[index + 1]
+        if token.startswith(f"{name}="):
+            return token[len(name) + 1 :]
+    return default
+
+
+def _append_execution_issue(*, log: Path, category: str, entry: str) -> None:
+    """Append `entry` under `### category`, matching the Rust composer."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    header = f"### {category}"
+    lines = text.splitlines()
+    if header in lines:
+        out: list[str] = []
+        inserted = False
+        in_target = False
+        for line in lines:
+            if line == header:
+                in_target = True
+                out.append(line)
+                continue
+            if in_target and line.startswith("### "):
+                if not inserted:
+                    out.extend(["", entry.rstrip("\n")])
+                    inserted = True
+                in_target = False
+            out.append(line)
+        if in_target and not inserted:
+            out.extend(["", entry.rstrip("\n")])
+        rendered = "\n".join(out) + "\n"
+    else:
+        prefix = "\n" if text else ""
+        rendered = text.rstrip("\n") + prefix + header + "\n\n" + entry.rstrip("\n") + "\n"
+    _ = log.write_text(rendered, encoding="utf-8")
+
+
+def _bind_larch_package() -> None:
+    """Make `larch.*` importable in this detached bootstrap process.
+
+    The double is executed by `scripts/larch.sh`, which exports the plugin root
+    but no `PYTHONPATH`, so the shared run-log helpers need an explicit path.
+    """
+    package_root = str(_plugin_root() / "python")
+    if package_root not in sys.path:
+        sys.path.insert(0, package_root)
+
+
+def _log_envelope(*, path: Path | None, written: bool, unchanged: bool, error: str = "") -> None:
+    size = path.stat().st_size if path is not None and path.is_file() else 0
+    digest = ""
+    if path is not None and path.is_file():
+        import hashlib  # noqa: PLC0415 - deferred so the module imports without the runtime package
+
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    print(f"LOG_WRITTEN={'true' if written else 'false'}")
+    print(f"LOG_PATH={path if path is not None else ''}")
+    print(f"BYTES={size}")
+    print(f"SHA256={digest}")
+    print("COMMIT_SHA=")
+    print(f"UNCHANGED={'true' if unchanged else 'false'}")
+    if error:
+        print(f"ERROR={error}")
+
+
+def _identity(arguments: list[str]) -> tuple[Path, str, str]:
+    _bind_larch_package()
+    from larch.report import run_log_batch  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    log_root = run_log_batch._resolve_log_root(_flag(arguments, "--log-root"))  # noqa: SLF001 - test double reuses the shared resolver
+    return log_root, _flag(arguments, "--skill"), _flag(arguments, "--run-id")
+
+
+def _run_log_init(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.report import run_log_manifest  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    log_root, skill, run_id = _identity(arguments)
+    path = run_log_manifest._manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)  # noqa: SLF001 - test double reuses the shared path owner
+    if path.is_file():
+        _log_envelope(path=path, written=False, unchanged=True)
+        return 0
+    issue = _flag(arguments, "--issue")
+    if issue and not issue.isdigit():
+        _log_envelope(path=None, written=False, unchanged=False, error=f"invalid issue: {issue}")
+        return 1
+    manifest = run_log_manifest.Manifest.synthesize_v2(
+        skill=skill,
+        run_id=run_id,
+        extra={
+            "parent_skill": _flag(arguments, "--parent-skill") or None,
+            "parent_run_id": _flag(arguments, "--parent-run-id") or None,
+            "issue_number": int(issue) if issue else None,
+        },
+    )
+    run_log_manifest._write_manifest_v2(path=path, data=manifest.to_json(existing=None))  # noqa: SLF001 - test double reuses the shared writer
+    _log_envelope(path=path, written=True, unchanged=False)
+    return 0
+
+
+def _run_log_batch_command(arguments: list[str], *, append: bool) -> int:
+    _bind_larch_package()
+    from larch.report import run_log_batch  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    log_root, skill, run_id = _identity(arguments)
+    batch = _flag(arguments, "--batch")
+    source = _flag(arguments, "--record-file" if append else "--input-file")
+    writer = run_log_batch._append_batch if append else run_log_batch._write_batch  # noqa: SLF001 - test double reuses the shared batch writers
+    key = "record_file" if append else "input_file"
+    try:
+        path, written, unchanged = writer(
+            log_root=log_root, skill=skill, run_id=run_id, batch=batch, **{key: source}
+        )
+    except ValueError as error:
+        _log_envelope(path=None, written=False, unchanged=False, error=str(error))
+        return 1
+    except OSError as error:
+        _log_envelope(path=None, written=False, unchanged=False, error=str(error))
+        return 2
+    _log_envelope(path=path, written=written, unchanged=unchanged)
+    return 0
+
+
+def _run_log_write(arguments: list[str]) -> int:
+    return _run_log_batch_command(arguments, append=False)
+
+
+def _run_log_append(arguments: list[str]) -> int:
+    return _run_log_batch_command(arguments, append=True)
+
+
+def _run_log_exists(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.report import run_log_batch  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    log_root, skill, run_id = _identity(arguments)
+    batch = _flag(arguments, "--batch")
+    if batch not in run_log_batch._LARCH_LOG_BATCHES:  # noqa: SLF001 - test double reuses the shared registry
+        _log_envelope(path=None, written=False, unchanged=False, error=f"unknown batch: {batch}")
+        return 1
+    path = run_log_batch._batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)  # noqa: SLF001 - test double reuses the shared path owner
+    _log_envelope(path=path, written=False, unchanged=path.exists())
+    return 0
+
+
+def _run_log_write_round(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.report import run_log_batch  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    log_root, skill, run_id = _identity(arguments)
+    round_number = _flag(arguments, "--round")
+    source = Path(_flag(arguments, "--source-dir"))
+    if not round_number.isdigit() or int(round_number) <= 0:
+        _log_envelope(path=None, written=False, unchanged=False, error="--round must be a positive integer")
+        return 1
+    if not source.is_dir():
+        _log_envelope(path=None, written=False, unchanged=False, error=f"source directory not found: {source}")
+        return 1
+    dest = run_log_batch._run_dir(log_root=log_root, skill=skill, run_id=run_id) / f"round-{round_number}"  # noqa: SLF001 - test double reuses the shared path owner
+    dest.mkdir(parents=True, exist_ok=True)
+    written = False
+    for item in sorted(source.iterdir()):
+        if not item.is_file() or item.is_symlink():
+            continue
+        name = item.name
+        if run_log_batch._is_round_sidecar_file(name) or not run_log_batch._round_artifact_included(name):  # noqa: SLF001 - test double reuses the shared filters
+            continue
+        content = run_log_batch._stage_round_artifact(src=item, name=name)  # noqa: SLF001 - test double reuses the shared staging transform
+        out = dest / name
+        if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
+            run_log_batch._atomic_write(path=out, content=content)  # noqa: SLF001 - test double reuses the shared writer
+            written = True
+    _log_envelope(path=dest, written=written, unchanged=not written)
+    return 0
+
+
+def _missing_required_files(*, run_dir: Path, manifest_tsv: Path, manifest: object) -> list[str]:
+    """Return the reachable required-file rows that are absent from `run_dir`."""
+    from larch.report import run_log_manifest  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    missing: list[str] = []
+    for line in manifest_tsv.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if not parts or parts[0] == "relative_path":
+            continue
+        relative_path = parts[0]
+        if not run_log_manifest._verify_condition_reached(  # noqa: SLF001 - test double reuses the shared reachability chain
+            condition=parts[1] if len(parts) > 1 else "always",
+            run_dir=run_dir,
+            manifest_data=manifest,
+            manifest_status=run_log_manifest._manifest_field(manifest=manifest, key="status"),  # noqa: SLF001 - test double reuses the shared field reader
+            manifest_pr_number=run_log_manifest._manifest_field(manifest=manifest, key="pr_number"),  # noqa: SLF001 - test double reuses the shared field reader
+        ):
+            continue
+        if "*" in relative_path:
+            if not any(hit.is_file() for hit in run_dir.glob(relative_path)):
+                missing.append(relative_path)
+        elif not (run_dir / relative_path).is_file():
+            missing.append(relative_path)
+    return missing
+
+
+def _run_log_verify_completeness(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.report import run_log_manifest  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    if not arguments:
+        print("MISSING=manifest", file=sys.stderr)
+        return 1
+    run_dir = Path(arguments[0])
+    if not run_dir.is_dir():
+        print(f"verify-completeness: run dir not found: {run_dir}", file=sys.stderr)
+        return 1
+    manifest_tsv = Path(
+        os.environ.get("LARCH_VERIFY_MANIFEST")
+        or _plugin_root() / "docs" / "run-logs-required-files.tsv"
+    )
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_file() or not manifest_tsv.is_file():
+        print("MISSING=manifest")
+        return 1
+    try:
+        manifest = run_log_manifest.Manifest.from_json(run_log_manifest._read_manifest_v2(manifest_path))  # noqa: SLF001 - test double reuses the shared reader
+    except (OSError, json.JSONDecodeError, TypeError):
+        print("MISSING=manifest")
+        return 1
+    missing = _missing_required_files(run_dir=run_dir, manifest_tsv=manifest_tsv, manifest=manifest)
+    if missing:
+        print("MISSING=" + ",".join(missing))
+        return 1
+    print("OK")
+    return 0
+
+
+def _retry_suffix(retry_count: str, transient_retry_count: str) -> str:
+    """Mirror the Rust owner's retry annotation; both counters include attempt 1."""
+    if retry_count and transient_retry_count:
+        parts = [
+            f"{label}={value}"
+            for label, value in (
+                ("auth-retries", int(retry_count) - 1),
+                ("transient-retries", int(transient_retry_count) - 1),
+            )
+            if value > 0
+        ]
+        return ", " + ", ".join(parts) if parts else ""
+    return f", retries={retry_count}" if retry_count else ""
+
+
+def _append_failure(arguments: list[str]) -> int:
+    log = Path(_flag(arguments, "--log"))
+    category = _flag(arguments, "--category")
+    if not log.name or not category:
+        print("FAILED=true")
+        return 1
+    exit_code = _flag(arguments, "--exit-code")
+    output_file = Path(_flag(arguments, "--output-file"))
+    body = (
+        output_file.read_text(encoding="utf-8", errors="replace")
+        if output_file.is_file() and output_file.stat().st_size
+        else f"no diagnostics captured (exit {exit_code})\n"
+    )
+    verdict = _flag(arguments, "--verdict")
+    suffix = f", {verdict}" if verdict else ""
+    suffix += _retry_suffix(
+        _flag(arguments, "--retry-count"), _flag(arguments, "--transient-retry-count")
+    )
+    entry = (
+        f"- **Step {_flag(arguments, '--site')}: {_flag(arguments, '--tool')} "
+        f"{_flag(arguments, '--status-label', 'failed')} (exit {exit_code}{suffix})**:\n"
+        "  ```\n"
+        f"{body.rstrip()}\n"
+        "  ```\n"
+    )
+    _append_execution_issue(log=log, category=category, entry=entry)
+    print("APPENDED=true")
+    print(f"LOG={log}")
+    return 0
+
+
+def _append_entry(arguments: list[str]) -> int:
+    log = Path(_flag(arguments, "--log"))
+    category = _flag(arguments, "--category")
+    entry_file = _flag(arguments, "--entry-file")
+    entry = (
+        Path(entry_file).read_text(encoding="utf-8", errors="replace")
+        if entry_file
+        else _flag(arguments, "--entry")
+    )
+    if not log.name or not category or not entry:
+        print("FAILED=true")
+        return 1
+    _append_execution_issue(log=log, category=category, entry=entry)
+    print("APPENDED=true")
+    print(f"LOG={log}")
+    return 0
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -243,6 +557,14 @@ def main(arguments: list[str]) -> int:
             ("agent", "gather-branch-context"): _gather,
             ("agent", "compose-collector-failure-log"): _compose,
             ("agent", "run-external-agent"): _run_external_agent,
+            ("run-log", "append-failure"): _append_failure,
+            ("run-log", "append-entry"): _append_entry,
+            ("run-log", "init"): _run_log_init,
+            ("run-log", "write"): _run_log_write,
+            ("run-log", "append"): _run_log_append,
+            ("run-log", "exists"): _run_log_exists,
+            ("run-log", "write-round"): _run_log_write_round,
+            ("run-log", "verify-completeness"): _run_log_verify_completeness,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

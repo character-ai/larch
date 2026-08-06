@@ -210,7 +210,7 @@ append_mav_warning_once() {
     local sentinel="$DESIGN_TMPDIR/.step3-main-agent-adjudication-warning-appended-r${artifact_round}"
     [ ! -f "$sentinel" ] || return 0
     printf '%s\n' 'Step 3 — 0-judge plan-review panel: main-agent adjudication performed' >"$warning_file"
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+    "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" run-log append-failure \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site 'design Step 3' \
         --tool 'MainAgent plan-review adjudication' \

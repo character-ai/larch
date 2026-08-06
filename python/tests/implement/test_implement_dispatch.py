@@ -470,6 +470,7 @@ def test_write_step2_difficulty_record_passes_resolved_rater_model(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli, raising=False)
     st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty="")
 
     dispatch_step2._write_step2_difficulty_record(
@@ -501,6 +502,7 @@ def test_write_step2_difficulty_record_uses_trivial_tier_model(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli, raising=False)
     st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty=difficulty.TRIVIAL)
 
     dispatch_step2._write_step2_difficulty_record(
@@ -3980,7 +3982,12 @@ def _setup_commit_route(
         return subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_invoke, raising=False)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_invoke, raising=False)
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_seed)
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_seed)
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
@@ -5536,6 +5543,22 @@ def test_step4_composite_recovery_out_of_scope_emits_bail_without_next_action(
         lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
     )
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"))
+    # Rust-owned run-log verbs route through the bootstrap runner; the recorded
+    # append succeeds so the scope refusal is the only non-zero result.
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 0, "", ""))
+
+    # This case asserts the recovery scope refusal, so bind the session repo
+    # root it needs first and stub `dirty-tree scope-check` (Rust-owned, and
+    # dispatched through the bootstrap) to refuse explicitly, rather than
+    # letting an unrelated bootstrap failure code stand in for a refusal.
+    monkeypatch.setattr(dispatch_commit_route, "_session_validated_repo_root", lambda _tmpdir: Path("/repo"))
+
+    def fake_scope_check(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        command = [str(arg) for arg in argv]
+        refused = command[1:3] == ["dirty-tree", "scope-check"]
+        return CommandResult(tuple(command), 1 if refused else 0, "", "scope fail" if refused else "", 0.0)
+
+    monkeypatch.setattr(dispatch_commit_route.proc, "run", fake_scope_check)
 
     rc = implement_dispatch.checks_commit_route_main([
         "--checks-site",
@@ -5786,7 +5809,9 @@ def test_implement_launchers_step2_token_mark_failure_is_nonfatal(
         call = [str(arg) for arg in argv]
         if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]:
             return CommandResult(tuple(call), 7, "mark stdout\n", "mark stderr\n", 0.0)
-        if call[2:4] == ["run-log", "append-entry"]:
+        # Rust-owned run-log verbs enter through the bootstrap script, so the
+        # domain and verb sit right after the entrypoint.
+        if call[1:3] == ["run-log", "append-entry"]:
             issue_calls.append(call)
         return CommandResult(tuple(call), 0, "", "", 0.0)
 
@@ -8355,7 +8380,9 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke, raising=False)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
     implement_dispatch._append_warning(st=st, text="Step 7a.1 — plan coverage compute failed closed: /p: boom")

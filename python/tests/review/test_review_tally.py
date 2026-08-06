@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from larch.review import review_tally
 from larch.review import review_core_body
 import review_test_support as rts
-from test_support import run_cli
+from test_support import run_cli, run_larch
 from larch.review import voting
 from tests.support.review_wire import (
     ballot_snippet,
@@ -73,6 +73,10 @@ def _tsv_row_list(path: Path) -> list[dict[str, str]]:
 
 def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return run_cli(*args, env=env, quiet_disable=True)
+
+
+def _run_larch(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return run_larch(*args, env=env, quiet_disable=True)
 
 
 def run_review(
@@ -373,7 +377,8 @@ def test_tally_rescues_high_severity_neutral_findings_to_oos(tmp_path: Path) -> 
     assert "Vote tally: YES=1 NO=2 JUDGE_ERROR=0" in rebuilt_rejected
 
     log_root = tmp_path / "logs"
-    write_round = _run_cli(
+    # `run-log write-round` is Rust-owned; enter through the bootstrap script.
+    write_round = _run_larch(
         "run-log",
         "write-round",
         "--log-root",
@@ -1394,7 +1399,8 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
     assert result2.returncode == 0, result2.stderr
     assert [row["round"] for row in _tsv_row_list(ledger)] == ["1", "1", "2", "2"]
     log_root = tmp_path / "logs"
-    write_round = _run_cli(
+    # `run-log write-round` is Rust-owned; enter through the bootstrap script.
+    write_round = _run_larch(
         "run-log",
         "write-round",
         "--log-root",
