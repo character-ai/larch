@@ -10,7 +10,7 @@ for a specialized skill.
 At invocation start, run this command before the skill performs work:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log lifecycle-start --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log lifecycle-start --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>"
 ```
 
 A nested child may lead with
@@ -48,6 +48,9 @@ shell state.
 After start succeeds, run exactly one matching terminal command before the
 skill returns. Require exit zero, `LIFECYCLE_TERMINALIZED=true`, and one valid
 terminal pair:
+
+Invoke that terminal command through
+`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh"`, as with lifecycle start.
 
 - `RUN_LOG_PUBLICATION=published` and `LIFECYCLE_FLUSHED=true`
 - `RUN_LOG_PUBLICATION=skipped-disabled` and `LIFECYCLE_FLUSHED=false`

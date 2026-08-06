@@ -108,6 +108,10 @@ def _larch_entrypoint() -> Path:
     return larch_entrypoint(_current_cli_path().parents[1])
 
 
+def _invoke_larch(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return _run([str(_larch_entrypoint()), *args], cwd=cwd)
+
+
 def _resolve_repo_root() -> Path | None:
     result = repo_root_probe(run=_run, options=RepoRootProbeOptions(git_bin=GIT_BIN))
     if result.returncode != 0 or not result.stdout.strip():

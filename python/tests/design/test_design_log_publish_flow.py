@@ -7,13 +7,18 @@ import os
 import shutil
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
-from larch.report import run_lifecycle, run_log_publish as run_log_publisher, run_logs
+from larch.report import run_lifecycle, run_log_archive
+from larch.report import run_log_publish as run_log_publisher
+from larch.report import run_logs
 from larch.report import storage_config
 from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 from test_support import operator_repo_with_remote as _base_operator_repo_with_remote
@@ -76,51 +81,9 @@ def _run_publish(
     reason: str = "final",
     outcome: str = "approved",
 ) -> subprocess.CompletedProcess[str]:
-    real_cli = Path(__file__).resolve().parents[2] / "cli.py"
     bin_dir.mkdir(parents=True, exist_ok=True)
     remote_dir = bin_dir.parent / "remote"
     remote_dir.mkdir(parents=True, exist_ok=True)
-    aws_stub = bin_dir / "aws"
-    _ = aws_stub.write_text(
-        """#!/usr/bin/env python3
-import json
-import shutil
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-root = Path(__file__).resolve().parent.parent / "remote"
-if args[:2] == ["s3api", "put-object"]:
-    if (root.parent / "fail-upload").exists():
-        print("transport failed", file=sys.stderr)
-        raise SystemExit(1)
-    key = args[args.index("--key") + 1]
-    source = Path(args[args.index("--body") + 1])
-    target = root / key
-    if target.exists():
-        print("PreconditionFailed", file=sys.stderr)
-        raise SystemExit(1)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-    print("{}")
-elif args[:2] == ["s3api", "head-object"]:
-    key = args[args.index("--key") + 1]
-    print(json.dumps({"ContentLength": (root / key).stat().st_size}))
-elif args[:2] == ["s3api", "get-object"]:
-    key = args[args.index("--key") + 1]
-    destination = Path(args[args.index("--key") + 2])
-    shutil.copy2(root / key, destination)
-    print("{}")
-elif args[:2] == ["s3api", "list-objects-v2"]:
-    print('{"Contents":[]}')
-elif args[:2] == ["s3", "ls"]:
-    raise SystemExit(0)
-else:
-    raise SystemExit(2)
-""",
-        encoding="utf-8",
-    )
-    aws_stub.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     _ = (repo / "tools-config.toml").write_text(
@@ -128,55 +91,124 @@ else:
     )
     env["XDG_CACHE_HOME"] = str(bin_dir.parent / "cache")
     env["XDG_STATE_HOME"] = str(bin_dir.parent / "state")
-    # The real cli is used for run-log init/commit + redact; all git writes are
-    # cwd-scoped to the disposable worktree, never the operator or plugin repo.
-    env["CLAUDE_PLUGIN_ROOT"] = str(Path(real_cli).resolve().parents[1])
-    lifecycle = subprocess.run(
-        [
-            sys.executable,
-            str(real_cli),
-            "run-log",
-            "lifecycle-start",
-            "--repo-root",
-            str(repo),
-            "--skill",
-            "design",
-            "--run-id",
-            RUN_ID,
-            "--log-root",
-            str(design / "larch-logs"),
-            "--adopt-existing",
-        ],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+    plugin_root = Path(__file__).resolve().parents[3]
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    storage = storage_config.load_tool_repository_storage(repo_root=repo, environ={})
+    log_root = design / "larch-logs"
+    run_dir = log_root / "design" / RUN_ID
+    context = run_lifecycle.LifecycleStart(
+        repo_root=repo,
+        storage_root=storage,
+        skill="design",
+        run_id=RUN_ID,
+        log_root=log_root,
+        run_dir=run_dir,
+        context_file=bin_dir.parent / "context.json",
     )
-    if lifecycle.returncode != 0:
-        return lifecycle
-    return subprocess.run(
-        [
-            sys.executable,
-            str(real_cli),
-            "design",
-            "log-publish",
-            "--design-tmpdir",
-            str(design),
-            "--run-id",
-            RUN_ID,
-            "--issue",
-            "33",
-            "--reason",
-            reason,
-            "--outcome",
-            outcome,
-        ],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+    _ = run_logs.log_init(
+        log_root=log_root,
+        skill="design",
+        run_id=RUN_ID,
+        issue="33",
+    )
+
+    def fake_load(**_kwargs: object) -> run_lifecycle.LifecycleStart:
+        return context
+
+    def fake_finish(**kwargs: object) -> run_lifecycle.LifecycleTerminal:
+        pre_scrub_violations = kwargs.get("pre_scrub_violations", 0)
+        pending = (
+            bin_dir.parent
+            / "state/larch/run-log-pending/v2"
+            / storage.client_repo
+            / storage.storage_origin_id
+            / "design"
+            / RUN_ID
+        )
+        if (bin_dir.parent / "fail-upload").exists():
+            pending.mkdir(parents=True, exist_ok=True)
+            archive = run_log_archive.create_run_archive(
+                staging_root=run_dir,
+                output_dir=pending,
+                skill="design",
+                run_id=RUN_ID,
+            )
+            archive.archive_path.rename(pending / "archive.tar.gz")
+            _ = (pending / "retry.json").write_text("{}\n", encoding="utf-8")
+            raise run_log_publisher.PublicationError(
+                "run-log archive publication failed"
+            )
+        remote_parent = remote_dir / storage.prefix / "run-logs/design"
+        archive = run_log_archive.create_run_archive(
+            staging_root=run_dir,
+            output_dir=remote_parent,
+            skill="design",
+            run_id=RUN_ID,
+        )
+        cache_dir = _cached_run(repo, bin_dir)
+        _ = run_log_archive.materialize_run_archive(
+            archive_path=archive.archive_path,
+            run_dir=cache_dir,
+            expected_skill="design",
+            expected_run_id=RUN_ID,
+        )
+        return run_lifecycle.LifecycleTerminal(
+            outcome=str(kwargs.get("outcome", "success")),
+            publication=run_log_publisher.PublicationResult(
+                remote_key=f"run-logs/design/{RUN_ID}.tar.gz",
+                archive_sha256=archive.archive_sha256,
+                cache_dir=cache_dir,
+                remote_status=run_log_publisher.RemotePublicationStatus.CREATED,
+                cache_status=run_log_publisher.CachePublicationStatus.MATERIALIZED,
+            ),
+            secret_scrub_violations=(
+                pre_scrub_violations
+                if isinstance(pre_scrub_violations, int)
+                else 0
+            ),
+        )
+
+    stdout = StringIO()
+    stderr = StringIO()
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(
+                design_log_publish_flow.run_lifecycle,
+                "load_run_context",
+                fake_load,
+            ),
+            patch.object(
+                design_log_publish_flow.run_lifecycle,
+                "finish_run",
+                fake_finish,
+            ),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            returncode = design_log_publish_flow.log_publish_main(
+                [
+                    "--design-tmpdir",
+                    str(design),
+                    "--run-id",
+                    RUN_ID,
+                    "--issue",
+                    "33",
+                    "--reason",
+                    reason,
+                    "--outcome",
+                    outcome,
+                ]
+            )
+    finally:
+        os.chdir(original_cwd)
+    return subprocess.CompletedProcess(
+        ["design", "log-publish"],
+        returncode,
+        stdout.getvalue(),
+        stderr.getvalue(),
     )
 
 

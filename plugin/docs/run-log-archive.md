@@ -120,7 +120,11 @@ credential, CLI, network, bucket, or prefix-access error. For the checked-in
 base and repository, startup preflight lists only
 `larch/larch/` in bucket `zhupanov`.
 
-S3 and R2 use the AWS CLI transport and standard AWS credential discovery. R2
+The Rust-owned lifecycle and preflight paths use the official AWS SDK for S3
+and R2. They use the SDK's non-process credential chain; `credential_process`
+is disabled so profile configuration cannot introduce a child process. The
+residual Python `publish` and `sync` commands still use the
+AWS CLI until #8080 completes their atomic cutover. R2
 also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
 be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
 match the host. GCS uses the narrow Rust transport through
@@ -236,13 +240,13 @@ Pause rejects disabled storage before writing a GitHub pause marker.
 
 ## Rust handoff
 
-Python owns archive, publication, cache, sync, and most orchestration.
-`run-log storage-preflight` is Rust-owned: configuration resolution and the
-startup prefix probe live in `larch-core` / `larch-cli`. GCS preflight uses
-`GoogleCloudStorage` from #7676. S3 and R2 preflight keep the existing AWS CLI
-list transport behind the same credential-free error classes until a native
-S3 adapter clears workspace dependency review. That split does not authorize
-another archive, layout, error, or provider contract.
+Rust owns `run-log storage-preflight` and the five shared lifecycle verbs,
+including terminal archive publication and cache promotion. Configuration
+resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
+R2 use the official AWS SDK through `S3Storage`. Python retains the standalone
+archive, `publish`, and `sync` commands until their named migration leaves.
+Both runtimes preserve the same credential-free error classes. That split does
+not authorize another archive, layout, error, or provider contract.
 
 When remaining run-log commands migrate, follow `docs/python-migration.md` and
 I-Cutover-1. In one change, prove Rust parity against the shared fixtures,

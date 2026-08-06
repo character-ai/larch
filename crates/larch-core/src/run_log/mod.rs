@@ -2,6 +2,7 @@
 
 mod entry;
 mod layout;
+mod lifecycle;
 mod manifest;
 mod round;
 mod slug;
@@ -12,6 +13,11 @@ pub use entry::{
     ExecutionIssueReadErrorKind,
 };
 pub use layout::{BatchName, RunLogLayout};
+pub use lifecycle::{
+    LIFECYCLE_CONTEXT_BASENAME, LIFECYCLE_CONTEXT_SCHEMA_VERSION, LIFECYCLE_SCHEMA_VERSION,
+    LifecycleContext, LifecycleError, LifecycleOutcome, UNIVERSAL_EXECUTION_ISSUES,
+    UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT,
+};
 pub use manifest::{
     ManifestDocument, ManifestFormatVersion, ManifestReadError, ManifestReadErrorKind,
     ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,

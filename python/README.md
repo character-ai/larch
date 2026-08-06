@@ -33,11 +33,11 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
 - `larch/report/run_log_archive.py`, `object_store.py`, `storage_config.py`,
-  `run_log_publish.py`, `run_log_sync.py`, `run_log_layout_migration.py`, and
-  `run_lifecycle.py` own deterministic archives, provider-neutral transfer,
-  append-only publication, durable retry, write-through cache promotion,
-  repository-scoped cache synchronization, the bounded operator migration,
-  and the universal per-skill start and terminal lifecycle.
+  `run_log_publish.py`, `run_log_sync.py`, and `run_log_layout_migration.py`
+  retain the standalone Python archive, publication, synchronization, and
+  migration commands. Rust owns shared lifecycle start, terminal publication,
+  and cache promotion. Python `run_lifecycle.py` is only a typed
+  `scripts/larch.sh` consumer for residual design integrations.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
 - `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 

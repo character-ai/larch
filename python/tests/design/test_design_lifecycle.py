@@ -706,7 +706,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
         joined = " ".join(cmd)
         if cmd[2:4] == ["session", "setup"]:
             return fake_setup(cmd, **kwargs)
-        if list(cmd[2:4]) == ["run-log", "lifecycle-start"]:
+        if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
         if "degraded-tools-gate" in joined:
             return fake_gate(cmd, **kwargs)
@@ -822,7 +822,7 @@ def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Pa
         joined = " ".join(cmd)
         if "session" in joined and "setup" in joined:
             return fake_setup(cmd, **kwargs)
-        if list(cmd[2:4]) == ["run-log", "lifecycle-start"]:
+        if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
         if "degraded-tools-gate" in joined:
             return fake_gate(cmd, **kwargs)
@@ -876,7 +876,7 @@ def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fa
         joined = " ".join(cmd)
         if cmd[2:4] == ["session", "setup"]:
             return fake_setup(cmd, **kwargs)
-        if list(cmd[2:4]) == ["run-log", "lifecycle-start"]:
+        if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
         if "degraded-tools-gate" in joined:
             return fake_gate(cmd, **kwargs)
@@ -1773,7 +1773,7 @@ def test_step0_session_fails_on_degraded_gate_nonzero_rc(tmp_path: Path, monkeyp
         joined = " ".join(cmd)
         if "session" in joined and "setup" in joined:
             return fake_setup(cmd, **kwargs)
-        if list(cmd[2:4]) == ["run-log", "lifecycle-start"]:
+        if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
         if "degraded-tools-gate" in joined:
             return subprocess.CompletedProcess(cmd, 9, "", "argparse: bad flag")

@@ -159,22 +159,18 @@ def test_run_log_sync_entrypoint_is_machine_stdout() -> None:
 
 
 @pytest.mark.parametrize(
-    ("verb", "target"),
+    "verb",
     [
-        ("lifecycle-start", "start_main"),
-        ("lifecycle-finalize", "finalize_main"),
-        ("lifecycle-failure", "failure_main"),
-        ("lifecycle-cancel", "cancel_main"),
-        ("lifecycle-early-return", "early_return_main"),
+        "lifecycle-start",
+        "lifecycle-finalize",
+        "lifecycle-failure",
+        "lifecycle-cancel",
+        "lifecycle-early-return",
     ],
 )
-def test_run_lifecycle_entrypoints_are_machine_stdout(verb: str, target: str) -> None:
-    assert cli._REGISTRY[("run-log", verb)] == (  # pyright: ignore[reportPrivateUsage]
-        "larch.report.run_lifecycle",
-        target,
-        True,
-    )
-    assert ("run-log", verb) in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+def test_run_lifecycle_entrypoints_are_retired(verb: str) -> None:
+    assert ("run-log", verb) not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("run-log", verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
 def test_dispatch_oos_serialize() -> None:

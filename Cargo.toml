@@ -18,6 +18,10 @@ version = "56.2.2"
 [workspace.dependencies]
 assert_cmd = { version = "2.2.2", default-features = false }
 automod = { version = "1.0.17", default-features = false }
+aws-config = { version = "=1.10.1", default-features = false, features = ["default-https-client", "rt-tokio", "sso"] }
+aws-runtime = { version = "=1.9.1", default-features = false }
+aws-sdk-s3 = { version = "=1.140.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-smithy-runtime-api = { version = "=1.14.0", default-features = false, features = ["client", "http-1x"] }
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
 chrono = { version = "0.4.44", default-features = false, features = ["serde", "std"] }
 csv = { version = "1.4.0", default-features = false }
@@ -62,6 +66,8 @@ tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tree-sitter = { version = "0.26.7", default-features = false, features = ["std"] }
 tree-sitter-bash = { version = "0.25.1", default-features = false }
 tree-sitter-python = { version = "0.25.0", default-features = false }
+unicode-normalization = { version = "0.1.25", default-features = false }
+unicase = { version = "2.9.0", default-features = false }
 url = { version = "2.5.8", default-features = false, features = ["std"] }
 uuid = { version = "1.24.0", default-features = false, features = ["std", "v4"] }
 wait-timeout = { version = "0.2.1", default-features = false }

@@ -63,7 +63,8 @@ the final plan, report, corpus totals, cache validation, and cutover evidence.
 ## Universal skill lifecycle
 
 `skills/shared/run-lifecycle.md` defines the shared start and terminal contract,
-and `skills/shared/run-lifecycle-ownership.tsv` assigns each skill its start and
+`scripts/larch.sh` is the sole production entrypoint to its Rust owner, and
+`skills/shared/run-lifecycle-ownership.tsv` assigns each skill its start and
 terminal owner. Each invocation owns one explicit run ID under its declared
 skill. A nested invocation stores its parent's skill and run ID in its manifest
 without sharing the parent's run directory. Enabled parent and child runs

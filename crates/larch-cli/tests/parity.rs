@@ -433,6 +433,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-run-log-manifest", "run-log", "manifest"),
     CleanInstallCase::new(
+        "clean-install-run-log-lifecycle-cancel",
+        "run-log",
+        "lifecycle-cancel",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-lifecycle-early-return",
+        "run-log",
+        "lifecycle-early-return",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-lifecycle-failure",
+        "run-log",
+        "lifecycle-failure",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-lifecycle-finalize",
+        "run-log",
+        "lifecycle-finalize",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-lifecycle-start",
+        "run-log",
+        "lifecycle-start",
+    ),
+    CleanInstallCase::new(
         "clean-install-run-log-validate-run-id",
         "run-log",
         "validate-run-id",

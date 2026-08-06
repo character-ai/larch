@@ -697,6 +697,7 @@ def test_step0_bootstrap_adopts_lifecycle_unless_logs_are_disabled(tmp_path: Pat
         )
 
     monkeypatch.setitem(dispatch_bootstrap.__dict__, "_invoke_cli", fake_invoke)
+    monkeypatch.setitem(dispatch_bootstrap.__dict__, "_invoke_larch", fake_invoke)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(_REPO_ROOT))
     parent_context = tmp_path / "parent-context.json"
     argv = ["--mode", "initial", "--non-interactive", "true", "--no-logs-commit", no_logs, "--lifecycle-parent-context", str(parent_context)]

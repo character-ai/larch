@@ -384,6 +384,12 @@ jobs:
         run: make rust-build
       - name: Test Rust workspace
         run: make rust-test
+      - name: Upload Rust executable for cross-language integration tests
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: larch-linux-test-binary
+          path: target/debug/larch
+          if-no-files-found: error
       - name: Generate and validate the runtime-only plugin projection
         run: |
           set -euo pipefail
@@ -704,8 +710,11 @@ jobs:
   # below is the source of truth for shard count. `make py-test` runs pytest
   # with --durations=0 so shards can be rebalanced by wall time later.
   python-tests:
+    needs: [rust-build-test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch
     strategy:
       fail-fast: false
       matrix:
@@ -729,6 +738,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: python/requirements-test.txt
+      - name: Download Rust executable for cross-language integration tests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: larch-linux-test-binary
+          path: .ci-bin
+      - name: Mark the Rust integration-test executable runnable
+        run: chmod 755 .ci-bin/larch
       - name: Resolve interpreter site-packages
         id: site-packages
         run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"

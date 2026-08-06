@@ -292,13 +292,17 @@ classes. The [Google service inventory](../google-service-inventory.md) records
 the Cloud Storage client, scope, permissions, operations, and mixed-runtime
 consumer path.
 
-Python currently owns run-log orchestration, S3 and R2 CLI transport, archive
-publication, cache promotion, and sync. Rust owns `run-log storage-preflight`
-and the narrow GCS authentication transport; S3/R2 startup preflight still uses
-the AWS CLI list transport with credential-free error classes. Both sides pass
-the shared provider fixture and use the same machine error mapping. The complete
-mixed-runtime and future hard
-cutover boundary lives in
+Rust owns the shared run lifecycle, including terminal archive publication and
+cache promotion. The standalone `run-log publish` and `run-log sync` commands
+remain Python-owned until #8080. Rust uses the official Cloud Storage client;
+S3/R2 lifecycle publication and startup preflight use the official AWS SDK with
+the credential-process feature disabled. R2 suppresses the unsupported optional
+AWS checksum headers; lifecycle publication still downloads the object and
+verifies its complete SHA-256 digest when a create-only key already exists;
+new objects are verified through returned and fetched remote metadata. The residual Python standalone
+commands continue to use the AWS CLI until #8080. Both runtimes use the same
+provider-neutral port, immutable-write rule, and machine error mapping. The
+complete mixed-runtime and future hard cutover boundary lives in
 [Run-log storage contracts](../run-log-archive.md#rust-handoff).
 
 The one-time `character-ai/larch#7966` layout migration uses the same
@@ -595,5 +599,5 @@ boundaries above discoverable without duplicating their operation ledgers:
 | Release, attestations, bootstrap, upgrade | `.github/workflows/rust-release-assets.yaml`, `scripts/larch.sh`, `crates/larch-cli/src/release_plugin_runtime.rs`, `crates/larch-adapters/src/github/attestation.rs`, `python/tests/release/test_assets.py`, `python/tests/release/test_rust_bootstrap.py`, and the clean-install cases in `crates/larch-cli/tests/parity.rs` |
 | GitHub credentials and operations | `crates/larch-adapters/src/github/`, `crates/larch-adapters/src/github_actions.rs`, the [GitHub service inventory](../github-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Google ADC | `crates/larch-adapters/src/google_auth.rs`, the [Google service inventory](../google-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
-| Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
+| Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `crates/larch-adapters/src/s3_storage.rs`, `crates/larch-adapters/src/run_lifecycle.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
 | Repository reads and Git compatibility | `docs/git-operation-inventory.md`, `crates/larch-adapters/src/git/`, `crates/larch-adapters/tests/git_repository.rs`, `crates/larch-lint/src/rules/git_ownership.rs`, and the command registry clean-install cases |
