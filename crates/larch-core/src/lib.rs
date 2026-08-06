@@ -131,10 +131,15 @@ pub use progress::{
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
 pub use report::{
     BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, EMPTY_GROUPS, IssueDetail,
-    IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN, WARN_CATEGORY,
-    build_issue_detail_section, count_issue_groups, count_load_result, execution_issue_identity,
-    load_issue_detail_groups, parse_markdown_execution_issues, render_issue_detail_block,
-    replace_markdown_block, replace_markdown_block_with_warn, structured_body_dedupe_keys,
+    IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN,
+    RunLogBatchArtifact, RunLogBatchMode, RunLogBatchSanitizer, RunLogBatchSpec, RunLogCorpus,
+    RunLogCorpusEvent, RunLogCorpusIter, RunLogCorpusWarning, RunLogCorpusWarningKind,
+    RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
+    RunLogTimeWindowError, WARN_CATEGORY, build_issue_detail_section, count_issue_groups,
+    count_load_result, execution_issue_identity, load_issue_detail_groups,
+    parse_markdown_execution_issues, parse_preterminal_outcome_label, render_issue_detail_block,
+    replace_markdown_block, replace_markdown_block_with_warn, round_number_from_path,
+    run_log_batch_spec, run_log_batch_specs, structured_body_dedupe_keys,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
