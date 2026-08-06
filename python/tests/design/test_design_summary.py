@@ -169,6 +169,8 @@ def _install_final_summary_env(
         return {}
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
     monkeypatch.setattr(design_summary.exec_issue_detail, "assess_issue_details", no_assess)
     return upsert_bodies
@@ -249,6 +251,8 @@ def test_missing_invariant_assessment_warning_prefixes_fallback_summary(
         _ = (design_tmpdir, phase, outcome, repo, issue, run_id)
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
 
     rc = design_summary.render_final_summary_main(
@@ -371,6 +375,8 @@ def test_missing_guideline_assessment_warning_prefixes_fallback_summary(
         _ = (design_tmpdir, phase, outcome, repo, issue, run_id)
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
 
     rc = design_summary.render_final_summary_main(
@@ -583,6 +589,8 @@ def test_render_final_summary_pre_phase_counts_without_detail(
         return
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved", "--pre-publish-only"])
@@ -700,6 +708,8 @@ def test_render_final_summary_explicit_identity_args_win_over_stale_env(
         gate_calls.append((design_tmpdir, issue, run_id))
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     rc = design_summary.render_final_summary_main([
@@ -754,6 +764,8 @@ def test_render_final_summary_empty_identity_argv_does_not_fallback_to_ambient_e
         gate_calls.append((issue, run_id))
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     rc = design_summary.render_final_summary_main([
@@ -927,6 +939,8 @@ def test_render_final_summary_degraded_fallback_includes_issue_count_bullets(
         return {}
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
     monkeypatch.setattr(design_summary.exec_issue_detail, "assess_issue_details", no_assess)
 
@@ -964,6 +978,8 @@ def test_render_final_summary_write_failure_skips_upsert(
         return
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
@@ -1010,6 +1026,8 @@ def test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first(
         return original_write_text(self, *args, **kwargs)  # type: ignore[reportArgumentType]
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
     monkeypatch.setattr(design_summary.review_phase_detail, "render_design_review_detail", fake_render_design_review_detail)
     monkeypatch.setattr(design_summary.Path, "write_text", flaky_write_text)
@@ -1087,6 +1105,8 @@ def test_render_final_summary_persists_difficulty_record_before_render(
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     def fake_gate(**_kw: object) -> None:
         return None
 
@@ -1197,6 +1217,8 @@ def test_render_final_summary_accepts_paused_outcome(
         return
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli, raising=False)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     assert design_summary.render_final_summary_main(["--outcome", "paused"]) == 0

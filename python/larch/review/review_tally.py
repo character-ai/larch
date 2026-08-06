@@ -21,6 +21,7 @@ from typing import NoReturn, cast
 from larch import io as larch_io
 from larch.review import findings_ledger
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.review import tally_engine
 from larch.review import voting
 from larch.review.review_types import (
@@ -733,8 +734,7 @@ def surface_warning(*, session_env_path: str, entry: str) -> None:
     if log is None:
         return
     cmd = [
-        sys.executable,
-        str(_PLUGIN_ROOT / "python" / "cli.py"),
+        str(larch_entrypoint(_PLUGIN_ROOT)),
         "run-log",
         "append-entry",
         "--log",
@@ -1608,12 +1608,12 @@ def log_phase(argv: list[str]) -> int:
         return _error("log-phase: --payload-file must name a file")
     if not re.fullmatch(r"review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|difficulty-rating|review-round-summary|panel-prompt-sizes|review-findings-classification-round-[1-5]", args.batch):
         return _error(f"log-phase: unregistered review batch: {args.batch}")
-    base = [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "run-log"]
+    base = [str(larch_entrypoint(_PLUGIN_ROOT))]
     if args.action == "write":
-        cmd = [*base, "write"]
+        cmd = [*base, "run-log", "write"]
         file_args = ["--input-file", args.payload_file]
     else:
-        cmd = [*base, "append"]
+        cmd = [*base, "run-log", "append"]
         file_args = ["--record-file", args.payload_file]
     log_args = ["--skill", "review", f"--run-id={args.run_id}", "--batch", args.batch]
     if args.log_root:
@@ -1630,7 +1630,7 @@ def log_phase(argv: list[str]) -> int:
             if args.log_root:
                 extra_log_args = ["--log-root", args.log_root, *extra_log_args]
             # lint-subprocess-via-runner: ok sibling panel-prompt-sizes write mirrors the baselined run-log subprocess.run above in this function
-            extra = subprocess.run([*base, "write", *extra_log_args, "--input-file", str(sibling)], text=True, capture_output=True, check=False)
+            extra = subprocess.run([*base, "run-log", "write", *extra_log_args, "--input-file", str(sibling)], text=True, capture_output=True, check=False)
             if extra.returncode != 0:
                 print("log-phase: warning: failed to write sibling panel-prompt-sizes batch", file=sys.stderr)
                 if extra.stderr:

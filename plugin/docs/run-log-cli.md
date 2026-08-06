@@ -34,24 +34,42 @@ make a log public-safe. See the canonical
 
 ## Remaining Python-owned verbs
 
-- `run-log init`
-- `run-log write`
-- `run-log write-round`
-- `run-log append`
-- `run-log exists`
 - `run-log checkpoint`
 - `run-log refresh`
 - `run-log prepare-terminal-snapshot`
 - `run-log capture-transcript`
-- `run-log verify-completeness`
-- `run-log append-entry`
-- `run-log append-failure`
 - `run-log publish-breadcrumbs`
 - `run-log archive`
 - `run-log materialize`
 - `run-log publish`
 - `run-log sync`
 - `run-log migrate-layout plan|apply|verify`
+
+## Rust-owned initialization and entry writes
+
+`run-log init`, `write`, `write-round`, `append`, `append-entry`,
+`append-failure`, `exists`, and `verify-completeness` are Rust-owned. Every
+caller enters through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Their argument
+grammars, stdout envelopes, and exit codes are unchanged: `init`, `write`,
+`write-round`, `append`, and `exists` emit the `LOG_*` envelope; `append-entry`
+and `append-failure` emit `APPENDED=true` plus `LOG=<path>` on success and
+`FAILED=true` plus `ERROR=<reason>` on refusal; `verify-completeness` prints
+`OK` or `MISSING=<comma-separated paths>`.
+
+Exit codes preserve the retired owner's split: `1` for a refusal (unknown
+batch, wrong mode, sanitizer rejection, unsupported category, malformed
+integer flag) and `2` for an I/O failure.
+
+Two behaviors are stricter than the retired Python owner, both fail-closed:
+`--log-root` is refused when it escapes a set `IMPLEMENT_TMPDIR` (shared with
+`run-log manifest`), and payload redaction covers every secret family the Rust
+redaction owner knows, which is a superset of the families the Python owner
+scrubbed.
+
+`run-log append-entry` and `run-log append-failure` serialize on a
+`mkdir`-based `<log>.lock.d` directory lock, so concurrent appends from
+separate processes never interleave a record.
+
 ## Rust-owned manifest updates
 
 `scripts/larch.sh run-log manifest --log-root <root> --skill <skill> --run-id

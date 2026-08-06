@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol
@@ -109,5 +109,28 @@ def plugin_root(fallback: Path | str | None = None, *, use_env: bool = True) -> 
 def larch_entrypoint(
     fallback: Path | str | None = None, *, use_env: bool = True
 ) -> Path:
-    """Return the verified bootstrap entrypoint for Rust command cutovers."""
-    return plugin_root(fallback, use_env=use_env) / "scripts" / "larch.sh"
+    """Return the verified bootstrap entrypoint for Rust command cutovers.
+
+    `scripts/larch.sh` refuses to run without `CLAUDE_PLUGIN_ROOT`, so resolving
+    the entrypoint also publishes the root it resolved. `setdefault` never
+    overrides an operator-supplied root, and it cannot disagree with one:
+    :func:`plugin_root` already prefers that same variable when `use_env` is set.
+    """
+    root = plugin_root(fallback, use_env=use_env)
+    _ = os.environ.setdefault(config.ENV_CLAUDE_PLUGIN_ROOT, str(root))
+    return root / "scripts" / "larch.sh"
+
+
+def larch_entrypoint_env(
+    fallback: Path | str | None = None, *, base: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """Return a child environment that names the plugin root the bootstrap needs.
+
+    `scripts/larch.sh` refuses to run without `CLAUDE_PLUGIN_ROOT`, so a caller
+    that resolves the entrypoint from a fallback path must also publish the root
+    it resolved rather than relying on an ambient value.
+    """
+    root = plugin_root(fallback)
+    environ = dict(os.environ if base is None else base)
+    environ[config.ENV_CLAUDE_PLUGIN_ROOT] = str(root)
+    return environ

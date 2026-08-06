@@ -304,6 +304,8 @@ def test_compose_findings_lazily_materializes_structured_sidecar(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
         design=design,
@@ -337,6 +339,8 @@ def test_compose_findings_keeps_ok_when_lazy_structured_materialization_fails(
         return subprocess.CompletedProcess(argv, 5, "structured records not found\n", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
         design=tmp_path,
@@ -411,6 +415,8 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,
@@ -453,6 +459,8 @@ def test_log_dispatcher_dropped_slots_surfaces_collector_failure_only(
         return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file=str(dropped))
 
@@ -478,6 +486,8 @@ def test_log_dispatcher_dropped_slots_missing_file_is_noop(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file="")
     plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file=str(tmp_path / "absent.dropped-slots"))
@@ -497,6 +507,8 @@ def test_log_insufficient_input_warning_appends_warning(
         return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     plan_review_round._log_insufficient_input_warning(design=tmp_path, round_num=2)
 
@@ -522,6 +534,8 @@ def test_apply_aggregator_status_skips_warning_for_healthy_zero_findings_panel(
         return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
     status = plan_review_round._apply_aggregator_status(
         design=tmp_path,
         round_num=2,
@@ -614,6 +628,8 @@ def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, _values = plan_review_round.execute_round(
         design=design,
@@ -859,6 +875,8 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,
@@ -942,6 +960,8 @@ def test_execute_round_records_reviewer_collect_row(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, _values = plan_review_round.execute_round(
         design=design,
@@ -1158,6 +1178,8 @@ def _install_execute_round_fake(
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
 
 def test_execute_round_records_progress_breadcrumb_sequence(
@@ -2033,6 +2055,8 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,
@@ -2141,6 +2165,8 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,
@@ -2190,6 +2216,8 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,
@@ -2297,6 +2325,8 @@ def test_execute_round_degraded_usable_voter_dispatch(
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
         design=design,

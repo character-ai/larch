@@ -41,6 +41,7 @@ mod release_stage;
 mod release_version;
 mod run_lifecycle_commands;
 mod run_log_commands;
+mod run_log_entry_commands;
 mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
@@ -145,6 +146,30 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum RunLogCommand {
+    /// Synthesize a v2 run manifest for one skill and run id.
+    #[command(name = "init", disable_help_flag = true)]
+    Init(RawCompatibilityArguments),
+    /// Replace one batch artifact from a redacted, validated payload.
+    #[command(name = "write", disable_help_flag = true)]
+    Write(RawCompatibilityArguments),
+    /// Publish one review round's included artifacts.
+    #[command(name = "write-round", disable_help_flag = true)]
+    WriteRound(RawCompatibilityArguments),
+    /// Append one record to an append-mode batch artifact.
+    #[command(name = "append", disable_help_flag = true)]
+    Append(RawCompatibilityArguments),
+    /// Append one execution-issue entry under a category heading.
+    #[command(name = "append-entry", disable_help_flag = true)]
+    AppendEntry(RawCompatibilityArguments),
+    /// Append one formatted tool-failure entry with captured diagnostics.
+    #[command(name = "append-failure", disable_help_flag = true)]
+    AppendFailure(RawCompatibilityArguments),
+    /// Report whether a known batch artifact exists.
+    #[command(name = "exists", disable_help_flag = true)]
+    Exists(RawCompatibilityArguments),
+    /// Verify a published run directory against the required-files manifest.
+    #[command(name = "verify-completeness", disable_help_flag = true)]
+    VerifyCompleteness(RawCompatibilityArguments),
     /// Update one versioned run-log manifest with durable atomic publication.
     #[command(name = "manifest", disable_help_flag = true)]
     Manifest(RawCompatibilityArguments),
@@ -956,6 +981,30 @@ fn run(
                 larch_core::LifecycleOutcome::EarlyReturn,
             ))
         }
+        Domain::RunLog(RunLogCommand::Init(arguments)) => {
+            Ok(run_log_entry_commands::init(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Write(arguments)) => {
+            Ok(run_log_entry_commands::write(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::WriteRound(arguments)) => {
+            Ok(run_log_entry_commands::write_round(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Append(arguments)) => {
+            Ok(run_log_entry_commands::append(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::AppendEntry(arguments)) => {
+            Ok(run_log_entry_commands::append_entry(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::AppendFailure(arguments)) => {
+            Ok(run_log_entry_commands::append_failure(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Exists(arguments)) => {
+            Ok(run_log_entry_commands::exists(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::VerifyCompleteness(arguments)) => Ok(
+            run_log_entry_commands::verify_completeness(&arguments.arguments),
+        ),
         Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
             Ok(run_log_commands::validate_run_id(&arguments.arguments))
         }

@@ -23,7 +23,7 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 
 - `--tmpdir` (required): the run tmpdir holding `vendor-failure-diagnostics.parts/`.
 - `--run-id` / `--log-root`: when both are set, the derived batch file is staged
-  via `python3 python/cli.py run-log write --batch vendor-failure-diagnostics`.
+  via `scripts/larch.sh run-log write --batch vendor-failure-diagnostics`.
 - `--skill` (default `implement`): larch-log skill namespace.
 
 ## Behavior
@@ -35,7 +35,7 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
    is overwritten from the full sorted parts set on every checkpoint, so
    repeated checkpoints converge. The batch slug is `replace` mode
    (`docs/run-log-batches.md`) for the same reason.
-3. **Stage only**: `python3 python/cli.py run-log write` stages the batch under
+3. **Stage only**: `scripts/larch.sh run-log write` stages the batch under
    the log root. The archive publisher owns final validation, sanitization, and
    publication. This helper never mutates Git.
 
@@ -56,7 +56,7 @@ Called by mutable checkpoints and terminal snapshot preparation:
 
 - Bash 3.2 portable (no associative arrays / `mapfile`).
 - Never makes a git commit.
-- Best-effort: a `python3 python/cli.py run-log write` failure is reported via
+- Best-effort: a `scripts/larch.sh run-log write` failure is reported via
   `BATCH_WRITTEN=false`, not a non-zero exit.
 
 ## Harness

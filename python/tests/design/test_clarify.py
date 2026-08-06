@@ -1204,7 +1204,7 @@ def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
     assert (tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME).is_file()
     assert any(call[2:4] == ["difficulty", "sync-labels"] for call in runner.calls)
-    assert any(call[2:4] == ["run-log", "write"] for call in runner.calls)
+    assert any(call[1:3] == ["run-log", "write"] for call in runner.calls)
 
 
 def test_design_clarify_publish_empty_session_warns_and_skips_publish(
@@ -1307,7 +1307,7 @@ def test_design_clarify_publish_failure_paths(
     assert "PUBLISH_OK=false" in (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     log_publish_call = next(call for call in runner.calls if call[2:4] == ["design", "log-publish"])
     assert log_publish_call[log_publish_call.index("--outcome") + 1] == "cancelled-clarify"
-    assert any(call[2:4] == ["run-log", "append-failure"] for call in runner.calls)
+    assert any(call[1:3] == ["run-log", "append-failure"] for call in runner.calls)
 
     source_env = _seed_publish(tmp_path, session_id="")
     runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n"), _result(stdout="STATUS=ok\n")])

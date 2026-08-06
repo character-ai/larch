@@ -1519,9 +1519,9 @@ def mermaid_sanitize_main(argv: list[str]) -> int:
                     }
                 )
             )
-            append = REPO_ROOT / "python" / "cli.py"
+            append = larch_entrypoint(REPO_ROOT)
             if append.exists():
-                subprocess.run(["python3", str(append), "run-log", "append-entry", "--log", args.warnings_log, "--category", "Warnings", "--entry", f"- **Step {args.warnings_step} — mermaid sanitizer rejected:** {tokens}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S607
+                subprocess.run([str(append), "run-log", "append-entry", "--log", args.warnings_log, "--category", "Warnings", "--entry", f"- **Step {args.warnings_step} — mermaid sanitizer rejected:** {tokens}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return 1
     logging_util.emit_kv(key="STATUS", value="ok")
     logging_util.emit_kv(key="FENCE_COUNT", value=str(len(fences)))

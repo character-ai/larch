@@ -51,6 +51,22 @@ if [[ "\${1:-}" == kv && "\${2:-}" == get ]]; then
     printf '%s\n' "\$value"
     exit 0
 fi
+if [[ "\${1:-}" == run-log && "\${2:-}" == append-failure ]]; then
+    shift 2
+    log="" category="" output_file=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --log) log="\$2"; shift 2 ;;
+            --category) category="\$2"; shift 2 ;;
+            --output-file) output_file="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [[ -n "\$log" && -n "\$category" ]] || exit 1
+    { printf '### %s\n\n' "\$category"; [[ -f "\$output_file" ]] && cat "\$output_file"; } >>"\$log"
+    printf 'APPENDED=true\nLOG=%s\n' "\$log"
+    exit 0
+fi
 exit 2
 EOF2
 chmod +x "$LARCH_BINARY"

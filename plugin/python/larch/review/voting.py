@@ -25,6 +25,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core.repo_roots import larch_entrypoint
 from larch.review.review_types import (
     JudgeSeverity,
     ParsedBlock,
@@ -401,13 +402,9 @@ def code_review_classification_header_main(argv: list[str]) -> int:
     return 0
 
 
-def _python_cli(plugin_root: str = "") -> Path:
-    root = Path(plugin_root) if plugin_root else _plugin_root()
-    return root / "python" / "cli.py"
-
-
-def _run_log_cli_argv(*subcommand: str, plugin_root: str = "") -> list[str]:
-    return ["python3", str(_python_cli(plugin_root)), "run-log", *subcommand]
+def _larch_argv(plugin_root: str = "") -> list[str]:
+    """Return the verified-bootstrap prefix for a Rust-owned command."""
+    return [str(larch_entrypoint(plugin_root or None))]
 
 
 def _truthy(name: str) -> bool:
@@ -1208,7 +1205,9 @@ def check_voter_parse_rate(
             if not should_suppress_parse_rate_issue_append(voter_path=voter_path, base_tmp=review_tmpdir):
                 proc.run(
                     [
-                        *_run_log_cli_argv("append-failure", plugin_root=plugin_root),
+                        *_larch_argv(plugin_root),
+                        "run-log",
+                        "append-failure",
                         "--log",
                         _issues_log(review_tmpdir),
                         "--site",
@@ -1534,7 +1533,9 @@ def write_tally_main(argv: list[str]) -> int:
         try:
             result = proc.run(
                 [
-                    *_run_log_cli_argv("write"),
+                    *_larch_argv(),
+                    "run-log",
+                    "write",
                     "--log-root",
                     args.log_root,
                     "--skill",

@@ -18,6 +18,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import external_defaults
+from larch.core.repo_roots import larch_entrypoint
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
@@ -499,11 +500,9 @@ def annotate_partition_issues(*, design_tmpdir: Path, issue_stdout_file: Path) -
 
 
 def _append_failure(design_tmpdir: Path, *, site: str, tool: str, exit_code: int, output_file: Path) -> None:
-    cli = PLUGIN_ROOT / "python" / "cli.py"
     subprocess.run(
-        [  # noqa: S607
-            "python3",
-            str(cli),
+        [
+            str(larch_entrypoint(PLUGIN_ROOT)),
             "run-log",
             "append-failure",
             "--log",

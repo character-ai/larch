@@ -1503,7 +1503,8 @@ def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_
     def fake_run(argv, **_kwargs):
         if argv[2:4] == ["voting", "write-tally"]:
             return review_and_fix.proc.CommandResult(tuple(argv), 9, "tally stdout", "tally stderr", 0.0)
-        if argv[2:4] == ["run-log", "write"]:
+        # Rust-owned run-log verbs enter through the bootstrap script.
+        if argv[1:3] == ["run-log", "write"]:
             log_root = Path(_arg_value(argv, "--log-root"))
             run_id = _arg_value(argv, "--run-id")
             batch = _arg_value(argv, "--batch")
@@ -1557,7 +1558,9 @@ def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
 def _fake_review_batch_run(argv: list[str], *, tally_result: review_and_fix.proc.CommandResult) -> review_and_fix.proc.CommandResult:
     if argv[2:4] == ["voting", "write-tally"]:
         return tally_result
-    if argv[2:4] == ["run-log", "write"]:
+    # Rust-owned run-log verbs enter through the bootstrap script, so the domain
+    # and verb sit right after the entrypoint rather than after `python3 cli.py`.
+    if argv[1:3] == ["run-log", "write"]:
         log_root = Path(_arg_value(argv, "--log-root"))
         run_id = _arg_value(argv, "--run-id")
         batch = _arg_value(argv, "--batch")

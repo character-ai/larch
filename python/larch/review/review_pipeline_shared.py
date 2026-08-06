@@ -18,6 +18,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.review.review_types import ReviewCoreStatus
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -170,6 +171,15 @@ def _run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, e
 def run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
     """Run a CLI command through the shared dispatch binding."""
     return _run_python_cli(args, runner=runner, env=env)
+
+
+def run_larch(args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
+    """Run one Rust-owned command through the verified bootstrap script."""
+    return _run_capture(
+        [str(larch_entrypoint(_PLUGIN_ROOT)), *args],
+        runner=runner,
+        env=larch_entrypoint_env(_PLUGIN_ROOT, base=env),
+    )
 
 
 def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:

@@ -6,6 +6,11 @@
 # non-empty `reason`. This baseline is a ratchet that only shrinks.
 
 [[grandfathered]]
+artifact = "run-statistics.md"
+side = "external-writer"
+reason = "Issue 8073 landed the Rust verify-completeness reader, which probes run-statistics.md for the step9a1 condition, while the only writer stays in the Python OOS filer until its cutover leaf."
+
+[[grandfathered]]
 artifact = "execution-issues.ndjson"
 side = "external-writer"
 reason = "Issue 8089 landed a Rust library reader in larch-core::report while production writes remain in Python run-log and execution-issues owners until their cutover leaves."

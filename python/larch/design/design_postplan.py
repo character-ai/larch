@@ -11,7 +11,7 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from collections.abc import Sequence
 
-from larch.core.repo_roots import consumer_repo_root, plugin_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.design.design_session import step2b5_next_action_for
 from larch.design.design_terminal import phase_driver_write_result_env
 
@@ -69,6 +69,17 @@ def _run_cli(root: Path, *args: str, env: dict[str, str] | None = None) -> subpr
     )
 
 
+def _run_larch(root: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    return subprocess.run(
+        [str(larch_entrypoint(root)), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=larch_entrypoint_env(root, base=env),
+    )
+
+
 def _clear_stale_or_warn(*, root: Path, design_tmpdir: Path) -> None:
     """Clear stale dialectic artifacts after a plan rewrite, surfacing failures.
 
@@ -121,7 +132,7 @@ def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, st
         _ = output_file.write_text(combined, encoding="utf-8")
     except OSError:
         return
-    _ = _run_cli(
+    _ = _run_larch(
         root,
         "run-log",
         "append-failure",

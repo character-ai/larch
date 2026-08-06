@@ -27,7 +27,7 @@ For tool, Bash, helper, or agent failures where stdout/stderr or a returned erro
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log append-failure \
   --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
   --site "<step-id>" \
   --tool "<tool label>" \

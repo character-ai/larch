@@ -193,6 +193,8 @@ def _patch_postplan_cli(
         return _completed(args)
 
     monkeypatch.setattr(design_postplan, "_run_cli", fake_run_cli)
+    # Rust-owned run-log verbs route through the bootstrap runner.
+    monkeypatch.setattr(design_postplan, "_run_larch", fake_run_cli, raising=False)
 
 
 @pytest.mark.parametrize(
@@ -297,9 +299,8 @@ def test_step2b5_and_postplan_emit_action_parity(
 
 def _write_check_size_failure_cli(path: Path, calls_file: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    calls_path_repr = repr(str(calls_file))
     _ = path.write_text(
-        f"""#!/usr/bin/env python3
+        """#!/usr/bin/env python3
 import sys
 args = sys.argv[1:]
 if args[:2] == ["plan-review", "emit"]:
@@ -313,6 +314,26 @@ if args[:2] == ["plan", "validate"]:
 if args[:2] == ["plan", "check-size"]:
     print("PLAN_SIZE_STATUS=failed", file=sys.stderr)
     raise SystemExit(1)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_append_failure_bootstrap(path.parents[1] / "scripts" / "larch.sh", calls_file)
+
+
+def _write_append_failure_bootstrap(path: Path, calls_file: Path) -> None:
+    """Write a fake verified bootstrap that records `run-log append-failure`.
+
+    `run-log append-failure` is Rust-owned, so the self-log now dispatches
+    through `scripts/larch.sh` rather than the fake `python/cli.py`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    calls_path_repr = repr(str(calls_file))
+    _ = path.write_text(
+        f"""#!/usr/bin/env python3
+import sys
+args = sys.argv[1:]
 if args[:2] == ["run-log", "append-failure"]:
     site = args[args.index("--site") + 1] if "--site" in args else ""
     with open({calls_path_repr}, "a", encoding="utf-8") as fh:

@@ -98,8 +98,7 @@ def _append_failure(
             output_file.write_text("", encoding="utf-8")
     subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "run-log",
             "append-failure",
             "--log",

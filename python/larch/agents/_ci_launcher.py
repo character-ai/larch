@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.issue import issue_wire
 
 from larch.agents._types import (
@@ -675,8 +676,7 @@ def _append_architectural_knowledge_warning(warning: str) -> None:
     entry = f"- Step 2 architectural knowledge omitted: {warning}"
     proc.run(
         [
-            sys.executable,
-            str(_PY_CLI),
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
             "run-log",
             "append-entry",
             "--log",
@@ -809,8 +809,7 @@ def _append_implement_token_mark_issue(summary: str) -> None:
     with contextlib.suppress(OSError):
         proc.run(
             [
-                sys.executable,
-                str(_PY_CLI),
+                str(larch_entrypoint(Path(__file__).resolve().parents[3])),
                 "run-log",
                 "append-entry",
                 "--log",
@@ -868,13 +867,19 @@ def _append_implement_launch_failure(*, tool: str, output: Path, sidecar: Path, 
     verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool=tool, output=output, sidecar=sidecar, source=source))
     if verdict == "auth":
         verdict = "auth-retries-exhausted"
-    args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "implement Step 2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
+    args = [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "implement Step 2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
     if verdict:
         args.extend(["--verdict", verdict])
     if retry_count:
         args.extend(["--retry-count", str(retry_count)])
     if os.environ.get("IMPLEMENT_TMPDIR"):
-        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            env=larch_entrypoint_env(Path(__file__).resolve().parents[3]),
+        )
         _append_vendor_failure_diagnostics(source, site=f"implement Step 2 {tool}-implement", exit_code=launcher_exit)
     tail = output.with_suffix(output.suffix + ".stderr-tail")
     rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""

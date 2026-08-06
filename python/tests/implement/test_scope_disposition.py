@@ -659,6 +659,8 @@ def test_frozen_fallback_post_commit_provenance_retained(
         return CommandResult(tuple(argv), 0, "OK=true\n", "", 0.0)
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    # `run-log write` is Rust-owned and routes through the bootstrap runner.
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
     record = scope_disposition.record_disposition(
         tmpdir=tmp_path,
         disposition="bail-rescope",
@@ -878,6 +880,8 @@ def test_record_proceed_partial_is_durable_after_all_side_effects(
         return CommandResult(args, 1, "", "unexpected", 0.0)
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    # `run-log write` is Rust-owned and routes through the bootstrap runner.
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
 
     record = scope_disposition.record_disposition(
         tmpdir=tmp_path,
@@ -936,6 +940,8 @@ def test_record_proceed_partial_failure_leaves_no_disposition(
         return CommandResult(args, 0, "OK=true\n", "", 0.0)
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    # `run-log write` is Rust-owned and routes through the bootstrap runner.
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
 
     with pytest.raises(ShipError):
         _ = scope_disposition.record_disposition(
@@ -976,6 +982,8 @@ def test_record_proceed_partial_dedups_followup_on_matching_fingerprint(
         return CommandResult(args, 0, "OK=true\n", "", 0.0)
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    # `run-log write` is Rust-owned and routes through the bootstrap runner.
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
 
     record = scope_disposition.record_disposition(
         tmpdir=tmp_path,
@@ -1351,6 +1359,8 @@ def test_create_followup_issue_passes_context_file(
         )
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    # `run-log write` is Rust-owned and routes through the bootstrap runner.
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
 
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(

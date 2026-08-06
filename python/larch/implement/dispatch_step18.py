@@ -16,6 +16,7 @@ from larch.errors import ShipError
 from larch.implement.dispatch_helpers import (
     _emit_kv,
     _invoke_cli,
+    _invoke_larch,
     _parse_kv,
     _read_kv_file,
     _read_session_key_default,
@@ -174,7 +175,7 @@ def _append_failure_best_effort(*, implement_tmpdir: Path, site: str, tool: str,
             log.write_text("", encoding="utf-8")
         except OSError:
             return
-    _ = _invoke_cli([
+    _ = _invoke_larch([
         "run-log", "append-failure",
         "--log", str(implement_tmpdir / "execution-issues.md"),
         "--site", site,

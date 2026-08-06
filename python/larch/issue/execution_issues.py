@@ -18,6 +18,7 @@ from typing import cast
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.report import exec_issue_detail
 from larch.report import storage_config
 from larch.report.run_log_batch import (
@@ -274,7 +275,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
             issue_log.write_text("", encoding="utf-8")
             return 0, "no-records", 0, str(append_log)
         plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
-        cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
+        cmd = [str(larch_entrypoint(plugin_root)), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode == 0:
@@ -311,7 +312,7 @@ def flush_execution_issues_safety_net(*, log_root: Path, run_id: str, issue_log:
         if records == 0:
             return 0, "no-records", 0, str(append_log)
         plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
-        cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
+        cmd = [str(larch_entrypoint(plugin_root)), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode == 0:

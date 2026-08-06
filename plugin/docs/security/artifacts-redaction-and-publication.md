@@ -37,6 +37,16 @@ redacts known path, token, and PEM families, then withholds a value when a
 recognized secret survives its rescan. Contract writers also reject line
 breaks before writing line-oriented records.
 
+Run-log batch payloads and `--redact` failure bodies are redacted by the Rust
+owner, `larch_core::redact_run_log_payload`, because `run-log write`, `append`,
+`write-round`, and `append-failure` are Rust-owned. It scrubs session and
+operator paths and then every secret family the Rust redactor knows, which is a
+superset of the families the retired Python owner scrubbed on this path: Slack,
+Google API, Stripe live, and GitLab tokens are now removed from published batch
+payloads in addition to the Anthropic/OpenAI, GitHub, AWS, JWT, Cursor, and PEM
+families. Debate batches additionally refuse, rather than redact, a recognized
+session-tmpdir pointer, including one that appears only inside decoded JSON.
+
 Before content crosses into a committed or public artifact, the owning
 publisher must:
 

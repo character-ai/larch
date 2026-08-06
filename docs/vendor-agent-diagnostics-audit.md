@@ -27,7 +27,7 @@ exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
 
 Every direct launch through `scripts/larch.sh agent run-external-agent` therefore
-**inherits** the saved carrier with no per-site change. `python/cli.py run-log append-failure` gains
+**inherits** the saved carrier with no per-site change. `scripts/larch.sh run-log append-failure` gains
 a fail-closed backstop (missing / zero-byte `--output-file` → synthesize
 `no diagnostics captured (exit N)`), so every `execution-issues.md` failure entry
 is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
@@ -45,7 +45,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 |---|---|---|---|---|---|
 | `scripts/larch.sh agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; policy-rejection fast-fail writes the diagnostic marker. |
 | `python/larch/agents/agents.py` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
-| `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
+| `scripts/larch.sh run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `python/cli.py agent launch-review` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
 | `python/cli.py agent launch-review` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |
 | `python/cli.py agent launch-claude-subprocess` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |

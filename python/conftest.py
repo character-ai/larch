@@ -71,6 +71,30 @@ def _session_routing_isolation() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _verified_bootstrap_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give `scripts/larch.sh` an executable to verify and dispatch to.
+
+    Python callers of Rust-owned commands run the verified bootstrap script,
+    which needs a version-matching executable. Preference order:
+
+    1. A caller-supplied `LARCH_BINARY` always wins.
+    2. CI publishes the real workspace build as `LARCH_TEST_RUST_BINARY`; using
+       it exercises the real commands rather than a double.
+    3. Otherwise fall back to the `run-log` double, so a Python-only run with no
+       Rust build still reaches the consumer behavior under test.
+    """
+    if os.environ.get("LARCH_BINARY"):
+        return
+    real = os.environ.get("LARCH_TEST_RUST_BINARY", "")
+    if real and os.access(real, os.X_OK):
+        monkeypatch.setenv("LARCH_BINARY", real)
+        return
+    monkeypatch.setenv(
+        "LARCH_BINARY", str(Path(__file__).with_name("tests") / "support" / "larch_binary_stub.sh")
+    )
+
+
+@pytest.fixture(autouse=True)
 def _deny_live_issue_mutations(monkeypatch: pytest.MonkeyPatch) -> None:
     """Block scoped live GitHub issue mutations in all tests by default.
 

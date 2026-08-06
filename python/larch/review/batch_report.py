@@ -15,7 +15,9 @@ from typing import cast
 from larch.report import run_log_batch
 from larch.review import review_prune
 from larch.review import voting
+from larch.core.repo_roots import larch_entrypoint
 from larch.review._raf_util import (
+    _PLUGIN_ROOT,
     _PY_CLI,
     _append_text,
     _err,
@@ -393,7 +395,7 @@ def flush_review_batches(*,
             _err(tally_result.stderr.rstrip())
     findings_err = impl_tmpdir / "review-findings-full.flush.err"
     findings_flush = _run([
-        "python3", str(_PY_CLI), "run-log", "write",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "write",
         "--log-root", str(impl_tmpdir / "larch-logs"),
         "--skill", "implement",
         "--run-id", run_id,
@@ -410,7 +412,7 @@ def flush_review_batches(*,
     if ledger.is_file():
         ledger_err = impl_tmpdir / "reviewer-prune-ledger.flush.err"
         ledger_flush = _run([
-            "python3", str(_PY_CLI), "run-log", "write",
+            str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "write",
             "--log-root", str(impl_tmpdir / "larch-logs"),
             "--skill", "implement",
             "--run-id", run_id,
@@ -476,7 +478,7 @@ def flush_scout_manifest(*,
     if not scout_payload.is_file() or not scout_payload.stat().st_size:
         return
     result = _run([
-        "python3", str(_PY_CLI), "run-log", "write",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "write",
         "--log-root", str(implement_tmpdir / "larch-logs"),
         "--skill", "implement",
         "--run-id", run_id,
@@ -503,7 +505,7 @@ def flush_round_log_after_coder(*, impl_tmpdir: Path, run_id: str, round_num: in
         return
     flush_err = round_dir / "review-and-fix-write-round.log"
     result = _run([
-        "python3", str(_PY_CLI), "run-log", "write-round",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "run-log", "write-round",
         "--log-root", str(impl_tmpdir / "larch-logs"),
         "--skill", "implement",
         "--run-id", run_id,

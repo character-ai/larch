@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.core.proc import CommandResult, Runner
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.errors import NeedsUserInput, ShipError
 from larch.implement.dispatch_helpers import porcelain_status_paths_z
 from larch.state.session_env import run_log_write_argv
@@ -1198,6 +1199,12 @@ def _run_cli(argv: Sequence[str]) -> CommandResult:
     return proc.run([sys.executable, str(cli), *argv])
 
 
+def _run_larch(argv: Sequence[str]) -> CommandResult:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    root = Path(__file__).resolve().parents[3]
+    return proc.run([str(larch_entrypoint(root)), *argv], env=larch_entrypoint_env(root))
+
+
 def _require_cli_success(result: CommandResult, *, label: str) -> dict[str, str]:
     fields = _parse_cli_kv(result.stdout)
     failure_keys = {
@@ -1332,7 +1339,7 @@ def _write_scope_run_log(
             }
         ),
     )
-    result = _run_cli(run_log_write_argv(
+    result = _run_larch(run_log_write_argv(
         log_root=tmpdir / "larch-logs", run_id=run_id,
         batch="scope-disposition", input_file=payload,
     ))

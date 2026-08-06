@@ -954,7 +954,7 @@ def run(repo_root: Path) -> list[str]:
                 "If the run ends before Step 9a.1 or before `oos file` succeeds",
                 "explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file",
                 "`python/cli.py final-report write` records explicit `steps_ran.step9a1=false`",
-                "`python/cli.py run-log verify-completeness` treats missing/null `steps_ran` like `jq",
+                "`scripts/larch.sh run-log verify-completeness` treats missing/null `steps_ran` like `jq",
             ]:
                 require_text(write_final_text, needle, "write-final-report.md bail-time steps_ran invariant")
         else:
