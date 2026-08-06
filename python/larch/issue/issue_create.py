@@ -25,6 +25,8 @@ from larch.state import session_env as _session_env
 
 CAP = 30
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
+# Fast path only: a match skips a read-back. Never the sole authority for
+# success, because GitHub's real duplicate-relation prose matches nothing here.
 IDEMPOTENT_RE = re.compile(r"already (exists|tracked|added)|duplicate dependency", re.IGNORECASE)
 MIN_CAND_FIELDS = 4
 CONF_FIELD_COUNT = 4
@@ -761,6 +763,22 @@ def _blocked_failure(*, client: str, blocker: str, message: str, code: int = 2) 
     return BlockedByResult(client=client, blocker=blocker, added=False, error=error_text, exit_code=code)
 
 
+def _blocked_by_read_back(*, client: str, blocker: str, repo: str) -> bool:
+    """Report whether the live blocked-by set of ``client`` contains ``blocker``.
+
+    Fail closed: a transport failure or a malformed payload proves nothing, so
+    it reports absence and the caller surfaces the original mutation error.
+    """
+    result = gh.issue_blocked_by_read(proc, client, repo=repo)
+    if result.returncode != 0:
+        return False
+    try:
+        rows: list[object] = gh.loads_json_paginated_list(result.stdout)
+    except ShipError:
+        return False
+    return any(isinstance(row, dict) and str(row.get("number") or "") == blocker for row in rows)
+
+
 def add_blocked_by(
     *,
     client: str,
@@ -804,8 +822,13 @@ def add_blocked_by(
             return BlockedByResult(client=client, blocker=blocker, added=True)
         if re.search(r"HTTP 404|status 404|404 Not Found", err, re.IGNORECASE):
             return _blocked_failure(client=client, blocker=blocker, message=f"feature-unavailable: {err}")
-        if re.search(r"HTTP 422", err, re.IGNORECASE) and IDEMPOTENT_RE.search(err):
-            return BlockedByResult(client=client, blocker=blocker, added=True)
+        if re.search(r"HTTP 422", err, re.IGNORECASE):
+            # A 422 is deterministic, so retrying it cannot change the outcome.
+            # Decide it from the live edge set, never from GitHub's error prose;
+            # IDEMPOTENT_RE is only a fast path that skips the read-back.
+            if IDEMPOTENT_RE.search(err) or _blocked_by_read_back(client=client, blocker=blocker, repo=repo):
+                return BlockedByResult(client=client, blocker=blocker, added=True)
+            return _blocked_failure(client=client, blocker=blocker, message=err)
         last_error = err
     return _blocked_failure(client=client, blocker=blocker, message=f"all 3 attempts failed: {last_error}")
 
@@ -865,10 +888,10 @@ def _sub_issue_read_back(*, parent: str, child: str, repo: str) -> bool:
     if result.returncode != 0:
         return False
     try:
-        rows: object = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(rows, list):
+        # The read paginates, so a parent past one page emits concatenated
+        # arrays that plain json.loads rejects as a false "relation absent".
+        rows: list[object] = gh.loads_json_paginated_list(result.stdout)
+    except ShipError:
         return False
     return any(isinstance(row, dict) and str(row.get("number") or "") == child for row in rows)
 
@@ -927,12 +950,16 @@ def _add_sub_issue_with_retry(
             sleep_fn(30)
         result = gh.issue_add_sub_issue(proc, parent, int(child_id), repo=repo)
         detail = result.stderr or result.stdout
-        if result.returncode == 0 or (
-            re.search(r"HTTP 422", detail, re.IGNORECASE) and IDEMPOTENT_RE.search(detail)
-        ):
+        # A 422 is deterministic, so retrying it cannot change the outcome. Let
+        # the read-back decide it, never GitHub's error prose: it reports the
+        # duplicate-relation case as success and leaves a genuine conflict, such
+        # as a child already parented elsewhere, failing with GitHub's message.
+        if result.returncode == 0 or re.search(r"HTTP 422", detail, re.IGNORECASE):
             if _sub_issue_read_back(parent=parent, child=child, repo=repo):
                 return SubIssueResult(parent=parent, child=child, added=True)
-            return _sub_issue_failure(parent=parent, child=child, message="sub-issue relation read-back failed")
+            if result.returncode == 0:
+                return _sub_issue_failure(parent=parent, child=child, message="sub-issue relation read-back failed")
+            return _sub_issue_failure(parent=parent, child=child, message=detail)
         if re.search(r"HTTP 404|status 404|404 Not Found", detail, re.IGNORECASE):
             return _sub_issue_failure(parent=parent, child=child, message=f"feature-unavailable: {detail}")
         last_error = detail
