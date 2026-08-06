@@ -33,8 +33,15 @@ pub fn write_confined_file(
     let parent = parent_directory(&absolute);
     let root = TemporaryRoot::resolve(Some(&parent))
         .map_err(|error| format!("output parent is not a writable directory: {error}"))?;
+    // `TemporaryRoot::resolve` canonicalizes, so a platform-aliased spelling such
+    // as macOS `/tmp/session/env.sh` yields the `/private/tmp` root. Rejoin the
+    // leaf to that canonical root, or confinement reads the original spelling as
+    // an escape.
+    let target = absolute
+        .file_name()
+        .map_or_else(|| absolute.clone(), |name| root.path().join(name));
     let confined = root
-        .confine(&absolute, PathIntent::Write)
+        .confine(&target, PathIntent::Write)
         .map_err(|error| format!("refusing unsafe {label} target: {error}"))?;
     atomic_write_utf8(&confined, text, mode).map_err(|error| format!("{error}"))
 }
@@ -48,7 +55,27 @@ pub fn create_directories(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| format!("{}: {error}", path.display()))
 }
 
+/// Return whether a component with this type and owner is a refused symlink.
+///
+/// A symlink owned by uid 0 is a platform alias — macOS spells `/tmp` and `/var`
+/// that way — that no unprivileged process can create or replace, so larch
+/// trusts it and keeps walking. Every other symlink is reachable by an
+/// unprivileged user and is refused.
+#[must_use]
+pub const fn refuses_symlink(is_symlink: bool, owner_uid: u32) -> bool {
+    is_symlink && owner_uid != 0
+}
+
+fn is_refused_symlink(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    fs::symlink_metadata(path)
+        .is_ok_and(|data| refuses_symlink(data.file_type().is_symlink(), data.uid()))
+}
+
 /// Refuse a path whose leaf or any ancestor is a symlink.
+///
+/// Root-owned platform aliases are exempt; see [`refuses_symlink`].
 ///
 /// # Errors
 ///
@@ -56,7 +83,7 @@ pub fn create_directories(path: &Path) -> Result<(), String> {
 pub fn assert_no_symlink_path_or_ancestors(path: &Path) -> Result<(), String> {
     let mut current = path;
     loop {
-        if fs::symlink_metadata(current).is_ok_and(|data| data.file_type().is_symlink()) {
+        if is_refused_symlink(current) {
             return Err(format!(
                 "refusing symlinked path or ancestor: {}",
                 current.display()
@@ -73,6 +100,7 @@ pub fn assert_no_symlink_path_or_ancestors(path: &Path) -> Result<(), String> {
 ///
 /// The link itself is expected to be a symlink, so only its ancestors are
 /// checked, matching the legacy `_validate_design_current_env_link` guard.
+/// Root-owned platform aliases are exempt; see [`refuses_symlink`].
 ///
 /// # Errors
 ///
@@ -80,7 +108,7 @@ pub fn assert_no_symlink_path_or_ancestors(path: &Path) -> Result<(), String> {
 pub fn assert_no_symlink_ancestors(path: &Path) -> Result<(), String> {
     let mut ancestor = parent_directory(path);
     loop {
-        if fs::symlink_metadata(&ancestor).is_ok_and(|data| data.file_type().is_symlink()) {
+        if is_refused_symlink(&ancestor) {
             return Err(format!(
                 "refusing symlinked ancestor for design current-env link: {}",
                 ancestor.display()
@@ -242,11 +270,38 @@ fn read_prior_env_text(prior_file: &Path) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        publish_symlink, recover_prior_bool, recover_prior_design_value, remove_file_if_present,
-        resolve_trusted_design_env_source, write_confined_file,
+        publish_symlink, recover_prior_bool, recover_prior_design_value, refuses_symlink,
+        remove_file_if_present, resolve_trusted_design_env_source, write_confined_file,
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn only_a_root_owned_symlink_escapes_refusal() {
+        assert!(refuses_symlink(true, 501));
+        assert!(refuses_symlink(true, 1));
+        assert!(!refuses_symlink(true, 0));
+        assert!(!refuses_symlink(false, 501));
+        assert!(!refuses_symlink(false, 0));
+    }
+
+    #[test]
+    fn confined_publication_accepts_a_platform_aliased_temporary_root() {
+        // The fixture root is left exactly as `env::temp_dir()` spells it: on
+        // macOS that is `/var/folders/...`, whose `/var` ancestor is a
+        // root-owned symlink, and on Linux it is the real `/tmp`. Both must
+        // publish, which is what the `/tmp` session fallback depends on.
+        let directory = tempdir().expect("fixture tempdir");
+        let target = directory.path().join("session-env.sh");
+
+        write_confined_file(&target, "REPO=a/b\n", 0o600, "session-env")
+            .expect("aliased root must publish");
+
+        assert_eq!(
+            fs::read_to_string(&target).expect("published file"),
+            "REPO=a/b\n"
+        );
+    }
 
     #[test]
     fn confined_publication_is_private_and_replaces_atomically() {

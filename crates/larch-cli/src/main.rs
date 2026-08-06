@@ -1633,11 +1633,19 @@ fn python_io_error(error: &std::io::Error, path: &Path) -> String {
     format!("[Errno {code}] {detail}: '{}'", path.display())
 }
 
+/// Refuse a phantom-warning log path whose leaf or any ancestor is a symlink.
+///
+/// The log lives under `$IMPLEMENT_TMPDIR`, which the `/tmp` session fallback can
+/// place beneath a root-owned platform alias, so the same exemption as
+/// [`larch_adapters::assert_no_symlink_path_or_ancestors`] applies.
 fn reject_symlink_path_or_ancestors(path: &Path) -> Result<(), String> {
+    use larch_adapters::refuses_symlink;
+    use std::os::unix::fs::MetadataExt as _;
+
     let mut current = Some(path);
     while let Some(candidate) = current {
         match fs::symlink_metadata(candidate) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
+            Ok(metadata) if refuses_symlink(metadata.file_type().is_symlink(), metadata.uid()) => {
                 return Err(format!(
                     "refusing symlinked path or ancestor: {}",
                     candidate.display()

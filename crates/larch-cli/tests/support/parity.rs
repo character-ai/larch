@@ -15,6 +15,7 @@ use tempfile::TempDir;
 use wait_timeout::ChildExt;
 
 const UPDATE_GOLDENS_ENV: &str = "LARCH_UPDATE_PARITY_GOLDENS";
+const PLATFORM_TEMP_ROOT: &str = "/tmp";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const DIAGNOSTIC_PATH_LIMIT: usize = 8;
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
@@ -136,20 +137,36 @@ struct Capture {
 }
 
 struct Sandbox {
-    directory: TempDir,
+    _directory: TempDir,
+    root: PathBuf,
 }
 
 impl Sandbox {
     fn new(seed_files: &[SeedFile]) -> Result<Self, String> {
+        // Anchor at the canonicalized platform temporary root rather than
+        // `env::temp_dir()`. Session-tmpdir allowlists accept `/tmp`, so a
+        // sandbox under the macOS `$TMPDIR` (`/var/folders/...`) would record a
+        // refusal where Linux records success. Canonicalizing keeps the recorded
+        // spelling free of root-owned platform aliases (`/var` -> `private/var`).
+        let base = PathBuf::from(PLATFORM_TEMP_ROOT)
+            .canonicalize()
+            .map_err(|error| format!("canonicalize {PLATFORM_TEMP_ROOT}: {error}"))?;
         let directory = tempfile::Builder::new()
             .prefix("larch-parity-")
-            .tempdir()
+            .tempdir_in(&base)
             .map_err(|error| format!("create parity sandbox: {error}"))?;
+        let root = directory
+            .path()
+            .canonicalize()
+            .map_err(|error| format!("canonicalize parity sandbox: {error}"))?;
         for relative in [".home", ".tmp", ".bin"] {
-            fs::create_dir(directory.path().join(relative))
+            fs::create_dir(root.join(relative))
                 .map_err(|error| format!("create sandbox directory {relative}: {error}"))?;
         }
-        let sandbox = Self { directory };
+        let sandbox = Self {
+            _directory: directory,
+            root,
+        };
         for seed in seed_files {
             let path = sandbox.safe_path(&seed.relative_path)?;
             if let Some(parent) = path.parent() {
@@ -163,7 +180,7 @@ impl Sandbox {
     }
 
     fn root(&self) -> &Path {
-        self.directory.path()
+        &self.root
     }
 
     fn safe_path(&self, relative: &Path) -> Result<PathBuf, String> {

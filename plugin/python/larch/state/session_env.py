@@ -692,7 +692,11 @@ def _validate_design_current_env_link(*, symlink_path: Path, pid: str) -> None:
         raise ValueError(msg)
     ancestor = symlink_path.parent
     while True:
-        if ancestor.is_symlink():
+        try:
+            mode_stat = ancestor.lstat()
+        except OSError:
+            mode_stat = None
+        if mode_stat is not None and larch_io.is_refused_symlink(mode_stat):
             msg = f"refusing symlinked ancestor for design current-env link: {ancestor}"
             raise OSError(msg)
         if ancestor == ancestor.parent:

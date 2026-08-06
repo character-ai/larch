@@ -53,11 +53,36 @@ def _duplicate_policy(
     return duplicate_policy or legacy_policy
 
 
+def refuses_symlink(*, is_symlink: bool, owner_uid: int) -> bool:
+    """Return whether a component with this type and owner is a refused symlink.
+
+    A symlink owned by uid 0 is a platform alias -- macOS spells ``/tmp`` and
+    ``/var`` that way -- that no unprivileged process can create or replace, so
+    larch trusts it and keeps walking. Every other symlink is reachable by an
+    unprivileged user and is refused.
+    """
+    return is_symlink and owner_uid != 0
+
+
+def is_refused_symlink(mode_stat: os.stat_result) -> bool:
+    """Apply :func:`refuses_symlink` to an ``lstat`` result."""
+    return refuses_symlink(
+        is_symlink=stat.S_ISLNK(mode_stat.st_mode), owner_uid=mode_stat.st_uid
+    )
+
+
 def assert_no_symlink_path_or_ancestors(path: Path) -> None:
-    """Raise when ``path`` or any ancestor is a symlink."""
+    """Raise when ``path`` or any ancestor is a refused symlink.
+
+    Root-owned platform aliases are exempt; see :func:`refuses_symlink`.
+    """
     current = path
     while True:
-        if current.is_symlink():
+        try:
+            mode_stat = current.lstat()
+        except OSError:
+            mode_stat = None
+        if mode_stat is not None and is_refused_symlink(mode_stat):
             msg = f"refusing symlinked path or ancestor: {current}"
             raise OSError(msg)
         if current == current.parent:
@@ -84,11 +109,11 @@ def _assert_no_symlink_components(path: Path) -> None:
     current = path
     while True:
         try:
-            mode = current.lstat().st_mode
+            mode_stat = current.lstat()
         except FileNotFoundError:
             pass
         else:
-            if stat.S_ISLNK(mode):
+            if is_refused_symlink(mode_stat):
                 raise OSError(f"refusing symlinked path or ancestor: {current}")
         if current == current.parent:
             return
