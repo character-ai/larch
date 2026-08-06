@@ -7,6 +7,7 @@ mod config;
 mod context;
 mod env_file;
 mod error;
+mod external_defaults;
 mod git;
 mod github;
 mod github_actions;
@@ -24,6 +25,7 @@ mod review_dispatch;
 mod run_log;
 mod session_env;
 mod session_state;
+mod slack_announce;
 mod storage;
 mod telemetry;
 mod test_shards;
@@ -33,6 +35,7 @@ mod upgrade_larch;
 mod vendor;
 mod vendor_diagnostics;
 mod vendor_failure;
+mod vendor_model;
 mod vendor_usage;
 
 pub use attestation::{
@@ -58,6 +61,7 @@ pub use ci_timing::{
     collect_pytest_timing,
 };
 pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
+
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
@@ -66,6 +70,10 @@ pub use env_file::{
 };
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
+};
+pub use external_defaults::{
+    ExternalDefaultError, ResolveResult, RoleDefault, RoleKind, doc_rows, parse_bool_flag,
+    resolve_vendor, role_default,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
@@ -168,6 +176,12 @@ pub use session_state::{
     allowed_session_roots, cleanup_cache_sessions_root, design_tmpdir_syntax_error,
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
 };
+pub use slack_announce::{
+    LARCH_SLACK_WEBHOOK_URL, SlackAnnounceInputs, SlackAnnounceStatus, SlackIssueAnnouncement,
+    inputs_from_files, mark_posted, parent_issue_path, plan_slack_issue_announce,
+    read_kv_from_text, redact_webhook_url, session_id_path, ship_state_path, transport_failure,
+    webhook_scheme_allowed,
+};
 pub use storage::{
     ENV_LARCH_LOGS_URI, ENV_LARCH_R2_ACCOUNT_ID, ENV_LARCH_R2_ENDPOINT, ENV_LARCH_STORAGE_BASE_URI,
     LARCH_TOOL_NAME, LOCAL_NAMESPACE_DOMAIN, RUN_LOGS_DATA_TYPE, RunLogStorageMode,
@@ -246,6 +260,12 @@ pub use vendor_failure::{
     LaunchFailureInputs, LauncherArtifact, LauncherExitArtifacts, classify_launch_failure,
     detect_codex_cli_gate, effective_failure_class, is_quota_failure, is_transient_infra_failure,
     parse_launcher_exit_text, parse_launcher_failure_class, resolve_launcher_exit,
+};
+pub use vendor_model::{
+    CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
+    CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CodexModelRole, ModelArgError, ModelArgResult,
+    ModelTool, claude_model_from_transcript, is_posix_cntrl, resolve_model_args,
+    transcript_path_from_claude_source, validate_emitted_token,
 };
 pub use vendor_usage::{UsageParseError, UsageTotals, json_usage_number, parse_codex_usage};
 

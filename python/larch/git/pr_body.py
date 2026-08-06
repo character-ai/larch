@@ -13,8 +13,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.parse
-import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,13 +55,6 @@ class TrackingIssuePostResult:
     posted: bool
     comment_url: str
     error: str
-
-
-@dataclass(frozen=True)
-class SlackIssueAnnouncementResult:
-    exit_code: int
-    status: str
-    reason: str
 
 
 @dataclass(frozen=True)
@@ -1106,70 +1097,6 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
     logging_util.emit_kv(key="COMMENT_URL", value=result.comment_url)
     if result.error:
         logging_util.emit_kv(key="ERROR", value=result.error)
-    return result.exit_code
-
-
-def slack_issue_announce(
-    implement_tmpdir: Path, *, best_effort: bool = False
-) -> SlackIssueAnnouncementResult:
-    parent = implement_tmpdir / "parent-issue.md"
-    ship = implement_tmpdir / "ship-pr-state.sh"
-    issue = _read_kv(path=parent, key="ISSUE_NUMBER", default="0") or "0"
-    if not issue.isdigit():
-        return SlackIssueAnnouncementResult(
-            0 if best_effort else 1, "failed", "ISSUE_NUMBER must be numeric"
-        )
-    if issue == "0":
-        return SlackIssueAnnouncementResult(0, "skipped", "issue-not-set")
-    webhook = os.environ.get("LARCH_SLACK_WEBHOOK_URL", "")
-    if not webhook:
-        return SlackIssueAnnouncementResult(0, "skipped", "webhook-not-set")
-    if urllib.parse.urlparse(webhook).scheme not in {"http", "https"}:
-        return SlackIssueAnnouncementResult(
-            0 if best_effort else 1,
-            "failed",
-            "webhook scheme must be http or https",
-        )
-    run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
-    text = f"Implement run {run_id} opened PR {_read_kv(path=ship, key='PR_URL', default='N/A')} for tracking issue #{issue}"
-    if _read_kv(path=ship, key="PR_TITLE"):
-        text += f": {_read_kv(path=ship, key='PR_TITLE')}"
-    payload = json.dumps({"text": text}).encode()
-    try:
-        req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
-        with urllib.request.urlopen(req, timeout=10):  # noqa: S310
-            pass
-    except Exception as exc:
-        return SlackIssueAnnouncementResult(
-            0 if best_effort else 1,
-            "failed",
-            " ".join(str(exc).split())[:500],
-        )
-    return SlackIssueAnnouncementResult(0, "posted", "")
-
-
-def slack_issue_announce_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py slack issue-announce")
-    parser.add_argument("--implement-tmpdir", default=None)
-    parser.add_argument("--best-effort", action="store_true")
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        logging_util.emit_kv(key="STATUS", value="failed")
-        logging_util.emit_kv(key="ERROR", value="--implement-tmpdir is required")
-        return 2
-    if not Path(args.implement_tmpdir).is_dir():
-        logging_util.emit_kv(key="STATUS", value="failed")
-        logging_util.emit_kv(key="ERROR", value="--implement-tmpdir not found")
-        return 2
-    result = slack_issue_announce(
-        Path(args.implement_tmpdir), best_effort=args.best_effort
-    )
-    logging_util.emit_kv(key="STATUS", value=result.status)
-    if result.reason:
-        logging_util.emit_kv(
-            key="REASON" if result.status == "skipped" else "ERROR",
-            value=result.reason,
-        )
     return result.exit_code
 
 

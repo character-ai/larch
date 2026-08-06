@@ -23,6 +23,7 @@ use larch_core::BuildMetadata;
 pub mod bgjob_registry;
 mod file_io;
 mod filesystem;
+pub mod http_client;
 pub mod progress_state;
 mod session_env;
 mod session_lifecycle;

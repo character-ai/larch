@@ -1185,14 +1185,14 @@ def _run_cursor(  # noqa: PLR0913,RUF100
         )
         return 1
     model_args, auth_args = launch
-    wrap_script = '{ python3 "$1" agent cursor-wrap-prompt "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
+    wrap_script = '{ "$1" agent cursor-wrap-prompt "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
     wrap_result = runner.run(
         [
             "bash",
             "-c",
             wrap_script,
             "bash",
-            str(scripts_dir.parent / "python" / "cli.py"),
+            str(larch_entrypoint(scripts_dir.parent)),
             prompt_body,
             str(preflight_log),
         ],

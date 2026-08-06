@@ -3,7 +3,7 @@
 # tool name taxonomy and implementer-coder taxonomy used across larch.
 #
 # Sourced by:
-#   - python/cli.py agent model-args
+#   - scripts/larch.sh agent model-args
 #   - python/cli.py agent check-reviewers
 #   - python/cli.py agent collect-results
 #   - python/cli.py implement step2-dispatch

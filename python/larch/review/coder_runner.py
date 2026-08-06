@@ -215,7 +215,7 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
         model_args = list(agents.resolve_model_args("cursor", with_effort=True).argv)
     except (KeyError, ValueError):
         return False
-    wrapped = _run(["python3", str(cli), "agent", "cursor-wrap-prompt", prompt_body])
+    wrapped = _run([str(larch_entrypoint(_plugin_root())), "agent", "cursor-wrap-prompt", prompt_body])
     if wrapped.returncode != 0:
         return False
     output = round_dir / "coder-cursor.log"

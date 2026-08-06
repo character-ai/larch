@@ -2472,6 +2472,11 @@ def test_run_coder_cursor_uses_composer_default_model(tmp_path, monkeypatch):
         lambda **_kw: coder_runner.agents.AuthVerdict(ok=True, rc=0),
     )
     monkeypatch.setattr(coder_runner.agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(
+        coder_runner.agents,
+        "resolve_model_args",
+        lambda *_a, **_k: coder_runner.agents.ModelArgResult(argv=("--model", "composer-2.5")),
+    )
     monkeypatch.setattr(coder_runner.agents, "external_startup_lock_acquire", lambda tool: coder_runner.agents.StartupLockState(None))
     monkeypatch.setattr(coder_runner.agents, "external_startup_lock_release_after", lambda state: None)
     run_calls: list[list[str]] = []
@@ -2487,6 +2492,9 @@ def test_run_coder_cursor_uses_composer_default_model(tmp_path, monkeypatch):
 
     cursor_argv = next(argv for argv in run_calls if "run-external-agent" in argv)
     assert _arg_value(cursor_argv, "--model") == "composer-2.5"
+    wrap_argv = next(argv for argv in run_calls if "cursor-wrap-prompt" in argv)
+    assert wrap_argv[0].endswith("scripts/larch.sh")
+    assert wrap_argv[1:3] == ["agent", "cursor-wrap-prompt"]
 
 
 @MARK_DISPATCH

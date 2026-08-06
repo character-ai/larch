@@ -108,11 +108,13 @@ verb = "cursor-wrap-prompt"
 python_module = "larch.agents.agents"
 python_function = "cursor_wrap_prompt_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-agent-cursor-wrap-prompt"
 
 [[commands]]
 domain = "agent"
@@ -156,11 +158,13 @@ verb = "external-tool-registry"
 python_module = "larch.agents.agents"
 python_function = "external_tool_registry_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-agent-external-tool-registry"
 
 [[commands]]
 domain = "agent"
@@ -338,11 +342,13 @@ verb = "model-args"
 python_module = "larch.agents.agents"
 python_function = "model_args_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-agent-model-args"
 
 [[commands]]
 domain = "agent"
@@ -364,11 +370,13 @@ verb = "read-claude-model"
 python_module = "larch.agents.agents"
 python_function = "read_claude_model_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-agent-read-claude-model"
 
 [[commands]]
 domain = "agent"
@@ -2650,11 +2658,13 @@ verb = "docs"
 python_module = "larch.core.external_defaults"
 python_function = "docs_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-external-defaults-docs"
 
 [[commands]]
 domain = "external-defaults"
@@ -2662,11 +2672,13 @@ verb = "resolve-vendor"
 python_module = "larch.core.external_defaults"
 python_function = "resolve_vendor_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-external-defaults-resolve-vendor"
 
 [[commands]]
 domain = "external-defaults"
@@ -2674,11 +2686,13 @@ verb = "role"
 python_module = "larch.core.external_defaults"
 python_function = "role_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-external-defaults-role"
 
 [[commands]]
 domain = "final-report"
@@ -6624,11 +6638,13 @@ verb = "issue-announce"
 python_module = "larch.git.pr_body"
 python_function = "slack_issue_announce_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8107
+clean_install_test = "clean-install-slack-issue-announce"
 
 [[commands]]
 domain = "stall-recovery"
@@ -8278,7 +8294,7 @@ rust = []
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit"]
+rust = ["agent cursor-wrap-prompt", "git commit"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
@@ -8343,8 +8359,8 @@ rust = ["git snapshot-untracked", "session persist-run-flags", "session write-im
 [[callers]]
 path = "python/larch/state/closeout.py"
 kind = "python-runtime"
-python = ["final-report write", "slack issue-announce"]
-rust = []
+python = ["final-report write"]
+rust = ["slack issue-announce"]
 
 [[callers]]
 path = "python/larch/state/session_env.py"
@@ -8361,8 +8377,8 @@ rust = []
 [[callers]]
 path = "scripts/external-tool-registry.sh"
 kind = "script"
-python = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent", "implement step2-dispatch"]
-rust = []
+python = ["agent check-reviewers", "agent collect-results", "agent run-external-agent", "implement step2-dispatch"]
+rust = ["agent model-args"]
 
 [[callers]]
 path = "scripts/file-failure-report-cross-repo.sh"
@@ -8499,8 +8515,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/brainstorm.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-review", "bgjob start", "bgjob wait", "external-defaults role"]
-rust = ["dirty-tree checkpoint"]
+python = ["agent collect-results", "agent launch-review", "bgjob start", "bgjob wait"]
+rust = ["dirty-tree checkpoint", "external-defaults role"]
 
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
@@ -9201,8 +9217,8 @@ rust = ["session cleanup-tmpdir"]
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent cursor-auth-preflight"]
+python = ["agent collect-results", "agent launch-codex-exec", "agent run-external-agent", "bgjob start", "bgjob wait", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent model-args"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
@@ -9249,8 +9265,8 @@ rust = []
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent model-args", "agent run-external-agent", "agent run-negotiation-round"]
-rust = ["agent wait-reviewers"]
+python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent run-external-agent", "agent run-negotiation-round"]
+rust = ["agent model-args", "agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"
@@ -9341,3 +9357,19 @@ path = "skills/upgrade-larch/SKILL.md"
 kind = "skill"
 python = []
 rust = ["upgrade-larch run"]
+
+
+
+
+[[callers]]
+path = "python/larch/design/plan_quality.py"
+kind = "python-runtime"
+python = []
+rust = ["agent cursor-wrap-prompt"]
+
+
+[[callers]]
+path = "python/larch/agents/_launch_failure.py"
+kind = "python-runtime"
+python = []
+rust = ["agent model-args"]

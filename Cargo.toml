@@ -42,6 +42,7 @@ octocrab = { version = "=0.54.0", default-features = false, features = ["default
 predicates = { version = "3.1.4", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false }
 proc-macro2 = { version = "1.0.106", default-features = false, features = ["span-locations"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "rustls"] }
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-perl"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.150", default-features = false, features = ["std"] }

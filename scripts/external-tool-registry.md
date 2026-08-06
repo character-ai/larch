@@ -6,7 +6,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 ## Sourced by
 
-- `python/cli.py agent model-args`
+- `scripts/larch.sh agent model-args`
 - `python/cli.py agent check-reviewers`
 - `python/cli.py agent collect-results`
 - `python/cli.py implement step2-dispatch`
@@ -44,7 +44,7 @@ Per-tool model defaults and plugin `userConfig` environment variables stay in `p
 ## Adding a new external tool
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.
-2. Add the per-tool branch in `python3 python/cli.py agent model-args`.
+2. Add the per-tool branch in `python3 scripts/larch.sh agent model-args`.
 3. Add the per-tool branch in `agent check-reviewers` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `implement step2-dispatch`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
@@ -54,7 +54,7 @@ Per-tool model defaults and plugin `userConfig` environment variables stay in `p
 
 ## Collector integration
 
-`python/cli.py agent collect-results` uses the same external-tool allowlist exposed by `python/cli.py agent external-tool-registry --kind external-tools` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
+`python/cli.py agent collect-results` uses the same external-tool allowlist exposed by `scripts/larch.sh agent external-tool-registry --kind external-tools` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
 
 ## Tests
 

@@ -15,7 +15,7 @@ from typing import Any
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core.repo_roots import plugin_root as resolve_plugin_root
+from larch.core.repo_roots import plugin_root as resolve_plugin_root, larch_entrypoint
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
 
@@ -176,22 +176,23 @@ def step_16_main(argv: list[str] | None = None) -> int:
     return step_16(argv)
 
 
-def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str], cli: str) -> None:
+def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str]) -> None:
     slack_log = tmpdir / "step16a-slack-issue-announce.log"
     with suppress(OSError):
         slack_log.write_text("", encoding="utf-8")
     slack_rc = 0
+    entrypoint = str(larch_entrypoint(plugin_root))
     try:
         with slack_log.open("w", encoding="utf-8") as handle:
             completed = _run(
-                [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+                [entrypoint, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
                 env=env,
                 stdout=handle,
                 stderr=subprocess.STDOUT,
             )
     except OSError:
         completed = _run(
-            [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+            [entrypoint, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -207,7 +208,7 @@ def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str], cli
             plugin_root=plugin_root,
             env=env,
             site="Step 16a — notify",
-            tool="python/cli.py slack issue-announce",
+            tool="scripts/larch.sh slack issue-announce",
             exit_code=slack_rc,
             category="Warnings",
             output_file=slack_log,
@@ -228,7 +229,6 @@ def step_16_16a(argv: list[str] | None = None) -> int:
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
-    cli = str(plugin_root / "python" / "cli.py")
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])
@@ -245,7 +245,7 @@ def step_16_16a(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=step16_log,
         )
-    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
+    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env)
     with suppress(OSError):
         (tmpdir / ".step16-16a-done").touch()
     return 0
@@ -360,7 +360,6 @@ def step_16_17(argv: list[str] | None = None) -> int:
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
-    cli = str(plugin_root / "python" / "cli.py")
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])
@@ -377,7 +376,7 @@ def step_16_17(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=step16_log,
         )
-    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
+    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env)
     with suppress(OSError):
         (tmpdir / ".step16-16a-done").touch()
     step17_log = tmpdir / "step17-write-final-report.failure.log"

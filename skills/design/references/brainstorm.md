@@ -51,7 +51,7 @@ If `$DESIGN_TMPDIR/discussion-round1.md` exists and is non-empty, read it and pr
 | Scope | Read `ORDER=` from `design.brainstorm_scope` | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`**: canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
 | Pragmatic | Always Claude (primary) | in-session compose (no external path) | _(none)_ | `<BRAINSTORM_PRAGMATIC_PROMPT>` |
 
-Before each external slot launch, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_framing` or `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_scope`. Parse `ORDER=` as the registry-backed waterfall for that slot. Iterate the order with the existing availability gates and Agent-text fallbacks, then pick the first eligible external tool. Pragmatic brainstorming stays parent-session Claude and has no registry lookup.
+Before each external slot launch, run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" external-defaults role --role design.brainstorm_framing` or `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" external-defaults role --role design.brainstorm_scope`. Parse `ORDER=` as the registry-backed waterfall for that slot. Iterate the order with the existing availability gates and Agent-text fallbacks, then pick the first eligible external tool. Pragmatic brainstorming stays parent-session Claude and has no registry lookup.
 
 Spawn slowest-first when two externals are queued in one wave, based on the resolved tools for the selected framing and scope slots. Keep Claude Agent text generation as the fallback when no external is eligible.
 

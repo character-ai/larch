@@ -106,19 +106,19 @@ set -euo pipefail
 # `cursor agent` child inherits NO_OPEN_BROWSER from this shell.
 export NO_OPEN_BROWSER=1
 # Use a temp file (NOT process substitution) so a non-zero exit from
-# `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
+# `scripts/larch.sh agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
 # producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
 # expansion is required for Bash 3.2 compatibility under `set -u`.
 CURSOR_MODEL_ARGS_TMP=$(mktemp)
 trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent model-args --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent model-args --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
 CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
-    "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
+    "$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent cursor-wrap-prompt "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 LARCH_CURSOR_VALIDATION_LAUNCH
 chmod +x "$RESEARCH_TMPDIR/cursor-validation-launch.sh"
 

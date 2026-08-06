@@ -6,10 +6,24 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REGISTRY="$REPO_ROOT/scripts/external-tool-registry.sh"
+# scripts/larch.sh is the only approved Rust entrypoint and reads this root.
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 
 PASS=0
 FAIL=0
+SKIP=0
 FAIL_DETAILS=()
+
+# `agent model-args` is Rust-owned (#8107). A Python-only harness shard may lack
+# a built binary; those rows skip loudly instead of silently passing.
+RUST_AVAILABLE=0
+for candidate in "${LARCH_BINARY:-}" "$REPO_ROOT/target/release/larch" "$REPO_ROOT/target/debug/larch"; do
+    if [[ -n "$candidate" && -x "$candidate" ]] && "$candidate" agent model-args --help >/dev/null 2>&1; then
+        export LARCH_BINARY="$candidate"
+        RUST_AVAILABLE=1
+        break
+    fi
+done
 
 fail() {
     FAIL=$((FAIL + 1))
@@ -18,6 +32,11 @@ fail() {
 
 pass() {
     PASS=$((PASS + 1))
+}
+
+skip() {
+    echo "SKIP: $1 (no built larch binary; set LARCH_BINARY)" >&2
+    SKIP=$((SKIP + 1))
 }
 
 assert_equals() {
@@ -136,7 +155,11 @@ rm -f "$reviewer_err"
 # empty stdout and callers would launch probes with no --model).
 agent_err="$(mktemp /tmp/larch-registry-agent-model-err-XXXXXX)"
 for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
-    if model_out=$(python3 "$REPO_ROOT/python/cli.py" agent model-args --tool "$tool" 2>"$agent_err"); then
+    if [[ "$RUST_AVAILABLE" != 1 ]]; then
+        skip "agent model-args --tool $tool"
+        continue
+    fi
+    if model_out=$("$REPO_ROOT/scripts/larch.sh" agent model-args --tool "$tool" 2>"$agent_err"); then
         if [[ -n "$model_out" ]]; then
             pass
         else
@@ -184,9 +207,9 @@ else
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then
-    printf 'FAIL: test-external-tool-registry.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
+    printf 'FAIL: test-external-tool-registry.sh - %s failed, %s passed, %s skipped\n' "$FAIL" "$PASS" "$SKIP" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
     exit 1
 fi
 
-printf 'PASS: test-external-tool-registry.sh - %s assertions passed\n' "$PASS"
+printf 'PASS: test-external-tool-registry.sh - %s assertions passed, %s skipped\n' "$PASS" "$SKIP"

@@ -137,6 +137,42 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "cursor-auth-preflight",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-cursor-wrap-prompt",
+        "agent",
+        "cursor-wrap-prompt",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-external-tool-registry",
+        "agent",
+        "external-tool-registry",
+    ),
+    CleanInstallCase::new("clean-install-agent-model-args", "agent", "model-args"),
+    CleanInstallCase::new(
+        "clean-install-agent-read-claude-model",
+        "agent",
+        "read-claude-model",
+    ),
+    CleanInstallCase::new(
+        "clean-install-external-defaults-docs",
+        "external-defaults",
+        "docs",
+    ),
+    CleanInstallCase::new(
+        "clean-install-external-defaults-resolve-vendor",
+        "external-defaults",
+        "resolve-vendor",
+    ),
+    CleanInstallCase::new(
+        "clean-install-external-defaults-role",
+        "external-defaults",
+        "role",
+    ),
+    CleanInstallCase::new(
+        "clean-install-slack-issue-announce",
+        "slack",
+        "issue-announce",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-gather-branch-context",
         "agent",
         "gather-branch-context",
