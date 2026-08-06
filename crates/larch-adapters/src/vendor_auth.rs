@@ -25,7 +25,7 @@ use std::{
     fs, io,
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 /// Private mode for every probe-cache artifact.
@@ -257,9 +257,8 @@ impl ProbeCache {
     /// Return the reusable verdict for one probe kind, when still fresh.
     #[must_use]
     pub fn read_verdict(&self, kind: &str) -> Option<bool> {
-        let path = self.stamp_path(kind);
-        let contents = read_regular_utf8(&path)?;
-        fresh_probe_verdict(&contents, file_age(&path), &self.ttl)
+        let entry = CacheEntry::read(&self.stamp_path(kind))?;
+        fresh_probe_verdict(&entry.contents, entry.modified.elapsed().ok(), &self.ttl)
     }
 
     /// Publish a probe verdict for later reuse.
@@ -279,22 +278,24 @@ impl ProbeCache {
     /// Read the cached Codex gate detail for one identity.
     ///
     /// A detail older than `max_age`, or older than the identity's own probe
-    /// stamp, is discarded: the newer probe already superseded it.
+    /// stamp, is discarded: the newer probe already superseded it. The
+    /// supersession check compares modification times directly rather than two
+    /// separately measured ages, which would drift by the interval between
+    /// their measurements.
     #[must_use]
     pub fn read_gate_detail(&self, identity: &str, max_age: Duration) -> Option<CodexGateDetail> {
         if max_age.is_zero() {
             return None;
         }
-        let path = self.gate_detail_path(identity);
-        let age = file_age(&path)?;
-        if age > max_age {
+        let entry = CacheEntry::read(&self.gate_detail_path(identity))?;
+        if entry.modified.elapsed().ok()? > max_age {
             return None;
         }
-        let stamp_age = file_age(&self.stamp_path(identity));
-        if stamp_age.is_some_and(|stamp_age| stamp_age < age) {
+        let stamp = modification_time(&self.stamp_path(identity));
+        if stamp.is_some_and(|stamp| entry.modified < stamp) {
             return None;
         }
-        parse_codex_gate_detail(&read_regular_utf8(&path)?, identity)
+        parse_codex_gate_detail(&entry.contents, identity)
     }
 
     /// Publish the Codex gate detail for one identity.
@@ -379,23 +380,31 @@ impl ProbeCache {
     }
 }
 
-fn read_regular_utf8(path: &Path) -> Option<String> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return None;
-    }
-    fs::read(path)
-        .ok()
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+/// One cache entry read under a single `stat`, so its contents and its
+/// modification time describe the same observation.
+struct CacheEntry {
+    contents: String,
+    modified: SystemTime,
 }
 
-/// Return a regular file's age, or `None` when it is absent or future-dated.
-fn file_age(path: &Path) -> Option<Duration> {
+impl CacheEntry {
+    fn read(path: &Path) -> Option<Self> {
+        let modified = modification_time(path)?;
+        let bytes = fs::read(path).ok()?;
+        Some(Self {
+            contents: String::from_utf8_lossy(&bytes).into_owned(),
+            modified,
+        })
+    }
+}
+
+/// Return a regular, non-symlinked file's modification time.
+fn modification_time(path: &Path) -> Option<SystemTime> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return None;
     }
-    metadata.modified().ok()?.elapsed().ok()
+    metadata.modified().ok()
 }
 
 /// Held exclusive update lock. Dropping it releases the lock.
