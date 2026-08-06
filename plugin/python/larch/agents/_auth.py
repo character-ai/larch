@@ -207,7 +207,7 @@ def _parse_codex_gate_detail(*, payload: object, identity: str) -> CodexGateDeta
         return None
     if signal not in {"model-metadata-not-found", "newer-codex-required"}:
         return None
-    return CodexGateDetail(model=model, signal=cast(CodexGateSignal, signal), message=message)
+    return CodexGateDetail(model=model, signal=cast("CodexGateSignal", signal), message=message)
 
 
 def _read_codex_gate_detail(*, identity: str, max_age: int) -> CodexGateDetail | None:
