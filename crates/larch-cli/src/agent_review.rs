@@ -7,6 +7,7 @@
 use crate::{
     agent_commands::AgentRawArguments,
     argparse_compat::split_inline_option,
+    claude_commands::{panel_artifact_path, panel_slot_kind, parse_uint},
     dirty_tree_commands,
     external_agent::{ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_launch},
     valid_meta_path,
@@ -497,10 +498,7 @@ fn contains_control(value: &str) -> bool {
 }
 
 fn parse_positive(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse::<u64>().ok())
-        .flatten()
-        .filter(|value| *value > 0)
+    parse_uint(value).filter(|value| *value > 0)
 }
 
 struct ReviewArtifacts {
@@ -2499,87 +2497,6 @@ fn tsv_cell(field: &str) -> String {
         return field.to_owned();
     }
     format!("\"{}\"", field.replace('"', "\"\""))
-}
-
-fn panel_slot_kind() -> Option<&'static str> {
-    let slot = env::var("LARCH_PANEL_SLOT").unwrap_or_default();
-    if slot.trim().is_empty() {
-        return None;
-    }
-    let lowered = slot.trim().to_lowercase();
-    let phase = env::var("LARCH_PANEL_PHASE")
-        .unwrap_or_default()
-        .to_lowercase();
-    let site = env::var("LARCH_PANEL_SITE")
-        .unwrap_or_default()
-        .to_lowercase();
-    let task = env::var("LARCH_TIMING_TASK_KIND")
-        .unwrap_or_default()
-        .to_lowercase();
-    if lowered == "implementer" {
-        Some("implementer")
-    } else if lowered == "aggregator" || phase.contains("aggregator") {
-        Some("aggregator")
-    } else if lowered.contains("voter")
-        || lowered.contains("vote")
-        || phase.contains("voter")
-        || task.contains("voter")
-    {
-        Some("voter")
-    } else if phase.contains("plan-review") || site.contains("design") {
-        Some("plan-review")
-    } else if lowered.contains("specialist")
-        || lowered.starts_with("dyn-")
-        || matches!(
-            lowered.as_str(),
-            "correctness" | "edge-cases" | "testing" | "architectural-compliance" | "generalist"
-        )
-    {
-        Some("specialist")
-    } else if lowered.contains("-plan-") {
-        Some("plan-review")
-    } else {
-        None
-    }
-}
-
-fn panel_artifact_path(output: &Path) -> PathBuf {
-    if let Some(path) = env::var_os("LARCH_PANEL_ARTIFACT_DIR").filter(|path| !path.is_empty()) {
-        return PathBuf::from(path).join("panel-prompt-sizes.tsv");
-    }
-    if let Some(path) = env::var_os("LARCH_PANEL_ROUND_DIR")
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .filter(|path| {
-            path.file_name()
-                .and_then(OsStr::to_str)
-                .is_some_and(is_round_dir)
-        })
-    {
-        return path.join("panel-prompt-sizes.tsv");
-    }
-    output
-        .ancestors()
-        .find(|path| {
-            path.file_name()
-                .and_then(OsStr::to_str)
-                .is_some_and(is_round_dir)
-        })
-        .map_or_else(
-            || {
-                output
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .join("panel-prompt-sizes.tsv")
-            },
-            |path| path.join("panel-prompt-sizes.tsv"),
-        )
-}
-
-fn is_round_dir(name: &str) -> bool {
-    name.strip_prefix("round-").is_some_and(|number| {
-        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
-    })
 }
 
 fn panel_agent_file(raw: &str) -> (String, usize) {
