@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "review/round-1/round-meta.json": {
+      "text": "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n"
+    },
+    "timing.tsv": {
+      "text": "v1\tround\t1782345600\timplement\t-\t1\t1782345600\t1782345610\t10\t0\t0\t0\t-\n"
+    },
+    "tokens.jsonl": {
+      "text": "{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6\",\"input\":1000000,\"cache_create\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-haiku-4-5\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-fable-5\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6[1m]\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"raw\":\"claude_review\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:09Z\"}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "## Review Phase Detail\n\n| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n|--:|--:|--:|--:|--:|:--|--:|--:|\n| 1 | 0 | 0 | 0 | 0 | 10s | $25.75 | 1 |\n| **Total (round-sum)** | **0** | **0** | **0** | **0** | **10s** | **$25.75** | **1** |\n\n_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._\n\n**Top reviewers** (by per-round accepted-point score, whole run):\n- (no accepted-point score attributed to a reviewer slot)\n\n**Reviewer slot failures**: 0\n"
+  }
+}

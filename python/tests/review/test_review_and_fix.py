@@ -2682,7 +2682,9 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
 
     meta_called: list[bool] = []
 
-    def failing_meta(*_args, **_kwargs):
+    def failing_meta(argv, **_kwargs):
+        if list(argv)[1:3] != ["progress", "write-implement-round-meta"]:
+            return ok(tuple(argv))
         meta_called.append(True)
         raise RuntimeError("meta write failed")
 
@@ -2691,8 +2693,7 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", track_flush)
-    monkeypatch.setattr(round_runner.progress_report, "write_implement_round_meta", failing_meta)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
+    monkeypatch.setattr(round_runner, "_run", failing_meta)
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),

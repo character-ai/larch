@@ -1,3 +1,5 @@
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
+
 from __future__ import annotations
 
 import contextlib
@@ -22,7 +24,6 @@ from larch.review import plan_review_normalize
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
 from larch.review import tally_engine
-from larch.report import progress_report
 import pytest
 from larch.review import voting
 from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli
@@ -37,6 +38,31 @@ def _read_tsv(path: Path) -> dict[str, dict[str, str]]:
 def _read_tsv_list(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
+
+
+def _timing_round_window(
+    ledger: Path,
+    *,
+    skill: str,
+    round_num: int,
+    skill_filtered: bool,
+) -> tuple[int, int] | None:
+    starts: list[int] = []
+    ends: list[int] = []
+    for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+        cols = line.split("\t")
+        if len(cols) < 8 or cols[:2] != ["v1", "round"]:
+            continue
+        if skill_filtered and cols[3] != skill:
+            continue
+        if cols[5] != str(round_num):
+            continue
+        try:
+            starts.append(int(cols[6]))
+            ends.append(int(cols[7]))
+        except ValueError:
+            continue
+    return (min(starts), max(ends)) if starts and ends else None
 
 
 def test_legacy_assets_removed_from_plan_review_module() -> None:
@@ -2681,115 +2707,80 @@ esac
     assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == snapshot.read_text(encoding="utf-8")
 
 
-def test_terminal_zero_accepted_round_writes_round_meta(tmp_path: Path) -> None:
+def test_terminal_zero_accepted_round_writes_round_meta(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Regression for #4811: a plan-review run that stops on a 0-accepted final
     # round must still write round-meta.json for that round, so the Review Phase
     # Detail table includes it and the table row count matches the header count.
     _write_run_params(tmp_path)
-    meta_stub = tmp_path / "write-meta-stub.sh"
-    _ = meta_stub.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-round_dir=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in --round-dir) round_dir="${2:?}"; shift 2 ;; *) shift ;; esac
-done
-mkdir -p "$round_dir"
-printf '{"tally":{"ACCEPTED_COUNT":0}}\\n' >"$round_dir/round-meta.json"
-""",
-        encoding="utf-8",
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+
+    def fake_round(_argv: list[str]) -> int:
+        print("LOOP_STATUS=complete")
+        print("ACCEPTED_COUNT=0")
+        print("DEGRADED_PANEL=0")
+        print("TALLY_PLAN_REVIEW_STATUS=ok")
+        return 0
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[1:3] == ["progress", "write-design-round-meta"]:
+            target = Path(argv[argv.index("--round-dir") + 1])
+            _ = (target / "round-meta.json").write_text('{"tally":{"ACCEPTED_COUNT":0}}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review, "run_plan_review_round", fake_round)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setattr(
+        plan_review,
+        "_run_continuation",
+        lambda *_args, **_kwargs: {"PLAN_REVIEW_CONTINUE": "false", "PLAN_REVIEW_CONTINUE_REASON": "small-clean"},
     )
-    meta_stub.chmod(0o755)
-    continuation_stub = tmp_path / "continuation-stub.sh"
-    _ = continuation_stub.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
-""",
-        encoding="utf-8",
-    )
-    continuation_stub.chmod(0o755)
-    round_stub = _write_loop_stub(
-        tmp_path,
-        (
-            "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=0\\nDEGRADED_PANEL=0\\n"
-            "ROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
-            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
-        ),
-    )
-    proc = run_cli(
-        "plan-review",
-        "run",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--mode",
-        "loop",
-        env={
-            "LARCH_QUIET_DISABLE": "1",
-            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
-            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
-            "WRITE_DESIGN_ROUND_META_SH": str(meta_stub),
-        },
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+
+    assert plan_review.run_step3_review(["--design-tmpdir", str(tmp_path), "--mode", "loop"]) == 0
     # The terminal 0-accepted round now has round-meta.json, so _completed_round_dirs
     # (the Review Phase Detail source set) includes it. Before the fix it was absent.
-    assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
+    assert (round_dir / "round-meta.json").is_file()
 
 
-def test_inline_gate_b_postapply_writes_round_meta(tmp_path: Path) -> None:
+def test_inline_gate_b_postapply_writes_round_meta(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _write_run_params(tmp_path)
     _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
     (tmp_path / ".gate-b-postapply-ready-1").touch()
-    meta_stub = tmp_path / "write-meta-stub.sh"
-    _ = meta_stub.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-round_dir=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in --round-dir) round_dir="${2:?}"; shift 2 ;; *) shift ;; esac
-done
-mkdir -p "$round_dir"
-printf '{"tally":{"ACCEPTED_COUNT":1}}\\n' >"$round_dir/round-meta.json"
-""",
-        encoding="utf-8",
-    )
-    meta_stub.chmod(0o755)
-    postplan_stub = tmp_path / "postplan-stub.sh"
-    _ = postplan_stub.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
-    postplan_stub.chmod(0o755)
-    continuation_stub = tmp_path / "continuation-stub.sh"
-    _ = continuation_stub.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
-""",
-        encoding="utf-8",
-    )
-    continuation_stub.chmod(0o755)
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
 
-    proc = run_cli(
-        "plan-review",
-        "run",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--mode",
-        "loop",
-        "--starting-round",
-        "1",
-        env={
-            "LARCH_QUIET_DISABLE": "1",
-            "RUN_STEP3_POSTPLAN_EMIT_SH": str(postplan_stub),
-            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
-            "WRITE_DESIGN_ROUND_META_SH": str(meta_stub),
-        },
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[1:3] == ["progress", "write-design-round-meta"]:
+            target = Path(argv[argv.index("--round-dir") + 1])
+            _ = (target / "round-meta.json").write_text('{"tally":{"ACCEPTED_COUNT":1}}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setattr(
+        plan_review,
+        "_run_post_apply",
+        lambda *, tmpdir, round_num, values: (
+            values,
+            plan_review._write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation") or 0,  # pyright: ignore[reportPrivateUsage]
+        )[1],
+    )
+    monkeypatch.setattr(
+        plan_review,
+        "_run_continuation",
+        lambda *_args, **_kwargs: {"PLAN_REVIEW_CONTINUE": "false", "PLAN_REVIEW_CONTINUE_REASON": "small-clean"},
     )
 
-    assert proc.returncode == 0, proc.stderr
-    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
-    assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
+    assert plan_review.run_step3_review(
+        ["--design-tmpdir", str(tmp_path), "--mode", "loop", "--starting-round", "1"]
+    ) == 0
+    assert (round_dir / "round-meta.json").is_file()
 
 
 def test_step3_continuation_preserves_warning_keys_across_rounds(tmp_path: Path) -> None:
@@ -2867,15 +2858,13 @@ def test_write_design_round_meta_production_invokes_progress_cli(
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
     plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=2)  # pyright: ignore[reportPrivateUsage]
 
     assert calls == [
         [
-            plan_review.sys.executable,
-            str(plan_review._plugin_root() / "python" / "cli.py"),  # pyright: ignore[reportPrivateUsage]
+            str(plan_review.larch_entrypoint(plan_review._plugin_root())),  # pyright: ignore[reportPrivateUsage]
             "progress",
             "write-design-round-meta",
             "--round-dir",
@@ -2902,7 +2891,6 @@ def test_zero_accepted_round_ignores_round_meta_failure(
         print("AGGREGATOR_STATUS=ok")
         return 0
 
-    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", failed_run_command)
     monkeypatch.setattr(plan_review, "run_plan_review_round", fake_run_plan_review_round)
 
@@ -2930,7 +2918,7 @@ def test_record_round_timing_writes_canonical_v1_row_idempotently(tmp_path: Path
         )
 
     def _window(round_num: int) -> tuple[int, int] | None:
-        return progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+        return _timing_round_window(
             tmp_path / "timing-ledger.tsv", skill="design", round_num=round_num, skill_filtered=True
         )
 
@@ -2971,13 +2959,12 @@ def test_write_design_round_meta_records_round_timing_from_start_file(
     _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
 
     # Isolate the timing side effect from the round-meta subprocess and freeze the end clock.
-    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
 
     plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
-    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+    window = _timing_round_window(
         tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
     )
     assert window == (1000, 1200)
@@ -3122,7 +3109,6 @@ def test_write_design_round_meta_with_gate_b_apply_ready_marker_without_vendor_r
     def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
     monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
 
@@ -3130,7 +3116,7 @@ def test_write_design_round_meta_with_gate_b_apply_ready_marker_without_vendor_r
 
     ledger_text = (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
     assert "gate-b-apply" not in ledger_text
-    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+    window = _timing_round_window(
         tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
     )
     assert window == (1000, 1200)
@@ -3169,7 +3155,6 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
     monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
 
@@ -3185,9 +3170,7 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     assert gate_b_rows[0][8] == "1200"
     assert gate_b_rows[0][10] == "gate-b-apply-round-1.out"
 
-    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
-        ledger, skill="design", round_num=1, skill_filtered=True
-    )
+    window = _timing_round_window(ledger, skill="design", round_num=1, skill_filtered=True)
     assert window == (1000, 1200)
 
 
@@ -4231,6 +4214,7 @@ def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) ->
     # mirroring the #4490 postplan test in test_design_postplan.py.
     plugin_root = tmp_path / "plugin"
     plugin_root.joinpath("python").mkdir(parents=True)
+    plugin_root.joinpath("scripts").mkdir()
     fake_cli = plugin_root / "python" / "cli.py"
     _ = fake_cli.write_text(
         """#!/usr/bin/env python3
@@ -4251,6 +4235,12 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     fake_cli.chmod(fake_cli.stat().st_mode | stat.S_IXUSR)
+    fake_entrypoint = plugin_root / "scripts" / "larch.sh"
+    _ = fake_entrypoint.write_text(
+        '#!/usr/bin/env bash\nexec "$CLAUDE_PLUGIN_ROOT/python/cli.py" "$@"\n',
+        encoding="utf-8",
+    )
+    fake_entrypoint.chmod(fake_entrypoint.stat().st_mode | stat.S_IXUSR)
     recorder = tmp_path / "postplan-invocation.env"
 
     consumer = tmp_path / "consumer"

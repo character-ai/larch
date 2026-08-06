@@ -22,7 +22,6 @@ from collections.abc import Callable, Mapping
 from larch.core import config
 from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
-from larch.report import progress_report
 from larch.review import review_core_body
 from larch.review import review_tally
 from larch.review import voting
@@ -1101,7 +1100,13 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 2) or 2))
     flush_scout_manifest(implement_tmpdir=implement_tmpdir, run_id=getattr(args, "run_id", "") or "", round_num=round_num, round_dir=round_dir, core=core)
     with contextlib.suppress(Exception):
-        progress_report.write_implement_round_meta(round_dir)
+        _ = _run([
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "progress",
+            "write-implement-round-meta",
+            "--round-dir",
+            str(round_dir),
+        ])
     flush_round_log_after_coder(impl_tmpdir=implement_tmpdir, run_id=getattr(args, "run_id", "") or "", round_num=round_num, round_dir=round_dir)
     env_file = round_dir / "review-and-fix.env"
     _write_text(path=env_file, text=f"REVIEW_AND_FIX_STATUS={status}\n")

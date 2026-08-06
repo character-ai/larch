@@ -1,4 +1,4 @@
-"""Review phase detail and round metadata helpers."""
+"""Frozen Python behavior for issue #8085 phase-detail cutover tests."""
 # pylint: disable=unused-import
 # Shared private helpers are invoked from sibling final-report modules and tests.
 # pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnusedImport=false, reportUnusedFunction=false
@@ -11,6 +11,7 @@ import contextlib
 import json
 import os
 import re
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -1766,3 +1767,13 @@ def write_implement_round_meta_main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     return write_implement_round_meta(Path(args.round_dir))
+
+
+if __name__ == "__main__":
+    command, *arguments = sys.argv[1:]
+    handlers = {
+        "render-phase-detail": render_phase_detail_main,
+        "write-design-round-meta": write_design_round_meta_main,
+        "write-implement-round-meta": write_implement_round_meta_main,
+    }
+    raise SystemExit(handlers.get(command, lambda _args: 2)(arguments))

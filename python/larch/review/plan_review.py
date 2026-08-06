@@ -32,7 +32,7 @@ from larch.design.design_terminal import (
     phase_driver_read_result_env,
     phase_driver_write_result_env,
 )
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 from larch.review import plan_review_round
 from larch.review import plan_review_loop
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
@@ -234,12 +234,15 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
 def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     """Persist ``round-meta.json`` for a completed plan-review round."""
     round_dir = str(tmpdir / "plan-review" / f"round-{round_num}")
-    round_meta_override = os.environ.get("WRITE_DESIGN_ROUND_META_SH")
-    if round_meta_override:
-        if Path(round_meta_override).exists() and os.access(round_meta_override, os.X_OK):
-            _ = _run_command(argv=[round_meta_override, "--round-dir", round_dir])
-    else:
-        _ = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
+    _ = _run_command(
+        argv=[
+            str(larch_entrypoint(_plugin_root())),
+            "progress",
+            "write-design-round-meta",
+            "--round-dir",
+            round_dir,
+        ]
+    )
     end_s = int(time.time())
     if (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file():
         _record_gate_b_apply_timing_from_round_window(tmpdir=tmpdir, round_num=round_num, end_s=end_s)

@@ -32,6 +32,7 @@ google-cloud-storage = { version = "=1.16.0", default-features = false, features
 http = { version = "1.4.2", default-features = false, features = ["std"] }
 http-body = { version = "1.0.1", default-features = false }
 http-body-util = { version = "0.1.4", default-features = false }
+indexmap = { version = "2.14.0", default-features = false, features = ["serde", "std"] }
 inventory = { version = "0.3.24", default-features = false }
 larch-adapters = { version = "=56.2.2", path = "crates/larch-adapters" }
 larch-core = { version = "=56.2.2", path = "crates/larch-core" }

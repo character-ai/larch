@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    "review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tvoting_result\tscope\tv1_vote\tv1_severity\nFINDING_1\taccepted\tin_scope\tYES\tmajor\nOOS_1\taccepted\toos\tYES\tmajor\n"
+    },
+    "review/round-1/panel-manifest.ndjson": {
+      "text": "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"codex-specialist-arch-output.txt\"}\n"
+    },
+    "review/round-1/prune-nit.env": {
+      "text": "PRUNED_COUNT=1\n"
+    },
+    "review/round-1/round-meta.json": {
+      "text": "{\n  \"tally\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"0\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"1\",\n    \"OOS_ACCEPTED_COUNT\": \"1\",\n    \"OOS_REJECTED_COUNT\": \"0\"\n  },\n  \"summary\": {\n    \"panel\": {\n      \"total_slot_count\": 1\n    }\n  },\n  \"collector\": \"\",\n  \"difficulty\": {\n    \"tier_in_effect\": null,\n    \"ceiling_in_effect\": null,\n    \"escalations\": [],\n    \"scout\": {\n      \"status\": \"absent\"\n    }\n  },\n  \"tally_canonical\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"0\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"1\",\n    \"OOS_ACCEPTED_COUNT\": \"1\",\n    \"OOS_REJECTED_COUNT\": \"0\"\n  },\n  \"nit_pruned_count\": \"1\"\n}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -17,6 +17,7 @@ google-cloud-storage.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+indexmap.workspace = true
 larch-core.workspace = true
 octocrab.workspace = true
 regex.workspace = true

@@ -26,7 +26,6 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
-from larch.report import progress_report
 from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally

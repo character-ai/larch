@@ -6,8 +6,11 @@
 //! Ambient state — environment, working directory, stdin — is read here, at
 //! the composition root, and passed into the adapter layer explicitly.
 
-use crate::argparse_compat::{ParsedCommandLine, parse, write_stdout};
+use crate::argparse_compat::{
+    ParsedCommandLine, parse, resolve_option, split_inline_option, write_stdout,
+};
 use larch_adapters::{
+    phase_detail::{self, PhaseSkill, RenderRequest},
     progress_state::{self, ProgressPaths},
     statusline::{self, InstallOutcome, StatuslineEnvironment},
 };
@@ -27,6 +30,14 @@ const NOTE_USAGE: &str = "usage: progress note [--repo-root REPO_ROOT] [--run-id
 const STATUSLINE_USAGE: &str = "usage: progress statusline";
 const SESSION_RESET_USAGE: &str = "usage: progress session-reset";
 const INSTALL_USAGE: &str = "usage: progress install-statusline [--plugin-root PLUGIN_ROOT] [--repo-root REPO_ROOT] [--notice]";
+const RENDER_PHASE_DETAIL_USAGE: &str = "usage: cli.py progress render-phase-detail [-h] --rounds-root ROUNDS_ROOT\n                                           [--findings-file FINDINGS_FILE]\n                                           [--timing-ledger TIMING_LEDGER]\n                                           [--token-ledger TOKEN_LEDGER]\n                                           [--skill {implement,design}]\n                                           [--top-n TOP_N] [--no-gantt]\n                                           [--output OUTPUT]";
+const RENDER_PHASE_DETAIL_HELP: &str = "usage: cli.py progress render-phase-detail [-h] --rounds-root ROUNDS_ROOT\n                                           [--findings-file FINDINGS_FILE]\n                                           [--timing-ledger TIMING_LEDGER]\n                                           [--token-ledger TOKEN_LEDGER]\n                                           [--skill {implement,design}]\n                                           [--top-n TOP_N] [--no-gantt]\n                                           [--output OUTPUT]\n\noptions:\n  -h, --help            show this help message and exit\n  --rounds-root ROUNDS_ROOT\n  --findings-file FINDINGS_FILE\n  --timing-ledger TIMING_LEDGER\n  --token-ledger TOKEN_LEDGER\n  --skill {implement,design}\n  --top-n TOP_N\n  --no-gantt\n  --output OUTPUT\n";
+const WRITE_DESIGN_ROUND_META_USAGE: &str =
+    "usage: cli.py progress write-design-round-meta [-h] --round-dir ROUND_DIR";
+const WRITE_DESIGN_ROUND_META_HELP: &str = "usage: cli.py progress write-design-round-meta [-h] --round-dir ROUND_DIR\n\noptions:\n  -h, --help            show this help message and exit\n  --round-dir ROUND_DIR\n";
+const WRITE_IMPLEMENT_ROUND_META_USAGE: &str =
+    "usage: cli.py progress write-implement-round-meta [-h] --round-dir ROUND_DIR";
+const WRITE_IMPLEMENT_ROUND_META_HELP: &str = "usage: cli.py progress write-implement-round-meta [-h] --round-dir ROUND_DIR\n\noptions:\n  -h, --help            show this help message and exit\n  --round-dir ROUND_DIR\n";
 
 const LAUNCHER_RELATIVE: &str = ".cache/larch/statusline.sh";
 const NOTICE_SENTINEL_RELATIVE: &str = ".cache/larch/.statusline-install-notice";
@@ -201,6 +212,165 @@ pub fn install_statusline(arguments: &[OsString]) -> ExitCode {
         announce_first_install(&home.join(NOTICE_SENTINEL_RELATIVE));
     }
     ExitCode::SUCCESS
+}
+
+/// Render the historical review-phase detail report through the Rust adapter.
+pub fn render_phase_detail(arguments: &[OsString]) -> ExitCode {
+    if help_requested(arguments) {
+        return write_stdout(RENDER_PHASE_DETAIL_HELP);
+    }
+    for argument in arguments {
+        let argument = argument.to_string_lossy();
+        let (name, explicit) = split_inline_option(&argument);
+        if let (Some(option), Some(value)) = (resolve_option(name, &["--no-gantt"]), explicit) {
+            return usage_error(
+                RENDER_PHASE_DETAIL_USAGE,
+                "cli.py progress render-phase-detail",
+                &format!("argument {option}: ignored explicit argument '{value}'"),
+            );
+        }
+    }
+    let no_gantt = arguments.iter().any(|argument| {
+        let argument = argument.to_string_lossy();
+        let (name, explicit) = split_inline_option(&argument);
+        explicit.is_none() && resolve_option(name, &["--no-gantt"]).is_some()
+    });
+    let remaining: Vec<OsString> = arguments
+        .iter()
+        .filter(|argument| {
+            let argument = argument.to_string_lossy();
+            let (name, explicit) = split_inline_option(&argument);
+            explicit.is_some() || resolve_option(name, &["--no-gantt"]).is_none()
+        })
+        .cloned()
+        .collect();
+    let parsed = parse(
+        &remaining,
+        &[
+            "--rounds-root",
+            "--findings-file",
+            "--timing-ledger",
+            "--token-ledger",
+            "--skill",
+            "--top-n",
+            "--output",
+        ],
+        0,
+    );
+    if let Some(error) = parsed.error() {
+        return usage_error(
+            RENDER_PHASE_DETAIL_USAGE,
+            "cli.py progress render-phase-detail",
+            &error,
+        );
+    }
+    let Some(rounds_root) = parsed.value("--rounds-root") else {
+        return usage_error(
+            RENDER_PHASE_DETAIL_USAGE,
+            "cli.py progress render-phase-detail",
+            "the following arguments are required: --rounds-root",
+        );
+    };
+    let skill_raw = parsed.value("--skill").map_or_else(
+        || "implement".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
+    let Some(skill) = PhaseSkill::parse(&skill_raw) else {
+        return usage_error(
+            RENDER_PHASE_DETAIL_USAGE,
+            "cli.py progress render-phase-detail",
+            &format!(
+                "argument --skill: invalid choice: '{skill_raw}' (choose from 'implement', 'design')"
+            ),
+        );
+    };
+    let top_n = parsed
+        .value("--top-n")
+        .and_then(python_nonnegative_usize)
+        .unwrap_or(7);
+    let path_value = |option: &str| parsed.value(option).map(PathBuf::from);
+    let rounds_root = PathBuf::from(rounds_root);
+    let findings = path_value("--findings-file");
+    let timing = path_value("--timing-ledger");
+    let tokens = path_value("--token-ledger");
+    let output = phase_detail::render_phase_detail(&RenderRequest {
+        rounds_root: &rounds_root,
+        skill,
+        timing_ledger: timing.as_deref(),
+        token_ledger: tokens.as_deref(),
+        findings_file: findings.as_deref(),
+        top_n,
+        gantt_enabled: !no_gantt,
+    });
+    if let Some(path) = parsed.value("--output") {
+        return match phase_detail::write_render_output(Path::new(path), &output) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_error) => ExitCode::FAILURE,
+        };
+    }
+    write_stdout(&output)
+}
+
+/// Materialize `/design` review metadata through the Rust adapter.
+pub fn write_design_round_meta(arguments: &[OsString]) -> ExitCode {
+    write_round_meta(
+        arguments,
+        WRITE_DESIGN_ROUND_META_USAGE,
+        WRITE_DESIGN_ROUND_META_HELP,
+        "cli.py progress write-design-round-meta",
+        phase_detail::write_design_round_meta,
+    )
+}
+
+/// Materialize `/implement` review metadata through the Rust adapter.
+pub fn write_implement_round_meta(arguments: &[OsString]) -> ExitCode {
+    write_round_meta(
+        arguments,
+        WRITE_IMPLEMENT_ROUND_META_USAGE,
+        WRITE_IMPLEMENT_ROUND_META_HELP,
+        "cli.py progress write-implement-round-meta",
+        phase_detail::write_implement_round_meta,
+    )
+}
+
+fn write_round_meta(
+    arguments: &[OsString],
+    usage: &str,
+    help: &str,
+    program: &str,
+    writer: fn(&Path) -> Result<bool, String>,
+) -> ExitCode {
+    if help_requested(arguments) {
+        return write_stdout(help);
+    }
+    let parsed = parse(arguments, &["--round-dir"], 0);
+    if let Some(error) = parsed.error() {
+        return usage_error(usage, program, &error);
+    }
+    let Some(round_dir) = parsed.value("--round-dir") else {
+        return usage_error(
+            usage,
+            program,
+            "the following arguments are required: --round-dir",
+        );
+    };
+    match writer(Path::new(round_dir)) {
+        Ok(_written) => ExitCode::SUCCESS,
+        Err(_error) => ExitCode::FAILURE,
+    }
+}
+
+fn help_requested(arguments: &[OsString]) -> bool {
+    arguments
+        .iter()
+        .any(|argument| matches!(argument.to_string_lossy().as_ref(), "-h" | "--help"))
+}
+
+fn python_nonnegative_usize(value: &std::ffi::OsStr) -> Option<usize> {
+    let value = value.to_string_lossy();
+    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .then_some(value.parse::<usize>().ok())
+        .flatten()
 }
 
 fn announce_first_install(sentinel: &Path) {

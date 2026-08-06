@@ -43,4 +43,4 @@ Progress files live under `~/.cache/larch/progress/`. The reader is fail silent:
 
 ## Detailed reports
 
-The detailed end-of-run review Gantt remains available through the final-report `render-phase-detail` surface. The old typed `p` / `progress` prompt hook and `progress report` command are retired; the statusline replaces them for live progress.
+The Rust-owned `progress render-phase-detail` command supplies the detailed end-of-run review Gantt through the final-report surface. The old typed `p` / `progress` prompt hook and `progress report` command are retired; the statusline replaces them for live progress.

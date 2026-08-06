@@ -2493,6 +2493,7 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
+ "indexmap 2.14.0",
  "larch-core",
  "larch-test-support",
  "nix",

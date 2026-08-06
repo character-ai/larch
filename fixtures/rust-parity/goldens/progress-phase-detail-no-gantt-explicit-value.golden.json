@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "rounds/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py progress render-phase-detail [-h] --rounds-root ROUNDS_ROOT\n                                           [--findings-file FINDINGS_FILE]\n                                           [--timing-ledger TIMING_LEDGER]\n                                           [--token-ledger TOKEN_LEDGER]\n                                           [--skill {implement,design}]\n                                           [--top-n TOP_N] [--no-gantt]\n                                           [--output OUTPUT]\ncli.py progress render-phase-detail: error: argument --no-gantt: ignored explicit argument 'unexpected'\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

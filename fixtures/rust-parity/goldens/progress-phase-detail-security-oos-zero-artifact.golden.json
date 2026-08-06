@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "review/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nOOS_1\tarch.txt\taccepted\tYES\tmajor\toos\n"
+    },
+    "review/round-1/findings-oos.md": {
+      "text": "### OOS_1: [OUT_OF_SCOPE] [security] private item\n- **Focus area**: security\n"
+    },
+    "review/round-1/round-meta.json": {
+      "text": "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"1\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "## Review Phase Detail\n\n| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n|--:|--:|--:|--:|--:|:--|--:|--:|\n| 1 | 0 | 0 | 0 | 0 | N/A | N/A | 1 |\n| **Total (round-sum)** | **0** | **0** | **0** | **0** | **N/A** | **N/A** | **1** |\n\n_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._\n\n**Top reviewers** (by per-round accepted-point score, whole run):\n- (no accepted-point score attributed to a reviewer slot)\n\n**Reviewer slot failures**: 0\n"
+  }
+}

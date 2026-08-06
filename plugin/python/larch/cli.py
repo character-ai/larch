@@ -528,13 +528,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("clarify", "comment-fetch"): ("larch.design.clarify", "clarify_comment_fetch_main", False),
     ("clarify", "comment-post"): ("larch.design.clarify", "clarify_comment_post_main", False),
     ("clarify", "label"): ("larch.design.clarify", "clarify_label_main", False),
-    ("progress", "render-phase-detail"): ("larch.report.progress_report", "render_phase_detail_main", False),
-    ("progress", "write-design-round-meta"): ("larch.report.progress_report", "write_design_round_meta_main", False),
-    ("progress", "write-implement-round-meta"): (
-        "larch.report.progress_report",
-        "write_implement_round_meta_main",
-        False,
-    ),
     ("report-tokens", "analyze"): ("larch.report.report_tokens_cli", "main", False),
     ("token", "mark"): ("larch.report.tokens", "token_mark_main", False),
     ("token", "record-vendor"): ("larch.report.tokens", "token_record_vendor_main", False),

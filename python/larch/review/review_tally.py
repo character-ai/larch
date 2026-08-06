@@ -41,6 +41,9 @@ _CLASSIFICATION_HEADER = code_review_classification_header(
     include_tools=False, include_scope=True
 )
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
+_MIN_MARKDOWN_TABLE_PARTS = 4
+_MIN_TSV_RESULT_COLS = 3
+_HEADER_AND_DATA_ROWS = 2
 
 
 @dataclass(frozen=True)
@@ -1291,6 +1294,69 @@ def _round_summary_counts_from_meta(review_tmpdir: Path) -> tuple[int, int, int]
     )
 
 
+def _round_summary_counts_from_artifacts(review_tmpdir: Path) -> tuple[int, int, int] | None:
+    """Read the pre-metadata tally shapes retained by historical review rounds."""
+    tally_path = review_tmpdir / "voting-tally.md"
+    classification_path = review_tmpdir / "findings-classification.tsv"
+
+    def increment(counts: list[int], result: str) -> None:
+        if result == "accepted":
+            counts[0] += 1
+        elif result == "rejected":
+            counts[1] += 1
+        elif result == "neutral":
+            counts[2] += 1
+
+    def frozen_counts(counts: list[int]) -> tuple[int, int, int]:
+        return counts[0], counts[1], counts[2]
+
+    markdown: list[int] | None = None
+    try:
+        tally_lines = tally_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        tally_lines = []
+    if tally_path.is_file():
+        markdown = [0, 0, 0]
+        in_findings = False
+        for line in tally_lines:
+            if line.startswith("## Findings"):
+                in_findings = True
+                continue
+            if in_findings and line.startswith("## "):
+                in_findings = False
+            if not in_findings or "|" not in line:
+                continue
+            parts = [part.strip() for part in line.split("|")]
+            if len(parts) < _MIN_MARKDOWN_TABLE_PARTS or not re.fullmatch(r"FINDING_[0-9A-Za-z_]+", parts[1]):
+                continue
+            result = parts[-2] if parts[-2] and set(parts[-2]) != {"-"} else parts[-3]
+            increment(markdown, result)
+
+    try:
+        classification_lines = classification_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        classification_lines = []
+    if not classification_path.is_file() or len(classification_lines) < _HEADER_AND_DATA_ROWS:
+        return frozen_counts(markdown) if markdown is not None else None
+    header = [column.strip() for column in classification_lines[0].split("\t")]
+    classification = [0, 0, 0]
+    has_data = False
+    for line in classification_lines[1:]:
+        values = [value.strip() for value in line.split("\t")]
+        if len(values) < _MIN_TSV_RESULT_COLS:
+            continue
+        has_data = has_data or bool(line.strip())
+        row = {key: values[index] if index < len(values) else "" for index, key in enumerate(header)}
+        item = row.get("finding_id", values[0])
+        result = row.get("voting_result", values[2])
+        in_scope = row.get("scope", "") == "in_scope" if "scope" in header else not item.startswith("OOS_")
+        if in_scope and re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
+            increment(classification, result)
+    if markdown is None or (not any(markdown) and has_data):
+        return frozen_counts(classification)
+    return frozen_counts(markdown)
+
+
 def _round_summary_counts(
     *,
     review_tmpdir: Path,
@@ -1301,15 +1367,7 @@ def _round_summary_counts(
     meta_counts = _round_summary_counts_from_meta(review_tmpdir)
     if meta_counts is not None:
         return meta_counts
-    try:
-        from larch.report import progress_report  # noqa: PLC0415
-
-        counts, source = progress_report._round_counts(review_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    except Exception:  # pylint: disable=broad-except
-        return accepted, rejected, neutral
-    if not source:
-        return accepted, rejected, neutral
-    return counts[0], counts[1], counts[2]
+    return _round_summary_counts_from_artifacts(review_tmpdir) or (accepted, rejected, neutral)
 
 
 def _compact_rejected_findings_from_tally(tally_text: str) -> str:

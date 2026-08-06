@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "review/round-1/round-meta.json": {
+      "text": "{\"tally\":{\"ACCEPTED_COUNT\":\"1\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n"
+    },
+    "timing.tsv": {
+      "text": "v1\tround\t-\timplement\t-\t1\t100\t200\nv1\tvendor\t-\t-\t-\tcursor\tcursor-review\t110\t190\t80\tcursor-specialist-very-long-review-focus-name-for-layout-output-retry.txt\t-\tcomplete\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "## Review Phase Detail\n\n| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n|--:|--:|--:|--:|--:|:--|--:|--:|\n| 1 | 1 | 1 | 0 | 0 | 1m 40s | N/A | 1 |\n| **Total (round-sum)** | **1** | **1** | **0** | **0** | **1m 40s** | **N/A** | **1** |\n\n_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._\n\n### Round 1 reviewer timing\n\n```\nRound 1 reviewer timing  ·  window 0:00-1:40 (100s)\n                                                            0:00                 1:40\n                                                           ┌─────────────────────────┐\ncursor/very-long-review-focus-name-for-layout-output-retry │   ████████████████████  │ 80s\n                                                           └─────────────────────────┘\n```\n\n**Top reviewers** (by per-round accepted-point score, whole run):\n- (no accepted-point score attributed to a reviewer slot)\n\n**Reviewer slot failures**: 0\n"
+  }
+}

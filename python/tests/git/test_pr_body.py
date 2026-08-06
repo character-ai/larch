@@ -14,7 +14,7 @@ import pytest
 from collections.abc import Mapping, Sequence
 from dataclasses import FrozenInstanceError, dataclass, field, is_dataclass
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.report import final_report
 from larch.git import pr_body
 from larch.errors import ShipError
@@ -479,7 +479,20 @@ def test_write_final_report_uses_run_log_root_for_review_detail(
             return subprocess.CompletedProcess(argv, 0, stdout="COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n", stderr="")
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
+    render_calls: list[tuple[str, str]] = []
+
+    def fake_render_phase_detail(
+        _runner: object,
+        *,
+        rounds_root: str,
+        skill: str,
+        **_kwargs: object,
+    ) -> str:
+        render_calls.append((rounds_root, skill))
+        return "## Review Phase Detail\n\nNo review rounds completed.\n"
+
     monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+    monkeypatch.setattr(rust_runtime, "render_phase_detail", fake_render_phase_detail)
 
     rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
@@ -488,6 +501,7 @@ def test_write_final_report_uses_run_log_root_for_review_detail(
     assert "## Review Phase Detail" in body
     assert "No review rounds completed." in body
     assert "| 1 | 2 | 2 | 0 | 0 |" not in body
+    assert render_calls == [(str(run_dir), "implement")]
     assert upsert_bodies
     assert "No review rounds completed." in upsert_bodies[0]
 
