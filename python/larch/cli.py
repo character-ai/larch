@@ -70,9 +70,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("bootstrap", "invoke"): ("larch.state.bootstrap", "invoke_main", True),
     ("bootstrap", "parse-routing"): ("larch.state.bootstrap", "parse_routing_main", True),
     ("bootstrap", "resolve-non-interactive"): ("larch.state.bootstrap", "resolve_non_interactive_main", False),
-    ("admission", "gate"): ("larch.state.admission", "gate_main", True),
-    ("admission", "preflight"): ("larch.state.admission", "preflight_main", True),
-    ("admission", "fork-env"): ("larch.state.admission", "fork_env_main", True),
     ("residual-bash", "paths"): ("larch.core.residual_bash", "paths_main", True),
     ("verify", "main"): ("larch.core.verify_main", "main", False),
     ("audit-runs", "preflight"): ("larch.issue.audit_runs", "preflight_main", False),
@@ -128,7 +125,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("rejected-analysis", "ingest-verdict"): ("larch.issue.rejected_analysis", "ingest_verdict_main", False),
     ("rejected-analysis", "finalize"): ("larch.issue.rejected_analysis", "finalize_main", False),
     ("rejected-analysis", "record"): ("larch.issue.rejected_analysis", "record_main", False),
-    ("blocker", "all-open"): ("larch.issue.blocker", "all_open_blockers_main", False),
     ("tracking-issue", "read"): ("larch.issue.tracking_issue", "read_main", False),
     ("tracking-issue", "create-issue"): ("larch.issue.tracking_issue", "create_issue_main", False),
     ("tracking-issue", "append-comment"): ("larch.issue.tracking_issue", "append_comment_main", False),
@@ -676,9 +672,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("ci", "behind-count"): ("larch.implement.ci", "behind_count_main", False),
     ("ci", "rerun-failed"): ("larch.implement.ci", "rerun_failed_main", False),
     ("session", "setup"): ("larch.state.session_env", "setup_main", False),
-    ("session", "check-live-mutation-auth"): ("larch.state.session_env", "check_live_mutation_auth_main", False),
     ("session", "local-cleanup"): ("larch.state.session_env", "local_cleanup_main", False),
-    ("session", "entry-gate"): ("larch.state.session_env", "entry_gate_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

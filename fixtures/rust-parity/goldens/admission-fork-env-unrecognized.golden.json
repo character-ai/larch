@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: admission fork-env [-h] [--tmpdir TMPDIR]\nadmission fork-env: error: unrecognized arguments: --bogus\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

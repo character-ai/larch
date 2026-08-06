@@ -62,12 +62,6 @@ def record_write_env(
     return recorded
 
 
-def test_entry_gate_cli_reports_a_user_branch_continue() -> None:
-    gate = run_cli("entry-gate", "--mode", "implement", "--current-branch", "feature", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "user")
-    assert gate.returncode == 0
-    assert "ENTRY_GATE=continue" in gate.stdout
-
-
 def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
     class MissingGhRunner:
         def run(
@@ -355,82 +349,6 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
     assert any("LARCH_DYNAMIC_ARCHETYPES_MAX" in line for line in result4.stderr_diagnostics)
 
 
-def test_entry_gate_accepts_explicit_empty_current_branch() -> None:
-    gate = run_cli(
-        "entry-gate",
-        "--mode",
-        "implement",
-        "--current-branch",
-        "",
-        "--is-main",
-        "true",
-        "--is-user-branch",
-        "false",
-        "--user-prefix",
-        "sergey",
-    )
-    assert gate.returncode == 0
-    assert "ENTRY_GATE=strict" in gate.stdout
-    assert "SKIP_BRANCH_CHECK=false" in gate.stdout
-    design = run_cli(
-        "entry-gate",
-        "--mode",
-        "design",
-        "--current-branch",
-        "",
-        "--is-main",
-        "true",
-        "--is-user-branch",
-        "false",
-        "--user-prefix",
-        "sergey",
-        "--branch-info-supplied",
-        "true",
-    )
-    assert design.returncode == 0
-    assert "ENTRY_GATE=continue" in design.stdout
-
-
-def test_entry_gate_failure_matrix() -> None:
-    base = ("--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
-
-    def expect_success(expected_gate: str, expected_skip: str, *args: str) -> None:
-        result = run_cli("entry-gate", *args)
-        assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == f"ENTRY_GATE={expected_gate}\nSKIP_BRANCH_CHECK={expected_skip}"
-        assert result.stderr == ""
-
-    def expect_failure(substring: str, *args: str) -> None:
-        result = run_cli("entry-gate", *args)
-        assert result.returncode == 4, (result.stdout, result.stderr)
-        assert result.stdout == ""
-        assert "GATE_ERROR=" in result.stderr or "error:" in result.stderr.lower()
-        assert substring in result.stderr
-
-    expect_success("strict", "false", *base)
-    expect_success("continue", "true", "--mode", "implement", "--current-branch", "sergey/foo", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "sergey")
-    expect_success("strict", "false", "--mode", "implement", "--current-branch", "random-branch", "--is-main", "false", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_success("strict", "false", "--mode", "implement", "--current-branch", "", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_success("continue", "true", "--mode", "design", "--current-branch", "sergey/foo", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "sergey", "--branch-info-supplied", "false")
-    expect_success("continue", "true", "--mode", "design", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "true")
-    expect_success("strict", "false", "--mode", "design", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "false")
-    expect_success("strict", "false", "--mode", "design", "--current-branch", "random-branch", "--is-main", "false", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "false")
-    expect_success("continue", "true", "--mode", "design", "--current-branch", "", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "true")
-
-    expect_failure("invalid mode", "--mode", "foo", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_failure("missing required flag --mode", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_failure("expected one argument", "--mode")
-    expect_failure("invalid value for --is-main", "--mode", "implement", "--current-branch", "main", "--is-main", "yes", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_failure("invalid value for --is-user-branch", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "", "--user-prefix", "sergey")
-    expect_failure("expected one argument", "--mode", "implement", "--current-branch", "main", "--is-main")
-    expect_failure("missing required flag --current-branch", "--mode", "implement", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
-    expect_failure("--user-prefix must be non-empty", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "")
-    expect_failure("missing required flag --user-prefix", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false")
-    expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "true")
-    expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "false")
-    expect_failure("unknown argument", *base, "--bogus")
-
-
 def _git(args: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=False)
     if check and completed.returncode != 0:
@@ -686,25 +604,6 @@ def test_write_id_direct_writes_then_preserves(tmp_path: Path) -> None:
 def test_write_id_direct_rejects_disallowed_root() -> None:
     with pytest.raises(OSError, match="allowed session root"):
         session_env.write_id(output=Path("/etc/larch-not-allowed/session-id"))
-
-
-def test_entry_gate_direct_returns_frozen_result() -> None:
-    cont = session_env.entry_gate(mode="implement", is_main="false", is_user_branch="true", user_prefix="user", branch_info_supplied=None)
-    assert isinstance(cont, session_env.GateResult)
-    assert cont.entry_gate == "continue"
-    assert cont.skip_branch_check == "true"
-    strict = session_env.entry_gate(mode="implement", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied=None)
-    assert strict.entry_gate == "strict"
-    assert strict.skip_branch_check == "false"
-    with pytest.raises(FrozenInstanceError):
-        strict.entry_gate = "continue"  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
-
-
-def test_entry_gate_direct_error_paths() -> None:
-    with pytest.raises(ValueError, match="invalid mode"):
-        session_env.entry_gate(mode="bogus", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied=None)
-    with pytest.raises(ValueError, match="not allowed for mode=implement"):
-        session_env.entry_gate(mode="implement", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied="true")
 
 
 def test_setup_direct_returns_emission_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

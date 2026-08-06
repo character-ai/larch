@@ -97,10 +97,10 @@
 - **notes**: External comparison; should cite the Anthropic multi-agent post directly and reproduce the caveat that the gain is from low-hanging-fruit identification, not a sustained delta.
 
 ### eval-13: implement-concurrency-admission-sentinel
-- **question**: What concurrency hazards exist when two `/implement` sessions target the same repository or tracking issue, and how do Preflight admission (`python/cli.py admission gate`), the `parent-issue.md` / `RUN_ID` crash-resume sentinel, and the single-runner assumption interact?
+- **question**: What concurrency hazards exist when two `/implement` sessions target the same repository or tracking issue, and how do Preflight admission (`scripts/larch.sh admission gate`), the `parent-issue.md` / `RUN_ID` crash-resume sentinel, and the single-runner assumption interact?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: python/cli.py admission gate, single-runner, sentinel, RESUME, ADOPTED
+- **expected_keywords**: scripts/larch.sh admission gate, single-runner, sentinel, RESUME, ADOPTED
 - **notes**: Risk; should describe dirty-tree / working-tree interleaving risks, how admission re-checks open blockers on resume while skipping some title/label gates, and the Known Limitations note about one runner per clone.
 
 ### eval-14: implement-cursor-timeout-plan-review

@@ -31,6 +31,18 @@ pub fn ensure_ascii_json(text: &str) -> String {
 /// on LF alone would merge records that Python treated as separate, so the
 /// migrated usage parser and diagnostic tails share this one owner.
 ///
+/// Parse a positive decimal integer, rejecting every other spelling.
+///
+/// Only all-ASCII-digit input parses: no sign, no whitespace, no separators,
+/// and zero is not positive. Shared by the issue-number and interval readers.
+#[must_use]
+pub fn positive_integer(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u64>().ok().filter(|parsed| *parsed > 0)
+}
+
 /// A trailing boundary does not produce a final empty element.
 #[must_use]
 pub fn split_text_lines(text: &str) -> Vec<&str> {

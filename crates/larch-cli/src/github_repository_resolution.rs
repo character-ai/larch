@@ -125,6 +125,33 @@ fn emit_resolve_repo(result: ResolveRepoResult) -> u8 {
     }
 }
 
+/// Resolve the ambient `OWNER/REPO` for the current working directory.
+///
+/// Same precedence as `gh resolve-repo`: GitHub repository metadata when the
+/// service is reachable, else the validated `origin` remote. Returns `None`
+/// when neither answers, so callers can report their own refusal.
+#[must_use]
+pub fn ambient_repo() -> Option<String> {
+    let repository = open_cwd_repository();
+    resolve_repo_detailed(repository.as_ref(), query_github_repository)
+        .repo()
+        .map(str::to_owned)
+}
+
+/// Return the fetch URL configured for one remote in `repository`.
+#[must_use]
+pub fn repository_remote_fetch_url(repository: &GixRepository, remote: &str) -> Option<String> {
+    remote_fetch_url(repository, remote)
+}
+
+/// Parse an `OWNER/REPO` slug into a validated repository reference.
+///
+/// # Errors
+/// Returns `()` for a slug without a separator or with an invalid component.
+pub fn repository_ref(slug: &str) -> Result<GitHubRepositoryRef, ()> {
+    parse_repository_ref(slug)
+}
+
 fn resolve_repo_command(args: &[String]) -> ResolveRepoResult {
     if let Some(argument) = args.first() {
         return ResolveRepoResult::UnknownArgument {

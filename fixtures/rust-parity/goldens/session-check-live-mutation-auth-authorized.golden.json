@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/claude-implement-run1/source-env.sh": {
+      "text": "export LARCH_LIVE_MUTATION_OK='true'\nLARCH_RUN_ID=\"run1\"\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

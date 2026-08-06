@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use larch_core::{KvDocument, ParseOptions};
+use larch_core::{KvDocument, ParseOptions, allowed_session_roots};
 
 const AUTH_KEY: &str = "LARCH_LIVE_MUTATION_OK";
 const RUN_ID_KEY: &str = "LARCH_RUN_ID";
@@ -131,19 +131,20 @@ fn is_canonical_mutation_session_root(root: &Path) -> bool {
             .any(|allowed| is_strictly_under(&resolved, allowed))
 }
 
+/// Session roots a canonical mutation session may sit under.
+///
+/// This is the shared `allowed_session_roots` set: the literal `/tmp` family
+/// plus the cache-backed root derived from `XDG_CACHE_HOME` or `HOME`. `TMPDIR`
+/// is deliberately not consulted — a caller-controlled temp root would widen
+/// the trust boundary this gate exists to hold.
 fn allowlisted_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(home) = env::var_os("HOME") {
-        roots.push(PathBuf::from(home).join(".cache/larch/sessions"));
-    }
-    roots.push(env::temp_dir());
-    roots.push(PathBuf::from("/private/tmp"));
-    roots.push(PathBuf::from("/var/folders"));
-    roots.push(PathBuf::from("/private/var/folders"));
-    roots
-        .into_iter()
-        .filter_map(|root| root.canonicalize().ok())
-        .collect()
+    allowed_session_roots(
+        env::var_os("XDG_CACHE_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+    )
+    .into_iter()
+    .filter_map(|root| root.canonicalize().ok())
+    .collect()
 }
 
 fn is_strictly_under(path: &Path, root: &Path) -> bool {
@@ -336,6 +337,34 @@ mod tests {
             .expect("nested context");
         assert!(
             !check_live_mutation_auth(&request(Some(&nested), Some(&root), "run1")).is_authorized()
+        );
+    }
+
+    /// A correctly named, existing session root outside every allowlisted root
+    /// is still refused, so containment is proven independently of the name rule.
+    ///
+    /// The fixture lives in the workspace build directory, which no allowlisted
+    /// root contains. A checkout that itself sits inside one cannot express
+    /// "outside", so the case says so instead of asserting what it did not test.
+    #[test]
+    fn refuses_a_canonically_named_root_outside_the_allowlist() {
+        let outside = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/mutation-auth-outside/claude-implement-outside");
+        std::fs::create_dir_all(&outside).expect("outside session root");
+        let outside = outside.canonicalize().expect("canonical outside root");
+        let context = outside.join("source-env.sh");
+        std::fs::write(&context, "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run1\n")
+            .expect("outside context file");
+        assert!(
+            !super::allowlisted_roots()
+                .iter()
+                .any(|root| outside.starts_with(root)),
+            "this checkout sits inside an allowlisted session root, so the case cannot run"
+        );
+
+        assert!(
+            !check_live_mutation_auth(&request(Some(&context), Some(&outside), "run1"))
+                .is_authorized()
         );
     }
 

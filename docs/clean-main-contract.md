@@ -1,6 +1,6 @@
 # Clean-main entry contract for `/implement` and `/design`
 
-`/implement` fails closed at entry unless one of two preconditions holds. It checks before remote side effects: no tracking issue is created, no metadata summary is planted, and no branch is created. `session entry-gate` checks the branch name first. `python/cli.py admission preflight` then enforces the result. An aborted entry leaves no remote state behind.
+`/implement` fails closed at entry unless one of two preconditions holds. It checks before remote side effects: no tracking issue is created, no metadata summary is planted, and no branch is created. `session entry-gate` checks the branch name first. `scripts/larch.sh admission preflight` then enforces the result. An aborted entry leaves no remote state behind.
 
 **(a) Default: clean `main`.** The default gate requires all of these conditions:
 

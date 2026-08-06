@@ -1,0 +1,11 @@
+{
+  "exit_code": 3,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: admission preflight [--skip-branch-check] [--skip-clean-check]\nUnknown option: --bogus\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

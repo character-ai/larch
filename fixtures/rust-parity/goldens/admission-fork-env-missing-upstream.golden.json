@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "--forked requires the clone to be configured for the fork-PR workflow:\n  origin -> your fork; upstream -> the upstream repo.\nSee docs/forked.md for the full remote-add walkthrough;\nthe minimum is:\n  git remote add upstream <https-or-ssh-url-of-upstream-repo>\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

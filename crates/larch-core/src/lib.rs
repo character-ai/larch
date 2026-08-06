@@ -1,5 +1,6 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
+mod admission;
 mod attestation;
 mod bgjob;
 mod bgjob_daemon;
@@ -43,6 +44,10 @@ mod vendor_failure;
 mod vendor_model;
 mod vendor_usage;
 
+pub use admission::{
+    DESIGNED_PREFIX, GateDecision, MANAGED_PREFIXES, entry_gate, has_designed_prefix,
+    has_managed_prefix, has_report_prefix, normal_issue, parse_prose_blockers, single_line,
+};
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag,
@@ -227,7 +232,9 @@ pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use test_shards::{
     TestShardMap, TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards,
 };
-pub use text::{ensure_ascii_json, split_text_lines, tail_lines, truncate_utf8_bytes};
+pub use text::{
+    ensure_ascii_json, positive_integer, split_text_lines, tail_lines, truncate_utf8_bytes,
+};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{
     ActiveRootState, InstalledVersionState, MarketplaceState, UpgradeDisposition,

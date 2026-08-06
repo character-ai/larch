@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ENTRY_GATE=strict\nSKIP_BRANCH_CHECK=false\n"
+  }
+}

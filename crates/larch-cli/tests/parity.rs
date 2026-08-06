@@ -26,8 +26,24 @@ impl CleanInstallCase {
         Self { id, domain, verb }
     }
 
+    /// Exit status a clean dispatch of this case produces.
+    ///
+    /// A verb whose only offline-deterministic invocation is a refusal still
+    /// proves the dispatch reached it; the case pins that refusal's code rather
+    /// than reaching the network or mutating a repository to reach `0`.
+    fn expected_exit(self) -> i32 {
+        match self.id {
+            "clean-install-admission-preflight" => 3,
+            "clean-install-session-check-live-mutation-auth" => 5,
+            _ => 0,
+        }
+    }
+
     fn arguments(self) -> &'static [&'static str] {
         if let Some(arguments) = phase_detail_clean_install_arguments(self.id) {
+            return arguments;
+        }
+        if let Some(arguments) = admission_clean_install_arguments(self.id) {
             return arguments;
         }
         match self.id {
@@ -133,6 +149,39 @@ impl CleanInstallCase {
     }
 }
 
+/// Arguments for the `/implement` admission, gate, and blocker verbs.
+///
+/// A free helper for the same reason `phase_detail_clean_install_arguments` is
+/// one: it keeps `arguments` inside the per-function line cap.
+fn admission_clean_install_arguments(id: &str) -> Option<&'static [&'static str]> {
+    match id {
+        "clean-install-admission-preflight" => Some(&["--larch-clean-install-probe"]),
+        "clean-install-session-check-live-mutation-auth" => Some(&[
+            "--context-file",
+            "/larch-clean-install-context-missing",
+            "--run-id",
+            "clean-install",
+            "--trusted-root",
+            "/larch-clean-install-root-missing",
+        ]),
+        "clean-install-session-entry-gate" => Some(&[
+            "--mode",
+            "implement",
+            "--current-branch",
+            "main",
+            "--is-main",
+            "true",
+            "--is-user-branch",
+            "false",
+            "--user-prefix",
+            "clean-install",
+        ]),
+        // `all-open` needs no arguments to reach its empty-result path.
+        "clean-install-blocker-all-open" => Some(&[]),
+        _ => None,
+    }
+}
+
 fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static str]> {
     match id {
         "clean-install-progress-render-phase-detail" => Some(&[
@@ -149,6 +198,20 @@ fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static s
 }
 
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
+    CleanInstallCase::new("clean-install-admission-fork-env", "admission", "fork-env"),
+    CleanInstallCase::new("clean-install-admission-gate", "admission", "gate"),
+    CleanInstallCase::new(
+        "clean-install-admission-preflight",
+        "admission",
+        "preflight",
+    ),
+    CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new(
+        "clean-install-session-check-live-mutation-auth",
+        "session",
+        "check-live-mutation-auth",
+    ),
+    CleanInstallCase::new("clean-install-session-entry-gate", "session", "entry-gate"),
     CleanInstallCase::new(
         "clean-install-agent-classify-diff",
         "agent",
@@ -2667,6 +2730,405 @@ fn session_env_writer_commands_have_reviewed_parity() {
     }
 }
 
+/// One admission or gate case, addressed by its reference sub-verb and its
+/// real `DOMAIN VERB` selector.
+struct AdmissionFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    environment: &'static [(&'static str, &'static str)],
+    seeds: &'static [(&'static str, &'static str)],
+    normalization: &'static [NormalizationRule],
+}
+
+impl AdmissionFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.reference))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust_program = Program::new(rust).args(
+            self.selector
+                .iter()
+                .copied()
+                .chain(self.arguments.iter().copied()),
+        );
+        for (key, value) in self.environment {
+            python_program = python_program.env(key, value);
+            rust_program = rust_program.env(key, value);
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: self.normalization.to_vec(),
+        }
+    }
+}
+
+/// A session context file whose authorization key and run id both match.
+const MUTATION_CONTEXT: &str = "export LARCH_LIVE_MUTATION_OK='true'\nLARCH_RUN_ID=\"run1\"\n";
+const ADMISSION_CASES: &[AdmissionFixture] = &[
+    AdmissionFixture {
+        name: "session-entry-gate-strict",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &[
+            "--mode",
+            "implement",
+            "--current-branch",
+            "main",
+            "--is-main",
+            "true",
+            "--is-user-branch",
+            "false",
+            "--user-prefix",
+            "parity",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-entry-gate-design-branch-info-continues",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &[
+            "--mode",
+            "design",
+            "--current-branch",
+            "feature",
+            "--is-main",
+            "false",
+            "--is-user-branch",
+            "false",
+            "--user-prefix",
+            "parity",
+            "--branch-info-supplied",
+            "true",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-entry-gate-invalid-mode",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &[
+            "--mode",
+            "review",
+            "--current-branch",
+            "main",
+            "--is-main",
+            "true",
+            "--is-user-branch",
+            "false",
+            "--user-prefix",
+            "parity",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-entry-gate-inline-spelling-reads-as-missing",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &[
+            "--mode=implement",
+            "--current-branch",
+            "main",
+            "--is-main",
+            "true",
+            "--is-user-branch",
+            "false",
+            "--user-prefix",
+            "parity",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-entry-gate-unknown-argument",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-entry-gate-missing-value",
+        reference: "entry-gate",
+        selector: &["session", "entry-gate"],
+        arguments: &["--mode"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-authorized",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &[
+            "--context-file",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            "--run-id",
+            "run1",
+            "--trusted-root",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1",
+        ],
+        environment: &[],
+        seeds: &[(
+            ".home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            MUTATION_CONTEXT,
+        )],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-run-id-mismatch",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &[
+            "--context-file",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            "--run-id",
+            "run2",
+            "--trusted-root",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1",
+        ],
+        environment: &[],
+        seeds: &[(
+            ".home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            MUTATION_CONTEXT,
+        )],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-non-session-root-name",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &[
+            "--context-file",
+            "{sandbox}/.home/.cache/larch/sessions/not-a-session/source-env.sh",
+            "--run-id",
+            "run1",
+            "--trusted-root",
+            "{sandbox}/.home/.cache/larch/sessions/not-a-session",
+        ],
+        environment: &[],
+        seeds: &[(
+            ".home/.cache/larch/sessions/not-a-session/source-env.sh",
+            MUTATION_CONTEXT,
+        )],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-root-outside-allowlist",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &[
+            "--context-file",
+            "/usr/claude-implement-parity/source-env.sh",
+            "--run-id",
+            "run1",
+            "--trusted-root",
+            "/usr/claude-implement-parity",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-test-deny",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &[
+            "--context-file",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            "--run-id",
+            "run1",
+            "--trusted-root",
+            "{sandbox}/.home/.cache/larch/sessions/claude-implement-run1",
+        ],
+        environment: &[("LARCH_ISSUE_MUTATION_DENY", "true")],
+        seeds: &[(
+            ".home/.cache/larch/sessions/claude-implement-run1/source-env.sh",
+            MUTATION_CONTEXT,
+        )],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "session-check-live-mutation-auth-missing-required",
+        reference: "check-live-mutation-auth",
+        selector: &["session", "check-live-mutation-auth"],
+        arguments: &["--run-id", "run1"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-help",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &["--help"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-help-consumed-as-issue-value",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &["--issue", "-h"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-help-after-issue",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &["--issue", "5", "--help"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-missing-issue",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-non-positive-issue",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &["--issue", "0"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-gate-unresolvable-repo",
+        reference: "admission-gate",
+        selector: &["admission", "gate"],
+        arguments: &["--issue", "8059"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-preflight-unknown-option",
+        reference: "admission-preflight",
+        selector: &["admission", "preflight"],
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-preflight-stray-positional",
+        reference: "admission-preflight",
+        selector: &["admission", "preflight"],
+        arguments: &["--skip-branch-check", "extra"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-preflight-not-on-main",
+        reference: "admission-preflight",
+        selector: &["admission", "preflight"],
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-fork-env-help",
+        reference: "admission-fork-env",
+        selector: &["admission", "fork-env"],
+        arguments: &["--help"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-fork-env-help-consumed-as-tmpdir-value",
+        reference: "admission-fork-env",
+        selector: &["admission", "fork-env"],
+        arguments: &["--tmpdir", "-h"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-fork-env-unrecognized",
+        reference: "admission-fork-env",
+        selector: &["admission", "fork-env"],
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "admission-fork-env-missing-upstream",
+        reference: "admission-fork-env",
+        selector: &["admission", "fork-env"],
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "blocker-all-open-no-issue",
+        reference: "blocker-all-open",
+        selector: &["blocker", "all-open"],
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    AdmissionFixture {
+        name: "blocker-all-open-trailing-issue-flag",
+        reference: "blocker-all-open",
+        selector: &["blocker", "all-open"],
+        arguments: &["--repo", "o/r", "--issue"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+];
+
+#[test]
+fn admission_and_gate_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("admission_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ADMISSION_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[test]
 fn session_lifecycle_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
@@ -2710,8 +3172,9 @@ fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
     for case in CLEAN_INSTALL_CASES {
         fs::write(&fixture.events, b"").expect("clear clean-install event log");
         let output = run_clean_install_case(&fixture, *case, None);
-        assert!(
-            output.status.success(),
+        assert_eq!(
+            output.status.code(),
+            Some(case.expected_exit()),
             "{} failed: {}",
             case.id,
             String::from_utf8_lossy(&output.stderr)

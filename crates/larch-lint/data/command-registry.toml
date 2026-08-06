@@ -6,11 +6,13 @@ verb = "fork-env"
 python_module = "larch.state.admission"
 python_function = "fork_env_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-admission-fork-env"
 
 [[commands]]
 domain = "admission"
@@ -18,11 +20,13 @@ verb = "gate"
 python_module = "larch.state.admission"
 python_function = "gate_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-admission-gate"
 
 [[commands]]
 domain = "admission"
@@ -30,11 +34,13 @@ verb = "preflight"
 python_module = "larch.state.admission"
 python_function = "preflight_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-admission-preflight"
 
 [[commands]]
 domain = "agent"
@@ -1076,11 +1082,13 @@ verb = "all-open"
 python_module = "larch.issue.blocker"
 python_function = "all_open_blockers_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-blocker-all-open"
 
 [[commands]]
 domain = "bootstrap"
@@ -6329,11 +6337,13 @@ verb = "check-live-mutation-auth"
 python_module = "larch.state.session_env"
 python_function = "check_live_mutation_auth_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-session-check-live-mutation-auth"
 
 [[commands]]
 domain = "session"
@@ -6369,11 +6379,13 @@ verb = "entry-gate"
 python_module = "larch.state.session_env"
 python_function = "entry_gate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8059
+clean_install_test = "clean-install-session-entry-gate"
 
 [[commands]]
 domain = "session"
@@ -8304,7 +8316,7 @@ rust = []
 path = "python/larch/implement/preflight.py"
 kind = "python-runtime"
 python = []
-rust = ["gh resolve-repo"]
+rust = ["admission gate", "gh resolve-repo"]
 
 [[callers]]
 path = "python/larch/issue/analyze_bugs.py"
@@ -8433,16 +8445,10 @@ python = ["stall-recovery record-escalation"]
 rust = []
 
 [[callers]]
-path = "python/larch/state/admission.py"
-kind = "python-runtime"
-python = []
-rust = ["gh remote-repo", "git check-main-sync", "git clean-tree"]
-
-[[callers]]
 path = "python/larch/state/bootstrap.py"
 kind = "python-runtime"
 python = ["implement kill-active-leg"]
-rust = ["git snapshot-untracked", "session persist-run-flags", "session write-implement-env"]
+rust = ["git snapshot-untracked", "session entry-gate", "session persist-run-flags", "session write-implement-env"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
@@ -8454,7 +8460,7 @@ rust = ["slack issue-announce"]
 path = "python/larch/state/session_env.py"
 kind = "python-runtime"
 python = []
-rust = ["session write-env"]
+rust = ["admission preflight", "session write-env"]
 
 [[callers]]
 path = "scripts/cleanup-sessionstart.sh"
@@ -8471,8 +8477,8 @@ rust = ["agent check-reviewers", "agent model-args", "agent run-external-agent"]
 [[callers]]
 path = "scripts/file-failure-report-cross-repo.sh"
 kind = "script"
-python = ["redact secrets", "session check-live-mutation-auth"]
-rust = ["stall-recovery validate-tier-b-public-file"]
+python = ["redact secrets"]
+rust = ["session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
 
 [[callers]]
 path = "scripts/flush-vendor-failure-diagnostics.sh"
@@ -8807,8 +8813,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["bgjob wait", "dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "push branch", "push checkpoint-probe", "push rebase", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9047,8 +9053,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-0-bootstrap.md"
 kind = "skill"
-python = ["admission fork-env", "bootstrap invoke"]
-rust = []
+python = ["bootstrap invoke"]
+rust = ["admission fork-env"]
 
 [[callers]]
 path = "skills/implement/scripts/step-0-bootstrap.sh"
@@ -9293,8 +9299,8 @@ rust = []
 [[callers]]
 path = "skills/research/references/eval-set.md"
 kind = "skill"
-python = ["admission gate", "eval research", "plan-review run", "tracking-issue upsert-summary"]
-rust = ["push rebase"]
+python = ["eval research", "plan-review run", "tracking-issue upsert-summary"]
+rust = ["admission gate", "push rebase"]
 
 [[callers]]
 path = "skills/research/references/research-phase.md"

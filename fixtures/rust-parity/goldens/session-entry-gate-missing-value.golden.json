@@ -1,0 +1,11 @@
+{
+  "exit_code": 4,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session entry-gate [--mode MODE] [--current-branch CURRENT_BRANCH]\n                          [--is-main IS_MAIN]\n                          [--is-user-branch IS_USER_BRANCH]\n                          [--user-prefix USER_PREFIX]\n                          [--branch-info-supplied BRANCH_INFO_SUPPLIED]\nsession entry-gate: error: argument --mode: expected one argument\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

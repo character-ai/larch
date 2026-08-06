@@ -31,7 +31,7 @@ check_mutation_auth() {
         status_refused missing-trusted-root
         return 1
     fi
-    if ! python3 "$PLUGIN_ROOT/python/cli.py" session check-live-mutation-auth --context-file "$context_file" --run-id "$run_id" --trusted-root "$trusted_root" >/dev/null 2>&1; then
+    if ! "$PLUGIN_ROOT/scripts/larch.sh" session check-live-mutation-auth --context-file "$context_file" --run-id "$run_id" --trusted-root "$trusted_root" >/dev/null 2>&1; then
         status_refused invalid-context-file
         return 1
     fi

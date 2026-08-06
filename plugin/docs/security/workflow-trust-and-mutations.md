@@ -161,10 +161,17 @@ shared issue-mutation boundary accept only one of these routes:
   boundary.
 - A dry-run passes neither route and makes no GitHub mutation call.
 
-`python/larch/state/session_env.py` owns validation of the session route.
+`crates/larch-adapters/src/github/mutation_auth.rs` owns validation of the
+session route, and `session check-live-mutation-auth` is the Rust command shell
+callers use to reach it. The canonical roots it accepts are the shared session
+allowlist: `/tmp`, `/private/tmp`, `/var/folders`, `/private/var/folders`, and
+the `XDG_CACHE_HOME` or `HOME` cache root. A caller-supplied `TMPDIR` does not
+widen that set. `python/larch/state/session_env.py` keeps an in-process copy of
+the same rule for the Python-owned commands that still call it directly.
 `python/larch/issue/issue_create.py` and the operation-specific issue modules
-own their mutation entry points. Unauthorized calls fail before `gh`, emit the
-documented refusal result, and do not retry through another route.
+own their mutation entry points. Unauthorized calls fail before any GitHub
+request, emit the documented refusal result, and do not retry through another
+route.
 
 `python/conftest.py` sets `LARCH_ISSUE_MUTATION_DENY=true` and removes inherited
 live authorization for tests. Denial overrides a valid parent session. Tests

@@ -390,6 +390,7 @@ impl CreatedPullRequest {
 pub struct DependencyRef {
     issue_number: u64,
     issue_id: u64,
+    open: bool,
 }
 
 impl DependencyRef {
@@ -401,6 +402,16 @@ impl DependencyRef {
     #[must_use]
     pub const fn issue_id(&self) -> u64 {
         self.issue_id
+    }
+
+    /// Whether the referenced issue is open.
+    ///
+    /// A response that omits `state`, or spells it as anything other than
+    /// `open`, reads as closed. Blocker discovery must not treat an
+    /// unrecognized lifecycle state as an active blocker.
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.open
     }
 }
 
@@ -1939,6 +1950,8 @@ fn parse_dependency_refs(
             Ok(DependencyRef {
                 issue_number: required_u64(object, "number", "dependency issue number")?,
                 issue_id: required_u64(object, "id", "dependency issue id")?,
+                open: optional_str(object, "state", limits, "dependency issue state")?
+                    .is_some_and(|state| state.eq_ignore_ascii_case("open")),
             })
         })
         .collect()
@@ -2223,18 +2236,22 @@ mod tests {
     #[test]
     fn dependency_refs_parse_and_read_back_exactly() {
         let value = json!([
-            { "number": 10, "id": 111 },
-            { "number": 12, "id": 222 },
+            { "number": 10, "id": 111, "state": "OPEN" },
+            { "number": 12, "id": 222, "state": "closed" },
+            { "number": 14, "id": 333 },
         ]);
         let refs = parse_dependency_refs(&value, limits()).expect("valid dependency list");
-        assert_eq!(refs.len(), 2);
+        assert_eq!(refs.len(), 3);
         assert_eq!(
             refs[0],
             DependencyRef {
                 issue_number: 10,
-                issue_id: 111
+                issue_id: 111,
+                open: true
             }
         );
+        assert!(!refs[1].is_open());
+        assert!(!refs[2].is_open(), "a missing state must not read as open");
         assert!(dependency_present(&refs, 222));
         assert!(!dependency_present(&refs, 999));
         assert_eq!(

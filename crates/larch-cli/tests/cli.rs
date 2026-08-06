@@ -22,7 +22,9 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
+  admission          `/implement` entry admission, preflight, and fork bootstrap
   agent              Vendor-agent launch and diagnostic commands
+  blocker            Issue blocker discovery
   bgjob              Durable background-job compatibility commands
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
   dirty-tree         Working-tree checkpoint and scope compatibility commands
