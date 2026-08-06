@@ -8,6 +8,8 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+use crate::shell::shell_quote;
+
 /// Longest accepted path-shaped flag value, in characters.
 pub const MAX_PATH_VALUE_LEN: usize = 512;
 
@@ -120,8 +122,6 @@ static REPO_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static CLAUDE_PID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[1-9][0-9]{0,6}\n?$").expect("valid claude-pid regex"));
-static SHELL_SAFE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_@%+=:,./-]+$").expect("valid shell-safe regex"));
 
 /// Return whether `value` is one of the two accepted boolean spellings.
 #[must_use]
@@ -263,21 +263,6 @@ pub fn validate_writer_keys(rows: &[(&str, String)], allowed: &[&str]) -> Result
 pub fn external_timeout(raw: Option<&str>) -> String {
     raw.filter(|value| !value.is_empty() && value.chars().all(|digit| digit.is_ascii_digit()))
         .map_or_else(|| "60".to_owned(), ToOwned::to_owned)
-}
-
-/// Quote one value for a POSIX shell exactly as Python's `shlex.quote` does.
-///
-/// Deliberately not `progress::shell_quote`: that one omits `_` from its safe
-/// set, so it would quote values the design session-env writer must leave bare.
-/// Merging the two would change one owner's rendered bytes.
-fn shell_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_owned();
-    }
-    if SHELL_SAFE_RE.is_match(value) {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', r#"'"'"'"#))
 }
 
 /// Render one `export KEY=<quoted>` line for a design session-env file.

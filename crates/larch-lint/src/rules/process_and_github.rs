@@ -271,6 +271,7 @@ fn mask_comments_and_strings(source: &str) -> String {
             Some(b"//") => Some(line_comment_end(bytes, index)),
             Some(b"/*") => block_comment_end(bytes, index),
             Some(b"b\"") => quoted_string_end(bytes, index + 1),
+            _ if bytes[index] == b'\'' => char_literal_end(bytes, index),
             _ if bytes[index] == b'\"' => quoted_string_end(bytes, index),
             _ => raw_string_end(bytes, index),
         };
@@ -282,6 +283,30 @@ fn mask_comments_and_strings(source: &str) -> String {
         index = end;
     }
     String::from_utf8(masked).expect("masking preserves valid UTF-8")
+}
+
+/// Return the end of a char literal at `start`, or `None` for a lifetime.
+///
+/// Without this, the `'"'` char literal in `crates/larch-cli/src/bgjob_adapt.rs`
+/// read as a string opener and inverted quote parity for the rest of the file,
+/// so a later `Command::new(` landed inside a masked region and the constructor
+/// became unlocatable. `consume_char` in `run_log_corpus_walkers` recognizes the
+/// same literal forms for its own per-line lexer, but ends `'\''` one character
+/// early, which leaves a stray apostrophe in that lexer's code view.
+fn char_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start + 1) == Some(&b'\\') {
+        // The backslash consumes one byte, so `'\''` and `'\\'` end at the
+        // next quote after it, and `'\u{1f}'` ends after the brace.
+        let mut index = start + 3;
+        while index < bytes.len() && bytes[index] != b'\'' {
+            index += 1;
+        }
+        return (index < bytes.len()).then_some(index + 1);
+    }
+    // A plain `'x'`, which covers `'"'`. A multi-byte literal such as `'\u{e9}'`
+    // spelled directly falls through to the lifetime branch, which is safe
+    // because it can hold no quote.
+    (bytes.get(start + 2) == Some(&b'\'')).then_some(start + 3)
 }
 
 fn line_comment_end(bytes: &[u8], start: usize) -> usize {
@@ -375,6 +400,24 @@ mod tests {
         assert!(calls.iter().all(|call| !FindingKind::GitHub.matches(call)));
         assert_eq!(calls[0].line, 4);
         assert_eq!(calls[2].line, 6);
+    }
+
+    #[test]
+    fn a_char_literal_quote_does_not_invert_string_parity() {
+        // `'"'` must not open a string, or every later quote is misread and the
+        // constructor below it becomes unlocatable.
+        let source = r#"
+            use std::process::Command;
+            fn run(raw: &str) {
+                let _trimmed = raw.trim_matches(['\'', '"']);
+                let _escaped = raw.replace('\'', "'x'");
+                Command::new("git").status().unwrap();
+            }
+        "#;
+        let calls = calls_from_source(source, "src/example.rs").expect("valid source");
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].line, 6);
     }
 
     #[test]
