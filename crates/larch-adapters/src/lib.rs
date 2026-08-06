@@ -68,7 +68,7 @@ pub use process_identity::SystemProcessIdentityHost;
 pub use session_env::{
     absolute_lexical, assert_no_symlink_ancestors, assert_no_symlink_path_or_ancestors,
     create_directories, is_directory, is_regular_file, parent_directory, publish_symlink,
-    recover_prior_bool, recover_prior_design_value, remove_file_if_present,
+    recover_prior_bool, recover_prior_design_value, refuses_symlink, remove_file_if_present,
     resolve_trusted_design_env_source, write_confined_file,
 };
 pub use session_lifecycle::{

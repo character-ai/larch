@@ -9,7 +9,7 @@ use crate::{
     bgjob_commands,
 };
 use larch_adapters::{
-    SystemProcessIdentityHost, validate_design_tmpdir as validate_session_tmpdir,
+    SystemProcessIdentityHost, refuses_symlink, validate_design_tmpdir as validate_session_tmpdir,
 };
 use larch_core::{
     BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED,
@@ -515,7 +515,12 @@ fn trusted_session_link(path: &Path, owner_pid: &str) -> bool {
         return false;
     };
     loop {
-        if fs::symlink_metadata(ancestor).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        // Root-owned platform aliases stay acceptable, matching the writer's
+        // `assert_no_symlink_ancestors`; a reader stricter than its writer would
+        // reject a link larch just published.
+        if fs::symlink_metadata(ancestor).is_ok_and(|metadata| {
+            refuses_symlink(metadata.file_type().is_symlink(), metadata.uid())
+        }) {
             return false;
         }
         match ancestor.parent() {

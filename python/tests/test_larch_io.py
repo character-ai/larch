@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -200,6 +202,28 @@ def test_atomic_write_nofollow_rejects_symlinked_ancestor(tmp_path: Path) -> Non
     with pytest.raises(OSError, match="symlink"):
         larch_io.atomic_write(path=path, text="x", nofollow=True)
     assert not (real_parent / "out.txt").exists()
+
+
+def test_refuses_symlink_exempts_only_root_owned_links() -> None:
+    assert larch_io.refuses_symlink(is_symlink=True, owner_uid=501)
+    assert larch_io.refuses_symlink(is_symlink=True, owner_uid=1)
+    assert not larch_io.refuses_symlink(is_symlink=True, owner_uid=0)
+    assert not larch_io.refuses_symlink(is_symlink=False, owner_uid=501)
+    assert not larch_io.refuses_symlink(is_symlink=False, owner_uid=0)
+
+
+def test_symlink_guards_accept_a_platform_aliased_temporary_root() -> None:
+    # `/tmp` is a root-owned symlink to `private/tmp` on macOS and a real
+    # directory on Linux. Both spellings must pass, which is what the `/tmp`
+    # session-tmpdir fallback depends on.
+    directory = Path(tempfile.mkdtemp(dir="/tmp", prefix="larch-io-test-"))
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(directory / "session-env.sh")
+        assert larch_io.validate_trusted_directory(directory) == directory
+        larch_io.atomic_write(path=directory / "out.txt", text="x", nofollow=True)
+        assert (directory / "out.txt").read_text(encoding="utf-8") == "x"
+    finally:
+        shutil.rmtree(directory)
 
 
 def test_text_helpers(tmp_path: Path) -> None:

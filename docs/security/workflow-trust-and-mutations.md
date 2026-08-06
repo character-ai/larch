@@ -142,6 +142,18 @@ The Rust-owned review-phase detail commands use the same confined atomic writer
 for per-round metadata and caller-selected rendered-report output; unsafe
 destination shapes fail before replacement.
 
+The ancestor walks that refuse a symlinked write path exempt a symlink owned by
+uid 0, and only that case. macOS spells its platform temporary roots as
+root-owned symlinks, `/tmp` to `private/tmp` and `/var` to `private/var`, so a
+walk that refuses every symlink up to the filesystem root refuses every larch
+write below `$TMPDIR` or `/tmp` on that platform, including the session-tmpdir
+fallback. Creating or replacing a root-owned symlink requires privileges the
+threat model above already places outside these controls, while a symlink
+planted by the same user or by any other unprivileged user stays refused. The
+confining owner still canonicalizes the write parent, rejects a symlinked parent
+or leaf, and revalidates before replacement, so the exemption widens the accepted
+path spellings and not the set of accepted write destinations.
+
 ## Mutation Authorization and State Integrity
 
 Every external mutation requires authority from the current workflow step or a
