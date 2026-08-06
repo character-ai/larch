@@ -9,6 +9,8 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
 use std::path::Path;
 
+use crate::shell::shell_quote;
+
 /// Directory under the larch cache root that holds clone-scoped progress state.
 pub const PROGRESS_DIRNAME: &str = "progress";
 /// Basename of the clone-scoped active-run pointer.
@@ -42,7 +44,6 @@ const PRINTABLE_ASCII_MIN: u32 = 32;
 const ASCII_DELETE: u32 = 127;
 const C1_CONTROL_MIN: u32 = 0x80;
 const C1_CONTROL_MAX: u32 = 0x9F;
-const SHELL_SAFE: &str = "@%+=:,./-";
 
 /// Return the 16-character clone hash for a canonical repository root.
 #[must_use]
@@ -278,19 +279,6 @@ pub fn apply_statusline(settings: &mut Value, launcher: &str) {
     }
 }
 
-/// Quote one value for POSIX shell interpolation the way `shlex.quote` does.
-#[must_use]
-pub fn shell_quote(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || SHELL_SAFE.contains(character))
-    {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
-}
-
 /// Render the clone-independent statusline launcher script.
 ///
 /// `larch_entrypoint` is the verified bootstrap script; the launcher never
@@ -406,8 +394,8 @@ mod tests {
         StalenessDecision, apply_statusline, breadcrumb_line, chained_user_command,
         classify_staleness, install_payload_directory, is_breadcrumb_row, positive_int,
         progress_clone_digest, render_statusline_body, resets_active_run,
-        settings_statusline_command, shell_quote, statusline_launcher_text,
-        statusline_payload_directory, truncate_columns, validate_progress_run_id,
+        settings_statusline_command, statusline_launcher_text, statusline_payload_directory,
+        truncate_columns, validate_progress_run_id,
     };
     use serde_json::json;
 
@@ -508,10 +496,6 @@ mod tests {
 
     #[test]
     fn launcher_text_quotes_its_entrypoint_and_never_runs_the_binary() {
-        assert_eq!(shell_quote(""), "''");
-        assert_eq!(shell_quote("plain-1.2/x"), "plain-1.2/x");
-        assert_eq!(shell_quote("a b'c"), "'a b'\"'\"'c'");
-
         let launcher = statusline_launcher_text("/plugin", "/plugin/scripts/larch.sh", "");
 
         assert!(
@@ -521,5 +505,31 @@ mod tests {
         );
         assert!(!launcher.contains("bin/larch"));
         assert!(!launcher.contains("python3"));
+    }
+
+    /// Pin the launcher bytes for an underscore-bearing plugin root.
+    ///
+    /// `install-statusline` has no parity matrix case: the frozen Python
+    /// reference in `fixtures/rust-parity/progress_reference.py` deliberately
+    /// omits the verb because the launcher body changed by design at the #8084
+    /// cutover, so a byte comparison would only prove the fixture and this
+    /// renderer agree. This golden is the coverage that would have caught the
+    /// #8155 divergence, where `_` was missing from the shell-safe set and
+    /// every operator with an underscore in their plugin root or home
+    /// directory got a needlessly single-quoted launcher.
+    #[test]
+    fn launcher_text_leaves_an_underscored_plugin_root_unquoted() {
+        let launcher = statusline_launcher_text(
+            "/Users/jane_doe/plugin",
+            "/Users/jane_doe/plugin/scripts/larch.sh",
+            "",
+        );
+
+        assert!(launcher.contains(
+            "CLAUDE_PLUGIN_ROOT=/Users/jane_doe/plugin \
+             /Users/jane_doe/plugin/scripts/larch.sh progress statusline"
+        ));
+        assert!(launcher.contains("LARCH_ENTRYPOINT=/Users/jane_doe/plugin/scripts/larch.sh\n"));
+        assert!(!launcher.contains("'/Users/jane_doe/plugin"));
     }
 }

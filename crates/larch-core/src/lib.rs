@@ -27,6 +27,7 @@ mod review_dispatch;
 mod run_log;
 mod session_env;
 mod session_state;
+mod shell;
 mod slack_announce;
 mod storage;
 mod telemetry;
@@ -146,8 +147,8 @@ pub use progress::{
     STATUSLINE_VERB_MARKER, StalenessDecision, apply_statusline, breadcrumb_line,
     chained_user_command, classify_staleness, install_payload_directory, is_breadcrumb_row,
     is_larch_statusline_command, positive_int, progress_clone_digest, progress_run_id_error,
-    render_statusline_body, resets_active_run, settings_statusline_command, shell_quote,
-    stale_suffix, statusline_launcher_text, statusline_payload_directory, truncate_columns,
+    render_statusline_body, resets_active_run, settings_statusline_command, stale_suffix,
+    statusline_launcher_text, statusline_payload_directory, truncate_columns,
     validate_progress_run_id,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
@@ -191,6 +192,7 @@ pub use session_state::{
     allowed_session_roots, cleanup_cache_sessions_root, design_tmpdir_syntax_error,
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
 };
+pub use shell::shell_quote;
 pub use slack_announce::{
     LARCH_SLACK_WEBHOOK_URL, SlackAnnounceInputs, SlackAnnounceStatus, SlackIssueAnnouncement,
     inputs_from_files, mark_posted, parent_issue_path, plan_slack_issue_announce,

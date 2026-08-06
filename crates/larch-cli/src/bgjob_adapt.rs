@@ -17,7 +17,8 @@ use larch_core::{
     ParseOptions, RecordedProcessIdentity, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
     cleanup_cache_sessions_root, daemon_liveness, ensure_under, entry_expired, log_paths,
     parse_allowlisted_env_line, private_atomic_write, read_entry, read_process_identity,
-    registry_path, registry_root, resolve_run_id, result_env_path, validate_initial_merge_rows,
+    registry_path, registry_root, resolve_run_id, result_env_path, shell_quote,
+    validate_initial_merge_rows,
     validate_merge_result_env, validate_run_id, validate_slug,
 };
 use std::{
@@ -538,21 +539,6 @@ fn validate_design_tmpdir(raw: &str) -> DecisionResult<PathBuf> {
         .is_ok_and(|metadata| metadata.is_dir())
         .then_some(resolved)
         .ok_or_else(|| DecisionError::token("design-tmpdir-invalid"))
-}
-
-fn shell_quote(value: &str) -> String {
-    if !value.is_empty()
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(
-                    byte,
-                    b'_' | b'@' | b'%' | b'+' | b'=' | b':' | b',' | b'.' | b'/' | b'-'
-                )
-        })
-    {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 trait AdapterHost {
@@ -1388,11 +1374,11 @@ mod tests {
         parse_completed_rows, parse_resolver_arguments, parse_single_kv_row, plugin_root_from_file,
         process_state, read_trusted_regular, rehydrate_plugin_root_from, resolve_run_id,
         resolve_session_env, resolve_session_env_argv, resolve_tmpdir, result_env_path,
-        run_with_host, session_env_source, shell_quote, stat_fingerprint, trusted_session_link,
+        run_with_host, session_env_source, stat_fingerprint, trusted_session_link,
         unlink_regular_under, valid_owner_pid, validate_design_tmpdir, validate_started_stdout,
         write_stdout,
     };
-    use larch_core::{RecordedProcessIdentity, write_entry_at};
+    use larch_core::{RecordedProcessIdentity, shell_quote, write_entry_at};
     use std::{
         env,
         ffi::OsString,
