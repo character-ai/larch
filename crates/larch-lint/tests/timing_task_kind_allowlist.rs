@@ -62,3 +62,21 @@ fn timing_task_kind_rule_accepts_known_constants_and_inferred_clap_long_names() 
         .stdout("")
         .stderr("");
 }
+
+#[test]
+fn timing_task_kind_rule_ignores_bare_long_defaults_on_unrelated_fields() {
+    let repository = TempRepo::new();
+    write_allowlist(&repository);
+    repository.write(
+        "crates/example/src/registry.rs",
+        b"use clap::Parser;\n#[derive(Parser)]\nstruct Cli {\n    #[arg(long, default_value = \"kv\")]\n    kind: String,\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "timing-task-kind-allowlist"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+}

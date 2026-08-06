@@ -274,11 +274,14 @@ fn parse_clap_default(attribute: &Attribute, inferred_long: bool) -> Option<Stri
     let mut default = None;
     let _ = attribute.parse_nested_meta(|meta| {
         if meta.path.is_ident("long") {
-            timing_long = meta
-                .value()
-                .ok()
-                .and_then(|value| value.parse::<LitStr>().ok())
-                .is_none_or(|value| value.value() == "timing-task-kind");
+            // Bare `long` keeps the field-name inference. An explicit long name
+            // is timing-owned only when it is exactly `--timing-task-kind`.
+            if let Ok(value) = meta.value() {
+                timing_long = value
+                    .parse::<LitStr>()
+                    .ok()
+                    .is_some_and(|literal| literal.value() == "timing-task-kind");
+            }
         } else if meta.path.is_ident("default_value") {
             default = meta.value()?.parse::<LitStr>().ok().map(|value| value.value());
         }
