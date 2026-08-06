@@ -6726,11 +6726,13 @@ verb = "chat-print"
 python_module = "larch.state.stall_recovery"
 python_function = "chat_print_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8066
+clean_install_test = "clean-install-stall-recovery-chat-print"
 
 [[commands]]
 domain = "stall-recovery"
@@ -6764,11 +6766,13 @@ verb = "compose-report"
 python_module = "larch.state.stall_recovery"
 python_function = "compose_report_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8066
+clean_install_test = "clean-install-stall-recovery-compose-report"
 
 [[commands]]
 domain = "stall-recovery"
@@ -6776,11 +6780,13 @@ verb = "dedup-tier-a-report"
 python_module = "larch.state.stall_recovery"
 python_function = "dedup_tier_a_report_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8066
+clean_install_test = "clean-install-stall-recovery-dedup-tier-a-report"
 
 [[commands]]
 domain = "stall-recovery"
@@ -6862,11 +6868,13 @@ verb = "populate-sensitive-corpus"
 python_module = "larch.state.stall_recovery"
 python_function = "populate_sensitive_corpus_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8066
+clean_install_test = "clean-install-stall-recovery-populate-sensitive-corpus"
 
 [[commands]]
 domain = "stall-recovery"
@@ -8290,7 +8298,7 @@ rust = []
 path = "python/larch/design/design_terminal.py"
 kind = "python-runtime"
 python = []
-rust = ["stall-recovery is-larch-dev-clone", "stall-recovery validate-terminal-state", "stall-recovery validate-token"]
+rust = ["stall-recovery chat-print", "stall-recovery compose-report", "stall-recovery dedup-tier-a-report", "stall-recovery is-larch-dev-clone", "stall-recovery populate-sensitive-corpus", "stall-recovery validate-terminal-state", "stall-recovery validate-token"]
 
 [[callers]]
 path = "python/larch/design/plan_quality.py"
@@ -8973,8 +8981,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/stall-recovery.md"
 kind = "skill"
-python = ["checks lint-fix", "stall-recovery classify", "stall-recovery dedup-tier-a-report", "stall-recovery init-attempts", "stall-recovery record-escalation"]
-rust = ["bgjob wait", "stall-recovery clear-stall", "stall-recovery seed-terminal-state", "stall-recovery validate-token"]
+python = ["checks lint-fix", "stall-recovery classify", "stall-recovery init-attempts", "stall-recovery record-escalation"]
+rust = ["bgjob wait", "stall-recovery clear-stall", "stall-recovery dedup-tier-a-report", "stall-recovery seed-terminal-state", "stall-recovery validate-token"]
 
 [[callers]]
 path = "skills/implement/references/step18-logs-flush.md"

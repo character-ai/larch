@@ -36,19 +36,6 @@ from larch.state._normalize import (
     normalize_outcome,
 )
 from larch.state._normalize import normalized_outcome_values  # noqa: F401  # pylint: disable=unused-import
-from larch.state._corpus import populate_sensitive_corpus
-from larch.state._corpus import _sensitive_value_is_allowlisted  # noqa: F401  # pylint: disable=unused-import
-from larch.state._corpus import build_sensitive_corpus_from_evidence  # noqa: F401  # pylint: disable=unused-import
-from larch.state._report import (
-    _doc_allowlist_lines,
-    _doc_retry_policy_lines,
-    _retry_policy_lines,
-    chat_print,
-    compose_report,
-    dedup_tier_a_report,
-)
-from larch.state._report import _redact_text  # noqa: F401  # pylint: disable=unused-import
-
 _TEST_COMPAT_SUBPROCESS = subprocess  # Tests patch the historical module-level process seam.
 
 # ---------------------------------------------------------------------------
@@ -82,6 +69,9 @@ _GLOBAL_STALL_FLAGS = frozenset({
     "--finalize-state-file",
     "--session-env-file",
 })
+
+_ALLOWLIST_TABLE_COLUMNS = 4
+_RETRY_POLICY_TABLE_COLUMNS = 3
 
 # ---------------------------------------------------------------------------
 # Functions that remain in this module
@@ -121,6 +111,61 @@ def lint_subcommand(rest: list[str]) -> int:
     return 0
 
 
+def _retry_policy_lines() -> list[str]:
+    classes = (
+        "transient-infra", "test-failure", "lint-failure", "dispatch-failure", "protected-path",
+        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "recoverable",
+        "unrecoverable",
+    )
+    return [
+        f"{klass}\t{max_attempts}\t{delay}"
+        for klass in classes
+        for max_attempts, delay in [config.RETRY_POLICY_CAPS[klass]]
+    ]
+
+
+def _doc_allowlist_lines() -> list[str]:
+    contract = _REPO_ROOT / "python" / "stall-recovery-report.md"
+    if not contract.is_file():
+        return []
+    lines: list[str] = []
+    in_block = False
+    for raw in contract.read_text(encoding="utf-8", errors="replace").splitlines():
+        if raw.strip() == "<!-- stall-recovery-allowlist:begin -->":
+            in_block = True
+            continue
+        if raw.strip() == "<!-- stall-recovery-allowlist:end -->":
+            break
+        if not in_block or "|" not in raw or raw.lstrip().startswith("surface"):
+            continue
+        parts = [part.strip() for part in raw.strip().strip("|").split("|")]
+        if len(parts) >= _ALLOWLIST_TABLE_COLUMNS and parts[0] not in {"---", "surface"}:
+            lines.append("\t".join(parts[:_ALLOWLIST_TABLE_COLUMNS]))
+    return lines
+
+
+def _doc_retry_policy_lines() -> list[str]:
+    contract = _REPO_ROOT / "python" / "stall-recovery-report.md"
+    if not contract.is_file():
+        return []
+    lines: list[str] = []
+    in_table = False
+    for raw in contract.read_text(encoding="utf-8", errors="replace").splitlines():
+        if raw.strip() == "| failure_class | attempts | delay |":
+            in_table = True
+            continue
+        if in_table and raw.strip().startswith("|---"):
+            continue
+        if in_table and raw.strip().startswith("| "):
+            parts = [part.strip().strip("`") for part in raw.strip().strip("|").split("|")]
+            if len(parts) >= _RETRY_POLICY_TABLE_COLUMNS:
+                lines.append(f"{parts[0]}\t{parts[1]}\t{parts[2]}")
+            continue
+        if in_table:
+            break
+    return lines
+
+
 def _parse_leading_global_flags(argv: list[str]) -> tuple[list[str], dict[str, str] | None]:
     globals_dict: dict[str, str] = {}
     idx = 0
@@ -150,26 +195,6 @@ def _add_implement_tmpdir_arg(*, p: argparse.ArgumentParser, globals_dict: dict[
         "--implement-tmpdir",
         default=_global_default(globals_dict=globals_dict, key="implement_tmpdir", fallback=os.environ.get("IMPLEMENT_TMPDIR", ".")),
     )
-
-
-def _add_compose_report_args(*, p: argparse.ArgumentParser, globals_dict: dict[str, str] | None) -> None:
-    p.add_argument("--report-kind", default="terminal-failure")
-    p.add_argument("--surface", default="chat-print")
-    p.add_argument("--attempts-file", default="")
-    p.add_argument("--classification-file", default="")
-    p.add_argument("--escalation-ledger-file", default="")
-    p.add_argument("--escalation-fallback-file", default="")
-    p.add_argument("--record-failure-marker", default="")
-    p.add_argument("--root-cause-file", default="")
-    p.add_argument("--bounded-root-cause-file", default="")
-    p.add_argument("--title-file", default="")
-    p.add_argument("--sensitive-corpus-file", default="")
-    p.add_argument("--output-file")
-    p.add_argument("--profile", default=_global_default(globals_dict=globals_dict, key="profile", fallback="implement"))
-    p.add_argument("--artifact-prefix", default=_global_default(globals_dict=globals_dict, key="artifact_prefix", fallback=""))
-    p.add_argument("--primary-state-file", default=_global_default(globals_dict=globals_dict, key="primary_state_file", fallback=""))
-    p.add_argument("--finalize-state-file", default=_global_default(globals_dict=globals_dict, key="finalize_state_file", fallback=""))
-    p.add_argument("--session-env-file", default=_global_default(globals_dict=globals_dict, key="session_env_file", fallback=""))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -236,37 +261,10 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--profile", default=_global_default(globals_dict=globals_dict, key="profile", fallback="implement"))
         ns, _ = p.parse_known_args(sub_argv)
         return record_escalation_checked(ns)
-    if sub == "dedup-tier-a-report":
-        p.add_argument("--body-file", default="")
-        p.add_argument("--attempts-file", default="")
-        p.add_argument("--escalation-ledger-file", default="")
-        p.add_argument("--root-cause-file", default="")
-        p.add_argument("--context-file", default="")
-        p.add_argument("--artifact-prefix", default=_global_default(globals_dict=globals_dict, key="artifact_prefix", fallback=""))
-        ns, _ = p.parse_known_args(sub_argv)
-        return dedup_tier_a_report(ns)
-    if sub == "compose-report":
-        _add_compose_report_args(p=p, globals_dict=globals_dict)
-        ns, _ = p.parse_known_args(sub_argv)
-        return compose_report(ns)
-    if sub == "chat-print":
-        _add_compose_report_args(p=p, globals_dict=globals_dict)
-        ns, _ = p.parse_known_args(sub_argv)
-        return chat_print(ns)
     if sub == "normalize-file-failure-report-env":
         p.add_argument("--file-failure-report-env", required=True)
         ns, _ = p.parse_known_args(sub_argv)
         return normalize_file_failure_report_env(ns)
-    if sub == "populate-sensitive-corpus":
-        p.add_argument("--sensitive-corpus-file", default="")
-        p.add_argument("--classification-file", default="")
-        p.add_argument("--attempts-file", default="")
-        p.add_argument("--escalation-ledger-file", default="")
-        p.add_argument("--escalation-fallback-file", default="")
-        p.add_argument("--record-failure-marker", default="")
-        p.add_argument("--artifact-prefix", default=_global_default(globals_dict=globals_dict, key="artifact_prefix", fallback=""))
-        ns, _ = p.parse_known_args(sub_argv)
-        return populate_sensitive_corpus(ns)
     if sub == "lint":
         return lint_subcommand(sub_argv)
     print(f"stall-recovery: unknown subcommand: {sub}", file=sys.stderr)
@@ -294,28 +292,12 @@ def normalize_outcome_main(argv: list[str] | None = None) -> int:
     return main(["normalize-outcome", *(argv or [])])
 
 
-def compose_report_main(argv: list[str] | None = None) -> int:
-    return main(["compose-report", *(argv or [])])
-
-
-def dedup_tier_a_report_main(argv: list[str] | None = None) -> int:
-    return main(["dedup-tier-a-report", *(argv or [])])
-
-
 def normalize_file_failure_report_env_main(argv: list[str] | None = None) -> int:
     return main(["normalize-file-failure-report-env", *(argv or [])])
 
 
 def normalize_issue_env_main(argv: list[str] | None = None) -> int:
     return main(["normalize-issue-env", *(argv or [])])
-
-
-def populate_sensitive_corpus_main(argv: list[str] | None = None) -> int:
-    return main(["populate-sensitive-corpus", *(argv or [])])
-
-
-def chat_print_main(argv: list[str] | None = None) -> int:
-    return main(["chat-print", *(argv or [])])
 
 
 def record_attempt_main(argv: list[str] | None = None) -> int:

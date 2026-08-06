@@ -46,11 +46,17 @@ Issue #8064 moves exactly six commands to Rust: `clear-stall`,
 `seed-terminal-state`, `validate-token`, `validate-terminal-state`,
 `validate-tier-b-public-file`, and `is-larch-dev-clone`. Their callers use
 `scripts/larch.sh`, their Python registrations and command implementations are
-removed, and their registry milestones are complete. The other thirteen
-stall-recovery commands, including `lint`, remain Python-owned until their
-separate leaves. Shared Python helpers may remain while a Python-owned command
-still consumes them; they are not fallback implementations for the six
-Rust-owned commands.
+removed, and their registry milestones are complete. Issue #8066 moves exactly
+four report commands to Rust: `compose-report`, `dedup-tier-a-report`,
+`chat-print`, and `populate-sensitive-corpus`. Their callers also use
+`scripts/larch.sh`, their Python registrations and implementations are removed,
+and their registry milestones are complete. The other nine stall-recovery
+commands, including `lint`, remain Python-owned until their separate leaves.
+Shared Python helpers may remain while a Python-owned command still consumes
+them; they are not fallback implementations for the ten Rust-owned commands.
+For example, `_detail_log.py` remains while #8065 still owns classification and
+escalation, even though the Rust reporting commands use the shared Rust detail
+log adapter.
 
 **Initialization and entry writes cut over in #8073.** `run-log init`, `write`,
 `write-round`, `append`, `append-entry`, `append-failure`, `exists`, and

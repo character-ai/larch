@@ -97,6 +97,41 @@ def stall_rust_commands(monkeypatch: pytest.MonkeyPatch) -> None:
                 generic=generic,
             ) is not None
             key = "VALID"
+        elif verb == "populate-sensitive-corpus":
+            corpus = values.get("--sensitive-corpus-file", "")
+            if corpus:
+                Path(corpus).touch()
+            output = f"SENSITIVE_CORPUS_FILE={corpus}\n"
+            if stdout_path is not None:
+                stdout_path.write_text(output, encoding="utf-8")
+            if stderr_path is not None:
+                stderr_path.write_text("", encoding="utf-8")
+            return 0
+        elif verb == "compose-report":
+            report = values.get("--output-file", "")
+            if report:
+                Path(report).write_text("### [BUG] test failure report\n", encoding="utf-8")
+            output = (
+                "STALL_RECOVERY_REPORT_STATUS=filed\n"
+                f"STALL_RECOVERY_REPORT_ARTIFACT={report}\n"
+            )
+            if stdout_path is not None:
+                stdout_path.write_text(output, encoding="utf-8")
+            if stderr_path is not None:
+                stderr_path.write_text("", encoding="utf-8")
+            return 0
+        elif verb == "dedup-tier-a-report":
+            if stdout_path is not None:
+                stdout_path.write_text("STALL_RECOVERY_REPORT_STATUS=dedup-comment\n", encoding="utf-8")
+            if stderr_path is not None:
+                stderr_path.write_text("", encoding="utf-8")
+            return 0
+        elif verb == "chat-print":
+            if stdout_path is not None:
+                stdout_path.write_text("STALL_RECOVERY_REPORT_STATUS=printed\n", encoding="utf-8")
+            if stderr_path is not None:
+                stderr_path.write_text("", encoding="utf-8")
+            return 0
         output = f"{key}={'true' if valid else 'false'}\n"
         if stdout_path is not None:
             stdout_path.write_text(output, encoding="utf-8")
@@ -3690,6 +3725,7 @@ def test_failure_report_reconcile_failure_leaves_report_open(tmp_path: Path, mon
 def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.MonkeyPatch | None = None) -> tuple[int, str, str]:
     if monkeypatch is not None:
         real_run_stall: Callable[..., int] = design_terminal._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+        real_run_stall_rust: Callable[..., int] = design_terminal._run_stall_rust  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
 
         def fake_stall(
             callable_obj: object,
@@ -3698,12 +3734,6 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
             stdout_path: Path | None = None,
             stderr_path: Path | None = None,
         ) -> int:
-            if callable_obj is stall_recovery.compose_report_main:
-                if stdout_path is not None:
-                    stdout_path.write_text("STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n", encoding="utf-8")
-                return 0
-            if callable_obj is stall_recovery.populate_sensitive_corpus_main:
-                return 0
             if callable_obj is stall_recovery.init_attempts_main:
                 return 0
             if callable_obj is stall_recovery.classify_main and stdout_path is not None:
@@ -3711,7 +3741,23 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
                 return 0
             return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
+        def fake_stall_rust(
+            *,
+            verb: str,
+            argv: Sequence[str],
+            stdout_path: Path | None = None,
+            stderr_path: Path | None = None,
+        ) -> int:
+            if verb == "compose-report":
+                if stdout_path is not None:
+                    stdout_path.write_text("STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n", encoding="utf-8")
+                return 0
+            if verb == "populate-sensitive-corpus":
+                return 0
+            return real_run_stall_rust(verb=verb, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
         monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+        monkeypatch.setattr(design_terminal, "_run_stall_rust", fake_stall_rust)  # pyright: ignore[reportPrivateUsage]
     out = tmp_path / "failure-report.stdout.log"
     err = tmp_path / "failure-report.stderr.log"
     rc = design_core.capture_contract_stream_to_paths(
@@ -3862,6 +3908,7 @@ def test_failure_report_terminal_success_and_result_env_skip(tmp_path: Path, mon
 def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stage_terminal_for_report(tmp_path)
     real_run_stall: Callable[..., int] = design_terminal._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+    real_run_stall_rust: Callable[..., int] = design_terminal._run_stall_rust  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
 
     def fake_stall(
         callable_obj: object,
@@ -3870,10 +3917,6 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
         stdout_path: Path | None = None,
         stderr_path: Path | None = None,
     ) -> int:
-        if callable_obj is stall_recovery.compose_report_main:
-            return 1
-        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
-            return 0
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:
@@ -3881,7 +3924,21 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
             return 0
         return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
+    def fake_stall_rust(
+        *,
+        verb: str,
+        argv: Sequence[str],
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if verb == "compose-report":
+            return 1
+        if verb == "populate-sensitive-corpus":
+            return 0
+        return real_run_stall_rust(verb=verb, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
     monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_terminal, "_run_stall_rust", fake_stall_rust)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
     assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
     assert "DESIGN_FAILURE_REPORT_REASON=terminal-compose-failed" in stdout
@@ -3893,6 +3950,7 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
 def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stage_terminal_for_report(tmp_path)
     real_run_stall: Callable[..., int] = design_terminal._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+    real_run_stall_rust: Callable[..., int] = design_terminal._run_stall_rust  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
 
     def fake_stall(
         callable_obj: object,
@@ -3901,15 +3959,6 @@ def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, 
         stdout_path: Path | None = None,
         stderr_path: Path | None = None,
     ) -> int:
-        if callable_obj is stall_recovery.compose_report_main:
-            if stdout_path is not None:
-                stdout_path.write_text(
-                    "STALL_RECOVERY_REPORT_STATUS=printed\nSTALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
-                    encoding="utf-8",
-                )
-            return 0
-        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
-            return 0
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:
@@ -3917,7 +3966,26 @@ def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, 
             return 0
         return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
+    def fake_stall_rust(
+        *,
+        verb: str,
+        argv: Sequence[str],
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if verb == "compose-report":
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_STATUS=printed\nSTALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
+                    encoding="utf-8",
+                )
+            return 0
+        if verb == "populate-sensitive-corpus":
+            return 0
+        return real_run_stall_rust(verb=verb, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
     monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_terminal, "_run_stall_rust", fake_stall_rust)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
     assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
 
@@ -4088,6 +4156,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         return subprocess.CompletedProcess(args=args, returncode=file_rc)
 
     monkeypatch.setattr(design_terminal.subprocess, "run", fake_run)
+    real_run_stall_rust: Callable[..., int] = design_terminal._run_stall_rust  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
 
     def fake_stall(
         callable_obj: object,
@@ -4096,23 +4165,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         stdout_path: Path | None = None,
         stderr_path: Path | None = None,
     ) -> int:
-        del stderr_path
-        if callable_obj is stall_recovery.compose_report_main:
-            output = Path(argv[argv.index("--output-file") + 1])
-            output.write_text("### [BUG] Tier A escalation\n\nBody.\n", encoding="utf-8")
-            if stdout_path is not None:
-                stdout_path.write_text(
-                    "STALL_RECOVERY_REPORT_KIND=escalation-success\n",
-                    encoding="utf-8",
-                )
-            return 0
-        if callable_obj is stall_recovery.dedup_tier_a_report_main:
-            if stdout_path is not None:
-                stdout_path.write_text(
-                    f"STALL_RECOVERY_REPORT_STATUS={dedup_status}\n",
-                    encoding="utf-8",
-                )
-            return dedup_rc
+        del argv, stderr_path
         if callable_obj is stall_recovery.normalize_file_failure_report_env_main:
             if normalize_rc == 0 and stdout_path is not None:
                 stdout_path.write_text(
@@ -4121,18 +4174,43 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
                     encoding="utf-8",
                 )
             return normalize_rc
-        if callable_obj in {
-            stall_recovery.populate_sensitive_corpus_main,
-            stall_recovery.init_attempts_main,
-        }:
+        if callable_obj is stall_recovery.init_attempts_main:
             return 0
         raise AssertionError(f"unexpected stall helper: {callable_obj}")
+
+    def fake_stall_rust(
+        *,
+        verb: str,
+        argv: Sequence[str],
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if verb == "compose-report":
+            output = Path(argv[argv.index("--output-file") + 1])
+            output.write_text("### [BUG] Tier A escalation\n\nBody.\n", encoding="utf-8")
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_KIND=escalation-success\n",
+                    encoding="utf-8",
+                )
+            return 0
+        if verb == "dedup-tier-a-report":
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    f"STALL_RECOVERY_REPORT_STATUS={dedup_status}\n",
+                    encoding="utf-8",
+                )
+            return dedup_rc
+        if verb == "populate-sensitive-corpus":
+            return 0
+        return real_run_stall_rust(verb=verb, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
     monkeypatch.setattr(  # pyright: ignore[reportPrivateUsage]
         design_terminal,
         "_run_stall_main",
         fake_stall,
     )
+    monkeypatch.setattr(design_terminal, "_run_stall_rust", fake_stall_rust)  # pyright: ignore[reportPrivateUsage]
     out = tmp_path / "failure-report.stdout.log"
     err = tmp_path / "failure-report.stderr.log"
     assert design_core.capture_contract_stream_to_paths(

@@ -472,6 +472,18 @@ validator, sensitive corpus, repository resolver, network result, or valid
 created URL falls back to a sanitized local report for manual filing. It never
 falls back to the raw evidence.
 
+The Rust-owned `stall-recovery compose-report`, `chat-print`,
+`dedup-tier-a-report`, and `populate-sensitive-corpus` commands keep their
+reporting boundary in the Rust runtime. `compose-report` renders the title,
+body, and Tier A slices in memory, applies the shared `larch_core` redactor,
+then verifies the redacted payload and effective sensitive corpus before any
+atomic public-artifact write. Redaction and corpus failures prevent the write;
+a failed read-back postcondition triggers confined cleanup of that payload.
+Tier A dedup receives only that sanitized body. The shared Rust adapter
+validates optional detail logs as confined, regular files no larger than 64 KiB
+before reading them or selecting a ledger sidecar. The sensitive-corpus command
+rebuilds its corpus from validated session-root evidence through that adapter.
+
 Tier A failure reporting inside a larch development clone may use fuller local
 context only through the normal issue publisher and same-target classification.
 It still requires sanitization and must not publish sensitive content. Tier B

@@ -285,7 +285,10 @@ def _run_stall_rust(
     stdout_path: Path | None = None,
     stderr_path: Path | None = None,
 ) -> int:
-    result = proc.run(_stall_rust_argv(verb=verb, argv=argv))
+    try:
+        result = proc.run(_stall_rust_argv(verb=verb, argv=argv))
+    except OSError:
+        return 1
     try:
         if stdout_path is not None:
             stdout_path.write_text(result.stdout, encoding="utf-8")
@@ -308,6 +311,14 @@ def _stall_rust_argv(*, verb: str, argv: Sequence[str]) -> list[str]:
         return [entrypoint, "stall-recovery", "validate-terminal-state", *argv]
     if verb == "validate-token":
         return [entrypoint, "stall-recovery", "validate-token", *argv]
+    if verb == "compose-report":
+        return [entrypoint, "stall-recovery", "compose-report", *argv]
+    if verb == "dedup-tier-a-report":
+        return [entrypoint, "stall-recovery", "dedup-tier-a-report", *argv]
+    if verb == "chat-print":
+        return [entrypoint, "stall-recovery", "chat-print", *argv]
+    if verb == "populate-sensitive-corpus":
+        return [entrypoint, "stall-recovery", "populate-sensitive-corpus", *argv]
     raise ValueError(f"unsupported Rust stall-recovery command: {verb}")
 
 
@@ -824,8 +835,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not actual_class.is_file():
             actual_class = design_tmpdir / "design-failure-classification.seed.env"
             actual_class.write_text("", encoding="utf-8")
-        return _run_stall_main(
-            callable_obj=stall_recovery.populate_sensitive_corpus_main,
+        return _run_stall_rust(
+            verb="populate-sensitive-corpus",
             argv=[
                 *helper_common(),
                 "--sensitive-corpus-file",
@@ -993,8 +1004,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             dedup_argv.extend(["--context-file", str(_ctx)])
         dedup_env = design_tmpdir / "design-failure-tier-a-dedup.env"
         fallback_reason = ""
-        if _run_stall_main(
-            callable_obj=stall_recovery.dedup_tier_a_report_main,
+        if _run_stall_rust(
+            verb="dedup-tier-a-report",
             argv=dedup_argv,
             stdout_path=dedup_env,
             stderr_path=design_tmpdir / "design-failure-tier-a-dedup.stderr.log",
@@ -1098,8 +1109,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             append_run_log_audit("populate-sensitive-corpus-failed")
             write_fallback_chat("populate-sensitive-corpus-failed")
             return 0, []
-        rc = _run_stall_main(
-            callable_obj=stall_recovery.compose_report_main,
+        rc = _run_stall_rust(
+            verb="compose-report",
             argv=[
                 *helper_common(),
                 *state_overrides(),
@@ -1151,8 +1162,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         append_run_log_audit("populate-sensitive-corpus-failed")
         write_fallback_chat("populate-sensitive-corpus-failed")
         return 0, []
-    rc = _run_stall_main(
-        callable_obj=stall_recovery.compose_report_main,
+    rc = _run_stall_rust(
+        verb="compose-report",
         argv=[
             *helper_common(),
             "--report-kind",

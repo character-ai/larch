@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Frozen Python reference for the six issue-8064 stall-recovery commands."""
+"""Frozen Python reference for the issue-8064 and issue-8066 stall-recovery commands."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
@@ -189,6 +190,131 @@ def dev_clone(opts: dict[str, str]) -> int:
     return 0
 
 
+_EVIDENCE_NAMES = (
+    "ship-pr-state.sh", "finalize-state.sh", "session-env.sh", "source-env.sh",
+    "execution-issues.md", "run-log-pointer.txt", "plan.txt", "feature-description.txt",
+    "issue-body.txt", "composed-plan.md", "final-summary.md", "validate-plan-commands.log",
+    "design-log-publish.failure.log", "design-plan-write.failure.log",
+    "design-publish-tail.failure.log", "design-publish-tail.stdout.log",
+    "design-publish-tail.stderr.log", "design-publish-rename.stderr.log",
+    "design-publish-log.stderr.log",
+)
+
+
+def attempts_table(path: Path) -> str:
+    count = read_last(path, "attempt_count")
+    if not count.isdigit() or int(count) == 0:
+        return "| Attempt | Class | Resume hint | Outcome | UTC |\n|---|---|---|---|---|\n| none | n/a | n/a | n/a | n/a |"
+    rows = ["| Attempt | Class | Resume hint | Outcome | UTC |", "|---|---|---|---|---|"]
+    for index in range(1, int(count) + 1):
+        rows.append(
+            f"| `{index}` | `{read_last(path, f'attempt.{index}.class') or 'unrecoverable'}` | "
+            f"`{read_last(path, f'attempt.{index}.resume_hint') or 'none'}` | "
+            f"`{read_last(path, f'attempt.{index}.outcome') or 'failed'}` | "
+            f"`{read_last(path, f'attempt.{index}.utc') or 'unknown'}` |"
+        )
+    return "\n".join(rows)
+
+
+def compose_issue_input(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", os.environ.get("IMPLEMENT_TMPDIR", ".")))
+    class_file = Path(opts.get("--classification-file", str(tmpdir / "stall-recovery-classification.env")))
+    attempts = Path(opts.get("--attempts-file", str(tmpdir / "stall-recovery-attempts.env")))
+    root = Path(opts.get("--root-cause-file", str(tmpdir / "stall-recovery-root-cause.md")))
+    output = Path(opts.get("--output-file", str(tmpdir / "stall-recovery-issue-input.md")))
+    project = Path(os.environ.get("CLAUDE_PROJECT_DIR", ""))
+    if not (project / "skills/implement/SKILL.md").is_file():
+        print("stall-recovery: issue-input surface requires larch dev clone and non-forked target", file=sys.stderr)
+        return 1
+    kind = opts.get("--report-kind", "terminal-failure")
+    failure_class = read_last(class_file, "FAILURE_CLASS") or "unrecoverable"
+    step = read_last(class_file, "STALL_STEP") or "unknown"
+    phase = read_last(class_file, "PHASE") or "unknown"
+    bail = read_last(class_file, "BAIL_REASON") or "none"
+    title = read_last(tmpdir / "stall-recovery-title.txt", "") or read_last(root, "summary")
+    skill_label = "/implement"
+    signature_seed = "\n".join((
+        "larch-stall-report-dedup-v1", f"report_kind={kind}", f"failure_class={failure_class}",
+        f"step={step}", f"phase={phase}", f"safe_bail_token={bail}",
+    ))
+    signature = hashlib.sha256(signature_seed.encode()).hexdigest()
+    marker = f"<!-- larch-stall:signature={signature} -->"
+    rendered_title = f"[BUG] {skill_label} terminal: {title} ({failure_class} at {step})"
+    run_id = read_last(tmpdir / "session-env.sh", "LARCH_RUN_ID") or "unknown"
+    branch = read_last(tmpdir / "session-env.sh", "BRANCH_NAME") or "unknown"
+    root_text = root.read_text(encoding="utf-8", errors="replace")
+    parts = [
+        f"### {rendered_title}", marker, "", "## Report metadata", "",
+        f"- **Report kind**: `{kind}`", f"- **Failure class**: `{failure_class}`",
+        f"- **Step**: `{step}`", f"- **Bail reason**: `{bail}`",
+        f"- **Run ID**: `{run_id}`", f"- **Branch**: `{branch}`", "- **PR URL**: `unknown`",
+        f"- **Resume hint**: `{read_last(class_file, 'RESUME_HINT') or 'none'}`",
+        f"\n## Root-cause finding\n\n{root_text}\n",
+        f"\n## Attempts\n\n{attempts_table(attempts)}",
+    ]
+    body = "\n".join(part for part in parts if part) + "\n"
+    output.write_text(body, encoding="utf-8")
+    (tmpdir / "stall-recovery-tier-a-attempts.md").write_text(attempts_table(attempts) + "\n", encoding="utf-8")
+    (tmpdir / "stall-recovery-tier-a-escalation.md").write_text("", encoding="utf-8")
+    (tmpdir / "stall-recovery-tier-a-root-cause.md").write_text(root_text, encoding="utf-8")
+    print(f"STALL_RECOVERY_REPORT_KIND={kind}")
+    print("STALL_RECOVERY_REPORT_TIER=A")
+    print(f"STALL_RECOVERY_REPORT_ARTIFACT={output}")
+    print(f"STALL_RECOVERY_REPORT_VERDICT={read_last(root, 'verdict')}")
+    print(f"REPORT_DEDUP_SIGNATURE={signature}")
+    print("DRY_RUN_DECISION=true")
+    print("STALL_RECOVERY_REPORT_STATUS=dry-run")
+    return 0
+
+
+def populate_corpus(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", os.environ.get("IMPLEMENT_TMPDIR", ".")))
+    corpus = Path(opts.get("--sensitive-corpus-file", str(tmpdir / "stall-recovery-sensitive-corpus.env")))
+    sources = [
+        corpus,
+        Path(opts.get("--classification-file", str(tmpdir / "stall-recovery-classification.env"))),
+        Path(opts.get("--attempts-file", str(tmpdir / "stall-recovery-attempts.env"))),
+        Path(opts.get("--escalation-ledger-file", str(tmpdir / "stall-recovery-escalation-ledger.tsv"))),
+        Path(opts.get("--escalation-fallback-file", str(tmpdir / "stall-recovery-escalation-fallback.tsv"))),
+        Path(opts.get("--record-failure-marker", str(tmpdir / "stall-recovery-escalation-record-failure.env"))),
+        *(tmpdir / name for name in _EVIDENCE_NAMES),
+    ]
+    lines: list[str] = []
+    for source in sources:
+        if source.is_file() and not source.is_symlink():
+            text = source.read_text(encoding="utf-8", errors="replace")
+            lines.extend(text.splitlines())
+            lines.extend(re.findall(r"https?://[^\s`)\]]+", text))
+            lines.extend(re.findall(r"git@github\.com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text))
+            lines.extend(re.findall(r"github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text))
+            lines.extend(
+                match.group(0).strip()
+                for match in re.finditer(r"(?:^|[\s`(])/(?:Users|home|private|tmp|var|Volumes)/[^\s`)]+", text, re.MULTILINE)
+            )
+    corpus.write_text("\n".join(line.strip() for line in lines if line.strip()) + "\n", encoding="utf-8")
+    print(f"SENSITIVE_CORPUS_FILE={corpus}")
+    return 0
+
+
+def chat_print(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", os.environ.get("IMPLEMENT_TMPDIR", ".")))
+    corpus = Path(opts.get("--sensitive-corpus-file", str(tmpdir / "stall-recovery-sensitive-corpus.env")))
+    bounded = Path(opts.get("--bounded-root-cause-file", str(tmpdir / "stall-recovery-bounded-root-cause.md")))
+    sensitive = {line.strip() for line in corpus.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()}
+    if any(token in bounded.read_text(encoding="utf-8", errors="replace") for token in sensitive):
+        print("stall-recovery: bounded root-cause contains sensitive token", file=sys.stderr)
+        return 1
+    return 2
+
+
+def dedup(opts: dict[str, str]) -> int:
+    _ = opts
+    if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN"):
+        print("STALL_RECOVERY_REPORT_STATUS=dry-run")
+        return 0
+    return 2
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         return 2
@@ -207,6 +333,14 @@ def main() -> int:
         return seed(opts)
     if verb == "is-larch-dev-clone":
         return dev_clone(opts)
+    if verb == "compose-report":
+        return compose_issue_input(opts)
+    if verb == "populate-sensitive-corpus":
+        return populate_corpus(opts)
+    if verb == "chat-print":
+        return chat_print(opts)
+    if verb == "dedup-tier-a-report":
+        return dedup(opts)
     return 2
 
 
