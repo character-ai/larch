@@ -2699,6 +2699,12 @@ mod tests {
     };
     use tempfile::TempDir;
 
+    fn is_round_dir(name: &str) -> bool {
+        name.strip_prefix("round-").is_some_and(|number| {
+            !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    }
+
     fn review_args() -> ReviewArguments {
         ReviewArguments {
             tool: Some(ReviewTool::Codex),
