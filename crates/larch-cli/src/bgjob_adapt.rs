@@ -594,15 +594,13 @@ impl SystemAdapterHost {
     }
 
     /// Bind the owner identity, not the bare pid, before the daemon detaches.
-    fn captured_owner(&self, raw: &str) -> DecisionResult<Option<RecordedProcessIdentity>> {
-        if raw.is_empty() {
-            return Ok(None);
-        }
+    fn captured_owner(&self, raw: &str) -> DecisionResult<RecordedProcessIdentity> {
+        // Fail closed: a daemon launched without a bound owner would never
+        // orphan itself when the session that requested it exits.
         let pid = raw
             .parse::<i32>()
             .map_err(|_| DecisionError::token("invalid-input"))?;
         read_process_identity(&self.identity_host, pid, "")
-            .map(Some)
             .ok_or_else(|| DecisionError::token("daemon-start-failed"))
     }
 }
@@ -623,7 +621,7 @@ impl AdapterHost for SystemAdapterHost {
     fn start(&self, request: &StartRequest) -> DecisionResult<String> {
         let mut spec = request.spec.clone();
         spec.owner = OwnerIdentity {
-            recorded: self.captured_owner(&request.owner_pid)?,
+            recorded: Some(self.captured_owner(&request.owner_pid)?),
         };
         let mut environment = request.session_values.rows.clone();
         environment.push((
