@@ -732,6 +732,81 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
     assert len(calls) == 2
 
 
+def _blocked_by_fixture(
+    monkeypatch: Any,
+    *,
+    post_stderr: str,
+    read_stdout: str = "",
+    read_returncode: int = 0,
+) -> tuple[int, list[list[str]], list[float]]:
+    """Drive add-blocked-by with one deterministic POST failure and one read-back."""
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(list(argv))
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
+            return _result(argv, stdout="200\n")
+        if "--paginate" in argv:
+            return _result(argv, returncode=read_returncode, stdout=read_stdout, stderr="HTTP 403 Forbidden")
+        return _result(argv, returncode=1, stderr=post_stderr)
+
+    sleeps: list[float] = []
+
+    def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.add_blocked_by_main(
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        sleep_fn=record_sleep,
+    )
+    return rc, calls, sleeps
+
+
+def test_add_blocked_by_already_taken_succeeds_by_read_back(monkeypatch: Any, capsys: Any) -> None:
+    rc, calls, sleeps = _blocked_by_fixture(
+        monkeypatch,
+        post_stderr=(
+            "gh: An error occurred while adding the blocking issue to the issue. "
+            "Validation failed: Target issue has already been taken (HTTP 422)"
+        ),
+        read_stdout='[{"number":2}]',
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "BLOCKED_BY_ADDED=true" in out
+    assert not sleeps
+    assert [call for call in calls if "--paginate" in call]
+    assert len(calls) == 3
+
+
+def test_add_blocked_by_422_absent_edge_fails_fast(monkeypatch: Any, capsys: Any) -> None:
+    rc, calls, sleeps = _blocked_by_fixture(
+        monkeypatch,
+        post_stderr="gh: Validation failed: Issue may not be blocked by itself (HTTP 422)",
+        read_stdout="[]",
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "BLOCKED_BY_FAILED=true" in out
+    assert "may not be blocked by itself" in out
+    assert "all 3 attempts failed" not in out
+    assert not sleeps
+    assert len(calls) == 3
+
+
+def test_add_blocked_by_read_back_transport_failure_fails_closed(monkeypatch: Any, capsys: Any) -> None:
+    rc, _calls, sleeps = _blocked_by_fixture(
+        monkeypatch,
+        post_stderr="gh: Validation failed: Target issue has already been taken (HTTP 422)",
+        read_returncode=1,
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "BLOCKED_BY_FAILED=true" in out
+    assert not sleeps
+
+
 def test_add_sub_issue_verifies_native_relation(monkeypatch: Any, capsys: Any) -> None:
     calls: list[tuple[str, str, str]] = []
 
@@ -752,6 +827,89 @@ def test_add_sub_issue_verifies_native_relation(monkeypatch: Any, capsys: Any) -
     assert rc == 0
     assert calls == [("1", "200", "o/r")]
     assert "SUB_ISSUE_ADDED=true" in capsys.readouterr().out
+
+
+DUPLICATE_SUB_ISSUE_STDERR = (
+    "gh: An error occurred while adding the sub-issue to the parent issue. "
+    "Issue may not contain duplicate sub-issues and Sub issue may only have one parent (HTTP 422)"
+)
+
+
+def _sub_issue_fixture(
+    monkeypatch: Any, *, read_stdout: str, read_returncode: int = 0
+) -> tuple[int, int, list[float]]:
+    """Drive add-sub-issue with one deterministic 422 and one read-back."""
+    attempts = 0
+
+    def add_sub_issue(_runner: object, _parent: str, _child_id: int, *, repo: str) -> proc.CommandResult:
+        assert repo == "o/r"
+        nonlocal attempts
+        attempts += 1
+        return _result(["gh", "api"], returncode=1, stderr=DUPLICATE_SUB_ISSUE_STDERR)  # lint-gh-argv-literal: ok fixture assertion
+
+    def read_sub_issues(_runner: object, parent: str, *, repo: str) -> proc.CommandResult:
+        assert (parent, repo) == ("1", "o/r")
+        return _result(["gh", "api"], returncode=read_returncode, stdout=read_stdout)  # lint-gh-argv-literal: ok fixture assertion
+
+    sleeps: list[float] = []
+
+    def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(issue_create.gh, "issue_add_sub_issue", add_sub_issue)
+    monkeypatch.setattr(issue_create.gh, "issue_sub_issues_read", read_sub_issues)
+    rc = issue_create.add_sub_issue_main(
+        ["--parent-issue", "1", "--child-issue", "2", "--child-id", "200", "--repo", "o/r", "--operator-invoked"],
+        sleep_fn=record_sleep,
+    )
+    return rc, attempts, sleeps
+
+
+def test_add_sub_issue_duplicate_relation_succeeds_by_read_back(monkeypatch: Any, capsys: Any) -> None:
+    rc, attempts, sleeps = _sub_issue_fixture(monkeypatch, read_stdout='[{"number":2}]')
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "SUB_ISSUE_ADDED=true" in out
+    assert attempts == 1
+    assert not sleeps
+
+
+def test_add_sub_issue_422_absent_relation_fails_fast(monkeypatch: Any, capsys: Any) -> None:
+    rc, attempts, sleeps = _sub_issue_fixture(monkeypatch, read_stdout='[{"number":3}]')
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SUB_ISSUE_FAILED=true" in out
+    assert "Sub issue may only have one parent" in out
+    assert "all 3 attempts failed" not in out
+    assert attempts == 1
+    assert not sleeps
+
+
+def test_add_sub_issue_read_back_transport_failure_fails_closed(monkeypatch: Any, capsys: Any) -> None:
+    rc, attempts, sleeps = _sub_issue_fixture(monkeypatch, read_stdout="", read_returncode=1)
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SUB_ISSUE_FAILED=true" in out
+    assert attempts == 1
+    assert not sleeps
+
+
+def test_sub_issue_read_back_accepts_paginated_pages(monkeypatch: Any) -> None:
+    def read_sub_issues(_runner: object, _parent: str, *, repo: str) -> proc.CommandResult:
+        assert repo == "o/r"
+        return _result(["gh", "api"], stdout='[{"number":1}]\n[{"number":2}]\n')  # lint-gh-argv-literal: ok fixture assertion
+
+    monkeypatch.setattr(issue_create.gh, "issue_sub_issues_read", read_sub_issues)
+    assert issue_create._sub_issue_read_back(parent="7", child="2", repo="o/r")  # pyright: ignore[reportPrivateUsage]  # read-back helper has no public alias
+
+
+def test_blocked_by_read_back_accepts_paginated_pages(monkeypatch: Any) -> None:
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        assert "--paginate" in argv
+        return _result(argv, stdout='[{"number":1}]\n[{"number":2}]\n')
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    assert issue_create._blocked_by_read_back(client="7", blocker="2", repo="o/r")  # pyright: ignore[reportPrivateUsage]  # read-back helper has no public alias
 
 
 def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
