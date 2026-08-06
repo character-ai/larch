@@ -527,13 +527,6 @@ exclude = [
   # shell callsites via source directives only, which agent-lint does not follow.
   # Python retry callers use python/retry.py instead.
   # python3 python/cli.py implement-finalize and skills/implement/scripts/flush-execution-issues.sh.
-  # python/cli.py agent cursor-auth-preflight is a small executable that prints the
-  # conditional --api-key argv elements for runtime skill markdown blocks.
-  # Referenced from skills/shared/voting-protocol.md,
-  # skills/research/references/validation-phase.md via process substitution
-  # (`< <("${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-auth-preflight")`); agent-lint
-  # does not follow markdown-template invocations.
-  "python/cli.py agent cursor-auth-preflight",
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.

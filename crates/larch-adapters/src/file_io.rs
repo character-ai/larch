@@ -410,7 +410,7 @@ fn wire_error(path: &Path, error: &KvError) -> FileIoError {
     FileIoError::new(FileIoErrorKind::InvalidWireFormat, path, error.to_string())
 }
 
-fn io_error(path: &Path, error: &io::Error) -> FileIoError {
+pub fn io_error(path: &Path, error: &io::Error) -> FileIoError {
     FileIoError::new(FileIoErrorKind::Io, path, error.to_string())
 }
 
@@ -418,7 +418,7 @@ fn durability_error(path: &Path, error: &io::Error) -> FileIoError {
     FileIoError::new(FileIoErrorKind::Durability, path, error.to_string())
 }
 
-fn path_safety_error(path: &Path, error: &PathSafetyError) -> FileIoError {
+pub fn path_safety_error(path: &Path, error: &PathSafetyError) -> FileIoError {
     let kind = match error.kind() {
         PathSafetyErrorKind::Symlink => FileIoErrorKind::Symlink,
         PathSafetyErrorKind::NotDirectory | PathSafetyErrorKind::NotRegularFile => {

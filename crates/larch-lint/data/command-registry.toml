@@ -94,11 +94,13 @@ verb = "cursor-auth-preflight"
 python_module = "larch.agents.agents"
 python_function = "cursor_auth_preflight_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8106
+clean_install_test = "clean-install-agent-cursor-auth-preflight"
 
 [[commands]]
 domain = "agent"
@@ -8068,13 +8070,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = [
-    "dirty-tree *",
-    "git phantom-probe",
-    "progress install-statusline",
-    "push branch",
-    "push checkpoint-probe",
-]
+rust = ["dirty-tree *", "git phantom-probe", "progress install-statusline", "push branch", "push checkpoint-probe"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -9189,8 +9185,8 @@ rust = ["session cleanup-tmpdir"]
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = []
+python = ["agent collect-results", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent cursor-auth-preflight"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"

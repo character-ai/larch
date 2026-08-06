@@ -21,7 +21,9 @@ export CURSOR_API_KEY="<your-key>"   # recommended for larch (env-only, determin
 cursor login                          # recreates the keychain entry interactively
 ```
 
-On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND no `cursor-user` / `cursor-access-token` keychain entry exists, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check and pre-read are strictly read-only. They do NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check and pre-read are no-ops (`CURSOR_API_KEY` is the only auth path).
+On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND the `cursor-user` / `cursor-access-token` keychain entry is missing or denies its read, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check and pre-read are strictly read-only. They do NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check and pre-read are no-ops (`CURSOR_API_KEY` is the only auth path).
+
+The standalone check is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent cursor-auth-preflight`. It exits `0` when Cursor can authenticate and `2` with the actionable message when it cannot. For the credential-handling boundary it enforces, see [Vendor credential preflight and the reviewer-probe cache](security/supply-chain-credentials-and-services.md#vendor-credential-preflight-and-the-reviewer-probe-cache).
 
 For the at-rest secret-persistence tradeoff (the API key appears in `.meta`
 `CMD_JSON` sidecars under the session tmpdir because the collector's

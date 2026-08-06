@@ -95,6 +95,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "compose-collector-failure-log",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-cursor-auth-preflight",
+        "agent",
+        "cursor-auth-preflight",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-gather-branch-context",
         "agent",
         "gather-branch-context",

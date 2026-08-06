@@ -210,6 +210,48 @@ least-privilege scopes and IAM permissions. Offline tests use local fixtures.
 Live ADC tests are ignored by default, require explicit opt-in, and do not render
 credential headers.
 
+### Vendor credential preflight and the reviewer-probe cache
+
+`agent cursor-auth-preflight` runs in Rust through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. It proves that Cursor can
+authenticate before a Cursor lane starts, so Cursor never fails in-process and
+returns a canned, un-reviewed response. A usable `CURSOR_API_KEY` clears the
+preflight without any keychain access, and a non-Darwin host has no keychain to
+consult.
+
+On Darwin with no usable `CURSOR_API_KEY`, the preflight reads the
+`cursor-user` / `cursor-access-token` keychain item with `security
+find-generic-password -w`. The read is bounded, read-only, and runs under the
+shared vendor startup lock with a fixed attempt budget. `security` is a closed
+`HostUtilityProgram` allowlist entry, so the read uses the one approved
+external-process layer rather than a second spawn path. Reading the secret,
+not testing for its existence, is required: an access-controlled item can pass
+an existence check and still deny the read.
+
+The Rust preflight never mutates its own process environment. A resolved token
+lives only inside `CursorCredential`, which redacts itself in `Debug`
+rendering, exposes its value through one explicit accessor, and rejects a value
+carrying an embedded newline or carriage return so it cannot splice a second
+assignment into a child environment. The credential reaches a vendor only as a
+typed `CURSOR_API_KEY` child override on an approved process request. It never
+enters stdout, an operator message, a probe stamp, or a gate-detail artifact.
+
+The reviewer-probe cache stores verdicts and Codex gate details under one
+user-scoped temporary root with mode `0600`. Every entry is confined before
+use, and symlinked or non-regular entries are refused rather than followed. A
+positive verdict and a failing verdict carry separate lifetimes, so caching a
+failure can be disabled independently. Concurrent Codex probes serialize on a
+per-identity exclusive lock, so exactly one probe runs and every waiter then
+observes the same published gate detail. A cached gate detail is re-derived
+against the canonical gate renderer on read, so a hand-edited or corrupted
+cache entry cannot inject operator-facing text into the degraded-tools
+explanation.
+
+Isolation for a Cursor probe is owned by `CursorProbeSession`, which holds the
+private configuration directory and the resolved credential together. Both are
+released when the session value is dropped, so success, failure, timeout, and
+cancellation take one cleanup path.
+
 ### Object storage credentials and transport
 
 Cloud Storage uses the larch-owned `ObjectStore` port, the official Rust client,

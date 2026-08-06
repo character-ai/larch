@@ -3,8 +3,10 @@
 //! Adapter parity for issue #8103. No command cutover and no launch lifecycle.
 
 mod argv;
+mod auth;
 mod envelope;
 mod lifecycle;
+mod probe_cache;
 mod registry;
 mod review;
 mod session;
@@ -16,6 +18,12 @@ pub use argv::{
     build_cursor_create_chat_argv, build_cursor_resume_argv, codex_auth_args,
     codex_env_auth_from_key, extract_model_from_argv, trust_config_arg,
 };
+pub use auth::{
+    CURSOR_AUTH_MAX_ATTEMPTS, CURSOR_AUTH_RETRY_DELAY, CURSOR_KEYCHAIN_ACCOUNT,
+    CURSOR_KEYCHAIN_SERVICE, CURSOR_PREFLIGHT_AUTH_RC, CursorCredential, HostPlatform,
+    NO_OPEN_BROWSER_ON, cursor_child_environment, cursor_keychain_arguments,
+    cursor_preflight_failure_message, cursor_preflight_refusal, keychain_credential,
+};
 pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
 pub use lifecycle::{
     CursorStallRecord, LaunchTimingRecord, TimeoutStallRecord, TimingTaskKind, TimingTaskKindError,
@@ -24,6 +32,14 @@ pub use lifecycle::{
     build_check_budget_argv, build_record_launch_timing_argv, check_token_budget_cap,
     elapsed_minute_message, render_cursor_stall_json, render_timeout_stall_json, run_vendor_launch,
     run_with_vendor_retries,
+};
+pub use probe_cache::{
+    CODEX_PROBE_GATE_IMMEDIATE_TTL, CodexProbeAttempt, CodexProbeLoop, CursorProbeLoop,
+    PROBE_AUTH_RETRY_RC, PROBE_NO_RETRY_RC, PROBE_TRANSIENT_RC, ProbeConclusion, ProbeRetryLimits,
+    ProbeStep, ProbeTtl, codex_gate_detail_file_name, codex_probe_identity,
+    codex_probe_update_lock_file_name, fresh_probe_verdict, parse_codex_gate_detail,
+    probe_cache_user, probe_stamp_contents, probe_stamp_file_name, render_codex_gate_detail,
+    transient_probe_retries,
 };
 pub use registry::{
     CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, REQUIRED_CAPABILITIES,

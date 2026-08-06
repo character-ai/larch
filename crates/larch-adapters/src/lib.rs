@@ -14,6 +14,7 @@ mod process_identity;
 pub mod retry;
 pub mod runtime;
 pub mod upgrade_larch;
+pub mod vendor_auth;
 pub mod vendor_diagnostics;
 pub mod vendor_lifecycle;
 
