@@ -24,6 +24,7 @@ pub mod bgjob_registry;
 mod file_io;
 mod filesystem;
 pub mod progress_state;
+pub mod run_log_manifest;
 mod session_env;
 mod session_lifecycle;
 pub mod statusline;

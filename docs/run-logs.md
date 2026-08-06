@@ -173,7 +173,7 @@ larch-logs/                 # session staging only
       checks-digest-sizes.tsv
 ```
 
-`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. Universal lifecycle schema version 3 records publication mode and resolution identity. The underlying run-log manifest schema remains version 2 and keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths.
+`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. Universal lifecycle schema version 3 records publication mode and resolution identity. The underlying run-log manifest schema remains version 2 and keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths. `scripts/larch.sh run-log manifest` is the single atomic schema-v2 manifest mutation path; see [Run-log CLI contract](run-log-cli.md#rust-owned-manifest-updates).
 
 Bgjob result envs and daemon logs are session-local routing inputs before
 run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and
@@ -513,7 +513,7 @@ authoritative operator-facing outcome for that degraded round.
 
 ## manifest.json
 
-Created by `python/cli.py run-log init` during **Step 0** when the tracking issue is first resolved (tracking adoption / post-resolution). Updated by `run-log manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the larch plugin version (`larch_version`), the main-agent model and reasoning effort (`model_roster.main` and `effort`, resolved at init from the active session transcript and `CLAUDE_CODE_*` / `CLAUDE_*` env, falling back to `unknown`), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `docs/run-log-cli.md`.
+Created by `python/cli.py run-log init` during **Step 0** when the tracking issue is first resolved (tracking adoption / post-resolution). Updated by `scripts/larch.sh run-log manifest` throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the larch plugin version (`larch_version`), the main-agent model and reasoning effort (`model_roster.main` and `effort`, resolved at init from the active session transcript and `CLAUDE_CODE_*` / `CLAUDE_*` env, falling back to `unknown`), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `docs/run-log-cli.md`.
 
 `model_roster.main` is the orchestrator (main-agent) model id, not the implementer coder. It is captured once at run-log init (the newest session transcript at that point is the orchestrator session, before subagents spawn) via `tokens.read_main_model`, then preserved across `run-log manifest` merges. Historical runs predating this capture carry `"unknown"`.
 

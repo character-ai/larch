@@ -766,18 +766,6 @@ def _write_manifest_v2(*, path: Path, data: dict[str, Any]) -> None:
     _atomic_write(path=path, content=json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _parse_manifest_scalar(raw: str) -> Any:
-    if raw == "null":
-        return None
-    if raw == "true":
-        return True
-    if raw == "false":
-        return False
-    if re.fullmatch(r"-?[0-9]+", raw):
-        return int(raw)
-    return raw
-
-
 def _update_manifest_v2(*, path: Path, updates: dict[str, Any]) -> dict[str, Any]:
     data = _read_manifest_v2(path)
     manifest = Manifest.from_json(data)
@@ -1197,7 +1185,6 @@ __all__ = [
     "_manifest_step9a1_explicitly_skipped",
     "_manifest_steps_ran_nonempty_without_step9a1",
     "_now_utc",
-    "_parse_manifest_scalar",
     "_pre_push_probe",
     "_read_manifest_v2",
     "_read_session_env_key",

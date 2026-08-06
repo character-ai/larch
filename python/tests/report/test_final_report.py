@@ -16,7 +16,7 @@ import pytest
 from larch.core import config
 from larch.errors import ShipError
 from larch.implement import scope_disposition
-from larch.report import final_report, progress_report, tokens
+from larch.report import final_report, progress_report, run_log_manifest, tokens
 
 from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
 
@@ -68,6 +68,36 @@ def _stub_cost_and_assessment(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", no_assess)
+    original_run = final_report.subprocess.run
+
+    def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "run-log" not in argv or "manifest" not in argv:
+            return original_run(argv, **kwargs)  # type: ignore[arg-type]
+        root = Path(argv[argv.index("--log-root") + 1])
+        skill = argv[argv.index("--skill") + 1]
+        run_id = argv[argv.index("--run-id") + 1]
+        updates: dict[str, object] = {}
+        for index, value in enumerate(argv):
+            if value != "--field":
+                continue
+            key, raw = argv[index + 1].split("=", 1)
+            if raw == "true":
+                updates[key] = True
+            elif raw == "false":
+                updates[key] = False
+            elif raw == "null":
+                updates[key] = None
+            elif raw.lstrip("-").isdigit():
+                updates[key] = int(raw)
+            else:
+                updates[key] = raw
+        run_log_manifest._update_manifest_v2(  # pyright: ignore[reportPrivateUsage]  # unit-test boundary double; CLI parity is covered in Rust.
+            path=root / skill / run_id / "manifest.json",
+            updates=updates,
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", run_manifest_in_process)
 
 
 def _write_round_meta(round_dir: Path, *, reviewers: int) -> None:
@@ -1899,10 +1929,14 @@ def test_write_final_report_manifest_stamp_and_failure(
     )
     (run_dir / "final-summary.md").write_text("prior\n", encoding="utf-8")
     captured: list[list[str]] = []
+    environments: list[dict[str, str]] = []
 
-    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if "run-log" in argv and "manifest" in argv:
             captured.append(list(argv))
+            environment = kwargs.get("env")
+            if isinstance(environment, dict):
+                environments.append(environment)
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
@@ -1912,7 +1946,11 @@ def test_write_final_report_manifest_stamp_and_failure(
     rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=False)
     assert (rc, url, err) == (0, "", "")
     assert captured
+    assert environments[0][config.ENV_CLAUDE_PLUGIN_ROOT] == str(
+        Path(final_report.__file__).resolve().parents[3]
+    )
     argv = captured[0]
+    assert argv[0].endswith("scripts/larch.sh")
     assert "run-log" in argv
     assert "manifest" in argv
     assert "--log-root" in argv

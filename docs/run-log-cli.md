@@ -1,6 +1,8 @@
-# Run-log Python CLI contract
+# Run-log CLI contract
 
-`python3 python/cli.py run-log ...` owns run-log staging, validation, and publication.
+`python3 python/cli.py run-log ...` owns the remaining Python run-log staging,
+validation, and publication verbs. `scripts/larch.sh run-log manifest ...` owns
+durable manifest updates.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -29,14 +31,13 @@ secret-survival failure blocks publication, but a clean pattern scan does not
 make a log public-safe. See the canonical
 [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#redaction-invariants).
 
-## Verbs
+## Remaining Python-owned verbs
 
 - `run-log init`
 - `run-log write`
 - `run-log write-round`
 - `run-log append`
 - `run-log exists`
-- `run-log manifest`
 - `run-log checkpoint`
 - `run-log refresh`
 - `run-log prepare-terminal-snapshot`
@@ -55,6 +56,21 @@ make a log public-safe. See the canonical
 - `run-log lifecycle-failure`
 - `run-log lifecycle-cancel`
 - `run-log lifecycle-early-return`
+
+## Rust-owned manifest updates
+
+`scripts/larch.sh run-log manifest --log-root <root> --skill <skill> --run-id
+<run-id> --field <key=value>` preserves the legacy argument and `LOG_*`
+envelope contract. It accepts existing schema-v2 manifests, rejects immutable
+identity fields, and applies status, step, reserved, and extension updates.
+Historical v1 manifests remain readable through the shared reader but are not
+write targets; unknown or malformed versions fail closed without rewriting the
+file.
+
+`larch_adapters::run_log_manifest::ManifestStore` is the only durable
+manifest writer. It publishes through `larch_adapters::atomic_write_utf8_in`,
+which writes and syncs a same-directory temporary file, atomically renames it,
+then syncs the containing directory.
 
 The archive lifecycle verbs use their own machine envelopes. Provider failures
 use the normalized error set in the storage contract. `run-log sync`

@@ -1,17 +1,21 @@
 //! `run-log` command boundary.
 
 use larch_adapters::git::GixRepository;
+use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
 use larch_adapters::runtime::LarchRuntime;
 use larch_core::{
-    ConfigKey, ConfigScope, ObjectStore, ObjectStoreError, RepositoryRead,
+    ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
+    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
     StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage,
     format_preflight_stdout, repository_leaf_from_remote, resolve_run_log_storage,
     validate_run_log_slug,
 };
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::HashMap,
     env,
     ffi::OsString,
+    fs,
     io::Write as _,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
@@ -42,6 +46,65 @@ pub fn validate_run_id(arguments: &[OsString]) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+    }
+}
+
+/// Run the Rust-owned `run-log manifest` compatibility command.
+#[must_use]
+pub fn manifest(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_manifest(arguments) {
+        Ok(parsed) => parsed,
+        Err(ManifestParseError::Arguments(message)) => {
+            emit_manifest_argument_error(&message);
+            return manifest_failure("invalid manifest arguments");
+        }
+    };
+    let skill = match RunLogSlug::parse(&parsed.skill) {
+        Ok(skill) => skill,
+        Err(_error) => {
+            eprintln!("invalid skill: {}", parsed.skill);
+            return manifest_failure("invalid manifest arguments");
+        }
+    };
+    let run_id = match RunLogSlug::parse(&parsed.run_id) {
+        Ok(run_id) => run_id,
+        Err(_error) => {
+            eprintln!("invalid run-id: {}", parsed.run_id);
+            return manifest_failure("invalid manifest arguments");
+        }
+    };
+    let log_root = match resolve_log_root(&parsed.log_root) {
+        Ok(log_root) => log_root,
+        Err(message) => {
+            eprintln!("{message}");
+            return manifest_failure("invalid manifest arguments");
+        }
+    };
+    let updates = match parse_manifest_updates(&parsed.fields) {
+        Ok(updates) => updates,
+        Err(message) => return manifest_failure(&message),
+    };
+    let layout = RunLogLayout::new(log_root.clone(), skill, run_id);
+    let path = layout.manifest_path();
+    let store = match ManifestStore::open(&log_root) {
+        Ok(store) => store,
+        Err(ManifestStoreError::PathSafety(error))
+            if matches!(
+                error.kind(),
+                larch_adapters::PathSafetyErrorKind::Missing
+                    | larch_adapters::PathSafetyErrorKind::NotDirectory
+            ) =>
+        {
+            return manifest_failure(&format!("manifest not found: {}", path.display()));
+        }
+        Err(error) => return manifest_failure(&error.to_string()),
+    };
+    match store.update(&layout, &updates, &utc_now()) {
+        Ok(written) => {
+            emit_log_envelope(Some(&written), true, false, "");
+            ExitCode::SUCCESS
+        }
+        Err(error) => manifest_failure(&error.to_string()),
     }
 }
 
@@ -284,6 +347,208 @@ enum ParseOutcome {
     Help,
     Error(String),
     Ok(String),
+}
+
+struct ManifestArguments {
+    log_root: String,
+    skill: String,
+    run_id: String,
+    fields: Vec<String>,
+}
+
+enum ManifestParseError {
+    Arguments(String),
+}
+
+fn parse_manifest(arguments: &[OsString]) -> Result<ManifestArguments, ManifestParseError> {
+    let mut log_root = String::new();
+    let mut skill: Option<String> = None;
+    let mut run_id: Option<String> = None;
+    let mut fields = Vec::new();
+    let mut pending = arguments.iter();
+    while let Some(raw) = pending.next() {
+        let Some(flag) = raw.to_str() else {
+            return Err(ManifestParseError::Arguments(format!(
+                "unrecognized arguments: {}",
+                raw.to_string_lossy()
+            )));
+        };
+        let (name, value) = if let Some(value) = flag.strip_prefix("--log-root=") {
+            ("--log-root", value)
+        } else if let Some(value) = flag.strip_prefix("--skill=") {
+            ("--skill", value)
+        } else if let Some(value) = flag.strip_prefix("--run-id=") {
+            ("--run-id", value)
+        } else if let Some(value) = flag.strip_prefix("--field=") {
+            ("--field", value)
+        } else if matches!(flag, "--log-root" | "--skill" | "--run-id" | "--field") {
+            let Some(next) = pending.next() else {
+                return Err(ManifestParseError::Arguments(format!(
+                    "argument {flag}: expected one argument"
+                )));
+            };
+            let Some(value) = next.to_str() else {
+                return Err(ManifestParseError::Arguments(format!(
+                    "argument {flag}: expected one argument"
+                )));
+            };
+            (flag, value)
+        } else {
+            return Err(ManifestParseError::Arguments(format!(
+                "unrecognized arguments: {flag}"
+            )));
+        };
+        match name {
+            "--log-root" => value.clone_into(&mut log_root),
+            "--skill" => skill = Some(value.to_owned()),
+            "--run-id" => run_id = Some(value.to_owned()),
+            "--field" => fields.push(value.to_owned()),
+            _ => unreachable!("manifest parser only recognizes fixed flags"),
+        }
+    }
+    let mut missing = Vec::new();
+    if skill.is_none() {
+        missing.push("--skill");
+    }
+    if run_id.is_none() {
+        missing.push("--run-id");
+    }
+    if !missing.is_empty() {
+        return Err(ManifestParseError::Arguments(format!(
+            "the following arguments are required: {}",
+            missing.join(", ")
+        )));
+    }
+    let skill = skill.expect("required skill is checked above");
+    let run_id = run_id.expect("required run id is checked above");
+    Ok(ManifestArguments {
+        log_root,
+        skill,
+        run_id,
+        fields,
+    })
+}
+
+fn parse_manifest_updates(fields: &[String]) -> Result<Vec<ManifestUpdate>, String> {
+    let options = ParseOptions {
+        malformed_lines: MalformedLinePolicy::Reject,
+        ..ParseOptions::legacy()
+    };
+    fields
+        .iter()
+        .map(|assignment| {
+            let document = KvDocument::parse(assignment, options)
+                .map_err(|_error| format!("invalid field assignment: {assignment}"))?;
+            let [row] = document.rows() else {
+                return Err(format!("invalid field assignment: {assignment}"));
+            };
+            Ok((row.key().to_owned(), parse_manifest_scalar(row.value())))
+        })
+        .collect()
+}
+
+fn parse_manifest_scalar(raw: &str) -> serde_json::Value {
+    match raw {
+        "null" => serde_json::Value::Null,
+        "true" => serde_json::Value::Bool(true),
+        "false" => serde_json::Value::Bool(false),
+        _ if manifest_integer(raw) => {
+            let negative = raw.starts_with('-');
+            let digits = raw.strip_prefix('-').unwrap_or(raw).trim_start_matches('0');
+            let normalized = if digits.is_empty() {
+                "0".to_owned()
+            } else if negative {
+                format!("-{digits}")
+            } else {
+                digits.to_owned()
+            };
+            serde_json::from_str(&normalized)
+                .unwrap_or_else(|_error| serde_json::Value::String(raw.to_owned()))
+        }
+        _ => serde_json::Value::String(raw.to_owned()),
+    }
+}
+
+fn manifest_integer(value: &str) -> bool {
+    let digits = value.strip_prefix('-').unwrap_or(value);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn resolve_log_root(raw: &str) -> Result<PathBuf, String> {
+    let raw = if raw.is_empty() {
+        env::var("LARCH_LOG_ROOT").unwrap_or_default()
+    } else {
+        raw.to_owned()
+    };
+    let temporary_root = env::var("IMPLEMENT_TMPDIR")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if raw.is_empty() {
+        return temporary_root
+            .map(|root| root.join("larch-logs"))
+            .ok_or_else(|| {
+                "--log-root is required (or export LARCH_LOG_ROOT for test isolation)".to_owned()
+            });
+    }
+    let path = PathBuf::from(&raw);
+    if let Some(temporary_root) = temporary_root {
+        if !temporary_root.is_absolute() {
+            return Err("IMPLEMENT_TMPDIR must be an absolute path".to_owned());
+        }
+        let rebased = if path.is_absolute() {
+            if path.starts_with(&temporary_root) {
+                path
+            } else {
+                let stripped = path.strip_prefix(Path::new("/")).unwrap_or(path.as_path());
+                temporary_root.join(stripped)
+            }
+        } else {
+            temporary_root.join(path)
+        };
+        if !larch_adapters::path_under(&rebased, &temporary_root) {
+            return Err("--log-root escapes IMPLEMENT_TMPDIR".to_owned());
+        }
+        return Ok(rebased);
+    }
+    if !path.is_absolute() {
+        return Err(format!("--log-root must be an absolute path: {raw}"));
+    }
+    Ok(path)
+}
+
+fn emit_manifest_argument_error(message: &str) {
+    eprintln!(
+        "usage: cli.py run-log manifest [--log-root LOG_ROOT] --skill SKILL --run-id RUN_ID [--field FIELD]"
+    );
+    eprintln!("cli.py run-log manifest: error: {message}");
+}
+
+fn manifest_failure(message: &str) -> ExitCode {
+    emit_log_envelope(None, false, false, message);
+    ExitCode::FAILURE
+}
+
+fn emit_log_envelope(path: Option<&Path>, written: bool, unchanged: bool, error: &str) {
+    let bytes = path
+        .and_then(|path| fs::read(path).ok())
+        .unwrap_or_default();
+    let size = path
+        .and_then(|path| fs::metadata(path).ok())
+        .map_or(0, |metadata| metadata.len());
+    let sha256 = path.map_or_else(String::new, |_| format!("{:x}", Sha256::digest(bytes)));
+    println!("LOG_WRITTEN={}", if written { "true" } else { "false" });
+    println!(
+        "LOG_PATH={}",
+        path.map_or_else(String::new, |path| path.display().to_string())
+    );
+    println!("BYTES={size}");
+    println!("SHA256={sha256}");
+    println!("COMMIT_SHA=");
+    println!("UNCHANGED={}", if unchanged { "true" } else { "false" });
+    if !error.is_empty() {
+        println!("ERROR={error}");
+    }
 }
 
 fn parse_validate_run_id(arguments: &[OsString]) -> ParseOutcome {

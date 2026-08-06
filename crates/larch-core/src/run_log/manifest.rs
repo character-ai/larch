@@ -1,6 +1,11 @@
 //! Versioned run-log manifest reader.
 
-use std::{collections::BTreeMap, error::Error, fmt, path::Path};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    fmt::{self, Write as _},
+    path::Path,
+};
 
 use serde_json::Value;
 
@@ -31,6 +36,97 @@ const V2_CORE_KEYS: &[&str] = &[
     "started_at",
     "updated_at",
 ];
+
+const MANIFEST_IMMUTABLE_KEYS: &[&str] = &[
+    "schema_version",
+    "skill",
+    "run_id",
+    "started_at",
+    "operator_cwd",
+    "operator_repo_root",
+    "parent_skill",
+    "parent_run_id",
+];
+
+const V2_EXTRA_PROMOTABLE_RESERVED_KEYS: &[&str] =
+    &["stalled_at_step", "pr_number", "issue_number"];
+
+/// Input values for synthesizing a current v2 run-log manifest.
+#[derive(Clone, Debug)]
+pub struct ManifestV2Seed {
+    /// Validated skill slug selected by the caller.
+    pub skill: String,
+    /// Validated run id selected by the caller.
+    pub run_id: String,
+    /// RFC3339 UTC timestamp used for both creation and update time.
+    pub timestamp: String,
+    /// Installed larch version recorded in the manifest.
+    pub larch_version: String,
+    /// Main orchestrator model recorded in the manifest.
+    pub main_model: String,
+    /// Requested effort level recorded in the manifest.
+    pub effort: String,
+    /// Initial step values.
+    pub steps_ran: BTreeMap<String, Value>,
+    /// Caller-supplied extension values, matching Python's final `data.update`.
+    pub extra: BTreeMap<String, Value>,
+}
+
+/// A version-aware run-log manifest writer model.
+///
+/// This model accepts only v2 data for mutation. [`ManifestRecord`] remains
+/// responsible for recognizing historical v1 manifests so readers retain their
+/// compatibility contract without allowing an accidental writer downgrade.
+#[derive(Clone, Debug)]
+pub struct ManifestDocument {
+    data: serde_json::Map<String, Value>,
+}
+
+/// A manifest update in the caller's original argument order.
+pub type ManifestUpdate = (String, Value);
+
+/// Why manifest construction or mutation could not proceed.
+#[derive(Clone, Debug)]
+pub enum ManifestWriteError {
+    /// The shared versioned reader rejected the source bytes or shape.
+    Read(ManifestReadError),
+    /// The source was a recognized historical version that is read-only here.
+    UnsupportedWriteVersion(ManifestFormatVersion),
+    /// A caller tried to change a durable identity field.
+    ImmutableField(Box<str>),
+    /// Parsing unexpectedly failed after the shared reader accepted the bytes.
+    ParseAfterValidation(Box<str>),
+}
+
+impl fmt::Display for ManifestWriteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read(error) => error.fmt(formatter),
+            Self::UnsupportedWriteVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported manifest write version: {}",
+                    version.as_str()
+                )
+            }
+            Self::ImmutableField(key) => write!(formatter, "immutable-field:{key}"),
+            Self::ParseAfterValidation(detail) => {
+                write!(formatter, "invalid-json-after-validation: {detail}")
+            }
+        }
+    }
+}
+
+impl Error for ManifestWriteError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(error) => Some(error),
+            Self::UnsupportedWriteVersion(_)
+            | Self::ImmutableField(_)
+            | Self::ParseAfterValidation(_) => None,
+        }
+    }
+}
 
 /// Detected historical manifest wire format.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -120,6 +216,328 @@ impl fmt::Display for ManifestReadError {
 }
 
 impl Error for ManifestReadError {}
+
+impl ManifestDocument {
+    /// Synthesize a current v2 manifest using Python-compatible defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestWriteError`] when caller extensions replace the v2
+    /// version marker with an unsupported shape.
+    pub fn synthesize_v2(seed: ManifestV2Seed) -> Result<Self, ManifestWriteError> {
+        let mut data = serde_json::Map::new();
+        data.insert(
+            "schema_version".to_owned(),
+            Value::from(MANIFEST_SCHEMA_VERSION),
+        );
+        data.insert("skill".to_owned(), Value::String(seed.skill));
+        data.insert("run_id".to_owned(), Value::String(seed.run_id));
+        data.insert(
+            "operator_cwd".to_owned(),
+            Value::String("<OPERATOR_CWD>".to_owned()),
+        );
+        data.insert(
+            "operator_repo_root".to_owned(),
+            Value::String("<REPO_ROOT>".to_owned()),
+        );
+        data.insert("parent_skill".to_owned(), Value::Null);
+        data.insert("parent_run_id".to_owned(), Value::Null);
+        data.insert("issue_number".to_owned(), Value::Null);
+        data.insert(
+            "larch_version".to_owned(),
+            Value::String(seed.larch_version),
+        );
+        let mut model_roster = serde_json::Map::new();
+        model_roster.insert("main".to_owned(), Value::String(seed.main_model));
+        data.insert("model_roster".to_owned(), Value::Object(model_roster));
+        data.insert("effort".to_owned(), Value::String(seed.effort));
+        data.insert(
+            "started_at".to_owned(),
+            Value::String(seed.timestamp.clone()),
+        );
+        data.insert("updated_at".to_owned(), Value::String(seed.timestamp));
+        data.insert("attempt".to_owned(), Value::from(1));
+        data.insert("superseded_by".to_owned(), Value::Null);
+        data.insert("stalled_at_step".to_owned(), Value::Null);
+        data.insert(
+            "steps_ran".to_owned(),
+            Value::Object(seed.steps_ran.into_iter().collect()),
+        );
+        data.insert("flags".to_owned(), Value::Object(serde_json::Map::new()));
+        for (key, value) in seed.extra {
+            data.insert(key, value);
+        }
+        Self::from_value(Value::Object(data))
+    }
+
+    /// Parse and validate source bytes before making them mutable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestWriteError`] when the shared reader rejects bytes or
+    /// when the detected version is not v2.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ManifestWriteError> {
+        let record = ManifestRecord::parse_bytes(bytes).map_err(Self::read_error)?;
+        let value = serde_json::from_slice(bytes).map_err(|error| {
+            ManifestWriteError::ParseAfterValidation(error.to_string().into_boxed_str())
+        })?;
+        Self::from_record(&record, value)
+    }
+
+    /// Parse an already-decoded value through the shared versioned reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestWriteError`] when the value is malformed, historical,
+    /// or uses an unknown version marker.
+    pub fn from_value(value: Value) -> Result<Self, ManifestWriteError> {
+        let record = ManifestRecord::parse_value(value.clone()).map_err(Self::read_error)?;
+        Self::from_record(&record, value)
+    }
+
+    /// Apply ordered updates and stamp a caller-provided UTC update timestamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestWriteError::ImmutableField`] without changing this
+    /// document when an immutable identity field appears in `updates`.
+    pub fn apply_updates(
+        &mut self,
+        updates: &[ManifestUpdate],
+        updated_at: impl Into<String>,
+    ) -> Result<(), ManifestWriteError> {
+        if let Some((key, _value)) = updates
+            .iter()
+            .find(|(key, _value)| MANIFEST_IMMUTABLE_KEYS.contains(&key.as_str()))
+        {
+            return Err(ManifestWriteError::ImmutableField(
+                key.clone().into_boxed_str(),
+            ));
+        }
+
+        let mut steps = self.steps_ran();
+        let mut reserved = self.reserved();
+        let mut extra = self.extra();
+        let mut status = self
+            .data
+            .get("status")
+            .map_or_else(|| "partial".to_owned(), python_string);
+
+        for (key, value) in updates {
+            if let Some(step) = key.strip_prefix("steps_ran.") {
+                steps.insert(step.to_owned(), value.clone());
+            } else if key == "steps_ran" {
+                if let Value::Object(value_steps) = value {
+                    for (step, step_value) in value_steps {
+                        steps.insert(step.clone(), step_value.clone());
+                    }
+                } else {
+                    extra.insert(key.clone(), value.clone());
+                }
+            } else if key == "status" {
+                status = python_string(value);
+            } else if V2_RESERVED_KEYS.contains(&key.as_str()) {
+                reserved.insert(key.clone(), value.clone());
+            } else {
+                extra.insert(key.clone(), value.clone());
+            }
+        }
+
+        let run_id = self
+            .data
+            .get("run_id")
+            .map_or_else(String::new, python_string);
+        let started_at = self
+            .data
+            .get("started_at")
+            .map_or_else(String::new, python_string);
+        let mut data = self.data.clone();
+        data.remove("version");
+        data.remove("created_at");
+        data.insert(
+            "schema_version".to_owned(),
+            Value::from(MANIFEST_SCHEMA_VERSION),
+        );
+        data.insert("status".to_owned(), Value::String(status));
+        data.insert("run_id".to_owned(), Value::String(run_id));
+        data.insert(
+            "steps_ran".to_owned(),
+            Value::Object(steps.into_iter().collect()),
+        );
+        data.insert("started_at".to_owned(), Value::String(started_at));
+        data.insert("updated_at".to_owned(), Value::String(updated_at.into()));
+        for (key, value) in reserved {
+            data.insert(key, value);
+        }
+        for (key, value) in extra {
+            if v2_emit_extra_excluded(&key) {
+                continue;
+            }
+            data.insert(key, value);
+        }
+        self.data = data;
+        Ok(())
+    }
+
+    /// Render byte-compatible Python `json.dumps(..., indent=2, sort_keys=True)` output.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an internally held JSON value cannot be serialized.
+    #[must_use]
+    pub fn canonical_json(&self) -> String {
+        let sorted = sorted_json(&Value::Object(self.data.clone()));
+        let rendered = serde_json::to_string_pretty(&sorted)
+            .expect("a JSON manifest document is always serializable");
+        ensure_ascii_json(&rendered) + "\n"
+    }
+
+    fn from_record(record: &ManifestRecord, value: Value) -> Result<Self, ManifestWriteError> {
+        if record.detected_version() != ManifestFormatVersion::V2 {
+            return Err(ManifestWriteError::UnsupportedWriteVersion(
+                record.detected_version(),
+            ));
+        }
+        let Value::Object(data) = value else {
+            return Err(ManifestWriteError::ParseAfterValidation(
+                "shared reader accepted a non-object manifest".into(),
+            ));
+        };
+        Ok(Self { data })
+    }
+
+    const fn read_error(error: ManifestReadError) -> ManifestWriteError {
+        ManifestWriteError::Read(error)
+    }
+
+    fn steps_ran(&self) -> BTreeMap<String, Value> {
+        self.data
+            .get("steps_ran")
+            .and_then(Value::as_object)
+            .map_or_else(BTreeMap::new, |steps| {
+                steps
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect()
+            })
+    }
+
+    fn reserved(&self) -> BTreeMap<String, Value> {
+        V2_RESERVED_KEYS
+            .iter()
+            .filter_map(|key| {
+                self.data
+                    .get(*key)
+                    .map(|value| ((*key).to_owned(), value.clone()))
+            })
+            .collect()
+    }
+
+    fn extra(&self) -> BTreeMap<String, Value> {
+        self.data
+            .iter()
+            .filter(|(key, _value)| {
+                !V2_CORE_KEYS.contains(&key.as_str()) && !V2_RESERVED_KEYS.contains(&key.as_str())
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect()
+    }
+}
+
+fn v2_emit_extra_excluded(key: &str) -> bool {
+    V2_CORE_KEYS.contains(&key)
+        || (V2_RESERVED_KEYS.contains(&key) && !V2_EXTRA_PROMOTABLE_RESERVED_KEYS.contains(&key))
+}
+
+fn python_string(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Null => "None".to_owned(),
+        Value::Bool(flag) => {
+            if *flag {
+                "True".to_owned()
+            } else {
+                "False".to_owned()
+            }
+        }
+        Value::Number(number) => number.to_string(),
+        Value::Array(_) | Value::Object(_) => python_repr(value),
+    }
+}
+
+fn python_repr(value: &Value) -> String {
+    match value {
+        Value::String(text) => python_repr_string(text),
+        Value::Null | Value::Bool(_) | Value::Number(_) => python_string(value),
+        Value::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(python_repr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Value::Object(values) => format!(
+            "{{{}}}",
+            values
+                .iter()
+                .map(|(key, value)| format!("{}: {}", python_repr_string(key), python_repr(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+fn python_repr_string(value: &str) -> String {
+    let mut output = String::from("'");
+    for character in value.chars() {
+        match character {
+            '\\' => output.push_str("\\\\"),
+            '\'' => output.push_str("\\'"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            '\u{08}' => output.push_str("\\x08"),
+            '\u{0C}' => output.push_str("\\x0c"),
+            control if control.is_control() => {
+                write!(output, "\\x{:02x}", control as u32)
+                    .expect("writing to a String cannot fail");
+            }
+            other => output.push(other),
+        }
+    }
+    output.push('\'');
+    output
+}
+
+fn ensure_ascii_json(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_ascii() {
+            output.push(character);
+            continue;
+        }
+        let mut units = [0; 2];
+        for unit in character.encode_utf16(&mut units) {
+            write!(output, "\\u{unit:04x}").expect("writing to a String cannot fail");
+        }
+    }
+    output
+}
+
+fn sorted_json(value: &Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.iter().map(sorted_json).collect()),
+        Value::Object(values) => {
+            let sorted: BTreeMap<String, Value> = values
+                .iter()
+                .map(|(key, value)| (key.clone(), sorted_json(value)))
+                .collect();
+            Value::Object(sorted.into_iter().collect())
+        }
+        scalar => scalar.clone(),
+    }
+}
 
 /// Read-only run-log manifest record with an explicit detected version.
 #[derive(Clone, Debug)]
@@ -334,7 +752,10 @@ fn string_field(map: &serde_json::Map<String, Value>, key: &str) -> Option<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{ManifestFormatVersion, ManifestReadErrorKind, ManifestRecord};
+    use super::{
+        ManifestDocument, ManifestFormatVersion, ManifestReadErrorKind, ManifestRecord,
+        ManifestUpdate, ManifestV2Seed, ManifestWriteError,
+    };
     use serde_json::json;
 
     #[test]
@@ -397,5 +818,131 @@ mod tests {
                 .reason(),
             "unknown-version"
         );
+    }
+
+    #[test]
+    fn synthesizes_byte_compatible_v2_json() {
+        let document = ManifestDocument::synthesize_v2(ManifestV2Seed {
+            skill: "implement".to_owned(),
+            run_id: "run-1".to_owned(),
+            timestamp: "2026-08-05T00:00:00Z".to_owned(),
+            larch_version: "56.2.2".to_owned(),
+            main_model: "gpt-5.6".to_owned(),
+            effort: "high".to_owned(),
+            steps_ran: std::iter::once(("step8".to_owned(), json!(true))).collect(),
+            extra: [
+                ("issue_number".to_owned(), json!(8072)),
+                ("z_extension".to_owned(), json!("snowman ☃")),
+            ]
+            .into_iter()
+            .collect(),
+        })
+        .expect("v2 seed should synthesize");
+
+        assert_eq!(
+            document.canonical_json(),
+            concat!(
+                "{\n",
+                "  \"attempt\": 1,\n",
+                "  \"effort\": \"high\",\n",
+                "  \"flags\": {},\n",
+                "  \"issue_number\": 8072,\n",
+                "  \"larch_version\": \"56.2.2\",\n",
+                "  \"model_roster\": {\n",
+                "    \"main\": \"gpt-5.6\"\n",
+                "  },\n",
+                "  \"operator_cwd\": \"<OPERATOR_CWD>\",\n",
+                "  \"operator_repo_root\": \"<REPO_ROOT>\",\n",
+                "  \"parent_run_id\": null,\n",
+                "  \"parent_skill\": null,\n",
+                "  \"run_id\": \"run-1\",\n",
+                "  \"schema_version\": 2,\n",
+                "  \"skill\": \"implement\",\n",
+                "  \"stalled_at_step\": null,\n",
+                "  \"started_at\": \"2026-08-05T00:00:00Z\",\n",
+                "  \"steps_ran\": {\n",
+                "    \"step8\": true\n",
+                "  },\n",
+                "  \"superseded_by\": null,\n",
+                "  \"updated_at\": \"2026-08-05T00:00:00Z\",\n",
+                "  \"z_extension\": \"snowman \\u2603\"\n",
+                "}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn updates_v2_fields_with_python_scalar_and_extra_rules() {
+        let mut document = ManifestDocument::from_value(json!({
+            "schema_version": 2,
+            "skill": "implement",
+            "run_id": "run-1",
+            "started_at": "t0",
+            "status": "partial",
+            "steps_ran": {"existing": false},
+            "updated_at": "old",
+            "operator_cwd": "cwd"
+        }))
+        .expect("v2 source should parse");
+        let updates: Vec<ManifestUpdate> = vec![
+            ("status".to_owned(), json!(true)),
+            ("steps_ran.step8".to_owned(), json!(null)),
+            ("pr_number".to_owned(), json!(17)),
+            ("updated_at".to_owned(), json!("ignored")),
+            ("z_extension".to_owned(), json!("🦀")),
+        ];
+
+        document
+            .apply_updates(&updates, "t1")
+            .expect("updates should apply");
+
+        assert_eq!(
+            document.canonical_json(),
+            concat!(
+                "{\n",
+                "  \"operator_cwd\": \"cwd\",\n",
+                "  \"pr_number\": 17,\n",
+                "  \"run_id\": \"run-1\",\n",
+                "  \"schema_version\": 2,\n",
+                "  \"skill\": \"implement\",\n",
+                "  \"started_at\": \"t0\",\n",
+                "  \"status\": \"True\",\n",
+                "  \"steps_ran\": {\n",
+                "    \"existing\": false,\n",
+                "    \"step8\": null\n",
+                "  },\n",
+                "  \"updated_at\": \"t1\",\n",
+                "  \"z_extension\": \"\\ud83e\\udd80\"\n",
+                "}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn refuses_immutable_historical_and_unknown_writes_without_mutation() {
+        let mut document = ManifestDocument::from_value(json!({
+            "schema_version": 2,
+            "run_id": "run-1",
+            "steps_ran": {}
+        }))
+        .expect("v2 source should parse");
+        let before = document.canonical_json();
+        let immutable = [("run_id".to_owned(), json!("other"))];
+
+        assert!(matches!(
+            document.apply_updates(&immutable, "t1"),
+            Err(ManifestWriteError::ImmutableField(key)) if key.as_ref() == "run_id"
+        ));
+        assert_eq!(document.canonical_json(), before);
+        assert!(matches!(
+            ManifestDocument::from_value(json!({"version": "1", "steps_ran": {}})),
+            Err(ManifestWriteError::UnsupportedWriteVersion(
+                ManifestFormatVersion::V1
+            ))
+        ));
+        assert!(matches!(
+            ManifestDocument::from_value(json!({"schema_version": 99, "steps_ran": {}})),
+            Err(ManifestWriteError::Read(error)) if error.reason() == "unknown-schema-version"
+        ));
     }
 }

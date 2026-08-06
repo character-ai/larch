@@ -230,6 +230,19 @@ pub fn atomic_write_utf8_in(
     create_parent: bool,
     mode: u32,
 ) -> Result<(), FileIoError> {
+    atomic_write_in_with(root, target, create_parent, mode, |file| {
+        file.write_all(text.as_bytes())
+    })
+}
+
+/// Testable rooted variant of [`atomic_write_utf8_in`].
+pub fn atomic_write_in_with(
+    root: &TemporaryRoot,
+    target: &Path,
+    create_parent: bool,
+    mode: u32,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> Result<(), FileIoError> {
     let joined = if target.is_absolute() {
         target.to_path_buf()
     } else {
@@ -245,7 +258,7 @@ pub fn atomic_write_utf8_in(
     let confined = root
         .confine(&joined, PathIntent::Write)
         .map_err(|error| path_safety_error(&joined, &error))?;
-    atomic_write_utf8(&confined, text, mode)
+    atomic_write_with(&confined, mode, write)
 }
 
 /// Rename a regular file over a same-directory destination.

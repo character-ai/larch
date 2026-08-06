@@ -120,6 +120,9 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum RunLogCommand {
+    /// Update one versioned run-log manifest with durable atomic publication.
+    #[command(name = "manifest", disable_help_flag = true)]
+    Manifest(RawCompatibilityArguments),
     /// Resolve storage configuration and run provider prefix preflight.
     #[command(name = "storage-preflight", disable_help_flag = true)]
     StoragePreflight(RawCompatibilityArguments),
@@ -789,6 +792,9 @@ fn run(
         }
         Domain::RunLog(RunLogCommand::StoragePreflight(arguments)) => {
             Ok(run_log_commands::storage_preflight(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Manifest(arguments)) => {
+            Ok(run_log_commands::manifest(&arguments.arguments))
         }
         Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
             Ok(run_log_commands::validate_run_id(&arguments.arguments))
