@@ -461,6 +461,12 @@ pub enum ChildEnvironment {
     ResearchTmpdir,
     ReviewTmpdir,
     SessionEnvPath,
+    /// Active implementation-session root passed only to a delegated larch verb.
+    ImplementTmpDir,
+    /// Active design-session root passed only to a delegated larch verb.
+    DesignTmpDir,
+    /// Claude transcript source path passed only to a delegated larch verb.
+    LarchClaudeSourceFile,
     GhConfigDir,
     XdgConfigHome,
 }
@@ -498,8 +504,8 @@ impl ChildEnvironment {
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
             Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
-            Self::DesignTmpdir => env::DESIGN_TMPDIR,
-            Self::ImplementTmpdir => env::IMPLEMENT_TMPDIR,
+            Self::DesignTmpdir | Self::DesignTmpDir => env::DESIGN_TMPDIR,
+            Self::ImplementTmpdir | Self::ImplementTmpDir => env::IMPLEMENT_TMPDIR,
             Self::LarchRenderCacheDir => env::LARCH_RENDER_CACHE_DIR,
             Self::LarchTokenLedger => env::LARCH_TOKEN_LEDGER,
             Self::LarchTokenSessionId => env::LARCH_TOKEN_SESSION_ID,
@@ -508,6 +514,7 @@ impl ChildEnvironment {
             Self::ResearchTmpdir => env::RESEARCH_TMPDIR,
             Self::ReviewTmpdir => env::REVIEW_TMPDIR,
             Self::SessionEnvPath => env::SESSION_ENV_PATH,
+            Self::LarchClaudeSourceFile => "LARCH_CLAUDE_SOURCE_FILE",
             Self::GhConfigDir => env::GH_CONFIG_DIR,
             Self::XdgConfigHome => env::XDG_CONFIG_HOME,
         }

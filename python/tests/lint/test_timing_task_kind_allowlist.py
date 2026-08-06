@@ -59,8 +59,8 @@ parser.add_argument("--timing-task-kind", default="new-kind")
 def test_non_python_surfaces_are_owned_by_rust(tmp_path: Path) -> None:
     markdown = "skills/example/SKILL.md"
     shell = "skills/example/scripts/launch.sh"
-    write(tmp_path / markdown, "python3 python/cli.py agent launch-review --timing-task-kind new-kind\n")
-    write(tmp_path / shell, "python3 python/cli.py agent launch-review --timing-task-kind new-kind\n")
+    write(tmp_path / markdown, "scripts/larch.sh agent launch-review --timing-task-kind new-kind\n")
+    write(tmp_path / shell, "scripts/larch.sh agent launch-review --timing-task-kind new-kind\n")
 
     found = allowlist.scan_files(tmp_path, [markdown, shell])
 

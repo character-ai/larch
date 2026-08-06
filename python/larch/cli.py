@@ -18,7 +18,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("agent", "dispatch-waterfall"): ("larch.agents.agent_waterfall", "dispatch_waterfall_main", False),
     ("agent", "dispatch-voters"): ("larch.agents.agent_voters", "dispatch_voters_main", False),
     ("status", "check"): ("larch.agents.agents", "status_check_main", False),
-    ("agent", "launch-review"): ("larch.agents.agents", "launch_review_main", False),
     ("agent", "launch-codex-ci"): ("larch.agents.agents", "launch_codex_ci_main", False),
     ("agent", "launch-codex-implement"): ("larch.agents.agents", "launch_codex_implement_main", False),
     ("agent", "launch-cursor-ci"): ("larch.agents.agents", "launch_cursor_ci_main", False),

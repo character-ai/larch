@@ -23,7 +23,6 @@ from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.agents import _run_external
 from larch.agents import _auth
 from larch.agents import _ci_launcher
-from larch.agents import _review_launcher
 from larch.agents import _failure_diag
 from larch.agents import _launch_failure
 from larch.agents import _types
@@ -714,28 +713,6 @@ def test_run_external_agent_cleans_stale_sidecars_and_supplied_streams(tmp_path:
     assert not paths.failure_diag.exists()
 
 
-def test_record_timing_wrappers_delegate_to_launch_timing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[str, str, float, Path, int]] = []
-
-    def fake_record(tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
-        calls.append((tool, task_kind, start_s, output, exit_code))
-
-    monkeypatch.setattr(_review_launcher, "_record_launch_timing", fake_record)
-    monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record)
-
-    output = tmp_path / "agent.out"
-    agents._review_record_timing(vendor="codex", task_kind="codex-review", start_s=12.0, output=output, exit_code=7)  # pylint: disable=protected-access
-    agents._record_implement_timing(tool="cursor", task_kind="cursor-implement", start=13.0, output=output, exit_code=8)  # pylint: disable=protected-access
-
-    assert calls == [
-        ("codex", "codex-review", 12.0, output, 7),
-        ("cursor", "cursor-implement", 13.0, output, 8),
-    ]
-
-
 def test_finalize_launch_runs_only_supplied_hooks_in_order(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
     paths = agents.LauncherPaths.from_output(output)
@@ -1395,68 +1372,6 @@ def test_cursor_preread_surfaces_failed_keychain_read(monkeypatch: pytest.Monkey
     assert "keychain -w read returned no token" in warnings[0]
 
 
-def test_cursor_postprocess_flags_canned_no_issues_as_degraded(tmp_path: Path) -> None:
-    # #5518: a bare no-issues sentinel from a slot that ingested ~nothing (input work at/below
-    # the floor) is a canned response and must be marked degraded, not recorded as clean.
-    output = tmp_path / "cursor-plan-arch-output.txt"
-    envelope = {
-        "type": "result",
-        "subtype": "success",
-        "is_error": False,
-        "result": '{"no_issues_found": true}',
-        "usage": {"inputTokens": 0, "outputTokens": 8, "cacheReadTokens": 0},
-    }
-    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
-    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
-    diag = output.with_suffix(output.suffix + ".diag")
-    assert diag.is_file()
-    assert "cursor-no-work-no-issues" in diag.read_text(encoding="utf-8")
-
-
-def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Path) -> None:
-    # A genuine clean plan review ingests the inlined plan (large input work) and emits
-    # substantive output tokens; the bare sentinel is preserved, not flagged degraded.
-    output = tmp_path / "cursor-plan-arch-output.txt"
-    envelope = {
-        "type": "result",
-        "result": '{"no_issues_found": true}',
-        "usage": {"inputTokens": 5000, "outputTokens": 5000, "cacheReadTokens": 1200},
-    }
-    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
-    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
-
-
-def test_cursor_postprocess_keeps_plan_review_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
-    # After plan inlining, a compliant bare sentinel with incident-shaped low output tokens
-    # must stay clean when input work is present (genuine no-finding plan review).
-    output = tmp_path / "cursor-plan-arch-output.txt"
-    envelope = {
-        "type": "result",
-        "result": '{"no_issues_found": true}',
-        "usage": {"inputTokens": 5000, "outputTokens": 8, "cacheReadTokens": 1200},
-    }
-    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
-    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
-
-
-def test_cursor_postprocess_keeps_findings_even_with_low_input_work(tmp_path: Path) -> None:
-    # The no-work backstop targets only the bare no-issues sentinel; a result carrying
-    # structured findings is never collapsed to degraded.
-    output = tmp_path / "cursor-plan-arch-output.txt"
-    record = '{"schema_version": 1, "scope": "in_scope", "what": "bug"}'
-    envelope = {
-        "type": "result",
-        "result": record,
-        "usage": {"inputTokens": 0, "outputTokens": 40, "cacheReadTokens": 0},
-    }
-    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
-    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == record
-
-
 def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "cursor.out"
     calls: list[str] = []
@@ -1586,135 +1501,6 @@ def test_policy_rejection_marker_skips_auth_and_empty_retries(
 
     assert calls["count"] == 1
     assert result.exit_code == 1
-def test_review_failure_source_uses_common_resolver_order(tmp_path: Path) -> None:
-    output = tmp_path / "review.txt"
-    sink = tmp_path / "sink.log"
-    ordered = [
-        output.with_suffix(output.suffix + ".failure-diag"),
-        tmp_path / "review-retry.txt.failure-diag",
-        tmp_path / "review-ns-retry.txt.failure-diag",
-        sink,
-        output.with_suffix(output.suffix + ".sidecar"),
-        output.with_suffix(output.suffix + ".diag"),
-    ]
-    for path in ordered:
-        _ = path.write_text(path.name, encoding="utf-8")
-    assert agents._review_failure_source(output, sink=str(sink)) == ordered[0]  # pylint: disable=protected-access
-    ordered[0].unlink()
-    assert agents._review_failure_source(output, sink=str(sink)) == ordered[1]  # pylint: disable=protected-access
-    ordered[1].unlink()
-    assert agents._review_failure_source(output, sink=str(sink)) == ordered[2]  # pylint: disable=protected-access
-    ordered[2].unlink()
-    assert agents._review_failure_source(output, sink=str(sink)) == sink  # pylint: disable=protected-access
-    sink.unlink()
-    assert agents._review_failure_source(output, sink=str(sink)) == output.with_suffix(output.suffix + ".sidecar")  # pylint: disable=protected-access
-
-
-def test_review_emit_launcher_result_composes_sink_before_classification(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    output = tmp_path / "review.txt"
-    sink = tmp_path / "launcher.log"
-    _ = output.with_suffix(output.suffix + ".diag").write_text("STATUS=FAILED\n", encoding="utf-8")
-    _ = sink.write_text("authentication failed in sink\n", encoding="utf-8")
-    seen: dict[str, Path] = {}
-
-    def fake_classify(
-        launcher_exit: int,
-        sidecar: Path,
-        **_kwargs: object,
-    ) -> agents.LaunchFailure:
-        _ = launcher_exit
-        seen["sidecar"] = sidecar
-        return agents.LaunchFailure("health", "auth")
-
-    monkeypatch.setattr(_review_launcher, "classify_launch_failure", fake_classify)
-    agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
-    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
-    assert seen["sidecar"] == failure_diag
-    assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
-    stdout = capsys.readouterr().out
-    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
-    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
-
-
-def test_review_emit_launcher_result_merges_sink_into_existing_failure_diag(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    output = tmp_path / "review.txt"
-    sink = tmp_path / "launcher.log"
-    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
-    _ = output.with_suffix(output.suffix + ".diag").write_text("STATUS=FAILED\n", encoding="utf-8")
-    _ = failure_diag.write_text("===== diag =====\nstale generic failure\n", encoding="utf-8")
-    _ = sink.write_text("authentication failed in sink\n", encoding="utf-8")
-    seen: dict[str, Path] = {}
-
-    def fake_classify(
-        launcher_exit: int,
-        sidecar: Path,
-        **_kwargs: object,
-    ) -> agents.LaunchFailure:
-        _ = launcher_exit
-        seen["sidecar"] = sidecar
-        return agents.LaunchFailure("health", "auth")
-
-    monkeypatch.setattr(_review_launcher, "classify_launch_failure", fake_classify)
-    agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
-    assert seen["sidecar"] == failure_diag
-    assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
-    stdout = capsys.readouterr().out
-    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
-    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
-
-
-def test_review_append_launch_failure_merges_sink_into_existing_failure_diag(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    output = tmp_path / "codex-review.txt"
-    sink = tmp_path / "codex-review.log"
-    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
-    diag = output.with_suffix(output.suffix + ".diag")
-    _ = diag.write_text("generic failure\n", encoding="utf-8")
-    _ = failure_diag.write_text("===== diag =====\ngeneric failure\n", encoding="utf-8")
-    _ = sink.write_text("launcher stderr detail\n", encoding="utf-8")
-    monkeypatch.setattr(_review_launcher, "_resolve_execution_issues_log", lambda: None)
-    agents._review_append_launch_failure(  # pylint: disable=protected-access
-        output=output,
-        tool="codex",
-        exit_code=1,
-        stderr_sink=str(sink),
-    )
-    assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
-
-
-def test_review_append_launch_failure_threads_custom_site(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    output = tmp_path / "codex-review.txt"
-    _ = output.with_suffix(output.suffix + ".diag").write_text("boom\n", encoding="utf-8")
-    log = tmp_path / "execution-issues.md"
-    _ = log.write_text("", encoding="utf-8")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(_review_launcher, "_resolve_execution_issues_log", lambda: log)
-    captured: dict[str, str] = {}
-
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        a = [str(x) for x in argv]
-        if "append-failure" in a:
-            captured["site"] = a[a.index("--site") + 1]
-        return ok(())
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    agents._review_append_launch_failure(output=output, tool="codex", exit_code=1, site="design Step 3")  # pylint: disable=protected-access
-    assert captured["site"] == "design Step 3"
-    parts_dir = tmp_path / "vendor-failure-diagnostics.parts"
-    combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*"))) if parts_dir.is_dir() else ""
-    assert "design Step 3 codex-review" in combined
-
-
 def test_vendor_failure_diagnostics_refuses_symlinked_parts_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1751,39 +1537,6 @@ def test_read_tail_update_refuses_symlinked_implement_artifact(
 
     assert update.offset == 0
     assert update.text == ""
-
-
-def test_review_append_outer_meta_writes_site(tmp_path: Path) -> None:
-    prompt_sidecar = tmp_path / "out.txt.prompt"
-    _ = prompt_sidecar.write_text("p", encoding="utf-8")
-    meta = tmp_path / "out.txt.meta"
-    agents._review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk="high", stderr_sink="", site="design Step 3")  # pylint: disable=protected-access
-    assert "OUTER_LAUNCHER_SITE=design Step 3" in meta.read_text(encoding="utf-8")
-    meta_default = tmp_path / "out2.meta"
-    agents._review_append_outer_meta(meta_default, prompt_sidecar=prompt_sidecar, risk="high", stderr_sink="")  # pylint: disable=protected-access
-    assert "OUTER_LAUNCHER_SITE=review Step 2" in meta_default.read_text(encoding="utf-8")
-
-
-def test_review_cursor_has_structured_findings_blocks_normalization() -> None:
-    record = json.dumps(
-        {
-            "schema_version": 1,
-            "scope": "in_scope",
-            "severity": "important",
-            "focus_area": "correctness",
-            "location": "x",
-            "what": "y",
-            "scenario_or_breakage": "z",
-            "suggested_fix": "w",
-        }
-    )
-    text = "Some prose.\n" + record + '\n{"no_issues_found": true}\n'
-    assert agents._review_cursor_has_structured_findings(text) is True  # pylint: disable=protected-access
-    assert agents._review_cursor_normalize_no_issues(text) == text  # pylint: disable=protected-access
-    assert agents._review_cursor_has_structured_findings('{"schema_version": 1}\n') is True  # pylint: disable=protected-access
-    prose_then_sentinel = 'All good.\n{"no_issues_found": true}\n'
-    assert agents._review_cursor_has_structured_findings(prose_then_sentinel) is False  # pylint: disable=protected-access
-    assert agents._review_cursor_normalize_no_issues(prose_then_sentinel) == '{"no_issues_found": true}\n'  # pylint: disable=protected-access
 
 
 def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
@@ -3790,32 +3543,6 @@ def test_status_check_model_pins_list_failed(
     assert "CURSOR_MODEL_PIN_DETAIL=" in out
 
 
-def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    impl = tmp_path / "impl"
-    round_dir = impl / "round-2"
-    round_dir.mkdir(parents=True)
-    session_env = impl / "session-env.sh"
-    session_env.write_text("IMPLEMENT_TMPDIR=" + str(impl) + "\n", encoding="utf-8")
-    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
-    args = argparse.Namespace(
-        agent_file=str(tmp_path / "agent.md"),
-        mode="diff",
-        description_text="",
-        scope_files="",
-        competition_notice_file="",
-        diff_file="",
-        commit_count="",
-        plan_file="",
-        feature_file="",
-        competition_notice=False,
-        output=str(round_dir / "codex-specialist-correctness-output.txt"),
-        session_env_path=str(session_env),
-    )
-    render_args = agents._review_specialist_render_args(args)
-    ledger_idx = render_args.index("--findings-ledger-file")
-    assert render_args[ledger_idx + 1] == str(impl / "findings-ledger.tsv")
-    assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
-
 @pytest.mark.parametrize(
     ("diagnostic", "fallback", "expected_model", "expected_signal"),
     [
@@ -3891,7 +3618,6 @@ def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatc
         ("run_external_agent", _run_external),
         ("check_reviewers", _auth),
         ("launch_codex_ci_main", _ci_launcher),
-        ("launch_review_main", _review_launcher),
     ],
 )
 def test_agents_reexports_split_public_contract(name: str, module: object) -> None:

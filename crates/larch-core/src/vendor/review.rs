@@ -1,6 +1,6 @@
 //! Codex and cursor review-result adapter helpers.
 //!
-//! Adapter parity for issue #8114. No `agent launch-review` command cutover.
+//! Adapter parity for the `agent launch-review` command cutover in issue #8115.
 //! Auth, specialist render, research validation, and dirty-tree baseline I/O
 //! arrive through injected ports; this module owns the review-side contracts.
 

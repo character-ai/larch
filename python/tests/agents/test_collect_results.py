@@ -247,6 +247,7 @@ def test_launch_outer_retry_threads_meta_site(monkeypatch: pytest.MonkeyPatch, t
     )
     assert collect_results._launch_outer_retry(plan=plan, meta=meta, records=[]) is True  # type: ignore[reportPrivateUsage]
     argv = captured["argv"]
+    assert argv[0].endswith("/scripts/larch.sh")
     assert "launch-review" in argv
     assert argv[argv.index("--site") + 1] == "design Step 3"
 

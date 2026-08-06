@@ -1239,8 +1239,8 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
     patch_format = args.patch_format
     fallback = False
     launchers = {
-        "codex": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "codex", "--model-role", "fix"],
-        "cursor": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "cursor"],
+        "codex": [str(larch_entrypoint(plugin)), "agent", "launch-review", "--tool", "codex", "--model-role", "fix"],
+        "cursor": [str(larch_entrypoint(plugin)), "agent", "launch-review", "--tool", "cursor"],
         "claude": [str(larch_entrypoint(plugin)), "agent", "launch-claude-review", "--model", config.CLAUDE_SONNET_4_6_1M_MODEL],
     }
     if os.environ.get("LARCH_TEST_LAUNCH_CODEX_REVIEW"):

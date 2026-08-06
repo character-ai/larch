@@ -72,7 +72,6 @@ _FORBIDDEN_MODULES = frozenset(
     {
         "larch.agents.agents",
         "larch.agents._claude_runner",
-        "larch.agents._review_launcher",
         "larch.agents._ci_launcher",
         "larch.agents.agent_voters",
         "larch.agents.agent_waterfall",
@@ -83,7 +82,6 @@ _FORBIDDEN_MODULES = frozenset(
 _PRODUCTION_LAUNCHERS = (
     "agents.py",
     "_claude_runner.py",
-    "_review_launcher.py",
     "_ci_launcher.py",
     "agent_voters.py",
     "agent_waterfall.py",
@@ -91,9 +89,7 @@ _PRODUCTION_LAUNCHERS = (
 )
 
 # Launchers migrated to the shared vendor descriptor table and run_vendor_launch.
-_MIGRATED_LAUNCHERS = frozenset(
-    {"_ci_launcher.py", "_review_launcher.py"}
-)
+_MIGRATED_LAUNCHERS = frozenset({"_ci_launcher.py"})
 
 
 def _agent_imports(path: Path) -> set[str]:

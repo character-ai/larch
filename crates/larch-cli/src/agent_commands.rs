@@ -73,6 +73,9 @@ pub enum AgentCommand {
     /// Resolve Cursor or Codex model argv tokens.
     #[command(name = "model-args")]
     ModelArgs(ModelArgsArguments),
+    /// Launch one Codex or Cursor reviewer with legacy-compatible artifacts.
+    #[command(name = "launch-review", disable_help_flag = true)]
+    LaunchReview(AgentRawArguments),
     /// Sum Codex token usage from a `--json` events stream.
     ParseCodexUsage(ParseCodexUsageArguments),
     /// Read the active Claude session model id.
@@ -185,6 +188,7 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::CursorWrapPrompt(arguments) => cursor_wrap_prompt(&arguments),
         AgentCommand::ExternalToolRegistry(arguments) => external_tool_registry(&arguments),
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
+        AgentCommand::LaunchReview(arguments) => crate::agent_review::launch_review(&arguments),
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::ReadClaudeModel => read_claude_model(),
         AgentCommand::LaunchClaudeSubprocess(arguments) => {

@@ -18,6 +18,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_wri
 
 mod admission_commands;
 mod agent_commands;
+mod agent_review;
 mod argparse_compat;
 mod bgjob_adapt;
 mod bgjob_commands;
