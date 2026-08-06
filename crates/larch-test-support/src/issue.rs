@@ -1199,7 +1199,8 @@ fn capture_issue_request(request: &ReceivedIssueRequest) -> IssueServiceRequest 
         .collect();
     IssueServiceRequest {
         method: request.method.clone(),
-        path: request.path.clone(),
+        path: String::from_utf8_lossy(&redact_issue_credentials(request.path.as_bytes()))
+            .into_owned(),
         headers,
         body: BoundedBytes::new(&redact_issue_credentials(&request.body)),
     }
@@ -1255,7 +1256,7 @@ mod tests {
     }
 
     #[test]
-    fn fixtures_and_snapshots_cover_issue_domain_parity() {
+    fn named_fixtures_cover_states_records_and_process_isolation() {
         let cwd = std::env::current_dir().expect("cwd");
         let path = std::env::var_os("PATH");
         let (absent, absent_snapshot) = capture(IssueFixture::Absent);
@@ -1301,6 +1302,14 @@ mod tests {
         assert_ne!(absent_snapshot, partial_snapshot);
         assert_ne!(partial_snapshot, conflicting_snapshot);
         assert_ne!(conflicting_snapshot, committed_snapshot);
+        assert_eq!(std::env::current_dir().expect("cwd"), cwd);
+        assert_eq!(std::env::var_os("PATH"), path);
+    }
+
+    #[test]
+    fn snapshots_normalize_identity_and_expose_parity_differences() {
+        let (_, partial_snapshot) = capture(IssueFixture::Partial);
+        let (committed, committed_snapshot) = capture(IssueFixture::Committed);
 
         let alternate = IssueGraph::builder(IssueFixture::Committed)
             .repository_slug("other-org/other-repository")
@@ -1350,18 +1359,24 @@ mod tests {
             execution: ExecutionSnapshot::interrupted(b"", b"interrupted"),
             ..committed_snapshot.clone()
         };
-        for (other, channel) in [
-            (&partial_snapshot, "state"),
-            (&failed, "execution.exit_class"),
-            (&interrupted, "execution.exit_class"),
-        ] {
-            assert!(
-                oracle
-                    .compare_graphs(&committed_snapshot, other)
-                    .iter()
-                    .any(|difference| difference.channel == channel)
-            );
-        }
+        assert!(
+            oracle
+                .compare_graphs(&committed_snapshot, &partial_snapshot)
+                .iter()
+                .any(|difference| difference.channel == "state")
+        );
+        assert!(
+            oracle
+                .compare_graphs(&committed_snapshot, &failed)
+                .iter()
+                .any(|difference| difference.channel == "execution.exit_class")
+        );
+        assert!(
+            oracle
+                .compare_graphs(&committed_snapshot, &interrupted)
+                .iter()
+                .any(|difference| difference.channel == "execution.exit_class")
+        );
         let different_stdout = IssueStdoutSnapshot {
             prose: BoundedBytes::new(b"different"),
             ..stdout.clone()
@@ -1372,8 +1387,6 @@ mod tests {
                 .iter()
                 .any(|difference| difference.channel == "stdout.prose")
         );
-        assert_eq!(std::env::current_dir().expect("cwd"), cwd);
-        assert_eq!(std::env::var_os("PATH"), path);
     }
 
     #[test]
@@ -1440,6 +1453,21 @@ mod tests {
         assert_eq!(requests.len(), 6);
         assert_eq!(requests[3].body.bytes, b"[]");
         assert_eq!(requests[0].headers["authorization"], "<REDACTED>");
+    }
+
+    #[test]
+    fn captured_requests_redact_credentials_in_paths_headers_and_bodies() {
+        let request = super::ReceivedIssueRequest {
+            method: "POST".to_owned(),
+            path: "/repos/o/r/issues?access_token=ghp_fixturecredential".to_owned(),
+            headers: std::iter::once(("x-api-key".to_owned(), "fixture-secret".to_owned()))
+                .collect(),
+            body: b"{\"token\":\"ghp_fixturecredential\"}".to_vec(),
+        };
+        let captured = super::capture_issue_request(&request);
+        assert_eq!(captured.path, "<REDACTED>");
+        assert_eq!(captured.headers["x-api-key"], "<REDACTED>");
+        assert!(!contains(&captured.body.bytes, b"ghp_fixturecredential"));
     }
 
     fn response_status(bytes: &[u8]) -> u16 {
