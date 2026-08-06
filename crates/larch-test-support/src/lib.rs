@@ -5,6 +5,7 @@ mod environment;
 mod filesystem;
 mod git;
 mod http;
+mod issue;
 mod process;
 mod run_log;
 mod snapshot_util;
@@ -19,6 +20,11 @@ pub use git::{
     ProbeSnapshot, SemanticSnapshot, SnapshotEntry, SnapshotEntryKind,
 };
 pub use http::{HttpResponse, HttpResponseBuilder, HttpResponseError};
+pub use issue::{
+    IssueEdge, IssueFixture, IssueGraph, IssueGraphBuilder, IssueGraphSnapshot, IssueGraphState,
+    IssueNodeSnapshot, IssueParityOracle, IssueRecord, IssueServiceExchange, IssueServiceRequest,
+    IssueServiceResponse, IssueServiceStub, IssueState, IssueStdoutField, IssueStdoutSnapshot,
+};
 pub use process::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder};
 pub use run_log::{
     DurabilityState, LocalObjectStore, ObjectMetadata, ObjectStoreError, ObjectStoreErrorKind,

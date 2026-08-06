@@ -139,6 +139,31 @@ operations (`preflight_prefix`, `list`, `upload_create`, `metadata`,
 network endpoint. Fixture code must not call `set_current_dir`, `set_var`, or
 `remove_var`.
 
+## Issue fixtures and parity
+
+`larch-test-support` owns the offline issue-domain fixtures for #7682.
+`IssueGraph::builder` creates an owned graph under a private temporary root;
+the named `Absent`, `Partial`, `Conflicting`, and `Committed` cases cover
+plain and wire-bearing bodies, comments, labels, sub-issue trees, blocked-by
+edges, OOS manifests, tracking records, and umbrella proposals.
+
+`IssueGraphSnapshot::capture` records bounded, stable issue semantics:
+numbers, titles, bodies, states, labels, comments, and both edge sets. It
+redacts credentials and replaces owned roots and repository slugs with stable
+markers. `IssueStdoutSnapshot::capture` preserves ordered `KEY=value` fields
+while separately normalizing prose; both channels receive the same identity
+normalization and credential redaction. Use `IssueParityOracle` to compare
+either kind of snapshot and report only changed channels. Test absent, partial,
+conflicting, committed, failure, and interruption shapes independently. Review
+every changed semantic field before accepting a parity result.
+
+`IssueServiceStub` replays a bounded queue of recorded HTTP exchanges on an
+ephemeral loopback listener. It supports exact-route pagination, 429
+rate-limit responses, 409 conflicts, interrupted connections, and mixed batch
+outcomes while recording redacted requests. It is an offline adapter fixture,
+not a production GitHub client or a permission to make network calls. Always
+finish the stub so unconsumed exchanges fail the test.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private

@@ -2428,66 +2428,37 @@ mod service_tests {
         ReviewDecision,
     };
     use crate::runtime::Cancellation;
+    use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
-    use std::{
-        io::{Read as _, Write as _},
-        net::TcpListener,
-        thread,
-    };
 
-    fn stub_service(
-        responses: Vec<(u16, String)>,
-    ) -> (OctocrabGitHubService, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
-        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
-        let server = thread::spawn(move || {
-            for (status, body) in responses {
-                let (mut socket, _) = listener.accept().expect("accept request");
-                let mut request = [0_u8; 16_384];
-                let bytes_read = socket.read(&mut request).expect("read request");
-                assert!(bytes_read > 0, "request must not be empty");
-                write!(
-                    socket,
-                    "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .expect("write response");
-            }
+    fn stub_service(responses: Vec<(u16, String)>) -> (OctocrabGitHubService, IssueServiceStub) {
+        let exchanges = responses.into_iter().map(|(status, body)| {
+            IssueServiceExchange::any_json(status, body).expect("valid stub response")
         });
-        let client = octocrab::Octocrab::builder()
-            .personal_token(String::from("test-token"))
-            .base_uri(&base)
-            .expect("base URI")
-            .upload_uri(&base)
-            .expect("upload URI")
-            .build()
-            .expect("stub client");
-        (
-            OctocrabGitHubService::with_test_client(client).with_test_continuation_base(&base),
-            server,
-        )
+        service_with_stub(IssueServiceStub::start(exchanges).expect("start stub"))
     }
 
     fn stub_service_with_links(
         responses: Vec<(u16, String, Option<String>)>,
-    ) -> (OctocrabGitHubService, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
-        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
-        let server = thread::spawn(move || {
-            for (status, body, link) in responses {
-                let (mut socket, _) = listener.accept().expect("accept request");
-                let mut request = [0_u8; 16_384];
-                let bytes_read = socket.read(&mut request).expect("read request");
-                assert!(bytes_read > 0, "request must not be empty");
-                let link = link.map_or_else(String::new, |value| format!("Link: {value}\r\n"));
-                write!(
-                    socket,
-                    "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\n{link}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .expect("write response");
+    ) -> (OctocrabGitHubService, IssueServiceStub) {
+        let exchanges = responses.into_iter().map(|(status, body, link)| {
+            let response = HttpResponseBuilder::new(status)
+                .header("content-type", "application/json")
+                .expect("content type");
+            let response = match link {
+                Some(link) => response.header("link", &link).expect("link header"),
+                None => response,
             }
+            .body(body)
+            .build()
+            .expect("valid stub response");
+            IssueServiceExchange::any(response)
         });
+        service_with_stub(IssueServiceStub::start(exchanges).expect("start stub"))
+    }
+
+    fn service_with_stub(server: IssueServiceStub) -> (OctocrabGitHubService, IssueServiceStub) {
+        let base = server.base_url().to_owned();
         let client = octocrab::Octocrab::builder()
             .personal_token(String::from("test-token"))
             .base_uri(&base)
