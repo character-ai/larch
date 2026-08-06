@@ -169,7 +169,7 @@ RESEARCH_LANE_MERGE_ENV="$RESEARCH_TMPDIR/.research-<slot>-merge.env"
   --budget-s 1860 \
   --merge-result-env "$RESEARCH_LANE_MERGE_ENV" \
   -- \
-  python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec \
+  "${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh" agent launch-codex-exec \
   --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
   --timeout 1800 \
   --workdir "$PWD" \

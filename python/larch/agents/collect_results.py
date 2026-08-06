@@ -640,7 +640,7 @@ def _launch_outer_retry(
         extra = _build_codex_exec_retry_args(plan=plan, meta=meta, records=records, prompt_file=prompt_for_launch)
         if extra is None:
             return False
-        args = [sys.executable, str(PY_CLI), "agent", "launch-codex-exec", *extra]
+        args = [str(larch_entrypoint()), "agent", "launch-codex-exec", *extra]
     plan.process = subprocess.Popen(  # pylint: disable=consider-using-with
         args,
         cwd=meta.outer_launcher_workdir,

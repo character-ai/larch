@@ -960,8 +960,7 @@ def _dispatch_vendor_fix(
         (run_dir / "codex.log.token-record").write_text("", encoding="utf-8")
         proc = subprocess.run(
             [
-                sys.executable,
-                str(cli),
+                str(larch_entrypoint(plugin)),
                 "agent",
                 "launch-codex-exec",
                 "--output",

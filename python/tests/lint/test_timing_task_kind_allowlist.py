@@ -11,7 +11,7 @@ def write(path: Path, text: str) -> None:
 
 
 def test_scans_add_argument_defaults_and_or_fallbacks(tmp_path: Path) -> None:
-    rel = "python/larch/agents/_drafter.py"
+    rel = "python/larch/agents/_ci_launcher.py"
     write(
         tmp_path / rel,
         """
@@ -37,7 +37,7 @@ parser.add_argument(
 
 
 def test_missing_allowlist_entries_reports_default_only_literal(tmp_path: Path) -> None:
-    rel = "python/larch/agents/_drafter.py"
+    rel = "python/larch/agents/_ci_launcher.py"
     write(
         tmp_path / rel,
         """

@@ -6,18 +6,16 @@
 //! rules and adapter effects explicitly.
 
 use crate::argparse_compat::{ParsedCommandLine, parse, parse_with_flags, write_stdout};
+use crate::python_verb::run_python_verb_best_effort;
 use larch_adapters::{
-    NoopProcessObserver, TokioProcessRunner, assert_no_symlink_ancestors,
-    assert_no_symlink_path_or_ancestors, create_directories, is_allowed_session_tmpdir,
-    is_directory, is_regular_file, parent_directory, publish_symlink, read_kv_raw,
-    recover_prior_bool, recover_prior_design_value, remove_file_if_present, resolve_allow_missing,
-    resolve_trusted_design_env_source,
-    runtime::{Cancellation, LarchRuntime},
-    safe_output_parent, validate_design_tmpdir, write_confined_file, writer_target_allowed,
+    assert_no_symlink_ancestors, assert_no_symlink_path_or_ancestors, create_directories,
+    is_allowed_session_tmpdir, is_directory, is_regular_file, parent_directory, publish_symlink,
+    read_kv_raw, recover_prior_bool, recover_prior_design_value, remove_file_if_present,
+    resolve_allow_missing, resolve_trusted_design_env_source, safe_output_parent,
+    validate_design_tmpdir, write_confined_file, writer_target_allowed,
 };
 use larch_core::{
-    DIFFICULTY_CHOICES, ExternalProcessRunner as _, ExternalProgram, ProcessRequest,
-    PythonVerbProgram, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams, WRITE_DESIGN_ENV_KEYS,
+    DIFFICULTY_CHOICES, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams, WRITE_DESIGN_ENV_KEYS,
     WRITE_ENV_KEYS, allowed_session_roots, cleanup_cache_sessions_root, design_run_launcher_text,
     export_line, external_timeout, implement_run_launcher_text, is_bool, is_strict_run_id,
     is_valid_claude_pid, is_valid_plugin_root_value, is_valid_repo_value, is_valid_run_id,
@@ -28,11 +26,8 @@ use larch_core::{
 use std::{
     env,
     ffi::{OsStr, OsString},
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::ExitCode,
-    sync::Arc,
-    time::Duration,
 };
 
 const WRITE_ENV_USAGE: &str = concat!(
@@ -853,57 +848,20 @@ fn validate_restore_tmpdir(supplied: &str, tmpdir: &Path) -> Result<(), String> 
 /// observability, and a failure must not fail the state restore that preceded
 /// it. This delegation retires when `run-log write` becomes Rust-owned (#7683).
 fn record_bail_reason(tmpdir: &Path, run_id: &str, bail_reason_file: &Path) {
-    let Some(root) = plugin_root_directory() else {
-        return;
-    };
-    let Ok(program) = PythonVerbProgram::new(&root) else {
-        return;
-    };
-    let Ok(runtime) = LarchRuntime::current_thread() else {
-        return;
-    };
-    let Ok(working_directory) = env::current_dir() else {
-        return;
-    };
-    let Ok(request) = ProcessRequest::new(
-        ExternalProgram::PythonVerb(program),
-        [
-            OsString::from("run-log"),
-            OsString::from("write"),
-            OsString::from("--log-root"),
-            tmpdir.join("larch-logs").into_os_string(),
-            OsString::from("--skill"),
-            OsString::from("implement"),
-            OsString::from("--run-id"),
-            OsString::from(run_id),
-            OsString::from("--batch"),
-            OsString::from("final-bail-reason"),
-            OsString::from("--input-file"),
-            bail_reason_file.as_os_str().to_os_string(),
-        ],
-        working_directory,
-        Duration::from_secs(120),
-        Duration::from_secs(5),
-        NonZeroUsize::new(64 * 1024).unwrap_or(NonZeroUsize::MIN),
-    ) else {
-        return;
-    };
-    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    let _ignored = runtime.block_on(runner.run(request, &Cancellation::new()));
-}
-
-/// Resolve the plugin root that owns the still-Python verb dispatcher.
-fn plugin_root_directory() -> Option<PathBuf> {
-    let declared = environment_value("CLAUDE_PLUGIN_ROOT");
-    if is_valid_plugin_root_value(&declared) {
-        return Some(PathBuf::from(declared));
-    }
-    // `<root>/bin/larch` is the only installed location, per I-Runtime-1.
-    env::current_exe()
-        .ok()?
-        .parent()?
-        .parent()
-        .map(Path::to_path_buf)
+    run_python_verb_best_effort([
+        OsString::from("run-log"),
+        OsString::from("write"),
+        OsString::from("--log-root"),
+        tmpdir.join("larch-logs").into_os_string(),
+        OsString::from("--skill"),
+        OsString::from("implement"),
+        OsString::from("--run-id"),
+        OsString::from(run_id),
+        OsString::from("--batch"),
+        OsString::from("final-bail-reason"),
+        OsString::from("--input-file"),
+        bail_reason_file.as_os_str().to_os_string(),
+    ]);
 }
 
 fn write_plugin_root_env(output: &Path, value: &str) -> Result<(), String> {

@@ -168,7 +168,7 @@ VALIDATION_CODEX_MERGE_ENV="$RESEARCH_TMPDIR/.validation-codex-merge.env"
   --budget-s 1860 \
   --merge-result-env "$VALIDATION_CODEX_MERGE_ENV" \
   -- \
-  python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec \
+  "${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh" agent launch-codex-exec \
   --output "$RESEARCH_TMPDIR/codex-validation-output.txt" \
   --timeout 1800 \
   --workdir "$PWD" \

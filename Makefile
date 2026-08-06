@@ -26,7 +26,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 .PHONY: test-design-step1d5 test-design-log-ship
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
-.PHONY: test-launch-codex-exec
+.PHONY: test-launch-codex-exec test-launch-drafters
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
@@ -483,8 +483,10 @@ test-step0b-router-flag-recovery:
 test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
 
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-launch-codex-exec:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k launch_codex_exec
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands codex_exec
 
 test-scout-plan-archetypes-wrapper:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
@@ -611,8 +613,15 @@ test-launch-claude-ci:
 test-launch-codex-ci:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k launch_codex_ci
 
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
+test-launch-drafters:
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands drafter
+
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-run-negotiation-round:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k negotiation_round
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands negotiation_round
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
@@ -912,7 +921,7 @@ test-dispatch-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py
 
 test-agent-model-args:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'model_args and not launch_codex_exec'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k model_args
 
 test-effort-prose:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-effort-prose.sh
@@ -938,7 +947,7 @@ test-gather-branch-context:
 
 test-run-external-agent:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
 
 agent-sync:
 	python3 python/cli.py generate check

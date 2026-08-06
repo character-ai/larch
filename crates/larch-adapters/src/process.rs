@@ -136,12 +136,14 @@ pub struct TokioProcessRunner {
 }
 
 /// Standard-input routing for a file-routed external process.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProcessStdinRouting {
     /// Pass an immediate EOF to the child.
     Null,
     /// Keep the invoking process's standard input connected to the child.
     Inherit,
+    /// Read the child's standard input from a confined regular file.
+    File(ConfinedPath),
 }
 
 /// Standard-output and standard-error routing for a file-routed external process.
@@ -153,6 +155,11 @@ pub enum ProcessOutputRouting {
     Separate {
         stdout: ConfinedPath,
         stderr: ConfinedPath,
+    },
+    /// Route each stream independently; an unset stream stays attached.
+    Streams {
+        stdout: Option<ConfinedPath>,
+        stderr: Option<ConfinedPath>,
     },
     /// Leave both streams attached to the invoking process.
     Inherit,
@@ -184,6 +191,19 @@ impl ProcessFileRouting {
         }
     }
 
+    /// Route each output stream independently with a null standard input.
+    ///
+    /// An unset stream stays attached to the invoking process, which keeps a
+    /// launcher that only redirects one stream from silently swallowing the
+    /// other.
+    #[must_use]
+    pub const fn streams(stdout: Option<ConfinedPath>, stderr: Option<ConfinedPath>) -> Self {
+        Self {
+            stdin: ProcessStdinRouting::Null,
+            output: ProcessOutputRouting::Streams { stdout, stderr },
+        }
+    }
+
     /// Inherit both output streams with a null standard input.
     #[must_use]
     pub const fn inherit_output() -> Self {
@@ -195,15 +215,15 @@ impl ProcessFileRouting {
 
     /// Replace the standard-input routing.
     #[must_use]
-    pub const fn with_stdin(mut self, stdin: ProcessStdinRouting) -> Self {
+    pub fn with_stdin(mut self, stdin: ProcessStdinRouting) -> Self {
         self.stdin = stdin;
         self
     }
 
     /// Return the configured standard-input routing.
     #[must_use]
-    pub const fn stdin(&self) -> ProcessStdinRouting {
-        self.stdin
+    pub const fn stdin(&self) -> &ProcessStdinRouting {
+        &self.stdin
     }
 
     /// Return the configured standard-output routing.
@@ -543,10 +563,7 @@ fn spawn_child_with_files(
         .args(arguments)
         .current_dir(request.working_directory())
         .env_clear()
-        .stdin(match routing.stdin() {
-            ProcessStdinRouting::Null => Stdio::null(),
-            ProcessStdinRouting::Inherit => Stdio::inherit(),
-        })
+        .stdin(input_stdio(routing.stdin())?)
         .kill_on_drop(true);
     let (stdout, stderr) = output_stdio(routing.output())?;
     command.stdout(stdout).stderr(stderr);
@@ -555,6 +572,18 @@ fn spawn_child_with_files(
     command.process_group(0);
     let child = command.spawn()?; // lint-subprocess-via-runner: ok shared process runner is the sole product owner
     OwnedChild::new(child)
+}
+
+fn input_stdio(routing: &ProcessStdinRouting) -> io::Result<Stdio> {
+    match routing {
+        ProcessStdinRouting::Null => Ok(Stdio::null()),
+        ProcessStdinRouting::Inherit => Ok(Stdio::inherit()),
+        ProcessStdinRouting::File(path) => {
+            path.revalidate()
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            Ok(Stdio::from(File::open(path.path())?))
+        }
+    }
 }
 
 fn output_stdio(routing: &ProcessOutputRouting) -> io::Result<(Stdio, Stdio)> {
@@ -568,8 +597,19 @@ fn output_stdio(routing: &ProcessOutputRouting) -> io::Result<(Stdio, Stdio)> {
             Stdio::from(open_output_file(stdout)?),
             Stdio::from(open_output_file(stderr)?),
         )),
+        ProcessOutputRouting::Streams { stdout, stderr } => Ok((
+            optional_output_stdio(stdout.as_ref())?,
+            optional_output_stdio(stderr.as_ref())?,
+        )),
         ProcessOutputRouting::Inherit => Ok((Stdio::inherit(), Stdio::inherit())),
     }
+}
+
+fn optional_output_stdio(path: Option<&ConfinedPath>) -> io::Result<Stdio> {
+    path.map_or_else(
+        || Ok(Stdio::inherit()),
+        |path| open_output_file(path).map(Stdio::from),
+    )
 }
 
 fn open_output_file(path: &ConfinedPath) -> io::Result<File> {

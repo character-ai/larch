@@ -55,6 +55,7 @@ from test_support import write_design_source_env
 
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
+LARCH_ENTRYPOINT = Path(__file__).resolve().parents[3] / "scripts" / "larch.sh"
 pytestmark = pytest.mark.usefixtures("stall_rust_commands")
 
 
@@ -3263,7 +3264,7 @@ def test_step2b_drafter_pause_before_fallback_seed(
 
 
 @pytest.mark.parametrize("vendor", ["codex", "claude"])
-def test_step2b_drafter_launcher_uses_python_cli_argv(
+def test_step2b_drafter_launcher_uses_bootstrap_entrypoint_argv(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     vendor: str,
@@ -3295,7 +3296,7 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=" M existing.txt\n", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", f"launch-{vendor}-drafter"]:
+        if args[1:3] == ["agent", f"launch-{vendor}-drafter"]:
             captured.append(args)
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("STATUS=ok\nPLAN_WRITTEN=true\n", encoding="utf-8")
@@ -3317,7 +3318,7 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
     assert len(captured) == 1
     argv = captured[0]
     expected_verb = f"launch-{vendor}-drafter"
-    assert argv[:4] == [sys.executable, str(CLI), "agent", expected_verb]
+    assert argv[:3] == [str(LARCH_ENTRYPOINT), "agent", expected_verb]
     for flag in (
         "--prompt-file",
         "--output-file",
@@ -3332,7 +3333,7 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
         assert "--model" in argv
     else:
         assert "--model" not in argv
-    assert not any(token.endswith(".sh") for token in argv)
+    assert not any(token.endswith("cli.py") for token in argv)
 
 
 def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6522,7 +6523,7 @@ def test_step2b_drafter_rejects_missing_feature_description(
 
     def fake_run(argv: Sequence[object], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         args = [str(item) for item in argv]
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             launches.append(args)
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -6557,7 +6558,7 @@ def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Pat
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
         if args[2:4] == ["plan-review", "preview"]:
@@ -6685,7 +6686,7 @@ def test_step2b_drafter_postplan_rc11_pause_after_predrafter_checkpoint(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".pause-requested").write_text("", encoding="utf-8")
@@ -6781,7 +6782,7 @@ def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(body="Use SQLite.", diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text(raw_payload, encoding="utf-8")
@@ -6841,7 +6842,7 @@ def test_step2b_drafter_warns_when_dialectic_promotion_fails(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text('{"decisions": []}', encoding="utf-8")
@@ -6892,7 +6893,7 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text("## Draft\n\nUse SQLite.\n\ndiff_lines: 1\n", encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text(
@@ -6987,7 +6988,7 @@ def test_step2b_drafter_emits_inline_fallback_on_drafter_failure(
         args = [str(item) for item in argv]
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -7023,7 +7024,7 @@ def test_step2b_drafter_emits_dirty_tree_recovery(
         args = [str(item) for item in argv]
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-        if args[2:4] == ["agent", "launch-codex-drafter"]:
+        if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / "step2b-drafter-status.txt.dirty-tree").write_text("STATUS=dirty\nMODE=baseline-delta\n", encoding="utf-8")

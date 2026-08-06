@@ -16,6 +16,7 @@ import pytest
 
 from larch.implement import checks
 from larch.implement import checks_run_relevant as _crr
+from larch.core import repo_roots
 from larch.implement import checks_lint_fix as _clf
 from larch.core import config
 from larch.core import external_defaults
@@ -1822,9 +1823,11 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         call for call, _kw in runner.calls
         if "launch-codex-exec" in call
     )
-    idx = list(codex_call).index(str(agent_cli))
+    entrypoint = str(repo_roots.larch_entrypoint())
+    idx = list(codex_call).index(entrypoint)
     argv = list(codex_call)[idx:]
-    assert argv[:3] == [str(agent_cli), "agent", "launch-codex-exec"]
+    assert argv[:3] == [entrypoint, "agent", "launch-codex-exec"]
+    assert str(agent_cli) not in argv
     assert "--timeout" in argv
     assert "1800" in argv
     assert "--workdir" in argv

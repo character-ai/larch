@@ -3,8 +3,9 @@
 use std::fmt;
 
 use serde::{
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize, Serializer,
     de::{MapAccess, SeqAccess, Visitor},
+    ser::{SerializeMap, SerializeSeq},
 };
 use serde_json::Number;
 
@@ -23,6 +24,34 @@ pub enum OrderedJson {
     Array(Vec<Self>),
     /// A JSON object, in source-member order.
     Object(Vec<(String, Self)>),
+}
+
+impl Serialize for OrderedJson {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Null => serializer.serialize_unit(),
+            Self::Bool(value) => serializer.serialize_bool(*value),
+            Self::Number(value) => value.serialize(serializer),
+            Self::String(value) => serializer.serialize_str(value),
+            Self::Array(values) => {
+                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
+                for value in values {
+                    sequence.serialize_element(value)?;
+                }
+                sequence.end()
+            }
+            Self::Object(members) => {
+                let mut map = serializer.serialize_map(Some(members.len()))?;
+                for (key, value) in members {
+                    map.serialize_entry(key, value)?;
+                }
+                map.end()
+            }
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for OrderedJson {

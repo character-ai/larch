@@ -1,0 +1,488 @@
+{
+ "blank_body": {
+  "raw": "LARCH_PLAN_BEGIN\n\n \n\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "empty extracted plan body"
+  }
+ },
+ "crlf": {
+  "raw": "LARCH_PLAN_BEGIN\r\n### NEW: a.rs\r\nwork\r\ndiff_lines: 12\r\nLARCH_PLAN_END\r\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_after_scout": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"archetypes\":[]}\nLARCH_SCOUT_END\nLARCH_DIALECTIC_BEGIN\n{}\nLARCH_DIALECTIC_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "invalid_dialectic_sentinels",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"archetypes\":[]}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "dialectic_bad_json": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_DIALECTIC_BEGIN\nnope\nLARCH_DIALECTIC_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "invalid_dialectic_json",
+   "dialectic_raw": "nope",
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_before_plan_end": {
+  "raw": "LARCH_DIALECTIC_BEGIN\n{}\nLARCH_DIALECTIC_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "invalid_dialectic_sentinels",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_empty": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_DIALECTIC_BEGIN\n   \nLARCH_DIALECTIC_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "empty_dialectic_json",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_in_plan": {
+  "raw": "LARCH_PLAN_BEGIN\nx\nLARCH_DIALECTIC_BEGIN\nLARCH_DIALECTIC_END\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid dialectic sentinels: dialectic block may not appear inside plan envelope"
+  }
+ },
+ "dialectic_in_summary": {
+  "raw": "LARCH_SUMMARY_BEGIN\ns\nLARCH_DIALECTIC_BEGIN\n{}\nLARCH_DIALECTIC_END\nLARCH_SUMMARY_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid dialectic sentinels: dialectic block may not appear inside summary envelope"
+  }
+ },
+ "dialectic_shape_rejected": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_DIALECTIC_BEGIN\n{\"decisions\":[]}\nLARCH_DIALECTIC_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "invalid_dialectic_json",
+   "dialectic_raw": "{\"decisions\":[]}",
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_unbalanced": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_DIALECTIC_BEGIN\n{}\n",
+  "verdict": {
+   "dialectic_fail_reason": "invalid_dialectic_sentinels",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "dialectic_valid": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_DIALECTIC_BEGIN\n{\"decisions\":[{\"id\":\"d1\",\"title\":\"t\",\"option_a\":\"a\",\"option_b\":\"b\",\"tradeoff\":\"x\",\"drafter_pick\":\"option_a\",\"why_this_matters\":\"w\"}]}\nLARCH_DIALECTIC_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": "{\"decisions\":[{\"id\":\"d1\",\"title\":\"t\",\"option_a\":\"a\",\"option_b\":\"b\",\"tradeoff\":\"x\",\"drafter_pick\":\"option_a\",\"why_this_matters\":\"w\"}]}",
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "empty": {
+  "raw": "",
+  "verdict": {
+   "error": "invalid plan sentinels: require exactly one LARCH_PLAN_BEGIN and LARCH_PLAN_END"
+  }
+ },
+ "invalid_size_trailer": {
+  "raw": "LARCH_PLAN_BEGIN\nx\ndiff_added: 08\ndiff_lines: 4\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 4,
+   "plan": "x\ndiff_added: 08\ndiff_lines: 4\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "manifest_fenced": {
+  "raw": "LARCH_PLAN_BEGIN\n```\n{\"archetypes\":[]}\n```\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 1,
+   "plan": "```\n{\"archetypes\":[]}\n```\ndiff_lines: 1\n",
+   "plan_lines": 4,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "manifest_in_plan": {
+  "raw": "LARCH_PLAN_BEGIN\n{\"archetypes\":[]}\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid plan body: standalone scout manifest JSON is not allowed inside plan"
+  }
+ },
+ "manifest_indented": {
+  "raw": "LARCH_PLAN_BEGIN\n  {\"archetypes\":[]}\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 1,
+   "plan": "  {\"archetypes\":[]}\ndiff_lines: 1\n",
+   "plan_lines": 2,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "manifest_multiline": {
+  "raw": "LARCH_PLAN_BEGIN\nprose\n{\n\"archetypes\": []\n}\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid plan body: standalone scout manifest JSON is not allowed inside plan"
+  }
+ },
+ "manifest_other_key": {
+  "raw": "LARCH_PLAN_BEGIN\n{\"other\":[]}\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 1,
+   "plan": "{\"other\":[]}\ndiff_lines: 1\n",
+   "plan_lines": 2,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "manifest_trailing_text": {
+  "raw": "LARCH_PLAN_BEGIN\n{\"archetypes\":[]} x\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 1,
+   "plan": "{\"archetypes\":[]} x\ndiff_lines: 1\n",
+   "plan_lines": 2,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "manifest_unbalanced_fence": {
+  "raw": "LARCH_PLAN_BEGIN\n```\n{\"archetypes\":[]}\ndiff_lines: 1\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid plan body: standalone scout manifest JSON is not allowed inside plan"
+  }
+ },
+ "no_trailer": {
+  "raw": "LARCH_PLAN_BEGIN\nbody\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "missing final diff_lines trailer"
+  }
+ },
+ "octal_trailer": {
+  "raw": "LARCH_PLAN_BEGIN\nx\ndiff_added: 010\ndiff_lines: 4\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 4,
+   "plan": "x\ndiff_added: 010\ndiff_lines: 4\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "plain": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "repeated_diff_lines": {
+  "raw": "LARCH_PLAN_BEGIN\nx\ndiff_lines: 1\ndiff_lines: 2\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 2,
+   "plan": "x\ndiff_lines: 1\ndiff_lines: 2\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "reversed_plan": {
+  "raw": "LARCH_PLAN_END\nLARCH_PLAN_BEGIN\n",
+  "verdict": {
+   "error": "invalid plan sentinels: reversed or empty plan envelope"
+  }
+ },
+ "scout_bad_json": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{oops\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "json_parse",
+   "summary": null
+  }
+ },
+ "scout_bad_shape": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"archetypes\":{}}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "invalid_archetypes_shape",
+   "summary": null
+  }
+ },
+ "scout_before_plan": {
+  "raw": "LARCH_SCOUT_BEGIN\n{}\nLARCH_SCOUT_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid scout sentinels: scout block may appear only after LARCH_PLAN_END"
+  }
+ },
+ "scout_duplicate_key": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"archetypes\":[1],\"archetypes\":[2]}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"archetypes\":[2]}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "scout_empty": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "empty_scout_json",
+   "summary": null
+  }
+ },
+ "scout_member_order": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"z\":1,\"archetypes\":[],\"a\":2}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"z\":1,\"archetypes\":[],\"a\":2}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "scout_nested": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\n \"archetypes\": [\n ]\n}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"archetypes\":[]}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "scout_not_object": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n[1,2]\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "invalid_archetypes_shape",
+   "summary": null
+  }
+ },
+ "scout_ok": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"archetypes\":[{\"name\":\"a\"}]}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"archetypes\":[{\"name\":\"a\"}]}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "scout_reversed": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_END\nx\nLARCH_SCOUT_BEGIN\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "invalid_scout_sentinels",
+   "summary": null
+  }
+ },
+ "scout_unbalanced": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{}\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "invalid_scout_sentinels",
+   "summary": null
+  }
+ },
+ "scout_unicode": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{\"archetypes\":[{\"n\":\"\u00e9\ud83d\ude00\"}]}\nLARCH_SCOUT_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": "{\"archetypes\":[{\"n\":\"\\u00e9\\ud83d\\ude00\"}]}\n",
+   "scout_fail_reason": "",
+   "summary": null
+  }
+ },
+ "summary": {
+  "raw": "LARCH_SUMMARY_BEGIN\nsum\n\n\nLARCH_SUMMARY_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 12,
+   "plan": "### NEW: a.rs\nwork\ndiff_lines: 12\n",
+   "plan_lines": 3,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": "sum\n"
+  }
+ },
+ "summary_blank": {
+  "raw": "LARCH_SUMMARY_BEGIN\n \nLARCH_SUMMARY_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "empty extracted summary body"
+  }
+ },
+ "summary_unbalanced": {
+  "raw": "LARCH_SUMMARY_BEGIN\ns\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid summary sentinels: require zero or one balanced pair"
+  }
+ },
+ "trailer_block_break": {
+  "raw": "LARCH_PLAN_BEGIN\nx\ndiff_lines: 4\nreview_status: ok\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "missing final diff_lines trailer"
+  }
+ },
+ "trailing_blanks": {
+  "raw": "LARCH_PLAN_BEGIN\nx\ndiff_lines: 3\n\n\n\nLARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 3,
+   "plan": "x\ndiff_lines: 3\n",
+   "plan_lines": 2,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ },
+ "truncated_after_begin": {
+  "raw": "LARCH_PLAN_BEGIN\n",
+  "verdict": {
+   "error": "invalid plan sentinels: require exactly one LARCH_PLAN_BEGIN and LARCH_PLAN_END"
+  }
+ },
+ "truncated_plan": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork without trailer\n",
+  "verdict": {
+   "error": "invalid plan sentinels: require exactly one LARCH_PLAN_BEGIN and LARCH_PLAN_END"
+  }
+ },
+ "two_plans": {
+  "raw": "LARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\nLARCH_PLAN_BEGIN\n### NEW: a.rs\nwork\ndiff_lines: 12\nLARCH_PLAN_END\n",
+  "verdict": {
+   "error": "invalid plan sentinels: require exactly one LARCH_PLAN_BEGIN and LARCH_PLAN_END"
+  }
+ },
+ "unicode_line_separator": {
+  "raw": "LARCH_PLAN_BEGIN\u2028x\u2028diff_lines: 5\u2028LARCH_PLAN_END\n",
+  "verdict": {
+   "dialectic_fail_reason": "",
+   "dialectic_raw": null,
+   "diff_lines": 5,
+   "plan": "x\ndiff_lines: 5\n",
+   "plan_lines": 2,
+   "scout": null,
+   "scout_fail_reason": "absent",
+   "summary": null
+  }
+ }
+}

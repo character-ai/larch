@@ -208,11 +208,13 @@ verb = "launch-claude-drafter"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_drafter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8113
+clean_install_test = "clean-install-agent-launch-claude-drafter"
 
 [[commands]]
 domain = "agent"
@@ -280,11 +282,13 @@ verb = "launch-codex-drafter"
 python_module = "larch.agents.agents"
 python_function = "launch_codex_drafter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8113
+clean_install_test = "clean-install-agent-launch-codex-drafter"
 
 [[commands]]
 domain = "agent"
@@ -292,11 +296,13 @@ verb = "launch-codex-exec"
 python_module = "larch.agents.agents"
 python_function = "launch_codex_exec_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8113
+clean_install_test = "clean-install-agent-launch-codex-exec"
 
 [[commands]]
 domain = "agent"
@@ -422,11 +428,13 @@ verb = "run-negotiation-round"
 python_module = "larch.agents.agents"
 python_function = "run_negotiation_round_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8113
+clean_install_test = "clean-install-agent-run-negotiation-round"
 
 [[commands]]
 domain = "agent"
@@ -8192,7 +8200,7 @@ rust = []
 path = "python/larch/agents/collect_results.py"
 kind = "python-runtime"
 python = []
-rust = ["agent run-external-agent", "agent wait-reviewers"]
+rust = ["agent launch-codex-exec", "agent run-external-agent", "agent wait-reviewers"]
 
 [[callers]]
 path = "python/larch/core/config.py"
@@ -8276,7 +8284,7 @@ rust = ["dirty-tree checkpoint"]
 path = "python/larch/design/design_step2b.py"
 kind = "python-runtime"
 python = []
-rust = ["run-log append-entry", "run-log append-failure"]
+rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "run-log append-entry", "run-log append-failure"]
 
 [[callers]]
 path = "python/larch/design/design_step6.py"
@@ -8306,7 +8314,7 @@ rust = ["stall-recovery chat-print", "stall-recovery compose-report", "stall-rec
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent run-external-agent", "run-log append-failure"]
+rust = ["agent cursor-wrap-prompt", "agent launch-codex-exec", "agent run-external-agent", "run-log append-failure"]
 
 [[callers]]
 path = "python/larch/git/rebase.py"
@@ -8324,7 +8332,7 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = ["git commit", "git stage"]
+rust = ["agent launch-codex-exec", "git commit", "git stage"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
@@ -8385,6 +8393,12 @@ path = "python/larch/issue/migration_governance.py"
 kind = "python-runtime"
 python = ["tracking-issue rename"]
 rust = []
+
+[[callers]]
+path = "python/larch/issue/oos_filer.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-codex-exec"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"
@@ -8450,7 +8464,7 @@ rust = ["run-log write", "run-log write-round"]
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent run-external-agent", "git commit"]
+rust = ["agent cursor-wrap-prompt", "agent launch-codex-exec", "agent run-external-agent", "git commit"]
 
 [[callers]]
 path = "python/larch/review/plan_review.py"
@@ -9367,14 +9381,14 @@ rust = ["admission gate", "push rebase"]
 [[callers]]
 path = "skills/research/references/research-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-codex-exec", "research banner", "research run-planner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["bgjob start", "bgjob wait", "session cleanup-tmpdir"]
+python = ["agent collect-results", "research banner", "research run-planner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent launch-codex-exec", "bgjob start", "bgjob wait", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-codex-exec", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait"]
+python = ["agent collect-results", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
@@ -9421,8 +9435,8 @@ rust = ["bgjob start", "bgjob wait"]
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-claude-review", "agent run-negotiation-round"]
-rust = ["agent degraded-tools-gate", "agent model-args", "agent run-external-agent", "agent wait-reviewers"]
+python = ["agent collect-results", "agent launch-claude-review"]
+rust = ["agent degraded-tools-gate", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"
@@ -9487,8 +9501,8 @@ rust = []
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["agent dispatch-voters", "agent launch-codex-exec", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = []
+python = ["agent dispatch-voters", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
+rust = ["agent launch-codex-exec"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

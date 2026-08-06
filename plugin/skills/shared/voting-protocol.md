@@ -118,7 +118,7 @@ Voter dispatch is owned by Python dispatchers, not prompt-side launch scaffoldin
 - `/design` plan review voter dispatch is owned by `python/cli.py plan-review voter-dispatch`.
 - `/review` and `/implement` Step 5 code-review voter dispatch is owned by `python/cli.py agent dispatch-voters`.
 - Tally ownership remains with the existing Python tally verbs, including `python/cli.py plan-review tally` and `python/cli.py review tally-code-votes`.
-- The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec` and `codex-vote-output.txt`.
+- The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.
 
 Do not launch voters directly from the orchestrator on `/design`, `/review`, or `/implement` Step 5 paths. The dispatchers own availability checks, fallbacks, sentinel waits, external result validation, and status emission.
 

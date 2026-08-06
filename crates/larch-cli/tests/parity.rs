@@ -385,6 +385,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "parse-codex-usage",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-launch-claude-drafter",
+        "agent",
+        "launch-claude-drafter",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-codex-drafter",
+        "agent",
+        "launch-codex-drafter",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-codex-exec",
+        "agent",
+        "launch-codex-exec",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-run-negotiation-round",
+        "agent",
+        "run-negotiation-round",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-run-external-agent",
         "agent",
         "run-external-agent",

@@ -35,6 +35,7 @@ crates/larch-adapters/src/git/mod.rs	git-cli	#7671	closed-cli-owner
 crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
 crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
@@ -48,7 +49,6 @@ crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
-python/larch/agents/_drafter.py	later-domain	#7678	dynamic
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse

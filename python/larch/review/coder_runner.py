@@ -258,11 +258,10 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
     binary_flag = os.environ.get(config.ENV_CODEX_BINARY_FOUND, "")
     if binary_flag == "false" or not _codex_available():
         return False
-    cli = _plugin_root() / "python" / "cli.py"
     output = round_dir / "coder-codex.log"
     ledger = _resolve_coder_timing_ledger(round_dir)
     result = _run([
-        "python3", str(cli), "agent", "launch-codex-exec",
+        str(larch_entrypoint()), "agent", "launch-codex-exec",
         "--output", str(output),
         "--timeout", "1800",
         "--prompt", prompt_body,

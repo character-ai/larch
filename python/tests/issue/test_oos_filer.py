@@ -221,7 +221,8 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
         return original_stamp(_tmpdir, run_id, value=value)
 
     def external_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return fake(args[2:])
+        # The launcher is Rust-owned: argv[0] is scripts/larch.sh, then the verb.
+        return fake(args[1:])
 
     monkeypatch.setattr(issue_create, "parse_input", parse_input)
     monkeypatch.setattr(issue_create, "create_one", create_one)
