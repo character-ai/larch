@@ -7,7 +7,7 @@
 //! [`crate::file_io`] instead of re-deriving path safety here.
 
 use crate::{
-    PathIntent, TemporaryRoot, atomic_write_utf8, read_first_raw_key, safe_output_parent,
+    parent_directory, read_first_raw_key, safe_output_parent, write_confined_file,
     writer_target_allowed,
 };
 use chrono::{SecondsFormat, Utc};
@@ -207,7 +207,7 @@ pub fn write_session_id(
         return Ok(SessionIdOutcome::Preserved(existing));
     }
     let session_id = Uuid::new_v4().to_string();
-    write_private_file(output, &format!("{session_id}\n"))?;
+    write_confined_file(output, &format!("{session_id}\n"), 0o600, "session-id")?;
     Ok(SessionIdOutcome::Written(session_id))
 }
 
@@ -306,47 +306,6 @@ fn implement_candidate_mtime(candidate: &Path, query: &ImplementTmpdirQuery<'_>)
         return None;
     }
     Some(mtime)
-}
-
-fn write_private_file(output: &Path, text: &str) -> Result<(), String> {
-    let absolute = absolute_lexical(output);
-    assert_no_symlink_path_or_ancestors(&absolute)?;
-    let parent = parent_directory(&absolute);
-    let root = TemporaryRoot::resolve(Some(&parent))
-        .map_err(|error| format!("output parent is not a writable directory: {error}"))?;
-    let confined = root
-        .confine(&absolute, PathIntent::Write)
-        .map_err(|error| format!("refusing unsafe session-id target: {error}"))?;
-    atomic_write_utf8(&confined, text, 0o600).map_err(|error| format!("{error}"))
-}
-
-fn assert_no_symlink_path_or_ancestors(path: &Path) -> Result<(), String> {
-    let mut current = path;
-    loop {
-        if fs::symlink_metadata(current).is_ok_and(|data| data.file_type().is_symlink()) {
-            return Err(format!(
-                "refusing symlinked path or ancestor: {}",
-                current.display()
-            ));
-        }
-        match current.parent() {
-            Some(parent) if parent != current => current = parent,
-            _ => return Ok(()),
-        }
-    }
-}
-
-fn absolute_lexical(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    std::env::current_dir().map_or_else(|_error| path.to_path_buf(), |cwd| cwd.join(path))
-}
-
-fn parent_directory(path: &Path) -> PathBuf {
-    path.parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
 /// Split a candidate into its deepest existing ancestor and the missing tail.

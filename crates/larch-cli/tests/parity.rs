@@ -78,6 +78,43 @@ impl CleanInstallCase {
                 "install",
                 "dispatch",
             ],
+            // Every writer below runs against the fixture's seeded session
+            // directory, so a clean install proves the whole route, not just
+            // the argument rejection in front of it.
+            "clean-install-session-write-env" => &[
+                "--output",
+                "%SESSION%/session-env.sh",
+                "--repo-unavailable",
+                "false",
+            ],
+            "clean-install-session-write-design-env" => &[
+                "--output",
+                "%SESSION%/source-env.sh",
+                "--design-tmpdir",
+                "%SESSION%",
+                "--session-id",
+                "clean-install",
+            ],
+            "clean-install-session-write-implement-env" => &[
+                "--claude-pid",
+                "4242",
+                "--implement-tmpdir",
+                "%SESSION%",
+                "--cwd",
+                "%SESSION%",
+            ],
+            "clean-install-session-clear-implement-pointer" => &["--claude-pid", "4242"],
+            "clean-install-session-persist-run-flags" => {
+                &["--implement-tmpdir", "%SESSION%", "--no-issues", "false"]
+            }
+            "clean-install-session-restore-finalize-state" => &["--implement-tmpdir", "%SESSION%"],
+            "clean-install-session-write-run-params" => &["--output", "%SESSION%/run-params.json"],
+            "clean-install-session-resolve-trusted-design-env" => &[
+                "--session-env-path",
+                "%HOME%/.cache/larch/sessions/current-design-env-4242.sh",
+                "--claude-pid",
+                "4242",
+            ],
             _ => &["--help"],
         }
     }
@@ -143,6 +180,42 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-session-validate-design-tmpdir",
         "session",
         "validate-design-tmpdir",
+    ),
+    CleanInstallCase::new("clean-install-session-write-env", "session", "write-env"),
+    CleanInstallCase::new(
+        "clean-install-session-write-design-env",
+        "session",
+        "write-design-env",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-write-implement-env",
+        "session",
+        "write-implement-env",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-clear-implement-pointer",
+        "session",
+        "clear-implement-pointer",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-persist-run-flags",
+        "session",
+        "persist-run-flags",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-write-run-params",
+        "session",
+        "write-run-params",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-restore-finalize-state",
+        "session",
+        "restore-finalize-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-session-resolve-trusted-design-env",
+        "session",
+        "resolve-trusted-design-env",
     ),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
@@ -1127,6 +1200,521 @@ fn the_parity_clone_hash_is_pinned_to_its_path() {
     assert!(!Path::new(PROGRESS_CLONE).exists());
 }
 
+struct SessionEnvFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    environment: &'static [(&'static str, &'static str)],
+    seeds: &'static [(&'static str, &'static str)],
+    normalization: &'static [NormalizationRule],
+}
+
+impl SessionEnvFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.command))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust_program = Program::new(rust).args(
+            ["session", self.command]
+                .into_iter()
+                .chain(self.arguments.iter().copied()),
+        );
+        for (key, value) in self.environment {
+            python_program = python_program.env(key, value);
+            rust_program = rust_program.env(key, value);
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: self.normalization.to_vec(),
+        }
+    }
+}
+
+/// A seeded session directory whose name never matches the tmpdir redaction rules.
+const WRITER_SESSION: &str = "writer-session/.keep";
+/// One prior `/implement` session-env the overwrite cases must not lose.
+const PRIOR_SESSION_ENV: &str = "REPO=prior/repo\n";
+/// A durable ship-pr state with no bail reason, so no run-log delegation runs.
+const SHIP_PR_STATE: &str = concat!(
+    "# comment\n",
+    "BRANCH_NAME=feature/x\n",
+    "PR_NUMBER=42\n",
+    "PR_TITLE=Some title with spaces\n",
+    "PR_URL=https://example.invalid/pr/42\n",
+    "ISSUE_NUMBER=8058\n",
+    "REPO=character-ai/larch\n",
+    "MERGE=true\n",
+    "RUN_ID=run-abc\n",
+    "NOT_A_KEY\n",
+);
+/// A prior finalize state whose stall tracking outranks the durable state.
+const PRIOR_FINALIZE_STATE: &str =
+    "STALL_TRACKING=true\nSTALL_STEP=Step 5\nEXPECTED_SESSION_ID=sid-1\n";
+/// A prior design env the refresh path recovers values from.
+const PRIOR_DESIGN_ENV: &str = concat!(
+    "#!/usr/bin/env bash\n",
+    "export REPO_ROOT=/prior/root\n",
+    "export LARCH_RUN_ID=prior-run\n",
+    "export CODEX_BINARY_FOUND=true\n",
+    "export LARCH_LIVE_MUTATION_OK=true\n",
+);
+const PLUGIN_ROOT_SANDBOX: &[(&str, &str)] = &[("CLAUDE_PLUGIN_ROOT", "{sandbox}")];
+
+const SESSION_ENV_CASES: &[SessionEnvFixture] = &[
+    SessionEnvFixture {
+        name: "session-write-env-missing-arguments",
+        command: "write-env",
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-unrecognized",
+        command: "write-env",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    // A missing required flag outranks an unexpanded plugin root, so the two
+    // must not be reordered when the flag validations are grouped.
+    SessionEnvFixture {
+        name: "session-write-env-missing-repo-unavailable-outranks-plugin-root",
+        command: "write-env",
+        arguments: &["--output", "{sandbox}/writer-session/session-env.sh"],
+        environment: &[("CLAUDE_PLUGIN_ROOT", "${CLAUDE_PLUGIN_ROOT}")],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-invalid-plugin-root",
+        command: "write-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/session-env.sh",
+            "--repo-unavailable",
+            "false",
+        ],
+        environment: &[("CLAUDE_PLUGIN_ROOT", "${CLAUDE_PLUGIN_ROOT}")],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-dev-null",
+        command: "write-env",
+        arguments: &["--output", "/dev/null", "--repo-unavailable", "false"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-invalid-boolean",
+        command: "write-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/session-env.sh",
+            "--repo-unavailable",
+            "false",
+            "--auto-mode",
+            "maybe",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-outside-allowed-root",
+        command: "write-env",
+        arguments: &[
+            "--output",
+            "/larch-parity-not-a-session/session-env.sh",
+            "--repo-unavailable",
+            "false",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-env-full",
+        command: "write-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/session-env.sh",
+            "--repo",
+            "character-ai/larch",
+            "--repo-root",
+            "/repo/root",
+            "--repo-unavailable",
+            "false",
+            "--claude-binary-found",
+            "true",
+            "--codex-binary-found",
+            "false",
+            "--cursor-binary-found",
+            "true",
+            "--auto-mode",
+            "true",
+            "--forked-target",
+            "true",
+            "--timing-ledger",
+            "/tmp/ledger.tsv",
+            "--token-session-id",
+            "abc.123",
+            "--claude-source-file",
+            "/tmp/claude-source.env",
+            "--prev-implement-tmpdir",
+            "/tmp/prev",
+            "--dynamic-archetypes",
+            "1",
+            "--run-id",
+            "run-9",
+            "--live-mutation-ok",
+            "true",
+        ],
+        environment: PLUGIN_ROOT_SANDBOX,
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-write-env-plugin-root-only",
+        command: "write-env",
+        arguments: &[
+            "--plugin-root-only",
+            "--output",
+            "{sandbox}/writer-session/plugin-root.env",
+            "--value",
+            "/opt/larch",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-write-env-rejects-and-keeps-prior",
+        command: "write-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/session-env.sh",
+            "--repo-unavailable",
+            "false",
+            "--run-id",
+            "bad/id",
+        ],
+        environment: &[],
+        seeds: &[
+            (WRITER_SESSION, ""),
+            ("writer-session/session-env.sh", PRIOR_SESSION_ENV),
+        ],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-design-env-missing-arguments",
+        command: "write-design-env",
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-design-env-invalid-repo",
+        command: "write-design-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/source-env.sh",
+            "--design-tmpdir",
+            "{sandbox}/writer-session",
+            "--session-id",
+            "sid.1",
+            "--repo",
+            "/bad",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    // Not a sandbox path: every platform's temporary root is itself allowlisted,
+    // on Linux through `/tmp` and on macOS through `TMPDIR`. `/usr` is a real
+    // directory on both, so the rejected path resolves to itself either way.
+    SessionEnvFixture {
+        name: "session-write-design-env-outside-allowlist",
+        command: "write-design-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/source-env.sh",
+            "--design-tmpdir",
+            "/usr",
+            "--session-id",
+            "sid.1",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-design-env-requires-plugin-root-with-pid",
+        command: "write-design-env",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/source-env.sh",
+            "--design-tmpdir",
+            "{sandbox}/writer-session",
+            "--session-id",
+            "sid.1",
+            "--claude-pid",
+            "4242",
+        ],
+        environment: &[],
+        seeds: &[
+            (WRITER_SESSION, ""),
+            ("writer-session/source-env.sh", PRIOR_DESIGN_ENV),
+        ],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-implement-env-invalid-pid",
+        command: "write-implement-env",
+        arguments: &["--claude-pid", "0", "--cwd", "/"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-implement-env-publishes-pointer",
+        command: "write-implement-env",
+        arguments: &[
+            "--claude-pid",
+            "4242",
+            "--implement-tmpdir",
+            "{sandbox}/writer-session",
+            "--cwd",
+            "/",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-clear-implement-pointer-invalid-pid",
+        command: "clear-implement-pointer",
+        arguments: &["--claude-pid", "abc"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-clear-implement-pointer-removes-pointer",
+        command: "clear-implement-pointer",
+        arguments: &["--claude-pid", "4242"],
+        environment: &[],
+        seeds: &[(
+            ".home/.cache/larch/sessions/current-implement-env-4242.sh",
+            "IMPLEMENT_TMPDIR=/tmp/writer-session\n",
+        )],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-persist-run-flags-unrecognized",
+        command: "persist-run-flags",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-persist-run-flags-missing-directory",
+        command: "persist-run-flags",
+        arguments: &["--implement-tmpdir", "{sandbox}/absent-session"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-persist-run-flags-invalid-boolean",
+        command: "persist-run-flags",
+        arguments: &["--implement-tmpdir", "{sandbox}/writer-session"],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-persist-run-flags-full",
+        command: "persist-run-flags",
+        arguments: &[
+            "--implement-tmpdir",
+            "{sandbox}/writer-session",
+            "--quick-mode",
+            "true",
+            "--no-issues",
+            "false",
+            "--force-requested",
+            "true",
+            "--self-review-requested",
+            "false",
+            "--self-implement-requested",
+            "true",
+            "--difficulty-override",
+            "MODERATE",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-run-params-unrecognized",
+        command: "write-run-params",
+        arguments: &["--bogus"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-run-params-relative-output",
+        command: "write-run-params",
+        arguments: &["--output", "relative.json"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-run-params-invalid-difficulty",
+        command: "write-run-params",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/run-params.json",
+            "--difficulty",
+            "NOPE",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-write-run-params-missing-directory",
+        command: "write-run-params",
+        arguments: &["--output", "{sandbox}/absent-session/run-params.json"],
+        environment: &[],
+        seeds: &[],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-write-run-params-full",
+        command: "write-run-params",
+        arguments: &[
+            "--output",
+            "{sandbox}/writer-session/run-params.json",
+            "--partition-requested",
+            "true",
+            "--brainstorm-requested",
+            "false",
+            "--approve-requested",
+            "true",
+            "--skip-approve-requested",
+            "false",
+            "--difficulty",
+            "HARD",
+        ],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-restore-finalize-state-missing-state-file",
+        command: "restore-finalize-state",
+        arguments: &["--implement-tmpdir", "{sandbox}/writer-session"],
+        environment: &[],
+        seeds: &[(WRITER_SESSION, "")],
+        normalization: SANDBOX_ONLY,
+    },
+    SessionEnvFixture {
+        name: "session-restore-finalize-state-outside-allowed-root",
+        command: "restore-finalize-state",
+        arguments: &["--implement-tmpdir", "/usr"],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-restore-finalize-state-fresh",
+        command: "restore-finalize-state",
+        arguments: &["--implement-tmpdir", "{sandbox}/writer-session"],
+        environment: &[],
+        seeds: &[("writer-session/ship-pr-state.sh", SHIP_PR_STATE)],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-restore-finalize-state-keeps-stall-tracking",
+        command: "restore-finalize-state",
+        arguments: &["--implement-tmpdir", "{sandbox}/writer-session"],
+        environment: &[],
+        seeds: &[
+            ("writer-session/ship-pr-state.sh", SHIP_PR_STATE),
+            ("writer-session/finalize-state.sh", PRIOR_FINALIZE_STATE),
+        ],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-resolve-trusted-design-env-missing-required",
+        command: "resolve-trusted-design-env",
+        arguments: &[],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-resolve-trusted-design-env-invalid-pid",
+        command: "resolve-trusted-design-env",
+        arguments: &[
+            "--session-env-path",
+            "{sandbox}/absent.sh",
+            "--claude-pid",
+            "0",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+    SessionEnvFixture {
+        name: "session-resolve-trusted-design-env-no-pointer",
+        command: "resolve-trusted-design-env",
+        arguments: &[
+            "--session-env-path",
+            "{sandbox}/absent.sh",
+            "--claude-pid",
+            "4242",
+        ],
+        environment: &[],
+        seeds: &[],
+        normalization: &[],
+    },
+];
+
+#[test]
+fn session_env_writer_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("session_env_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in SESSION_ENV_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[test]
 fn session_lifecycle_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
@@ -1178,7 +1766,7 @@ fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         let lines: Vec<&str> = events.lines().collect();
-        let expected_dispatch = clean_install_dispatch(*case);
+        let expected_dispatch = clean_install_dispatch(&fixture, *case);
         assert_eq!(lines.first(), Some(&"--version"), "{}", case.id);
         assert_eq!(lines.get(1), Some(&"bootstrap self-check"), "{}", case.id);
         assert_eq!(
@@ -1207,15 +1795,24 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
         assert!(
             !events
                 .lines()
-                .any(|line| line == clean_install_dispatch(case)),
+                .any(|line| line == clean_install_dispatch(&fixture, case)),
             "{failure} reached selector dispatch"
         );
     }
 }
 
+/// Argument placeholder each clean-install case expands to the seeded session.
+const CLEAN_INSTALL_SESSION_TOKEN: &str = "%SESSION%";
+/// Argument placeholder each clean-install case expands to the isolated home.
+const CLEAN_INSTALL_HOME_TOKEN: &str = "%HOME%";
+
 struct CleanInstallFixture {
     _temporary: TempDir,
     root: PathBuf,
+    /// Isolated home, so a verb that publishes a PID-keyed pointer stays contained.
+    home: PathBuf,
+    /// Seeded session directory every writer verb targets.
+    session: PathBuf,
     wrapper: PathBuf,
     events: PathBuf,
     binary: PathBuf,
@@ -1278,23 +1875,64 @@ exec "$REAL_LARCH" "$@"
         permissions.set_mode(0o755);
         fs::set_permissions(&wrapper, permissions).expect("make wrapper executable");
     }
+    let home = temporary_root.join("home");
+    let session = temporary_root.join("session");
+    let sessions_cache = home.join(".cache/larch/sessions");
+    fs::create_dir_all(&sessions_cache).expect("create clean-install home");
+    fs::create_dir_all(&session).expect("create clean-install session directory");
+    // `restore-finalize-state` reports a missing durable state file as a warning
+    // exit, so the seeded state is what lets a clean dispatch complete.
+    fs::write(
+        session.join("ship-pr-state.sh"),
+        "BRANCH_NAME=clean-install\n",
+    )
+    .expect("seed clean-install ship-pr state");
+    // `resolve-trusted-design-env` resolves an existing pointer or exits 1, so the
+    // seeded link and target are what let a clean dispatch complete.
+    fs::write(
+        session.join("design-env.sh"),
+        "export SESSION_ID=clean-install\n",
+    )
+    .expect("seed clean-install design env");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        session.join("design-env.sh"),
+        sessions_cache.join("current-design-env-4242.sh"),
+    )
+    .expect("seed clean-install design pointer");
     CleanInstallFixture {
         events: temporary_root.join("events.log"),
         binary: PathBuf::from(env!("CARGO_BIN_EXE_larch")),
         _temporary: temporary,
         root,
+        home,
+        session,
         wrapper,
     }
+}
+
+/// Expand one case's static arguments against the fixture's seeded session.
+fn clean_install_arguments(fixture: &CleanInstallFixture, case: CleanInstallCase) -> Vec<String> {
+    let session = fixture.session.to_string_lossy().into_owned();
+    let home = fixture.home.to_string_lossy().into_owned();
+    case.arguments()
+        .iter()
+        .map(|argument| {
+            argument
+                .replace(CLEAN_INSTALL_SESSION_TOKEN, &session)
+                .replace(CLEAN_INSTALL_HOME_TOKEN, &home)
+        })
+        .collect()
 }
 
 /// Render the argv line the verified bootstrap wrapper records for one case.
 ///
 /// An argument-free verb records only its domain and verb, with no trailing
 /// separator, because the wrapper logs the shell's joined argument list.
-fn clean_install_dispatch(case: CleanInstallCase) -> String {
-    std::iter::once(case.domain)
-        .chain(std::iter::once(case.verb))
-        .chain(case.arguments().iter().copied())
+fn clean_install_dispatch(fixture: &CleanInstallFixture, case: CleanInstallCase) -> String {
+    std::iter::once(case.domain.to_owned())
+        .chain(std::iter::once(case.verb.to_owned()))
+        .chain(clean_install_arguments(fixture, case))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -1308,7 +1946,10 @@ fn run_clean_install_case(
     command
         .arg(fixture.root.join("scripts/larch.sh"))
         .args([case.domain, case.verb])
-        .args(case.arguments())
+        .args(clean_install_arguments(fixture, case))
+        .env("HOME", &fixture.home)
+        .env("TMPDIR", &fixture.session)
+        .env_remove("XDG_CACHE_HOME")
         .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
         .env("LARCH_BINARY", &fixture.wrapper)
         .env("REAL_LARCH", &fixture.binary)

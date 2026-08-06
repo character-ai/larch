@@ -361,35 +361,36 @@ def _write_base_session_env(st: BootstrapState) -> None:
     claude_source_path = Path(st.implement_tmpdir) / "claude-source.env"
     if not claude_source and claude_source_path.is_file():
         claude_source = str(claude_source_path)
-    try:
-        session_env.write_env(session_env.WriteEnvParams(
-            output=str(st.session_env()),
-            repo=st.repo,
-            repo_root=_resolve_repo_root(),
-            repo_unavailable=st.repo_unavailable or "false",
-            codex_present=st.codex_present,
-            cursor_present=st.cursor_present,
-            claude_binary_found=st.claude_binary_found,
-            codex_binary_found=st.codex_binary_found,
-            cursor_binary_found=st.cursor_binary_found,
-            timing_ledger=str(Path(st.implement_tmpdir) / "timing-ledger.tsv"),
-            token_session_id=st.session_id,
-            claude_source_file=claude_source,
-            prev_implement_tmpdir=st.implement_tmpdir,
-            auto_mode=prior_auto_mode,
-            dynamic_archetypes=prior_dynamic_archetypes if prior_dynamic_archetypes in {"0", "1"} else "",
-            run_id=st.run_id if _valid_run_id(st.run_id) else "",
-            forked_target=st.opts.forked_target,
-            live_mutation_ok="true",
-        ))
-        session_env.write_env(session_env.WriteEnvParams(
-            output=str(Path(st.implement_tmpdir) / "plugin-root.env"),
-            repo_unavailable=None,
-            plugin_root_only=True,
-            value=str(_REPO_ROOT),
-        ))
-    except (OSError, ValueError):
-        st.emit_step_failed("write-session-env")
+    base = session_env.WriteEnvParams(
+        output=str(st.session_env()),
+        repo=st.repo,
+        repo_root=_resolve_repo_root(),
+        repo_unavailable=st.repo_unavailable or "false",
+        codex_present=st.codex_present,
+        cursor_present=st.cursor_present,
+        claude_binary_found=st.claude_binary_found,
+        codex_binary_found=st.codex_binary_found,
+        cursor_binary_found=st.cursor_binary_found,
+        timing_ledger=str(Path(st.implement_tmpdir) / "timing-ledger.tsv"),
+        token_session_id=st.session_id,
+        claude_source_file=claude_source,
+        prev_implement_tmpdir=st.implement_tmpdir,
+        auto_mode=prior_auto_mode,
+        dynamic_archetypes=prior_dynamic_archetypes if prior_dynamic_archetypes in {"0", "1"} else "",
+        run_id=st.run_id if _valid_run_id(st.run_id) else "",
+        forked_target=st.opts.forked_target,
+        live_mutation_ok="true",
+    )
+    sidecar = session_env.WriteEnvParams(
+        output=str(Path(st.implement_tmpdir) / "plugin-root.env"),
+        repo_unavailable=None,
+        plugin_root_only=True,
+        value=str(_REPO_ROOT),
+    )
+    for params in (base, sidecar):
+        if session_env.run_write_env(params).returncode != 0:
+            # Raises BootstrapExit, so the sidecar never runs after a base failure.
+            st.emit_step_failed("write-session-env")
 
 
 def _write_claude_source_snapshot(st: BootstrapState) -> None:
@@ -412,16 +413,16 @@ def _write_claude_source_snapshot(st: BootstrapState) -> None:
 def _persist_run_flags(st: BootstrapState) -> bool:
     if not st.implement_tmpdir:
         return True
-    try:
-        session_env.persist_run_flags(
-            implement_tmpdir=Path(st.implement_tmpdir),
-            no_issues="false",
-            force_requested=st.opts.force_requested,
-            self_review_requested=st.opts.self_review_requested,
-            self_implement_requested=st.opts.self_implement_requested,
-            difficulty_override=st.opts.difficulty_override,
-        )
-    except (OSError, ValueError):
+    persisted = proc.run([
+        str(larch_entrypoint(_REPO_ROOT)), "session", "persist-run-flags",
+        "--implement-tmpdir", st.implement_tmpdir,
+        "--no-issues", "false",
+        "--force-requested", st.opts.force_requested,
+        "--self-review-requested", st.opts.self_review_requested,
+        "--self-implement-requested", st.opts.self_implement_requested,
+        "--difficulty-override", st.opts.difficulty_override,
+    ])
+    if persisted.returncode != 0:
         st.stall_tracking = "true"
         st.implement_bail_reason = "run-flags-persist-failed"
         return False
@@ -431,11 +432,10 @@ def _persist_run_flags(st: BootstrapState) -> bool:
 def _ensure_plugin_root_env(st: BootstrapState) -> None:
     plugin_env = Path(st.implement_tmpdir) / "plugin-root.env"
     if not plugin_env.is_file():
-        with contextlib.suppress(OSError, ValueError):
-            session_env.write_env(session_env.WriteEnvParams(
-                output=str(plugin_env), repo_unavailable=None,
-                plugin_root_only=True, value=str(_REPO_ROOT),
-            ))
+        _ = session_env.run_write_env(session_env.WriteEnvParams(
+            output=str(plugin_env), repo_unavailable=None,
+            plugin_root_only=True, value=str(_REPO_ROOT),
+        ))
 
 
 def _restore_resume_progress(st: BootstrapState) -> None:
@@ -547,14 +547,16 @@ def _phase_infra(st: BootstrapState) -> None:
         st.emit_step_failed("larch-run")
     pid = os.environ.get("LARCH_CLAUDE_PID", "")
     if pid and st.implement_tmpdir:
-        try:
-            session_env.write_implement_env(
-                claude_pid=pid, implement_tmpdir=st.implement_tmpdir, cwd=str(Path.cwd())
-            )
-        except (OSError, ValueError) as exc:
+        written = proc.run([
+            str(larch_entrypoint(_REPO_ROOT)), "session", "write-implement-env",
+            "--claude-pid", pid,
+            "--implement-tmpdir", st.implement_tmpdir,
+            "--cwd", str(Path.cwd()),
+        ])
+        if written.returncode != 0:
             diag = Path(st.implement_tmpdir) / "write-implement-env-warning.log"
             with contextlib.suppress(OSError):
-                diag.write_text(str(exc), encoding="utf-8")
+                diag.write_text(written.stderr.strip(), encoding="utf-8")
             if diag.is_file():
                 _append_failure_with_entry_fallback(
                     st,

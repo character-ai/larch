@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    },
+    "writer-session/run-params.json": {
+      "text": "{\n  \"schema_version\": 3,\n  \"partition_requested\": true,\n  \"brainstorm_requested\": false,\n  \"approve_requested\": true,\n  \"skip_approve_requested\": false,\n  \"difficulty_override\": \"HARD\"\n}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "RUN_PARAMS_WRITTEN=<SANDBOX>/writer-session/run-params.json\n"
+  }
+}

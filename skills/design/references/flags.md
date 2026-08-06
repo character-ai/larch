@@ -22,7 +22,7 @@ Step 0-pre validation and positional classification use `python/cli.py design pa
 - `--approve`: **retired**. Rejected before Step 0. Use `--per-round-approval` for explicit per-round Gate B, or `--skip-approve`/`-s` for outline and final-plan auto-approval.
 - `--manual` / `-m`: removed. Rejected before Step 0. No manual mode is persisted; Gate B auto-applies by default, and only `--per-round-approval` restores explicit per-round apply.
 
-`python/cli.py session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and gates Step 1d.7 and Step 4b Gate C.
+`scripts/larch.sh session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and gates Step 1d.7 and Step 4b Gate C.
 
 **Positional tail**: after flags, argv is `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). An all-digit first positional becomes `POSITIONAL_VALUE`; parsing continues, so valid flags on either side of the issue id are honored and unknown/forbidden trailing flags still error. Later non-flag tokens after an issue id are ignored. A non-digit first positional stops flag parsing and starts literal verbal text. `--` stops flag parsing: the next all-digit token becomes the issue id; otherwise the rest becomes literal verbal text. See `python/larch/design/design_argv.py`.
 

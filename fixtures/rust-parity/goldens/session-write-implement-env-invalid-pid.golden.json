@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Invalid --claude-pid: must be a positive integer of at most 7 decimal digits\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

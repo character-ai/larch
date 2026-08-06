@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session resolve-trusted-design-env --session-env-path SESSION_ENV_PATH\n                                          [--claude-pid CLAUDE_PID]\nsession resolve-trusted-design-env: error: the following arguments are required: --session-env-path\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

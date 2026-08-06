@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "restore-finalize-state.sh: --implement-tmpdir not under allowed session root: /usr\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

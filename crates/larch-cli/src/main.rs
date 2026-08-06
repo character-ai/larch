@@ -36,6 +36,7 @@ mod release_publish;
 mod release_stage;
 mod release_version;
 mod run_log_commands;
+mod session_env_commands;
 mod session_lifecycle_commands;
 mod state_commands;
 mod test_shards;
@@ -192,6 +193,30 @@ enum SessionCommand {
     /// Idempotently publish a session identity file.
     #[command(disable_help_flag = true)]
     WriteId(RawCompatibilityArguments),
+    /// Write the implement session environment file.
+    #[command(disable_help_flag = true)]
+    WriteEnv(RawCompatibilityArguments),
+    /// Write the design session environment file and its PID-keyed pointer.
+    #[command(disable_help_flag = true)]
+    WriteDesignEnv(RawCompatibilityArguments),
+    /// Write the implement current-env pointer and stable launcher.
+    #[command(disable_help_flag = true)]
+    WriteImplementEnv(RawCompatibilityArguments),
+    /// Remove the implement current-env pointer.
+    #[command(disable_help_flag = true)]
+    ClearImplementPointer(RawCompatibilityArguments),
+    /// Persist validated implement run flags.
+    #[command(disable_help_flag = true)]
+    PersistRunFlags(RawCompatibilityArguments),
+    /// Write the design run-params document.
+    #[command(disable_help_flag = true)]
+    WriteRunParams(RawCompatibilityArguments),
+    /// Rebuild finalize state from the durable ship-pr state file.
+    #[command(disable_help_flag = true)]
+    RestoreFinalizeState(RawCompatibilityArguments),
+    /// Resolve a design session-env pointer to its trusted target.
+    #[command(disable_help_flag = true)]
+    ResolveTrustedDesignEnv(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -622,6 +647,56 @@ struct EchoArguments {
     message: String,
 }
 
+/// Dispatch one `session` verb to its command module.
+fn run_session(command: SessionCommand) -> ExitCode {
+    match command {
+        SessionCommand::KillBackgroundProcesses(arguments) => {
+            kill_background::kill_background_processes(&arguments.arguments)
+        }
+        SessionCommand::ReadKey(arguments) => state_commands::read_key(&arguments.arguments),
+        SessionCommand::ReadKeys(arguments) => state_commands::read_keys(&arguments.arguments),
+        SessionCommand::CleanupTmpdir(arguments) => {
+            session_lifecycle_commands::cleanup_tmpdir(&arguments.arguments)
+        }
+        SessionCommand::RequirePluginRoot(arguments) => {
+            session_lifecycle_commands::require_plugin_root(&arguments.arguments)
+        }
+        SessionCommand::ResolveImplementTmpdir(arguments) => {
+            session_lifecycle_commands::resolve_implement_tmpdir_command(&arguments.arguments)
+        }
+        SessionCommand::ValidateDesignTmpdir(arguments) => {
+            session_lifecycle_commands::validate_design_tmpdir_command(&arguments.arguments)
+        }
+        SessionCommand::WriteId(arguments) => {
+            session_lifecycle_commands::write_id(&arguments.arguments)
+        }
+        SessionCommand::WriteEnv(arguments) => {
+            session_env_commands::write_env(&arguments.arguments)
+        }
+        SessionCommand::WriteDesignEnv(arguments) => {
+            session_env_commands::write_design_env(&arguments.arguments)
+        }
+        SessionCommand::WriteImplementEnv(arguments) => {
+            session_env_commands::write_implement_env(&arguments.arguments)
+        }
+        SessionCommand::ClearImplementPointer(arguments) => {
+            session_env_commands::clear_implement_pointer(&arguments.arguments)
+        }
+        SessionCommand::PersistRunFlags(arguments) => {
+            session_env_commands::persist_run_flags(&arguments.arguments)
+        }
+        SessionCommand::WriteRunParams(arguments) => {
+            session_env_commands::write_run_params(&arguments.arguments)
+        }
+        SessionCommand::RestoreFinalizeState(arguments) => {
+            session_env_commands::restore_finalize_state(&arguments.arguments)
+        }
+        SessionCommand::ResolveTrustedDesignEnv(arguments) => {
+            session_env_commands::resolve_trusted_design_env(&arguments.arguments)
+        }
+    }
+}
+
 #[allow(clippy::too_many_lines)] // Domain dispatch enumerates every Rust-owned command pair.
 fn run(
     cli: Cli,
@@ -693,30 +768,7 @@ fn run(
             }
         }),
         Domain::Release(command) => run_release(command),
-        Domain::Session(SessionCommand::KillBackgroundProcesses(arguments)) => Ok(
-            kill_background::kill_background_processes(&arguments.arguments),
-        ),
-        Domain::Session(SessionCommand::ReadKey(arguments)) => {
-            Ok(state_commands::read_key(&arguments.arguments))
-        }
-        Domain::Session(SessionCommand::ReadKeys(arguments)) => {
-            Ok(state_commands::read_keys(&arguments.arguments))
-        }
-        Domain::Session(SessionCommand::CleanupTmpdir(arguments)) => Ok(
-            session_lifecycle_commands::cleanup_tmpdir(&arguments.arguments),
-        ),
-        Domain::Session(SessionCommand::RequirePluginRoot(arguments)) => Ok(
-            session_lifecycle_commands::require_plugin_root(&arguments.arguments),
-        ),
-        Domain::Session(SessionCommand::ResolveImplementTmpdir(arguments)) => {
-            Ok(session_lifecycle_commands::resolve_implement_tmpdir_command(&arguments.arguments))
-        }
-        Domain::Session(SessionCommand::ValidateDesignTmpdir(arguments)) => Ok(
-            session_lifecycle_commands::validate_design_tmpdir_command(&arguments.arguments),
-        ),
-        Domain::Session(SessionCommand::WriteId(arguments)) => {
-            Ok(session_lifecycle_commands::write_id(&arguments.arguments))
-        }
+        Domain::Session(command) => Ok(run_session(command)),
         Domain::TestShard(command) => Ok(test_shards::run(command)),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());

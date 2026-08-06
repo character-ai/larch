@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "write-run-params.sh: --output must be absolute: relative.json\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -24,6 +24,7 @@ pub mod bgjob_registry;
 mod file_io;
 mod filesystem;
 pub mod progress_state;
+mod session_env;
 mod session_lifecycle;
 pub mod statusline;
 
@@ -54,6 +55,12 @@ pub use process::{
     probe_process_command_name,
 };
 pub use process_identity::SystemProcessIdentityHost;
+pub use session_env::{
+    absolute_lexical, assert_no_symlink_ancestors, assert_no_symlink_path_or_ancestors,
+    create_directories, is_directory, is_regular_file, parent_directory, publish_symlink,
+    recover_prior_bool, recover_prior_design_value, remove_file_if_present,
+    resolve_trusted_design_env_source, write_confined_file,
+};
 pub use session_lifecycle::{
     CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SessionIdOutcome, append_cleanup_audit,
     parent_process_id, remove_session_tmpdir, resolve_implement_tmpdir, validate_design_tmpdir,

@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    },
+    "writer-session/plugin-root.env": {
+      "text": "CLAUDE_PLUGIN_ROOT=/opt/larch\nexport CLAUDE_PLUGIN_ROOT\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: session persist-run-flags [--implement-tmpdir IMPLEMENT_TMPDIR]\n                                 [--quick-mode QUICK_MODE]\n                                 [--no-issues NO_ISSUES]\n                                 [--force-requested FORCE_REQUESTED]\n                                 [--self-review-requested SELF_REVIEW_REQUESTED]\n                                 [--self-implement-requested SELF_IMPLEMENT_REQUESTED]\n                                 [--difficulty-override DIFFICULTY_OVERRIDE]\nsession persist-run-flags: error: unrecognized arguments: --bogus\npersist-implement-run-flags.sh: 2\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -5,10 +5,12 @@ import json
 import subprocess
 import sys
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
+from larch.core import proc
 from larch.core.proc import CommandResult
 from larch.implement import dispatch_bootstrap
 from larch.state import bootstrap
@@ -56,11 +58,11 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     )
     calls: list[bootstrap.session_env.WriteEnvParams] = []
 
-    def fake_write_env(params: bootstrap.session_env.WriteEnvParams) -> bootstrap.session_env.WriteEnvResult:
+    def fake_run_write_env(params: bootstrap.session_env.WriteEnvParams) -> proc.CommandResult:
         calls.append(params)
-        return bootstrap.session_env.WriteEnvResult(output=Path(params.output), wrote=True)
+        return proc.CommandResult(("larch", "session", "write-env"), 0, "", "", 0.0)
 
-    monkeypatch.setattr(bootstrap.session_env, "write_env", fake_write_env)
+    monkeypatch.setattr(bootstrap.session_env, "run_write_env", fake_run_write_env)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="infra"),
         implement_tmpdir=str(tmp_path),
@@ -193,7 +195,25 @@ def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> 
     assert not rename_called[0]
 
 
+def _stub_session_env_writer(monkeypatch) -> None:
+    """Report success for the Rust-owned session verbs these cases do not exercise."""
+    real_run = proc.run
+
+    def routed(argv: Sequence[str], **kwargs: object) -> proc.CommandResult:
+        if "session" in list(argv)[1:2]:
+            return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return real_run(list(argv), **kwargs)  # pyright: ignore[reportArgumentType]  # passthrough keeps the real signature
+
+    monkeypatch.setattr(
+        bootstrap.session_env,
+        "run_write_env",
+        lambda _params: proc.CommandResult(("larch", "session", "write-env"), 0, "", "", 0.0),
+    )
+    monkeypatch.setattr(bootstrap.proc, "run", routed)
+
+
 def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -> None:
+    _stub_session_env_writer(monkeypatch)
     post_called = [False]
 
     def fake_post(*_args: object, **_kwargs: object) -> None:
@@ -1266,6 +1286,7 @@ def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypa
 
 
 def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, monkeypatch) -> None:
+    _stub_session_env_writer(monkeypatch)
     calls: list[str] = []
 
     def fail_rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
@@ -1420,18 +1441,20 @@ def _run_phase_infra_for_progress(
         _ = env
         calls.append(("timing", label))
 
-    def fake_write_implement_env(**_kwargs: object) -> bootstrap.session_env.WriteImplementEnvResult:
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+        if list(argv[1:3]) != ["session", "write-implement-env"]:
+            return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
         calls.append(("write-implement-env",))
         if write_implement_env_error:
-            raise OSError(write_implement_env_error)
-        return bootstrap.session_env.WriteImplementEnvResult(tmp_path / "pointer", tmp_path / "run", tmp_path, str(Path.cwd()))
+            return proc.CommandResult(tuple(argv), 1, "", f"ERROR={write_implement_env_error}", 0.0)
+        return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(bootstrap.pr, "check_branch_state", fake_branch)
     monkeypatch.setattr(bootstrap.session_env, "entry_gate", fake_gate)
     monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
     monkeypatch.setattr(bootstrap.progress_file, "activate_run", fake_activate)
     monkeypatch.setattr(bootstrap.timing, "mark", fake_timing)
-    monkeypatch.setattr(bootstrap.session_env, "write_implement_env", fake_write_implement_env)
+    monkeypatch.setattr(bootstrap.proc, "run", fake_run)
     monkeypatch.setattr(bootstrap, "_write_claude_source_snapshot", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_write_base_session_env", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_refresh_reviewer_state", lambda _st: None)  # pyright: ignore[reportPrivateUsage]

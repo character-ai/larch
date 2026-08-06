@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Invalid --auto-mode: must be true or false\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

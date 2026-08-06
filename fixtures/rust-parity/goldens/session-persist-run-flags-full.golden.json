@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "writer-session/.keep": {
+      "text": ""
+    },
+    "writer-session/run-flags.sh": {
+      "text": "QUICK_MODE=true\nNO_ISSUES=false\nFORCE_REQUESTED=true\nSELF_REVIEW_REQUESTED=false\nSELF_IMPLEMENT_REQUESTED=true\nDIFFICULTY_OVERRIDE=MODERATE\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "RUN_FLAGS_PERSISTED=true\n"
+  }
+}

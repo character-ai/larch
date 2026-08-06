@@ -368,19 +368,29 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
 
     home = root / "home"
     home.mkdir()
-    prior_home = os.environ.get("HOME", "")
-    os.environ["HOME"] = str(home)
-    try:
-        rc = session_env.write_implement_env_main(
-            ["--claude-pid", "12345", "--implement-tmpdir", str(impl), "--cwd", str(root)]
-        )
-    finally:
-        if prior_home:
-            os.environ["HOME"] = prior_home
-        else:
-            os.environ.pop("HOME", None)
-    if rc != 0:
-        fail("failed to write implement-run launcher")
+    # `session write-implement-env` is Rust-owned (issue #8058). This harness
+    # proves the emitted launcher *executes* correctly, so it emits one through
+    # the frozen writer reference the Rust parity goldens pin byte for byte,
+    # instead of requiring a built binary in a Bash harness shard.
+    written = subprocess.run(
+        [
+            sys.executable,
+            "fixtures/rust-parity/session_env_reference.py",
+            "write-implement-env",
+            "--claude-pid",
+            "12345",
+            "--implement-tmpdir",
+            str(impl),
+            "--cwd",
+            str(root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "HOME": str(home)},
+    )
+    if written.returncode != 0:
+        fail(f"failed to write implement-run launcher: {written.stderr!r}")
     stable_runner = home / ".cache" / "larch" / "sessions" / "implement-run-12345.sh"
     stable_env = {"PATH": os.environ.get("PATH", ""), "TMPDIR": os.environ.get("TMPDIR", "/tmp"), "HOME": str(home)}
     stable = subprocess.run(
@@ -454,6 +464,19 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
     original_current_branch = git.current_branch
     original_summary = bootstrap._upsert_plan_summary
     original_checkpoint = bootstrap._dirty_tree_checkpoint
+    # Issue #8058 moved the session-env and run-flag writers to Rust, and this
+    # sandbox has no installed binary. Their own coverage is the Rust parity
+    # matrix; here they only need to report success.
+    original_write_env = session_env.run_write_env
+    original_proc_run = bootstrap.proc.run
+
+    def fake_run_write_env(_params: object) -> object:
+        return bootstrap.proc.CommandResult(("larch", "session", "write-env"), 0, "", "", 0.0)
+
+    def fake_proc_run(argv, **kwargs):  # noqa: ANN001, ANN003, ANN201
+        if list(argv)[1:2] == ["session"]:
+            return bootstrap.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return original_proc_run(list(argv), **kwargs)
 
     def fake_branch_state(*_args: object, **_kwargs: object) -> pr.CreateBranchResult:
         return pr.CreateBranchResult(
@@ -471,6 +494,8 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         os.environ["LARCH_CLAUDE_PID"] = "12345"
         pr.check_branch_state = fake_branch_state
         session_env.entry_gate = fake_entry_gate
+        session_env.run_write_env = fake_run_write_env
+        bootstrap.proc.run = fake_proc_run
         git.current_branch = lambda *_args, **_kwargs: "feature/resume"
         bootstrap._upsert_plan_summary = lambda _st: None
         bootstrap._dirty_tree_checkpoint = lambda: ["STATUS=clean"]
@@ -487,6 +512,8 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
     finally:
         pr.check_branch_state = original_branch_state
         session_env.entry_gate = original_entry_gate
+        session_env.run_write_env = original_write_env
+        bootstrap.proc.run = original_proc_run
         git.current_branch = original_current_branch
         bootstrap._upsert_plan_summary = original_summary
         bootstrap._dirty_tree_checkpoint = original_checkpoint

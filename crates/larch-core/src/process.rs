@@ -240,6 +240,47 @@ pub enum ExternalProgram {
     HostUtility(HostUtilityProgram),
     /// A fixed larch program derived from a validated plugin root.
     Larch(LarchProgram),
+    /// A migration-era larch Python verb derived from a validated plugin root.
+    PythonVerb(PythonVerbProgram),
+}
+
+/// The still-Python `python3 <root>/python/cli.py` entry a Rust owner delegates to.
+///
+/// Migration leaves land one command at a time, so a Rust-owned verb can still
+/// need a sibling verb that Python owns. This selects only the repository's own
+/// dispatcher from a validated plugin root; it carries no arbitrary-executable
+/// escape hatch and retires with the last Python-owned verb it names.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PythonVerbProgram {
+    dispatcher: PathBuf,
+}
+
+impl PythonVerbProgram {
+    /// Select the larch Python dispatcher from a plugin root.
+    ///
+    /// # Errors
+    /// Rejects a non-absolute or lexically unsafe root.
+    pub fn new(root: &Path) -> Result<Self, ProcessRequestError> {
+        if !root.is_absolute()
+            || root.components().any(|part| {
+                matches!(
+                    part,
+                    std::path::Component::CurDir | std::path::Component::ParentDir
+                )
+            })
+        {
+            return Err(ProcessRequestError {
+                kind: ProcessRequestErrorKind::UnsafeLarchProgramRoot,
+            });
+        }
+        Ok(Self {
+            dispatcher: root.join("python/cli.py"),
+        })
+    }
+
+    fn dispatcher(&self) -> &OsStr {
+        self.dispatcher.as_os_str()
+    }
 }
 
 /// Fixed larch executable selected from a canonical plugin root.
@@ -324,6 +365,7 @@ impl ExternalProgram {
             Self::GitHub(_) => OsStr::new("gh"),
             Self::HostUtility(program) => OsStr::new(program.executable()),
             Self::Larch(program) => program.executable(),
+            Self::PythonVerb(_) => OsStr::new("python3"),
         }
     }
 
@@ -339,6 +381,7 @@ impl ExternalProgram {
             Self::GitHub(operation) => operation.operation(),
             Self::HostUtility(program) => program.operation(),
             Self::Larch(program) => program.operation(),
+            Self::PythonVerb(_) => "larch.python-verb",
         }
     }
 
@@ -352,6 +395,9 @@ impl ExternalProgram {
             Self::GitHub(operation) => operation.reason(),
             Self::HostUtility(program) => program.reason(),
             Self::Larch(program) => program.reason(),
+            Self::PythonVerb(_) => {
+                "migration-era delegation to a larch verb Python still owns, per issue #7677"
+            }
         }
     }
 
@@ -363,6 +409,9 @@ impl ExternalProgram {
             }
             Self::GitHub(operation) => {
                 arguments.splice(0..0, operation.arguments().into_iter().map(OsString::from));
+            }
+            Self::PythonVerb(program) => {
+                arguments.insert(0, program.dispatcher().to_os_string());
             }
             Self::Vendor(_) | Self::Scanner(_) | Self::HostUtility(_) | Self::Larch(_) => {}
         }
