@@ -15,6 +15,14 @@ use std::{collections::BTreeMap, sync::LazyLock};
 /// Maximum issue-body characters any issue analysis reads.
 pub const BODY_CAP: usize = 5 * 1024;
 
+/// Bracketed status tokens [`strip_prefixes`] removes from a title.
+///
+/// This is the owner of the set, and `PREFIX_PATTERN` is built from it so the
+/// writer and every selector share one definition. It is a different convention
+/// from the run-admission `MANAGED_PREFIXES`, and it ports the alternation in
+/// Python `larch.issue._util.PREFIX_RE`.
+pub const STRIPPED_TITLE_PREFIXES: [&str; 5] = ["DONE", "OOS", "IN PROGRESS", "STALLED", "URGENT"];
+
 const STOP_WORDS: [&str; 19] = [
     "a", "an", "and", "are", "as", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on",
     "or", "the", "to", "with",
@@ -197,7 +205,8 @@ pub fn category_pattern(category: IssueCategory) -> Option<&'static Regex> {
 }
 
 static PREFIX_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(?:\[(?i-u:DONE|OOS|IN PROGRESS|STALLED|URGENT)\]\s*)+")
+    let alternation = STRIPPED_TITLE_PREFIXES.join("|");
+    Regex::new(&format!(r"^\s*(?:\[(?i-u:{alternation})\]\s*)+"))
         .expect("title prefix regex should compile")
 });
 

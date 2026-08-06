@@ -40,8 +40,9 @@ pub use ground_truth::{
 };
 pub use report_core::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, CoverageStats,
-    IssueCategory, IssueLifecycle, IssueSummary, categorize, category_breakdown, category_pattern,
-    coverage_stats, parse_timestamp, percentile, strip_prefixes, title_tokens,
+    IssueCategory, IssueLifecycle, IssueSummary, STRIPPED_TITLE_PREFIXES, categorize,
+    category_breakdown, category_pattern, coverage_stats, parse_timestamp, percentile,
+    strip_prefixes, title_tokens,
 };
 pub use rows::{OpenIssueRow, open_issue_rows, parse_open_issue_row};
 pub use title::{

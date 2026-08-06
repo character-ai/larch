@@ -9,12 +9,12 @@ use larch_core::{
     CategoryMode, CorpusFilter, EvidenceIndex, EvidenceOrdering, EvidenceSource, GateFailure,
     GroundTruthEvidence, GroundTruthMode, GroundTruthRow, GroundTruthVoter, IncentiveEra,
     IssueCategory, IssueLifecycle, IssueSummary, NotLaterReason, OutcomeBucket, OutcomeDirection,
-    PanelKind, PanelVerdict, VerdictGateInputs, VoterBallot, accepted_finding_evidence,
-    analyze_ground_truth, apply_verdict_gate, candidate_evidence, categorize, category_breakdown,
-    classify_in_scope, coverage_stats, diagnostic_paths, distinctive_tokens, evidence_ordering,
-    issue_evidence, normalize_diagnostic_path, parse_timestamp, percentile,
-    realized_alignment_rate, run_dir_key, scan_ground_truth_corpus, strip_prefixes, strong_match,
-    title_tokens, version_components, version_meets_floor,
+    PanelKind, PanelVerdict, STRIPPED_TITLE_PREFIXES, VerdictGateInputs, VoterBallot,
+    accepted_finding_evidence, analyze_ground_truth, apply_verdict_gate, candidate_evidence,
+    categorize, category_breakdown, classify_in_scope, coverage_stats, diagnostic_paths,
+    distinctive_tokens, evidence_ordering, issue_evidence, normalize_diagnostic_path,
+    parse_timestamp, percentile, realized_alignment_rate, run_dir_key, scan_ground_truth_corpus,
+    strip_prefixes, strong_match, title_tokens, version_components, version_meets_floor,
 };
 use larch_test_support::{
     ExecutionSnapshot, IssueFixture, IssueGraph, IssueGraphSnapshot, IssueParityOracle, IssueState,
@@ -239,13 +239,31 @@ fn default_category_honors_rule_order_stems_and_strict_words() {
         let summary = issue(1, title, body, "2026-03-01T00:00:00Z");
         assert_eq!(summary.default_category(), expected, "title: {title}");
     }
+    // Drive every prefix from the owning constant so the test cannot drift from
+    // the set the pattern is built out of.
+    for prefix in STRIPPED_TITLE_PREFIXES {
+        assert_eq!(
+            strip_prefixes(&format!("[{prefix}] Fix the walker")),
+            "Fix the walker",
+            "prefix: {prefix}"
+        );
+        assert_eq!(
+            title_tokens(&format!("[{prefix}] The redaction walker and its fixture")),
+            ["redaction", "walker", "its", "fixture"],
+            "prefix: {prefix}"
+        );
+    }
+    let mut stacked = String::new();
+    for prefix in STRIPPED_TITLE_PREFIXES {
+        stacked.push('[');
+        stacked.push_str(prefix);
+        stacked.push_str("] ");
+    }
+    stacked.push_str("Fix the walker");
+    assert_eq!(strip_prefixes(&stacked), "Fix the walker");
     assert_eq!(
-        strip_prefixes("[DONE] [OOS] Fix the walker"),
-        "Fix the walker"
-    );
-    assert_eq!(
-        title_tokens("[STALLED] The redaction walker and its fixture"),
-        ["redaction", "walker", "its", "fixture"]
+        strip_prefixes("[UNKNOWN] Fix the walker"),
+        "[UNKNOWN] Fix the walker"
     );
 }
 
