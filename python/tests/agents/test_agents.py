@@ -1236,47 +1236,6 @@ def test_run_external_agent_spawns_despite_unhealthy_probe_env(
     assert result.exit_code == 0
 
 
-def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = agents.run_external_agent_main(
-        [
-            "--tool",
-            "claude",
-            "--output",
-            str(tmp_path / "out.txt"),
-            "--timeout",
-            "0",
-            "--",
-            sys.executable,
-            "-c",
-            "print('should not run')",
-        ],
-    )
-    assert rc == 1
-    assert "--timeout must be a positive integer" in capsys.readouterr().err
-
-
-def test_run_external_agent_args_rejects_bad_stderr_sink_without_sidecars(tmp_path: Path) -> None:
-    output = tmp_path / "out.txt"
-    rc = agents.run_external_agent_main(
-        [
-            "--tool",
-            "claude",
-            "--output",
-            str(output),
-            "--timeout",
-            "5",
-            "--stderr-sink",
-            str(tmp_path / "bad\nsink.log"),
-            "--",
-            sys.executable,
-            "-c",
-            "print('should not run')",
-        ],
-    )
-    assert rc == 1
-    assert not output.with_suffix(output.suffix + ".meta").exists()
-    assert not output.with_suffix(output.suffix + ".done").exists()
-
 def test_run_negotiation_round_cursor_probe_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

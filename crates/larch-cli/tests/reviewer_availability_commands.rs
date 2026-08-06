@@ -1,5 +1,5 @@
 //! Smoke coverage for reviewer-availability agent commands (#8108).
-//! CLI exercises complement the adapter FakeProcessRunner suite.
+//! CLI exercises complement the adapter `FakeProcessRunner` suite.
 
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::{TemporaryRoot, vendor_auth::ProbeCache};
