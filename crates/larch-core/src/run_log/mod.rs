@@ -13,7 +13,8 @@ pub use entry::{
 };
 pub use layout::{BatchName, RunLogLayout};
 pub use manifest::{
-    ManifestFormatVersion, ManifestReadError, ManifestReadErrorKind, ManifestRecord,
+    ManifestDocument, ManifestFormatVersion, ManifestReadError, ManifestReadErrorKind,
+    ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,
 };
 pub use round::{RoundNumber, RoundNumberError};
 pub use slug::{RunLogSlug, RunLogSlugError, RunLogSlugErrorKind, validate_run_log_slug};

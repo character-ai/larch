@@ -148,9 +148,10 @@ pub use review_dispatch::{
 };
 pub use run_log::{
     BatchName, ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger,
-    ExecutionIssueReadError, ExecutionIssueReadErrorKind, ManifestFormatVersion, ManifestReadError,
-    ManifestReadErrorKind, ManifestRecord, RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug,
-    RunLogSlugError, RunLogSlugErrorKind, final_summary_terminal_heading, first_nonempty_line,
+    ExecutionIssueReadError, ExecutionIssueReadErrorKind, ManifestDocument, ManifestFormatVersion,
+    ManifestReadError, ManifestReadErrorKind, ManifestRecord, ManifestUpdate, ManifestV2Seed,
+    ManifestWriteError, RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError,
+    RunLogSlugErrorKind, final_summary_terminal_heading, first_nonempty_line,
     manifest_pr_evidence_matches, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
     validate_run_log_slug,
 };

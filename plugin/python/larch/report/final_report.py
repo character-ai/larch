@@ -20,6 +20,7 @@ from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
 from larch.core import logging_util
+from larch.core import repo_roots
 from larch.report import exec_issue_detail
 from larch import io as larch_io
 from larch.issue import execution_issues
@@ -817,9 +818,9 @@ def _reconcile_manifest_for_terminal_report(
         fields.append(f"pr_number={pr_number.strip()}")
     if not fields:
         return 0, ""
+    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
     cmd = [
-        sys.executable,
-        str(Path(__file__).resolve().parents[2] / "cli.py"),
+        str(entrypoint),
         "run-log",
         "manifest",
         "--log-root",

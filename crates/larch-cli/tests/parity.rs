@@ -59,6 +59,16 @@ impl CleanInstallCase {
             "clean-install-session-validate-design-tmpdir" => {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
+            "clean-install-run-log-manifest" => &[
+                "--log-root",
+                "manifest-logs",
+                "--skill",
+                "clean",
+                "--run-id",
+                "clean-install",
+                "--field",
+                "steps_ran.install=true",
+            ],
             "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
             "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
                 "--repo-root",
@@ -343,6 +353,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "release",
         "validate-assets",
     ),
+    CleanInstallCase::new("clean-install-run-log-manifest", "run-log", "manifest"),
     CleanInstallCase::new(
         "clean-install-run-log-validate-run-id",
         "run-log",
@@ -1942,6 +1953,21 @@ fn run_clean_install_case(
     case: CleanInstallCase,
     failure: Option<&str>,
 ) -> std::process::Output {
+    let manifest_root = if case.id == "clean-install-run-log-manifest" {
+        let path = fixture
+            .root
+            .join("manifest-logs/clean/clean-install/manifest.json");
+        fs::create_dir_all(path.parent().expect("manifest parent"))
+            .expect("create clean-install manifest parent");
+        fs::write(
+            &path,
+            "{\"schema_version\":2,\"status\":\"partial\",\"run_id\":\"clean-install\",\"steps_ran\":{}}\n",
+        )
+        .expect("write clean-install manifest");
+        Some(fixture.root.as_path())
+    } else {
+        None
+    };
     let mut command = Command::new("/bin/bash");
     command
         .arg(fixture.root.join("scripts/larch.sh"))
@@ -1957,6 +1983,9 @@ fn run_clean_install_case(
         // Progress verbs write clone-scoped cache state; confine it to the fixture.
         .env("LARCH_TEST_CACHE_HOME", &fixture.root)
         .env("CLEAN_INSTALL_FAILURE", failure.unwrap_or_default());
+    if let Some(root) = manifest_root {
+        command.env("IMPLEMENT_TMPDIR", root);
+    }
     command.output().expect("run clean-install selector")
 }
 

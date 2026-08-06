@@ -25,6 +25,7 @@ mod file_io;
 mod filesystem;
 pub mod progress_state;
 mod session_env;
+pub mod run_log_manifest;
 mod session_lifecycle;
 pub mod statusline;
 

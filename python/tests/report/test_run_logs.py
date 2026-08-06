@@ -54,6 +54,40 @@ def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:
     )
 
 
+def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep Python-only checkpoint tests isolated from the Rust bootstrap."""
+    original_run = final_report.subprocess.run
+
+    def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "run-log" not in argv or "manifest" not in argv:
+            return original_run(argv, **kwargs)  # type: ignore[arg-type]
+        root = Path(argv[argv.index("--log-root") + 1])
+        skill = argv[argv.index("--skill") + 1]
+        run_id = argv[argv.index("--run-id") + 1]
+        updates: dict[str, object] = {}
+        for index, value in enumerate(argv):
+            if value != "--field":
+                continue
+            key, raw = argv[index + 1].split("=", 1)
+            if raw == "true":
+                updates[key] = True
+            elif raw == "false":
+                updates[key] = False
+            elif raw == "null":
+                updates[key] = None
+            elif raw.lstrip("-").isdigit():
+                updates[key] = int(raw)
+            else:
+                updates[key] = raw
+        run_log_manifest._update_manifest_v2(  # pyright: ignore[reportPrivateUsage]  # checkpoint unit-test boundary double; Rust CLI parity is covered separately.
+            path=root / skill / run_id / "manifest.json",
+            updates=updates,
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", run_manifest_in_process)
+
+
 def test_validate_run_id_slug() -> None:
     assert run_log_batch.validate_run_id_slug("run-1")
     assert run_log_batch.validate_run_id_slug("-abc123")
@@ -1091,6 +1125,7 @@ def test_refresh_logs_checkpoint_multi_flush_shipping_then_pr_created(
     ctx = _ctx(tmp_path, str(state))
     _ = run_log_manifest.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _stub_rust_manifest_command(monkeypatch)
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", lambda **_k: {"cost_unavailable": True})  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
@@ -1146,6 +1181,7 @@ def test_refresh_logs_checkpoint_rewrites_stalled_summary_after_clean_pr_recover
     ctx = _ctx(tmp_path, str(state))
     _ = run_log_manifest.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _stub_rust_manifest_command(monkeypatch)
 
     def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
         _ = implement_tmpdir, run_id
@@ -1472,6 +1508,7 @@ def test_refresh_logs_checkpoint_strict_final_report_skips_tracking_upsert(
     ctx = _ctx(tmp_path, str(state))
     _ = run_log_manifest.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _stub_rust_manifest_command(monkeypatch)
     seen: list[bool] = []
 
     def fake_write_final_report(

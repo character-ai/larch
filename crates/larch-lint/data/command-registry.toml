@@ -5989,11 +5989,13 @@ verb = "manifest"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_manifest_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8072
+clean_install_test = "clean-install-run-log-manifest"
 
 [[commands]]
 domain = "run-log"
@@ -8249,6 +8251,12 @@ path = "python/larch/report/cleanup_implement_logs.py"
 kind = "python-runtime"
 python = ["run-log cleanup-implement-logs"]
 rust = []
+
+[[callers]]
+path = "python/larch/report/final_report.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log manifest"]
 
 [[callers]]
 path = "python/larch/report/object_store.py"

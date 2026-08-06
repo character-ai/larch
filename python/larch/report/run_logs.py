@@ -5,7 +5,7 @@
 The bulk of the original run_logs.py has been split into four sibling modules.
 This file keeps only the implementations that did not move:
   - larch_log_init_main, larch_log_write_main, larch_log_append_main,
-    larch_log_exists_main, larch_log_manifest_main
+    larch_log_exists_main
   - verify_completeness_main and its helpers
   - append_entry_main, append_failure_main
   - larch_log_write_round_main
@@ -269,28 +269,6 @@ def larch_log_exists_main(argv: list[str]) -> int:
     except ValueError as exc:
         return run_log_batch._larch_log_fail(code=1, message=str(exc))
     run_log_batch._emit_larch_log_envelope(path=result.path, written=False, unchanged=result.exists)
-    return 0
-
-
-def larch_log_manifest_main(argv: list[str]) -> int:
-    parser = _common_parser("cli.py run-log manifest")
-    parser.add_argument("--field", action="append", default=[])
-    args = _parse_common(parser=parser, argv=argv)
-    if args is None:
-        return run_log_batch._larch_log_fail(code=1, message="invalid manifest arguments")
-    updates: dict[str, Any] = {}
-    for assignment in args.field:
-        if "=" not in assignment:
-            return run_log_batch._larch_log_fail(code=1, message=f"invalid field assignment: {assignment}")
-        key, _, raw = assignment.partition("=")
-        updates[key] = run_log_manifest._parse_manifest_scalar(raw)
-    try:
-        result = log_manifest_update(
-            log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, updates=updates
-        )
-    except ValueError as exc:
-        return run_log_batch._larch_log_fail(code=1, message=str(exc))
-    run_log_batch._emit_larch_log_envelope(path=result, written=True, unchanged=False)
     return 0
 
 

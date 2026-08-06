@@ -608,7 +608,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("run-log", "write-round"): ("larch.report.run_logs", "larch_log_write_round_main", False),
     ("run-log", "append"): ("larch.report.run_logs", "larch_log_append_main", False),
     ("run-log", "exists"): ("larch.report.run_logs", "larch_log_exists_main", False),
-    ("run-log", "manifest"): ("larch.report.run_logs", "larch_log_manifest_main", False),
     ("run-log", "checkpoint"): ("larch.report.run_log_flush", "run_log_checkpoint_main", False),
     ("run-log", "prepare-terminal-snapshot"): ("larch.report.run_log_flush", "terminal_snapshot_main", False),
     ("run-log", "refresh"): ("larch.report.run_log_flush", "refresh_run_logs_main", False),

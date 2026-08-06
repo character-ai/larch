@@ -88,7 +88,18 @@ impl RunLogLayout {
     /// Return the run manifest path.
     #[must_use]
     pub fn manifest_path(&self) -> PathBuf {
-        self.run_dir().join("manifest.json")
+        self.log_root.join(self.manifest_relative_path())
+    }
+
+    /// Return the manifest path relative to [`Self::log_root`].
+    ///
+    /// Adapters use this when a caller-selected root has been canonicalized;
+    /// it preserves this layout type as the sole owner of run-log paths.
+    #[must_use]
+    pub fn manifest_relative_path(&self) -> PathBuf {
+        PathBuf::from(self.skill.as_str())
+            .join(self.run_id.as_str())
+            .join("manifest.json")
     }
 
     /// Return the round directory for a 1-based round number.
@@ -125,6 +136,10 @@ mod tests {
         assert_eq!(
             layout.manifest_path(),
             PathBuf::from("/tmp/logs/implement/run-abc/manifest.json")
+        );
+        assert_eq!(
+            layout.manifest_relative_path(),
+            PathBuf::from("implement/run-abc/manifest.json")
         );
         assert_eq!(
             layout.round_dir(2),
