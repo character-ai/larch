@@ -166,6 +166,20 @@ pub struct CodexGateDetail {
 }
 
 impl CodexGateDetail {
+    /// Rebuild a gate detail from already-validated parts.
+    ///
+    /// Callers that reconstruct a detail from a cache must first prove the
+    /// model and message against [`detect_codex_cli_gate`]; this constructor
+    /// performs no validation of its own.
+    #[must_use]
+    pub const fn new(model: String, signal: CodexGateSignal, message: String) -> Self {
+        Self {
+            model,
+            signal,
+            message,
+        }
+    }
+
     /// Return the safe model token named by the gate.
     #[must_use]
     pub fn model(&self) -> &str {

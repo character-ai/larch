@@ -51,6 +51,18 @@ pub mod env {
     pub const LARCH_CODEX_VOTE_MODEL: &str = "LARCH_CODEX_VOTE_MODEL";
     /// Optional Cursor model override.
     pub const LARCH_CURSOR_MODEL: &str = "LARCH_CURSOR_MODEL";
+    /// Maximum authentication attempts a vendor probe or launch may make.
+    pub const LARCH_EXTERNAL_AUTH_RETRIES: &str = "LARCH_EXTERNAL_AUTH_RETRIES";
+    /// Lifetime of a cached failing reviewer-probe verdict, in seconds.
+    pub const LARCH_PROBE_NEGATIVE_TTL_SECONDS: &str = "LARCH_PROBE_NEGATIVE_TTL_SECONDS";
+    /// Transient-failure retry budget override for reviewer probes.
+    pub const LARCH_PROBE_RETRIES: &str = "LARCH_PROBE_RETRIES";
+    /// Timeout retry budget for reviewer probes.
+    pub const LARCH_PROBE_TIMEOUT_RETRIES: &str = "LARCH_PROBE_TIMEOUT_RETRIES";
+    /// Per-attempt reviewer-probe timeout, in seconds.
+    pub const LARCH_PROBE_TIMEOUT_SECONDS: &str = "LARCH_PROBE_TIMEOUT_SECONDS";
+    /// Lifetime of a cached successful reviewer-probe verdict, in seconds.
+    pub const LARCH_PROBE_TTL_SECONDS: &str = "LARCH_PROBE_TTL_SECONDS";
     /// Optional tail length for a failed-agent stderr excerpt.
     pub const LARCH_FAILED_AGENT_STDERR_TAIL_LINES: &str = "LARCH_FAILED_AGENT_STDERR_TAIL_LINES";
     /// Release version pinned by the release workflow during a local upgrade.
@@ -74,6 +86,8 @@ pub mod env {
         "LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES";
     /// Current user login name on platforms that provide it.
     pub const LOGNAME: &str = "LOGNAME";
+    /// Suppresses cursor-agent's deeplink browser opener in headless lanes.
+    pub const NO_OPEN_BROWSER: &str = "NO_OPEN_BROWSER";
     /// `OpenAI` API credential used by Codex subprocesses.
     pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
     /// Executable search path inherited by approved child processes.
@@ -92,7 +106,7 @@ pub mod env {
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 37] = [
+    pub const ALL: [&str; 44] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
@@ -115,13 +129,20 @@ pub mod env {
         LARCH_CODEX_VOTE_MODEL,
         LARCH_CURSOR_MODEL,
         LARCH_EXPECTED_STABLE_VERSION,
+        LARCH_EXTERNAL_AUTH_RETRIES,
         LARCH_LOGS_URI,
         LARCH_NO_LOGS_COMMIT,
+        LARCH_PROBE_NEGATIVE_TTL_SECONDS,
+        LARCH_PROBE_RETRIES,
+        LARCH_PROBE_TIMEOUT_RETRIES,
+        LARCH_PROBE_TIMEOUT_SECONDS,
+        LARCH_PROBE_TTL_SECONDS,
         LARCH_R2_ACCOUNT_ID,
         LARCH_R2_ENDPOINT,
         LARCH_RUN_ID,
         LARCH_STORAGE_BASE_URI,
         LOGNAME,
+        NO_OPEN_BROWSER,
         OPENAI_API_KEY,
         PATH,
         REPO,

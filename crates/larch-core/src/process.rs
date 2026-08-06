@@ -38,6 +38,8 @@ pub enum HostUtilityProgram {
     Ps,
     /// Bounded child and process-group enumeration.
     Pgrep,
+    /// Read one named macOS keychain item for a vendor credential preflight.
+    Security,
 }
 
 /// Approved GitHub CLI operations used to acquire the active `gh` credential.
@@ -79,6 +81,7 @@ impl HostUtilityProgram {
             Self::Lsof => "lsof",
             Self::Ps => "ps",
             Self::Pgrep => "pgrep",
+            Self::Security => "security",
         }
     }
 
@@ -89,6 +92,7 @@ impl HostUtilityProgram {
             Self::Lsof => "host.open-file-probe",
             Self::Ps => "host.process-identity-probe",
             Self::Pgrep => "host.process-group-probe",
+            Self::Security => "host.keychain-credential-read",
         }
     }
 
@@ -104,6 +108,9 @@ impl HostUtilityProgram {
             }
             Self::Pgrep => {
                 "bounded descendant and process-group enumeration required for validated process termination"
+            }
+            Self::Security => {
+                "macOS keychain read required to prove a Cursor service token is present and readable before launch"
             }
         }
     }
@@ -389,6 +396,7 @@ pub enum ChildEnvironment {
     OpenAiApiKey,
     CursorApiKey,
     CursorConfigDir,
+    NoOpenBrowser,
     ClaudePluginRoot,
     ClaudePluginData,
     GhConfigDir,
@@ -423,6 +431,7 @@ impl ChildEnvironment {
             Self::OpenAiApiKey => env::OPENAI_API_KEY,
             Self::CursorApiKey => env::CURSOR_API_KEY,
             Self::CursorConfigDir => env::CURSOR_CONFIG_DIR,
+            Self::NoOpenBrowser => env::NO_OPEN_BROWSER,
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
             Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
             Self::GhConfigDir => env::GH_CONFIG_DIR,

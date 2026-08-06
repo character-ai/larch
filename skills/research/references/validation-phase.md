@@ -100,7 +100,7 @@ set -euo pipefail
 # is advisory here (the cursor launch / sentinel handling below detects an
 # unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
 # this shell.
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent cursor-auth-preflight || true
 # Suppress cursor-agent's deeplink/browser opener so it never launches the
 # Cursor.app "Composer" GUI window during this headless lane (issue #5797). The
 # `cursor agent` child inherits NO_OPEN_BROWSER from this shell.

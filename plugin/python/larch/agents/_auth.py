@@ -186,15 +186,6 @@ def cursor_auth_export_env() -> None:
         os.environ.pop("CURSOR_API_KEY", None)
 
 
-def cursor_auth_preflight_main(argv: list[str] | None = None) -> int:
-    _ = argv
-    logging_util.quiet_init(argv0="cli.py")
-    verdict = cursor_auth_preflight()
-    if not verdict.ok:
-        _err(verdict.message)
-    return verdict.rc
-
-
 def cursor_wrap_prompt_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     args = argv if argv is not None else sys.argv[1:]

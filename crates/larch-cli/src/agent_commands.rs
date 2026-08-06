@@ -3,8 +3,10 @@
 use std::{
     env,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     process::ExitCode,
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
@@ -12,15 +14,17 @@ use std::{
 use clap::{Args, Subcommand};
 use larch_adapters::{
     ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitPath as GitCliPath, GitRef,
-    GixRepository, PathIntent, PluginRoot, TemporaryRoot, TokioProcessRunner, atomic_write_bytes,
-    read_optional_utf8_lossy, read_utf8,
+    GixRepository, NoopProcessObserver, PathIntent, PluginRoot, TemporaryRoot, TokioProcessRunner,
+    atomic_write_bytes, read_optional_utf8_lossy, read_utf8,
     runtime::{Cancellation, LarchRuntime},
+    vendor_auth::{CursorPreflightConfig, VendorAuthContext, cursor_auth_preflight},
     vendor_diagnostics::{parse_codex_usage_file, write_collector_failure_log},
+    vendor_lifecycle::StartupLockConfig,
 };
 use larch_core::{
     Commit, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, Revision,
-    WAIT_DEFAULT_POLL_INTERVAL_SECONDS, WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff, emit_kv,
-    parse_generated_paths, wait_for_reviewers,
+    VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS, WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff,
+    emit_kv, env as env_names, parse_generated_paths, wait_for_reviewers,
 };
 
 const WAIT_USAGE: &str =
@@ -29,9 +33,13 @@ const GATHER_USAGE: &str = "Usage: gather-branch-context.sh --output-dir <path>"
 const COLLECTOR_USAGE: &str = "Usage: compose-collector-failure-log.sh --structured-record <record> --output <path> [--reviewer-file <path>]";
 const POLL_INTERVAL_ENV: &str = "WAIT_FOR_REVIEWERS_POLL_INTERVAL";
 const GENERATORS_TSV: &str = "scripts/generators.tsv";
+/// Startup-lock carrier shared with every remaining Python vendor caller.
+const SHARED_STARTUP_LOCK_ROOT: &str = "/tmp";
 
 #[derive(Subcommand)]
 pub enum AgentCommand {
+    /// Prove Cursor can authenticate before a Cursor lane launches.
+    CursorAuthPreflight,
     /// Sum Codex token usage from a `--json` events stream.
     ParseCodexUsage(ParseCodexUsageArguments),
     /// Wait for reviewer completion sentinels with legacy-compatible diagnostics.
@@ -65,6 +73,7 @@ pub struct AgentRawArguments {
 /// Run one agent command and return its process exit status.
 pub fn run(command: AgentCommand) -> ExitCode {
     match command {
+        AgentCommand::CursorAuthPreflight => cursor_auth_preflight_command(),
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::WaitReviewers(arguments) => wait_reviewers(&arguments),
         AgentCommand::ClassifyDiff(arguments) => classify_diff_command(&arguments),
@@ -73,6 +82,71 @@ pub fn run(command: AgentCommand) -> ExitCode {
             compose_collector_failure_log(&arguments)
         }
     }
+}
+
+/// Report the operating system under the name the vendor gates already use.
+fn platform_name() -> &'static str {
+    match env::consts::OS {
+        "macos" => "Darwin",
+        "linux" => "Linux",
+        other => other,
+    }
+}
+
+/// Resolve the startup-lock carrier, following the macOS `/tmp` symlink.
+fn shared_startup_lock_root() -> Option<TemporaryRoot> {
+    let canonical = fs::canonicalize(SHARED_STARTUP_LOCK_ROOT).ok()?;
+    TemporaryRoot::resolve(Some(&canonical)).ok()
+}
+
+fn cursor_auth_preflight_command() -> ExitCode {
+    let caller = "agent cursor-auth-preflight";
+    let Ok(runtime) = LarchRuntime::current_thread() else {
+        eprintln!("{caller}: could not start the local runtime");
+        return ExitCode::from(1);
+    };
+    let Ok(working_directory) = env::current_dir() else {
+        eprintln!("{caller}: could not resolve the working directory");
+        return ExitCode::from(1);
+    };
+    let config = CursorPreflightConfig::from_values(
+        platform_name(),
+        env::var(env_names::CURSOR_API_KEY).ok().as_deref(),
+        caller,
+    );
+    let Some(lock_root) = shared_startup_lock_root() else {
+        eprintln!("{caller}: could not resolve the shared vendor startup-lock directory");
+        return ExitCode::from(1);
+    };
+    // Release delay `0`: the preflight holds the shared vendor startup lock only
+    // for its own keychain read and must not add latency to a concurrent launch.
+    let Ok(startup_lock) = StartupLockConfig::from_values(
+        VendorProgram::Cursor,
+        platform_name(),
+        env::var(env_names::USER).ok().as_deref(),
+        None,
+        None,
+        Some("0"),
+    ) else {
+        eprintln!("{caller}: USER is unusable as a startup-lock path component");
+        return ExitCode::from(1);
+    };
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let verdict = runtime.block_on(cursor_auth_preflight(
+        &runner,
+        &config,
+        VendorAuthContext {
+            temporary_root: &lock_root,
+            startup_lock: &startup_lock,
+            working_directory: &working_directory,
+        },
+        &Cancellation::new(),
+    ));
+    if verdict.ok {
+        return ExitCode::SUCCESS;
+    }
+    eprintln!("{}", verdict.message);
+    ExitCode::from(u8::try_from(verdict.rc).unwrap_or(1))
 }
 
 fn parse_codex_usage(arguments: &ParseCodexUsageArguments) -> ExitCode {

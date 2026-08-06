@@ -16,7 +16,6 @@ import sys
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("agent", "model-args"): ("larch.agents.agents", "model_args_main", False),
     ("agent", "read-claude-model"): ("larch.agents.agents", "read_claude_model_main", False),
-    ("agent", "cursor-auth-preflight"): ("larch.agents.agents", "cursor_auth_preflight_main", False),
     ("agent", "cursor-wrap-prompt"): ("larch.agents.agents", "cursor_wrap_prompt_main", False),
     ("agent", "external-tool-registry"): ("larch.agents.agents", "external_tool_registry_main", False),
     ("agent", "check-reviewers"): ("larch.agents.agents", "check_reviewers_main", False),
