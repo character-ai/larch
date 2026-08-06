@@ -697,8 +697,7 @@ def _run_step2b_external_drafter(*, design_tmpdir: Path, plugin_root: Path, vend
     repo_root = _repo_root()
     if vendor_result.vendor == "codex":
         cmd = [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "agent",
             "launch-codex-drafter",
             "--prompt-file",
@@ -717,8 +716,7 @@ def _run_step2b_external_drafter(*, design_tmpdir: Path, plugin_root: Path, vend
         ]
     else:
         cmd = [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "agent",
             "launch-claude-drafter",
             "--model",

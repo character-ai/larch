@@ -13,7 +13,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -25,7 +24,7 @@ from larch.core import proc
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import issue_mutation
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_priority
@@ -500,11 +499,9 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
     if not _codex_available():
         _append_warning(tmpdir=tmpdir, message="Codex unavailable; filing the pre-combine OOS batch.")
         return text
-    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
-    result = subprocess.run(  # lint-subprocess-via-runner: ok fixed cli.py command deliberately crosses to the external Codex agent boundary
+    result = subprocess.run(  # lint-subprocess-via-runner: ok fixed bootstrap command deliberately crosses to the external Codex agent boundary
         [
-            sys.executable,
-            str(cli_path),
+            str(larch_entrypoint()),
             "agent",
             "launch-codex-exec",
             "--output",

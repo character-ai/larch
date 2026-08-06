@@ -41,10 +41,7 @@ PLAN_REVIEW_EXPECTED = {
         ("persist-accepted-audit", "larch.review.plan_review_accepted_audit", "persist_accepted_audit_main"),
     )
 }
-AGENT_EXPECTED = {
-    ("agent", "launch-codex-drafter"): ("larch.agents.agents", "launch_codex_drafter_main"),
-    ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
-}
+AGENT_EXPECTED: dict[tuple[str, str], tuple[str, str]] = {}
 ARCHITECTURAL_ASSESSMENT_EXPECTED = {
     ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main"),
     ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main"),

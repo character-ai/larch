@@ -72,7 +72,6 @@ _FORBIDDEN_MODULES = frozenset(
     {
         "larch.agents.agents",
         "larch.agents._claude_runner",
-        "larch.agents._drafter",
         "larch.agents._review_launcher",
         "larch.agents._ci_launcher",
         "larch.agents.agent_voters",
@@ -84,7 +83,6 @@ _FORBIDDEN_MODULES = frozenset(
 _PRODUCTION_LAUNCHERS = (
     "agents.py",
     "_claude_runner.py",
-    "_drafter.py",
     "_review_launcher.py",
     "_ci_launcher.py",
     "agent_voters.py",
@@ -94,7 +92,7 @@ _PRODUCTION_LAUNCHERS = (
 
 # Launchers migrated to the shared vendor descriptor table and run_vendor_launch.
 _MIGRATED_LAUNCHERS = frozenset(
-    {"_ci_launcher.py", "_drafter.py", "_review_launcher.py"}
+    {"_ci_launcher.py", "_review_launcher.py"}
 )
 
 

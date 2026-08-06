@@ -5,9 +5,7 @@ import argparse
 import importlib
 import inspect
 import json
-import os
 import subprocess
-from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -18,7 +16,6 @@ from larch.agents import agent_voters
 from larch.agents import _ci_launcher
 from larch.agents import agent_waterfall
 from larch.agents import agents
-from larch.agents import _drafter
 from larch.agents import _review_launcher
 from larch.calibration import difficulty
 from larch.state import bootstrap
@@ -31,7 +28,6 @@ from larch.review import plan_review_panel
 from larch.design import plan_scout
 from larch.git import rebase
 
-from test_support import is_codex_usage_command
 from larch.review import review_aggregate
 from larch.review import review_and_fix
 from larch.review import coder_runner, snapshot
@@ -962,228 +958,6 @@ def test_implement_prompt_codex_resume_keeps_architectural_knowledge(tmp_path: P
     assert "No parsed invariant entries were present in ARCHITECTURAL_INVARIANTS.md." in prompt
 
 
-# ---------------------------------------------------------------------------
-# Piece 2 parity: drafter/negotiation launchers exercise run_vendor_launch
-# ---------------------------------------------------------------------------
-
-
-def _fake_codex_subprocess_success(output: Path) -> Any:
-    """Return a fake subprocess.run that writes token usage and the output file."""
-
-    def _run(cmd: object, **kwargs: object) -> agents.subprocess.CompletedProcess[str]:
-        stdout = kwargs.get("stdout")
-        if stdout is not None and hasattr(stdout, "write"):
-            stdout.write('{"type":"token_usage","input_tokens":2,"cached_input_tokens":1,"output_tokens":3}\n')
-        Path(output).write_text("ok\n", encoding="utf-8")
-        return agents.subprocess.CompletedProcess(cmd, 0)
-
-    return _run
-
-
-def test_negotiation_codex_quota_not_mirrored_on_success(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Codex negotiation must not mirror quota when the process exits zero."""
-    prompt = tmp_path / "prompt.txt"
-    output = tmp_path / "reply.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(agents.subprocess, "run", _fake_codex_subprocess_success(output))
-    monkeypatch.setattr(agents.proc, "run", lambda *_a, **_k: agents.CommandResult((), 0, "", "", 0.0))
-    mirror_calls: list[object] = []
-    monkeypatch.setattr(_drafter, "_mirror_codex_quota_from_events", lambda **_kw: mirror_calls.append(1))
-    rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
-    assert rc == 0
-    assert not mirror_calls
-
-
-def test_negotiation_codex_quota_mirrored_on_nonzero(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Codex negotiation must mirror quota when the process exits non-zero."""
-    prompt = tmp_path / "prompt.txt"
-    output = tmp_path / "reply.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    def fake_run(cmd: object, **kw: object) -> subprocess.CompletedProcess[str]:
-        if is_codex_usage_command(cmd):
-            # Usage parsing is Rust-owned. The stub vendor writes no usage
-            # events, so the real command fails closed exactly like this.
-            return subprocess.CompletedProcess(cmd, 1, "", "agent parse-codex-usage: no usage events\n")
-        _ = kw["stderr"].write("err\n")
-        return subprocess.CompletedProcess(cmd, 7)
-
-    monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    mirror_calls: list[object] = []
-    monkeypatch.setattr(_drafter, "_mirror_codex_quota_from_events", lambda **_kw: mirror_calls.append(1))
-    rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
-    assert rc == 2
-    assert mirror_calls == [1]
-
-
-def test_negotiation_codex_invalid_model_no_response_file(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Codex invalid model returns 1 before the shared runner without RESPONSE_FILE."""
-    prompt = tmp_path / "prompt.txt"
-    output = tmp_path / "reply.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(_drafter, "resolve_model_args", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad model")))
-    rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
-    assert rc == 1
-    assert capsys.readouterr().out == ""
-
-
-def test_negotiation_cursor_invalid_model_precedes_auth_refusal(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Cursor invalid-model refusal must come before authentication refusal."""
-    prompt = tmp_path / "prompt.txt"
-    output = tmp_path / "reply.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(_drafter, "resolve_model_args", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad model")))
-    monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kw: agents.AuthVerdict(ok=False, rc=2, message="no auth"))
-    rc = agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path)
-    assert rc == 1
-
-
-def test_negotiation_cursor_no_config_context_isolation(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Cursor negotiation must not create or export CURSOR_CONFIG_DIR."""
-    prompt = tmp_path / "prompt.txt"
-    output = tmp_path / "reply.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
-    monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kw: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(
-        agents.subprocess,
-        "run",
-        lambda cmd, **kw: (kw["stdout"].write("ok\n"), agents.subprocess.CompletedProcess(cmd, 0))[1],
-    )
-
-    assert "CURSOR_CONFIG_DIR" not in os.environ
-    rc = agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path)
-    assert rc == 0
-    assert "CURSOR_CONFIG_DIR" not in os.environ
-
-
-def test_codex_exec_events_fallback_before_quota(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Codex exec writes a {} events fallback before quota mirroring."""
-    output = tmp_path / "out.txt"
-    prompt = tmp_path / "prompt.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-
-    def fake_prepare(_home_dir: Path, **_kwargs: object) -> tuple[int, str]:
-        return (0, "")
-
-    def fake_run_external(**kwargs: object) -> agents.RunExternalAgentResult:
-        return agents.RunExternalAgentResult(exit_code=0, output=kwargs.get("output", output))
-
-    mirror_order: list[str] = []
-
-    def fake_mirror(*, events: Path, **_kwargs: object) -> None:
-        content = events.read_text(encoding="utf-8") if events.is_file() else ""
-        mirror_order.append(content)
-
-    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
-    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external)
-    monkeypatch.setattr(_drafter, "_mirror_codex_quota_from_events", fake_mirror)
-    monkeypatch.setattr(agents.proc, "run", lambda *_a, **_k: agents.CommandResult((), 0, "", "", 0.0))
-    rc = agents.launch_codex_exec_main(["--output", str(output), "--timeout", "5", "--prompt-file", str(prompt)])
-    assert rc == 0
-    events = output.with_suffix(output.suffix + ".events.jsonl")
-    assert events.is_file()
-    assert mirror_order
-    assert mirror_order[0] == "{}\n"
-
-
-def test_codex_drafter_not_via_inprocess(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Migrated drafter must not call _launch_codex_exec_inprocess."""
-    design = tmp_path / "design"
-    repo = tmp_path / "repo"
-    design.mkdir()
-    repo.mkdir()
-    prompt = design / "prompt.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    output = design / "status.txt"
-    inprocess_calls: list[object] = []
-
-    monkeypatch.setattr(
-        _drafter,
-        "_launch_codex_exec_inprocess",
-        lambda **_kw: inprocess_calls.append(1) or 0,
-    )
-
-    def fake_prepare(_home_dir: Path, **_kwargs: object) -> tuple[int, str]:
-        return (0, "")
-
-    def fake_run_external(*, output: Path, **_kw: object) -> agents.RunExternalAgentResult:
-        output.write_text("LARCH_PLAN_BEGIN\nplan\ndiff_lines: 1\nLARCH_PLAN_END\n", encoding="utf-8")
-        return agents.RunExternalAgentResult(exit_code=0, output=output)
-
-    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
-    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external)
-    monkeypatch.setattr(agents.proc, "run", lambda *_a, **_k: agents.CommandResult((), 0, "", "", 0.0))
-    rc = agents.launch_codex_drafter(
-        prompt_file=str(prompt),
-        output_file=str(output),
-        timeout="5",
-        design_tmpdir=str(design),
-        repo_root=str(repo),
-    )
-    assert rc == 0
-    assert not inprocess_calls
-
-
-def test_claude_drafter_malformed_envelope_is_parse_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Malformed Claude JSON envelope is treated as CLAUDE_JSON_RESULT_INVALID."""
-    design = tmp_path / "design"
-    repo = tmp_path / "repo"
-    design.mkdir()
-    repo.mkdir()
-    prompt = design / "prompt.txt"
-    _ = prompt.write_text("prompt body", encoding="utf-8")
-    output = design / "status.txt"
-
-    class Completed:
-        returncode = 0
-
-    def fake_run(_cmd: Sequence[str], **kwargs: object) -> Completed:
-        kwargs["stdout"].write("{not-json")
-        return Completed()
-
-    monkeypatch.setattr(_drafter, "shutil", type("S", (), {"which": staticmethod(lambda _n: None)})())
-    monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    monkeypatch.setattr(agents.proc, "run", lambda *_a, **_k: agents.CommandResult((), 0, "", "", 0.0))
-    rc = agents.launch_claude_drafter(
-        model="claude-test",
-        prompt_file=str(prompt),
-        output_file=str(output),
-        timeout="5",
-        design_tmpdir=str(design),
-        repo_root=str(repo),
-    )
-    assert rc == 99
-    status = output.read_text(encoding="utf-8")
-    assert "STATUS=ERROR" in status
-    assert "CLAUDE_JSON_RESULT_INVALID" in status
-
-
 def test_debate_roles_do_not_alter_existing_panels() -> None:
     review_slots = external_defaults.slot_defaults("review.panel")
     assert all(slot.slot in {"correctness", "edge-cases", "testing"} for slot in review_slots)
@@ -1195,6 +969,6 @@ def test_debate_roles_do_not_alter_existing_panels() -> None:
 
 
 def test_existing_external_dispatch_paths_do_not_request_session_capture() -> None:
-    for module in (_drafter, _review_launcher, _ci_launcher):
+    for module in (_review_launcher, _ci_launcher):
         source = inspect.getsource(module)
         assert "capture_session_handle=True" not in source

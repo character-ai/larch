@@ -11,10 +11,12 @@ use super::{
 use crate::{SafeText, VendorProgram, split_text_lines, truncate_utf8_bytes};
 use serde::Serialize;
 use std::{
+    convert::Infallible,
     error::Error,
     fmt,
     future::{Future, ready},
     pin::Pin,
+    task::{Context, Poll, Waker},
     time::Duration,
 };
 
@@ -78,18 +80,24 @@ pub struct VendorRetryClassification {
 
 /// Injectable effects used by the inactive shared vendor lifecycle.
 ///
-/// Most hooks default to no-ops. Budget-cap checking, configuration isolation,
-/// and execution are required effects. Hook failures stop the sequence, so a
-/// failed timing, postprocess, or usage hook cannot promote completion.
+/// Execution is the only required effect; every other hook has a neutral
+/// default. Hook failures stop the sequence, so a failed timing, postprocess, or
+/// usage hook cannot promote completion.
 pub trait VendorLifecycleHooks: Sync {
     /// Adapter-specific failure propagated by the lifecycle.
     type Error: Send;
 
     /// Run the positive token-cap check.
+    ///
+    /// The default reports no cap, which is what a launcher with no configured
+    /// `token_cap` needs. `run_vendor_launch` skips the call entirely unless the
+    /// request carries a positive cap, so the default is never a silent bypass.
     fn check_token_budget_cap<'a>(
         &'a self,
-        request: &'a VendorLaunchRequest,
-    ) -> VendorHookFuture<'a, VendorCapCheckResult, Self::Error>;
+        _request: &'a VendorLaunchRequest,
+    ) -> VendorHookFuture<'a, VendorCapCheckResult, Self::Error> {
+        Box::pin(ready(Ok(VendorCapCheckResult::default())))
+    }
 
     /// Publish the exact cap-hit carrier before returning.
     fn emit_cap_hit_artifact<'a>(
@@ -118,11 +126,16 @@ pub trait VendorLifecycleHooks: Sync {
     }
 
     /// Enter a family configuration context held through every later hook.
+    ///
+    /// The default enters no context, matching a launcher that runs the vendor
+    /// against the ambient configuration.
     fn enter_configuration<'a>(
         &'a self,
-        descriptor: &'a VendorDescriptor,
-        request: &'a VendorLaunchRequest,
-    ) -> VendorHookFuture<'a, Box<dyn VendorConfigurationGuard>, Self::Error>;
+        _descriptor: &'a VendorDescriptor,
+        _request: &'a VendorLaunchRequest,
+    ) -> VendorHookFuture<'a, Box<dyn VendorConfigurationGuard>, Self::Error> {
+        Box::pin(ready(Ok(Box::new(()) as Box<dyn VendorConfigurationGuard>)))
+    }
 
     /// Execute one attempt through the shared process port.
     fn execute<'a>(
@@ -346,6 +359,126 @@ where
         argv,
         cap_check: Some(cap_check),
     })
+}
+
+/// Injectable effects for one launch, wired into the shared vendor lifecycle.
+///
+/// Every effect here is synchronous. The shared lifecycle is `async` so a future
+/// vendor family can await real I/O, but a launcher whose own effects are local
+/// file work must not stand up a second async runtime around them: the vendor
+/// process it drives already owns one. Pair this with [`run_ready_launch`].
+pub struct SyncLauncherHooks<'a> {
+    /// Refuse the launch before argv construction.
+    pub preflight: Option<&'a (dyn Fn() -> bool + Sync)>,
+    /// Run the vendor for one built argv.
+    execute: &'a (dyn Fn(&[String]) -> VendorProcessResult + Sync),
+    /// Mirror vendor quota diagnostics.
+    pub mirror_quota: Option<&'a (dyn Fn(&VendorProcessResult) + Sync)>,
+    /// Record launch timing.
+    pub record_timing: Option<&'a (dyn Fn(&VendorProcessResult) + Sync)>,
+    /// Record token usage for the resolved model.
+    pub record_usage: Option<&'a (dyn Fn(&str) + Sync)>,
+    /// Publish completion.
+    pub promote_completion: Option<&'a (dyn Fn(&VendorProcessResult) + Sync)>,
+}
+
+impl<'a> SyncLauncherHooks<'a> {
+    /// Bind the one required effect: running the vendor for a built argv.
+    #[must_use]
+    pub fn new(execute: &'a (dyn Fn(&[String]) -> VendorProcessResult + Sync)) -> Self {
+        Self {
+            preflight: None,
+            execute,
+            mirror_quota: None,
+            record_timing: None,
+            record_usage: None,
+            promote_completion: None,
+        }
+    }
+}
+
+impl VendorLifecycleHooks for SyncLauncherHooks<'_> {
+    type Error = Infallible;
+
+    fn preflight<'a>(
+        &'a self,
+        _descriptor: &'a VendorDescriptor,
+        _request: &'a VendorLaunchRequest,
+    ) -> VendorHookFuture<'a, bool, Self::Error> {
+        Box::pin(ready(Ok(self.preflight.is_none_or(|hook| hook()))))
+    }
+
+    fn execute<'a>(
+        &'a self,
+        context: VendorLaunchContext<'a>,
+    ) -> VendorHookFuture<'a, VendorProcessResult, Self::Error> {
+        Box::pin(ready(Ok((self.execute)(context.argv))))
+    }
+
+    fn post_execution<'a>(
+        &'a self,
+        hook: VendorPostHook,
+        context: VendorLaunchContext<'a>,
+        result: &'a VendorProcessResult,
+    ) -> VendorHookFuture<'a, (), Self::Error> {
+        match hook {
+            VendorPostHook::MirrorQuota => {
+                if let Some(effect) = self.mirror_quota {
+                    effect(result);
+                }
+            }
+            VendorPostHook::RecordTiming => {
+                if let Some(effect) = self.record_timing {
+                    effect(result);
+                }
+            }
+            VendorPostHook::RecordUsage => {
+                if let Some(effect) = self.record_usage {
+                    effect(context.model);
+                }
+            }
+            VendorPostHook::PromoteCompletion => {
+                if let Some(effect) = self.promote_completion {
+                    effect(result);
+                }
+            }
+            VendorPostHook::Postprocess => {}
+        }
+        Box::pin(ready(Ok(())))
+    }
+}
+
+/// Drive an all-synchronous lifecycle future to completion without an executor.
+///
+/// Every hook above resolves immediately, so one poll finishes the sequence.
+/// A future that yielded would mean a hook grew real asynchrony and needs a
+/// real executor, which is a change this helper must not paper over.
+/// # Errors
+/// Returns argv rejection, or a hook that failed to resolve synchronously.
+pub fn run_ready_launch(
+    descriptor: &'static VendorDescriptor,
+    profile: &str,
+    request: &VendorLaunchRequest,
+    hooks: &SyncLauncherHooks<'_>,
+) -> Result<VendorLaunchOutcome, String> {
+    let future = run_vendor_launch(descriptor, profile, request, hooks, None);
+    let mut future = std::pin::pin!(future);
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    match future.as_mut().poll(&mut context) {
+        Poll::Ready(Ok(outcome)) => Ok(outcome),
+        Poll::Ready(Err(error)) => Err(error.to_string()),
+        Poll::Pending => Err("vendor launch hooks must resolve synchronously".to_owned()),
+    }
+}
+
+/// Read the process exit code from an outcome, or `refused` when none ran.
+#[must_use]
+pub fn outcome_exit_code(outcome: &VendorLaunchOutcome, refused: i32) -> i32 {
+    outcome
+        .process_result
+        .as_ref()
+        .map_or(refused, |result| result.exit_code)
 }
 
 /// Build the exact `cli.py token check-budget` argv.

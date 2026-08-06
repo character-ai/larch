@@ -24,6 +24,8 @@ mod bgjob_commands;
 mod blocker_commands;
 mod ci_timing;
 mod dirty_tree_commands;
+mod drafter_commands;
+mod external_agent;
 mod external_defaults_commands;
 mod git_commands;
 mod github_repository_resolution;
@@ -32,6 +34,7 @@ mod kill_background;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
+mod python_verb;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -1862,6 +1865,15 @@ fn one_line(value: &str) -> String {
         .chars()
         .take(256)
         .collect()
+}
+
+/// Render `git status --porcelain` text for one repository work tree.
+pub(crate) fn repository_porcelain(repo: &Path) -> Option<String> {
+    let status = larch_adapters::git::GixRepository::discover(repo)
+        .ok()?
+        .local_status(&StatusOptions::default())
+        .ok()?;
+    Some(porcelain(&status))
 }
 
 fn porcelain(status: &RepositoryStatus) -> String {

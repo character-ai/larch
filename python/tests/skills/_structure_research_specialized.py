@@ -183,12 +183,12 @@ def run(repo_root: Path) -> list[str]:
 
     for stem in ("codex-research-arch-output.txt", "codex-research-edge-output.txt", "codex-research-ext-output.txt", "codex-research-sec-output.txt"):
         contains(research, stem, f"[codex launcher] research-phase.md must pin expected output stem '{stem}'")
-    launcher = 'python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec'
+    launcher = '"${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh" agent launch-codex-exec'
     for file, stem in ((research, "codex-research-arch-output.txt"), (validation, "codex-validation-output.txt")):
-        contains(file, launcher, f"[codex launcher] {file.name} must use python3 ${{CLAUDE_PLUGIN_ROOT:?}}/python/cli.py agent launch-codex-exec")
+        contains(file, launcher, f"[codex launcher] {file.name} must use ${{CLAUDE_PLUGIN_ROOT:?}}/scripts/larch.sh agent launch-codex-exec")
         contains(file, stem, f"[codex launcher] {file.name} must pin expected output stem '{stem}'")
     voting = path("skills/shared/voting-protocol.md")
-    contains(voting, "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec", "[codex launcher] voting-protocol.md must keep documentary Codex dispatch token")
+    contains(voting, "${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec", "[codex launcher] voting-protocol.md must keep documentary Codex dispatch token")
     contains(voting, "codex-vote-output.txt", "[codex launcher] voting-protocol.md must pin expected output stem 'codex-vote-output.txt'")
 
     if not ("Non-fallback Codex lanes receive best-effort usage records" in text(research) and "${OUTPUT}.token-record" in text(research)):

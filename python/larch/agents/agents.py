@@ -7,7 +7,6 @@ Implementation is split across sibling modules by responsibility:
 - _failure_diag: usage parsing, failure diagnostics
 - _run_external: external agent runner, shared launcher helpers
 - _auth: cursor auth, probe helpers, reviewer check, degraded tools
-- _drafter: drafter and negotiation launchers
 - _ci_launcher: CI and implement launchers
 - _review_launcher: review launcher (codex, cursor)
 - _claude_runner: claude subprocess runner and waterfall
@@ -21,7 +20,6 @@ from larch.agents._launch_failure import *  # noqa: F403
 from larch.agents._failure_diag import *  # noqa: F403
 from larch.agents._run_external import *  # noqa: F403
 from larch.agents._auth import *  # noqa: F403
-from larch.agents._drafter import *  # noqa: F403
 from larch.agents._ci_launcher import *  # noqa: F403
 from larch.agents._review_launcher import *  # noqa: F403
 from larch.agents._claude_runner import *  # noqa: F403
@@ -159,22 +157,6 @@ from larch.agents._auth import (  # noqa: F401
     _current_codex_gate_detail,
     _read_plugin_version_best_effort,
     resolve_model_pins,
-)
-from larch.agents._drafter import (  # noqa: F401
-    _negotiation_base,
-    _positions,
-    _plan_contains_standalone_scout_manifest,
-    _validate_drafter_timeout,
-    _reject_control_or_dotdot,
-    _canonical_existing_file_for_drafter,
-    _canonical_existing_dir_for_drafter,
-    _canonical_output_for_drafter,
-    _write_drafter_status_file,
-    _write_drafter_dirty_tree_sidecar,
-    _filter_drafter_scout,
-    _write_dialectic_pending,
-    _launch_codex_exec_inprocess,
-    _drafter_token_raw,
 )
 from larch.agents._ci_launcher import (  # noqa: F401
     _validate_ci_args,

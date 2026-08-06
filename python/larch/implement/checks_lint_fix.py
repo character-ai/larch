@@ -1057,7 +1057,7 @@ def _run_codex(  # noqa: PLR0913,RUF100
     def execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
         _ = argv
         result = runner.run([
-            "python3", str(agent_cli), "agent", "launch-codex-exec",
+            str(larch_entrypoint()), "agent", "launch-codex-exec",
             "--output", str(codex_log), "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC),
             "--workdir", repo_root, "--add-dir", str(run_dir), "--add-dir", repo_root,
             "--usage-label", "codex_lint_fix", "--prompt-file", str(prompt_file),

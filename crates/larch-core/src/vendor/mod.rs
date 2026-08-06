@@ -6,6 +6,7 @@ mod argv;
 mod auth;
 mod check_reviewers;
 mod degraded_tools;
+mod drafter;
 mod envelope;
 mod external_agent;
 mod lifecycle;
@@ -36,6 +37,14 @@ pub use degraded_tools::{
     CodexGateMessage, DegradedToolsResult, EXTERNAL_TOOL_NAMES, norm_bool, norm_tristate,
     state_phrase, tool_state,
 };
+pub use drafter::{
+    CODEX_DRAFTER_TRUSTED_INSTRUCTIONS, DIALECTIC_RAW_PENDING_FILE, DRAFTER_REASON_ABSENT,
+    DrafterDialectic, DrafterDirtyTree, DrafterParse, DrafterParseError, DrafterScout,
+    DrafterStatus, DrafterTimeoutError, MAX_DRAFTER_TIMEOUT_SECONDS, drafter_model_allowed,
+    drafter_path_text_allowed, drafter_token_raw_label, parse_drafter_output,
+    plan_contains_standalone_scout_manifest, render_drafter_dirty_tree, render_drafter_status,
+    terminal_diff_lines, validate_drafter_timeout,
+};
 pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
 pub use external_agent::{
     CODEX_POLICY_REJECTION_EXCERPT_BYTES, CODEX_POLICY_REJECTION_TAIL_BYTES,
@@ -43,12 +52,12 @@ pub use external_agent::{
     external_auth_verdict, parse_codex_session_id, sanitize_tool_label, strip_codex_config,
 };
 pub use lifecycle::{
-    CursorStallRecord, LaunchTimingRecord, TimeoutStallRecord, TimingTaskKind, TimingTaskKindError,
-    VendorConfigurationGuard, VendorHookFuture, VendorLaunchContext, VendorLaunchError,
-    VendorLifecycleHooks, VendorPostHook, VendorRetryClassification, VendorRetryPolicy,
-    build_check_budget_argv, build_record_launch_timing_argv, check_token_budget_cap,
-    elapsed_minute_message, render_cursor_stall_json, render_timeout_stall_json, run_vendor_launch,
-    run_with_vendor_retries,
+    CursorStallRecord, LaunchTimingRecord, SyncLauncherHooks, TimeoutStallRecord, TimingTaskKind,
+    TimingTaskKindError, VendorConfigurationGuard, VendorHookFuture, VendorLaunchContext,
+    VendorLaunchError, VendorLifecycleHooks, VendorPostHook, VendorRetryClassification,
+    VendorRetryPolicy, build_check_budget_argv, build_record_launch_timing_argv,
+    check_token_budget_cap, elapsed_minute_message, outcome_exit_code, render_cursor_stall_json,
+    render_timeout_stall_json, run_ready_launch, run_vendor_launch, run_with_vendor_retries,
 };
 pub use model_pins::{
     CURSOR_MODEL_LIST_ARGV, CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome,
