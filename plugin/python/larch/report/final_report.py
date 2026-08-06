@@ -20,7 +20,9 @@ from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
 from larch.core import logging_util
+from larch.core import proc
 from larch.core import repo_roots
+from larch.core import rust_runtime
 from larch.report import exec_issue_detail
 from larch import io as larch_io
 from larch.issue import execution_issues
@@ -29,7 +31,6 @@ from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
 from larch.report import storage_config
 from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
-from larch.state import stall_recovery
 from larch.report import tokens
 from larch.report import progress_file
 from larch.implement import scope_disposition
@@ -1035,8 +1036,9 @@ def write_final_report(
         ship=ship,
     )
     cost_fields = _final_report_token_fields(implement_tmpdir=implement_tmpdir, run_id=run_id)
-    outcome_values = stall_recovery.normalized_outcome_values(
-        argparse.Namespace(implement_tmpdir=str(implement_tmpdir), in_memory_stall_tracking="")
+    outcome_values = rust_runtime.normalized_stall_outcome_values(
+        proc.ProcRunner(),
+        implement_tmpdir=str(implement_tmpdir),
     )
     outcome = _outcome_with_manifest_only_backstop(
         implement_tmpdir=implement_tmpdir,

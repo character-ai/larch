@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "stall-recovery-escalation-ledger.tsv": {
+      "text": "utc=<TIMESTAMP>\tsite=step2\ttrigger=step2-impl\tstep=2\tphase=implementation\tdispatcher=codex\texit_code=1\tfailure_detail_log=\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ESCALATION_RECORDED=true\nESCALATION_LEDGER_FILE=<SANDBOX>/stall-recovery-escalation-ledger.tsv\n"
+  }
+}

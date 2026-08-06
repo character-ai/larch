@@ -1636,6 +1636,12 @@ def _prepare_recovered_stalled_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         return {"cost_unavailable": True}
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    recovered = "pr-created-draft" if draft else "pr-created"
+    monkeypatch.setattr(
+        rust_runtime,
+        "normalized_stall_outcome_values",
+        lambda *_args, **_kwargs: {"IMPLEMENT_NORMALIZED_OUTCOME": recovered},
+    )
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda *_a, **_k: None)  # type: ignore[arg-type]
@@ -3935,7 +3941,7 @@ def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPa
     def fake_staged_summary_heading_is_stalled(**_kwargs: object) -> bool:
         return True
 
-    def fake_live_recovered_outcome(_ctx: RunContext) -> str:
+    def fake_live_recovered_outcome(_runner: object, _ctx: RunContext) -> str:
         return "merged"
 
     def fake_refresh_logs_checkpoint(**kwargs: object) -> run_log_manifest.RefreshSkip:
@@ -5723,38 +5729,6 @@ def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> Non
     assert "BAIL_REASON=ci-fix-exhausted\n" in state
     assert f"BAIL_FAILURE_DETAIL_LOG={detail_log_path}\n" in state
     assert "STALL_STEP=10\n" in state
-
-
-def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path) -> None:
-    """Stall-recovery classifier on the new envelope yields unrecoverable/none."""
-    stall_recovery = Path(__file__).resolve().parents[3] / "python" / "cli.py"
-
-    ci_detail = "ci-fix-exhausted: python-pyright\nFAIL test_foo.py asserted False\n"
-    detail_log = tmp_path / "ci-fix-exhausted-detail.log"
-    _ = detail_log.write_text(ci_detail, encoding="utf-8")
-
-    state_file = tmp_path / "ship-pr-state.sh"
-    _ = state_file.write_text(
-        f"PHASE=stalled\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
-        f"BAIL_REASON=ci-fix-exhausted\nBAIL_FAILURE_DETAIL_LOG={detail_log}\n"
-        f"STALL_TRACKING=false\nSTALL_STEP=10\nEXIT_CODE=3\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / "session-env.sh").write_text("", encoding="utf-8")
-
-    completed = subprocess.run(
-        [sys.executable, str(stall_recovery), "stall-recovery", "classify",
-         "--implement-tmpdir", str(tmp_path),
-         "--in-memory-stall-tracking", "true",
-         "--failure-detail-log", str(detail_log)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr
-    out = completed.stdout
-    assert "FAILURE_CLASS=unrecoverable" in out, f"unexpected classify output: {out}"
-    assert "RESUME_HINT=none" in out, f"unexpected classify output: {out}"
 
 
 def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

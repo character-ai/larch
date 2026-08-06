@@ -1,6 +1,6 @@
 # Stall-recovery runtime
 
-Stall recovery is a mixed-runtime domain during the Rust migration. `scripts/larch.sh stall-recovery` owns `clear-stall`, `seed-terminal-state`, `validate-token`, `validate-terminal-state`, `validate-tier-b-public-file`, `is-larch-dev-clone`, `compose-report`, `dedup-tier-a-report`, `chat-print`, and `populate-sensitive-corpus`. `python/cli.py stall-recovery` owns the remaining classification, normalization, escalation, and lint commands. Each production command has one owner and no fallback.
+`scripts/larch.sh stall-recovery` owns every runtime command: classification, attempt history, retry policy, normalization, escalation recording, state mutation and validation, reporting, corpus generation, Tier A deduplication, Tier B validation, chat rendering, and development-clone detection. `python/cli.py stall-recovery lint` owns only the contract lint. Each command has one owner and no fallback.
 
 ## Canonical `/implement` artifacts
 

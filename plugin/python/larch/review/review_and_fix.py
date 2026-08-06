@@ -548,7 +548,7 @@ def _append_record_escalation_tool_failure(*, implement_tmpdir: Path, reason: st
     entry = (
         f"\n## Tool Failure: record-escalation\n\n"
         f"- utc: `{ts}`\n"
-        f"- helper: `python/cli.py stall-recovery record-escalation`\n"
+        f"- helper: `scripts/larch.sh stall-recovery record-escalation`\n"
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
@@ -569,7 +569,7 @@ def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, 
     rows: list[tuple[str, str | int | bool]] = []
     if review_status == "coder-main-agent-required":
         cmd = [
-            sys.executable, str(_plugin_root() / "python" / "cli.py"), "stall-recovery", "record-escalation",
+            str(larch_entrypoint(_plugin_root())), "stall-recovery", "record-escalation",
             "--implement-tmpdir", str(implement_tmpdir),
             "--site", "step5",
             "--trigger", "coder-main-agent-required",

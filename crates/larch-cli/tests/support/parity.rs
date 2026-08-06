@@ -496,7 +496,7 @@ fn statusline_stamp_pattern() -> &'static Regex {
 
 fn rfc3339_utc_pattern() -> &'static Regex {
     RFC3339_UTC.get_or_init(|| {
-        Regex::new(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b")
+        Regex::new(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)\b")
             .expect("RFC 3339 normalization regex should compile")
     })
 }

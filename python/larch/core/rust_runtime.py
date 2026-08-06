@@ -58,6 +58,49 @@ class CheckpointProbeOutput:
     advisory_lines: tuple[str, ...]
 
 
+_STALL_OUTCOME_KEYS = frozenset({
+    "IMPLEMENT_NORMALIZED_OUTCOME",
+    "IMPLEMENT_OUTCOME_SUCCEEDED",
+    "IMPLEMENT_MERGE_DOWNGRADED",
+    "IMPLEMENT_ANY_STALL_TRACKING",
+    "IMPLEMENT_MEMORY_STALL_TRACKING",
+    "IMPLEMENT_SHIP_STALL_TRACKING",
+    "IMPLEMENT_FINALIZE_STALL_TRACKING",
+    "IMPLEMENT_SESSION_STALL_TRACKING",
+    "IMPLEMENT_MERGE_RESULT",
+    "IMPLEMENT_PR_NUMBER",
+    "IMPLEMENT_DRAFT",
+    "IMPLEMENT_MERGE",
+    "IMPLEMENT_FORKED_TARGET",
+    "IMPLEMENT_CI_PASSED",
+    "IMPLEMENT_DESIGN_ONLY_DONE",
+    "IMPLEMENT_BAIL_NEEDS_USER_INPUT",
+})
+
+
+def normalized_stall_outcome_values(
+    runner: Runner,
+    *,
+    implement_tmpdir: str,
+    in_memory_stall_tracking: str = "",
+) -> dict[str, str]:
+    """Invoke the Rust outcome owner and validate its fixed KV envelope."""
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "stall-recovery",
+        "normalize-outcome",
+        "--implement-tmpdir",
+        implement_tmpdir,
+    ]
+    if in_memory_stall_tracking:
+        argv.extend(["--in-memory-stall-tracking", in_memory_stall_tracking])
+    result = runner.run(argv)
+    parsed = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    if result.returncode != 0 or "IMPLEMENT_NORMALIZED_OUTCOME" not in parsed:
+        return {}
+    return {key: value for key, value in parsed.items() if key in _STALL_OUTCOME_KEYS}
+
+
 def checkpoint_probe(  # noqa: PLR0913 - mirrors the checkpoint-probe CLI arg surface (step, name, forked, base) plus the injected runner
     runner: Runner,
     *,

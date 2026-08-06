@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core.config import BGJOB_RC_KEY, STEP3_ESCALATION_FAILURE_STATUSES
+from larch.core.repo_roots import larch_entrypoint
 from larch.design.design_core import capture_contract_stream_to_paths
 from larch.design.design_step0_env import load_bash_quoted_env
 from larch.design.design_terminal import (
@@ -694,7 +695,7 @@ def step3_record_report_evidence(
     sentinel = tmpdir / f".step3-report-{status}.recorded"
     if sentinel.exists() or sentinel.is_symlink():
         return 0
-    helper_cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "stall-recovery"]
+    helper_cmd = [str(larch_entrypoint(_plugin_root())), "stall-recovery", "record-escalation"]
     stdout = tmpdir / f"step3-record-escalation-{status}.stdout.log"
     stderr = tmpdir / f"step3-record-escalation-{status}.stderr.log"
     try:
@@ -702,7 +703,6 @@ def step3_record_report_evidence(
             proc = subprocess.run(
                 [
                     *helper_cmd,
-                    "record-escalation",
                     "--profile",
                     "generic",
                     "--artifact-prefix",

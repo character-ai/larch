@@ -78,7 +78,7 @@ Use this site split as the sole normative rule.
 When `LINT_FIX_LEDGER_READY=true`, record one escalation before the ci-fixer handoff. Pass the parsed `LINT_FIX_LEDGER_*` fields from section 3 verbatim; do not invent site/trigger tokens. Pass the literal absolute `IMPLEMENT_TMPDIR` value parsed from Step 0 bootstrap output; a prompt-side Bash call cannot rely on a shell variable set in an earlier call. See **Escalation recording owners** in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md` for ownership and dedup rules.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation --implement-tmpdir "<literal IMPLEMENT_TMPDIR from Step 0 bootstrap>" --site "$LINT_FIX_LEDGER_SITE" --trigger "$LINT_FIX_LEDGER_TRIGGER" --step "$LINT_FIX_LEDGER_STEP" --phase "$LINT_FIX_LEDGER_PHASE" --dispatcher "$LINT_FIX_LEDGER_DISPATCHER" --exit-code "$LINT_FIX_LEDGER_EXIT_CODE" --failure-detail-log "$LINT_FIX_LEDGER_FAILURE_DETAIL_LOG"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" stall-recovery record-escalation --implement-tmpdir "<literal IMPLEMENT_TMPDIR from Step 0 bootstrap>" --site "$LINT_FIX_LEDGER_SITE" --trigger "$LINT_FIX_LEDGER_TRIGGER" --step "$LINT_FIX_LEDGER_STEP" --phase "$LINT_FIX_LEDGER_PHASE" --dispatcher "$LINT_FIX_LEDGER_DISPATCHER" --exit-code "$LINT_FIX_LEDGER_EXIT_CODE" --failure-detail-log "$LINT_FIX_LEDGER_FAILURE_DETAIL_LOG"
 ```
 
 Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `step3` / `main-agent-required`, `step5-self-review` / `main-agent-required`, `step5-mav` / `main-agent-required`, `step6` / `main-agent-required`). Use the parsed values, not the capture-site label.

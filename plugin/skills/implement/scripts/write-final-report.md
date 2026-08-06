@@ -8,7 +8,7 @@ The markdown body is produced by [`python/cli.py render run-summary`](../../../p
 
 ## Implement outcome enum (`--outcome` raw values)
 
-These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `python/cli.py final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `python/tests/report/test_final_report.py` stays aligned with the helper.
+These values are emitted by the shared `scripts/larch.sh stall-recovery normalize-outcome` helper. `python/cli.py final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `python/tests/report/test_final_report.py` stays aligned with the helper.
 
 1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run`: `FORKED_TARGET=true`.

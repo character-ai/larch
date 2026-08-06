@@ -1,6 +1,6 @@
 """Tests for final_report.py extraction surface."""
 
-# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 
 
 from __future__ import annotations
@@ -19,6 +19,13 @@ from larch.implement import scope_disposition
 from larch.report import final_report, run_log_manifest, tokens
 
 from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
+from tests.support.stall_recovery import frozen_normalized_outcome
+
+
+@pytest.fixture(autouse=True)
+def _stub_rust_outcome_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep Python unit tests independent of an installed Rust binary."""
+    monkeypatch.setattr(rust_runtime, "normalized_stall_outcome_values", frozen_normalized_outcome)
 
 
 def test_derive_pr_line_counts_consumes_typed_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

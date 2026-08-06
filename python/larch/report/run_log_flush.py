@@ -21,6 +21,7 @@ from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import proc
 from larch.core import redact
+from larch.core import rust_runtime
 from larch.calibration import difficulty
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
@@ -220,11 +221,9 @@ def _reconcile_terminal_manifest_from_ctx(ctx: RunContext) -> None:
     run_dir = _run_log_dir(ctx)
     if not (run_dir / "final-summary.md").is_file():
         return
-    # Function-scoped import breaks the circular import:
-    # run_logs → run_log_flush → stall_recovery → run_logs
-    from larch.state import stall_recovery  # noqa: PLC0415
-    outcome_values = stall_recovery.normalized_outcome_values(
-        argparse.Namespace(implement_tmpdir=ctx.tmpdir, in_memory_stall_tracking=""),
+    outcome_values = rust_runtime.normalized_stall_outcome_values(
+        proc.ProcRunner(),
+        implement_tmpdir=ctx.tmpdir,
     )
     outcome = outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
     rc, err = final_report._reconcile_manifest_for_terminal_report(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001

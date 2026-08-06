@@ -1,5 +1,7 @@
 """Tests for run_logs.py."""
 
+# pyright: reportUnusedFunction=false
+
 from __future__ import annotations
 
 import contextlib
@@ -25,9 +27,16 @@ from larch.errors import ShipError
 from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner, RunCall, make_run_context
+from tests.support.stall_recovery import frozen_normalized_outcome
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
+
+
+@pytest.fixture(autouse=True)
+def _stub_rust_outcome_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep Python unit tests independent of an installed Rust binary."""
+    monkeypatch.setattr(run_log_flush.rust_runtime, "normalized_stall_outcome_values", frozen_normalized_outcome)
 
 
 @dataclass

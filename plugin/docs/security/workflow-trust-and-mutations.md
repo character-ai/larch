@@ -226,9 +226,16 @@ capture, validated process-group termination, and
 `crates/larch-cli/src/kill_background.rs`). Rust-owned stall-state clearing
 consumes the Rust bgjob registry and process-identity validation directly.
 Python still owns the shared `process_identity` helpers consumed by the Python
-bgjob runtime, stall classification, and the plan-review / review-and-fix
-loop-identity commands until later #7677 leaves cut those callers over. A
-fixed-string comparison, field equality, or closed parser must handle
+bgjob runtime and the plan-review / review-and-fix loop-identity commands until
+later #7677 leaves cut those callers over. Rust-owned stall classification also
+consumes the Rust bgjob registry directly. Classification and attempt artifacts
+are published atomically below the validated temporary root, and attempt values
+reject line breaks. Escalation rows are appended under an exclusive lock through
+a non-symlink file descriptor; unsafe detail filenames cannot forge TSV fields,
+and the append repairs a missing terminal newline before writing one complete row.
+Unsafe canonical or fallback paths fail closed, while a genuine canonical write
+failure may use the existing bounded fallback artifacts. A fixed-string
+comparison, field equality, or closed parser must handle
 interpolated labels, markers, refs, and identifiers. Do not interpolate
 untrusted data into a regular expression or shell program.
 

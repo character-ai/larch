@@ -358,9 +358,8 @@ CI_DECIDE_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 )
 # Step 5 review-loop terminal bail tokens, covering lint-fix loop failures and
 # MAV/coder resume handoff commit failures. Single source of truth for the
-# render-safe set below, the python/stall_recovery._classify_text lint-fix-bail-token
-# check, and the bash safe_bail_reason_value() allowlist (kept in sync via
-# scripts/python/cli.py stall-recovery lint_runtime_bail_tokens).
+# render-safe set below, the Rust stall classifier's lint-fix-bail-token check,
+# and the shared safe-bail allowlist (kept in sync by `stall-recovery lint`).
 LINT_FIX_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     "lint-fix-failed",
     "lint-fix-attempt-cap",

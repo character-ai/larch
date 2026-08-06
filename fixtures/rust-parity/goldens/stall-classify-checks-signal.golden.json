@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "STALL_TRACKING=true\nPHASE=checks\n"
+    },
+    "stall-recovery-classification.env": {
+      "text": "FAILURE_CLASS=transient-infra\nFAILURE_SIGNATURE=fc03e006208cf63457e64f4d498c5d43d7d4383c143eefc9352522797162e130\nRESUME_HINT=checks-commit-route-retry\nSTALL_STEP=3\nPHASE=checks\nSTALL_TRACKING=true\nBAIL_REASON=redacted\nBAIL_REASON_RAW=checks-child-failed\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=checks-child-sigterm\nDISPATCHER=unknown\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=transient-infra\nFAILURE_SIGNATURE=fc03e006208cf63457e64f4d498c5d43d7d4383c143eefc9352522797162e130\nRESUME_HINT=checks-commit-route-retry\nSTALL_STEP=3\nPHASE=checks\nSTALL_TRACKING=true\nBAIL_REASON=redacted\nBAIL_REASON_RAW=checks-child-failed\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=checks-child-sigterm\nDISPATCHER=unknown\nCLASSIFICATION_FILE=<SANDBOX>/stall-recovery-classification.env\n"
+  }
+}

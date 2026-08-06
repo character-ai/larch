@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
 import json
 import os
 import re
@@ -16,7 +15,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
@@ -24,7 +23,6 @@ from larch.core.repo_roots import larch_entrypoint, repo_root_probe
 from larch.git import gh
 from larch.core.ctx import Ctx
 from larch.issue import title_match
-from larch.state import stall_recovery
 from larch.state import session_env as _session_env_dt
 
 from larch.design.design_core import (
@@ -259,25 +257,6 @@ def extend_publish_failure_stage_args(stage_args: list[str], values: Mapping[str
             stage_args.extend((flag, value))
 
 
-def _run_stall_main(*, callable_obj: Callable[..., int], argv: Sequence[str], stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
-    try:
-        with contextlib.ExitStack() as stack:
-            if stdout_path is not None:
-                out = stack.enter_context(stdout_path.open("w", encoding="utf-8"))
-                stack.enter_context(contextlib.redirect_stdout(out))
-            else:
-                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-            if stderr_path is not None:
-                err = stack.enter_context(stderr_path.open("w", encoding="utf-8"))
-                stack.enter_context(contextlib.redirect_stderr(err))
-            try:
-                return int(callable_obj(list(argv)))
-            except SystemExit as exc:
-                return int(exc.code) if isinstance(exc.code, int) else 1
-    except OSError:
-        return 1
-
-
 def _run_stall_rust(
     *,
     verb: str,
@@ -305,8 +284,14 @@ def _run_stall_rust_capture(*, verb: str, argv: Sequence[str]) -> proc.CommandRe
 
 def _stall_rust_argv(*, verb: str, argv: Sequence[str]) -> list[str]:
     entrypoint = str(larch_entrypoint(Path(__file__).resolve().parents[3]))
+    if verb == "classify":
+        return [entrypoint, "stall-recovery", "classify", *argv]
+    if verb == "init-attempts":
+        return [entrypoint, "stall-recovery", "init-attempts", *argv]
     if verb == "is-larch-dev-clone":
         return [entrypoint, "stall-recovery", "is-larch-dev-clone", *argv]
+    if verb == "normalize-file-failure-report-env":
+        return [entrypoint, "stall-recovery", "normalize-file-failure-report-env", *argv]
     if verb == "validate-terminal-state":
         return [entrypoint, "stall-recovery", "validate-terminal-state", *argv]
     if verb == "validate-token":
@@ -976,8 +961,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     else:
                         file_norm = design_tmpdir / "design-failure-tier-a-file.normalized.env"
                         if (
-                            _run_stall_main(
-                                callable_obj=stall_recovery.normalize_file_failure_report_env_main,
+                            _run_stall_rust(
+                                verb="normalize-file-failure-report-env",
                                 argv=[
                                     *helper_common(),
                                     "--file-failure-report-env",
@@ -1098,9 +1083,9 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             write_fallback_chat("terminal-state-summary-mismatch")
             return 0, []
         prepare_root_cause("terminal")
-        _run_stall_main(callable_obj=stall_recovery.init_attempts_main, argv=[*helper_common(), "--attempts-file", str(attempts_file)])
+        _run_stall_rust(verb="init-attempts", argv=[*helper_common(), "--attempts-file", str(attempts_file)])
         classify_out = design_tmpdir / "design-failure-classify.env"
-        _run_stall_main(callable_obj=stall_recovery.classify_main, argv=[*helper_common(), *state_overrides()], stdout_path=classify_out)
+        _run_stall_rust(verb="classify", argv=[*helper_common(), *state_overrides()], stdout_path=classify_out)
         with contextlib.suppress(OSError):
             shutil.copyfile(classify_out, class_file)
         surface = report_surface()
@@ -1155,7 +1140,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         _emit_skip("no-escalation-evidence")
         return 0, []
     prepare_root_cause("escalation")
-    _run_stall_main(callable_obj=stall_recovery.init_attempts_main, argv=[*helper_common(), "--attempts-file", str(attempts_file)])
+    _run_stall_rust(verb="init-attempts", argv=[*helper_common(), "--attempts-file", str(attempts_file)])
     surface = report_surface()
     output = report_output_file(surface)
     if not populate_sensitive(class_path=None, attempts_path=attempts_file):

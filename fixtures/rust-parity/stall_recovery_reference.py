@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Frozen Python reference for the issue-8064 and issue-8066 stall-recovery commands."""
+"""Frozen Python reference for the issue-8064 through issue-8066 stall-recovery commands."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -315,11 +316,400 @@ def dedup(opts: dict[str, str]) -> int:
     return 2
 
 
+def truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def read_state(path: Path) -> dict[str, str]:
+    if not path.is_file() or path.is_symlink():
+        return {}
+    found: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            found[key] = value.rstrip("\r")
+    return found
+
+
+_TERMINAL_MERGES = {"merged", "admin_merged", "already_merged"}
+_STALE_FINALIZE_KEYS = {
+    "STALL_TRACKING", "STALL_STEP", "PHASE", "BAIL_REASON",
+    "IMPLEMENT_BAIL_REASON", "EXIT_CODE", "BAIL_NEEDS_USER_INPUT",
+}
+
+
+def state_value(ship: dict[str, str], fin: dict[str, str], key: str) -> str:
+    return ship.get(key) or fin.get(key, "")
+
+
+def nonzero_exit(value: str) -> bool:
+    try:
+        return bool(value.strip() and value.strip() != "unknown" and int(value) != 0)
+    except ValueError:
+        return False
+
+
+def failure_signals(ship: dict[str, str], fin: dict[str, str], bail_user: str) -> bool:
+    return bool(
+        state_value(ship, fin, "BAIL_REASON").strip()
+        or state_value(ship, fin, "IMPLEMENT_BAIL_REASON").strip()
+        or nonzero_exit(state_value(ship, fin, "EXIT_CODE"))
+        or truthy(bail_user)
+    )
+
+
+def clean_ship_recovery(ship: dict[str, str]) -> bool:
+    number, url = ship.get("PR_NUMBER", "").strip(), ship.get("PR_URL", "").strip()
+    merged = ship.get("MERGE_RESULT", "").strip()
+    success = bool((number and number != "0") or (url and url != "N/A") or merged in _TERMINAL_MERGES)
+    return bool(success and ship.get("PHASE", "").strip() != "stalled"
+                and not ship.get("BAIL_REASON", "").strip()
+                and not ship.get("IMPLEMENT_BAIL_REASON", "").strip()
+                and not nonzero_exit(ship.get("EXIT_CODE", "")))
+
+
+def effective_finalize(ship: dict[str, str], fin: dict[str, str]) -> dict[str, str]:
+    contains_stall = bool(
+        truthy(fin.get("STALL_TRACKING", "false")) or fin.get("STALL_STEP", "").strip()
+        or fin.get("PHASE", "").strip() == "stalled" or fin.get("BAIL_REASON", "").strip()
+        or fin.get("IMPLEMENT_BAIL_REASON", "").strip() or nonzero_exit(fin.get("EXIT_CODE", ""))
+        or truthy(fin.get("BAIL_NEEDS_USER_INPUT", "false"))
+    )
+    if not (contains_stall and clean_ship_recovery(ship)):
+        return fin
+    result = dict(fin)
+    result.update(dict.fromkeys(_STALE_FINALIZE_KEYS, ""))
+    return result
+
+
+def pr_evidence(ship: dict[str, str], fin: dict[str, str]) -> bool:
+    number, url = state_value(ship, fin, "PR_NUMBER").strip(), state_value(ship, fin, "PR_URL").strip()
+    return bool((number and number != "0") or (url and url != "N/A"))
+
+
+def phase_stalled(ship: dict[str, str], fin: dict[str, str], any_stall: bool) -> bool:
+    ship_phase, fin_phase = ship.get("PHASE", "").strip(), fin.get("PHASE", "").strip()
+    return ship_phase == "stalled" or (fin_phase == "stalled" and (any_stall or ship_phase not in {"ci-initial", "rebase", "pr-create"}))
+
+
+def healthy_pr(ship: dict[str, str], fin: dict[str, str]) -> bool:
+    return bool(not state_value(ship, fin, "BAIL_REASON").strip()
+                and not state_value(ship, fin, "IMPLEMENT_BAIL_REASON").strip()
+                and state_value(ship, fin, "PHASE").strip() != "stalled"
+                and not nonzero_exit(state_value(ship, fin, "EXIT_CODE")))
+
+
+def safe_step_value(value: str) -> str:
+    return value if safe_step(value, True) or value == "unknown" else "unknown"
+
+
+def safe_phase_value(value: str) -> str:
+    allowed = {"checks", "review", "implementation", "impl", "step2", "step5", "step8", "ship", "ship-pr", "pr-prep", "pr-create", "ci-initial", "ci-merge", "evaluate-failure", "force-push-gate", "bump", "merge", "postmerge", "rebase-failed", "plan-write", "publish", "postplan", "clarify-loop", "judge-panel", "validation", "teardown"}
+    return value if value in allowed or value == "unknown" else "unknown"
+
+
+def resume_hint(klass: str, step: str, phase: str, pattern: str) -> str:
+    step = safe_step_value(step)
+    if klass in {"contract-failure", "same-cause-repeat", "unrecoverable", "submodule-restricted"}:
+        return "none"
+    if step in {"3", "6", "12d", "bump-branch-guard"}:
+        return "checks-commit-route-retry" if step == "3" and pattern in {"checks-leg-abandoned", "checks-child-sigterm"} else "none"
+    if step == "2":
+        return "step2-impl"
+    if step == "5":
+        return "checks-commit-route-retry" if pattern == "checks-leg-abandoned" else "step5-review"
+    if step in {"8", "9", "10", "11", "12", "13", "14", "15", "rebase-failed"} or re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", step or ""):
+        return "step8-shippr"
+    if step != "unknown":
+        return "none"
+    if phase.startswith("review"):
+        return "step5-review"
+    if phase.startswith(("impl", "step2")):
+        return "step2-impl"
+    return "none" if not phase else "step8-shippr"
+
+
+def classify_text(text: str, bail: str, step: str, detail_valid: bool, exit_code: str, implement: bool) -> tuple[str, str, str]:
+    first = bail.partition("\n")[0].lower()
+    marker = "migration governance blocked:"
+    if implement and marker in first and first.split(marker, 1)[1].strip():
+        return "contract-failure", "none", "migration-governance-block"
+    if step == "rebase-failed":
+        return "transient-infra", "step8-shippr", "rebase-transient"
+    if bail == "checks-child-failed" and step in {"3", "6"}:
+        try:
+            unresolved = exit_code == "unknown" or int(exit_code) < 0
+        except ValueError:
+            unresolved = True
+        if unresolved:
+            return "transient-infra", "checks-commit-route-retry", "checks-child-sigterm"
+    if step in {"3", "6"}:
+        return "contract-failure", "none", "step-contract"
+    if step == "merge-loop-iteration-cap":
+        return "unrecoverable", "none", "terminal-step"
+    direct = {
+        "protected-path-edit-required-out-of-scope": ("protected-path", "step2-impl", "protected-path-bail-token"),
+        "submodule-edit-required-out-of-scope": ("submodule-restricted", "none", "submodule-restricted-bail-token"),
+        "adopted-issue-closed": ("unrecoverable", "none", "terminal-bail"),
+        "tracking-init-failed": ("unrecoverable", "none", "terminal-bail"),
+        "recovery-out-of-scope": ("unrecoverable", "none", "recovery-out-of-scope"),
+    }
+    if bail in direct:
+        return direct[bail]
+    if bail == "ci-fix-exhausted":
+        return "unrecoverable", "none", "ci-fix-exhausted-with-detail" if detail_valid else "terminal-bail"
+    lower = f"{bail}\n{text}".lower()
+    refresh = "pr-create-guideline-outcome-refresh"
+    if step == refresh or "preterminal-outcome" in lower or f"stall_step={refresh}" in lower or (refresh in lower and any(token in lower for token in ("pre-terminal", "terminal outcome label", "preterminal"))):
+        return "transient-infra", "step8-shippr", "transient-output"
+    lint_bails = ("lint-fix-failed", "lint-fix-attempt-cap", "lint-fix-main-agent-required", "lint-fix-commit-failed", "resume-handoff-commit-failed", "review-fix-commit-failed")
+    if any(token in lower for token in lint_bails):
+        return "lint-failure", "step5-review", "lint-fix-bail-token"
+    if "submodule-edit-required-out-of-scope" in lower:
+        return "submodule-restricted", "none", "submodule-restricted-bail-token"
+    if "protected-path-edit-required-out-of-scope" in lower:
+        return "protected-path", "step2-impl", "protected-path-bail-token"
+    if any(token in lower for token in ("pytest", "jest", "vitest", "rspec", "go test", "test failed", "failing test", "tests failed", "failed with")):
+        return "test-failure", "step2-impl", "test-output"
+    if re.search(r"relevant-checks.*fail|lint.*failed", lower) or any(token in lower for token in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop")):
+        return "lint-failure", "step5-review", "lint-output"
+    dispatch = {"branch-changed", "cap_hit", "codex-runtime-failure", "cursor-bailed-no-reason", "cursor-modified-history", "cursor-runtime-failure", "detached-head-prohibited", "dirty-state-after-timeout", "interactive-subprocess-unsupported", "main-branch-post-dispatch", "main-branch-prohibited", "manifest-missing", "manifest-oos-materialization-failed", "manifest-schema-invalid", "protected-path-modified", "qa-pending-missing", "quota", "redactor-not-executable", "resume-incompatible", "submodule-dirty", "wrapper-validation-failure", "orchestrator-envelope-invalid"}
+    if bail in dispatch:
+        return "dispatch-failure", "step2-impl", "dispatch-bail-token"
+    if re.search(r"envelope-invalid|invalid.*envelope|orchestrator-envelope-invalid|wrapper-validation|step2.*dispatch", lower):
+        return "dispatch-failure", "step2-impl", "dispatch-output"
+    if re.search(r"rate limit|api rate|network/auth issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5\d\d", lower):
+        return "transient-infra", "step8-shippr", "transient-output"
+    return "unrecoverable", "none", "fallback"
+
+
+def write_values(path: Path, values: dict[str, object]) -> None:
+    path.write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
+
+
+def classify(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    primary = Path(opts.get("--primary-state-file", str(tmpdir / "ship-pr-state.sh")))
+    state = read_state(primary) | read_state(tmpdir / "finalize-state.sh") | read_state(tmpdir / "session-env.sh")
+    step = opts.get("--stall-step") or state.get("STALL_STEP", "")
+    phase = opts.get("--phase") or state.get("PHASE", "")
+    bail = opts.get("--bail-reason") or state.get("BAIL_REASON", "") or state.get("IMPLEMENT_BAIL_REASON", "")
+    any_stall = any(truthy(value) for value in (opts.get("--in-memory-stall-tracking", ""), read_state(primary).get("STALL_TRACKING", "false"), read_state(tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false"), read_state(tmpdir / "session-env.sh").get("STALL_TRACKING", "false")))
+    evidence = ""
+    for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
+        path = tmpdir / name
+        evidence += "\n" + (path.read_text(encoding="utf-8", errors="replace") if path.is_file() and not path.is_symlink() and path.stat().st_size <= 65_536 else "")
+    raw_exit = opts.get("--exit-code") or state.get("EXIT_CODE", "unknown")
+    if not any_stall:
+        klass, hint, pattern = "unrecoverable", "none", "no-stall"
+    else:
+        klass, _hint, pattern = classify_text(evidence, bail, step, False, raw_exit, True)
+        hint = resume_hint(klass, step, phase, pattern)
+    evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
+    signature = hashlib.sha256(f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode()).hexdigest()
+    safe_bails = {"protected-path-edit-required-out-of-scope", "submodule-edit-required-out-of-scope", "adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope", "ci-fix-exhausted", "manifest-missing"}
+    dispatcher = opts.get("--dispatcher") or state.get("DISPATCHER", "") or state.get("CODER_TOOL", "")
+    values: dict[str, object] = {
+        "FAILURE_CLASS": klass,
+        "FAILURE_SIGNATURE": signature,
+        "RESUME_HINT": hint,
+        "STALL_STEP": safe_step_value(step),
+        "PHASE": safe_phase_value(phase),
+        "STALL_TRACKING": "true" if any_stall else "false",
+        "BAIL_REASON": bail if not bail or bail in safe_bails else "redacted",
+        "BAIL_REASON_RAW": bail.splitlines()[0] if bail else "",
+        "FAILURE_DETAIL_LOG": "",
+        "EXIT_CODE": raw_exit if re.fullmatch(r"[0-9]+|unknown", raw_exit or "") else "unknown",
+        "MATCHED_CLASSIFIER_PATTERN": pattern,
+        "DISPATCHER": dispatcher if dispatcher in {"codex", "cursor", "claude", "bash", "python", "ship-pr", "lint-fix-loop", "run-step5-review"} else ("unknown" if not dispatcher else "redacted"),
+    }
+    path = tmpdir / "stall-recovery-classification.env"
+    write_values(path, values)
+    for key, value in values.items():
+        print(f"{key}={value}")
+    print(f"CLASSIFICATION_FILE={path}")
+    return 0
+
+
+def init_attempts(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    path = Path(opts.get("--attempts-file", str(tmpdir / "stall-recovery-attempts.env")))
+    if not path.exists():
+        write_values(path, {"version": 1, "created_utc": datetime.now(UTC).isoformat(), "attempt_count": 0})
+    print(f"ATTEMPTS_FILE={path}")
+    print(f"ATTEMPT_COUNT={read_last(path, 'attempt_count') or '0'}")
+    return 0
+
+
+def record_attempt(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    path = Path(opts.get("--attempts-file", str(tmpdir / "stall-recovery-attempts.env")))
+    now = datetime.now(UTC).isoformat()
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        count = int(read_last(path, "attempt_count") or "0") + 1
+        replaced = any(line.startswith("attempt_count=") for line in lines)
+        lines = [f"attempt_count={count}" if line.startswith("attempt_count=") else line for line in lines]
+        if not replaced:
+            lines.append(f"attempt_count={count}")
+    else:
+        count = 1
+        lines = ["version=1", f"created_utc={now}", "attempt_count=1"]
+    lines += [
+        f"attempt.{count}.class={opts['--class']}", f"attempt.{count}.signature={opts['--signature']}",
+        f"attempt.{count}.resume_hint={opts.get('--resume-hint', 'none')}", f"attempt.{count}.outcome={opts.get('--outcome', 'failed')}",
+        f"attempt.{count}.utc={now}", f"last_class={opts['--class']}", f"last_signature={opts['--signature']}",
+        f"last_resume_hint={opts.get('--resume-hint', 'none')}", f"last_outcome={opts.get('--outcome', 'failed')}",
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"ATTEMPT_COUNT={count}")
+    return 0
+
+
+def retry(opts: dict[str, str]) -> int:
+    klass = opts["--class"]
+    caps = {"transient-infra": (4, "sleep-seconds.sh 5"), "test-failure": (8, "none"), "lint-failure": (8, "none"), "dispatch-failure": (3, "none"), "protected-path": (1, "none"), "same-cause-repeat": (2, "none")}
+    attempts, delay = caps.get(klass, (0, "none"))
+    print(f"FAILURE_CLASS={klass}\nMAX_ATTEMPTS={attempts}\nRETRY_DELAY={delay}")
+    return 0
+
+
+def normalize_outcome(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    ship, raw_fin, ses = (read_state(tmpdir / name) for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"))
+    fin = effective_finalize(ship, raw_fin)
+    seed = read_state(tmpdir / "ship-seed-input.env")
+    classification = read_state(tmpdir / "stall-recovery-classification.env")
+    memory = opts.get("--in-memory-stall-tracking", "") or "false"
+    ship_stall = ship.get("STALL_TRACKING", "false")
+    raw_fin_stall, fin_stall = raw_fin.get("STALL_TRACKING", "false"), fin.get("STALL_TRACKING", "false")
+    ses_stall = ses.get("STALL_TRACKING", "false")
+    any_stall = any(truthy(value) for value in (memory, ship_stall, fin_stall, ses_stall))
+    merge_result, merge = state_value(ship, fin, "MERGE_RESULT"), state_value(ship, fin, "MERGE")
+    pr_number, draft = state_value(ship, fin, "PR_NUMBER"), state_value(ship, fin, "DRAFT") or "false"
+    forked = ship.get("FORKED_TARGET") or fin.get("FORKED_TARGET") or ses.get("FORKED_TARGET", "false") or "false"
+    ci_passed = state_value(ship, fin, "CI_PASSED") or "false"
+    design_done = fin.get("DESIGN_ONLY_DONE", "false") or "false"
+    bail_user = state_value(ship, fin, "BAIL_NEEDS_USER_INPUT") or "false"
+    terminal_merge = merge_result in _TERMINAL_MERGES
+    has_failure = failure_signals(ship, fin, bail_user)
+    stall_terminal = (terminal_merge and truthy(memory)) or has_failure or ship.get("PHASE", "").strip() == "stalled" or truthy(fin.get("STALL_TRACKING", "false"))
+    if (any_stall or phase_stalled(ship, fin, any_stall)) and stall_terminal:
+        outcome = "stalled"
+    elif terminal_merge and has_failure:
+        outcome = "bailed"
+    elif merge_result in {"merged", "admin_merged"}:
+        outcome = "merged"
+    elif merge_result == "already_merged":
+        outcome = "force-merged-externally"
+    elif truthy(forked):
+        outcome = "forked-dry-run"
+    elif truthy(design_done):
+        outcome = "design-only"
+    elif pr_evidence(ship, fin) and not merge_result and healthy_pr(ship, fin) and not truthy(bail_user):
+        outcome = "pr-created-draft" if truthy(draft) else "pr-created"
+    elif not pr_evidence(ship, fin) and not merge_result and not has_failure:
+        outcome = "shipping"
+    else:
+        outcome = "bailed"
+    if truthy(bail_user) and outcome == "bailed":
+        outcome = "bailed-needs-user-input"
+    succeeded = outcome in {"merged", "force-merged-externally", "pr-created", "pr-created-draft", "forked-dry-run"} and not any_stall
+    merge_downgraded = bool(outcome == "pr-created" and truthy(seed.get("MERGE", "false"))
+                            and not truthy(merge) and classification.get("STALL_STEP") == "5"
+                            and classification.get("RESUME_HINT") == "step8-shippr"
+                            and "panel-failed" in (tmpdir / "execution-issues.md").read_text(encoding="utf-8", errors="replace").lower()
+                            if (tmpdir / "execution-issues.md").is_file() else False)
+    values = {
+        "IMPLEMENT_NORMALIZED_OUTCOME": outcome, "IMPLEMENT_OUTCOME_SUCCEEDED": "true" if succeeded else "false",
+        "IMPLEMENT_MERGE_DOWNGRADED": "true" if merge_downgraded else "false", "IMPLEMENT_ANY_STALL_TRACKING": "true" if any_stall else "false",
+        "IMPLEMENT_MEMORY_STALL_TRACKING": memory, "IMPLEMENT_SHIP_STALL_TRACKING": ship_stall or "false",
+        "IMPLEMENT_FINALIZE_STALL_TRACKING": raw_fin_stall or "false", "IMPLEMENT_SESSION_STALL_TRACKING": ses_stall or "false",
+        "IMPLEMENT_MERGE_RESULT": merge_result, "IMPLEMENT_PR_NUMBER": pr_number, "IMPLEMENT_DRAFT": draft, "IMPLEMENT_MERGE": merge,
+        "IMPLEMENT_FORKED_TARGET": forked, "IMPLEMENT_CI_PASSED": ci_passed,
+        "IMPLEMENT_DESIGN_ONLY_DONE": design_done, "IMPLEMENT_BAIL_NEEDS_USER_INPUT": bail_user,
+    }
+    for key, value in values.items():
+        print(f"{key}={value}")
+    return 0
+
+
+def normalize_issue(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    text = Path(opts["--issue-stdout-file"]).read_text(encoding="utf-8", errors="replace")
+    values = read_state(Path(opts["--issue-stdout-file"]))
+    reason = ""
+    if opts.get("--issue-exit-code") is None:
+        reason = "issue-exit-code-missing"
+    elif opts["--issue-exit-code"] != "0":
+        reason = "issue-exit-code"
+    elif values.get("ISSUES_FAILED") != "0":
+        reason = "issues-failed-invalid" if not values.get("ISSUES_FAILED", "").isdigit() else "issues-failed-nonzero"
+    number, url = values.get("ISSUE_1_NUMBER", ""), values.get("ISSUE_1_URL", "")
+    duplicate_url = values.get("ISSUE_1_DUPLICATE_OF_URL") or values.get("ISSUE_DUPLICATE_OF_URL", "")
+    if (truthy(values.get("ISSUE_1_DUPLICATE", "")) or not number) and re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/\d+", duplicate_url):
+        url, number = duplicate_url, duplicate_url.rsplit("/", 1)[1]
+    if not reason and not number.isdigit():
+        reason = "issue-number-missing"
+    if not reason and not re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/\d+", url):
+        reason = "issue-url-missing"
+    env = tmpdir / "stall-recovery-issue.env"
+    if reason:
+        env.unlink(missing_ok=True)
+        print(f"NORMALIZED=false\nREASON={reason}")
+    else:
+        write_values(env, {"ISSUE_NUMBER": number, "ISSUE_URL": url})
+        print(f"NORMALIZED=true\nISSUE_NUMBER={number}\nISSUE_URL={url}")
+    _ = text
+    return 0
+
+
+def normalize_file_report(opts: dict[str, str]) -> int:
+    values = read_state(Path(opts["--file-failure-report-env"]))
+    status, url = values.get("FILE_FAILURE_REPORT_STATUS", ""), values.get("FILE_FAILURE_REPORT_URL", "")
+    reason = values.get("FILE_FAILURE_REPORT_FALLBACK_REASON", "")
+    allowed = {"filed", "dry-run", "dedup-comment", "no-match", "fallback-print-required", "lookup-failed-open", "mutation-refused"}
+    if status not in allowed:
+        status, reason = "fallback-print-required", reason or "helper-status-missing"
+    elif status == "mutation-refused":
+        status, reason = "fallback-print-required", reason or "unauthorized-mutation"
+    print(f"STALL_RECOVERY_REPORT_STATUS={status}")
+    if url:
+        print(f"STALL_RECOVERY_REPORT_URL={url}")
+        match = re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/(\d+)", url)
+        if match:
+            print(f"STALL_RECOVERY_REPORT_ISSUE_URL={url}\nSTALL_RECOVERY_REPORT_ISSUE_NUMBER={match.group(1)}")
+    if reason:
+        print(f"STALL_RECOVERY_REPORT_FALLBACK_REASON={reason}")
+    return 0
+
+
+def record_escalation(opts: dict[str, str]) -> int:
+    tmpdir = Path(opts["--implement-tmpdir"])
+    exit_code = opts.get("--exit-code", "unknown")
+    exit_code = exit_code if re.fullmatch(r"[0-9]+|unknown", exit_code) else "unknown"
+    dispatcher = opts["--dispatcher"] if opts["--dispatcher"] in {"codex", "cursor", "claude", "bash", "python", "ship-pr", "lint-fix-loop", "run-step5-review"} else "redacted"
+    row = f"utc={datetime.now(UTC).isoformat()}\tsite={opts['--site']}\ttrigger={opts['--trigger']}\tstep={opts['--step']}\tphase={opts['--phase']}\tdispatcher={dispatcher}\texit_code={exit_code}\tfailure_detail_log=\n"
+    ledger = tmpdir / "stall-recovery-escalation-ledger.tsv"
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(row)
+    print(f"ESCALATION_RECORDED=true\nESCALATION_LEDGER_FILE={ledger}")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         return 2
     verb = sys.argv[1]
     opts = options(sys.argv[2:])
+    if verb == "classify-text":
+        klass, hint, pattern = classify_text(
+            opts.get("--text", ""), opts.get("--bail", ""), opts.get("--step", ""),
+            opts.get("--detail-valid") == "true", opts.get("--exit-code", ""),
+            opts.get("--implement") == "true",
+        )
+        print(f"FAILURE_CLASS={klass}\nCLASSIFIED_HINT={hint}\nPATTERN={pattern}")
+        return 0
     if verb == "validate-token":
         token = opts.get("--token") or opts.get("--value", "")
         return emit("TOKEN_VALID", token_valid(token, opts.get("--token-kind", ""), opts.get("--profile") == "generic"))
@@ -341,6 +731,22 @@ def main() -> int:
         return chat_print(opts)
     if verb == "dedup-tier-a-report":
         return dedup(opts)
+    if verb == "classify":
+        return classify(opts)
+    if verb == "init-attempts":
+        return init_attempts(opts)
+    if verb == "record-attempt":
+        return record_attempt(opts)
+    if verb == "retry-policy":
+        return retry(opts)
+    if verb == "normalize-outcome":
+        return normalize_outcome(opts)
+    if verb == "normalize-issue-env":
+        return normalize_issue(opts)
+    if verb == "normalize-file-failure-report-env":
+        return normalize_file_report(opts)
+    if verb == "record-escalation":
+        return record_escalation(opts)
     return 2
 
 

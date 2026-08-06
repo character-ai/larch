@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "issue.out": {
+      "text": "ISSUES_FAILED=0\nISSUE_1_NUMBER=42\nISSUE_1_URL=https://github.com/o/r/issues/42\n"
+    },
+    "stall-recovery-issue.env": {
+      "text": "ISSUE_NUMBER=42\nISSUE_URL=https://github.com/o/r/issues/42\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "NORMALIZED=true\nISSUE_NUMBER=42\nISSUE_URL=https://github.com/o/r/issues/42\n"
+  }
+}
