@@ -9,6 +9,8 @@ use std::{
 
 use serde_json::Value;
 
+use crate::ensure_ascii_json;
+
 const MANIFEST_SCHEMA_VERSION: u64 = 2;
 
 const V2_RESERVED_KEYS: &[&str] = &[
@@ -507,21 +509,6 @@ fn python_repr_string(value: &str) -> String {
         }
     }
     output.push('\'');
-    output
-}
-
-fn ensure_ascii_json(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    for character in text.chars() {
-        if character.is_ascii() {
-            output.push(character);
-            continue;
-        }
-        let mut units = [0; 2];
-        for unit in character.encode_utf16(&mut units) {
-            write!(output, "\\u{unit:04x}").expect("writing to a String cannot fail");
-        }
-    }
     output
 }
 

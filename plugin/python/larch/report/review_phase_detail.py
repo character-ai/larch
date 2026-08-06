@@ -8,8 +8,7 @@ import os
 import re
 from pathlib import Path
 
-from larch.core import redact
-from larch.report import progress_report
+from larch.core import proc, redact, rust_runtime
 from larch.review import voting
 from larch.review.review_types import parse_blocks
 
@@ -51,12 +50,13 @@ def _invoke_renderer(
     if not _readable_dir(rounds_root):
         return ""
     try:
-        stdout = progress_report._render_phase_detail_best_effort(  # noqa: SLF001 - shared best-effort renderer.
-            rounds_root,
+        stdout = rust_runtime.render_phase_detail(
+            proc.ProcRunner(),
+            rounds_root=str(rounds_root),
             skill=skill,
-            timing_ledger=timing_ledger if timing_ledger is not None and timing_ledger.is_file() else None,
-            token_ledger=token_ledger if token_ledger is not None and token_ledger.is_file() else None,
-            findings_file=findings_file if findings_file is not None and findings_file.is_file() else None,
+            timing_ledger=str(timing_ledger) if timing_ledger is not None and timing_ledger.is_file() else None,
+            token_ledger=str(token_ledger) if token_ledger is not None and token_ledger.is_file() else None,
+            findings_file=str(findings_file) if findings_file is not None and findings_file.is_file() else None,
         )
     except Exception:  # pylint: disable=broad-except
         return ""

@@ -989,32 +989,23 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   # skills/implement/scripts/write-final-report.sh via a variable-expanded shell
   # edge that G004 dead-script reachability cannot discover.
-  # python/cli.py progress render-phase-detail (issue #3774) renders the per-round
+  # scripts/larch.sh progress render-phase-detail renders the per-round
   # review-phase detail section. It is invoked at runtime from
   # skills/implement/scripts/write-final-report.sh and
-  # python/design_summary.py (design render-final-summary) via subprocess
+  # python/design_summary.py through the shared Rust runtime adapter via subprocess
   # edges that G004 dead-script reachability cannot discover.
-  "python/cli.py progress render-phase-detail",
-  "python/progress_report.py",
-  # python/cli.py progress write-design-round-meta synthesizes per-round round-meta.json and
+  "scripts/larch.sh progress render-phase-detail",
+  # scripts/larch.sh progress write-design-round-meta synthesizes per-round round-meta.json and
   # panel-manifest.ndjson for /design plan-review. It is invoked at runtime only
   # from python/plan_review.py and
-  # python/plan_review.py via variable-expanded
+  # through its shared runtime entrypoint via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
-  "python/cli.py progress write-design-round-meta",
-  "python/progress_report.py",
-  # python/cli.py progress write-implement-round-meta synthesizes per-round round-meta.json
+  "scripts/larch.sh progress write-design-round-meta",
+  # scripts/larch.sh progress write-implement-round-meta synthesizes per-round round-meta.json
   # for /implement code-review rounds. It is invoked at runtime only from
-  # python/cli.py review-and-fix apply-findings via variable-expanded
+  # python/review/round_runner.py via its shared runtime entrypoint and
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover (issue #4038).
-  "python/cli.py progress write-implement-round-meta",
-  "python/progress_report.py",
-  # python/test_progress_report.py is the regression harness for the
-  # review-phase detail renderer. It is referenced from Makefile and from the
-  # primary script's sibling contract, not from SKILL.md runtime prose — same
-  # Makefile-only pattern as the other test-* harnesses above.
-  "python/test_progress_report.py",
-  "python/test_progress_report.py",
+  "scripts/larch.sh progress write-implement-round-meta",
   # scripts/test-python/cli.py diagrams upsert is the offline harness for the
   # shared larch:diagrams helper. It is referenced from Makefile and from the
   # helper's sibling contract rather than from SKILL.md runtime prose.

@@ -220,3 +220,39 @@ def install_statusline(
     if notice:
         argv.append("--notice")
     return runner.run(argv, cwd=cwd).returncode == 0
+
+
+def render_phase_detail(  # noqa: PLR0913 - mirrors the Rust renderer's stable CLI surface plus the injected runner
+    runner: Runner,
+    *,
+    rounds_root: str,
+    skill: str,
+    timing_ledger: str | None = None,
+    token_ledger: str | None = None,
+    findings_file: str | None = None,
+    top_n: int = 7,
+    gantt_enabled: bool = True,
+    cwd: str | None = None,
+) -> str:
+    """Render a bounded review detail through the Rust-owned command."""
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "progress",
+        "render-phase-detail",
+        "--rounds-root",
+        rounds_root,
+        "--skill",
+        skill,
+        "--top-n",
+        str(top_n),
+    ]
+    if timing_ledger:
+        argv.extend(["--timing-ledger", timing_ledger])
+    if token_ledger:
+        argv.extend(["--token-ledger", token_ledger])
+    if findings_file:
+        argv.extend(["--findings-file", findings_file])
+    if not gantt_enabled:
+        argv.append("--no-gantt")
+    result = runner.run(argv, timeout=15, cwd=cwd)
+    return result.stdout if result.returncode == 0 else ""

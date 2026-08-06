@@ -192,8 +192,8 @@ class BreadcrumbWriter:
 def iter_jsonl_dicts(lines: Iterable[str]) -> Iterator[dict[str, object]]:
     """Yield JSON object rows from JSONL ``lines``, skipping blank or non-object lines.
 
-    Shared by progress_report and rendering so the parse loop has one definition
-    (avoids pylint R0801 duplicate-code across the two modules).
+    Shared by reporting readers so the parse loop has one definition and does
+    not recreate a second JSONL tolerance policy.
     """
     for line in lines:
         if not line.strip():

@@ -13,10 +13,10 @@ from typing import Any
 
 import pytest
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.errors import ShipError
 from larch.implement import scope_disposition
-from larch.report import final_report, progress_report, run_log_manifest, tokens
+from larch.report import final_report, run_log_manifest, tokens
 
 from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
 
@@ -98,6 +98,11 @@ def _stub_cost_and_assessment(monkeypatch: Any) -> None:
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr(final_report.subprocess, "run", run_manifest_in_process)
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: "## Review Phase Detail\n\nNo review rounds completed.\n",
+    )
 
 
 def _write_round_meta(round_dir: Path, *, reviewers: int) -> None:
@@ -139,7 +144,7 @@ def _write_vendor_timing(ledger: Path, output: str, start_s: int, end_s: int) ->
 
 
 def _write_over_cap_plain_codex_review_rows(ledger: Path) -> tuple[int, str]:
-    over_cap = progress_report.PROGRESS_GANTT_ROW_CAP + 2
+    over_cap = 27
     for index in range(over_cap):
         _write_vendor_timing(
             ledger,
@@ -343,6 +348,17 @@ def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeyp
         encoding="utf-8",
     )
     _stub_cost_and_assessment(monkeypatch)
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: (
+            "## Review Phase Detail\n\n"
+            "### Round 1 reviewer timing\n\n"
+            "```\n"
+            "codex/codex-review │████│ 30s\n"
+            "```\n"
+        ),
+    )
 
     rc, url, err = final_report.write_final_report(
         tmp_path,
@@ -373,6 +389,16 @@ def test_write_final_report_includes_uncapped_review_timing_gantt(tmp_path: Path
     over_cap, latest_label = _write_over_cap_plain_codex_review_rows(timing)
     _write_round_meta(round_dir, reviewers=over_cap)
     _stub_cost_and_assessment(monkeypatch)
+    gantt_rows = "\n".join(f"{latest_label} │█│ 1s" for _ in range(over_cap))
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: (
+            "## Review Phase Detail\n\n"
+            "### Round 1 reviewer timing\n\n"
+            f"```\n{gantt_rows}\n```\n"
+        ),
+    )
 
     rc, url, err = final_report.write_final_report(
         tmp_path,
@@ -2358,6 +2384,11 @@ def test_write_final_report_happy_path_writes_final_summary(
     )
     monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", _ok_pr_line_counts)
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: "## Review Phase Detail\n\nNo review rounds completed.\n",
+    )
 
     rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=True)
     assert (rc, url, err) == (0, "", "")

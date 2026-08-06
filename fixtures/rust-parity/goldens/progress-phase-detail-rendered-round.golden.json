@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    "findings.jsonl": {
+      "text": "{\"outcome\":\"accepted\",\"reviewer_slots\":[\"codex-specialist-arch-output.txt\"]}\n"
+    },
+    "rounds/round-1/panel-manifest.ndjson": {
+      "text": "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"codex-specialist-arch-output.txt\"}\n"
+    },
+    "rounds/round-1/round-meta.json": {
+      "text": "{\n  \"tally\": {\"ACCEPTED_COUNT\": \"2\", \"REJECTED_COUNT\": \"1\", \"EXONERATED_COUNT\": \"0\", \"NEUTRAL_COUNT\": \"1\", \"OOS_PROPOSED_COUNT\": \"1\", \"OOS_ACCEPTED_COUNT\": \"1\", \"OOS_REJECTED_COUNT\": \"0\"},\n  \"summary\": {\"panel\": {\"total_slot_count\": 3}},\n  \"collector\": \"TOOL=codex\\nSTATUS=FAILED\\nREVIEWER_FILE=codex-specialist-arch-output.txt\"\n}\n"
+    },
+    "timing.tsv": {
+      "text": "v1\tround\t-\timplement\t-\t1\t100\t200\nv1\tvendor\t-\t-\t-\tcodex\tcodex-review\t110\t190\t-\tcodex-specialist-arch-output.txt\t-\tcomplete\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "## Review Phase Detail\n\n| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n|--:|--:|--:|--:|--:|:--|--:|--:|\n| 1 | 4 | 2 | 1 | 1 | 1m 40s | N/A | 3 |\n| **Total (round-sum)** | **4** | **2** | **1** | **1** | **1m 40s** | **N/A** | **3** |\n\n_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._\n\n**Top reviewers** (by per-round accepted-point score, whole run):\n1. codex/arch: 1\n\n**Reviewer slot failures**: 1\n- codex/arch: 1\n"
+  }
+}

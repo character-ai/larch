@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "files": {
+    "review/round-1/difficulty-rating.json": {
+      "text": "{\"panel_tier\":\"HARD\",\"applied_tier\":\"HARD\",\"round_cap\":3,\"codex_model_role\":\"default\",\"override_source\":\"operator\",\"audit_evaluated\":true,\"audit_upgrade\":\"true\",\"escalated_round\":true,\"escalations\":[{\"round\":2,\"from_tier\":\"MODERATE\",\"to_tier\":\"HARD\"}]}\n"
+    },
+    "review/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_1\tarch.txt\taccepted\tYES\tminor\tin_scope\nFINDING_2\tarch.txt\trejected\tNO\tminor\tin_scope\nFINDING_3\tarch.txt\trejected\tNO\tminor\toos\nOOS_1\tarch.txt\taccepted\tYES\tminor\toos\n"
+    },
+    "review/round-1/panel-manifest.ndjson": {
+      "text": "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"arch.txt\"}\n"
+    },
+    "review/round-1/prune-nit.env": {
+      "text": "PRUNED_COUNT=1\n"
+    },
+    "review/round-1/review-tally.env": {
+      "text": "OOS_ACCEPTED_COUNT=2\n"
+    },
+    "review/round-1/round-meta.json": {
+      "text": "{\n  \"tally\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"2\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"1\",\n    \"OOS_ACCEPTED_COUNT\": \"2\",\n    \"OOS_REJECTED_COUNT\": \"1\"\n  },\n  \"summary\": {\n    \"panel\": {\n      \"total_slot_count\": 1\n    }\n  },\n  \"collector\": \"\",\n  \"difficulty\": {\n    \"tier_in_effect\": \"HARD\",\n    \"ceiling_in_effect\": 2,\n    \"escalations\": [\n      {\n        \"round\": 2,\n        \"from_tier\": \"MODERATE\",\n        \"to_tier\": \"HARD\"\n      }\n    ],\n    \"scout\": {\n      \"status\": \"ok\",\n      \"predicted_tier\": \"TRIVIAL\",\n      \"confidence\": \"low\",\n      \"source\": \"<SANDBOX>/review/round-1/scout-difficulty-rating.raw.json\"\n    },\n    \"applied_tier\": \"HARD\",\n    \"panel_tier\": \"HARD\",\n    \"round_cap\": 2,\n    \"codex_model_role\": \"default\",\n    \"override_source\": \"operator\",\n    \"audit_evaluated\": true,\n    \"audit_upgrade\": \"true\",\n    \"escalated_round\": true\n  },\n  \"tally_canonical\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"1\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"1\",\n    \"OOS_ACCEPTED_COUNT\": \"2\",\n    \"OOS_REJECTED_COUNT\": \"1\"\n  },\n  \"nit_pruned_count\": \"1\"\n}\n"
+    },
+    "review/round-1/scout-difficulty-rating.raw.json": {
+      "text": "{\"predicted_tier\":\"TRIVIAL\",\"confidence\":\"low\",\"rationale\":\"unclear small diff\"}\n"
+    },
+    "review/round-1/voting-tally.md": {
+      "text": "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n| FINDING_2 | rejected |\n| FINDING_3 | rejected |\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

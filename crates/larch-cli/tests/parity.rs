@@ -27,6 +27,9 @@ impl CleanInstallCase {
     }
 
     fn arguments(self) -> &'static [&'static str] {
+        if let Some(arguments) = phase_detail_clean_install_arguments(self.id) {
+            return arguments;
+        }
         match self.id {
             "clean-install-kv-get" => &["--key", "MISSING", "--default", "clean-install"],
             "clean-install-session-read-key" => &[
@@ -127,6 +130,21 @@ impl CleanInstallCase {
             ],
             _ => &["--help"],
         }
+    }
+}
+
+fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static str]> {
+    match id {
+        "clean-install-progress-render-phase-detail" => Some(&[
+            "--rounds-root",
+            "/larch-clean-install-rounds-missing",
+            "--no-gantt",
+        ]),
+        "clean-install-progress-write-design-round-meta"
+        | "clean-install-progress-write-implement-round-meta" => {
+            Some(&["--round-dir", "/larch-clean-install-round-missing"])
+        }
+        _ => None,
     }
 }
 
@@ -448,6 +466,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-progress-note", "progress", "note"),
     CleanInstallCase::new(
+        "clean-install-progress-render-phase-detail",
+        "progress",
+        "render-phase-detail",
+    ),
+    CleanInstallCase::new(
         "clean-install-progress-session-reset",
         "progress",
         "session-reset",
@@ -456,6 +479,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-progress-statusline",
         "progress",
         "statusline",
+    ),
+    CleanInstallCase::new(
+        "clean-install-progress-write-design-round-meta",
+        "progress",
+        "write-design-round-meta",
+    ),
+    CleanInstallCase::new(
+        "clean-install-progress-write-implement-round-meta",
+        "progress",
+        "write-implement-round-meta",
     ),
     CleanInstallCase::new(
         "clean-install-run-log-storage-preflight",
@@ -1459,6 +1492,614 @@ fn progress_commands_have_reviewed_parity() {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+struct PhaseDetailFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+    environment: &'static [(&'static str, &'static str)],
+}
+
+impl PhaseDetailFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path, python_path: &str) -> ParityCase {
+        let python = self.environment.iter().fold(
+            Program::new(python)
+                .args(
+                    std::iter::once(path_text(fixture))
+                        .chain(std::iter::once(self.command))
+                        .chain(self.arguments.iter().copied()),
+                )
+                .env("PYTHONPATH", python_path),
+            |program, (key, value)| program.env(key, value),
+        );
+        let rust = self.environment.iter().fold(
+            Program::new(rust).args(
+                ["progress", self.command]
+                    .into_iter()
+                    .chain(self.arguments.iter().copied()),
+            ),
+            |program, (key, value)| program.env(key, value),
+        );
+        ParityCase {
+            name: self.name,
+            python,
+            rust,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
+    PhaseDetailFixture {
+        name: "progress-phase-detail-missing-rounds-root",
+        command: "render-phase-detail",
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-no-gantt-explicit-value",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/rounds", "--no-gantt=unexpected"],
+        seeds: &[("rounds/.keep", "")],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-help",
+        command: "render-phase-detail",
+        arguments: &["--help"],
+        seeds: &[],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-design-round-meta-missing-round-dir",
+        command: "write-design-round-meta",
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-implement-round-meta-help",
+        command: "write-implement-round-meta",
+        arguments: &["--help"],
+        seeds: &[],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-no-rounds",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/rounds", "--no-gantt"],
+        seeds: &[("rounds/.keep", "")],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-rendered-round",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/rounds",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+            "--findings-file",
+            "{sandbox}/findings.jsonl",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "rounds/round-1/round-meta.json",
+                "{\n  \"tally\": {\"ACCEPTED_COUNT\": \"2\", \"REJECTED_COUNT\": \"1\", \"EXONERATED_COUNT\": \"0\", \"NEUTRAL_COUNT\": \"1\", \"OOS_PROPOSED_COUNT\": \"1\", \"OOS_ACCEPTED_COUNT\": \"1\", \"OOS_REJECTED_COUNT\": \"0\"},\n  \"summary\": {\"panel\": {\"total_slot_count\": 3}},\n  \"collector\": \"TOOL=codex\\nSTATUS=FAILED\\nREVIEWER_FILE=codex-specialist-arch-output.txt\"\n}\n",
+            ),
+            (
+                "rounds/round-1/panel-manifest.ndjson",
+                "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"codex-specialist-arch-output.txt\"}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t-\timplement\t-\t1\t100\t200\nv1\tvendor\t-\t-\t-\tcodex\tcodex-review\t110\t190\t-\tcodex-specialist-arch-output.txt\t-\tcomplete\n",
+            ),
+            (
+                "findings.jsonl",
+                "{\"outcome\":\"accepted\",\"reviewer_slots\":[\"codex-specialist-arch-output.txt\"]}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-top-n-zero",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/rounds",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+            "--findings-file",
+            "{sandbox}/findings.jsonl",
+            "--top-n",
+            "0",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "rounds/round-1/round-meta.json",
+                "{\n  \"tally\": {\"ACCEPTED_COUNT\": \"2\", \"REJECTED_COUNT\": \"1\", \"EXONERATED_COUNT\": \"0\", \"NEUTRAL_COUNT\": \"1\", \"OOS_PROPOSED_COUNT\": \"1\", \"OOS_ACCEPTED_COUNT\": \"1\", \"OOS_REJECTED_COUNT\": \"0\"},\n  \"summary\": {\"panel\": {\"total_slot_count\": 3}},\n  \"collector\": \"TOOL=codex\\nSTATUS=FAILED\\nREVIEWER_FILE=codex-specialist-arch-output.txt\"\n}\n",
+            ),
+            (
+                "rounds/round-1/panel-manifest.ndjson",
+                "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"codex-specialist-arch-output.txt\"}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t-\timplement\t-\t1\t100\t200\nv1\tvendor\t-\t-\t-\tcodex\tcodex-review\t110\t190\t-\tcodex-specialist-arch-output.txt\t-\tcomplete\n",
+            ),
+            (
+                "findings.jsonl",
+                "{\"outcome\":\"accepted\",\"reviewer_slots\":[\"codex-specialist-arch-output.txt\"]}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-design-round-meta",
+        command: "write-design-round-meta",
+        arguments: &["--round-dir", "{sandbox}/design/plan-review/round-1"],
+        seeds: &[
+            (
+                "design/plan-review/round-1/voting-tally.md",
+                "## Findings\n| FINDING_1 | detail | accepted |\n| OOS_1 | detail | rejected |\n",
+            ),
+            (
+                "design/plan-review/round-1/plan-review-slots.ndjson",
+                "{\"slot\":\"cursor-plan-arch\",\"tool\":\"cursor\",\"output\":\"cursor-plan-arch-output.txt\",\"vendor\":\"cursor\"}\n",
+            ),
+            (
+                "design/plan-review/round-1/revise/revise.env",
+                "REVISE_STATUS=clean\nREVISE_TIER=major\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-implement-round-meta",
+        command: "write-implement-round-meta",
+        arguments: &["--round-dir", "{sandbox}/review/round-1"],
+        seeds: &[
+            (
+                "review/round-1/findings-classification.tsv",
+                "finding_id\tvoting_result\tscope\tv1_vote\tv1_severity\nFINDING_1\taccepted\tin_scope\tYES\tmajor\nOOS_1\taccepted\toos\tYES\tmajor\n",
+            ),
+            (
+                "review/round-1/panel-manifest.ndjson",
+                "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"codex-specialist-arch-output.txt\"}\n",
+            ),
+            ("review/round-1/prune-nit.env", "PRUNED_COUNT=1\n"),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-classification-bonus-and-fallback",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/plan-review",
+            "--skill",
+            "design",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "plan-review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"3\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"1\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":3}}}\n",
+            ),
+            (
+                "plan-review/round-1/plan-review-prune-label-map.tsv",
+                "slot\thuman_label\nplan-requirements\tCursor-Pragmatic\nplan-architecture\tCodex-Arch\n",
+            ),
+            (
+                "plan-review/round-1/findings-classification.tsv",
+                "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_SOLE\tSolo-Reviewer\taccepted\tYES\tminor\tin_scope\nFINDING_MULTI\tMulti-A, Multi-B\taccepted\tYES\tminor\tin_scope\nFINDING_WHITESPACE\tCursor-Pragmatic Codex-Arch\taccepted\tYES\tminor\tin_scope\nOOS_1\tOos-Reviewer\taccepted\tYES\tmajor\toos\n",
+            ),
+        ],
+        environment: &[("LARCH_UNIQUE_FINDER_BONUS", "0.25")],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-attribution-historical-shapes",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/plan-review",
+            "--skill",
+            "design",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "plan-review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"3\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "plan-review/round-1/plan-review-prune-label-map.tsv",
+                "slot\thuman_label\nknown\tKnown\n",
+            ),
+            (
+                "plan-review/round-1/findings-classification.tsv",
+                "finding_id\tfinding_reviewers\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_1\t\tcodex-specialist-ignored-output.txt\taccepted\tYES\tminor\tin_scope\nFINDING_2\tKnown Known\tignored\taccepted\tYES\tminor\tin_scope\nFINDING_3\tUnknown Reviewer\tignored\taccepted\tYES\tminor\tin_scope\n",
+            ),
+            (
+                "plan-review/round-1/review.output-files.dropped-slots",
+                "dyn-custom-codex\tcodex\ttransport-failed\n",
+            ),
+        ],
+        environment: &[("LARCH_UNIQUE_FINDER_BONUS", "0.25")],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-attempts-and-token-costs",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/review",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+            "--token-ledger",
+            "{sandbox}/tokens.jsonl",
+        ],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"1\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t1782345600\timplement\t-\t1\t1782345600\t1782345610\t10\t0\t0\t0\t1\nv1\tround\t1782345620\timplement\t-\t1\t1782345620\t1782345640\t20\t0\t0\t0\t2\nv1\tvendor\t1782345608\timplement\t-\tcodex\tcodex-review\t1782345602\t1782345608\t6\tcodex-specialist-arch-output.txt\t0\tcomplete\nv1\tvendor\t1782345638\timplement\t-\tcursor\tcursor-review\t1782345622\t1782345638\t16\tcursor-specialist-edge-output.txt\t0\tsignal\n",
+            ),
+            (
+                "tokens.jsonl",
+                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-terra\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-luna\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"cursor-grok-4.5-high\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-gantt-hostile-width",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/review",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+        ],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"1\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t-\timplement\t-\t1\t100\t200\nv1\tvendor\t-\t-\t-\tcursor\tcursor-review\t110\t190\t80\tcursor-specialist-very-long-review-focus-name-for-layout-output-retry.txt\t-\tcomplete\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-security-oos-zero-artifact",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/review", "--no-gantt"],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"1\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "review/round-1/findings-classification.tsv",
+                "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nOOS_1\tarch.txt\taccepted\tYES\tmajor\toos\n",
+            ),
+            (
+                "review/round-1/findings-oos.md",
+                "### OOS_1: [OUT_OF_SCOPE] [security] private item\n- **Focus area**: security\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-security-oos-id-boundary",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/review", "--no-gantt"],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"1\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "review/round-1/findings-classification.tsv",
+                "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nOOS_1\tarch.txt\taccepted\tYES\tminor\toos\n",
+            ),
+            (
+                "review/round-1/findings-oos.md",
+                "### OOS_10: [OUT_OF_SCOPE] [security] unrelated item\n- **Focus area**: security\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-security-oos-unclosed-fence",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/review", "--no-gantt"],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"1\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "review/round-1/findings-classification.tsv",
+                "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nOOS_1\tarch.txt\taccepted\tYES\tmajor\toos\n",
+            ),
+            (
+                "review/round-1/findings-oos.md",
+                "### OOS_1: [OUT_OF_SCOPE] unclosed fenced field\n```\nfocus-area=security\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-token-rate-overrides",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/review",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+            "--token-ledger",
+            "{sandbox}/tokens.jsonl",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t1782345600\timplement\t-\t1\t1782345600\t1782345610\t10\t0\t0\t0\t-\n",
+            ),
+            (
+                "tokens.jsonl",
+                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-sol\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.4-mini\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"composer-2.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"grok-4.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
+            ),
+        ],
+        environment: &[
+            ("LARCH_CODEX_INPUT_RATE_PER_M", "bad"),
+            ("LARCH_RATE_CODEX_INPUT", "8.25"),
+            ("LARCH_RATE_CODEX_CACHE_READ", "0.90"),
+            ("LARCH_RATE_CODEX_MINI_INPUT", "1.75"),
+            ("LARCH_RATE_CODEX_MINI_CACHE_READ", "0.20"),
+            ("LARCH_RATE_CURSOR_INPUT", "3.25"),
+            ("LARCH_RATE_CURSOR_CACHE_READ", "0.80"),
+            ("LARCH_CURSOR_GROK_INPUT_RATE_PER_M", "7.25"),
+            ("LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M", "0.70"),
+        ],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-claude-sub-model-buckets",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/review",
+            "--timing-ledger",
+            "{sandbox}/timing.tsv",
+            "--token-ledger",
+            "{sandbox}/tokens.jsonl",
+            "--no-gantt",
+        ],
+        seeds: &[
+            (
+                "review/round-1/round-meta.json",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"0\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"0\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":1}}}\n",
+            ),
+            (
+                "timing.tsv",
+                "v1\tround\t1782345600\timplement\t-\t1\t1782345600\t1782345610\t10\t0\t0\t0\t-\n",
+            ),
+            (
+                "tokens.jsonl",
+                "{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6\",\"input\":1000000,\"cache_create\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-haiku-4-5\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-fable-5\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6[1m]\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"raw\":\"claude_review\",\"input\":1000000,\"ts\":\"2026-06-25T00:00:09Z\"}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-partial-and-historical-rounds",
+        command: "render-phase-detail",
+        arguments: &["--rounds-root", "{sandbox}/rounds", "--no-gantt"],
+        seeds: &[
+            ("rounds/round-0/round-meta.json", "{}\n"),
+            ("rounds/round-01/round-meta.json", "{}\n"),
+            ("rounds/round-1/inflight.txt", "still running\n"),
+            ("rounds/round-2/round-meta.json", "{not valid JSON\n"),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-design-round-meta-security-and-collector",
+        command: "write-design-round-meta",
+        arguments: &["--round-dir", "{sandbox}/design/plan-review/round-1"],
+        seeds: &[
+            (
+                "design/plan-review/round-1/voting-tally.md",
+                "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n| OOS_1 | accepted |\n",
+            ),
+            (
+                "design/plan-review/round-1/findings-oos.md",
+                "### OOS_1: security item\nfocus-area=security\n",
+            ),
+            (
+                "design/plan-review/round-1/plan-review-slots.ndjson",
+                "{\"slot\":\"cursor-plan-requirements\",\"tool\":\"cursor\",\"output\":\"cursor-plan-requirements-output.txt\",\"vendor\":\"cursor\",\"resolved_model\":\"cursor-model\",\"focus_area\":\"rêview 😀\"}\n",
+            ),
+            (
+                "design/plan-review/round-1/round-summary.env",
+                "COLLECT_FAILURE_COUNT=1\n",
+            ),
+            (
+                "design/collector-results.env",
+                "REVIEWER_FILE=ok-output.txt\nTOOL=cursor\nSTATUS=OK\n\nREVIEWER_FILE=cursor-plan-requirements-output.txt\nTOOL=cursor\nSTATUS=FAILED\n",
+            ),
+            (
+                "design/plan-review/round-1/revise/revise.env",
+                "REVISE_STATUS=ok-fallback\nREVISE_TIER=primary\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-implement-round-meta-canonical-and-difficulty",
+        command: "write-implement-round-meta",
+        arguments: &["--round-dir", "{sandbox}/review/round-1"],
+        seeds: &[
+            (
+                "review/round-1/voting-tally.md",
+                "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n| FINDING_2 | rejected |\n| FINDING_3 | rejected |\n",
+            ),
+            (
+                "review/round-1/findings-classification.tsv",
+                "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_1\tarch.txt\taccepted\tYES\tminor\tin_scope\nFINDING_2\tarch.txt\trejected\tNO\tminor\tin_scope\nFINDING_3\tarch.txt\trejected\tNO\tminor\toos\nOOS_1\tarch.txt\taccepted\tYES\tminor\toos\n",
+            ),
+            (
+                "review/round-1/panel-manifest.ndjson",
+                "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"arch.txt\"}\n",
+            ),
+            ("review/round-1/review-tally.env", "OOS_ACCEPTED_COUNT=2\n"),
+            ("review/round-1/prune-nit.env", "PRUNED_COUNT=1\n"),
+            (
+                "review/round-1/difficulty-rating.json",
+                "{\"panel_tier\":\"HARD\",\"applied_tier\":\"HARD\",\"round_cap\":3,\"codex_model_role\":\"default\",\"override_source\":\"operator\",\"audit_evaluated\":true,\"audit_upgrade\":\"true\",\"escalated_round\":true,\"escalations\":[{\"round\":2,\"from_tier\":\"MODERATE\",\"to_tier\":\"HARD\"}]}\n",
+            ),
+            (
+                "review/round-1/scout-difficulty-rating.raw.json",
+                "{\"predicted_tier\":\"TRIVIAL\",\"confidence\":\"low\",\"rationale\":\"unclear small diff\"}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-write-implement-round-meta-relative-path",
+        command: "write-implement-round-meta",
+        arguments: &["--round-dir", "round"],
+        seeds: &[
+            (
+                "round/voting-tally.md",
+                "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n",
+            ),
+            (
+                "round/panel-manifest.ndjson",
+                "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"arch.txt\"}\n",
+            ),
+            (
+                "round/scout-difficulty-rating.raw.json",
+                "{\"predicted_tier\":\"TRIVIAL\",\"confidence\":\"low\",\"rationale\":\"small scope\"}\n",
+            ),
+        ],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-output-file",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "{sandbox}/rounds",
+            "--no-gantt",
+            "--output",
+            "{sandbox}/output/review-detail.md",
+        ],
+        seeds: &[("rounds/.keep", ""), ("output/.keep", "")],
+        environment: &[],
+    },
+    PhaseDetailFixture {
+        name: "progress-phase-detail-output-file-relative-path",
+        command: "render-phase-detail",
+        arguments: &[
+            "--rounds-root",
+            "rounds",
+            "--no-gantt",
+            "--output",
+            "output/review-detail.md",
+        ],
+        seeds: &[("rounds/.keep", ""), ("output/.keep", "")],
+        environment: &[],
+    },
+];
+
+#[test]
+fn phase_detail_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("progress_phase_detail_reference.py");
+    let python_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../python")
+        .canonicalize()
+        .expect("python source path")
+        .to_string_lossy()
+        .into_owned();
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in PHASE_DETAIL_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust, &python_path);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn phase_detail_public_artifacts_keep_the_legacy_writer_mode() {
+    let sandbox = TempDir::new().expect("sandbox");
+    let round = sandbox.path().join("round");
+    fs::create_dir(&round).expect("round directory");
+    let binary = env!("CARGO_BIN_EXE_larch");
+
+    let metadata = Command::new(binary)
+        .args([
+            "progress",
+            "write-implement-round-meta",
+            "--round-dir",
+            round.to_str().expect("round path"),
+        ])
+        .status()
+        .expect("write metadata");
+    assert!(metadata.success());
+
+    let rounds = sandbox.path().join("rounds");
+    fs::create_dir(&rounds).expect("rounds directory");
+    let output = sandbox.path().join("phase-detail.md");
+    let rendered = Command::new(binary)
+        .args([
+            "progress",
+            "render-phase-detail",
+            "--rounds-root",
+            rounds.to_str().expect("rounds path"),
+            "--no-gantt",
+            "--output",
+            output.to_str().expect("output path"),
+        ])
+        .status()
+        .expect("write phase detail");
+    assert!(rendered.success());
+
+    for artifact in [round.join("round-meta.json"), output] {
+        let mode = fs::metadata(&artifact)
+            .expect("artifact metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o644, "{}", artifact.display());
     }
 }
 

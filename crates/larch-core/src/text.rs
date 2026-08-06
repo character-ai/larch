@@ -1,5 +1,28 @@
 //! Text framing shared by the ported Python line readers.
 
+use std::fmt::Write as _;
+
+/// Escape non-ASCII scalars in already-serialized JSON text.
+///
+/// Python's JSON output uses ASCII `\\u` escapes, including UTF-16 surrogate
+/// pairs for supplementary-plane characters. Keep that post-serialization
+/// compatibility transform in one shared owner.
+#[must_use]
+pub fn ensure_ascii_json(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_ascii() {
+            output.push(character);
+            continue;
+        }
+        let mut units = [0; 2];
+        for unit in character.encode_utf16(&mut units) {
+            write!(output, "\\u{unit:04x}").expect("writing to a String cannot fail");
+        }
+    }
+    output
+}
+
 /// Split text on every boundary Python's `str.splitlines` recognizes.
 ///
 /// The ported readers all consumed `str.splitlines()`, which breaks on
@@ -82,7 +105,15 @@ pub fn tail_lines<'a>(lines: &[&'a str], count: usize) -> Vec<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_text_lines, tail_lines, truncate_utf8_bytes};
+    use super::{ensure_ascii_json, split_text_lines, tail_lines, truncate_utf8_bytes};
+
+    #[test]
+    fn json_ascii_uses_utf16_escapes() {
+        assert_eq!(
+            ensure_ascii_json("\"café🙂\""),
+            "\"caf\\u00e9\\ud83d\\ude42\""
+        );
+    }
 
     #[test]
     fn splitting_matches_the_python_boundary_set() {

@@ -4957,11 +4957,13 @@ verb = "render-phase-detail"
 python_module = "larch.report.progress_report"
 python_function = "render_phase_detail_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8085
+clean_install_test = "clean-install-progress-render-phase-detail"
 
 [[commands]]
 domain = "progress"
@@ -4997,11 +4999,13 @@ verb = "write-design-round-meta"
 python_module = "larch.report.progress_report"
 python_function = "write_design_round_meta_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8085
+clean_install_test = "clean-install-progress-write-design-round-meta"
 
 [[commands]]
 domain = "progress"
@@ -5009,11 +5013,13 @@ verb = "write-implement-round-meta"
 python_module = "larch.report.progress_report"
 python_function = "write_implement_round_meta_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8085
+clean_install_test = "clean-install-progress-write-implement-round-meta"
 
 [[commands]]
 domain = "push"
@@ -8126,7 +8132,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "progress install-statusline", "push branch", "push checkpoint-probe"]
+rust = ["dirty-tree *", "git phantom-probe", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8339,6 +8345,12 @@ python = []
 rust = ["agent cursor-wrap-prompt", "agent run-external-agent", "git commit"]
 
 [[callers]]
+path = "python/larch/review/plan_review.py"
+kind = "python-runtime"
+python = []
+rust = ["progress write-design-round-meta"]
+
+[[callers]]
 path = "python/larch/review/plan_review_round.py"
 kind = "python-runtime"
 python = []
@@ -8378,7 +8390,7 @@ rust = ["agent gather-branch-context"]
 path = "python/larch/review/round_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["git snapshot-untracked"]
+rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
 
 [[callers]]
 path = "python/larch/state/_escalation.py"

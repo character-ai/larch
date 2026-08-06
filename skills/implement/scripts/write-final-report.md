@@ -122,7 +122,7 @@ renders `## Review Phase Detail` plus `No review rounds completed.`. A completed
 `round-meta.json` only outside the selected rounds root (for example under the
 live `IMPLEMENT_TMPDIR/round-N/` working dirs, issue #3794) is still not counted
 as a completed round; the final report shows the no-completed-round message for
-that selected valid root. Terminal progress (`python/larch/report/progress_report.py`) skips
+that selected valid root. The Rust-owned `progress render-phase-detail` command skips
 the shared renderer when every discovered round dir under the selected root lacks
 `round-meta.json`, so in-flight-only reviews do not append
 `No review rounds completed.` during live Step 5 or design plan review. A render

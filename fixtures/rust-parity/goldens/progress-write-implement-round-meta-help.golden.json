@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py progress write-implement-round-meta [-h] --round-dir ROUND_DIR\n\noptions:\n  -h, --help            show this help message and exit\n  --round-dir ROUND_DIR\n"
+  }
+}

@@ -1015,7 +1015,7 @@ def test_validation_retry_prompt_is_failure_class_aware() -> None:
 def test_normalize_slot_reconciles_output_artifact_suffix() -> None:
     # Issue #5022: reviewer attribution can carry the "-output" artifact suffix (the reviewer output
     # file basename) while the aggregator's merged output names the bare slot. _normalize_slot must
-    # canonicalize the suffix family (mirroring progress_report._progress_core_from_output) so both
+    # canonicalize the suffix family (matching the Rust phase-detail renderer) so both
     # spellings reconcile to one slot key. No real reviewer slot ends in these suffixes, so this
     # cannot collapse two distinct slots.
     assert review_aggregate._normalize_slot("cursor-specialist-correctness-output") == "cursor-specialist-correctness"

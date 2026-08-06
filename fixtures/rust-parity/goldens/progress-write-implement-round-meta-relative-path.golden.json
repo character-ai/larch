@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    "round/panel-manifest.ndjson": {
+      "text": "{\"slot\":\"arch\",\"tool\":\"codex\",\"output\":\"arch.txt\"}\n"
+    },
+    "round/round-meta.json": {
+      "text": "{\n  \"tally\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"0\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"0\",\n    \"OOS_ACCEPTED_COUNT\": \"0\",\n    \"OOS_REJECTED_COUNT\": \"0\"\n  },\n  \"summary\": {\n    \"panel\": {\n      \"total_slot_count\": 1\n    }\n  },\n  \"collector\": \"\",\n  \"difficulty\": {\n    \"tier_in_effect\": \"MODERATE\",\n    \"ceiling_in_effect\": \"MODERATE\",\n    \"escalations\": [],\n    \"scout\": {\n      \"status\": \"ok\",\n      \"predicted_tier\": \"TRIVIAL\",\n      \"confidence\": \"low\",\n      \"source\": \"round/scout-difficulty-rating.raw.json\"\n    }\n  }\n}\n"
+    },
+    "round/scout-difficulty-rating.raw.json": {
+      "text": "{\"predicted_tier\":\"TRIVIAL\",\"confidence\":\"low\",\"rationale\":\"small scope\"}\n"
+    },
+    "round/voting-tally.md": {
+      "text": "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

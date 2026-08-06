@@ -247,7 +247,7 @@ def _heading_line(block: str) -> str:
 # Issue #5022: reviewer attribution can carry the "-output" artifact suffix (the reviewer output
 # file basename, e.g. cursor-specialist-correctness-output[.txt]) while the aggregator's merged
 # output names the bare slot (cursor-specialist-correctness). Canonicalize that artifact-suffix
-# family the same way python/progress_report.py:_progress_core_from_output does, so both spellings
+# family the same way the Rust phase-detail renderer normalizes output names, so both spellings
 # reconcile to one slot key on both the input_slot_set and merge-output sides of validation. No
 # reviewer slot legitimately ends in these suffixes (specialists are <vendor>-specialist-<focus>;
 # voters use -vote), so stripping them cannot collapse two distinct slots.

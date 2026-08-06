@@ -138,6 +138,9 @@ derivation, path-confinement checks, and private atomic publication. Python
 session writers apply equivalent operation-level checks while their commands
 remain Python-owned. These are confinement controls for larch mistakes and
 untrusted paths, not a sandbox against hostile same-UID parent replacement.
+The Rust-owned review-phase detail commands use the same confined atomic writer
+for per-round metadata and caller-selected rendered-report output; unsafe
+destination shapes fail before replacement.
 
 ## Mutation Authorization and State Integrity
 

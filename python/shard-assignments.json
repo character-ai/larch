@@ -745,8 +745,6 @@
   "tests/core/test_proc.py::test_run_timeout_captures_partial_output": 8,
   "tests/core/test_proc.py::test_run_timeout_returns_configured_rc": 9,
   "tests/core/test_proc.py::test_run_true_success": 17,
-  "tests/report/test_progress_report.py::test_render_phase_detail_best_effort_timeout": 6,
-  "tests/report/test_progress_report.py::test_report_cli_stdout_not_rerouted_by_quiet_env": 11,
   "tests/git/test_push.py::test_checkpoint_probe_empty_continue_skip_recovery_real_git": 17,
   "tests/git/test_push.py::test_checkpoint_probe_mixed_conflict_real_git_index": 17,
   "tests/git/test_push.py::test_checkpoint_probe_partial_resolve_rederives_remaining_conflict": 13,

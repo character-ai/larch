@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/collector-results.env": {
+      "text": "REVIEWER_FILE=ok-output.txt\nTOOL=cursor\nSTATUS=OK\n\nREVIEWER_FILE=cursor-plan-requirements-output.txt\nTOOL=cursor\nSTATUS=FAILED\n"
+    },
+    "design/plan-review/round-1/findings-oos.md": {
+      "text": "### OOS_1: security item\nfocus-area=security\n"
+    },
+    "design/plan-review/round-1/panel-manifest.ndjson": {
+      "text": "{\"slot\":\"cursor-plan-requirements\",\"tool\":\"cursor\",\"output\":\"cursor-plan-requirements-output.txt\",\"vendor\":\"cursor\",\"resolved_model\":\"cursor-model\",\"focus_area\":\"r\\u00eaview \\ud83d\\ude00\"}\n"
+    },
+    "design/plan-review/round-1/plan-review-slots.ndjson": {
+      "text": "{\"slot\":\"cursor-plan-requirements\",\"tool\":\"cursor\",\"output\":\"cursor-plan-requirements-output.txt\",\"vendor\":\"cursor\",\"resolved_model\":\"cursor-model\",\"focus_area\":\"rêview 😀\"}\n"
+    },
+    "design/plan-review/round-1/revise/revise.env": {
+      "text": "REVISE_STATUS=ok-fallback\nREVISE_TIER=primary\n"
+    },
+    "design/plan-review/round-1/round-meta.json": {
+      "text": "{\n  \"tally\": {\n    \"ACCEPTED_COUNT\": \"1\",\n    \"REJECTED_COUNT\": \"0\",\n    \"EXONERATED_COUNT\": \"0\",\n    \"NEUTRAL_COUNT\": \"0\",\n    \"OOS_PROPOSED_COUNT\": \"0\",\n    \"OOS_ACCEPTED_COUNT\": \"0\",\n    \"OOS_REJECTED_COUNT\": \"0\"\n  },\n  \"summary\": {\n    \"panel\": {\n      \"total_slot_count\": 1\n    }\n  },\n  \"collector\": \"TOOL=cursor\\nSTATUS=FAILED\\nREVIEWER_FILE=cursor-plan-requirements-output.txt\",\n  \"difficulty\": {\n    \"tier_in_effect\": null,\n    \"ceiling_in_effect\": null,\n    \"escalations\": [],\n    \"scout\": {\n      \"status\": \"absent\"\n    }\n  },\n  \"revise\": {\n    \"status\": \"ok-fallback\",\n    \"tier\": \"primary\"\n  }\n}\n"
+    },
+    "design/plan-review/round-1/round-summary.env": {
+      "text": "COLLECT_FAILURE_COUNT=1\n"
+    },
+    "design/plan-review/round-1/voting-tally.md": {
+      "text": "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n| OOS_1 | accepted |\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

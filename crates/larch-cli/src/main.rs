@@ -188,6 +188,15 @@ enum ProgressCommand {
     /// Install the larch statusline into clone-local Claude settings.
     #[command(disable_help_flag = true)]
     InstallStatusline(RawCompatibilityArguments),
+    /// Render the review-phase detail section for a completed workflow.
+    #[command(name = "render-phase-detail", disable_help_flag = true)]
+    RenderPhaseDetail(RawCompatibilityArguments),
+    /// Write one `/design` review round's metadata artifact.
+    #[command(name = "write-design-round-meta", disable_help_flag = true)]
+    WriteDesignRoundMeta(RawCompatibilityArguments),
+    /// Write one `/implement` review round's metadata artifact.
+    #[command(name = "write-implement-round-meta", disable_help_flag = true)]
+    WriteImplementRoundMeta(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -808,6 +817,15 @@ fn run(
             }
             ProgressCommand::InstallStatusline(arguments) => {
                 progress_commands::install_statusline(&arguments.arguments)
+            }
+            ProgressCommand::RenderPhaseDetail(arguments) => {
+                progress_commands::render_phase_detail(&arguments.arguments)
+            }
+            ProgressCommand::WriteDesignRoundMeta(arguments) => {
+                progress_commands::write_design_round_meta(&arguments.arguments)
+            }
+            ProgressCommand::WriteImplementRoundMeta(arguments) => {
+                progress_commands::write_implement_round_meta(&arguments.arguments)
             }
         }),
         Domain::Release(command) => run_release(command),

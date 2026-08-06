@@ -1,6 +1,6 @@
 """Unit coverage for /design final-summary helpers, plus CLI-port smoke re-export."""
 
-# pyright: reportUnusedCallResult=false, reportArgumentType=false
+# pyright: reportUnusedCallResult=false, reportArgumentType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 
 from __future__ import annotations
 
@@ -10,10 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.design import design_summary
 from larch.design import design_terminal
-from larch.report import progress_report
 from larch.report import report_tokens_cost
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
@@ -516,6 +515,17 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
 ) -> None:
     upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
     _write_design_round_fixture(tmp_path, with_timing=True)
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: (
+            "## Review Phase Detail\n\n"
+            "| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n"
+            "|--:|--:|--:|--:|--:|:--|--:|--:|\n"
+            "| 1 | 4 | 2 | 1 | 0 | 1m 05s | N/A | 1 |\n\n"
+            "### Round 1 reviewer timing\n\n```\nfixture\n```\n"
+        ),
+    )
     _ = (tmp_path / "execution-issues.md").write_text(
         "### Warnings\n- plan review warning\n",
         encoding="utf-8",
@@ -636,6 +646,16 @@ def test_render_final_summary_missing_timing_keeps_table_without_gantt(
 ) -> None:
     _ = _install_final_summary_env(tmp_path, monkeypatch, issue_number="0")
     _write_design_round_fixture(tmp_path, with_timing=False)
+    monkeypatch.setattr(
+        rust_runtime,
+        "render_phase_detail",
+        lambda *_args, **_kwargs: (
+            "## Review Phase Detail\n\n"
+            "| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |\n"
+            "|--:|--:|--:|--:|--:|:--|--:|--:|\n"
+            "| 1 | 4 | 2 | 1 | 0 | N/A | N/A | 1 |\n"
+        ),
+    )
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 
@@ -853,7 +873,7 @@ def test_render_final_summary_redacts_spliced_detail(
     def fake_render(*_args: object, **_kwargs: object) -> str:
         return f"## Review Phase Detail\n{raw_secret}\n"
 
-    monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
+    monkeypatch.setattr(rust_runtime, "render_phase_detail", fake_render)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 
@@ -873,7 +893,7 @@ def test_render_final_summary_swallows_renderer_failure(
     def fake_render(*_args: object, **_kwargs: object) -> str:
         return ""
 
-    monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
+    monkeypatch.setattr(rust_runtime, "render_phase_detail", fake_render)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 
