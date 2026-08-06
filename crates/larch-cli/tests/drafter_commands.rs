@@ -541,3 +541,439 @@ fn codex_drafter_reports_a_scout_block_the_grammar_rejects() {
         "{status}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Negotiation round: Cursor
+// ---------------------------------------------------------------------------
+
+/// Build a negotiation invocation with Cursor authentication already proved.
+///
+/// A present `CURSOR_API_KEY` short-circuits the keychain preflight, so the
+/// case exercises the launcher rather than the host's credential store.
+fn cursor_negotiation(fixture: &DraftFixture, prompt: &Path, output: &Path) -> AssertCommand {
+    let mut command = launcher(&fixture.path);
+    command.env("CURSOR_API_KEY", "key_fixture");
+    command
+        .args([
+            "agent",
+            "run-negotiation-round",
+            "--tool",
+            "cursor",
+            "--prompt-file",
+        ])
+        .arg(prompt)
+        .arg("--output")
+        .arg(output)
+        .arg("--workspace")
+        .arg(&fixture.repo);
+    command
+}
+
+#[test]
+fn cursor_negotiation_round_captures_the_response_and_emits_its_path() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(
+        &fixture.path,
+        "cursor",
+        "#!/bin/sh\nprintf 'cursor reply\\n'\nprintf 'cursor noise\\n' >&2\nexit 0\n",
+    );
+    let prompt = fixture.path.join("cursor-negotiation-prompt.txt");
+    write(&prompt, "please reconsider\n");
+    let output = fixture.path.join("cursor-negotiation-output.txt");
+
+    cursor_negotiation(&fixture, &prompt, &output)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("RESPONSE_FILE="));
+
+    // Cursor's stderr belongs in the response file the caller reads.
+    let response = fs::read_to_string(&output).expect("negotiation response");
+    assert!(response.contains("cursor reply"), "{response}");
+    assert!(response.contains("cursor noise"), "{response}");
+    for suffix in [".meta", ".done", ".diag"] {
+        let stray = PathBuf::from(format!("{}{suffix}", output.display()));
+        assert!(!stray.exists(), "negotiation wrote {}", stray.display());
+    }
+}
+
+#[test]
+fn cursor_negotiation_round_reports_a_failed_reviewer_as_exit_two() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(
+        &fixture.path,
+        "cursor",
+        "#!/bin/sh\nprintf 'cursor failed\\n' >&2\nexit 4\n",
+    );
+    let prompt = fixture.path.join("cursor-negotiation-prompt.txt");
+    write(&prompt, "please reconsider\n");
+    let output = fixture.path.join("cursor-negotiation-output.txt");
+
+    cursor_negotiation(&fixture, &prompt, &output)
+        .assert()
+        .code(2);
+    assert!(output.exists(), "the response file is always published");
+}
+
+#[test]
+fn negotiation_round_reports_a_missing_vendor_executable() {
+    let fixture = DraftFixture::new();
+    let prompt = fixture.path.join("negotiation-prompt.txt");
+    write(&prompt, "please reconsider\n");
+    let output = fixture.path.join("cursor-negotiation-output.txt");
+
+    let mut command = cursor_negotiation(&fixture, &prompt, &output);
+    // Resolve executables only from the empty fixture directory, so a real
+    // `cursor` on the developer's PATH cannot satisfy the spawn.
+    command.env("PATH", fixture.path.join("bin"));
+    command.assert().code(2);
+    let response = fs::read_to_string(&output).expect("negotiation response");
+    assert!(response.contains("Failed to launch child"), "{response}");
+}
+
+#[test]
+fn codex_negotiation_round_records_a_failed_reviewer_in_its_sidecar() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(
+        &fixture.path,
+        "codex",
+        "#!/bin/sh\ncat > /dev/null\nprintf 'codex broke\\n' >&2\nexit 5\n",
+    );
+    let prompt = fixture.path.join("negotiation-prompt.txt");
+    write(&prompt, "please reconsider\n");
+    let output = fixture.path.join("codex-negotiation-output.txt");
+
+    let mut command = launcher(&fixture.path);
+    command
+        .args([
+            "agent",
+            "run-negotiation-round",
+            "--tool",
+            "codex",
+            "--prompt-file",
+        ])
+        .arg(&prompt)
+        .arg("--output")
+        .arg(&output)
+        .arg("--workspace")
+        .arg(&fixture.repo);
+    command.assert().code(2);
+
+    let sidecar = fs::read_to_string(fixture.path.join("codex-negotiation-output.sidecar"))
+        .unwrap_or_default();
+    assert!(sidecar.contains("codex broke"), "{sidecar}");
+}
+
+// ---------------------------------------------------------------------------
+// Codex exec
+// ---------------------------------------------------------------------------
+
+#[test]
+fn codex_exec_resolves_its_workdir_from_the_repository_when_none_is_given() {
+    let fixture = DraftFixture::new();
+    // A real work tree so the default-workdir resolution has something to find.
+    let mut init = AssertCommand::new("git");
+    init.current_dir(&fixture.repo).args(["init", "--quiet"]);
+    if init.assert().try_success().is_err() {
+        return;
+    }
+    vendor_fixture(&fixture.path, "codex", &codex_writing("done\n"));
+    let output = fixture.path.join("codex-exec-output.txt");
+
+    let mut command = launcher(&fixture.path);
+    command
+        .env("CLAUDE_PROJECT_DIR", &fixture.repo)
+        .args(["agent", "launch-codex-exec", "--output"])
+        .arg(&output)
+        .args(["--timeout", "60", "--prompt", "do work"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("LAUNCHER_EXIT=0"));
+
+    let meta = fs::read_to_string(fixture.path.join("codex-exec-output.txt.meta"))
+        .expect("launch metadata");
+    let repo = fs::canonicalize(&fixture.repo).expect("canonical repo");
+    assert!(
+        meta.contains(&format!("OUTER_LAUNCHER_WORKDIR={}", repo.display())),
+        "{meta}"
+    );
+}
+
+#[test]
+fn codex_exec_publishes_a_refusal_bundle_when_model_arguments_cannot_resolve() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(&fixture.path, "codex", &codex_writing("done\n"));
+    let output = fixture.path.join("codex-exec-output.txt");
+
+    let mut command = launcher(&fixture.path);
+    command
+        .env("LARCH_CODEX_MODEL", "   ")
+        .args(["agent", "launch-codex-exec", "--output"])
+        .arg(&output)
+        .args(["--timeout", "60", "--prompt", "do work", "--workdir"])
+        .arg(&fixture.repo);
+    command
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("LAUNCHER_FAILURE_CLASS="));
+
+    let diag = fs::read_to_string(fixture.path.join("codex-exec-output.txt.diag"))
+        .expect("refusal diagnostic");
+    assert!(diag.contains("STATUS=FAILED"), "{diag}");
+    assert!(diag.contains("model args failed"), "{diag}");
+    assert_eq!(
+        fs::read_to_string(fixture.path.join("codex-exec-output.txt.done"))
+            .expect("refusal sentinel"),
+        "1\n"
+    );
+    // A refusal runs no vendor, so it publishes an empty output file.
+    assert_eq!(fs::read_to_string(&output).expect("refusal output"), "");
+}
+
+#[test]
+fn codex_exec_publishes_a_refusal_bundle_for_unusable_trusted_instructions() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(&fixture.path, "codex", &codex_writing("done\n"));
+    let output = fixture.path.join("codex-exec-output.txt");
+    let trusted = fixture.path.join("trusted.txt");
+    // A TOML triple-single-quote delimiter cannot be embedded in the config.
+    write(&trusted, "instructions with ''' inside\n");
+
+    let mut command = launcher(&fixture.path);
+    command
+        .args(["agent", "launch-codex-exec", "--output"])
+        .arg(&output)
+        .args(["--timeout", "60", "--prompt", "do work", "--workdir"])
+        .arg(&fixture.repo)
+        .arg("--trusted-instructions-file")
+        .arg(&trusted);
+    command
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("LAUNCHER_EXIT=2"));
+
+    let diag = fs::read_to_string(fixture.path.join("codex-exec-output.txt.diag"))
+        .expect("refusal diagnostic");
+    assert!(diag.contains("STATUS=FAILED"), "{diag}");
+}
+
+#[test]
+fn codex_exec_carries_its_prompt_file_sandbox_and_role_into_the_launch_record() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(&fixture.path, "codex", &codex_writing("done\n"));
+    let output = fixture.path.join("codex-exec-output.txt");
+    let prompt = fixture.path.join("exec-prompt.md");
+    write(&prompt, "prompt from a file\n");
+
+    let mut command = launcher(&fixture.path);
+    command
+        .args(["agent", "launch-codex-exec", "--output"])
+        .arg(&output)
+        .args(["--timeout", "60", "--prompt-file"])
+        .arg(&prompt)
+        .arg("--workdir")
+        .arg(&fixture.repo)
+        .arg("--add-dir")
+        .arg(&fixture.design)
+        .args([
+            "--sandbox",
+            "read-only",
+            "--with-effort",
+            "--model-role",
+            "fix",
+            "--usage-label",
+            "codex_lint_fix",
+            "--timing-task-kind",
+            "codex-plan-autofix",
+        ]);
+    command.assert().success();
+
+    assert_eq!(
+        fs::read_to_string(fixture.path.join("codex-exec-output.txt.prompt"))
+            .expect("prompt sidecar"),
+        "prompt from a file\n"
+    );
+    let meta = fs::read_to_string(fixture.path.join("codex-exec-output.txt.meta"))
+        .expect("launch metadata");
+    assert!(meta.contains("OUTER_LAUNCHER_SANDBOX=read-only"), "{meta}");
+    assert!(meta.contains("OUTER_LAUNCHER_WITH_EFFORT=true"), "{meta}");
+    assert!(meta.contains("OUTER_LAUNCHER_MODEL_ROLE=fix"), "{meta}");
+    assert!(
+        meta.contains("OUTER_LAUNCHER_USAGE_LABEL=codex_lint_fix"),
+        "{meta}"
+    );
+    assert!(
+        meta.contains("OUTER_LAUNCHER_TIMING_KIND=codex-plan-autofix"),
+        "{meta}"
+    );
+    assert!(
+        meta.contains(&fixture.design.display().to_string()),
+        "add-dir missing from {meta}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Drafter details
+// ---------------------------------------------------------------------------
+
+#[test]
+fn claude_drafter_records_subprocess_usage_from_its_envelope() {
+    let fixture = DraftFixture::new();
+    let envelope = serde_json::json!({
+        "result": PLAN,
+        "usage": {
+            "input_tokens": 11,
+            "output_tokens": 7,
+            "cache_read_input_tokens": 3,
+            "cache_creation_input_tokens": 2,
+        },
+    })
+    .to_string();
+    vendor_fixture(
+        &fixture.path,
+        "claude",
+        &format!("#!/bin/sh\ncat > /dev/null\nprintf '%s' '{envelope}'\nexit 0\n"),
+    );
+
+    let mut command = launcher(&fixture.path);
+    command
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        // The `[1m]` alias prices as its base model in the shared ledger.
+        .args([
+            "agent",
+            "launch-claude-drafter",
+            "--model",
+            "claude-sonnet-4-6[1m]",
+        ])
+        .arg("--prompt-file")
+        .arg(&fixture.prompt)
+        .arg("--output-file")
+        .arg(&fixture.status)
+        .args(["--timeout", "60", "--design-tmpdir"])
+        .arg(&fixture.design)
+        .arg("--repo-root")
+        .arg(&fixture.repo);
+    command
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("ELAPSED="));
+
+    let status = fixture.status_text();
+    assert!(status.contains("STATUS=OK"), "{status}");
+}
+
+#[test]
+fn claude_drafter_reports_a_failed_vendor_launch_with_a_stderr_tail() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(
+        &fixture.path,
+        "claude",
+        "#!/bin/sh\ncat > /dev/null\nprintf 'claude exploded\\n' >&2\nexit 3\n",
+    );
+
+    let mut command = launcher(&fixture.path);
+    command
+        .args(["agent", "launch-claude-drafter", "--model", "claude-test"])
+        .arg("--prompt-file")
+        .arg(&fixture.prompt)
+        .arg("--output-file")
+        .arg(&fixture.status)
+        .args(["--timeout", "60", "--design-tmpdir"])
+        .arg(&fixture.design)
+        .arg("--repo-root")
+        .arg(&fixture.repo);
+    command.assert().code(3);
+
+    let status = fixture.status_text();
+    assert!(status.contains("REASON=CLAUDE_EXIT_NONZERO"), "{status}");
+    let tail = fs::read_to_string(fixture.design.join("step2b-drafter-status.txt.stderr-tail"))
+        .expect("stderr tail");
+    assert!(tail.contains("claude exploded"), "{tail}");
+}
+
+#[test]
+fn claude_drafter_reports_a_deadline_as_a_timeout_status() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(
+        &fixture.path,
+        "claude",
+        "#!/bin/sh\ncat > /dev/null\nsleep 30\n",
+    );
+
+    let mut command = launcher(&fixture.path);
+    command
+        .args(["agent", "launch-claude-drafter", "--model", "claude-test"])
+        .arg("--prompt-file")
+        .arg(&fixture.prompt)
+        .arg("--output-file")
+        .arg(&fixture.status)
+        .args(["--timeout", "1", "--design-tmpdir"])
+        .arg(&fixture.design)
+        .arg("--repo-root")
+        .arg(&fixture.repo);
+    command.assert().code(124);
+
+    let status = fixture.status_text();
+    assert!(status.contains("STATUS=TIMEOUT"), "{status}");
+    assert!(status.contains("REASON=TIMEOUT"), "{status}");
+}
+
+#[test]
+fn codex_drafter_publishes_a_refusal_bundle_when_model_arguments_cannot_resolve() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(&fixture.path, "codex", &codex_writing(PLAN));
+
+    let mut command = fixture.codex_drafter();
+    command.env("LARCH_CODEX_MODEL", "   ");
+    command.assert().code(1);
+
+    let status = fixture.status_text();
+    assert!(status.contains("REASON=CODEX_EXEC_FAILED"), "{status}");
+    assert!(status.contains("DRAFTER_LAUNCHED=true"), "{status}");
+}
+
+#[test]
+fn drafter_summary_and_dialectic_blocks_reach_the_design_tmpdir() {
+    let fixture = DraftFixture::new();
+    let response = format!(
+        "LARCH_SUMMARY_BEGIN\nplan summary\nLARCH_SUMMARY_END\n{PLAN}\
+         LARCH_DIALECTIC_BEGIN\n{{\"decisions\":[]}}\nLARCH_DIALECTIC_END\n"
+    );
+    vendor_fixture(&fixture.path, "codex", &codex_writing(&response));
+
+    let mut command = fixture.codex_drafter();
+    command.env("CLAUDE_PLUGIN_ROOT", repository_root());
+    command.assert().success();
+
+    let status = fixture.status_text();
+    assert!(status.contains("SUMMARY_WRITTEN=true"), "{status}");
+    assert_eq!(
+        fs::read_to_string(fixture.design.join("plan-summary.md")).expect("published summary"),
+        "plan summary\n"
+    );
+    // An empty decision list is not a usable candidate set.
+    assert!(
+        status.contains("DIALECTIC_CANDIDATES_PARSED=false"),
+        "{status}"
+    );
+    assert!(
+        status.contains("DIALECTIC_CANDIDATES_FAIL_REASON=invalid_dialectic_json"),
+        "{status}"
+    );
+}
+
+#[test]
+fn codex_drafter_compares_its_dirty_tree_against_a_supplied_baseline() {
+    let fixture = DraftFixture::new();
+    vendor_fixture(&fixture.path, "codex", &codex_writing(PLAN));
+    let baseline = fixture.design.join("step2b-drafter-baseline.porcelain");
+    write(&baseline, "");
+
+    let mut command = fixture.codex_drafter();
+    command.arg("--baseline-porcelain").arg(&baseline);
+    command.assert().success();
+
+    let sidecar = fs::read_to_string(fixture.design.join("step2b-drafter-status.txt.dirty-tree"))
+        .expect("dirty-tree sidecar");
+    assert!(sidecar.contains("MODE=baseline-delta"), "{sidecar}");
+}

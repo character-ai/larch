@@ -168,12 +168,25 @@ pub struct BareVendorRun<'a> {
     pub environment: Vec<(ChildEnvironment, OsString)>,
     /// Confined file supplying the child's standard input, when it reads one.
     pub stdin: Option<ConfinedPath>,
-    /// Confined destination for the vendor's standard output.
-    pub stdout: Option<ConfinedPath>,
-    /// Confined destination for the vendor's standard error.
-    pub stderr: Option<ConfinedPath>,
+    /// Destination for the vendor's output streams.
+    pub output: BareVendorOutput,
     /// Deadline in seconds.
     pub timeout_seconds: u64,
+}
+
+/// Where a bare vendor run sends its output streams.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BareVendorOutput {
+    /// Both streams share one descriptor, so their interleaving is preserved
+    /// and neither truncates the other.
+    Combined(ConfinedPath),
+    /// Each stream is routed independently; an unset stream stays attached.
+    Streams {
+        /// Destination for the vendor's standard output.
+        stdout: Option<ConfinedPath>,
+        /// Destination for the vendor's standard error.
+        stderr: Option<ConfinedPath>,
+    },
 }
 
 /// Run one vendor through the approved process layer without publishing artifacts.
@@ -202,7 +215,13 @@ pub fn run_bare_vendor(run: &BareVendorRun<'_>) -> Result<i32, (i32, String)> {
     for (key, value) in &run.environment {
         request = request.with_environment(*key, value.clone());
     }
-    let routing = ProcessFileRouting::streams(run.stdout.clone(), run.stderr.clone()).with_stdin(
+    let routing = match &run.output {
+        BareVendorOutput::Combined(path) => ProcessFileRouting::combined(path.clone()),
+        BareVendorOutput::Streams { stdout, stderr } => {
+            ProcessFileRouting::streams(stdout.clone(), stderr.clone())
+        }
+    }
+    .with_stdin(
         run.stdin
             .clone()
             .map_or(ProcessStdinRouting::Null, ProcessStdinRouting::File),

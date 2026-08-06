@@ -42,8 +42,9 @@ use larch_core::{
 };
 
 use crate::external_agent::{
-    BareVendorRun, ExternalAgentLaunch, ExternalAgentRouting, cursor_preflight_verdict,
-    hold_vendor_startup_lock, run_bare_vendor, run_external_agent_with_auth_retries,
+    BareVendorOutput, BareVendorRun, ExternalAgentLaunch, ExternalAgentRouting,
+    cursor_preflight_verdict, hold_vendor_startup_lock, run_bare_vendor,
+    run_external_agent_with_auth_retries,
 };
 use crate::python_verb::{plugin_root_directory, run_python_verb, run_python_verb_best_effort};
 
@@ -1613,8 +1614,10 @@ fn run_claude_drafter_vendor(
         working_directory: &session.paths.repo,
         environment: Vec::new(),
         stdin: Some(stdin),
-        stdout: Some(stdout),
-        stderr: Some(stderr),
+        output: BareVendorOutput::Streams {
+            stdout: Some(stdout),
+            stderr: Some(stderr),
+        },
         timeout_seconds,
     };
     match run_bare_vendor(&run) {
@@ -1885,8 +1888,10 @@ fn run_codex_negotiation_vendor(launch: &CodexNegotiationLaunch<'_>) -> i32 {
             launch.home.as_os_str().to_owned(),
         )],
         stdin: files.stdin,
-        stdout: files.stdout,
-        stderr: files.stderr,
+        output: BareVendorOutput::Streams {
+            stdout: files.stdout,
+            stderr: files.stderr,
+        },
         timeout_seconds: NEGOTIATION_TIMEOUT_SECONDS,
     };
     match run_bare_vendor(&run) {
@@ -2015,9 +2020,9 @@ fn run_cursor_negotiation_vendor(
         working_directory: workspace,
         environment: Vec::new(),
         stdin: None,
-        // Cursor's diagnostics belong in the response file the caller reads.
-        stdout: Some(response.clone()),
-        stderr: Some(response),
+        // Cursor's diagnostics belong in the response file the caller reads,
+        // interleaved with its answer rather than overwriting it.
+        output: BareVendorOutput::Combined(response),
         timeout_seconds: NEGOTIATION_TIMEOUT_SECONDS,
     };
     match run_bare_vendor(&run) {
