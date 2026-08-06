@@ -545,9 +545,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"issue_query.py" = [
-    "PLR0911",
-]
 "issue_wire.py" = [
     "C901",
     "PLR0911",

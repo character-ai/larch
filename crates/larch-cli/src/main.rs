@@ -31,7 +31,9 @@ mod external_agent;
 mod external_defaults_commands;
 mod git_commands;
 mod github_repository_resolution;
+mod github_service;
 mod gitleaks;
+mod issue_commands;
 mod kill_background;
 mod progress_commands;
 mod push_network;
@@ -107,6 +109,9 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// GitHub issue reads.
+    #[command(subcommand)]
+    Issue(IssueCommand),
     /// Exact `KEY=value` stream readers.
     #[command(subcommand)]
     Kv(KvCommand),
@@ -276,6 +281,19 @@ enum BlockerCommand {
     /// Emit the space-joined open blockers for one issue.
     #[command(disable_help_flag = true)]
     AllOpen(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum IssueCommand {
+    /// Materialize one issue's title and body into a caller-named directory.
+    #[command(disable_help_flag = true)]
+    Context(RawCompatibilityArguments),
+    /// Emit one issue field as the single `VALUE` row.
+    #[command(disable_help_flag = true)]
+    Info(RawCompatibilityArguments),
+    /// Emit one issue's state, URL, and pull-request discrimination.
+    #[command(disable_help_flag = true)]
+    State(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -890,6 +908,11 @@ fn run(
             Ok(blocker_commands::all_open(&arguments.arguments))
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
+        Domain::Issue(command) => Ok(match command {
+            IssueCommand::Context(arguments) => issue_commands::context(&arguments.arguments),
+            IssueCommand::Info(arguments) => issue_commands::info(&arguments.arguments),
+            IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
+        }),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),
         Domain::Lint(arguments) => match arguments.into_dispatch() {
             larch_lint::LintDispatch::Gitleaks(arguments) => Ok(gitleaks::run(&arguments)),

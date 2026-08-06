@@ -156,8 +156,8 @@ def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, mon
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
     calls: list[object] = []
     monkeypatch.setattr(
-        bootstrap.issue_query, "issue_state",
-        lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
+        bootstrap.rust_runtime, "issue_state",
+        lambda *_args, **_kwargs: bootstrap.rust_runtime.IssueStateOutput(failed=False, state="OPEN"),
     )
     monkeypatch.setattr(bootstrap.run_logs, "log_init", lambda *args, **kwargs: calls.append((args, kwargs)))
     monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
@@ -179,8 +179,8 @@ def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> 
     def fake_rename(*_args: object, **_kwargs: object) -> None:
         rename_called[0] = True
     monkeypatch.setattr(
-        bootstrap.issue_query, "issue_state",
-        lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
+        bootstrap.rust_runtime, "issue_state",
+        lambda *_args, **_kwargs: bootstrap.rust_runtime.IssueStateOutput(failed=False, state="OPEN"),
     )
     monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fake_rename)
     monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])

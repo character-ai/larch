@@ -34,6 +34,7 @@ impl CleanInstallCase {
     /// than reaching the network or mutating a repository to reach `0`.
     fn expected_exit(self) -> i32 {
         match self.id {
+            "clean-install-issue-state" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             _ => 0,
@@ -169,6 +170,11 @@ fn admission_clean_install_arguments(id: &str) -> Option<&'static [&'static str]
         ]),
         // `all-open` needs no arguments to reach its empty-result path.
         "clean-install-blocker-all-open" => Some(&[]),
+        // Neither issue verb has a `--help` action. `state` proves dispatch
+        // through its argument refusal, and `info` through the empty value it
+        // reports for a field it does not serve; neither reaches the network.
+        "clean-install-issue-state" => Some(&["--issue"]),
+        "clean-install-issue-info" => Some(&["--issue", "1", "--field", "title"]),
         _ => None,
     }
 }
@@ -304,6 +310,8 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new("clean-install-issue-info", "issue", "info"),
+    CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(
         "clean-install-session-check-live-mutation-auth",
         "session",
@@ -3451,6 +3459,191 @@ fn admission_and_gate_commands_have_reviewed_parity() {
     let golden_directory = fixture_directory.join("goldens");
 
     for fixture in ADMISSION_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+/// One issue-query case, addressed by its reference sub-verb and its real
+/// `DOMAIN VERB` selector.
+struct IssueQueryFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+}
+
+impl IssueQueryFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture))
+                    .chain(std::iter::once(self.reference))
+                    .chain(self.arguments.iter().copied()),
+            ),
+            rust: Program::new(rust).args(
+                self.selector
+                    .iter()
+                    .copied()
+                    .chain(self.arguments.iter().copied()),
+            ),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        }
+    }
+}
+
+/// Every case stops before a GitHub client is built. The sandbox has no `gh`,
+/// no `git`, and no network, so repository resolution is absent and the reads
+/// these verbs would otherwise perform never start.
+const ISSUE_QUERY_CASES: &[IssueQueryFixture] = &[
+    IssueQueryFixture {
+        name: "issue-state-missing-issue",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &[],
+    },
+    IssueQueryFixture {
+        name: "issue-state-non-numeric-issue",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue", "12a"],
+    },
+    IssueQueryFixture {
+        name: "issue-state-unknown-flag",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--bogus"],
+    },
+    // The scanner matches exact spellings only, so the inline form is unknown
+    // rather than an `--issue` assignment.
+    IssueQueryFixture {
+        name: "issue-state-inline-spelling-reads-as-unknown",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue=42"],
+    },
+    IssueQueryFixture {
+        name: "issue-state-trailing-issue-flag",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue"],
+    },
+    // A transposed line must not read `--repo` as the issue number.
+    IssueQueryFixture {
+        name: "issue-state-option-shaped-issue-value",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue", "--repo", "o/r"],
+    },
+    IssueQueryFixture {
+        name: "issue-state-trailing-repo-flag",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue", "42", "--repo"],
+    },
+    IssueQueryFixture {
+        name: "issue-state-unresolvable-repo",
+        reference: "issue-state",
+        selector: &["issue", "state"],
+        arguments: &["--issue", "8167"],
+    },
+    IssueQueryFixture {
+        name: "issue-info-trailing-field-flag",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["--issue", "7", "--field"],
+    },
+    IssueQueryFixture {
+        name: "issue-info-unsupported-field",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["--issue", "7", "--field", "title"],
+    },
+    // An unrecognized token suppresses the read without stopping the scan.
+    IssueQueryFixture {
+        name: "issue-info-unknown-token",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["noise", "--issue", "7", "--field", "state"],
+    },
+    IssueQueryFixture {
+        name: "issue-info-missing-issue",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["--field", "state"],
+    },
+    IssueQueryFixture {
+        name: "issue-info-unresolvable-repo",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["--issue", "7", "--field", "state"],
+    },
+    // An explicit repository still reaches an unreachable API, and this verb
+    // reports that the same way it reports every other refusal.
+    IssueQueryFixture {
+        name: "issue-info-unreachable-explicit-repo",
+        reference: "issue-info",
+        selector: &["issue", "info"],
+        arguments: &["--issue", "7", "--field", "url", "--repo", "o/r"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-help",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--help"],
+    },
+    // `--help` after a value-taking option is that option's value, not help.
+    IssueQueryFixture {
+        name: "issue-context-help-consumed-as-issue-value",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--issue", "--help"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-trailing-issue-flag",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--issue"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-unknown-token",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--bogus", "x"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-missing-tmpdir",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--issue", "7", "--repo", "o/r"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-non-positive-issue",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--issue", "0", "--repo", "o/r", "--tmpdir", "{sandbox}/ctx"],
+    },
+    IssueQueryFixture {
+        name: "issue-context-invalid-repo",
+        reference: "issue-context",
+        selector: &["issue", "context"],
+        arguments: &["--issue", "7", "--repo", "bad", "--tmpdir", "{sandbox}/ctx"],
+    },
+];
+
+#[test]
+fn issue_query_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("issue_query_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ISSUE_QUERY_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
