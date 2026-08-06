@@ -1,6 +1,10 @@
 //! Pure validation policy for stall-recovery state and public artifacts.
 use regex::Regex;
 use std::{collections::BTreeMap, sync::LazyLock};
+
+/// Canonical prefix for public bug-report titles.
+pub const BUG_TITLE_PREFIX: &str = "[BUG]";
+
 const OUTCOMES: &str = "failed-plan-write failed-publish failed-postplan failed-clarify failed-judge-panel failed-publish-tail approved approved-partition";
 const GENERIC_SITES: &str = "step2b gate-b step3-review discussion-round2 step5c design-publish clarify-loop judge-panel decompose-panel";
 const COMMON_SITES: &str = "step2 step3 step5 step5-self-review step5-mav step6 step8 step18a review-loop lint-fix-loop ship-pr ship-pr-ci-initial ship-pr-ci-merge ship-pr-ci-per-job ship-pr-internal recovery-inline";

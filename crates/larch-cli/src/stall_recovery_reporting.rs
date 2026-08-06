@@ -9,13 +9,13 @@ use chrono::{SecondsFormat, Utc};
 use larch_adapters::github::{LiveMutationRequest, check_live_mutation_auth};
 use larch_adapters::stall_recovery::{
     STALL_RECOVERY_EVIDENCE_NAMES, build_sensitive_corpus_from_evidence,
-    classify_failure_detail_log, read_failure_detail_log_with_sidecar_fallback,
-    read_validated_failure_detail_log,
+    classify_failure_detail_log, is_larch_dev_clone, read_failure_detail_log_with_sidecar_fallback,
+    read_validated_failure_detail_log, stall_recovery_artifact_path,
 };
 use larch_adapters::{GixRepository, PathIntent, TemporaryRoot, atomic_write_utf8_in};
 use larch_core::{
-    RepositoryRead, artifact_prefix_valid, public_text_is_sensitive, redact, safe_phase, safe_step,
-    token_valid,
+    BUG_TITLE_PREFIX, KvDocument, ParseOptions, RepositoryRead, artifact_prefix_valid,
+    public_text_is_sensitive, redact, safe_phase, safe_step, token_valid,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -152,8 +152,8 @@ pub fn compose(globals: &Options, options: &Options, force_chat_print: bool) -> 
     }
 
     if root_fields.verdict == "operator-action" {
-        let record = artifact_path(root.path(), OPERATOR_ACTION_RECORD, &prefix);
-        let sentinel = artifact_path(root.path(), OPERATOR_ACTION_SENTINEL, &prefix);
+        let record = stall_recovery_artifact_path(root.path(), OPERATOR_ACTION_RECORD, &prefix);
+        let sentinel = stall_recovery_artifact_path(root.path(), OPERATOR_ACTION_SENTINEL, &prefix);
         if !write_path_allowed(&root, &record) || !write_path_allowed(&root, &sentinel) {
             return report_error("operator-action record path invalid");
         }
@@ -188,7 +188,7 @@ pub fn compose(globals: &Options, options: &Options, force_chat_print: bool) -> 
     };
     let rendered_title = if kind == "terminal-failure" {
         format!(
-            "[BUG] {skill_label} terminal: {title} ({} at {})",
+            "{BUG_TITLE_PREFIX} {skill_label} terminal: {title} ({} at {})",
             safe_class(&kv_value(&class_text, "FAILURE_CLASS")),
             safe_step_value(&kv_value(&class_text, "STALL_STEP")),
         )
@@ -196,7 +196,7 @@ pub fn compose(globals: &Options, options: &Options, force_chat_print: bool) -> 
         let site = first_escalation_field(&root, "site", &paths.ledger, &paths.fallback);
         let trigger = first_escalation_field(&root, "trigger", &paths.ledger, &paths.fallback);
         format!(
-            "[BUG] {skill_label} escalation: {title} ({}:{})",
+            "{BUG_TITLE_PREFIX} {skill_label} escalation: {title} ({}:{})",
             if site.is_empty() { "redacted" } else { &site },
             if trigger.is_empty() {
                 "redacted"
@@ -443,7 +443,7 @@ pub fn dedup_tier_a_report(globals: &Options, options: &Options) -> ExitCode {
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=current-repo-unresolved");
         return ExitCode::SUCCESS;
     };
-    let output = Command::new(helper)
+    let output = Command::new(helper) // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
         .args([
             OsString::from("--repo"),
             OsString::from(repo),
@@ -817,15 +817,15 @@ fn tier_a_payloads(
     .join("\n");
     vec![
         (
-            artifact_path(root.path(), TIER_A_ATTEMPTS, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_A_ATTEMPTS, prefix),
             format!("{}\n", attempts_table(root, &paths.attempts)),
         ),
         (
-            artifact_path(root.path(), TIER_A_ESCALATION, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_A_ESCALATION, prefix),
             escalation,
         ),
         (
-            artifact_path(root.path(), TIER_A_ROOT_CAUSE, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_A_ROOT_CAUSE, prefix),
             root_text.to_owned(),
         ),
     ]
@@ -844,15 +844,15 @@ fn tier_b_payloads(
     );
     vec![
         (
-            artifact_path(root.path(), TIER_B_ATTEMPTS, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_B_ATTEMPTS, prefix),
             format!("{}\n", attempts_table(root, &paths.attempts)),
         ),
         (
-            artifact_path(root.path(), TIER_B_ESCALATION, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_B_ESCALATION, prefix),
             format!("{}\n", escalation_summaries(root, paths)),
         ),
         (
-            artifact_path(root.path(), TIER_B_ROOT_CAUSE, prefix),
+            stall_recovery_artifact_path(root.path(), TIER_B_ROOT_CAUSE, prefix),
             root_public,
         ),
     ]
@@ -922,7 +922,9 @@ fn emit_chat_print_filing_status(
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=cross-repo-helper-missing");
         return;
     }
-    let Ok(resolver_output) = Command::new(resolver).output() else {
+    let resolver_output = Command::new(resolver) // lint-subprocess-via-runner: ok bounded retained upstream resolver lacks a typed Rust port
+        .output();
+    let Ok(resolver_output) = resolver_output else {
         println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=upstream-repo-unresolved");
         return;
@@ -935,8 +937,9 @@ fn emit_chat_print_filing_status(
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=upstream-repo-unresolved");
         return;
     }
-    let helper_out = artifact_path(root.path(), "stall-recovery-tier-b-file.env", prefix);
-    let output = Command::new(helper)
+    let helper_out =
+        stall_recovery_artifact_path(root.path(), "stall-recovery-tier-b-file.env", prefix);
+    let output = Command::new(helper) // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
         .args([
             OsString::from("--repo"),
             OsString::from(upstream),
@@ -947,11 +950,11 @@ fn emit_chat_print_filing_status(
             OsString::from("--publication-tier"),
             OsString::from("tier-b"),
             OsString::from("--attempts-file"),
-            artifact_path(root.path(), TIER_B_ATTEMPTS, prefix).into_os_string(),
+            stall_recovery_artifact_path(root.path(), TIER_B_ATTEMPTS, prefix).into_os_string(),
             OsString::from("--escalation-ledger-file"),
-            artifact_path(root.path(), TIER_B_ESCALATION, prefix).into_os_string(),
+            stall_recovery_artifact_path(root.path(), TIER_B_ESCALATION, prefix).into_os_string(),
             OsString::from("--root-cause-file"),
-            artifact_path(root.path(), TIER_B_ROOT_CAUSE, prefix).into_os_string(),
+            stall_recovery_artifact_path(root.path(), TIER_B_ROOT_CAUSE, prefix).into_os_string(),
             OsString::from("--sensitive-corpus-file"),
             paths.sensitive.as_os_str().to_owned(),
             OsString::from("--mutation-context"),
@@ -1014,12 +1017,6 @@ fn emit_normalized_file_failure_env(text: &str) {
 }
 
 fn tier_a_allowed(root: &TemporaryRoot, session_env: &Path) -> bool {
-    if ["ship-pr-state.sh", "finalize-state.sh", "session-env.sh"]
-        .iter()
-        .any(|name| truthy(&file_kv(root, &root.path().join(name), "FORKED_TARGET")))
-    {
-        return false;
-    }
     let candidate = [
         env::var("CLAUDE_PROJECT_DIR").unwrap_or_default(),
         env::var("REPO_ROOT").unwrap_or_default(),
@@ -1028,14 +1025,7 @@ fn tier_a_allowed(root: &TemporaryRoot, session_env: &Path) -> bool {
     ]
     .into_iter()
     .find(|value| !value.is_empty());
-    let worktree = candidate.map(PathBuf::from).or_else(|| {
-        GixRepository::discover(env::current_dir().ok()?)
-            .ok()?
-            .location()
-            .work_dir
-            .map(|path| PathBuf::from(String::from_utf8_lossy(path.as_bytes()).into_owned()))
-    });
-    worktree.is_some_and(|path| path.join("skills/implement/SKILL.md").is_file())
+    is_larch_dev_clone(root.path(), candidate.as_deref().map(Path::new))
 }
 
 // Signature inputs stay explicit to make the Python-compatible seed auditable.
@@ -1265,7 +1255,7 @@ fn path_from_option(
         .get(flag)
         .filter(|value| !value.is_empty())
         .map_or_else(
-            || artifact_path(root.path(), default_name, prefix),
+            || stall_recovery_artifact_path(root.path(), default_name, prefix),
             PathBuf::from,
         )
 }
@@ -1284,19 +1274,6 @@ fn dedup_dry_run_requested() -> bool {
     !env::var("LARCH_STALL_RECOVERY_DRY_RUN")
         .unwrap_or_default()
         .is_empty()
-}
-
-fn artifact_path(tmpdir: &Path, default_name: &str, prefix: &str) -> PathBuf {
-    if prefix.is_empty() || prefix == "stall-recovery" {
-        tmpdir.join(default_name)
-    } else {
-        tmpdir.join(format!(
-            "{prefix}{}",
-            default_name
-                .strip_prefix("stall-recovery")
-                .unwrap_or(default_name)
-        ))
-    }
 }
 
 fn option_or_global(options: &Options, globals: &Options, flag: &str, fallback: &str) -> String {
@@ -1391,19 +1368,29 @@ fn file_kv(root: &TemporaryRoot, path: &Path, key: &str) -> String {
 }
 
 fn kv_value(text: &str, key: &str) -> String {
-    text.lines()
-        .rev()
-        .find_map(|line| {
-            let (candidate, value) = line.strip_suffix('\r').unwrap_or(line).split_once('=')?;
-            (candidate == key).then(|| value.to_owned())
+    KvDocument::parse(text, ParseOptions::legacy())
+        .ok()
+        .and_then(|document| {
+            document
+                .rows()
+                .iter()
+                .rev()
+                .find(|row| row.key() == key)
+                .map(|row| row.value().to_owned())
         })
         .unwrap_or_default()
 }
 
 fn tsv_field(row: &str, key: &str) -> String {
-    row.split('\t')
-        .filter_map(|field| field.split_once('='))
-        .find_map(|(candidate, value)| (candidate == key).then(|| value.to_owned()))
+    KvDocument::parse(&row.replace('\t', "\n"), ParseOptions::legacy())
+        .ok()
+        .and_then(|document| {
+            document
+                .rows()
+                .iter()
+                .find(|field| field.key() == key)
+                .map(|field| field.value().to_owned())
+        })
         .unwrap_or_default()
 }
 

@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Step 18a.
 
-**Contract**: Step 18a reports terminal failures only. It never files or prints at first detection. `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery` owns classification, attempts, escalation recording, and normalized outcome reads. `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" stall-recovery` owns report composition, public corpus construction, Tier A dedup, and chat output.
+**Contract**: Step 18a reports terminal failures. It never files or prints on detection. `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery` owns classification, attempts, escalation, and normalized outcomes. `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" stall-recovery` owns reports, corpus, Tier A dedup, and chat output.
 
 **When to load**: MANDATORY before executing Step 18a active-stall recovery when `STALL_RECOVERY_REQUIRED=true`. Load before changing active-stall recovery report composition, escalation recording, or normalized outcome handling.
 

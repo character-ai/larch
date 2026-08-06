@@ -256,23 +256,22 @@ pub fn tier_b_public_file_is_valid(
 /// Detect whether the active repository is a non-forked larch development clone.
 #[must_use]
 pub fn is_larch_dev_clone(tmpdir: &Path, working_tree_root: Option<&Path>) -> bool {
-    let forked = ["ship-pr-state.sh", "session-env.sh"]
-        .iter()
-        .find_map(|name| {
-            let path = tmpdir.join(name);
-            regular_nonsymlink(&path, None)
-                .then(|| read_lossy(&path).ok())
-                .flatten()
-                .and_then(|text| {
-                    let value = read_last_value(&text, "FORKED_TARGET");
-                    (!value.is_empty()).then_some(value)
-                })
-        })
-        .unwrap_or_default();
-    if matches!(
-        forked.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    ) {
+    let forked = STATE_LAYERS.iter().any(|name| {
+        let path = tmpdir.join(name);
+        regular_nonsymlink(&path, None)
+            .then(|| read_lossy(&path).ok())
+            .flatten()
+            .is_some_and(|text| {
+                matches!(
+                    read_last_value(&text, "FORKED_TARGET")
+                        .trim()
+                        .to_ascii_lowercase()
+                        .as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+    });
+    if forked {
         return false;
     }
     let root = working_tree_root.map(Path::to_path_buf).or_else(|| {
@@ -482,14 +481,15 @@ fn detail_log_ledger_fields(
             sequence += 1;
             let mut utc = "";
             let mut detail = "";
-            for field in row.split('\t') {
-                let Some((key, value)) = field.split_once('=') else {
-                    continue;
-                };
-                if key == "utc" {
-                    utc = value;
-                } else if key == "failure_detail_log" {
-                    detail = value;
+            let Ok(document) = KvDocument::parse(&row.replace('\t', "\n"), ParseOptions::legacy())
+            else {
+                continue;
+            };
+            for field in document.rows() {
+                if field.key() == "utc" {
+                    utc = field.value();
+                } else if field.key() == "failure_detail_log" {
+                    detail = field.value();
                 }
             }
             if !detail.is_empty() {
@@ -699,15 +699,15 @@ fn abandoned_checks_registry_rows(
 fn build_sensitive_corpus(root: &TemporaryRoot, sensitive: &Path, prefix: &str) -> String {
     let mut sources = vec![
         sensitive.to_path_buf(),
-        artifact_path(root.path(), "stall-recovery-classification.env", prefix),
-        artifact_path(root.path(), "stall-recovery-attempts.env", prefix),
-        artifact_path(root.path(), "stall-recovery-escalation-ledger.tsv", prefix),
-        artifact_path(
+        stall_recovery_artifact_path(root.path(), "stall-recovery-classification.env", prefix),
+        stall_recovery_artifact_path(root.path(), "stall-recovery-attempts.env", prefix),
+        stall_recovery_artifact_path(root.path(), "stall-recovery-escalation-ledger.tsv", prefix),
+        stall_recovery_artifact_path(
             root.path(),
             "stall-recovery-escalation-fallback.tsv",
             prefix,
         ),
-        artifact_path(
+        stall_recovery_artifact_path(
             root.path(),
             "stall-recovery-escalation-record-failure.env",
             prefix,
@@ -718,7 +718,8 @@ fn build_sensitive_corpus(root: &TemporaryRoot, sensitive: &Path, prefix: &str) 
             .iter()
             .map(|name| root.path().join(name)),
     );
-    let class_file = artifact_path(root.path(), "stall-recovery-classification.env", prefix);
+    let class_file =
+        stall_recovery_artifact_path(root.path(), "stall-recovery-classification.env", prefix);
     if let Ok(text) = read_lossy(&class_file) {
         let detail = read_last_value(&text, "FAILURE_DETAIL_LOG");
         let detail_path = Path::new(&detail);
@@ -768,7 +769,9 @@ pub fn build_sensitive_corpus_from_evidence(
         + "\n"
 }
 
-fn artifact_path(tmpdir: &Path, default_name: &str, prefix: &str) -> PathBuf {
+/// Build the default artifact path beneath a caller-validated temporary root.
+#[must_use]
+pub fn stall_recovery_artifact_path(tmpdir: &Path, default_name: &str, prefix: &str) -> PathBuf {
     if prefix.is_empty() || prefix == "stall-recovery" {
         tmpdir.join(default_name)
     } else {
@@ -830,7 +833,7 @@ fn read_lossy(path: &Path) -> Result<String, ()> {
 mod tests {
     use super::{
         FailureDetailLogError, MAX_DETAIL_FILE_BYTES, MAX_DETAIL_FILE_BYTES_USIZE,
-        StateMutationError, classify_failure_detail_log, clear_stall,
+        StateMutationError, classify_failure_detail_log, clear_stall, is_larch_dev_clone,
         latest_failure_detail_log_sidecar, materialize_truncated_failure_detail_log,
         read_failure_detail_log_with_sidecar_fallback, read_validated_failure_detail_log,
         seed_terminal_state, terminal_state_is_valid,
@@ -878,6 +881,20 @@ mod tests {
         )
         .expect("fixture");
         assert!(!terminal_state_is_valid(temp.path(), &state, true));
+    }
+
+    #[test]
+    fn larch_dev_clone_rejects_a_fork_marker_in_every_state_layer() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let state = temporary.path().join("state");
+        let project = temporary.path().join("project");
+        fs::create_dir_all(state.as_path()).expect("state fixture");
+        fs::create_dir_all(project.join("skills/implement")).expect("project fixture");
+        fs::write(project.join("skills/implement/SKILL.md"), "fixture\n").expect("project marker");
+        fs::write(state.join("ship-pr-state.sh"), "FORKED_TARGET=false\n").expect("ship state");
+        fs::write(state.join("finalize-state.sh"), "FORKED_TARGET=true\n").expect("finalize state");
+
+        assert!(!is_larch_dev_clone(&state, Some(&project)));
     }
 
     #[test]
