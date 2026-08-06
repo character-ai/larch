@@ -290,8 +290,9 @@ fn mask_comments_and_strings(source: &str) -> String {
 /// Without this, the `'"'` char literal in `crates/larch-cli/src/bgjob_adapt.rs`
 /// read as a string opener and inverted quote parity for the rest of the file,
 /// so a later `Command::new(` landed inside a masked region and the constructor
-/// became unlocatable. `consume_char` in `run_log_corpus_walkers` applies the
-/// same rules to its own per-line lexer.
+/// became unlocatable. `consume_char` in `run_log_corpus_walkers` recognizes the
+/// same literal forms for its own per-line lexer, but ends `'\''` one character
+/// early, which leaves a stray apostrophe in that lexer's code view.
 fn char_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
     if bytes.get(start + 1) == Some(&b'\\') {
         // The backslash consumes one byte, so `'\''` and `'\\'` end at the

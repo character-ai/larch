@@ -18,8 +18,7 @@ use larch_core::{
     cleanup_cache_sessions_root, daemon_liveness, ensure_under, entry_expired, log_paths,
     parse_allowlisted_env_line, private_atomic_write, read_entry, read_process_identity,
     registry_path, registry_root, resolve_run_id, result_env_path, shell_quote,
-    validate_initial_merge_rows,
-    validate_merge_result_env, validate_run_id, validate_slug,
+    validate_initial_merge_rows, validate_merge_result_env, validate_run_id, validate_slug,
 };
 use std::{
     collections::BTreeMap,

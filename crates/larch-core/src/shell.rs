@@ -54,4 +54,14 @@ mod tests {
         assert_eq!(shell_quote("it's"), r#"'it'"'"'s'"#);
         assert_eq!(shell_quote("caf\u{e9}"), "'caf\u{e9}'");
     }
+
+    /// Quoted output is what keeps a control character from forging a second
+    /// `export KEY=value` line in a session-env file.
+    #[test]
+    fn control_characters_never_take_the_bare_branch() {
+        assert_eq!(shell_quote("a\nb"), "'a\nb'");
+        assert_eq!(shell_quote("a\tb"), "'a\tb'");
+        assert_eq!(shell_quote("a\rb"), "'a\rb'");
+        assert_eq!(shell_quote("a\u{0}b"), "'a\u{0}b'");
+    }
 }
