@@ -891,17 +891,22 @@ fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> Resul
     {
         fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     }
-    if !log_file.exists() {
-        fs::write(log_file, "").map_err(|error| format!("{}: {error}", log_file.display()))?;
-    }
     let lock = log_file.with_file_name(format!("{}.lock.d", base_name(log_file)));
     acquire_append_lock(&lock)?;
-    let result = read_lossy(log_file).and_then(|existing| {
-        write_run_log_file(
-            log_file,
-            &compose_execution_issue(&existing, category, entry),
-        )
-    });
+    // Initialization belongs to the same critical section as read-modify-write.
+    // Otherwise a writer that observed a missing file before a peer appended can
+    // create an empty ledger after that append and discard the peer's entry.
+    let result = (|| {
+        if !log_file.exists() {
+            write_run_log_file(log_file, "")?;
+        }
+        read_lossy(log_file).and_then(|existing| {
+            write_run_log_file(
+                log_file,
+                &compose_execution_issue(&existing, category, entry),
+            )
+        })
+    })();
     let _ = fs::remove_dir(&lock);
     result
 }
