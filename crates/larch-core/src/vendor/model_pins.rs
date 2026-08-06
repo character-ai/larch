@@ -347,11 +347,11 @@ pub fn model_list_timeout_seconds(raw: Option<&str>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome, EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC,
-        MODEL_PINS_STATUS_LIST_FAILED, MODEL_PINS_STATUS_OK, MODEL_PINS_STATUS_SKIPPED,
-        MODEL_PINS_STATUS_UNKNOWN_ID, MODEL_PINS_STATUS_UNPARSEABLE,
-        MODEL_PINS_STATUS_UNVERIFIABLE, VendorModelPinResult, codex_pinned_models,
-        cursor_pinned_models, list_failed_detail, model_list_timeout_seconds,
+        CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome,
+        EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC, MODEL_PINS_STATUS_LIST_FAILED,
+        MODEL_PINS_STATUS_OK, MODEL_PINS_STATUS_SKIPPED, MODEL_PINS_STATUS_UNKNOWN_ID,
+        MODEL_PINS_STATUS_UNPARSEABLE, MODEL_PINS_STATUS_UNVERIFIABLE, VendorModelPinResult,
+        codex_pinned_models, cursor_pinned_models, list_failed_detail, model_list_timeout_seconds,
         parse_cursor_model_list, resolve_codex_model_pins, resolve_cursor_model_pins_from_list,
         resolve_model_pins,
     };
@@ -449,7 +449,11 @@ mod tests {
 
         let codex_pins = codex_pinned_models();
         assert!(!codex_pins.is_empty());
-        assert!(codex_pins.windows(2).all(|pair| pair[0].model_id <= pair[1].model_id));
+        assert!(
+            codex_pins
+                .windows(2)
+                .all(|pair| pair[0].model_id <= pair[1].model_id)
+        );
 
         assert_eq!(
             list_failed_detail(124, "ignored", true),

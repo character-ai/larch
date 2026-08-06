@@ -358,10 +358,7 @@ mod tests {
             probe_attempt_rc(0, false, ExternalAuthVerdict::Unclassified),
             0
         );
-        assert_eq!(
-            probe_attempt_rc(7, false, ExternalAuthVerdict::NonAuth),
-            1
-        );
+        assert_eq!(probe_attempt_rc(7, false, ExternalAuthVerdict::NonAuth), 1);
         assert_eq!(
             probe_attempt_rc(7, false, ExternalAuthVerdict::Unclassified),
             1
@@ -408,10 +405,7 @@ mod tests {
             resolve_probe_workdir(cwd, Some(project), Some(toplevel)),
             toplevel
         );
-        assert_eq!(
-            resolve_probe_workdir(cwd, None, Some(toplevel)),
-            toplevel
-        );
+        assert_eq!(resolve_probe_workdir(cwd, None, Some(toplevel)), toplevel);
         // Misaligned project still falls back to cwd/toplevel alignment.
         assert_eq!(
             resolve_probe_workdir(cwd, Some(Path::new("/other")), Some(toplevel)),

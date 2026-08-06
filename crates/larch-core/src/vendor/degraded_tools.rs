@@ -257,12 +257,15 @@ mod tests {
         );
         let healthy = DegradedToolsResult::classify("true", "true", "true", "true", "design", None);
         assert!(!healthy.degraded());
-        assert_eq!(healthy.kv_lines(), vec![
-            "DEGRADED=false".to_owned(),
-            "CODEX_STATE=ok".to_owned(),
-            "CURSOR_STATE=ok".to_owned(),
-            "BOTH_DOWN=false".to_owned(),
-        ]);
+        assert_eq!(
+            healthy.kv_lines(),
+            vec![
+                "DEGRADED=false".to_owned(),
+                "CODEX_STATE=ok".to_owned(),
+                "CURSOR_STATE=ok".to_owned(),
+                "BOTH_DOWN=false".to_owned(),
+            ]
+        );
     }
 
     #[test]
