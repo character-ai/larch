@@ -22,7 +22,7 @@ Issue #3207: Step 0 health probes exist to warn or stop the operator before work
 Immediately after `session setup --check-reviewers`, pass explicit probe KVs to the gate:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent degraded-tools-gate \
   --codex-binary-found "$CODEX_BINARY_FOUND" --codex-present "$CODEX_PRESENT" \
   --cursor-binary-found "$CURSOR_BINARY_FOUND" --cursor-present "$CURSOR_PRESENT" \
   --skill <design|implement|review|research>

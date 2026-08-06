@@ -8,9 +8,7 @@
 use crate::{
     ConfinedPath, FileIoError, PathIntent, PathSafetyError, TemporaryRoot, atomic_write_utf8_in,
     file_io::{absent_is_success, io_error, path_safety_error},
-    vendor_lifecycle::{
-        StartupLockConfig, external_startup_lock_acquire, external_startup_lock_release_after,
-    },
+    vendor_lifecycle::{StartupLockConfig, StartupLockGuard},
 };
 use larch_core::{
     CURSOR_AUTH_MAX_ATTEMPTS, CURSOR_AUTH_RETRY_DELAY, CodexGateDetail, CursorCredential,
@@ -131,7 +129,7 @@ pub async fn cursor_auth_preflight<R: ExternalProcessRunner>(
     if config.environment_credential.is_some() || config.platform != HostPlatform::Darwin {
         return ReviewAuthVerdict::ok();
     }
-    let _lock = LockGuard::acquire(context.temporary_root, context.startup_lock);
+    let _lock = StartupLockGuard::acquire(context.temporary_root, context.startup_lock);
     for attempt in 1..=CURSOR_AUTH_MAX_ATTEMPTS {
         if read_cursor_keychain_token(runner, context.working_directory, cancellation)
             .await
@@ -159,7 +157,7 @@ pub async fn cursor_preread_service_token<R: ExternalProcessRunner>(
     if config.platform != HostPlatform::Darwin {
         return CursorTokenPreread::Proceed(None);
     }
-    let _lock = LockGuard::acquire(context.temporary_root, context.startup_lock);
+    let _lock = StartupLockGuard::acquire(context.temporary_root, context.startup_lock);
     read_cursor_keychain_token(runner, context.working_directory, cancellation)
         .await
         .map_or(CursorTokenPreread::Unreadable, |credential| {
@@ -215,20 +213,6 @@ impl CursorProbeSession {
     /// Returns when confinement revalidation or cleanup fails.
     pub fn close(self) -> Result<(), PathSafetyError> {
         self.config.close()
-    }
-}
-
-/// Acquire-and-release wrapper that keeps the startup lock scoped to a block.
-struct LockGuard {
-    _release: Option<crate::vendor_lifecycle::StartupLockRelease>,
-}
-
-impl LockGuard {
-    fn acquire(temporary_root: &TemporaryRoot, config: &StartupLockConfig) -> Self {
-        let release = external_startup_lock_acquire(temporary_root, config)
-            .and_then(|state| external_startup_lock_release_after(state, config))
-            .ok();
-        Self { _release: release }
     }
 }
 

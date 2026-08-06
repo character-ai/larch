@@ -65,6 +65,8 @@ pub mod env {
     pub const LARCH_PROBE_TIMEOUT_SECONDS: &str = "LARCH_PROBE_TIMEOUT_SECONDS";
     /// Lifetime of a cached successful reviewer-probe verdict, in seconds.
     pub const LARCH_PROBE_TTL_SECONDS: &str = "LARCH_PROBE_TTL_SECONDS";
+    /// Timeout for Cursor model-list health checks used by model-pin resolution.
+    pub const LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: &str = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT";
     /// Optional tail length for a failed-agent stderr excerpt.
     pub const LARCH_FAILED_AGENT_STDERR_TAIL_LINES: &str = "LARCH_FAILED_AGENT_STDERR_TAIL_LINES";
     /// Release version pinned by the release workflow during a local upgrade.
@@ -108,7 +110,7 @@ pub mod env {
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 45] = [
+    pub const ALL: [&str; 46] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
@@ -133,6 +135,7 @@ pub mod env {
         LARCH_CURSOR_MODEL,
         LARCH_EXPECTED_STABLE_VERSION,
         LARCH_EXTERNAL_AUTH_RETRIES,
+        LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT,
         LARCH_LOGS_URI,
         LARCH_NO_LOGS_COMMIT,
         LARCH_PROBE_NEGATIVE_TTL_SECONDS,

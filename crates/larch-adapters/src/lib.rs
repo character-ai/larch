@@ -18,6 +18,7 @@ pub mod upgrade_larch;
 pub mod vendor_auth;
 pub mod vendor_diagnostics;
 pub mod vendor_lifecycle;
+pub mod vendor_reviewers;
 
 use larch_core::BuildMetadata;
 
@@ -71,6 +72,9 @@ pub use session_lifecycle::{
     CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SessionIdOutcome, append_cleanup_audit,
     parent_process_id, remove_session_tmpdir, resolve_implement_tmpdir, validate_design_tmpdir,
     write_session_id,
+};
+pub use vendor_reviewers::{
+    CheckReviewersContext, check_reviewers, prepare_codex_home, run_cursor_model_list,
 };
 
 /// Return metadata compiled into the adapter layer.

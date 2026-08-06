@@ -306,7 +306,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     if lifecycle_rc != 0:
         return lifecycle_rc
     reviewer_probe = subprocess.run(
-        _cli_cmd(plugin_root, "agent", "check-reviewers"),
+        [str(repo_roots.larch_entrypoint(plugin_root)), "agent", "check-reviewers"],
         capture_output=True,
         text=True,
         check=False,
@@ -333,8 +333,8 @@ def step0_session_main(argv: Sequence[str]) -> int:
         env={**env, "LARCH_TIMING_SKILL": "design"},
     )
     gate = subprocess.run(
-        _cli_cmd(
-            plugin_root,
+        [
+            str(repo_roots.larch_entrypoint(plugin_root)),
             "agent",
             "degraded-tools-gate",
             "--skill",
@@ -347,7 +347,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
             codex_binary or "false",
             "--cursor-binary-found",
             cursor_binary or "false",
-        ),
+        ],
         capture_output=True,
         text=True,
         check=False,

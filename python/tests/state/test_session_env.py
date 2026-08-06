@@ -15,6 +15,7 @@ from larch.core import config
 from larch.state import finalize
 from larch.core import proc
 from larch.state import session_env
+from larch.agents import agents
 
 from test_support import CLI, make_design_tmpdir, seed_run_params, write_design_source_env
 
@@ -302,17 +303,19 @@ def test_setup_carry_forward_drops_placeholder_run_dirs(tmp_path: Path, monkeypa
 
 
 def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    for tool in ("codex", "cursor"):
-        (stub_bin / tool).write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-        (stub_bin / tool).chmod(0o755)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    monkeypatch.setenv("PATH", f"{stub_bin}:{os.environ.get('PATH', '')}")
-    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
-    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Linux")
     for key in TOOL_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+
+    def fake_check_reviewers(**_kwargs: object) -> agents.CheckReviewersResult:
+        return agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=True,
+            codex_present=True,
+            cursor_present=True,
+        )
+
+    monkeypatch.setattr(agents, "check_reviewers", fake_check_reviewers)
 
     def probe(caller_text: str, prefix: str) -> tuple[session_env.SessionSetupResult, list[session_env.WriteEnvParams]]:
         caller = tmp_path / f"{prefix}.env"

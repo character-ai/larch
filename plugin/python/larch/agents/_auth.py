@@ -1,66 +1,45 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalMemberAccess=false, reportPrivateUsage=false
-"""Cursor auth, probe helpers, reviewer check, and degraded tools."""
+"""Cursor auth helpers plus thin Rust CLI wrappers for reviewer availability."""
 
 from __future__ import annotations
 
 import argparse
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
 import platform
 import re
 import shutil
-import stat
 import subprocess
-import tempfile
 import time
-from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from larch.core import config
 from larch import io as larch_io
-from larch.core.ctx import Ctx
 from larch.core import logging_util
 from larch.core.proc import ProcRunner, Runner
+from larch.core.repo_roots import larch_entrypoint
 
-from larch.agents import _types
-from larch.agents._model_pins import resolve_model_pins
 from larch.agents._types import (
-    _AUTH_RETRY_RC,
-    _PROBE_NO_RETRY_RC,
-    _CURSOR_PREFLIGHT_AUTH_RC,
     _CURSOR_AUTH_MAX_ATTEMPTS,
     CURSOR_PREREAD_FAIL_MSG,
     AuthVerdict,
     CheckReviewersResult,
     CodexGateDetail,
-    CodexProbeResult,
+    CodexGateSignal,
     DegradedToolsResult,
     _err,
-    _emit,
-    _write,
-    _append,
     _plugin_root,
     _env_int,
 )
-from larch.agents._launch_failure import (
-    detect_codex_cli_gate,
-    resolve_model_args,
-)
+from larch.agents._launch_failure import resolve_model_args
 from larch.agents._run_external import (
     external_startup_lock_acquire,
     external_startup_lock_release_after,
-    external_auth_verdict,
-    _codex_auth_args,
     _codex_env_key_enabled,
-    _trust_config_arg,
-    _resolve_review_codex_workdir,
-    _prepare_codex_home,
 )
+
 
 def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> AuthVerdict:
     raw_key = os.environ.get("CURSOR_API_KEY", "")
@@ -185,17 +164,6 @@ def cursor_auth_export_env() -> None:
         os.environ.pop("CURSOR_API_KEY", None)
 
 
-def _max_transient_probe_retries(max_auth_retries: int) -> int:
-    if "LARCH_PROBE_RETRIES" in os.environ:
-        return _env_int(name="LARCH_PROBE_RETRIES", default=2)
-    if max_auth_retries == 1:
-        return 0
-    return 2
-
-
-def _max_timeout_probe_retries() -> int:
-    return _env_int(name="LARCH_PROBE_TIMEOUT_RETRIES", default=0)
-
 
 def _probe_tmpdir() -> Path:
     return Path(os.environ.get("TMPDIR") or "/tmp")  # noqa: S108 - parity with Bash TMPDIR fallback.
@@ -217,94 +185,32 @@ def _resolved_codex_review_model() -> str:
 
 def _codex_probe_identity(model: str) -> str:
     auth_mode = "env-key" if _codex_env_key_enabled() else "login"
-    model_hash = hashlib.sha256(model.encode("utf-8")).hexdigest()[:16]
-    return f"codex-{auth_mode}-{model_hash}"
+    digest = hashlib.sha256(model.encode("utf-8")).hexdigest()[:16]
+    return f"codex-{auth_mode}-{digest}"
 
 
 def _codex_gate_detail_path(identity: str) -> Path:
     return _probe_tmpdir() / f"larch-{identity}-gate-{_probe_user()}.json"
 
 
-def _codex_probe_update_lock_path(identity: str) -> Path:
-    return _probe_tmpdir() / f"larch-{identity}-probe-{_probe_user()}.lock"
-
-
-@contextlib.contextmanager
-def _codex_probe_update_lock(identity: str):
-    path = _codex_probe_update_lock_path(identity)
-    fd: int | None = None
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        flags = os.O_RDWR | os.O_CREAT
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd = os.open(path, flags, 0o600)
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise OSError(f"refusing non-regular Codex probe update lock: {path}")
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        if fd is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
-
-
-def _clear_codex_gate_detail(identity: str) -> None:
-    path = _codex_gate_detail_path(identity)
-    try:
-        if path.is_symlink():
-            return
-        path.unlink(missing_ok=True)
-    except OSError:
-        return
-
-
-def _write_codex_gate_detail(*, identity: str, detail: CodexGateDetail) -> None:
-    path = _codex_gate_detail_path(identity)
-    payload: dict[str, str | int] = {
-        "schema_version": 1,
-        "identity": identity,
-        "model": detail.model,
-        "signal": detail.signal,
-        "message": detail.message,
-    }
-    try:
-        larch_io.atomic_write(
-            path=path,
-            text=json.dumps(payload, separators=(",", ":")) + "\n",
-            prefix="larch-codex-gate-detail.",
-            nofollow=True,
-            mode=0o600,
-        )
-    except (OSError, ValueError):
-        _clear_codex_gate_detail(identity)
-
-
 def _parse_codex_gate_detail(*, payload: object, identity: str) -> CodexGateDetail | None:
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1 or payload.get("identity") != identity:
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("schema_version") != 1:
+        return None
+    if payload.get("identity") != identity:
         return None
     model = payload.get("model")
     signal = payload.get("signal")
     message = payload.get("message")
-    expected = detect_codex_cli_gate(
-        "requires a newer version of Codex",
-        fallback_model=str(model),
-    )
-    if (
-        not all(isinstance(value, str) for value in (model, signal, message))
-        or expected is None
-        or model != expected.model
-        or message != expected.message
-        or signal not in _types.CODEX_GATE_SIGNALS
-    ):
+    if not isinstance(model, str) or not isinstance(signal, str) or not isinstance(message, str):
         return None
-    return CodexGateDetail(model=str(model), signal=cast("_types.CodexGateSignal", signal), message=str(message))
+    if signal not in {"model-metadata-not-found", "newer-codex-required"}:
+        return None
+    return CodexGateDetail(model=model, signal=cast("CodexGateSignal", signal), message=message)
 
 
 def _read_codex_gate_detail(*, identity: str, max_age: int) -> CodexGateDetail | None:
-    if max_age <= 0:
-        return None
     path = _codex_gate_detail_path(identity)
     try:
         if path.is_symlink() or not path.is_file():
@@ -338,337 +244,8 @@ def _current_codex_gate_detail() -> CodexGateDetail | None:
     return _read_codex_gate_detail(identity=identity, max_age=_codex_gate_detail_max_age())
 
 
-def _read_fresh_probe_stamp(*, stamp: Path, ttl: int, negative_ttl: int) -> bool | None:
-    if ttl <= 0:
-        return None
-    try:
-        stat = stamp.stat()
-    except OSError:
-        return None
-    now = time.time()
-    age = now - stat.st_mtime
-    if age < 0 or age > ttl:
-        return None
-    try:
-        line = stamp.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-    except (OSError, IndexError):
-        return None
-    value = line.replace("\r", "")
-    if value == "true":
-        return True
-    if value == "false" and negative_ttl > 0 and age <= negative_ttl:
-        return False
-    return None
-
-
-def _write_probe_stamp(*, stamp: Path, value: bool) -> None:
-    try:
-        stamp.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            delete=False,
-            dir=str(stamp.parent),
-            prefix="larch-probe-stamp.",
-        ) as handle:
-            handle.write(f"{str(value).lower()}\n")
-            tmp = Path(handle.name)
-        tmp.replace(stamp)
-    except OSError:
-        with contextlib.suppress(NameError, OSError):
-            tmp.unlink()  # type: ignore[name-defined]
-
-
-@contextlib.contextmanager
-def _temporary_environ(updates: dict[str, str] | None = None):
-    old = os.environ.copy()
-    if updates:
-        os.environ.clear()
-        os.environ.update(updates)
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(old)
-
-
-def _run_probe_command(cmd: Sequence[str], *, timeout: int, env: dict[str, str], stdout: Path | None = None, stderr: Path | None = None, input_text: str | None = None) -> int:
-    try:
-        with contextlib.ExitStack() as stack:
-            stdout_target: object = subprocess.DEVNULL
-            stderr_target: object = subprocess.DEVNULL
-            if stdout is not None:
-                stdout_target = stack.enter_context(stdout.open("wb"))
-            if stderr is not None:
-                if stdout is not None and stderr == stdout:
-                    stderr_target = subprocess.STDOUT
-                else:
-                    stderr_target = stack.enter_context(stderr.open("wb"))
-            result = subprocess.run(
-                list(cmd),
-                input=input_text,
-                stdout=stdout_target,
-                stderr=stderr_target,
-                timeout=timeout,
-                env=env,
-                text=input_text is not None,
-                check=False,
-            )
-        return result.returncode
-    except FileNotFoundError:
-        return 127
-    except subprocess.TimeoutExpired:
-        return config.EXIT_TIMEOUT
-
-
-@dataclass(frozen=True)
-class _CursorProbeSetup:
-    cfg_tmp: Path
-    old_cfg: str | None
-
-
-def _cursor_probe_setup_chain() -> _CursorProbeSetup | None:
-    try:
-        if not cursor_preread_service_token():
-            return None
-        cursor_auth_export_env()
-        cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=str(_probe_tmpdir())))
-    except OSError:
-        return None
-    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
-    os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
-    user_cfg = Path.home() / ".cursor" / "cli-config.json"
-    if user_cfg.is_file():
-        with contextlib.suppress(OSError):
-            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
-    return _CursorProbeSetup(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
-
-
-def _cursor_probe_cleanup_private_config_dir(setup: _CursorProbeSetup | None) -> None:
-    if setup is None:
-        return
-    shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
-    if setup.old_cfg is None:
-        os.environ.pop("CURSOR_CONFIG_DIR", None)
-    else:
-        os.environ["CURSOR_CONFIG_DIR"] = setup.old_cfg
-
-
-def _run_one_cursor_probe(timeout: int) -> int:
-    probe_out: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-cursor-probe.") as handle:
-            probe_out = Path(handle.name)
-        try:
-            model_args = list(resolve_model_args("cursor").argv)
-        except ValueError:
-            model_args = []
-        prompt = " /max-mode on. Prompt: Respond with OK"
-        state = external_startup_lock_acquire(tool="cursor")
-        external_startup_lock_release_after(state=state)
-        probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
-        rc = _run_probe_command(
-            ["cursor", "agent", "-p", prompt, "--trust", "--workspace", probe_workdir, *model_args],
-            timeout=timeout,
-            env=dict(os.environ),
-            stdout=probe_out,
-            stderr=probe_out,
-        )
-        if rc == config.EXIT_TIMEOUT:
-            return config.EXIT_TIMEOUT
-        if rc == 0:
-            return 0
-        if external_auth_verdict("cursor", probe_out) == "auth":
-            return _AUTH_RETRY_RC
-        return 1
-    finally:
-        if probe_out is not None:
-            with contextlib.suppress(OSError):
-                probe_out.unlink()
-
-
-def _codex_probe_result(*, rc: int, diagnostics: str, resolved_model: str, probe_out: Path, probe_side: Path) -> CodexProbeResult:
-    gate_detail = detect_codex_cli_gate(diagnostics, fallback_model=resolved_model)
-    if gate_detail is not None:
-        return CodexProbeResult(_PROBE_NO_RETRY_RC, gate_detail)
-    if rc in {config.EXIT_TIMEOUT, 0}:
-        return CodexProbeResult(rc)
-    if external_auth_verdict("codex", probe_out, probe_side) == "auth":
-        return CodexProbeResult(_AUTH_RETRY_RC)
-    return CodexProbeResult(1)
-
-
-def _run_one_codex_probe(timeout: int) -> CodexProbeResult:
-    probe_out: Path | None = None
-    probe_side: Path | None = None
-    codex_home: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-codex-probe.") as handle:
-            probe_out = Path(handle.name)
-        probe_side = Path(str(probe_out) + ".sidecar")
-        _write(path=probe_side, text="")
-        codex_home = Path(tempfile.mkdtemp(prefix="larch-codex-probe-home-", dir=str(_probe_tmpdir())))
-        prep_rc, prep_msg = _prepare_codex_home(codex_home)
-        if prep_rc != 0:
-            if prep_msg:
-                _append(path=probe_side, text=prep_msg + "\n")
-            if _codex_env_key_enabled():
-                _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
-            return CodexProbeResult(_PROBE_NO_RETRY_RC)
-        try:
-            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="review").argv)
-        except ValueError as exc:
-            _append(path=probe_side, text=f"model args failed: {exc}\n")
-            return CodexProbeResult(_PROBE_NO_RETRY_RC)
-        resolved_model = next((model_args[index + 1] for index, token in enumerate(model_args[:-1]) if token == "-m"), config.CODEX_REVIEW_MODEL_DEFAULT)
-        probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
-        cmd = [
-            "codex",
-            "exec",
-            "--sandbox",
-            "read-only",
-            "-C",
-            probe_workdir,
-            *model_args,
-            "-c",
-            _trust_config_arg(probe_workdir),
-            *_codex_auth_args(),
-            "--output-last-message",
-            str(probe_out),
-            "--",
-            "Respond with OK",
-        ]
-        env: dict[str, str] = dict(os.environ)
-        env["CODEX_HOME"] = str(codex_home)
-        state = external_startup_lock_acquire(tool="codex")
-        external_startup_lock_release_after(state=state)
-        rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
-        diagnostics = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace")
-            for path in (probe_out, probe_side)
-            if path.is_file()
-        )
-        return _codex_probe_result(
-            rc=rc,
-            diagnostics=diagnostics,
-            resolved_model=resolved_model,
-            probe_out=probe_out,
-            probe_side=probe_side,
-        )
-    finally:
-        if codex_home is not None:
-            shutil.rmtree(codex_home, ignore_errors=True)
-        for path in (probe_out, probe_side):
-            if path is not None:
-                with contextlib.suppress(OSError):
-                    path.unlink()
-
-
-def _run_codex_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool, CodexGateDetail | None]:
-    retry_limits: dict[int, int] = {
-        config.EXIT_TIMEOUT: max_timeout_retries,
-        _AUTH_RETRY_RC: max(max_auth_retries, 1) - 1,
-        1: max_transient_retries,
-    }
-    retries_used: dict[int, int] = dict.fromkeys(retry_limits, 0)
-    present = False
-    timed_out = False
-    gate_detail: CodexGateDetail | None = None
-    while True:
-        result = _run_one_codex_probe(timeout)
-        rc = result.rc
-        if result.gate_detail is not None:
-            gate_detail = result.gate_detail
-            break
-        if rc == 0:
-            present = True
-            break
-        retry_limit = retry_limits.get(rc)
-        if retry_limit is not None and retries_used[rc] < retry_limit:
-            retries_used[rc] += 1
-            continue
-        timed_out = rc == config.EXIT_TIMEOUT
-        break
-    return present, timed_out, gate_detail
-
-
-def _run_cursor_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
-    setup = _cursor_probe_setup_chain()
-    if setup is None:
-        return False, False
-    try:
-        auth_failures = 0
-        transient_retries_used = 0
-        timeout_retries_used = 0
-        while True:
-            rc = _run_one_cursor_probe(timeout)
-            if rc == config.EXIT_TIMEOUT:
-                if timeout_retries_used < max_timeout_retries:
-                    timeout_retries_used += 1
-                    continue
-                return False, True
-            if rc == 0:
-                return True, False
-            if rc == _PROBE_NO_RETRY_RC:
-                return False, False
-            if rc == _AUTH_RETRY_RC:
-                auth_failures += 1
-                if auth_failures >= max(max_auth_retries, 1):
-                    return False, False
-                continue
-            if rc == 1:
-                if transient_retries_used >= max_transient_retries:
-                    return False, False
-                transient_retries_used += 1
-                continue
-            return False, False
-    finally:
-        _cursor_probe_cleanup_private_config_dir(setup)
-
-
-@dataclass(frozen=True)
-class _ProbeRetryLimits:
-    auth: int
-    transient: int
-    timeout: int
-
-
-def _check_codex_reviewer(
-    *,
-    ttl: int,
-    negative_ttl: int,
-    retry_limits: _ProbeRetryLimits,
-    timeout: int,
-) -> tuple[bool, bool, CodexGateDetail | None]:
-    try:
-        codex_review_model = _resolved_codex_review_model()
-    except ValueError:
-        codex_review_model = "unknown"
-    codex_identity = _codex_probe_identity(codex_review_model)
-    stamp = _probe_stamp_path(codex_identity)
-    max_gate_age = max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC)
-    cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
-    if cached is not None:
-        gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
-        return cached, False, gate_detail
-
-    with _codex_probe_update_lock(codex_identity):
-        cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
-        if cached is not None:
-            gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
-            return cached, False, gate_detail
-        codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
-            max_auth_retries=retry_limits.auth,
-            max_transient_retries=retry_limits.transient,
-            max_timeout_retries=retry_limits.timeout,
-            timeout=timeout,
-        )
-        _write_probe_stamp(stamp=stamp, value=codex_present)
-        if codex_gate_detail is None:
-            _clear_codex_gate_detail(codex_identity)
-        else:
-            _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
-        return codex_present, codex_probe_timed_out, codex_gate_detail
+def _bool_kv(stdout: str, key: str) -> bool:
+    return larch_io.kv_value(text=stdout, key=key, duplicate_policy="first").strip().lower() == "true"
 
 
 def check_reviewers(
@@ -678,79 +255,28 @@ def check_reviewers(
     probe_timeout_seconds: int | None = None,
     env: dict[str, str] | None = None,
 ) -> CheckReviewersResult:
-    with _temporary_environ(env):
-        ttl = _env_int(name="LARCH_PROBE_TTL_SECONDS", default=60)
-        negative_ttl = _env_int(name="LARCH_PROBE_NEGATIVE_TTL_SECONDS", default=0)
-        # The 60s probe timeout is intentional to avoid degraded-tools false
-        # negatives from slow probes; timeout retries default to 0.
-        timeout = probe_timeout_seconds or _env_int(name="LARCH_PROBE_TIMEOUT_SECONDS", default=60, zero_allowed=False)
-        max_auth_retries = _env_int(name="LARCH_EXTERNAL_AUTH_RETRIES", default=5, zero_allowed=False)
-        max_transient_retries = _max_transient_probe_retries(max_auth_retries)
-        max_timeout_retries = _max_timeout_probe_retries()
-
-        codex_binary_found = shutil.which("codex") is not None
-        cursor_binary_found = shutil.which("cursor") is not None
-        codex_present = False
-        cursor_present = False
-        codex_probe_timed_out = False
-        cursor_probe_timed_out = False
-        codex_gate_detail: CodexGateDetail | None = None
-
-        if cursor_binary_found and not skip_cursor_probe:
-            cached = _read_fresh_probe_stamp(stamp=_probe_stamp_path("cursor"), ttl=ttl, negative_ttl=negative_ttl)
-            if cached is not None:
-                cursor_present = cached
-            else:
-                preflight = cursor_auth_preflight(caller="agent check-reviewers")
-                cursor_auth_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
-                cursor_transient_retries = 0 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_transient_retries
-                cursor_present, cursor_probe_timed_out = _run_cursor_probes(
-                    max_auth_retries=cursor_auth_retries,
-                    max_transient_retries=cursor_transient_retries,
-                    max_timeout_retries=max_timeout_retries,
-                    timeout=timeout,
-                )
-                _write_probe_stamp(stamp=_probe_stamp_path("cursor"), value=cursor_present)
-
-        if codex_binary_found and not skip_codex_probe:
-            codex_present, codex_probe_timed_out, codex_gate_detail = _check_codex_reviewer(
-                ttl=ttl,
-                negative_ttl=negative_ttl,
-                retry_limits=_ProbeRetryLimits(
-                    auth=max_auth_retries,
-                    transient=max_transient_retries,
-                    timeout=max_timeout_retries,
-                ),
-                timeout=timeout,
-            )
-
-        return CheckReviewersResult(
-            codex_binary_found=codex_binary_found,
-            cursor_binary_found=cursor_binary_found,
-            codex_present=codex_present,
-            cursor_present=cursor_present,
-            codex_probe_timed_out=codex_probe_timed_out,
-            cursor_probe_timed_out=cursor_probe_timed_out,
-            codex_gate_detail=codex_gate_detail,
-        )
-
-
-def check_reviewers_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent check-reviewers")
-    parser.add_argument("--skip-codex-probe", action="store_true")
-    parser.add_argument("--skip-cursor-probe", action="store_true")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return 0 if exc.code == 0 else 1
-    result = check_reviewers(
-        skip_codex_probe=args.skip_codex_probe,
-        skip_cursor_probe=args.skip_cursor_probe,
+    """Shell out to the Rust `agent check-reviewers` owner and parse the KV envelope."""
+    cmd = [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "agent", "check-reviewers"]
+    if skip_codex_probe:
+        cmd.append("--skip-codex-probe")
+    if skip_cursor_probe:
+        cmd.append("--skip-cursor-probe")
+    run_env = {**os.environ, **(env or {})}
+    if probe_timeout_seconds is not None:
+        run_env["LARCH_PROBE_TIMEOUT_SECONDS"] = str(probe_timeout_seconds)
+    result = ProcRunner().run(cmd, env=run_env)
+    stdout = result.stdout or ""
+    present_false = not _bool_kv(stdout, "CODEX_PRESENT")
+    gate_detail = _current_codex_gate_detail() if present_false else None
+    return CheckReviewersResult(
+        codex_binary_found=_bool_kv(stdout, "CODEX_BINARY_FOUND"),
+        cursor_binary_found=_bool_kv(stdout, "CURSOR_BINARY_FOUND"),
+        codex_present=_bool_kv(stdout, "CODEX_PRESENT"),
+        cursor_present=_bool_kv(stdout, "CURSOR_PRESENT"),
+        codex_probe_timed_out=_bool_kv(stdout, "CODEX_PROBE_TIMED_OUT"),
+        cursor_probe_timed_out=_bool_kv(stdout, "CURSOR_PROBE_TIMED_OUT"),
+        codex_gate_detail=gate_detail,
     )
-    for line in result.kv_lines():
-        _emit(line)
-    return 0
 
 
 EXTERNAL_TOOL_NAMES: tuple[str, ...] = ("codex", "cursor")
@@ -758,33 +284,6 @@ EXTERNAL_TOOL_NAMES: tuple[str, ...] = ("codex", "cursor")
 
 def external_tool_names() -> tuple[str, ...]:
     return EXTERNAL_TOOL_NAMES
-
-
-def _norm_bool(value: str) -> str:
-    return "true" if value == "true" else "false"
-
-
-def _norm_tristate(value: str) -> str:
-    return value if value in {"true", "false"} else "unknown"
-
-
-def _tool_state(*, binary_found: str, present: str) -> str:
-    if binary_found == "false":
-        return "binary-missing"
-    if present == "true":
-        return "ok"
-    if binary_found == "true":
-        return "probe-failed"
-    return "unavailable"
-
-
-def _state_phrase(state: str) -> str:
-    return {
-        "ok": "available",
-        "binary-missing": "UNAVAILABLE: CLI binary not found on PATH",
-        "probe-failed": "UNAVAILABLE: runtime health probe failed (binary present but the auth/quota check did not pass)",
-        "unavailable": "UNAVAILABLE: session health probe did not pass",
-    }.get(state, "unknown")
 
 
 def degraded_tools_result(
@@ -795,90 +294,64 @@ def degraded_tools_result(
     cursor_present: str,
     skill: str,
 ) -> DegradedToolsResult:
-    presence_empty = not codex_present or not cursor_present
-    c_b = _norm_tristate(codex_binary_found)
-    c_p = _norm_bool(codex_present)
-    u_b = _norm_tristate(cursor_binary_found)
-    u_p = _norm_bool(cursor_present)
-    codex_state = _tool_state(binary_found=c_b, present=c_p)
-    cursor_state = _tool_state(binary_found=u_b, present=u_p)
-    degraded = codex_state != "ok" or cursor_state != "ok"
-    both_down = codex_state != "ok" and cursor_state != "ok"
+    """Shell out to the Rust `agent degraded-tools-gate` owner and parse the envelope."""
+    cmd = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "agent",
+        "degraded-tools-gate",
+        "--codex-binary-found",
+        codex_binary_found,
+        "--codex-present",
+        codex_present,
+        "--cursor-binary-found",
+        cursor_binary_found,
+        "--cursor-present",
+        cursor_present,
+        "--skill",
+        skill,
+    ]
+    result = ProcRunner().run(cmd)
+    stdout = result.stdout or ""
     explanation: list[str] = []
-    codex_gate_detail = _current_codex_gate_detail() if codex_state == "probe-failed" else None
-    if degraded:
-        explanation.extend(
-            [
-                f"⚠ Degraded external-tool availability for this /{skill} run:",
-                "",
-                f"  • Codex:  {codex_gate_detail.message if codex_gate_detail is not None else _state_phrase(codex_state)}",
-                f"  • Cursor: {_state_phrase(cursor_state)}",
-                "",
-            ]
-        )
-        explanation.extend(
-            [
-                "Step 0 uses this health probe only as an operator-safety gate.",
-                "Later vendor calls do not route from this probe result; they use binary",
-                "presence, launcher-owned retries, and existing fallback/degradation paths.",
-                "",
-            ]
-        )
-        if both_down:
-            explanation.extend([
-                "Both external vendors are unavailable. This run cannot continue.",
-                "Fix at least one vendor or retry after the outage clears.",
-            ])
-        else:
-            explanation.extend([
-                "Exactly one external vendor is unavailable. Explicit operator confirmation",
-                "is required before continuing with reduced model-family diversity.",
-            ])
-    return DegradedToolsResult(degraded, codex_state, cursor_state, both_down, presence_empty, tuple(explanation))
-
-
-def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent degraded-tools-gate")
-    parser.add_argument("--codex-binary-found", default=os.environ.get(config.ENV_CODEX_BINARY_FOUND, "unknown"))
-    parser.add_argument("--codex-present", default=os.environ.get(config.ENV_CODEX_PRESENT, ""))
-    parser.add_argument("--cursor-binary-found", default=os.environ.get(config.ENV_CURSOR_BINARY_FOUND, "unknown"))
-    parser.add_argument("--cursor-present", default=os.environ.get(config.ENV_CURSOR_PRESENT, ""))
-    parser.add_argument("--skill", default="this")
-    args = parser.parse_args(argv)
-    ctx = Ctx.from_mapping({
-        **os.environ,
-        config.ENV_CODEX_BINARY_FOUND: args.codex_binary_found,
-        config.ENV_CODEX_PRESENT: args.codex_present,
-        config.ENV_CURSOR_BINARY_FOUND: args.cursor_binary_found,
-        config.ENV_CURSOR_PRESENT: args.cursor_present,
-        "skill": args.skill,
-    })
-    if not ctx.codex_present:
-        _err("agent degraded-tools-gate: ERROR: --codex-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
-    if not ctx.cursor_present:
-        _err("agent degraded-tools-gate: ERROR: --cursor-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
-    result = degraded_tools_result(
-        codex_binary_found=ctx.codex_binary_found,
-        codex_present=ctx.codex_present,
-        cursor_binary_found=ctx.cursor_binary_found,
-        cursor_present=ctx.cursor_present,
-        skill=ctx.str_value(key="skill", default="this"),
+    capturing = False
+    for line in stdout.splitlines():
+        if line == "DEGRADED_EXPLANATION_BEGIN":
+            capturing = True
+            continue
+        if line == "DEGRADED_EXPLANATION_END":
+            capturing = False
+            continue
+        if capturing:
+            explanation.append(line)
+    return DegradedToolsResult(
+        degraded=larch_io.kv_value(text=stdout, key="DEGRADED", duplicate_policy="first").strip().lower() == "true",
+        codex_state=larch_io.kv_value(text=stdout, key="CODEX_STATE", duplicate_policy="first").strip(),
+        cursor_state=larch_io.kv_value(text=stdout, key="CURSOR_STATE", duplicate_policy="first").strip(),
+        both_down=larch_io.kv_value(text=stdout, key="BOTH_DOWN", duplicate_policy="first").strip().lower() == "true",
+        presence_input_empty=larch_io.kv_value(text=stdout, key="PRESENCE_INPUT_EMPTY", duplicate_policy="first").strip().lower() == "true",
+        explanation=tuple(explanation),
     )
-    logging_util.emit_kv(key="DEGRADED", value=str(result.degraded).lower())
-    logging_util.emit_kv(key="CODEX_STATE", value=result.codex_state)
-    logging_util.emit_kv(key="CURSOR_STATE", value=result.cursor_state)
-    logging_util.emit_kv(key="BOTH_DOWN", value=str(result.both_down).lower())
-    if result.both_down:
-        logging_util.emit_kv(key="DEGRADED_HARD_FAIL", value="true")
-    if result.presence_input_empty:
-        logging_util.emit_kv(key="PRESENCE_INPUT_EMPTY", value="true")
-    if result.degraded:
-        _emit("DEGRADED_EXPLANATION_BEGIN")
-        for line in result.explanation:
-            _emit(line)
-        _emit("DEGRADED_EXPLANATION_END")
-    return 0
+
+
+def resolve_model_pins(*, codex_state: str, cursor_state: str) -> tuple[str, str, str, str]:
+    """Shell out to `agent resolve-model-pins`; return (cursor_status, cursor_detail, codex_status, codex_detail)."""
+    cmd = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "agent",
+        "resolve-model-pins",
+        "--codex-state",
+        codex_state,
+        "--cursor-state",
+        cursor_state,
+    ]
+    result = ProcRunner().run(cmd)
+    stdout = result.stdout or ""
+    return (
+        larch_io.kv_value(text=stdout, key="CURSOR_MODEL_PINS", duplicate_policy="first").strip(),
+        larch_io.kv_value(text=stdout, key="CURSOR_MODEL_PIN_DETAIL", duplicate_policy="first").strip(),
+        larch_io.kv_value(text=stdout, key="CODEX_MODEL_PINS", duplicate_policy="first").strip(),
+        larch_io.kv_value(text=stdout, key="CODEX_MODEL_PIN_DETAIL", duplicate_policy="first").strip(),
+    )
 
 
 def _read_plugin_version_best_effort() -> str:
@@ -903,6 +376,7 @@ def status_check_main(argv: list[str] | None = None, *, runner: Runner | None = 
         parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
+    _ = runner  # retained for call-site compatibility; pins resolve via Rust CLI
     version = _read_plugin_version_best_effort()
     try:
         reviewer_result = check_reviewers()
@@ -924,9 +398,7 @@ def status_check_main(argv: list[str] | None = None, *, runner: Runner | None = 
         cursor_present=cursor_present,
         skill="status",
     )
-    active_runner = runner if runner is not None else ProcRunner()
-    pins = resolve_model_pins(
-        runner=active_runner,
+    cursor_pins, cursor_detail, codex_pins, codex_detail = resolve_model_pins(
         codex_state=degraded.codex_state,
         cursor_state=degraded.cursor_state,
     )
@@ -942,10 +414,10 @@ def status_check_main(argv: list[str] | None = None, *, runner: Runner | None = 
         gate_detail = reviewer_result.codex_gate_detail or _current_codex_gate_detail()
         if gate_detail is not None:
             logging_util.emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
-    logging_util.emit_kv(key="CURSOR_MODEL_PINS", value=pins.cursor.status)
-    if pins.cursor.detail:
-        logging_util.emit_kv(key="CURSOR_MODEL_PIN_DETAIL", value=pins.cursor.detail)
-    logging_util.emit_kv(key="CODEX_MODEL_PINS", value=pins.codex.status)
-    if pins.codex.detail:
-        logging_util.emit_kv(key="CODEX_MODEL_PIN_DETAIL", value=pins.codex.detail)
+    logging_util.emit_kv(key="CURSOR_MODEL_PINS", value=cursor_pins or "skipped")
+    if cursor_detail:
+        logging_util.emit_kv(key="CURSOR_MODEL_PIN_DETAIL", value=cursor_detail)
+    logging_util.emit_kv(key="CODEX_MODEL_PINS", value=codex_pins or "skipped")
+    if codex_detail:
+        logging_util.emit_kv(key="CODEX_MODEL_PIN_DETAIL", value=codex_detail)
     return 0

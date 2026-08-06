@@ -265,6 +265,22 @@ impl Drop for StartupLockRelease {
     }
 }
 
+/// Acquire-and-release wrapper that keeps the startup lock scoped to a block.
+pub struct StartupLockGuard {
+    _release: Option<StartupLockRelease>,
+}
+
+impl StartupLockGuard {
+    /// Best-effort acquire; lock failure leaves an unlocked guard.
+    #[must_use]
+    pub fn acquire(temporary_root: &TemporaryRoot, config: &StartupLockConfig) -> Self {
+        let release = external_startup_lock_acquire(temporary_root, config)
+            .and_then(|state| external_startup_lock_release_after(state, config))
+            .ok();
+        Self { _release: release }
+    }
+}
+
 fn join_release(
     handle: Option<JoinHandle<Result<(), StartupLockError>>>,
 ) -> Result<(), StartupLockError> {

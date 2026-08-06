@@ -884,11 +884,13 @@ test-check-mid-run-dirty-tree:
 test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty
 
+# Rust CLI smoke aliases remain standalone; see CARVE_OUTS in
+# scripts/test-harness-shards-coverage.sh.
 test-check-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'check_reviewers or health_gate'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands
 
 test-degraded-tools-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k degraded_tools
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands degraded_tools_gate
 
 test-no-grouped-reuse-guard:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py -k grouped_reuse_guard

@@ -4,9 +4,12 @@
 
 mod argv;
 mod auth;
+mod check_reviewers;
+mod degraded_tools;
 mod envelope;
 mod external_agent;
 mod lifecycle;
+mod model_pins;
 mod probe_cache;
 mod registry;
 mod review;
@@ -25,6 +28,14 @@ pub use auth::{
     NO_OPEN_BROWSER_ON, cursor_child_environment, cursor_keychain_arguments,
     cursor_preflight_failure_message, cursor_preflight_refusal, keychain_credential,
 };
+pub use check_reviewers::{
+    CheckReviewersConfig, CheckReviewersResult, PROBE_TIMEOUT_EXIT_CODE, binary_on_path,
+    probe_attempt_rc, resolve_probe_workdir,
+};
+pub use degraded_tools::{
+    CodexGateMessage, DegradedToolsResult, EXTERNAL_TOOL_NAMES, norm_bool, norm_tristate,
+    state_phrase, tool_state,
+};
 pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
 pub use external_agent::{
     CODEX_POLICY_REJECTION_EXCERPT_BYTES, CODEX_POLICY_REJECTION_TAIL_BYTES,
@@ -38,6 +49,15 @@ pub use lifecycle::{
     build_check_budget_argv, build_record_launch_timing_argv, check_token_budget_cap,
     elapsed_minute_message, render_cursor_stall_json, render_timeout_stall_json, run_vendor_launch,
     run_with_vendor_retries,
+};
+pub use model_pins::{
+    CURSOR_MODEL_LIST_ARGV, CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome,
+    EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC, MODEL_PINS_STATUS_LIST_FAILED, MODEL_PINS_STATUS_OK,
+    MODEL_PINS_STATUS_SKIPPED, MODEL_PINS_STATUS_UNKNOWN_ID, MODEL_PINS_STATUS_UNPARSEABLE,
+    MODEL_PINS_STATUS_UNVERIFIABLE, ModelPinsReport, PinnedModel, VendorModelPinResult,
+    codex_pinned_model_declarations, codex_pinned_models, cursor_pinned_model_declarations,
+    cursor_pinned_models, list_failed_detail, model_list_timeout_seconds, parse_cursor_model_list,
+    resolve_codex_model_pins, resolve_cursor_model_pins_from_list, resolve_model_pins,
 };
 pub use probe_cache::{
     CODEX_PROBE_GATE_IMMEDIATE_TTL, CodexProbeAttempt, CodexProbeLoop, CursorProbeLoop,

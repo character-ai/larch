@@ -395,7 +395,7 @@ Clean launcher, content, status, or delimiter failures fall back to inline Step 
 
 ### `OPENAI_API_KEY`
 
-When non-whitespace, the covered Codex paths (`python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `agent launch-codex-implement`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `python/cli.py checks lint-fix`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
+When non-whitespace, the covered Codex paths (`python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `agent launch-codex-implement`, the Codex health probe in `scripts/larch.sh agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `python/cli.py checks lint-fix`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
 
 Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset, empty, or whitespace-only, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs; literal `api_key` / `openai_api_key` assignments are also stripped from those temp configs.
 
@@ -423,7 +423,7 @@ Codex specialist reviewer panel rows use the review role with tier defaults: TRI
 
 These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
 
-`python/cli.py agent check-reviewers` probes Codex with the default role used by specialist reviewer panels, so an invalid default-model override fails closed in Step 0.
+`scripts/larch.sh agent check-reviewers` probes Codex with the default role used by specialist reviewer panels, so an invalid default-model override fails closed in Step 0.
 
 ### External reviewer probe tuning (`agent check-reviewers`)
 
