@@ -1,4 +1,4 @@
-//! Live-mutation authorization gate for issue-dependency mutations.
+//! Live-mutation authorization gate for GitHub issue-graph mutations.
 //!
 //! This ports the Python `check_live_mutation_auth` boundary: operator mode
 //! bypasses context-file validation, a test denial overrides session-inherited

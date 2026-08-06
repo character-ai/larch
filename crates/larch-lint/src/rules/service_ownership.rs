@@ -40,11 +40,12 @@ const INVENTORY_START: &str = "<!-- github-service-ownership:start -->";
 const INVENTORY_END: &str = "<!-- github-service-ownership:end -->";
 const INVENTORY_HEADER: &str = "operation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands";
 const CHIEF_MIGRATION_OWNER: &str = "#7687";
-const REQUIRED_OPERATION_GROUPS: [&str; 9] = [
+const REQUIRED_OPERATION_GROUPS: [&str; 10] = [
     "actions",
     "attestations",
     "comments",
     "issue-dependencies",
+    "issue-sub-issues",
     "issues",
     "labels",
     "pull-requests",

@@ -39,8 +39,9 @@ groups are unique. Adapter paths must exist, planning owners must be concrete
 roadmap or completed-leaf issues, and every listed command must match the
 recorded owner and the three independent migration milestones. A command may
 appear in more than one row when it consumes several typed adapter operations.
-Issue-dependency adapter parity landed in #7841; #7682 plans the later command
-cutover without pretending that an executable atomic leaf is already assigned.
+Issue-dependency adapter parity landed in #7841, and sub-issue adapter parity
+in #8164; #7682 plans the later command cutovers without pretending that an
+executable atomic leaf is already assigned.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
@@ -51,6 +52,7 @@ attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete
 comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify *,issue *,tracking-issue *
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	deps *
 issue-dependencies	crates/larch-adapters/src/github/operations.rs	python	#7682	complete	pending	pending	block-issue *
+issue-sub-issues	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	issue add-sub-issue
 issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs *,combine-issues *,deps *,issue *,triage *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	python	#7682	complete	pending	pending	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify label,issue *

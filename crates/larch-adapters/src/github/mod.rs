@@ -1,5 +1,5 @@
 //! Authenticated, policy-bound GitHub transport foundation and the typed
-//! pull-request, review, issue-dependency, and release operations built on it.
+//! pull-request, review, issue-graph, and release operations built on it.
 
 mod attestation;
 mod mutation_auth;
@@ -18,6 +18,7 @@ pub use operations::{
     PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult, PullRequestReviewState,
     PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
     ReleaseCandidatePullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
+    SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt, SubIssueRef,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,

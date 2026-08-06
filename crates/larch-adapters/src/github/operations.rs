@@ -1,11 +1,11 @@
-//! Typed pull-request, review, and issue-dependency operations.
+//! Typed pull-request, review, and issue-graph operations.
 //!
 //! Each operation deserializes GitHub REST and fixed-document GraphQL responses
 //! into the minimal typed DTOs current callers require. The DTOs expose no raw
 //! URL or arbitrary GraphQL surface, GraphQL variables are typed, any GraphQL
 //! `errors` member fails closed, ambiguous create outcomes reconcile before they
-//! could duplicate a pull request, and dependency mutations stay behind the live
-//! authorization gate with exact read-back.
+//! could duplicate a pull request, and issue-graph mutations stay behind the
+//! live authorization gate with exact read-back.
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
@@ -55,6 +55,12 @@ pub enum GitHubOperationError {
     GraphqlErrors,
     /// The repository does not expose the issue-dependency API.
     DependencyFeatureUnavailable,
+    /// The repository does not expose the native sub-issue API.
+    SubIssueFeatureUnavailable,
+    /// GitHub rejected a sub-issue mutation because its relationship
+    /// precondition did not hold. Callers must fail closed rather than replace
+    /// a parent implicitly.
+    SubIssuePreconditionFailed,
     /// The live-mutation authorization gate refused the request.
     MutationRefused(&'static str),
     /// A triage-controlled mutation's target no longer has its expected timestamp.
@@ -89,6 +95,12 @@ impl fmt::Display for GitHubOperationError {
             }
             Self::DependencyFeatureUnavailable => formatter
                 .write_str("GitHub issue-dependency API is unavailable for this repository"),
+            Self::SubIssueFeatureUnavailable => {
+                formatter.write_str("GitHub sub-issue API is unavailable for this repository")
+            }
+            Self::SubIssuePreconditionFailed => {
+                formatter.write_str("GitHub rejected the sub-issue relationship precondition")
+            }
             Self::MutationRefused(reason) => {
                 write!(formatter, "live GitHub mutation refused: {reason}")
             }
@@ -385,7 +397,7 @@ impl CreatedPullRequest {
     }
 }
 
-/// One issue-dependency edge as read back from GitHub.
+/// One issue reference returned by a GitHub issue-graph endpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DependencyRef {
     issue_number: u64,
@@ -415,7 +427,10 @@ impl DependencyRef {
     }
 }
 
-/// Outcome of an idempotent dependency add or remove.
+/// One sub-issue reference as read back from GitHub.
+pub type SubIssueRef = DependencyRef;
+
+/// Outcome of an idempotent issue-graph relation add or remove.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DependencyMutation {
     /// The edge was applied and confirmed by exact read-back.
@@ -423,6 +438,9 @@ pub enum DependencyMutation {
     /// The edge already matched the desired state; no mutation was needed.
     AlreadyInDesiredState,
 }
+
+/// Outcome of an idempotent sub-issue add or remove.
+pub type SubIssueMutation = DependencyMutation;
 
 /// Receipt for a dependency mutation and its optional triage freshness proof.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -441,6 +459,19 @@ impl DependencyMutationReceipt {
     #[must_use]
     pub fn updated_at(&self) -> Option<&str> {
         self.updated_at.as_deref()
+    }
+}
+
+/// Receipt for a sub-issue mutation proven by a fresh relation read-back.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SubIssueMutationReceipt {
+    outcome: SubIssueMutation,
+}
+
+impl SubIssueMutationReceipt {
+    #[must_use]
+    pub const fn outcome(&self) -> SubIssueMutation {
+        self.outcome
     }
 }
 
@@ -488,6 +519,16 @@ pub struct DependencyEdge<'a> {
     pub expected_updated_at: Option<&'a str>,
 }
 
+/// One native parent-to-sub-issue edge to add or remove.
+#[derive(Clone, Copy)]
+pub struct SubIssueEdge<'a> {
+    pub owner: &'a str,
+    pub repo: &'a str,
+    pub parent_issue: u64,
+    /// GitHub's immutable numeric database id for the sub-issue.
+    pub sub_issue_id: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DependencyTarget {
     updated_at: String,
@@ -509,6 +550,73 @@ enum DependencyWrite {
     FeatureUnavailable,
     Unauthorized,
     Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SubIssueWrite {
+    Accepted,
+    PreconditionFailed,
+    FeatureUnavailable,
+    Unauthorized,
+    RateLimited,
+    Failed,
+}
+
+#[derive(Clone, Copy)]
+enum IssueGraphFeature {
+    Dependency,
+    SubIssue,
+}
+
+impl IssueGraphFeature {
+    const fn unavailable_error(self) -> GitHubOperationError {
+        match self {
+            Self::Dependency => GitHubOperationError::DependencyFeatureUnavailable,
+            Self::SubIssue => GitHubOperationError::SubIssueFeatureUnavailable,
+        }
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency",
+            Self::SubIssue => "sub-issue",
+        }
+    }
+
+    const fn body_error_context(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency response exceeds body bound",
+            Self::SubIssue => "sub-issue response exceeds body bound",
+        }
+    }
+
+    const fn json_error_context(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency JSON response",
+            Self::SubIssue => "sub-issue JSON response",
+        }
+    }
+
+    const fn list_bound_error_context(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency list exceeds item bound",
+            Self::SubIssue => "sub-issue list exceeds item bound",
+        }
+    }
+
+    const fn pagination_bound_error_context(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency pagination exceeds page bound",
+            Self::SubIssue => "sub-issue pagination exceeds page bound",
+        }
+    }
+
+    const fn pagination_link_error_context(self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency pagination link",
+            Self::SubIssue => "sub-issue pagination link",
+        }
+    }
 }
 
 enum MergeExchangeError {
@@ -891,6 +999,116 @@ impl OctocrabGitHubService {
         self.dependency_pages(cancellation, &route).await
     }
 
+    /// List the direct native sub-issues of one parent issue.
+    ///
+    /// The response follows only bounded, same-origin pagination links.
+    ///
+    /// # Errors
+    /// Returns a typed error on cancellation, deadline, authorization,
+    /// transport failure, unavailable sub-issue support, or a response outside
+    /// the sub-issue contract.
+    pub async fn list_sub_issues(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        parent_issue: u64,
+    ) -> Result<Vec<SubIssueRef>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        validate_issue_number(parent_issue, "sub-issue parent number")?;
+        let route = format!("/repos/{owner}/{repo}/issues/{parent_issue}/sub_issues");
+        self.sub_issue_pages(cancellation, &route).await
+    }
+
+    /// Read the direct parent of one native sub-issue, if GitHub reports one.
+    ///
+    /// # Errors
+    /// Returns a typed error on cancellation, deadline, authorization,
+    /// transport failure, unavailable sub-issue support, or a malformed parent
+    /// response. The endpoint's `404` outcome is represented as no parent.
+    pub async fn parent_issue(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        sub_issue: u64,
+    ) -> Result<Option<SubIssueRef>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        validate_issue_number(sub_issue, "sub-issue number")?;
+        let route = format!("/repos/{owner}/{repo}/issues/{sub_issue}/parent");
+        let result = self
+            .guard_operation(cancellation, self.client._get(route.as_str()))
+            .await;
+        let response = match result {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => return Err(self.transport_error(&error)),
+            Err(completion) => return Err(completion_error(completion)),
+        };
+        match response.status().as_u16() {
+            200 => {
+                let body = collect_bounded_response(response, self.policy.limits().body_bytes())
+                    .await
+                    .map_err(|()| {
+                        GitHubOperationError::Malformed(
+                            "sub-issue parent response exceeds body bound",
+                        )
+                    })?;
+                let value = serde_json::from_slice(&body).map_err(|_| {
+                    GitHubOperationError::Malformed("sub-issue parent JSON response")
+                })?;
+                parse_sub_issue_ref(&value, self.policy.limits()).map(Some)
+            }
+            404 => Ok(None),
+            401 | 403 => Err(GitHubOperationError::Unauthorized),
+            410 => Err(GitHubOperationError::SubIssueFeatureUnavailable),
+            429 => Err(GitHubOperationError::RateLimited),
+            status => Err(GitHubOperationError::Transport(
+                self.redactor
+                    .safe_text(format!("sub-issue parent read returned status {status}")),
+            )),
+        }
+    }
+
+    /// Add one native sub-issue behind the live-mutation gate.
+    ///
+    /// A pre-read makes an existing edge a no-op. Every accepted or
+    /// precondition-conflicted mutation proves the final relation by a fresh
+    /// list read-back; it never asks GitHub to replace an existing parent.
+    ///
+    /// # Errors
+    /// Returns `MutationRefused` before any read or write when authorization
+    /// fails. Other failures remain typed and an unproven write returns
+    /// `AmbiguousMutation` rather than being retried blindly.
+    pub async fn add_sub_issue(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        edge: SubIssueEdge<'_>,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        self.mutate_sub_issue(cancellation, authorization, edge, true)
+            .await
+    }
+
+    /// Remove one native sub-issue behind the live-mutation gate.
+    ///
+    /// A pre-read makes an absent edge a no-op. Every accepted or
+    /// precondition-conflicted mutation proves the final relation by a fresh
+    /// list read-back.
+    ///
+    /// # Errors
+    /// Returns `MutationRefused` before any read or write when authorization
+    /// fails. Other failures remain typed and an unproven write returns
+    /// `AmbiguousMutation` rather than being retried blindly.
+    pub async fn remove_sub_issue(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        edge: SubIssueEdge<'_>,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        self.mutate_sub_issue(cancellation, authorization, edge, false)
+            .await
+    }
+
     /// Add one blocked-by dependency edge behind the live-mutation gate, with a
     /// pre-read freshness and idempotency check and exact read-back.
     ///
@@ -1107,6 +1325,140 @@ impl OctocrabGitHubService {
         }
     }
 
+    async fn mutate_sub_issue(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        edge: SubIssueEdge<'_>,
+        adding: bool,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        authorize_mutation(authorization)?;
+        validate_repo(edge.owner, edge.repo)?;
+        validate_issue_number(edge.parent_issue, "sub-issue parent number")?;
+        if edge.sub_issue_id == 0 {
+            return Err(GitHubOperationError::Malformed("sub-issue id"));
+        }
+
+        let _mutation = self.mutation_lock.lock().await;
+        let before = self
+            .list_sub_issues(cancellation, edge.owner, edge.repo, edge.parent_issue)
+            .await?;
+        if sub_issue_present(&before, edge.sub_issue_id) == adding {
+            return Ok(SubIssueMutationReceipt {
+                outcome: SubIssueMutation::AlreadyInDesiredState,
+            });
+        }
+
+        let (route, delete) = if adding {
+            (
+                format!(
+                    "/repos/{}/{}/issues/{}/sub_issues",
+                    edge.owner, edge.repo, edge.parent_issue
+                ),
+                false,
+            )
+        } else {
+            (
+                format!(
+                    "/repos/{}/{}/issues/{}/sub_issue",
+                    edge.owner, edge.repo, edge.parent_issue
+                ),
+                true,
+            )
+        };
+        let body = json!({ "sub_issue_id": edge.sub_issue_id });
+        match self
+            .send_status(cancellation, delete, route.as_str(), Some(&body))
+            .await
+        {
+            Ok(status) => {
+                self.settle_sub_issue(cancellation, edge, adding, status)
+                    .await
+            }
+            Err(error) if requires_sub_issue_reconciliation(&error) => {
+                self.reconcile_sub_issue_mutation(cancellation, edge, adding)
+                    .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn settle_sub_issue(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: SubIssueEdge<'_>,
+        adding: bool,
+        status: u16,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        match classify_sub_issue_write(adding, status) {
+            SubIssueWrite::Accepted => {
+                self.confirm_sub_issue_mutation(
+                    cancellation,
+                    edge,
+                    adding,
+                    GitHubOperationError::Malformed(
+                        "sub-issue mutation not reflected in read-back",
+                    ),
+                )
+                .await
+            }
+            SubIssueWrite::PreconditionFailed => {
+                self.confirm_sub_issue_mutation(
+                    cancellation,
+                    edge,
+                    adding,
+                    GitHubOperationError::SubIssuePreconditionFailed,
+                )
+                .await
+            }
+            SubIssueWrite::FeatureUnavailable => {
+                Err(GitHubOperationError::SubIssueFeatureUnavailable)
+            }
+            SubIssueWrite::Unauthorized => Err(GitHubOperationError::Unauthorized),
+            SubIssueWrite::RateLimited => Err(GitHubOperationError::RateLimited),
+            SubIssueWrite::Failed => {
+                self.reconcile_sub_issue_mutation(cancellation, edge, adding)
+                    .await
+            }
+        }
+    }
+
+    async fn reconcile_sub_issue_mutation(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: SubIssueEdge<'_>,
+        adding: bool,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        self.confirm_sub_issue_mutation(
+            cancellation,
+            edge,
+            adding,
+            GitHubOperationError::AmbiguousMutation,
+        )
+        .await
+    }
+
+    async fn confirm_sub_issue_mutation(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: SubIssueEdge<'_>,
+        adding: bool,
+        mismatch: GitHubOperationError,
+    ) -> Result<SubIssueMutationReceipt, GitHubOperationError> {
+        match self
+            .list_sub_issues(cancellation, edge.owner, edge.repo, edge.parent_issue)
+            .await
+        {
+            Ok(after) if sub_issue_present(&after, edge.sub_issue_id) == adding => {
+                Ok(SubIssueMutationReceipt {
+                    outcome: SubIssueMutation::Applied,
+                })
+            }
+            Ok(_) => Err(mismatch),
+            Err(_) => Err(GitHubOperationError::AmbiguousMutation),
+        }
+    }
+
     async fn settle_dependency(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -1199,32 +1551,67 @@ impl OctocrabGitHubService {
         cancellation: &dyn ProcessCancellation,
         initial_route: &str,
     ) -> Result<Vec<DependencyRef>, GitHubOperationError> {
+        self.issue_ref_pages(
+            cancellation,
+            initial_route,
+            IssueGraphFeature::Dependency,
+            parse_dependency_refs,
+        )
+        .await
+    }
+
+    async fn sub_issue_pages(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        initial_route: &str,
+    ) -> Result<Vec<SubIssueRef>, GitHubOperationError> {
+        self.issue_ref_pages(
+            cancellation,
+            initial_route,
+            IssueGraphFeature::SubIssue,
+            parse_sub_issue_refs,
+        )
+        .await
+    }
+
+    async fn issue_ref_pages(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        initial_route: &str,
+        feature: IssueGraphFeature,
+        parse_page: fn(
+            &Value,
+            GitHubResponseLimits,
+        ) -> Result<Vec<DependencyRef>, GitHubOperationError>,
+    ) -> Result<Vec<DependencyRef>, GitHubOperationError> {
         let limits = self.policy.limits();
         let mut route = initial_route.to_owned();
-        let mut dependencies = Vec::new();
+        let mut issue_refs = Vec::new();
         for _ in 0..limits.pages() {
-            let (value, next) = self.dependency_json_page(cancellation, &route).await?;
-            let page = parse_dependency_refs(&value, limits)?;
-            if dependencies.len().saturating_add(page.len()) > limits.items() {
+            let (value, next) = self
+                .issue_graph_json_page(cancellation, &route, feature)
+                .await?;
+            let page = parse_page(&value, limits)?;
+            if issue_refs.len().saturating_add(page.len()) > limits.items() {
                 return Err(GitHubOperationError::Malformed(
-                    "dependency list exceeds item bound",
+                    feature.list_bound_error_context(),
                 ));
             }
-            dependencies.extend(page);
+            issue_refs.extend(page);
             let Some(next) = next else {
-                return Ok(dependencies);
+                return Ok(issue_refs);
             };
             #[cfg(test)]
             {
-                route = self.dependency_continuation(&next)?;
+                route = self.issue_graph_continuation(&next, feature)?;
             }
             #[cfg(not(test))]
             {
-                route = Self::dependency_continuation(&next)?;
+                route = Self::issue_graph_continuation(&next, feature)?;
             }
         }
         Err(GitHubOperationError::Malformed(
-            "dependency pagination exceeds page bound",
+            feature.pagination_bound_error_context(),
         ))
     }
 
@@ -1253,11 +1640,11 @@ impl OctocrabGitHubService {
             };
             #[cfg(test)]
             {
-                route = self.dependency_continuation(&next)?;
+                route = self.issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
             #[cfg(not(test))]
             {
-                route = Self::dependency_continuation(&next)?;
+                route = Self::issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
         }
         Err(GitHubOperationError::Malformed(
@@ -1280,6 +1667,16 @@ impl OctocrabGitHubService {
         cancellation: &dyn ProcessCancellation,
         route: &str,
     ) -> Result<(Value, Option<String>), GitHubOperationError> {
+        self.issue_graph_json_page(cancellation, route, IssueGraphFeature::Dependency)
+            .await
+    }
+
+    async fn issue_graph_json_page(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        route: &str,
+        feature: IssueGraphFeature,
+    ) -> Result<(Value, Option<String>), GitHubOperationError> {
         let result = self
             .guard_operation(cancellation, self.client._get(route))
             .await;
@@ -1291,48 +1688,58 @@ impl OctocrabGitHubService {
         match response.status().as_u16() {
             200 => {}
             401 | 403 => return Err(GitHubOperationError::Unauthorized),
-            404 => return Err(GitHubOperationError::DependencyFeatureUnavailable),
+            404 => return Err(feature.unavailable_error()),
+            410 if matches!(feature, IssueGraphFeature::SubIssue) => {
+                return Err(GitHubOperationError::SubIssueFeatureUnavailable);
+            }
+            429 if matches!(feature, IssueGraphFeature::SubIssue) => {
+                return Err(GitHubOperationError::RateLimited);
+            }
             status => {
-                return Err(GitHubOperationError::Transport(
-                    self.redactor
-                        .safe_text(format!("dependency read returned status {status}")),
-                ));
+                return Err(GitHubOperationError::Transport(self.redactor.safe_text(
+                    format!("{} read returned status {status}", feature.name()),
+                )));
             }
         }
-        let next = dependency_next_link(response.headers())?;
+        let next = issue_graph_next_link(response.headers(), feature)?;
         let body = collect_bounded_response(response, self.policy.limits().body_bytes())
             .await
-            .map_err(|()| {
-                GitHubOperationError::Malformed("dependency response exceeds body bound")
-            })?;
+            .map_err(|()| GitHubOperationError::Malformed(feature.body_error_context()))?;
         let value = serde_json::from_slice(&body)
-            .map_err(|_| GitHubOperationError::Malformed("dependency JSON response"))?;
+            .map_err(|_| GitHubOperationError::Malformed(feature.json_error_context()))?;
         Ok((value, next))
     }
 
     #[cfg(test)]
-    fn dependency_continuation(&self, continuation: &str) -> Result<String, GitHubOperationError> {
+    fn issue_graph_continuation(
+        &self,
+        continuation: &str,
+        feature: IssueGraphFeature,
+    ) -> Result<String, GitHubOperationError> {
         if let Some(base) = &self.test_continuation_base {
-            let next = base
-                .join(continuation)
-                .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))?;
+            let next = base.join(continuation).map_err(|_| {
+                GitHubOperationError::Malformed(feature.pagination_link_error_context())
+            })?;
             if next.origin() != base.origin() {
                 return Err(GitHubOperationError::Malformed(
-                    "dependency pagination link",
+                    feature.pagination_link_error_context(),
                 ));
             }
             return Ok(next.to_string());
         }
         Self::continuation_url(GITHUB_API_BASE, continuation)
             .map(|url| url.to_string())
-            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))
+            .map_err(|_| GitHubOperationError::Malformed(feature.pagination_link_error_context()))
     }
 
     #[cfg(not(test))]
-    fn dependency_continuation(continuation: &str) -> Result<String, GitHubOperationError> {
+    fn issue_graph_continuation(
+        continuation: &str,
+        feature: IssueGraphFeature,
+    ) -> Result<String, GitHubOperationError> {
         Self::continuation_url(GITHUB_API_BASE, continuation)
             .map(|url| url.to_string())
-            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))
+            .map_err(|_| GitHubOperationError::Malformed(feature.pagination_link_error_context()))
     }
 
     async fn fetch_json(
@@ -1396,6 +1803,17 @@ fn validate_repo(owner: &str, repo: &str) -> Result<(), GitHubOperationError> {
         Ok(())
     } else {
         Err(GitHubOperationError::Malformed("repository owner or name"))
+    }
+}
+
+const fn validate_issue_number(
+    value: u64,
+    context: &'static str,
+) -> Result<(), GitHubOperationError> {
+    if value == 0 {
+        Err(GitHubOperationError::Malformed(context))
+    } else {
+        Ok(())
     }
 }
 
@@ -1558,16 +1976,46 @@ const fn classify_dependency_write(status: u16) -> DependencyWrite {
     }
 }
 
+const fn classify_sub_issue_write(adding: bool, status: u16) -> SubIssueWrite {
+    match status {
+        401 | 403 => SubIssueWrite::Unauthorized,
+        429 => SubIssueWrite::RateLimited,
+        201 if adding => SubIssueWrite::Accepted,
+        200 if !adding => SubIssueWrite::Accepted,
+        400 | 422 => SubIssueWrite::PreconditionFailed,
+        404 if !adding => SubIssueWrite::PreconditionFailed,
+        404 | 410 => SubIssueWrite::FeatureUnavailable,
+        _ => SubIssueWrite::Failed,
+    }
+}
+
 fn dependency_present(edges: &[DependencyRef], blocker_id: u64) -> bool {
     edges.iter().any(|edge| edge.issue_id == blocker_id)
 }
 
-fn dependency_next_link(headers: &http::HeaderMap) -> Result<Option<String>, GitHubOperationError> {
+fn sub_issue_present(edges: &[SubIssueRef], sub_issue_id: u64) -> bool {
+    edges.iter().any(|edge| edge.issue_id == sub_issue_id)
+}
+
+const fn requires_sub_issue_reconciliation(error: &GitHubOperationError) -> bool {
+    matches!(
+        error,
+        GitHubOperationError::Transport(_)
+            | GitHubOperationError::AmbiguousMutation
+            | GitHubOperationError::DeadlineExceeded
+            | GitHubOperationError::Malformed(_)
+    )
+}
+
+fn issue_graph_next_link(
+    headers: &http::HeaderMap,
+    feature: IssueGraphFeature,
+) -> Result<Option<String>, GitHubOperationError> {
     let mut next = None;
     for raw in headers.get_all(LINK) {
-        let raw = raw
-            .to_str()
-            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))?;
+        let raw = raw.to_str().map_err(|_| {
+            GitHubOperationError::Malformed(feature.pagination_link_error_context())
+        })?;
         for entry in raw.split(',') {
             let mut parts = entry.trim().split(';');
             let target = parts.next().unwrap_or_default().trim();
@@ -1587,12 +2035,12 @@ fn dependency_next_link(headers: &http::HeaderMap) -> Result<Option<String>, Git
                 .strip_prefix('<')
                 .and_then(|value| value.strip_suffix('>'))
                 .filter(|value| !value.is_empty())
-                .ok_or(GitHubOperationError::Malformed(
-                    "dependency pagination link",
-                ))?;
+                .ok_or_else(|| {
+                    GitHubOperationError::Malformed(feature.pagination_link_error_context())
+                })?;
             if next.replace(target.to_owned()).is_some() {
                 return Err(GitHubOperationError::Malformed(
-                    "dependency pagination has multiple next links",
+                    feature.pagination_link_error_context(),
                 ));
             }
         }
@@ -1947,14 +2395,61 @@ fn parse_dependency_refs(
         .iter()
         .map(|element| {
             let object = as_object(element)?;
-            Ok(DependencyRef {
-                issue_number: required_u64(object, "number", "dependency issue number")?,
-                issue_id: required_u64(object, "id", "dependency issue id")?,
-                open: optional_str(object, "state", limits, "dependency issue state")?
-                    .is_some_and(|state| state.eq_ignore_ascii_case("open")),
-            })
+            parse_issue_ref(
+                object,
+                limits,
+                "dependency issue number",
+                "dependency issue id",
+                "dependency issue state",
+            )
         })
         .collect()
+}
+
+fn parse_sub_issue_refs(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<Vec<SubIssueRef>, GitHubOperationError> {
+    let array = value
+        .as_array()
+        .ok_or(GitHubOperationError::Malformed("sub-issue list"))?;
+    if array.len() > limits.items() {
+        return Err(GitHubOperationError::Malformed(
+            "sub-issue list exceeds item bound",
+        ));
+    }
+    array
+        .iter()
+        .map(|element| parse_sub_issue_ref(element, limits))
+        .collect()
+}
+
+fn parse_sub_issue_ref(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<SubIssueRef, GitHubOperationError> {
+    parse_issue_ref(
+        as_object(value)?,
+        limits,
+        "sub-issue number",
+        "sub-issue id",
+        "sub-issue state",
+    )
+}
+
+fn parse_issue_ref(
+    object: &Map<String, Value>,
+    limits: GitHubResponseLimits,
+    number_context: &'static str,
+    id_context: &'static str,
+    state_context: &'static str,
+) -> Result<DependencyRef, GitHubOperationError> {
+    Ok(DependencyRef {
+        issue_number: required_u64(object, "number", number_context)?,
+        issue_id: required_u64(object, "id", id_context)?,
+        open: optional_str(object, "state", limits, state_context)?
+            .is_some_and(|state| state.eq_ignore_ascii_case("open")),
+    })
 }
 
 fn parse_state(raw: &str) -> Result<PullRequestState, GitHubOperationError> {
@@ -2049,13 +2544,15 @@ mod tests {
     use super::{
         CreatePlan, DependencyRef, DependencyTarget, GitHubOperationError, MergeStateStatus,
         Mergeable, PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
-        classify_dependency_write, dependency_next_link, dependency_present, edit_body,
-        is_safe_segment, merge_body, parse_dependency_comments, parse_dependency_refs,
-        parse_dependency_target, parse_pull_request, parse_pull_requests,
-        parse_release_candidate_pull_request, parse_review_state, reconcile_create,
-        target_has_protected_lifecycle_state, target_has_security_content, validate_repo,
+        classify_dependency_write, classify_sub_issue_write, dependency_present, edit_body,
+        is_safe_segment, issue_graph_next_link, merge_body, parse_dependency_comments,
+        parse_dependency_refs, parse_dependency_target, parse_pull_request, parse_pull_requests,
+        parse_release_candidate_pull_request, parse_review_state, parse_sub_issue_ref,
+        parse_sub_issue_refs, reconcile_create, sub_issue_present,
+        target_has_protected_lifecycle_state, target_has_security_content, validate_issue_number,
+        validate_repo,
     };
-    use super::{DependencyWrite, PullRequestEdit};
+    use super::{DependencyWrite, IssueGraphFeature, PullRequestEdit, SubIssueWrite};
     use larch_core::GitHubTransportPolicy;
     use serde_json::{Value, json};
 
@@ -2261,6 +2758,60 @@ mod tests {
     }
 
     #[test]
+    fn sub_issue_refs_are_bounded_and_fail_closed() {
+        let refs = parse_sub_issue_refs(
+            &json!([
+                { "number": 10, "id": 111, "state": "open" },
+                { "number": 12, "id": 222, "state": "closed" },
+            ]),
+            limits(),
+        )
+        .expect("valid sub-issue list");
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].issue_number(), 10);
+        assert_eq!(refs[0].issue_id(), 111);
+        assert!(refs[0].is_open());
+        assert!(!refs[1].is_open());
+        assert!(sub_issue_present(&refs, 222));
+        assert_eq!(
+            parse_sub_issue_refs(&json!({}), limits()).expect_err("non-array must fail"),
+            GitHubOperationError::Malformed("sub-issue list")
+        );
+        assert_eq!(
+            parse_sub_issue_ref(&json!({ "number": 10 }), limits())
+                .expect_err("unexpected parent node must fail"),
+            GitHubOperationError::Malformed("sub-issue id")
+        );
+        let too_many = Value::Array(
+            (0..=limits().items())
+                .map(|number| json!({ "number": number + 1, "id": number + 1 }))
+                .collect(),
+        );
+        assert_eq!(
+            parse_sub_issue_refs(&too_many, limits()).expect_err("item bound must fail"),
+            GitHubOperationError::Malformed("sub-issue list exceeds item bound")
+        );
+        assert_eq!(
+            validate_issue_number(0, "sub-issue parent number")
+                .expect_err("zero issue number must fail"),
+            GitHubOperationError::Malformed("sub-issue parent number")
+        );
+        assert_eq!(classify_sub_issue_write(true, 201), SubIssueWrite::Accepted);
+        assert_eq!(
+            classify_sub_issue_write(false, 404),
+            SubIssueWrite::PreconditionFailed
+        );
+        assert_eq!(
+            classify_sub_issue_write(true, 422),
+            SubIssueWrite::PreconditionFailed
+        );
+        assert_eq!(
+            classify_sub_issue_write(true, 429),
+            SubIssueWrite::RateLimited
+        );
+    }
+
+    #[test]
     fn dependency_target_and_pagination_inputs_fail_closed() {
         let target = json!({
             "updated_at": "2026-07-12T10:00:00Z",
@@ -2294,7 +2845,7 @@ mod tests {
             .expect("valid header"),
         );
         assert_eq!(
-            dependency_next_link(&headers).expect("next link"),
+            issue_graph_next_link(&headers, IssueGraphFeature::Dependency).expect("next link"),
             Some(String::from(
                 "/repos/o/r/issues/5/dependencies/blocked_by?page=2"
             ))
@@ -2303,7 +2854,7 @@ mod tests {
             http::header::LINK,
             http::HeaderValue::from_static("bad; rel=next"),
         );
-        assert!(dependency_next_link(&headers).is_err());
+        assert!(issue_graph_next_link(&headers, IssueGraphFeature::Dependency).is_err());
     }
 
     #[test]
@@ -2425,7 +2976,7 @@ mod service_tests {
         GitHubOperationError, LiveMutationRequest, MergeStateStatus, Mergeable,
         OctocrabGitHubService, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
         PullRequestMergeResult, PullRequestSpec, PullRequestState, ReleasePlanningService,
-        ReviewDecision,
+        ReviewDecision, SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt,
     };
     use crate::runtime::Cancellation;
     use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
@@ -2471,6 +3022,19 @@ mod service_tests {
             OctocrabGitHubService::with_test_client(client).with_test_continuation_base(&base),
             server,
         )
+    }
+
+    fn sub_issue_edge() -> SubIssueEdge<'static> {
+        SubIssueEdge {
+            owner: "o",
+            repo: "r",
+            parent_issue: 5,
+            sub_issue_id: 222,
+        }
+    }
+
+    fn sub_issue_json(number: u64, id: u64) -> String {
+        json!({ "number": number, "id": id, "state": "open" }).to_string()
     }
 
     fn pull_request_json(number: u64, state: &str, head: &str) -> String {
@@ -3115,6 +3679,309 @@ mod service_tests {
     }
 
     #[tokio::test]
+    async fn list_sub_issues_follows_a_bounded_same_origin_next_link() {
+        let exchanges = [
+            IssueServiceExchange::pagination(
+                "GET",
+                "/repos/o/r/issues/5/sub_issues",
+                200,
+                format!("[{}]", sub_issue_json(10, 111)),
+                "/repos/o/r/issues/5/sub_issues?page=2",
+            )
+            .expect("valid first page"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/o/r/issues/5/sub_issues?page=2",
+                200,
+                format!("[{}]", sub_issue_json(12, 222)),
+            )
+            .expect("valid second page"),
+        ];
+        let server = IssueServiceStub::start(exchanges).expect("start stub");
+        let (service, server) = service_with_stub(server);
+
+        let refs = service
+            .list_sub_issues(&Cancellation::new(), "o", "r", 5)
+            .await
+            .expect("sub-issues include each page");
+        assert_eq!(
+            refs.iter().map(DependencyRef::issue_id).collect::<Vec<_>>(),
+            [111, 222]
+        );
+        server.join().expect("stub completed");
+
+        let cross_origin = IssueServiceStub::start([IssueServiceExchange::pagination(
+            "GET",
+            "/repos/o/r/issues/5/sub_issues",
+            200,
+            format!("[{}]", sub_issue_json(10, 111)),
+            "https://example.invalid/repos/o/r/issues/5/sub_issues?page=2",
+        )
+        .expect("valid hostile link response")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(cross_origin);
+        assert!(matches!(
+            service
+                .list_sub_issues(&Cancellation::new(), "o", "r", 5)
+                .await
+                .expect_err("cross-origin continuation must fail closed"),
+            GitHubOperationError::Malformed(_)
+        ));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn sub_issue_parent_reads_a_typed_parent_or_absence() {
+        let server = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/12/parent",
+            200,
+            sub_issue_json(5, 111),
+        )
+        .expect("valid parent response")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(server);
+        let parent = service
+            .parent_issue(&Cancellation::new(), "o", "r", 12)
+            .await
+            .expect("typed parent");
+        assert_eq!(parent.expect("parent is present").issue_number(), 5);
+        server.join().expect("stub completed");
+
+        let server = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/12/parent",
+            404,
+            "{}",
+        )
+        .expect("valid no-parent response")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(server);
+        assert_eq!(
+            service
+                .parent_issue(&Cancellation::new(), "o", "r", 12)
+                .await
+                .expect("404 is an absent parent"),
+            None
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn sub_issue_add_and_remove_are_verified_by_exact_read_back() {
+        let add_exchanges = [
+            IssueServiceExchange::json("GET", "/repos/o/r/issues/5/sub_issues", 200, "[]")
+                .expect("valid pre-read"),
+            IssueServiceExchange::json("POST", "/repos/o/r/issues/5/sub_issues", 201, "{}")
+                .expect("valid add"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/o/r/issues/5/sub_issues",
+                200,
+                format!("[{}]", sub_issue_json(12, 222)),
+            )
+            .expect("valid add read-back"),
+        ];
+        let server = IssueServiceStub::start(add_exchanges).expect("start stub");
+        let (service, server) = service_with_stub(server);
+        assert_eq!(
+            service
+                .add_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect("verified add"),
+            SubIssueMutationReceipt {
+                outcome: SubIssueMutation::Applied,
+            }
+        );
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests[1].method, "POST");
+        assert_eq!(requests[1].path, "/repos/o/r/issues/5/sub_issues");
+        assert_eq!(requests[1].body.bytes, br#"{"sub_issue_id":222}"#);
+
+        let remove_exchanges = [
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/o/r/issues/5/sub_issues",
+                200,
+                format!("[{}]", sub_issue_json(12, 222)),
+            )
+            .expect("valid remove pre-read"),
+            IssueServiceExchange::json("DELETE", "/repos/o/r/issues/5/sub_issue", 200, "{}")
+                .expect("valid remove"),
+            IssueServiceExchange::json("GET", "/repos/o/r/issues/5/sub_issues", 200, "[]")
+                .expect("valid remove read-back"),
+        ];
+        let server = IssueServiceStub::start(remove_exchanges).expect("start stub");
+        let (service, server) = service_with_stub(server);
+        assert_eq!(
+            service
+                .remove_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect("verified removal"),
+            SubIssueMutationReceipt {
+                outcome: SubIssueMutation::Applied,
+            }
+        );
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests[1].method, "DELETE");
+        assert_eq!(requests[1].path, "/repos/o/r/issues/5/sub_issue");
+        assert_eq!(requests[1].body.bytes, br#"{"sub_issue_id":222}"#);
+    }
+
+    #[tokio::test]
+    async fn sub_issue_mutations_are_idempotent_and_authorization_gated() {
+        let present = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/5/sub_issues",
+            200,
+            format!("[{}]", sub_issue_json(12, 222)),
+        )
+        .expect("valid present relation")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(present);
+        assert_eq!(
+            service
+                .add_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect("present add is a no-op"),
+            SubIssueMutationReceipt {
+                outcome: SubIssueMutation::AlreadyInDesiredState,
+            }
+        );
+        server.join().expect("stub completed");
+
+        let absent = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/5/sub_issues",
+            200,
+            "[]",
+        )
+        .expect("valid absent relation")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(absent);
+        assert_eq!(
+            service
+                .remove_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect("absent removal is a no-op"),
+            SubIssueMutationReceipt {
+                outcome: SubIssueMutation::AlreadyInDesiredState,
+            }
+        );
+        server.join().expect("stub completed");
+
+        let denied = IssueServiceStub::start([]).expect("start stub");
+        let (service, server) = service_with_stub(denied);
+        assert_eq!(
+            service
+                .add_sub_issue(&Cancellation::new(), &denied_request(), sub_issue_edge())
+                .await
+                .expect_err("live mutation gate runs before a read"),
+            GitHubOperationError::MutationRefused("unauthorized-mutation")
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn sub_issue_conflicts_and_uncertain_writes_fail_closed_after_read_back() {
+        let conflict_exchanges = [
+            IssueServiceExchange::json("GET", "/repos/o/r/issues/5/sub_issues", 200, "[]")
+                .expect("valid pre-read"),
+            IssueServiceExchange::json("POST", "/repos/o/r/issues/5/sub_issues", 422, "{}")
+                .expect("valid conflict"),
+            IssueServiceExchange::json("GET", "/repos/o/r/issues/5/sub_issues", 200, "[]")
+                .expect("valid conflict read-back"),
+        ];
+        let server = IssueServiceStub::start(conflict_exchanges).expect("start stub");
+        let (service, server) = service_with_stub(server);
+        assert_eq!(
+            service
+                .add_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect_err("unrelated parent conflict must fail closed"),
+            GitHubOperationError::SubIssuePreconditionFailed
+        );
+        server.join().expect("stub completed");
+
+        let reconcile_exchanges = [
+            IssueServiceExchange::json("GET", "/repos/o/r/issues/5/sub_issues", 200, "[]")
+                .expect("valid pre-read"),
+            IssueServiceExchange::disconnect("POST", "/repos/o/r/issues/5/sub_issues"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/o/r/issues/5/sub_issues",
+                200,
+                format!("[{}]", sub_issue_json(12, 222)),
+            )
+            .expect("valid reconciliation read-back"),
+        ];
+        let server = IssueServiceStub::start(reconcile_exchanges).expect("start stub");
+        let (service, server) = service_with_stub(server);
+        assert_eq!(
+            service
+                .add_sub_issue(&Cancellation::new(), &operator_request(), sub_issue_edge())
+                .await
+                .expect("read-back proves the disconnected mutation"),
+            SubIssueMutationReceipt {
+                outcome: SubIssueMutation::Applied,
+            }
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn sub_issue_reads_keep_cancellation_authorization_and_transport_typed() {
+        let unauthorized = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/5/sub_issues",
+            401,
+            "{}",
+        )
+        .expect("valid unauthorized response")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(unauthorized);
+        assert_eq!(
+            service
+                .list_sub_issues(&Cancellation::new(), "o", "r", 5)
+                .await
+                .expect_err("unauthorized read stays typed"),
+            GitHubOperationError::Unauthorized
+        );
+        server.join().expect("stub completed");
+
+        let transport = IssueServiceStub::start([IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/5/sub_issues",
+            500,
+            "{}",
+        )
+        .expect("valid transport response")])
+        .expect("start stub");
+        let (service, server) = service_with_stub(transport);
+        assert!(matches!(
+            service
+                .list_sub_issues(&Cancellation::new(), "o", "r", 5)
+                .await
+                .expect_err("transport failure stays typed"),
+            GitHubOperationError::Transport(_)
+        ));
+        server.join().expect("stub completed");
+
+        let cancelled = Cancellation::new();
+        cancelled.cancel();
+        let idle = IssueServiceStub::start([]).expect("start stub");
+        let (service, server) = service_with_stub(idle);
+        assert_eq!(
+            service
+                .list_sub_issues(&cancelled, "o", "r", 5)
+                .await
+                .expect_err("cancelled read stays typed"),
+            GitHubOperationError::Cancelled
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
     async fn add_blocked_by_is_idempotent_and_gated() {
         let cancellation = Cancellation::new();
         let edge = DependencyEdge {
@@ -3393,6 +4260,8 @@ mod service_tests {
             GitHubOperationError::Malformed("pull request state"),
             GitHubOperationError::GraphqlErrors,
             GitHubOperationError::DependencyFeatureUnavailable,
+            GitHubOperationError::SubIssueFeatureUnavailable,
+            GitHubOperationError::SubIssuePreconditionFailed,
             GitHubOperationError::MutationRefused("unauthorized-mutation"),
             GitHubOperationError::StaleDependencyTarget,
             GitHubOperationError::ProtectedDependencyTarget,

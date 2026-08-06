@@ -9,6 +9,7 @@ fn ownership_matrix(adapter: &str) -> String {
         "attestations",
         "comments",
         "issue-dependencies",
+        "issue-sub-issues",
         "issues",
         "labels",
         "pull-requests",
