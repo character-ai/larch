@@ -6127,11 +6127,13 @@ verb = "publish-breadcrumbs"
 python_module = "larch.report.run_log_commit"
 python_function = "publish_breadcrumbs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8074
+clean_install_test = "clean-install-run-log-publish-breadcrumbs"
 
 [[commands]]
 domain = "run-log"
@@ -8415,8 +8417,8 @@ rust = ["object-store gcs"]
 [[callers]]
 path = "python/larch/report/run_log_commit.py"
 kind = "python-runtime"
-python = ["redact scrub-log-secrets"]
-rust = []
+python = []
+rust = ["run-log publish-breadcrumbs"]
 
 [[callers]]
 path = "python/larch/report/run_log_flush.py"

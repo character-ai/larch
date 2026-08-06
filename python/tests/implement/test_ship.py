@@ -14,7 +14,6 @@ import pytest
 
 from larch.core import config, rust_runtime
 from larch.report import final_report
-from larch.report import run_log_commit
 from larch.report import run_log_flush
 from larch.report import run_log_batch
 from larch.report import run_log_manifest
@@ -1429,11 +1428,6 @@ def test_straight_merge_post_ensure_committed_snapshot(monkeypatch: pytest.Monke
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        run_log_commit,
-        "_commit_run",
-        lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
-    )
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
@@ -1496,11 +1490,6 @@ def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        run_log_commit,
-        "_commit_run",
-        lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
-    )
 
     real_flush = _REAL_FLUSH_LOGS_PRE
 

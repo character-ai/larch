@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -315,7 +314,6 @@ def test_refresh_logs_checkpoint_state_file_less_stages_without_git_commit(
         runner.git_commits += 1
         return CommandResult(("git", "commit"), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
     skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
@@ -614,30 +612,6 @@ def test_token_batch_refresh_json_not_written_to_batch_dir(tmp_path: Path) -> No
     assert not (run_dir / "token-report-refresh.json").exists()
 
 
-def test_copytree_rejects_symlinks_escaping_run_dir(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    secret = tmp_path / "secret.txt"
-    _ = secret.write_text("secret", encoding="utf-8")
-    link = run_dir / "link.txt"
-    link.symlink_to(secret)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    ctx = _ctx(tmp_path, str(state))
-    with pytest.raises(ShipError, match="refusing symlink"):
-        _ = run_log_commit._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-            ctx=ctx,
-            log_root=tmp_path / "larch-logs",
-            cwd=str(repo),
-        )
-
-
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
     assert not run_logs.path_under_repo(repo_root=tmp_path, rel_path="../outside")
     assert run_logs.path_under_repo(repo_root=tmp_path, rel_path="docs/plan.md")
@@ -669,29 +643,6 @@ def test_refresh_logs_checkpoint_skip_reason_tokens(tmp_path: Path, line: str, r
     assert skip.reason == reason
 
 
-def test_publish_run_tree_copies_run_id_pathspec(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    ctx = _ctx(tmp_path, str(state))
-    rel = run_log_commit._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert rel == "larch-logs/implement/run-abc"
-    assert (repo / rel / "token-report-refresh.json").is_file()
-
-
 def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
     assert run_log_batch.is_placeholder_run_id("run-1")
     assert run_log_batch.is_placeholder_run_id("run-2")
@@ -702,210 +653,6 @@ def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
     assert not run_log_batch.is_placeholder_run_id("larch-implement-AbC123")
     assert not run_log_batch.is_placeholder_run_id("run")
     assert not run_log_batch.is_placeholder_run_id("")
-
-
-def test_publish_run_tree_refuses_placeholder_run_id(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    # A non-unique placeholder run-id (run-1) must never be copied into the repo
-    # (issue #4397) — the shared path collides across concurrent runs and clones.
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-1\n", encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    rel = run_log_commit._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert rel == ""
-    assert not (repo / "larch-logs" / "implement" / "run-1").exists()
-
-
-def _init_git_repo_on_feature(repo: Path) -> None:
-    for argv in (
-        ["git", "init", "-q"],
-        ["git", "checkout", "-q", "-b", "feature"],
-        ["git", "config", "user.email", "t@example.com"],
-        ["git", "config", "user.name", "t"],
-    ):
-        _ = subprocess.run(argv, cwd=repo, check=True, capture_output=True)
-
-
-def test_commit_run_refuses_placeholder_run_id(tmp_path: Path) -> None:
-    # `run-log commit` (the design + implement repo-commit chokepoint) must
-    # no-op for a placeholder run-id rather than commit a shared directory.
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    log_root = tmp_path / "larch-logs"
-    src = log_root / "implement" / "run-1"
-    src.mkdir(parents=True)
-    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-1",
-        cwd=str(repo),
-    )
-    assert result.returncode == 0
-    assert not (repo / "larch-logs" / "implement" / "run-1").exists()
-
-
-def _write_commit_run_source(log_root: Path, *, run_id: str = "run-abc", text: str = "content\n") -> None:
-    src = log_root / "implement" / run_id
-    src.mkdir(parents=True)
-    _ = (src / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
-    _ = (src / "artifact.txt").write_text(text, encoding="utf-8")
-
-
-def _install_pre_commit_hook(repo: Path, body: str) -> Path:
-    hook = repo / ".git" / "hooks" / "pre-commit"
-    _ = hook.write_text("#!/bin/sh\nset -eu\n" + body, encoding="utf-8")
-    hook.chmod(0o755)
-    return hook
-
-
-def test_commit_run_retries_after_fixer_pre_commit_hook(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
-    log_root = tmp_path / "larch-logs"
-    _write_commit_run_source(log_root, text="missing final newline")
-    counter = repo / ".git" / "hook-count"
-    _install_pre_commit_hook(
-        repo,
-        """
-count=0
-if [ -f .git/hook-count ]; then
-  count=$(cat .git/hook-count)
-fi
-count=$((count + 1))
-printf '%s\\n' "$count" > .git/hook-count
-target='larch-logs/implement/run-abc/artifact.txt'
-if [ "$count" = "1" ]; then
-  printf '\\n' >> "$target"
-  git add "$target"
-  printf 'files were modified by this hook\\n' >&2
-  exit 1
-fi
-exit 0
-""",
-    )
-    original_copy = run_log_commit._copy_tree_to_repo_after_completeness  # pyright: ignore[reportPrivateUsage]
-    copy_count = 0
-
-    def counting_copy(**kwargs: Any) -> tuple[list[str], Path, int, str | None, int]:
-        nonlocal copy_count
-        copy_count += 1
-        return original_copy(**kwargs)
-
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo_after_completeness", counting_copy)
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert counter.read_text(encoding="utf-8").strip() == "2"
-    assert copy_count == 1
-    assert (repo / "larch-logs" / "implement" / "run-abc" / "artifact.txt").read_text(encoding="utf-8") == "missing final newline\n"
-
-
-def test_commit_run_reports_pre_commit_remedy_after_retry_failure(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
-    log_root = tmp_path / "larch-logs"
-    _write_commit_run_source(log_root)
-    counter = repo / ".git" / "hook-count"
-    _install_pre_commit_hook(
-        repo,
-        """
-count=0
-if [ -f .git/hook-count ]; then
-  count=$(cat .git/hook-count)
-fi
-count=$((count + 1))
-printf '%s\\n' "$count" > .git/hook-count
-printf 'ruff.....................................................................Failed\\n' >&2
-printf 'hook id: ruff\\n' >&2
-exit 1
-""",
-    )
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode != 0
-    assert counter.read_text(encoding="utf-8").strip() == "2"
-    assert "--no-logs-commit" in result.stderr
-    assert ".pre-commit-config.yaml" in result.stderr
-    assert "larch-logs/" in result.stderr
-
-
-def test_commit_run_retry_returns_unchanged_when_hook_restores_head(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    dest = repo / "larch-logs" / "implement" / "run-abc"
-    dest.mkdir(parents=True)
-    _ = (dest / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
-    _ = (dest / "artifact.txt").write_text("old\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
-    log_root = tmp_path / "larch-logs"
-    _write_commit_run_source(log_root, text="new\n")
-    def skip_manifest_update(_manifest: Path) -> None:
-        return
-
-    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", skip_manifest_update)
-    _install_pre_commit_hook(
-        repo,
-        """
-target='larch-logs/implement/run-abc/artifact.txt'
-printf 'old\\n' > "$target"
-git add "$target"
-printf 'files were modified by this hook\\n' >&2
-exit 1
-""",
-    )
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert result.argv == ("true",)
-    assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
-    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "old\n"
 
 
 def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
@@ -960,7 +707,6 @@ def test_refresh_logs_checkpoint_happy_path_stages_without_git_commit(
 
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
-    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
@@ -1099,7 +845,6 @@ def test_refresh_logs_checkpoint_downgrades_stale_step9a1_true_with_ndjson_only(
     def noop_commit(*_args: object, **_kwargs: object) -> CommandResult:
         return CommandResult(("",), 0, "", "", 0.0)
 
-    monkeypatch.setattr(run_log_commit, "_commit_run", noop_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
@@ -1130,11 +875,6 @@ def test_refresh_logs_checkpoint_multi_flush_shipping_then_pr_created(
     monkeypatch.setattr(final_report, "_final_report_token_fields", lambda **_k: {"cost_unavailable": True})  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(
-        run_log_commit,
-        "_commit_run",
-        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    )
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0), raising=False)  # type: ignore[arg-type]
@@ -1466,7 +1206,6 @@ def test_refresh_logs_checkpoint_retains_reloaded_step8_after_final_report_recon
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_commit, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
@@ -1525,7 +1264,6 @@ def test_refresh_logs_checkpoint_strict_final_report_skips_tracking_upsert(
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_commit, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
@@ -1592,14 +1330,9 @@ def test_refresh_logs_checkpoint_stages_without_repo_cwd(tmp_path: Path, monkeyp
     ctx = _ctx(tmp_path, str(state))
     _ = run_log_manifest.init_run(ctx)
 
-    def fail_commit(*_a: object, **_k: object) -> CommandResult:
-        msg = "commit should not run without repo cwd"
-        raise AssertionError(msg)
-
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_log_commit, "_commit_run", fail_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
@@ -1644,37 +1377,6 @@ def test_load_or_recover_manifest_fails_closed_without_valid_run_id(
     assert not manifest.steps_ran
 
 
-def test_publish_run_tree_preserves_existing_dest_when_copy_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "new.txt").write_text("new\n", encoding="utf-8")
-    repo = tmp_path / "repo"
-    dest = repo / "larch-logs" / "implement" / "run-abc"
-    dest.mkdir(parents=True)
-    _ = (dest / "old.txt").write_text("old\n", encoding="utf-8")
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-
-    def fail_copy(*_a: object, **_k: object) -> None:
-        raise ShipError("copy failed")
-
-    monkeypatch.setattr(run_log_commit, "_safe_copy_run_tree", fail_copy)
-    monkeypatch.setattr(run_log_commit, "_safe_copy_run_tree", fail_copy)  # type: ignore[arg-type]
-    ctx = _ctx(tmp_path, str(state))
-    with pytest.raises(ShipError, match="copy failed"):
-        _ = run_log_commit._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-            ctx=ctx,
-            log_root=tmp_path / "larch-logs",
-            cwd=str(repo),
-        )
-    assert (dest / "old.txt").read_text(encoding="utf-8") == "old\n"
-
-
 def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     sub = run_dir / "round-1"
@@ -1709,264 +1411,6 @@ def test_scrub_run_tree_redacts_tmpdir_paths(tmp_path: Path) -> None:
     assert violations == 0
     assert files_scrubbed == 1
     assert "/private/tmp/" not in artifact.read_text(encoding="utf-8")
-
-
-def test_commit_run_reports_copy_tree_scrub_count(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
-    log_root = tmp_path / "larch-logs"
-    src = log_root / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
-    _ = (src / "artifact.txt").write_text("clean\n", encoding="utf-8")
-
-    def fake_scrub(_directory: Path) -> tuple[int, int]:
-        return 2, 1
-
-    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)
-    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)  # type: ignore[arg-type]
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "SECRET_SCRUB_VIOLATIONS=2" in result.stdout
-
-
-def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    run_dir = repo / "larch-logs" / "design" / "run-abc"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
-    _ = (run_dir / "artifact.txt").write_text("clean\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
-
-    def fail_scrub(_directory: Path) -> tuple[int, int]:
-        raise AssertionError("same-tree run-log commit must not re-scrub")
-
-    def noop_update(_manifest: Path) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fail_scrub)
-    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", noop_update)  # type: ignore[arg-type]
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=repo / "larch-logs",
-        skill="design",
-        run_id="run-abc",
-        cwd=str(repo),
-        pre_scrub_violations=3,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert result.argv == ("true",)
-    assert "SECRET_SCRUB_VIOLATIONS=3" in result.stdout
-
-
-def test_replace_tree_with_backup_refuses_symlink_and_non_directory(tmp_path: Path) -> None:
-    staged_for_symlink = tmp_path / "staged-symlink"
-    staged_for_symlink.mkdir()
-    link_target = tmp_path / "link-target"
-    link_target.mkdir()
-    symlink_dest = tmp_path / "symlink-dest"
-    symlink_dest.symlink_to(link_target, target_is_directory=True)
-
-    with pytest.raises(ValueError, match="symlink destination"):
-        run_log_commit._replace_tree_with_backup(staged=staged_for_symlink, dest=symlink_dest)  # pyright: ignore[reportPrivateUsage]
-
-    staged_for_file = tmp_path / "staged-file"
-    staged_for_file.mkdir()
-    file_dest = tmp_path / "file-dest"
-    _ = file_dest.write_text("not a tree\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="non-directory destination"):
-        run_log_commit._replace_tree_with_backup(staged=staged_for_file, dest=file_dest)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_copy_tree_to_repo_replaces_live_tree_without_rmtree(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    log_root = tmp_path / "larch-logs"
-    src = log_root / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "artifact.txt").write_text("new\n", encoding="utf-8")
-    repo = tmp_path / "repo"
-    dest = repo / "larch-logs" / "implement" / "run-abc"
-    dest.mkdir(parents=True)
-    _ = (dest / "artifact.txt").write_text("old\n", encoding="utf-8")
-    original_rmtree = shutil.rmtree
-
-    def guarded_rmtree(path: Path | str, *args: Any, **kwargs: Any) -> None:
-        assert Path(path) != dest
-        original_rmtree(path, *args, **kwargs)
-
-    monkeypatch.setattr(shutil, "rmtree", guarded_rmtree)
-
-    rels, copied_dest, violations, scrub_error = run_log_commit._copy_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        repo_root=repo,
-        skill="implement",
-        run_id="run-abc",
-    )
-
-    assert rels == ["larch-logs/implement/run-abc"]
-    assert copied_dest == dest
-    assert violations == 0
-    assert scrub_error is None
-    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "new\n"
-
-
-def test_copy_tree_to_repo_recovers_interrupted_backup(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    src = log_root / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "artifact.txt").write_text("new\n", encoding="utf-8")
-    repo = tmp_path / "repo"
-    backup = repo / "larch-logs" / "implement" / ".run-abc.removing"
-    backup.mkdir(parents=True)
-    _ = (backup / "artifact.txt").write_text("old\n", encoding="utf-8")
-    dest = repo / "larch-logs" / "implement" / "run-abc"
-
-    rels, copied_dest, violations, scrub_error = run_log_commit._copy_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        repo_root=repo,
-        skill="implement",
-        run_id="run-abc",
-    )
-
-    assert rels == ["larch-logs/implement/run-abc"]
-    assert copied_dest == dest
-    assert violations == 0
-    assert scrub_error is None
-    assert not backup.exists()
-    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "new\n"
-
-
-def test_commit_run_warns_when_manifest_update_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    log_root = tmp_path / "larch-logs"
-    manifest = log_root / "implement" / "run-abc" / "manifest.json"
-    manifest.parent.mkdir(parents=True)
-    _ = manifest.write_text("{}", encoding="utf-8")
-
-    def fail_update(*, path: Path, updates: dict[str, Any]) -> dict[str, Any]:
-        _ = path, updates
-        raise OSError("manifest unavailable")
-
-    def no_rels(**_kw: object) -> tuple[list[str], Path, int, str | None]:
-        return [], repo / "larch-logs" / "implement" / "run-abc", 0, None
-
-    monkeypatch.setattr(run_log_manifest, "_update_manifest_v2", fail_update)
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", no_rels)
-    monkeypatch.setattr(run_log_commit, "_update_manifest_v2", fail_update)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", no_rels)  # type: ignore[arg-type]
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode == 0
-    assert "WARN: larch-log commit manifest update failed: manifest unavailable" in capsys.readouterr().err
-
-
-def test_commit_run_warns_when_breadcrumb_publish_returns_nonzero(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    log_root = tmp_path / "larch-logs"
-    dest = repo / "larch-logs" / "implement" / "run-abc"
-    breadcrumb_argv: list[str] = []
-
-    def copied_rels(**_kw: object) -> tuple[list[str], Path, int, str | None]:
-        return ["larch-logs/implement/run-abc"], dest, 0, None
-
-    def fail_breadcrumbs(argv: list[str]) -> int:
-        breadcrumb_argv.extend(argv)
-        return 1
-
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", copied_rels)
-    monkeypatch.setattr(run_log_commit, "publish_breadcrumbs_main", fail_breadcrumbs)
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", copied_rels)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_commit, "publish_breadcrumbs_main", fail_breadcrumbs)  # type: ignore[arg-type]
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    assert result.returncode == 0
-    assert breadcrumb_argv == [
-        "--source-dir",
-        str(tmp_path / "breadcrumbs"),
-        "--dest-dir",
-        str(dest / "breadcrumbs"),
-    ]
-    assert "WARN: larch-log commit breadcrumb publish failed: rc=1" in capsys.readouterr().err
-
-
-def test_commit_run_publishes_breadcrumbs_without_breadcrumbs_dir(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    log_root = tmp_path / "larch-logs"
-    run_dir = log_root / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
-    _ = (run_dir / "artifact.txt").write_text("run artifact\n", encoding="utf-8")
-    _ = (tmp_path / "larch-quiet-ship.py-123.log").write_text("ship breadcrumb\n", encoding="utf-8")
-    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(repo),
-    )
-
-    quiet_log = repo / "larch-logs" / "implement" / "run-abc" / "breadcrumbs" / "quiet.log"
-    assert result.returncode == 0
-    assert quiet_log.is_file()
-    quiet_text = quiet_log.read_text(encoding="utf-8")
-    assert "=== larch-quiet-ship.py-123.log ===" in quiet_text
-    assert "ship breadcrumb" in quiet_text
 
 
 def test_rebase_under_tmpdir_handles_session_local_absolute_path(
@@ -2361,7 +1805,6 @@ def test_larch_log_flush_does_not_call_git_commit(
         )
 
     monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_commit, "_commit_run", fail_commit)
     monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
@@ -2369,143 +1812,6 @@ def test_larch_log_flush_does_not_call_git_commit(
 
     assert rc == 0
     assert capsys.readouterr().err == ""
-
-
-def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> None:
-    rc = run_log_commit.larch_log_commit_main(
-        [
-            "--log-root",
-            str(tmp_path / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            "run-abc",
-            "--pre-scrub-violations",
-            "-1",
-        ]
-    )
-
-    assert rc == 1
-
-
-def test_larch_log_commit_accepts_tmpdir_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Hermetic: run inside a temp feature-branch repo so the commit chokepoint's
-    # default-branch guard does not fire when the suite itself is checked out on
-    # main. Without this, `run-log commit` returns rc=1 ("refusing larch-log
-    # commit on default branch main") on every push-to-main CI run.
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    monkeypatch.chdir(repo)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": "partial",
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "plan-review-tally.json").write_text("{}\n", encoding="utf-8")
-    _ = (run_dir / "difficulty-rating.json").write_text("{}\n", encoding="utf-8")
-    rc = run_log_commit.larch_log_commit_main(
-        [
-            "--log-root",
-            str(tmp_path / "larch-logs"),
-            "--tmpdir",
-            str(tmp_path / "session"),
-            "--skill",
-            "implement",
-            "--run-id",
-            "run-abc",
-        ]
-    )
-
-    assert rc == 0
-    assert run_dir.is_dir()
-    assert not (repo / "larch-logs").exists()
-
-
-def test_larch_log_commit_main_prepares_terminal_stalled_summary(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": "partial",
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "plan-review-tally.json").write_text("{}\n", encoding="utf-8")
-    _ = (run_dir / "difficulty-rating.json").write_text("{}\n", encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
-
-    rc = run_log_commit.larch_log_commit_main(
-        [
-            "--log-root",
-            str(tmp_path / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            "run-abc",
-        ]
-    )
-
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert "pre-terminal" not in captured.err
-    assert "LARCH_LOG_COMMIT_SHA" not in captured.out
-
-
-def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_git_repo_on_feature(repo)
-    monkeypatch.chdir(repo)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": cast("dict[str, Any]", {}),
-        "status": "partial",
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "session-transcript.jsonl").write_text("[]\n", encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: commit-failed\n", encoding="utf-8")
-    commits: list[str] = []
-
-    def fake_prepare(**_kwargs: object) -> CommandResult:
-        commits.append("prepare")
-        return CommandResult(("run-log", "prepare-publication"), 0, "", "", 0.0)
-
-    monkeypatch.setattr(run_log_commit, "prepare_run_tree_for_publication", fake_prepare)
-    monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-
-    rc = run_log_commit.larch_log_commit_main(
-        [
-            "--log-root",
-            str(tmp_path / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            "run-abc",
-        ]
-    )
-
-    assert rc == 0
-    assert commits == ["prepare"]
 
 
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
@@ -2528,43 +1834,67 @@ def test_warn_secret_scrub_remains_warning_only(
     assert "SECRETS DETECTED AND SCRUBBED" in capsys.readouterr().err
 
 
-def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
+def test_publish_breadcrumbs_consumer_invokes_rust_owner(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "status"),
-                0,
-                f"?? {rel}/token-report-refresh.json\n",
-                "",
-                0.01,
-            ),
-            CommandResult(("git", "clean"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
+    recorded: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        recorded.append(argv)
+        return CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(run_log_commit.proc, "run", fake_run)
+    dest = tmp_path / "larch-logs" / "implement" / "run-abc"
+
+    run_log_commit._publish_breadcrumbs_with_warning(log_root=tmp_path / "larch-logs", dest=dest)  # pyright: ignore[reportPrivateUsage]
+
+    assert len(recorded) == 1
+    assert recorded[0][0].endswith("/scripts/larch.sh")
+    assert recorded[0][1:] == [
+        "run-log",
+        "publish-breadcrumbs",
+        "--source-dir",
+        str(tmp_path / "breadcrumbs"),
+        "--dest-dir",
+        str(dest / "breadcrumbs"),
+    ]
+
+
+def test_publish_breadcrumbs_consumer_warns_on_owner_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def failing_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 1, "", "publish-breadcrumbs: refusing symlink\n", 0.0)
+
+    monkeypatch.setattr(run_log_commit.proc, "run", failing_run)
+
+    run_log_commit._publish_breadcrumbs_with_warning(  # pyright: ignore[reportPrivateUsage]
         log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
+        dest=tmp_path / "larch-logs" / "implement" / "run-abc",
     )
-    assert result.returncode == 0
-    assert result.argv == ("larch-log-volatile-only",)
-    assert runner.git_commits == 0
-    assert ["git", "clean", "-fd", "--", f"{rel}/token-report-refresh.json"] in runner.calls
+
+    assert (
+        "WARN: run-log breadcrumb publish failed: publish-breadcrumbs: refusing symlink"
+        in capsys.readouterr().err
+    )
+
+
+def test_publish_breadcrumbs_consumer_skips_non_larch_logs_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        raise AssertionError(f"unexpected breadcrumb spawn: {argv}")
+
+    monkeypatch.setattr(run_log_commit.proc, "run", fail_run)
+
+    run_log_commit._publish_breadcrumbs_with_warning(  # pyright: ignore[reportPrivateUsage]
+        log_root=tmp_path / "review-logs",
+        dest=tmp_path / "review-logs" / "review" / "run-abc",
+    )
 
 
 def test_refresh_logs_checkpoint_does_not_probe_git_volatile_state(
@@ -2573,364 +1903,9 @@ def test_refresh_logs_checkpoint_does_not_probe_git_volatile_state(
     def fake_commit(*_a: object, **_k: object) -> CommandResult:
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
     skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
-
-
-def test_larch_log_commit_commits_canonical_token_report_delta(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, f" M {rel}/token-report.json\n", "", 0.01),
-            CommandResult(("git", "add"), 0, "", "", 0.01),
-            CommandResult(("git", "diff"), 1, "", "", 0.01),
-            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.returncode == 0
-    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
-
-
-def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    _ = (src / "token-report.ndjson").write_text("{}\n", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "status"),
-                0,
-                f" M {rel}/token-report-refresh.json\n M {rel}/token-report.ndjson\n",
-                "",
-                0.01,
-            ),
-            CommandResult(("git", "add"), 0, "", "", 0.01),
-            CommandResult(("git", "diff"), 1, "", "", 0.01),
-            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.returncode == 0
-    assert result.argv != ("larch-log-volatile-only",)
-    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
-
-
-def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, f"?? {rel}/timing-report-refresh.json\n", "", 0.01),
-            CommandResult(("git", "clean"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, " M README.md\n", "", 0.01),
-        ],
-    )
-    with pytest.raises(ShipError, match="dirty porcelain"):
-        _ = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-            runner=runner,
-            ctx=_ctx(tmp_path, str(state)),
-            log_root=tmp_path / "larch-logs",
-            cwd=str(repo),
-        )
-
-
-@pytest.mark.parametrize(
-    ("failing_call", "status_stdout"),
-    [
-        (
-            ("git", "reset"),
-            "A  larch-logs/implement/run-abc/token-report-refresh.json\n",
-        ),
-        (
-            ("git", "restore"),
-            " M larch-logs/implement/run-abc/token-report-refresh.json\n",
-        ),
-        (
-            ("git", "clean"),
-            "?? larch-logs/implement/run-abc/token-report-refresh.json\n",
-        ),
-    ],
-)
-def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
-    failing_call: tuple[str, str],
-    status_stdout: str,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, status_stdout, "", 0.01),
-            CommandResult(failing_call, 1, "", "failed", 0.01),
-        ],
-    )
-    with pytest.raises(ShipError, match="run-log volatile cleanup failed"):
-        _ = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-            runner=runner,
-            ctx=_ctx(tmp_path, str(state)),
-            log_root=tmp_path / "larch-logs",
-            cwd=str(repo),
-        )
-    assert all(call != ["git", "clean", "-fd", "--", rel] for call in runner.calls)
-
-
-def test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report-refresh.json").write_text("secret", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-
-    def fake_scrub(_directory: Path) -> tuple[int, int]:
-        return 1, 1
-
-    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)
-    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, f" M {rel}/token-report-refresh.json\n", "", 0.01),
-            CommandResult(("git", "restore"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.returncode == 0
-    assert result.argv == ("larch-log-volatile-only",)
-    assert not any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
-    assert ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", f"{rel}/token-report-refresh.json"] in runner.calls
-
-
-def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "session-transcript-refresh.txt").write_text("transcript", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "status"),
-                0,
-                f"?? {rel}/session-transcript-refresh.txt\n",
-                "",
-                0.01,
-            ),
-            CommandResult(("git", "clean"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.argv == ("larch-log-volatile-only",)
-    assert ["git", "clean", "-fd", "--", f"{rel}/session-transcript-refresh.txt"] in runner.calls
-
-
-def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    path = f"{rel}/token-report-refresh.json"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, f"AM {path}\n", "", 0.01),
-            CommandResult(("git", "reset", "HEAD"), 0, "", "", 0.01),
-            CommandResult(("git", "restore"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.argv == ("larch-log-volatile-only",)
-    reset_call = ["git", "reset", "HEAD", "--", rel]
-    restore_call = ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path]
-    assert reset_call in runner.calls
-    assert restore_call in runner.calls
-    assert runner.calls.index(reset_call) < runner.calls.index(restore_call)
-
-
-def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    rel = "larch-logs/implement/run-abc"
-    path = f"{rel}/timing-report-refresh.json"
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, f"A  {path}\n", "", 0.01),
-            CommandResult(("git", "reset", "HEAD"), 0, "", "", 0.01),
-            CommandResult(("git", "restore"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-        ],
-    )
-    result = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-        runner=runner,
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    assert result.argv == ("larch-log-volatile-only",)
-    reset_call = ["git", "reset", "HEAD", "--", rel]
-    restore_call = ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path]
-    assert reset_call in runner.calls
-    assert restore_call in runner.calls
-    assert runner.calls.index(reset_call) < runner.calls.index(restore_call)
-
-
-def test_publish_run_tree_uses_repo_root_not_cwd_subdir(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Regression: copy destination uses _REPO_ROOT regardless of caller CWD."""
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subdir = repo / "python"
-    subdir.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
-    ctx = _ctx(tmp_path, str(state))
-    rel = run_log_commit._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        log_root=tmp_path / "larch-logs",
-        cwd=str(subdir),  # CWD is a repo subdirectory, not the root
-    )
-    assert rel == "larch-logs/implement/run-abc"
-    # Copy must land under repo root, not under the subdirectory CWD.
-    assert (repo / rel / "manifest.json").is_file(), "copy must land under repo root"
-    assert not (subdir / rel).exists(), "copy must NOT land under subdir CWD"
-
-
-def test_larch_log_commit_rejects_cwd_outside_repo_root(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """Guard: raise ShipError when caller CWD is not the repo root."""
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    src = tmp_path / "larch-logs" / "implement" / "run-abc"
-    src.mkdir(parents=True)
-    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subdir = repo / "python"
-    subdir.mkdir()
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)
-    ctx = _ctx(tmp_path, str(state))
-    with pytest.raises(ShipError, match="repo root"):
-        _ = run_log_commit._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
-            runner=RecordingRunner(),
-            ctx=ctx,
-            log_root=tmp_path / "larch-logs",
-            cwd=str(subdir),
-        )
 
 
 def test_render_ledger_reports_uses_direct_renderers(
@@ -3335,7 +2310,7 @@ def test_design_invariant_assessment_not_required_for_nonapproved_absent_invalid
     assert missing == []
 
 
-def test_copy_tree_to_repo_completeness_refuses_missing_invariant_assessment(
+def test_archive_prep_completeness_refuses_missing_invariant_assessment(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -3347,17 +2322,15 @@ def test_copy_tree_to_repo_completeness_refuses_missing_invariant_assessment(
     (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
     (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
 
-    rels, _dest, _violations, error, rc = run_log_commit._copy_tree_to_repo_after_completeness(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        repo_root=repo,
-        skill="design",
-        run_id="RUN1",
-    )
+    with pytest.raises(ShipError) as excinfo:
+        _ = run_log_commit.prepare_run_for_archive(
+            log_root=log_root,
+            repo_root=repo,
+            skill="design",
+            run_id="RUN1",
+        )
 
-    assert not rels
-    assert rc == config.RUN_LOG_INCOMPLETE_RC
-    assert error == "run-log incomplete: invariant-assessment:architectural-invariant-assessment.md"
-    assert not (repo / "larch-logs" / "design" / "RUN1").exists()
+    assert str(excinfo.value) == "run-log incomplete: invariant-assessment:architectural-invariant-assessment.md"
 
 
 def test_design_guideline_assessment_required_for_approved_present_guidelines(tmp_path: Path) -> None:
@@ -3441,7 +2414,7 @@ def test_design_guideline_assessment_not_required_for_nonapproved_or_absent_inva
     assert missing == []
 
 
-def test_copy_tree_to_repo_completeness_uses_consumer_repo_root_for_guidelines(
+def test_archive_prep_completeness_uses_consumer_repo_root_for_guidelines(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -3453,17 +2426,15 @@ def test_copy_tree_to_repo_completeness_uses_consumer_repo_root_for_guidelines(
     (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
     (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
 
-    rels, _dest, _violations, error, rc = run_log_commit._copy_tree_to_repo_after_completeness(  # pyright: ignore[reportPrivateUsage]
-        log_root=log_root,
-        repo_root=repo,
-        skill="design",
-        run_id="RUN1",
-    )
+    with pytest.raises(ShipError) as excinfo:
+        _ = run_log_commit.prepare_run_for_archive(
+            log_root=log_root,
+            repo_root=repo,
+            skill="design",
+            run_id="RUN1",
+        )
 
-    assert not rels
-    assert rc == config.RUN_LOG_INCOMPLETE_RC
-    assert error == "run-log incomplete: guideline-assessment:architectural-guideline-assessment.md"
-    assert not (repo / "larch-logs" / "design" / "RUN1").exists()
+    assert str(excinfo.value) == "run-log incomplete: guideline-assessment:architectural-guideline-assessment.md"
 
 
 def test_design_completed_step3_without_plan_review_does_not_reach_round_requirements(tmp_path: Path) -> None:
@@ -3724,98 +2695,6 @@ def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["schema_version"] == 2
     assert data["skill"] == "implement"
-
-
-def test_publish_breadcrumbs_noops_source_outside_session_tmpdir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = tmp_path / "session"
-    outside = tmp_path / "outside"
-    (outside / "breadcrumbs").mkdir(parents=True)
-    # A quiet log present outside the session tmpdir must NOT be published.
-    _ = (outside / "larch-quiet-implement-1.log").write_text("hi\n", encoding="utf-8")
-    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
-    dest = tmp_path / "dest"
-    rc = run_log_commit.publish_breadcrumbs_main(
-        ["--source-dir", str(outside / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
-    )
-    assert rc == 0
-    assert not (dest / "breadcrumbs").exists()
-
-
-def test_publish_breadcrumbs_allows_source_under_session_tmpdir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = tmp_path / "session"
-    (session / "breadcrumbs").mkdir(parents=True)
-    _ = (session / "larch-quiet-implement-1.log").write_text("hello\n", encoding="utf-8")
-    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    rc = run_log_commit.publish_breadcrumbs_main(
-        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
-    )
-    assert rc == 0
-    assert (dest / "breadcrumbs").is_dir()
-
-
-def test_publish_breadcrumbs_main_succeeds_without_breadcrumbs_dir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = tmp_path / "session"
-    session.mkdir()
-    _ = (session / "larch-quiet-implement-1.log").write_text("hello from quiet log\n", encoding="utf-8")
-    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
-    dest = tmp_path / "dest"
-
-    rc = run_log_commit.publish_breadcrumbs_main(
-        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
-    )
-
-    quiet_log = dest / "breadcrumbs" / "quiet.log"
-    assert rc == 0
-    assert quiet_log.is_file()
-    quiet_text = quiet_log.read_text(encoding="utf-8")
-    assert "=== larch-quiet-implement-1.log ===" in quiet_text
-    assert "hello from quiet log" in quiet_text
-
-
-def test_publish_breadcrumbs_replaces_live_tree_without_rmtree(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = tmp_path / "session"
-    (session / "breadcrumbs").mkdir(parents=True)
-    _ = (session / "larch-quiet-implement-1.log").write_text("hello\n", encoding="utf-8")
-    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
-    dest = tmp_path / "dest" / "breadcrumbs"
-    dest.mkdir(parents=True)
-    _ = (dest / "quiet.log").write_text("old\n", encoding="utf-8")
-    original_rmtree = shutil.rmtree
-
-    def guarded_rmtree(path: Path | str, *args: Any, **kwargs: Any) -> None:
-        assert Path(path) != dest
-        original_rmtree(path, *args, **kwargs)
-
-    monkeypatch.setattr(shutil, "rmtree", guarded_rmtree)
-
-    rc = run_log_commit.publish_breadcrumbs_main(
-        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest)]
-    )
-
-    assert rc == 0
-    assert "hello" in (dest / "quiet.log").read_text(encoding="utf-8")
 
 
 def test_manifest_v2_round_trip_preserves_reserved_and_extension_bytes() -> None:

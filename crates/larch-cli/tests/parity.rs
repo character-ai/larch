@@ -283,6 +283,12 @@ fn run_log_arguments(id: &str) -> &'static [&'static str] {
             "%SESSION%/payload.md",
         ],
         "clean-install-run-log-verify-completeness" => &["%SESSION%/verify-run"],
+        "clean-install-run-log-publish-breadcrumbs" => &[
+            "--source-dir",
+            "%SESSION%/breadcrumbs",
+            "--dest-dir",
+            "%SESSION%/larch-logs/clean/clean-install/breadcrumbs",
+        ],
         _ => &["--help"],
     }
 }
@@ -668,6 +674,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-run-log-verify-completeness",
         "run-log",
         "verify-completeness",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-publish-breadcrumbs",
+        "run-log",
+        "publish-breadcrumbs",
     ),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
@@ -3441,11 +3452,16 @@ exec "$REAL_LARCH" "$@"
     }
 }
 
-/// Seed the payloads, round source, run directory, and required-files manifest
-/// the `run-log` entry-write verbs read on a clean install.
+/// Seed the payloads, quiet log, round source, run directory, and required-files
+/// manifest the `run-log` entry-write and breadcrumb verbs read on a clean install.
 fn seed_clean_install_run_log_inputs(root: &Path, session: &Path) {
     fs::write(session.join("payload.md"), "clean-install payload\n")
         .expect("seed clean-install batch payload");
+    fs::write(
+        session.join("larch-quiet-clean-install.sh-1.log"),
+        "clean-install breadcrumb\n",
+    )
+    .expect("seed clean-install quiet log");
     fs::write(session.join("record.ndjson"), "{\"clean\":\"install\"}\n")
         .expect("seed clean-install append record");
     let round_source = session.join("round-src");

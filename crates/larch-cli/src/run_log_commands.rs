@@ -1,6 +1,8 @@
 //! `run-log` command boundary.
 
+use crate::argparse_compat::parse;
 use larch_adapters::git::GixRepository;
+use larch_adapters::run_lifecycle;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
 use larch_adapters::runtime::LarchRuntime;
 use larch_adapters::s3_storage::{R2Endpoint, S3Storage};
@@ -106,6 +108,45 @@ pub fn manifest(arguments: &[OsString]) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => manifest_failure(&error.to_string()),
+    }
+}
+
+/// Run the Rust-owned `run-log publish-breadcrumbs` command.
+///
+/// `--source-dir` names the session's `breadcrumbs/` publication hint, so the
+/// session root that actually holds the quiet logs is its parent. `--dest-dir`
+/// is the published `breadcrumbs/` directory, replaced atomically.
+#[must_use]
+pub fn publish_breadcrumbs(arguments: &[OsString]) -> ExitCode {
+    let parsed = parse(arguments, &["--source-dir", "--dest-dir"], 0);
+    // `argparse` reported a mid-parse error before the required-option check,
+    // and exited 2 for either; the Python caller returned that code unchanged.
+    if let Some(error) = parsed.error() {
+        eprintln!("publish-breadcrumbs: {error}");
+        return ExitCode::from(2);
+    }
+    let (Some(source_dir), Some(dest_dir)) =
+        (parsed.value("--source-dir"), parsed.value("--dest-dir"))
+    else {
+        eprintln!("publish-breadcrumbs: --source-dir and --dest-dir are required");
+        return ExitCode::from(2);
+    };
+    let source_dir = Path::new(source_dir);
+    // `Path::parent` yields an empty path for a single-component argument,
+    // where Python's `Path.parent` yielded `.`. Live callers always pass an
+    // absolute hint; a relative one is refused by the confinement check
+    // whenever a session tmpdir is set.
+    let source_root = source_dir
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let environment: HashMap<String, String> = env::vars().collect();
+    match run_lifecycle::publish_breadcrumbs(source_root, Path::new(dest_dir), &environment) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("publish-breadcrumbs: {error}");
+            ExitCode::from(1)
+        }
     }
 }
 
