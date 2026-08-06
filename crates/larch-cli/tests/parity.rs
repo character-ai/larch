@@ -193,6 +193,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "parse-codex-usage",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-run-external-agent",
+        "agent",
+        "run-external-agent",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-wait-reviewers",
         "agent",
         "wait-reviewers",

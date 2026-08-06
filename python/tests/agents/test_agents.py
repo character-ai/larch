@@ -779,28 +779,6 @@ def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> 
     assert f"STDERR_SINK={sink}" in meta
 
 
-def test_run_external_agent_rejects_unsafe_output_without_sidecars(tmp_path: Path) -> None:
-    output = tmp_path / "bad\nout.txt"
-    rc = agents.run_external_agent_main(
-        [
-            "--tool",
-            "claude",
-            "--output",
-            str(output),
-            "--timeout",
-            "5",
-            "--",
-            sys.executable,
-            "-c",
-            "print('should not run')",
-        ],
-    )
-    assert rc == 1
-    assert not output.exists()
-    assert not output.with_suffix(output.suffix + ".done").exists()
-    assert not output.with_suffix(output.suffix + ".meta").exists()
-
-
 def test_run_external_agent_inner_sentinel_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "agent.out"
     monkeypatch.setenv("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done")
@@ -1268,48 +1246,6 @@ def test_run_external_agent_spawns_despite_unhealthy_probe_env(
     )
     assert popen_calls == [[str(helper)]]
     assert result.exit_code == 0
-
-
-def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = agents.run_external_agent_main(
-        [
-            "--tool",
-            "claude",
-            "--output",
-            str(tmp_path / "out.txt"),
-            "--timeout",
-            "0",
-            "--",
-            sys.executable,
-            "-c",
-            "print('should not run')",
-        ],
-    )
-    assert rc == 1
-    assert "--timeout must be a positive integer" in capsys.readouterr().err
-
-
-def test_run_external_agent_args_rejects_bad_stderr_sink_without_sidecars(tmp_path: Path) -> None:
-    output = tmp_path / "out.txt"
-    rc = agents.run_external_agent_main(
-        [
-            "--tool",
-            "claude",
-            "--output",
-            str(output),
-            "--timeout",
-            "5",
-            "--stderr-sink",
-            str(tmp_path / "bad\nsink.log"),
-            "--",
-            sys.executable,
-            "-c",
-            "print('should not run')",
-        ],
-    )
-    assert rc == 1
-    assert not output.with_suffix(output.suffix + ".meta").exists()
-    assert not output.with_suffix(output.suffix + ".done").exists()
 
 
 def test_check_reviewers_kv_order_and_skip_flags(

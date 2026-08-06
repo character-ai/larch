@@ -9,14 +9,14 @@
 #   - python/cli.py implement step2-dispatch
 #
 # Related:
-#   - python/cli.py agent run-external-agent is NOT sourced from this registry and still
+#   - scripts/larch.sh agent run-external-agent is NOT sourced from this registry and still
 #     does not validate `--tool` against it, per DECISION_1 of #1099. The
 #     human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar
 #     field is sanitized at write time through a label-safe allowlist
 #     (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_`
 #     (length-preserved), and an empty sanitized result falls back to
-#     `sanitized-empty`. See python/agents.py for the full
-#     sanitization contract.
+#     `sanitized-empty`. See crates/larch-core/src/vendor/external_agent.rs
+#     for the full sanitization contract.
 #
 # Non-goals: per-tool model defaults, probe argv templates, launcher paths,
 # capture-mode policy, runtime-failure tokens. Those stay with their owners.

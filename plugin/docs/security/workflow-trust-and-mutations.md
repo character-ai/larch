@@ -95,6 +95,14 @@ creates a private config directory and injects `CURSOR_CONFIG_DIR` only into the
 child `ProcessRequest` environment; it does not mutate the parent process
 environment, so parallel tests and parallel clones stay isolated.
 
+Rust Codex-home preparation likewise creates a fresh confined directory below
+the caller's private root. It strips inherited API settings and prior trusted
+instructions from copied configuration, accepts a trusted-instructions file
+only when it is a regular non-symlink, and copies a regular `auth.json` into
+the private home when environment-key auth is absent. It never places a
+symlink in the prepared home or points `CODEX_HOME` outside that root; the
+typed `CODEX_HOME` override reaches only the vendor child request.
+
 The Rust vendor lifecycle is inactive adapter parity and does not cut over a
 launcher command. Its hook port preserves cap, preflight, execution, retry, and
 postprocessing order while the shared process runner remains the only Rust

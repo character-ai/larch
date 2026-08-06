@@ -15,18 +15,19 @@ properties the issue requires for published run logs:
 
 ## Design
 
-`python/cli.py agent run-external-agent` is the single composed-carrier producer. On any
-non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
-carrier inside its `EXIT` trap **before** writing `${OUTPUT}.done`, so a visible
-`.done` always implies the carrier exists for failures. A retry that later
+`scripts/larch.sh agent run-external-agent` is the public composed-carrier producer.
+On any non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
+carrier **before** writing `${OUTPUT}.done`, so a visible `.done` always implies the
+carrier exists for failures. The remaining Python shared launcher uses the same
+artifact schema for commands that have not migrated yet. A retry that later
 SUCCEEDS clears the carrier (entry-clear + success-clear), so retry-then-success
 publishes nothing. The carrier library (`python/larch/agents/agents.py`)
 exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 `external_stream_reset` (per-attempt history archive), `append_vendor_failure_diagnostics`
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
 
-Every launch that funnels through `python3 python/cli.py agent run-external-agent` therefore **inherits**
-the saved carrier with no per-site change. `python/cli.py run-log append-failure` gains
+Every direct launch through `scripts/larch.sh agent run-external-agent` therefore
+**inherits** the saved carrier with no per-site change. `python/cli.py run-log append-failure` gains
 a fail-closed backstop (missing / zero-byte `--output-file` → synthesize
 `no diagnostics captured (exit N)`), so every `execution-issues.md` failure entry
 is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
@@ -34,15 +35,15 @@ is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
 stay publish-excluded; only the composed `*.failure-diag` carrier reaches the
 published run archive.
 
-Routing key: **D** = directly fixed; **I** = inherits-via-`python3 python/cli.py agent run-external-agent`
-(or via the now-fixed `python3 python/cli.py agent launch-claude-subprocess`); **R** = residual gap named
-below.
+Routing key: **D** = directly fixed; **I** = inherits via the shared launcher carrier
+(the Rust public command for direct callers, or the remaining Python library for
+unmigrated launcher commands); **R** = residual gap named below.
 
 ## Table
 
 | Call site | Saved | Logged | Flushed | Class | Notes |
 |---|---|---|---|---|---|
-| `python/cli.py agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
+| `scripts/larch.sh agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; policy-rejection fast-fail writes the diagnostic marker. |
 | `python/larch/agents/agents.py` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
 | `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `python/cli.py agent launch-review` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
@@ -59,7 +60,7 @@ below.
 | `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `python/cli.py agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
-| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `python3 python/cli.py agent run-external-agent`. |
+| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher uses the shared external-agent carrier. |
 | `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
 | `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `python3 python/cli.py agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
@@ -74,7 +75,7 @@ below.
 
 ## Named residual {saved, logged, flushed} gaps
 
-The central carrier (`python3 python/cli.py agent run-external-agent`) + the `python3 python/cli.py agent launch-claude-subprocess`
+The central carrier (`scripts/larch.sh agent run-external-agent`) + the `python3 python/cli.py agent launch-claude-subprocess`
 F7 path mean **Saved** holds at every site above. The
 `run-log append-failure` backstop means **Logged** is never-empty at every site
 that logs through it. The remaining residuals are **Flushed-to-batch** and

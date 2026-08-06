@@ -2,8 +2,11 @@
 
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
+    fmt::Write as _,
     fs,
+    io::{Read as _, Seek as _, SeekFrom},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
@@ -13,19 +16,27 @@ use std::{
 
 use clap::{Args, Subcommand};
 use larch_adapters::{
-    ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitPath as GitCliPath, GitRef,
-    GixRepository, NoopProcessObserver, PathIntent, PluginRoot, TemporaryRoot, TokioProcessRunner,
-    atomic_write_bytes, read_optional_utf8_lossy, read_utf8,
+    ConfinedPath, ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitPath as GitCliPath,
+    GitRef, GixRepository, NoopProcessObserver, PathIntent, PluginRoot, ProcessFileRouting,
+    ProcessStdinRouting, TemporaryRoot, TokioProcessRunner, atomic_write_bytes,
+    atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy, read_utf8,
+    remove_optional_file,
     runtime::{Cancellation, LarchRuntime},
     vendor_auth::{CursorPreflightConfig, VendorAuthContext, cursor_auth_preflight},
-    vendor_diagnostics::{parse_codex_usage_file, write_collector_failure_log},
+    vendor_diagnostics::{
+        parse_codex_usage_file, select_failed_agent_stderr_source, write_collector_failure_log,
+        write_failed_agent_stderr_tail, write_failure_diag,
+    },
     vendor_lifecycle::StartupLockConfig,
 };
 use larch_core::{
-    CodexModelRole, Commit, ModelTool, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost,
-    ReviewerWaitRow, Revision, VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS,
-    WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff, claude_model_from_transcript, emit_kv,
-    env as env_names, parse_generated_paths, resolve_model_args,
+    ChildEnvironment, CodexModelRole, Commit, CursorCredential, ExternalProgram,
+    LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessError, ProcessErrorKind,
+    RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, Revision,
+    StderrCaptureMode, VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS,
+    WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff, claude_model_from_transcript,
+    codex_policy_rejection_excerpt, cursor_child_environment, emit_kv, env as env_names,
+    parse_generated_paths, resolve_model_args, sanitize_tool_label,
     transcript_path_from_claude_source, validate_emitted_token, wait_for_reviewers,
 };
 
@@ -33,7 +44,13 @@ const WAIT_USAGE: &str =
     "Usage: wait-for-reviewers.sh [--timeout SECONDS] <sentinel.done> [sentinel2.done ...]";
 const GATHER_USAGE: &str = "Usage: gather-branch-context.sh --output-dir <path>";
 const COLLECTOR_USAGE: &str = "Usage: compose-collector-failure-log.sh --structured-record <record> --output <path> [--reviewer-file <path>]";
+const RUN_EXTERNAL_AGENT_USAGE: &str = "Usage: cli.py agent run-external-agent --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] [--stderr-sink PATH] -- CMD...";
 const POLL_INTERVAL_ENV: &str = "WAIT_FOR_REVIEWERS_POLL_INTERVAL";
+const RUN_EXTERNAL_AGENT_POLL_INTERVAL_ENV: &str = "RUN_EXTERNAL_AGENT_POLL_INTERVAL";
+const RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX_ENV: &str =
+    "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX";
+const RUN_EXTERNAL_AGENT_OUTPUT_LIMIT: usize = 64 * 1024;
+const RUN_EXTERNAL_AGENT_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 const GENERATORS_TSV: &str = "scripts/generators.tsv";
 /// Startup-lock carrier shared with every remaining Python vendor caller.
 const SHARED_STARTUP_LOCK_ROOT: &str = "/tmp";
@@ -56,6 +73,9 @@ pub enum AgentCommand {
     /// Read the active Claude session model id.
     #[command(name = "read-claude-model")]
     ReadClaudeModel,
+    /// Run one approved vendor executable and write the launch artifact family.
+    #[command(disable_help_flag = true)]
+    RunExternalAgent(AgentRawArguments),
     /// Wait for reviewer completion sentinels with legacy-compatible diagnostics.
     #[command(disable_help_flag = true)]
     WaitReviewers(AgentRawArguments),
@@ -111,6 +131,7 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::ReadClaudeModel => read_claude_model(),
+        AgentCommand::RunExternalAgent(arguments) => run_external_agent(&arguments),
         AgentCommand::WaitReviewers(arguments) => wait_reviewers(&arguments),
         AgentCommand::ClassifyDiff(arguments) => classify_diff_command(&arguments),
         AgentCommand::GatherBranchContext(arguments) => gather_branch_context(&arguments),
@@ -360,6 +381,670 @@ fn parse_codex_usage(arguments: &ParseCodexUsageArguments) -> ExitCode {
     emit_kv("OUTPUT", &totals.output_tokens().to_string());
     emit_kv("TOTAL", &totals.total_tokens().to_string());
     ExitCode::SUCCESS
+}
+
+struct RunExternalAgentArguments {
+    tool: String,
+    output: String,
+    timeout_seconds: u64,
+    poll_interval: Duration,
+    capture_stdout: bool,
+    capture_stdout_only: bool,
+    stderr_sink: Option<PathBuf>,
+    command: Vec<String>,
+    program: VendorProgram,
+    sentinel_suffix: &'static str,
+}
+
+enum RunExternalAgentParse {
+    Help,
+    Error(String),
+    Parsed(RunExternalAgentArguments),
+}
+
+struct RunExternalAgentOptions {
+    tool: String,
+    output: String,
+    timeout_raw: String,
+    stderr_sink: String,
+    capture_stdout: bool,
+    capture_stdout_only: bool,
+    command: Vec<String>,
+}
+
+enum RunExternalAgentOptionsParse {
+    Help,
+    Error(String),
+    Parsed(RunExternalAgentOptions),
+}
+
+struct PreparedExternalAgentFiles {
+    root: TemporaryRoot,
+    paths: LauncherArtifactPaths,
+    output_file: ConfinedPath,
+    diag_file: ConfinedPath,
+    diag: PathBuf,
+    done: PathBuf,
+}
+
+fn run_external_agent(arguments: &AgentRawArguments) -> ExitCode {
+    let parsed = match parse_run_external_agent_arguments(&arguments.arguments) {
+        RunExternalAgentParse::Help => {
+            eprintln!("{RUN_EXTERNAL_AGENT_USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        RunExternalAgentParse::Error(message) => {
+            eprintln!("{message}");
+            return ExitCode::from(1);
+        }
+        RunExternalAgentParse::Parsed(value) => value,
+    };
+    let prepared = match prepare_run_external_agent_files(&parsed) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("agent run-external-agent: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let exit_code = run_prepared_external_agent(&parsed, &prepared);
+    let done_write = atomic_write_utf8_in(
+        &prepared.root,
+        &prepared.done,
+        &format!("{exit_code}\n"),
+        true,
+        0o600,
+    );
+    if let Err(error) = done_write {
+        eprintln!("agent run-external-agent: could not write completion sentinel: {error}");
+        return ExitCode::from(1);
+    }
+    ExitCode::from(u8::try_from(exit_code).unwrap_or(1))
+}
+
+fn parse_run_external_agent_arguments(arguments: &[OsString]) -> RunExternalAgentParse {
+    match parse_run_external_agent_options(arguments) {
+        RunExternalAgentOptionsParse::Help => RunExternalAgentParse::Help,
+        RunExternalAgentOptionsParse::Error(message) => RunExternalAgentParse::Error(message),
+        RunExternalAgentOptionsParse::Parsed(options) => {
+            build_run_external_agent_arguments(options)
+        }
+    }
+}
+
+fn parse_run_external_agent_options(arguments: &[OsString]) -> RunExternalAgentOptionsParse {
+    let mut tool = String::new();
+    let mut output = String::new();
+    let mut timeout_raw = String::new();
+    let mut stderr_sink = String::new();
+    let mut capture_stdout = false;
+    let mut capture_stdout_only = false;
+    let mut index = 0_usize;
+    while index < arguments.len() {
+        let argument = arguments[index].to_string_lossy();
+        if argument == "--" {
+            index += 1;
+            break;
+        }
+        match argument.as_ref() {
+            "--tool" if index + 1 < arguments.len() => {
+                tool = arguments[index + 1].to_string_lossy().into_owned();
+                index += 2;
+            }
+            "--output" if index + 1 < arguments.len() => {
+                output = arguments[index + 1].to_string_lossy().into_owned();
+                index += 2;
+            }
+            "--timeout" if index + 1 < arguments.len() => {
+                timeout_raw = arguments[index + 1].to_string_lossy().into_owned();
+                index += 2;
+            }
+            "--stderr-sink" if index + 1 < arguments.len() => {
+                stderr_sink = arguments[index + 1].to_string_lossy().into_owned();
+                index += 2;
+            }
+            "--capture-stdout" => {
+                capture_stdout = true;
+                index += 1;
+            }
+            "--capture-stdout-only" => {
+                capture_stdout_only = true;
+                index += 1;
+            }
+            "--help" => return RunExternalAgentOptionsParse::Help,
+            _ => return RunExternalAgentOptionsParse::Error(format!("Unknown option: {argument}")),
+        }
+    }
+    let command: Vec<String> = arguments[index..]
+        .iter()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect();
+    if tool.is_empty() || output.is_empty() || timeout_raw.is_empty() {
+        return RunExternalAgentOptionsParse::Error(
+            "ERROR: --tool, --output, and --timeout are required".to_owned(),
+        );
+    }
+    if capture_stdout && capture_stdout_only {
+        return RunExternalAgentOptionsParse::Error(
+            "ERROR: --capture-stdout and --capture-stdout-only are mutually exclusive".to_owned(),
+        );
+    }
+    RunExternalAgentOptionsParse::Parsed(RunExternalAgentOptions {
+        tool,
+        output,
+        timeout_raw,
+        stderr_sink,
+        capture_stdout,
+        capture_stdout_only,
+        command,
+    })
+}
+
+fn build_run_external_agent_arguments(options: RunExternalAgentOptions) -> RunExternalAgentParse {
+    if !crate::valid_meta_path(OsStr::new(&options.output)) {
+        return RunExternalAgentParse::Error(
+            "ERROR: --output contains unsupported characters".to_owned(),
+        );
+    }
+    if !options.stderr_sink.is_empty() && !crate::valid_meta_path(OsStr::new(&options.stderr_sink))
+    {
+        return RunExternalAgentParse::Error(
+            "ERROR: --stderr-sink contains unsupported characters".to_owned(),
+        );
+    }
+    let Some(timeout_seconds) = parse_run_external_positive_integer(&options.timeout_raw) else {
+        return RunExternalAgentParse::Error(format!(
+            "ERROR: --timeout must be a positive integer, got '{}'",
+            options.timeout_raw
+        ));
+    };
+    let sentinel_suffix = match run_external_agent_sentinel_suffix() {
+        Ok(value) => value,
+        Err(message) => return RunExternalAgentParse::Error(message),
+    };
+    let poll_interval = match run_external_agent_poll_interval() {
+        Ok(value) => value,
+        Err(message) => return RunExternalAgentParse::Error(message),
+    };
+    if options.command.is_empty() {
+        return RunExternalAgentParse::Error("ERROR: no command specified after --".to_owned());
+    }
+    let program = match options.command[0].as_str() {
+        "claude" => VendorProgram::Claude,
+        "codex" => VendorProgram::Codex,
+        "cursor" => VendorProgram::Cursor,
+        _ => {
+            return RunExternalAgentParse::Error(
+                "ERROR: command must begin with an approved vendor executable".to_owned(),
+            );
+        }
+    };
+    RunExternalAgentParse::Parsed(RunExternalAgentArguments {
+        tool: options.tool,
+        output: options.output,
+        timeout_seconds,
+        poll_interval,
+        capture_stdout: options.capture_stdout,
+        capture_stdout_only: options.capture_stdout_only,
+        stderr_sink: (!options.stderr_sink.is_empty()).then(|| PathBuf::from(options.stderr_sink)),
+        command: options.command,
+        program,
+        sentinel_suffix,
+    })
+}
+
+fn run_external_agent_sentinel_suffix() -> Result<&'static str, String> {
+    match env::var(RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX_ENV) {
+        Ok(value) if value.is_empty() => Ok(".done"),
+        Ok(value) if value == ".inner.done" => Ok(".inner.done"),
+        Ok(value) => Err(format!(
+            "ERROR: invalid {RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX_ENV} value '{value}'; expected '.inner.done'"
+        )),
+        Err(_error) => Ok(".done"),
+    }
+}
+
+fn run_external_agent_poll_interval() -> Result<Duration, String> {
+    let raw =
+        env::var(RUN_EXTERNAL_AGENT_POLL_INTERVAL_ENV).unwrap_or_else(|_error| "10".to_owned());
+    let Some(seconds) = raw
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return Err(format!(
+            "ERROR: {RUN_EXTERNAL_AGENT_POLL_INTERVAL_ENV} must be a positive number, got '{raw}'"
+        ));
+    };
+    Ok(Duration::from_secs_f64(seconds))
+}
+
+fn parse_run_external_positive_integer(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u64>().ok().filter(|parsed| *parsed > 0)
+}
+
+fn prepare_run_external_agent_files(
+    arguments: &RunExternalAgentArguments,
+) -> Result<PreparedExternalAgentFiles, String> {
+    let working_directory = env::current_dir().map_err(|error| error.to_string())?;
+    let requested_output = PathBuf::from(&arguments.output);
+    let output = if requested_output.is_absolute() {
+        requested_output
+    } else {
+        working_directory.join(requested_output)
+    };
+    let parent = output
+        .parent()
+        .ok_or_else(|| "--output has no parent directory".to_owned())?;
+    let file_name = output
+        .file_name()
+        .ok_or_else(|| "--output must name a file".to_owned())?;
+    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
+    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
+    let output = root
+        .confine(root.path().join(file_name), PathIntent::Write)
+        .map_err(|error| error.to_string())?
+        .path()
+        .to_path_buf();
+    let paths = LauncherArtifactPaths::new(output);
+    let diag = paths.path(LauncherArtifactKind::Diag);
+    let done = suffixed_launcher_path(paths.output(), arguments.sentinel_suffix);
+    let stale_paths = [
+        paths.output().to_path_buf(),
+        paths.path(LauncherArtifactKind::Done),
+        paths.path(LauncherArtifactKind::InnerDone),
+        paths.path(LauncherArtifactKind::Meta),
+        diag.clone(),
+        paths.path(LauncherArtifactKind::StderrTail),
+        paths.path(LauncherArtifactKind::FailureDiag),
+    ];
+    for stale in stale_paths {
+        remove_external_agent_stale(&root, &stale)?;
+    }
+    let command_json =
+        serde_json::to_string(&arguments.command).map_err(|error| error.to_string())?;
+    let mut meta = format!(
+        "TOOL={}\nTIMEOUT={}\nCAPTURE_STDOUT={}\nCAPTURE_STDOUT_ONLY={}\nOUTPUT_FILE={}\n",
+        sanitize_tool_label(&arguments.tool),
+        arguments.timeout_seconds,
+        arguments.capture_stdout,
+        arguments.capture_stdout_only,
+        arguments.output,
+    );
+    if let Some(stderr_sink) = &arguments.stderr_sink {
+        writeln!(&mut meta, "STDERR_SINK={}", stderr_sink.display())
+            .expect("formatting a String is infallible");
+    }
+    writeln!(&mut meta, "CMD_JSON={command_json}").expect("formatting a String is infallible");
+    atomic_write_utf8_in(
+        &root,
+        &paths.path(LauncherArtifactKind::Meta),
+        &meta,
+        true,
+        0o600,
+    )
+    .map_err(|error| error.to_string())?;
+    let output_file = root
+        .confine(paths.output(), PathIntent::Write)
+        .map_err(|error| error.to_string())?;
+    let diag_file = root
+        .confine(&diag, PathIntent::Write)
+        .map_err(|error| error.to_string())?;
+    Ok(PreparedExternalAgentFiles {
+        root,
+        paths,
+        output_file,
+        diag_file,
+        diag,
+        done,
+    })
+}
+
+fn run_prepared_external_agent(
+    arguments: &RunExternalAgentArguments,
+    prepared: &PreparedExternalAgentFiles,
+) -> i32 {
+    let Ok(runtime) = LarchRuntime::current_thread() else {
+        let _ignored = append_launcher_text(
+            &prepared.root,
+            &prepared.diag,
+            "Failed to launch child: could not start the local runtime\n",
+        );
+        return 127;
+    };
+    let Ok(working_directory) = env::current_dir() else {
+        let _ignored = append_launcher_text(
+            &prepared.root,
+            &prepared.diag,
+            "Failed to launch child: could not resolve the working directory\n",
+        );
+        return 127;
+    };
+    let request = match external_agent_request(arguments, working_directory) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ignored = append_launcher_text(
+                &prepared.root,
+                &prepared.diag,
+                &format!("Failed to launch child: {error}\n"),
+            );
+            return 127;
+        }
+    };
+    let (routing, policy_watch) = external_agent_file_routing(arguments, prepared);
+    let cancellation = Cancellation::new();
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let (result, policy_excerpt) = runtime.block_on(run_file_routed_external_agent(
+        &runner,
+        request,
+        &cancellation,
+        routing,
+        policy_watch.as_ref(),
+        arguments.poll_interval,
+    ));
+    let exit_code = external_agent_exit_code(arguments, prepared, result, policy_excerpt.is_some());
+    if let Some(excerpt) = policy_excerpt {
+        append_external_agent_policy_failure(prepared, &excerpt);
+    }
+    finish_external_agent_launch(arguments, prepared, exit_code);
+    exit_code
+}
+
+fn external_agent_request(
+    arguments: &RunExternalAgentArguments,
+    working_directory: PathBuf,
+) -> Result<larch_core::ProcessRequest, String> {
+    let output_limit =
+        NonZeroUsize::new(RUN_EXTERNAL_AGENT_OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN);
+    larch_core::ProcessRequest::new(
+        ExternalProgram::Vendor(arguments.program),
+        arguments.command.iter().skip(1).cloned(),
+        working_directory,
+        Duration::from_secs(arguments.timeout_seconds),
+        RUN_EXTERNAL_AGENT_SHUTDOWN_GRACE,
+        output_limit,
+    )
+    .map(|request| request.with_environment_for_vendor(arguments.program))
+    .map_err(|error| error.to_string())
+}
+
+fn external_agent_file_routing(
+    arguments: &RunExternalAgentArguments,
+    prepared: &PreparedExternalAgentFiles,
+) -> (ProcessFileRouting, Option<ConfinedPath>) {
+    let routing = if arguments.capture_stdout {
+        ProcessFileRouting::combined(prepared.output_file.clone())
+    } else if arguments.capture_stdout_only {
+        ProcessFileRouting::separate(prepared.output_file.clone(), prepared.diag_file.clone())
+    } else {
+        ProcessFileRouting::inherit_output()
+    }
+    .with_stdin(if arguments.tool == "codex" {
+        ProcessStdinRouting::Null
+    } else {
+        ProcessStdinRouting::Inherit
+    });
+    let policy_watch = (arguments.tool == "codex"
+        && (arguments.capture_stdout || arguments.capture_stdout_only))
+        .then(|| prepared.output_file.clone());
+    (routing, policy_watch)
+}
+
+fn external_agent_exit_code(
+    arguments: &RunExternalAgentArguments,
+    prepared: &PreparedExternalAgentFiles,
+    result: Result<larch_core::ProcessOutput, ProcessError>,
+    policy_rejected: bool,
+) -> i32 {
+    if policy_rejected {
+        return 1;
+    }
+    match result {
+        Ok(output) => output.status().code().unwrap_or(1),
+        Err(error) if error.kind() == ProcessErrorKind::TimedOut => {
+            let size = output_size(prepared.paths.output());
+            let _ignored = append_launcher_text(
+                &prepared.root,
+                &prepared.diag,
+                &format!(
+                    "Timed out after {}s (limit: {}s). Process was killed after exceeding the timeout. Output size: {size} bytes.\n",
+                    arguments.timeout_seconds, arguments.timeout_seconds
+                ),
+            );
+            124
+        }
+        Err(error) => {
+            let code = spawn_error_exit_code(&error);
+            if error.kind() == ProcessErrorKind::Spawn {
+                let _ignored =
+                    atomic_write_utf8_in(&prepared.root, prepared.paths.output(), "", true, 0o600);
+            }
+            let _ignored = append_launcher_text(
+                &prepared.root,
+                &prepared.diag,
+                &format!("Failed to launch child: {}\n", error.message()),
+            );
+            code
+        }
+    }
+}
+
+fn append_external_agent_policy_failure(prepared: &PreparedExternalAgentFiles, excerpt: &str) {
+    let _ignored = append_launcher_text(
+        &prepared.root,
+        &prepared.diag,
+        &format!(
+            "FAILURE_CLASS=policy-rejection\nPOLICY_REJECTION=true\nCodex exec_command policy rejection detected in events stream.\nMatched excerpt:\n{}\n",
+            excerpt.trim_end()
+        ),
+    );
+}
+
+trait VendorRequestEnvironment {
+    fn with_environment_for_vendor(self, program: VendorProgram) -> Self;
+}
+
+impl VendorRequestEnvironment for larch_core::ProcessRequest {
+    fn with_environment_for_vendor(mut self, program: VendorProgram) -> Self {
+        match program {
+            VendorProgram::Claude | VendorProgram::Codex => {
+                let key = if program == VendorProgram::Claude {
+                    ChildEnvironment::AnthropicApiKey
+                } else {
+                    ChildEnvironment::OpenAiApiKey
+                };
+                if let Some(value) = env::var_os(key.name()) {
+                    self = self.with_environment(key, value);
+                }
+            }
+            VendorProgram::Cursor => {
+                let credential = env::var(env_names::CURSOR_API_KEY)
+                    .ok()
+                    .and_then(|value| CursorCredential::parse(&value));
+                for (key, value) in cursor_child_environment(credential.as_ref()) {
+                    self = self.with_environment(key, value);
+                }
+            }
+        }
+        self
+    }
+}
+
+async fn run_file_routed_external_agent(
+    runner: &TokioProcessRunner,
+    request: larch_core::ProcessRequest,
+    cancellation: &Cancellation,
+    routing: ProcessFileRouting,
+    policy_watch: Option<&ConfinedPath>,
+    poll_interval: Duration,
+) -> (
+    Result<larch_core::ProcessOutput, ProcessError>,
+    Option<String>,
+) {
+    let mut launch = Box::pin(runner.run_with_files(request, cancellation, routing));
+    let mut ticker = tokio::time::interval(poll_interval);
+    let mut policy_excerpt = None;
+    loop {
+        tokio::select! {
+            result = &mut launch => {
+                if policy_excerpt.is_none()
+                    && let Some(path) = policy_watch
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(path)
+                {
+                    policy_excerpt = Some(excerpt);
+                }
+                return (result, policy_excerpt);
+            }
+            _ = ticker.tick(), if policy_watch.is_some() && policy_excerpt.is_none() => {
+                if let Some(path) = policy_watch
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(path)
+                {
+                    eprintln!("❌ codex agent: exec_command policy rejection detected, killing");
+                    cancellation.cancel();
+                    policy_excerpt = Some(excerpt);
+                }
+            }
+        }
+    }
+}
+
+fn codex_policy_excerpt_from_file(path: &ConfinedPath) -> Option<String> {
+    path.revalidate().ok()?;
+    let mut file = fs::File::open(path.path()).ok()?;
+    let length = file.metadata().ok()?.len();
+    let cap = u64::try_from(larch_core::CODEX_POLICY_REJECTION_TAIL_BYTES + 1).ok()?;
+    if length > cap {
+        file.seek(SeekFrom::Start(length - cap)).ok()?;
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(length.min(cap)).ok()?);
+    file.read_to_end(&mut bytes).ok()?;
+    let excerpt = codex_policy_rejection_excerpt(&String::from_utf8_lossy(&bytes));
+    (!excerpt.is_empty()).then_some(excerpt)
+}
+
+fn finish_external_agent_launch(
+    arguments: &RunExternalAgentArguments,
+    prepared: &PreparedExternalAgentFiles,
+    exit_code: i32,
+) {
+    let size = output_size(prepared.paths.output());
+    if exit_code != 0 {
+        eprintln!(
+            "❌ {} agent: FAILED (exit code {exit_code}, output {size} bytes)",
+            arguments.tool
+        );
+        let _ignored = append_launcher_text(
+            &prepared.root,
+            &prepared.diag,
+            &format!("Failed with exit code {exit_code}. Output size: {size} bytes.\n"),
+        );
+        let mode = if arguments.capture_stdout {
+            StderrCaptureMode::Combined
+        } else if arguments.capture_stdout_only {
+            StderrCaptureMode::StdoutOnly
+        } else {
+            StderrCaptureMode::Separate
+        };
+        if let Ok(Some(source)) = select_failed_agent_stderr_source(
+            &prepared.paths,
+            mode,
+            arguments.stderr_sink.as_deref(),
+        ) {
+            let _ignored = write_failed_agent_stderr_tail(
+                &prepared.root,
+                &source,
+                &prepared.paths,
+                None,
+                None,
+            );
+        }
+        let _ignored = write_failure_diag(
+            &prepared.root,
+            &prepared.paths,
+            arguments.stderr_sink.as_deref(),
+            None,
+            None,
+        );
+    } else if size == 0 {
+        eprintln!(
+            "⚠ {} agent: completed but OUTPUT IS EMPTY (exit code 0)",
+            arguments.tool
+        );
+        let _ignored = append_launcher_text(
+            &prepared.root,
+            &prepared.diag,
+            "Process exited successfully (code 0) but produced no output.\n",
+        );
+        let _ignored = remove_external_agent_stale(
+            &prepared.root,
+            &prepared.paths.path(LauncherArtifactKind::FailureDiag),
+        );
+    } else {
+        eprintln!(
+            "✓ {} agent: completed (exit code 0, output {size} bytes)",
+            arguments.tool
+        );
+        let _ignored = remove_external_agent_stale(
+            &prepared.root,
+            &prepared.paths.path(LauncherArtifactKind::FailureDiag),
+        );
+    }
+}
+
+fn append_launcher_text(root: &TemporaryRoot, path: &Path, text: &str) -> Result<(), String> {
+    let existing = read_external_agent_text(root, path)?;
+    atomic_write_utf8_in(root, path, &format!("{existing}{text}"), true, 0o600)
+        .map_err(|error| error.to_string())
+}
+
+fn remove_external_agent_stale(root: &TemporaryRoot, path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(_metadata) => {
+            let confined = root
+                .confine(path, PathIntent::Cleanup)
+                .map_err(|error| error.to_string())?;
+            remove_optional_file(confined.path()).map_err(|error| error.to_string())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn read_external_agent_text(root: &TemporaryRoot, path: &Path) -> Result<String, String> {
+    match fs::symlink_metadata(path) {
+        Ok(_metadata) => {
+            let confined = root
+                .confine(path, PathIntent::Read)
+                .map_err(|error| error.to_string())?;
+            fs::read(confined.path())
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .map_err(|error| error.to_string())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn output_size(path: &Path) -> u64 {
+    fs::metadata(path).map_or(0, |metadata| metadata.len())
+}
+
+fn spawn_error_exit_code(error: &ProcessError) -> i32 {
+    if error.kind() == ProcessErrorKind::Spawn && error.message().contains("Permission denied") {
+        126
+    } else if error.kind() == ProcessErrorKind::Spawn {
+        127
+    } else {
+        1
+    }
+}
+
+fn suffixed_launcher_path(output: &Path, suffix: &str) -> PathBuf {
+    let mut rendered = output.as_os_str().to_owned();
+    rendered.push(suffix);
+    PathBuf::from(rendered)
 }
 
 struct WaitArguments {

@@ -2598,9 +2598,10 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         call for call, _kw in runner.calls
         if "cursor" in call and "agent" in call
     )
-    idx = list(cursor_call).index(str(_clf._agent_cli()))  # pyright: ignore[reportPrivateUsage]
+    entrypoint = str(_clf.larch_entrypoint(_clf.plugin_root()))
+    idx = list(cursor_call).index(entrypoint)
     argv = list(cursor_call)[idx:]
-    assert argv[:4] == [str(_clf._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
+    assert argv[:4] == [entrypoint, "agent", "run-external-agent", "--tool"]
     assert argv[4] == "cursor"
     assert "--timeout" in argv
     assert "1800" in argv

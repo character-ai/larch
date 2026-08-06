@@ -21,7 +21,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("agent", "run-negotiation-round"): ("larch.agents.agents", "run_negotiation_round_main", False),
     ("agent", "degraded-tools-gate"): ("larch.agents.agents", "degraded_tools_gate_main", False),
     ("status", "check"): ("larch.agents.agents", "status_check_main", False),
-    ("agent", "run-external-agent"): ("larch.agents.agents", "run_external_agent_main", False),
     ("agent", "launch-review"): ("larch.agents.agents", "launch_review_main", False),
     ("agent", "launch-codex-ci"): ("larch.agents.agents", "launch_codex_ci_main", False),
     ("agent", "launch-codex-implement"): ("larch.agents.agents", "launch_codex_implement_main", False),

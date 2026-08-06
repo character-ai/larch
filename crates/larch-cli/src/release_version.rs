@@ -11,12 +11,9 @@ use std::{
 };
 
 use larch_adapters::{ConfinedPath, PathIntent, RepositoryRoot, atomic_write_utf8, read_utf8};
+use larch_core::OrderedJson;
 
 use crate::release_common::semver;
-use serde::{
-    Deserialize, Deserializer,
-    de::{MapAccess, SeqAccess, Visitor},
-};
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
@@ -43,103 +40,6 @@ struct StagedFile {
 struct ReleaseVersions {
     member_names: Vec<String>,
     internal_dependencies: Vec<String>,
-}
-
-enum OrderedJson {
-    Null,
-    Bool(bool),
-    Number(serde_json::Number),
-    String(String),
-    Array(Vec<Self>),
-    Object(Vec<(String, Self)>),
-}
-
-struct OrderedJsonVisitor;
-
-impl<'de> Visitor<'de> for OrderedJsonVisitor {
-    type Value = OrderedJson;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a JSON value")
-    }
-
-    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
-        Ok(OrderedJson::Bool(value))
-    }
-
-    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
-        Ok(OrderedJson::Number(value.into()))
-    }
-
-    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-        Ok(OrderedJson::Number(value.into()))
-    }
-
-    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        serde_json::Number::from_f64(value)
-            .map(OrderedJson::Number)
-            .ok_or_else(|| E::custom("JSON number is not finite"))
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_string(value.to_owned())
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(OrderedJson::String(value))
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E> {
-        Ok(OrderedJson::Null)
-    }
-
-    fn visit_unit<E>(self) -> Result<Self::Value, E> {
-        Ok(OrderedJson::Null)
-    }
-
-    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        let mut values = Vec::new();
-        while let Some(value) = sequence.next_element()? {
-            values.push(value);
-        }
-        Ok(OrderedJson::Array(values))
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut values: Vec<(String, OrderedJson)> = Vec::new();
-        while let Some((key, value)) = map.next_entry()? {
-            if let Some((_, prior)) = values.iter_mut().find(|(prior, _)| prior == &key) {
-                *prior = value;
-            } else {
-                values.push((key, value));
-            }
-        }
-        Ok(OrderedJson::Object(values))
-    }
-}
-
-impl<'de> Deserialize<'de> for OrderedJson {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(OrderedJsonVisitor)
-    }
 }
 
 /// Update all synchronized version files, preserving the Python command's wire output.

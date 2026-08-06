@@ -1,7 +1,7 @@
 //! Tokio-backed execution for the closed external-process port.
 
-use crate::logging::JsonlJournal;
 use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
+use crate::{filesystem::ConfinedPath, logging::JsonlJournal};
 use larch_core::{
     BusinessClock, ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
     JournalRecord, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
@@ -11,6 +11,7 @@ use larch_core::{
 use std::{
     env,
     ffi::OsString,
+    fs::File,
     io::{self, Write},
     num::NonZeroUsize,
     path::Path,
@@ -134,6 +135,84 @@ pub struct TokioProcessRunner {
     observer: Arc<dyn ProcessObserver>,
 }
 
+/// Standard-input routing for a file-routed external process.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessStdinRouting {
+    /// Pass an immediate EOF to the child.
+    Null,
+    /// Keep the invoking process's standard input connected to the child.
+    Inherit,
+}
+
+/// Standard-output and standard-error routing for a file-routed external process.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProcessOutputRouting {
+    /// Send both streams to one file, preserving their shared descriptor semantics.
+    Combined(ConfinedPath),
+    /// Send stdout and stderr to separate files.
+    Separate {
+        stdout: ConfinedPath,
+        stderr: ConfinedPath,
+    },
+    /// Leave both streams attached to the invoking process.
+    Inherit,
+}
+
+/// File-descriptor routing for a process whose output must remain available while it runs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessFileRouting {
+    stdin: ProcessStdinRouting,
+    output: ProcessOutputRouting,
+}
+
+impl ProcessFileRouting {
+    /// Route combined stdout and stderr to `path` with a null standard input.
+    #[must_use]
+    pub const fn combined(path: ConfinedPath) -> Self {
+        Self {
+            stdin: ProcessStdinRouting::Null,
+            output: ProcessOutputRouting::Combined(path),
+        }
+    }
+
+    /// Route stdout and stderr to separate files with a null standard input.
+    #[must_use]
+    pub const fn separate(stdout: ConfinedPath, stderr: ConfinedPath) -> Self {
+        Self {
+            stdin: ProcessStdinRouting::Null,
+            output: ProcessOutputRouting::Separate { stdout, stderr },
+        }
+    }
+
+    /// Inherit both output streams with a null standard input.
+    #[must_use]
+    pub const fn inherit_output() -> Self {
+        Self {
+            stdin: ProcessStdinRouting::Null,
+            output: ProcessOutputRouting::Inherit,
+        }
+    }
+
+    /// Replace the standard-input routing.
+    #[must_use]
+    pub const fn with_stdin(mut self, stdin: ProcessStdinRouting) -> Self {
+        self.stdin = stdin;
+        self
+    }
+
+    /// Return the configured standard-input routing.
+    #[must_use]
+    pub const fn stdin(&self) -> ProcessStdinRouting {
+        self.stdin
+    }
+
+    /// Return the configured standard-output routing.
+    #[must_use]
+    pub const fn output(&self) -> &ProcessOutputRouting {
+        &self.output
+    }
+}
+
 impl TokioProcessRunner {
     /// Bind the structured process-observation sink.
     #[must_use]
@@ -243,6 +322,81 @@ impl TokioProcessRunner {
         }
         self.observe(ProcessEventKind::Exited, &request, Some(&output));
         Ok(output)
+    }
+
+    async fn run_with_files_owned(
+        &self,
+        request: ProcessRequest,
+        cancellation: &dyn ProcessCancellation,
+        routing: ProcessFileRouting,
+    ) -> Result<ProcessOutput, ProcessError> {
+        if cancellation.is_cancelled() {
+            self.observe(ProcessEventKind::Cancelled, &request, None);
+            return Err(ProcessError::new(
+                ProcessErrorKind::Cancelled,
+                "external process cancelled before spawn",
+                None,
+            ));
+        }
+        self.observe(ProcessEventKind::Started, &request, None);
+        let mut child = match spawn_child_with_files(&request, &routing) {
+            Ok(child) => child,
+            Err(error) => {
+                self.observe(ProcessEventKind::Failed, &request, None);
+                return Err(process_io_error(
+                    ProcessErrorKind::Spawn,
+                    "cannot spawn external process",
+                    &error,
+                ));
+            }
+        };
+        let (status, interrupted) = match wait_for_child(&mut child, &request, cancellation).await {
+            Ok(result) => result,
+            Err(error) => {
+                self.observe(ProcessEventKind::Failed, &request, None);
+                return Err(error);
+            }
+        };
+        // File-routed output deliberately remains on disk. Keeping it out of this
+        // bounded in-memory carrier lets policy watchers inspect long-running
+        // streams without reopening an arbitrary spawn path.
+        let output = ProcessOutput::new(
+            ProcessStatus::new(status.success(), status.code()),
+            Vec::new(),
+            Vec::new(),
+            false,
+            false,
+        );
+        if let Some(kind) = interrupted {
+            let event = match kind {
+                ProcessErrorKind::Cancelled => ProcessEventKind::Cancelled,
+                ProcessErrorKind::TimedOut => ProcessEventKind::TimedOut,
+                _ => ProcessEventKind::Failed,
+            };
+            self.observe(event, &request, Some(&output));
+            return Err(ProcessError::new(
+                kind,
+                interruption_message(kind),
+                Some(output),
+            ));
+        }
+        self.observe(ProcessEventKind::Exited, &request, Some(&output));
+        Ok(output)
+    }
+
+    /// Run a typed process with its streams routed directly to files or inherited
+    /// descriptors.
+    ///
+    /// The normal bounded [`ExternalProcessRunner`] surface remains the default.
+    /// This narrow variant exists for vendor launchers that need a durable stream
+    /// while the child is still alive, such as a bounded policy-rejection watcher.
+    pub fn run_with_files<'a>(
+        &'a self,
+        request: ProcessRequest,
+        cancellation: &'a dyn ProcessCancellation,
+        routing: ProcessFileRouting,
+    ) -> ProcessFuture<'a> {
+        Box::pin(self.run_with_files_owned(request, cancellation, routing))
     }
 }
 
@@ -376,6 +530,56 @@ fn spawn_child(request: &ProcessRequest) -> io::Result<OwnedChild> {
     command.process_group(0);
     let child = command.spawn()?; // lint-subprocess-via-runner: ok shared process runner is the sole product owner
     OwnedChild::new(child)
+}
+
+fn spawn_child_with_files(
+    request: &ProcessRequest,
+    routing: &ProcessFileRouting,
+) -> io::Result<OwnedChild> {
+    let mut command = Command::new(request.program().executable());
+    let mut arguments: Vec<OsString> = request.arguments().to_vec();
+    request.program().append_fixed_arguments(&mut arguments);
+    command
+        .args(arguments)
+        .current_dir(request.working_directory())
+        .env_clear()
+        .stdin(match routing.stdin() {
+            ProcessStdinRouting::Null => Stdio::null(),
+            ProcessStdinRouting::Inherit => Stdio::inherit(),
+        })
+        .kill_on_drop(true);
+    let (stdout, stderr) = output_stdio(routing.output())?;
+    command.stdout(stdout).stderr(stderr);
+    copy_allowed_environment(&mut command, request);
+    #[cfg(unix)]
+    command.process_group(0);
+    let child = command.spawn()?; // lint-subprocess-via-runner: ok shared process runner is the sole product owner
+    OwnedChild::new(child)
+}
+
+fn output_stdio(routing: &ProcessOutputRouting) -> io::Result<(Stdio, Stdio)> {
+    match routing {
+        ProcessOutputRouting::Combined(path) => {
+            let output = open_output_file(path)?;
+            let stderr = output.try_clone()?;
+            Ok((Stdio::from(output), Stdio::from(stderr)))
+        }
+        ProcessOutputRouting::Separate { stdout, stderr } => Ok((
+            Stdio::from(open_output_file(stdout)?),
+            Stdio::from(open_output_file(stderr)?),
+        )),
+        ProcessOutputRouting::Inherit => Ok((Stdio::inherit(), Stdio::inherit())),
+    }
+}
+
+fn open_output_file(path: &ConfinedPath) -> io::Result<File> {
+    path.revalidate()
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    File::options()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path.path())
 }
 
 fn copy_allowed_environment(command: &mut Command, request: &ProcessRequest) {
