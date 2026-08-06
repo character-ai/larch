@@ -163,7 +163,7 @@ fn rewrite_block_text<F>(
 where
     F: FnMut(String),
 {
-    let lines = split_keep_ends(existing);
+    let lines = crate::text::split_lines_keep_ends(existing);
     let (begin_idx, end_idx, has_begin, has_end) = locate_markers(&lines, markers);
 
     if has_begin && has_end {
@@ -242,7 +242,7 @@ fn append_block(existing: &str, block: &str) -> String {
 }
 
 fn locate_markers(
-    lines: &[String],
+    lines: &[&str],
     markers: &BlockMarkers,
 ) -> (Option<usize>, Option<usize>, bool, bool) {
     let mut begin_idx = None;
@@ -276,27 +276,6 @@ fn is_marker_line(line: &str, marker: &str) -> bool {
         .strip_prefix(prefix)
         .and_then(|rest| rest.strip_suffix(suffix))
         .is_some_and(|inner| inner == marker)
-}
-
-/// Split like Python `str.splitlines(keepends=True)` after universal-newline read.
-fn split_keep_ends(text: &str) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    let bytes = text.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'\n' {
-            lines.push(text[start..=index].to_owned());
-            index += 1;
-            start = index;
-            continue;
-        }
-        index += 1;
-    }
-    if start < text.len() {
-        lines.push(text[start..].to_owned());
-    }
-    lines
 }
 
 fn read_existing_text(target: &Path) -> io::Result<String> {

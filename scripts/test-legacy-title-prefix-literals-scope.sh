@@ -21,6 +21,8 @@ ALLOW=(
   docs/linting.md
   docs/skills.md
   crates/larch-core/src/admission.rs
+  crates/larch-core/src/issue/title.rs
+  crates/larch-core/tests/issue_wire.rs
   crates/larch-cli/src/admission_commands.rs
   python/preflight.py
   python/issue_wire.py

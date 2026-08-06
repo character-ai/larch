@@ -14,6 +14,7 @@ mod git;
 mod github;
 mod github_actions;
 mod github_auth;
+mod issue;
 mod issue_mutation;
 mod logging_util;
 mod message_error;
@@ -121,6 +122,18 @@ pub use github::{
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};
+pub use issue::{
+    ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
+    DESIGN_PAUSE_MARKER, LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK, MULTIPLE_PLAN_BLOCKS,
+    NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite, NamedBlockWriteMode,
+    OpenIssueRow, PLAN_MARKER, bug_title_match, classify_named_block, compose_named_block,
+    detect_lifecycle_prefix, insert_signal_marker, insert_tag_after_bug_prefix,
+    is_valid_named_block_marker, issue_plan_marker_defect, leading_square_bracket_prefix,
+    named_block_marker_allowed, neutralize_named_block_markers, open_issue_rows, parse_named_block,
+    parse_open_issue_row, plan_named_block_write, redact_untrusted_stream, strip_lifecycle_prefix,
+    strip_named_block, title_has_archival_report_prefix, title_lifecycle_reject_marker,
+    title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
+};
 pub use issue_mutation::{
     IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
     IssueMutationSnapshot, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
@@ -256,7 +269,8 @@ pub use test_shards::{
     TestShardMap, TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards,
 };
 pub use text::{
-    ensure_ascii_json, positive_integer, split_text_lines, tail_lines, truncate_utf8_bytes,
+    balanced_fence_line_indices, ensure_ascii_json, is_python_whitespace, positive_integer,
+    split_lines_keep_ends, split_text_lines, tail_lines, truncate_utf8_bytes,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{
