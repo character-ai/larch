@@ -10,9 +10,7 @@ use crate::{
         CursorPreflightConfig, CursorProbeSession, CursorTokenPreread, ProbeCache,
         VendorAuthContext, cursor_auth_preflight, cursor_preread_service_token,
     },
-    vendor_lifecycle::{
-        StartupLockConfig, external_startup_lock_acquire, external_startup_lock_release_after,
-    },
+    vendor_lifecycle::{StartupLockConfig, StartupLockGuard},
 };
 use larch_core::{
     CODEX_REVIEW_MODEL_DEFAULT, CURSOR_MODEL_LIST_ARGV, CURSOR_PREFLIGHT_AUTH_RC,
@@ -301,7 +299,7 @@ async fn run_one_cursor_probe<R: ExternalProcessRunner>(
         request = request.with_environment(key, value);
     }
 
-    let _guard = ProbeStartupLock::acquire(context.temporary_root, startup_lock);
+    let _guard = StartupLockGuard::acquire(context.temporary_root, startup_lock);
     match runner.run(request, cancellation).await {
         Ok(output) => {
             let exit_code = output.status().code().unwrap_or(1);
@@ -453,7 +451,7 @@ async fn run_one_codex_probe<R: ExternalProcessRunner>(
         request = request.with_environment(ChildEnvironment::OpenAiApiKey, key);
     }
 
-    let _guard = ProbeStartupLock::acquire(context.temporary_root, startup_lock);
+    let _guard = StartupLockGuard::acquire(context.temporary_root, startup_lock);
     let (exit_code, timed_out, stdout, stderr) = match runner.run(request, cancellation).await {
         Ok(output) => (
             output.status().code().unwrap_or(1),
@@ -495,20 +493,6 @@ fn startup_lock(program: VendorProgram, context: CheckReviewersContext<'_>) -> S
         )
         .expect("fallback startup lock config")
     })
-}
-
-/// Acquire-and-release wrapper scoped to one probe spawn.
-struct ProbeStartupLock {
-    _release: Option<crate::vendor_lifecycle::StartupLockRelease>,
-}
-
-impl ProbeStartupLock {
-    fn acquire(temporary_root: &TemporaryRoot, config: &StartupLockConfig) -> Self {
-        let release = external_startup_lock_acquire(temporary_root, config)
-            .and_then(|state| external_startup_lock_release_after(state, config))
-            .ok();
-        Self { _release: release }
-    }
 }
 
 fn strip_codex_config(text: &str) -> String {
