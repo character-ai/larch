@@ -28,6 +28,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 ARG_PAIR_SIZE = 2
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
@@ -542,6 +543,71 @@ def _append_entry(arguments: list[str]) -> int:
     return 0
 
 
+def _launch_claude_subprocess(arguments: list[str]) -> int:
+    output = _flag(arguments, "--output-file")
+    prompt_file = _flag(arguments, "--prompt-file")
+    if not output or not prompt_file:
+        return 2
+    try:
+        prompt = Path(prompt_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 2
+    model = _flag(arguments, "--model", "claude-sonnet-4-6")
+    command = ["claude", "--print", "--output-format", "json", "--model", model]
+    result = subprocess.run(
+        command,
+        check=False,
+        input=prompt,
+        text=True,
+        capture_output=True,
+    )
+    target = Path(output)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    exit_code = result.returncode
+    text = result.stdout
+    if exit_code == 0:
+        try:
+            parsed = json.loads(result.stdout)
+            if not isinstance(parsed, dict):
+                raise TypeError("invalid Claude envelope")
+            envelope = cast("dict[str, object]", parsed)
+            value = envelope.get("result") if not envelope.get("is_error") else None
+            if not isinstance(value, str) or not value:
+                raise ValueError("invalid Claude envelope")
+            text = value
+        except (TypeError, ValueError, json.JSONDecodeError):
+            text = "CLAUDE_JSON_RESULT_INVALID"
+            exit_code = 99
+    _ = target.write_text(text, encoding="utf-8")
+    if result.stderr:
+        _ = Path(f"{target}.stderr").write_text(result.stderr, encoding="utf-8")
+    _ = Path(f"{target}.done").write_text(f"{exit_code}\n", encoding="utf-8")
+    return exit_code
+
+
+def _launch_claude_review(arguments: list[str]) -> int:
+    output = _flag(arguments, "--output") or _flag(arguments, "--output-file")
+    forced_result = os.environ.get("LARCH_TEST_CLAUDE_REVIEW_RESULT", "")
+    if output and forced_result:
+        target = Path(output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _ = target.write_text(forced_result, encoding="utf-8")
+        _ = Path(f"{target}.done").write_text("0\n", encoding="utf-8")
+        return 0
+    prompt_file = _flag(arguments, "--prompt-file")
+    if not output or not prompt_file:
+        return 2
+    forwarded = [
+        "--prompt-file",
+        prompt_file,
+        "--output-file",
+        output,
+        "--model",
+        _flag(arguments, "--model", "claude-sonnet-4-6"),
+    ]
+    return _launch_claude_subprocess(forwarded)
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -565,6 +631,8 @@ def main(arguments: list[str]) -> int:
             ("run-log", "exists"): _run_log_exists,
             ("run-log", "write-round"): _run_log_write_round,
             ("run-log", "verify-completeness"): _run_log_verify_completeness,
+            ("agent", "launch-claude-subprocess"): _launch_claude_subprocess,
+            ("agent", "launch-claude-review"): _launch_claude_review,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

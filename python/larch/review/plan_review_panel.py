@@ -44,7 +44,7 @@ from larch.review.dispatch_shared import (
     with_manifest_attribution,
 )
 from larch.report.run_log_batch import append_execution_issue
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, plugin_root
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
 
@@ -57,13 +57,6 @@ _GENERIC_CODEX_PLAN_REVIEW_ROLE = (
     "You are a senior reviewer for this project. Review code, plans, or conflict resolutions across "
     "code quality, risk/integration, correctness, architecture, and security."
 )
-# launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
-# the legacy dispatch-plan-voters.sh `python3 cli.py ...` contract and the panel
-# test harness's python3-agent stub that short-circuits the claude launch. In
-# production python3 resolves to the same interpreter the larch wrapper runs.
-_AGENT_LAUNCH_PYTHON = "python3"
-
-
 @dataclass(frozen=True)
 class VoterPromptRenderOptions:
     scope_anchor: str = ""
@@ -745,8 +738,7 @@ def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path, env: 
     # lint-subprocess-via-runner: ok voter launch uses raw subprocess to capture the returncode for the bounded retry (#5677)
     return subprocess.run(
         [
-            _AGENT_LAUNCH_PYTHON,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "agent",
             "launch-claude-review",
             "--output",

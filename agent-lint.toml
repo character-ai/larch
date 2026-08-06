@@ -399,12 +399,6 @@ exclude = [
   # harness is covered by the test-degraded-tools-gate target.
   "python/test_agents.py",
   "python/test_agents.py",
-  # python/test_agents.py is the Makefile-only regression
-  # harness for python/cli.py agent launch-claude-subprocess. The launcher itself is
-  # runtime-referenced from /review; the harness is not invoked from skill
-  # prose and is covered by the test-launch-claude-subprocess target.
-  "python/test_agents.py",
-  "python/test_agents.py",
   # python/test_implement_dispatch.py is the offline regression
   # harness for python/cli.py implement step2-dispatch (the /implement
   # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch,

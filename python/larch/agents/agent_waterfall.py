@@ -22,6 +22,7 @@ from larch.agents import agents
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.report.tokens import build_panel_dispatch_env
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -549,8 +550,7 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     if tool == "claude":
         argv = [
-            sys.executable,
-            str(PY_CLI),
+            str(larch_entrypoint(REPO_ROOT)),
             "agent",
             "launch-claude-review",
             "--output",

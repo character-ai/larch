@@ -23,6 +23,7 @@ mod bgjob_adapt;
 mod bgjob_commands;
 mod blocker_commands;
 mod ci_timing;
+mod claude_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod external_agent;

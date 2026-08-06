@@ -365,7 +365,7 @@ The model name to pass to Cursor's `--model` flag (for example, `composer-2.5`).
 
 ### `LARCH_VOTER_MODEL`
 
-The model used by the always-on Claude voter when `python3 python/cli.py agent launch-claude-review --role voter` is called without an explicit `--model`.
+The model used by the always-on Claude voter when `scripts/larch.sh agent launch-claude-review --role voter` is called without an explicit `--model`.
 
 **When set:**
 - `/design` plan voting and `/review` / `/implement` code voting use this model for Claude Voter 1 unless the caller passes `--model` explicitly.
@@ -505,7 +505,7 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **Non-numeric:** falls back to `30`.
 - **Failure-only:** success / exit 0 stays quiet.
 - **Collector dedup:** within one `python/cli.py agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
-- **Claude panel fallback:** `launch-claude-review.sh` clamps `--timeout` greater than **1800** to **1800** with a warning (subprocess cap in `launch-claude-subprocess.sh`).
+- **Claude panel fallback:** `scripts/larch.sh agent launch-claude-review` clamps `--timeout` greater than **1800** to **1800** (subprocess cap in `scripts/larch.sh agent launch-claude-subprocess`).
 
 See `python/larch/agents/agents.py` and the canonical
 [operator-diagnostic contract](security/artifacts-redaction-and-publication.md#operator-visible-diagnostics).

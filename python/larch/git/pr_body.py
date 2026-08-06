@@ -21,6 +21,7 @@ from typing import Any, cast
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.report import design_diagram_log
 from larch.git import gh
 from larch.git import git
@@ -148,9 +149,7 @@ def _code_flow_launch_cmd() -> list[str]:
     launcher = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
     if launcher:
         return [launcher]
-    if not _PY_CLI.is_file():
-        _warn(f"cli.py not found at {_PY_CLI}")
-    return [sys.executable, str(_PY_CLI), "agent", "launch-claude-subprocess"]
+    return [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "agent", "launch-claude-subprocess"]
 
 
 def _launcher_stdout_kv(text: str) -> dict[str, str]:

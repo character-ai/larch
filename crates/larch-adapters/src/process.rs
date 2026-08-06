@@ -1,7 +1,7 @@
 //! Tokio-backed execution for the closed external-process port.
 
 use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
-use crate::{filesystem::ConfinedPath, logging::JsonlJournal};
+use crate::{filesystem::ConfinedPath, logging::JsonlJournal, open_confined_read};
 use larch_core::{
     BusinessClock, ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
     JournalRecord, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
@@ -35,6 +35,9 @@ use nix::{
     sys::signal::{Signal, killpg},
     unistd::Pid,
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 
 impl ProcessCancellation for Cancellation {
     fn is_cancelled(&self) -> bool {
@@ -578,11 +581,9 @@ fn input_stdio(routing: &ProcessStdinRouting) -> io::Result<Stdio> {
     match routing {
         ProcessStdinRouting::Null => Ok(Stdio::null()),
         ProcessStdinRouting::Inherit => Ok(Stdio::inherit()),
-        ProcessStdinRouting::File(path) => {
-            path.revalidate()
-                .map_err(|error| io::Error::other(error.to_string()))?;
-            Ok(Stdio::from(File::open(path.path())?))
-        }
+        ProcessStdinRouting::File(path) => open_confined_read(path)
+            .map(Stdio::from)
+            .map_err(|error| io::Error::other(error.to_string())),
     }
 }
 
@@ -615,11 +616,11 @@ fn optional_output_stdio(path: Option<&ConfinedPath>) -> io::Result<Stdio> {
 fn open_output_file(path: &ConfinedPath) -> io::Result<File> {
     path.revalidate()
         .map_err(|error| io::Error::other(error.to_string()))?;
-    File::options()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(path.path())
+    let mut options = File::options();
+    options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+    options.open(path.path())
 }
 
 fn copy_allowed_environment(command: &mut Command, request: &ProcessRequest) {

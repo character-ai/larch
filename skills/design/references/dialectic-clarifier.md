@@ -67,7 +67,7 @@ Ballot assembly maps **CHOSEN** to `THESIS` and **ALTERNATIVE** to `ANTI_THESIS`
 
 ## Child-process lifecycle
 
-Launch each debater and judge through `python/cli.py agent launch-claude-subprocess` in a `subprocess.Popen(..., start_new_session=True)` wrapper. Track wrapper PIDs as process groups. Run all subprocess work under a shared 300-600 second clarifier budget. On timeout, launch failure, or fail-open exit, terminate then kill every tracked process group, drain outputs, and continue Gate C.
+Launch each debater and judge through `scripts/larch.sh agent launch-claude-subprocess` in a `subprocess.Popen(..., start_new_session=True)` wrapper. Track wrapper PIDs as process groups. Run all subprocess work under a shared 300-600 second clarifier budget. On timeout, launch failure, or fail-open exit, terminate then kill every tracked process group, drain outputs, and continue Gate C.
 
 Maintain `$DESIGN_TMPDIR/dialectic-clarifier-generation.txt` as a monotonic integer. Increment at the start of each auto or manual debate round, and record the active generation in `dialectic-clarifier-status.json` before launching subprocesses. Increment again on fail-open kill/timeout. Parent-owned status and digest writers must no-op when their embedded generation does not match the live file. Subprocess sidecars do not observe generation.
 

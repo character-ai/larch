@@ -1241,7 +1241,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
     launchers = {
         "codex": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "codex", "--model-role", "fix"],
         "cursor": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "cursor"],
-        "claude": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-claude-review", "--model", config.CLAUDE_SONNET_4_6_1M_MODEL],
+        "claude": [str(larch_entrypoint(plugin)), "agent", "launch-claude-review", "--model", config.CLAUDE_SONNET_4_6_1M_MODEL],
     }
     if os.environ.get("LARCH_TEST_LAUNCH_CODEX_REVIEW"):
         launchers["codex"] = [os.environ["LARCH_TEST_LAUNCH_CODEX_REVIEW"], "--tool", "codex"]

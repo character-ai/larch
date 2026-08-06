@@ -177,52 +177,6 @@ def _assert_design_pair_shape(rows: list[dict[str, object]], *, codex_role: str)
     assert all(row.get("slot") != "codex-plan-generic" for row in rows)
 
 
-def _write_python3_agent_stub(tmp_path: Path) -> Path:
-    stub_dir = tmp_path / "python3-stub-bin"
-    stub_dir.mkdir()
-    stub = stub_dir / "python3"
-    _ = stub.write_text(
-        f"""#!{sys.executable}
-import os
-import sys
-from pathlib import Path
-
-real_python = os.environ["PLAN_REVIEW_PANEL_REAL_PYTHON"]
-args = sys.argv[1:]
-if len(args) >= 3 and args[1:3] == ["agent", "launch-claude-review"]:
-    output = ""
-    idx = 3
-    while idx < len(args):
-        if args[idx] in ("--output", "--output-file") and idx + 1 < len(args):
-            output = args[idx + 1]
-            idx += 2
-        elif args[idx] in (
-            "--prompt-file",
-            "--mode",
-            "--role",
-            "--read-tools-add-dir",
-            "--timeout",
-            "--timing-task-kind",
-        ):
-            idx += 2
-        else:
-            idx += 1
-    if not output:
-        raise SystemExit(2)
-    Path(output).write_text(
-        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n",
-        encoding="utf-8",
-    )
-    Path(output + ".done").write_text("0\\n", encoding="utf-8")
-    raise SystemExit(0)
-os.execv(real_python, [real_python, *args])
-""",
-        encoding="utf-8",
-    )
-    stub.chmod(0o755)
-    return stub_dir
-
-
 def _write_render_failure_plugin(tmp_path: Path) -> Path:
     plugin_root = tmp_path / "render-failure-plugin"
     cli = plugin_root / "python" / "cli.py"
@@ -1494,8 +1448,8 @@ def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) ->
         "1",
         env={
             "LARCH_QUIET_DISABLE": "1",
-            "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
-            "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
+            "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
+            "LARCH_TEST_CLAUDE_REVIEW_RESULT": "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n",
         },
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
@@ -1518,9 +1472,10 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "LARCH_QUIET_ACTIVE": "",
         "LARCH_QUIET_PID": "",
         "LARCH_QUIET_LOG_FILE": "",
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
         "DESIGN_TMPDIR": str(design),
-        "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
-        "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
+        "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
+        "LARCH_TEST_CLAUDE_REVIEW_RESULT": "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n",
         "PYTHONPATH": str(ROOT / "python"),
     })
     proc = subprocess.run(
@@ -1672,7 +1627,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
         verb = tuple(a[2:4]) if len(a) >= 4 else ()
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
-        if verb == ("agent", "launch-claude-review"):
+        if tuple(a[1:3]) == ("agent", "launch-claude-review"):
             # The retry attempt writes a substantive vote and exits 0.
             out = _argval(a, "--output")
             if out:
@@ -1752,7 +1707,7 @@ def test_voter_dispatch_both_down_retry_recovers(
         verb = tuple(a[2:4]) if len(a) >= 4 else ()
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
-        if verb == ("agent", "launch-claude-review"):
+        if tuple(a[1:3]) == ("agent", "launch-claude-review"):
             launches["n"] += 1
             out = _argval(a, "--output")
             if launches["n"] >= 2 and out:

@@ -16,6 +16,7 @@ mod registry;
 mod review;
 mod session;
 mod types;
+mod waterfall;
 
 pub use argv::{
     CodexEnvAuth, VendorArgv, VendorArgvError, VendorArgvErrorKind, build_claude_argv,
@@ -108,4 +109,9 @@ pub use types::{
     CAP_HIT_PAYLOAD, VendorCapCheckResult, VendorDescriptor, VendorFamilyHooks,
     VendorLaunchOutcome, VendorLaunchRequest, VendorLaunchStatus, VendorParsedResult,
     VendorProcessResult,
+};
+pub use waterfall::{
+    TOKEN_SIDECAR_ENV_UNSET, TierAttempt, TierLaunchError, TierLaunchInput, TokenSidecarIngest,
+    WaterfallResult, build_launch_argv, ingest_launcher_token_sidecar, launch_tier, ordered_tiers,
+    run_waterfall, token_sidecar_ingest_env,
 };

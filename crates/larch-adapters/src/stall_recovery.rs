@@ -1,7 +1,8 @@
 //! Filesystem, Git, and bgjob effects for Rust-owned stall-recovery commands.
 use crate::{
-    GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot, atomic_write_bytes_in,
-    atomic_write_utf8_in, ensure_directory_chain, resolve_allow_missing,
+    FileIoErrorKind, GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot,
+    atomic_write_bytes_in, atomic_write_utf8_in, ensure_directory_chain, open_confined_read,
+    resolve_allow_missing,
 };
 use chrono::{SecondsFormat, Utc};
 use larch_core::{
@@ -948,9 +949,14 @@ fn open_failure_detail_log(
     if max_size.is_some_and(|limit| metadata.len() > limit) {
         return Err(FailureDetailLogError::Oversize);
     }
-    root.confine(path, PathIntent::Read)
+    let confined = root
+        .confine(path, PathIntent::Read)
         .map_err(|_| FailureDetailLogError::OutsideTmpdir)?;
-    let file = open_failure_detail_file(path)?;
+    let file = open_confined_read(&confined).map_err(|error| match error.kind() {
+        FileIoErrorKind::Symlink => FailureDetailLogError::Symlink,
+        FileIoErrorKind::WrongFileType => FailureDetailLogError::NotRegularFile,
+        _ => FailureDetailLogError::Unreadable,
+    })?;
     let opened = file
         .metadata()
         .map_err(|_| FailureDetailLogError::Unreadable)?;
@@ -961,21 +967,6 @@ fn open_failure_detail_log(
         return Err(FailureDetailLogError::Oversize);
     }
     Ok((file, opened.len()))
-}
-
-fn open_failure_detail_file(path: &Path) -> Result<File, FailureDetailLogError> {
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    options.custom_flags(nix::libc::O_NOFOLLOW);
-    options.open(path).map_err(|error| {
-        #[cfg(unix)]
-        if error.raw_os_error() == Some(nix::libc::ELOOP) {
-            return FailureDetailLogError::Symlink;
-        }
-        let _ = error;
-        FailureDetailLogError::Unreadable
-    })
 }
 
 fn inspect_state(path: &Path) -> Result<Option<String>, StateMutationError> {

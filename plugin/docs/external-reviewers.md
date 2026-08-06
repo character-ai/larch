@@ -127,4 +127,4 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
 | Dynamic-archetype scout | Propose ephemeral reviewer archetypes | Standalone `/review --diff`, `/design` Step 2b | Registry roles `review.dynamic_archetype_scout` and `design.plan_archetype_scout`: **Cursor→Claude**. Codex is not in the scout waterfall. |
 
-`agent launch-claude-review` remains read-only for reviewer and voter lanes. Review-fix uses `agent launch-claude-review-fix` so Claude can edit the working tree without weakening review/voter launchers.
+`scripts/larch.sh agent launch-claude-review` remains read-only for reviewer and voter lanes. Review-fix uses `agent launch-claude-review-fix` so Claude can edit the working tree without weakening review/voter launchers.

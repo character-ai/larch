@@ -78,6 +78,12 @@ pub enum AgentCommand {
     /// Read the active Claude session model id.
     #[command(name = "read-claude-model")]
     ReadClaudeModel,
+    /// Launch Claude with a confined, read-only review prompt.
+    #[command(name = "launch-claude-subprocess", disable_help_flag = true)]
+    LaunchClaudeSubprocess(AgentRawArguments),
+    /// Render or launch a Claude review prompt through the confined launcher.
+    #[command(name = "launch-claude-review", disable_help_flag = true)]
+    LaunchClaudeReview(AgentRawArguments),
     /// Run one approved vendor executable and write the launch artifact family.
     #[command(disable_help_flag = true)]
     RunExternalAgent(AgentRawArguments),
@@ -166,7 +172,7 @@ pub struct ExternalToolRegistryArguments {
 #[command(trailing_var_arg = true)]
 pub struct AgentRawArguments {
     #[arg(allow_hyphen_values = true)]
-    arguments: Vec<OsString>,
+    pub(crate) arguments: Vec<OsString>,
 }
 
 /// Run one agent command and return its process exit status.
@@ -181,6 +187,12 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::ReadClaudeModel => read_claude_model(),
+        AgentCommand::LaunchClaudeSubprocess(arguments) => {
+            crate::claude_commands::launch_claude_subprocess(&arguments)
+        }
+        AgentCommand::LaunchClaudeReview(arguments) => {
+            crate::claude_commands::launch_claude_review(&arguments)
+        }
         AgentCommand::RunExternalAgent(arguments) => run_external_agent(&arguments),
         AgentCommand::WaitReviewers(arguments) => wait_reviewers(&arguments),
         AgentCommand::ClassifyDiff(arguments) => classify_diff_command(&arguments),

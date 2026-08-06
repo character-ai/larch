@@ -26,8 +26,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("agent", "launch-claude-ci"): ("larch.agents.agents", "launch_claude_ci_main", False),
     ("agent", "launch-claude-lint-fix"): ("larch.agents.agents", "launch_claude_lint_fix_main", False),
     ("agent", "launch-claude-review-fix"): ("larch.agents.agents", "launch_claude_review_fix_main", False),
-    ("agent", "launch-claude-review"): ("larch.agents.agents", "launch_claude_review_main", False),
-    ("agent", "launch-claude-subprocess"): ("larch.agents.agents", "launch_claude_subprocess_main", False),
     ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
     ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
     ("calibration-replay", "validate-manifest"): (

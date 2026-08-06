@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
-import os
 import subprocess
 import sys
 import time
@@ -25,7 +24,6 @@ from larch.agents import _run_external
 from larch.agents import _auth
 from larch.agents import _ci_launcher
 from larch.agents import _review_launcher
-from larch.agents import _claude_runner
 from larch.agents import _failure_diag
 from larch.agents import _launch_failure
 from larch.agents import _types
@@ -645,103 +643,6 @@ def test_ci_prompt_redacts_plan_file_secrets(tmp_path: Path) -> None:
     assert secret not in prompt
     assert "<REDACTED-TOKEN>" in prompt
 
-
-def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    claude = bin_dir / "claude"
-    _ = claude.write_text(
-        "#!/usr/bin/env bash\n"
-        "cat >/dev/null\n"
-        "printf '{\"result\":\"env=%s\"}\\n' \"${"
-        + config.ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT
-        + ':-missing}"\n',
-        encoding="utf-8",
-    )
-    claude.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
-    prompt = tmp_path / "prompt.md"
-    secret_prompt = "secret prompt body"
-    _ = prompt.write_text(secret_prompt, encoding="utf-8")
-    output = tmp_path / "claude.out"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "30",
-        ],
-    )
-    assert rc == 0
-    meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
-    assert secret_prompt not in meta
-    assert "CMD_JSON=" in meta
-    assert output.read_text(encoding="utf-8") == "env=1"
-    assert "HARD CONSTRAINTS" in output.with_suffix(output.suffix + ".prompt").read_text(encoding="utf-8")
-
-
-
-def test_launch_claude_subprocess_records_model_with_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    claude = bin_dir / "claude"
-    claude.write_text(
-        "#!/usr/bin/env bash\n"
-        "cat >/dev/null\n"
-        "printf '%s\\n' '{\"result\":\"review ok\",\"usage\":{\"input_tokens\":10,\"output_tokens\":4}}'\n",
-        encoding="utf-8",
-    )
-    claude.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_kwargs: object) -> agents.CommandResult:
-        calls.append(list(argv))
-        return ok(tuple(argv))
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    prompt = tmp_path / "prompt.md"
-    prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "claude.out"
-    rc = agents.launch_claude_subprocess_main([
-        "--model", "claude-haiku-4-5",
-        "--prompt-file", str(prompt),
-        "--output-file", str(output),
-        "--timeout", "30",
-    ])
-    assert rc == 0
-    record_call = next(call for call in calls if "record-vendor" in call)
-    assert "model=claude-haiku-4-5" in record_call
-
-
-def test_launch_claude_subprocess_missing_binary_writes_sidecars(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
-    prompt = tmp_path / "prompt.md"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "claude.out"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 127
-    assert output.with_suffix(output.suffix + ".stderr-tail").is_file()
-    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
-    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "127\n"
-    stdout = capsys.readouterr().out
-    assert "STATUS=ERROR" in stdout
-    assert f"OUTPUT_FILE={output}" in stdout
 
 def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
@@ -3080,67 +2981,6 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
     assert order == ["meta", "timing", "usage", "failure", "promote", "emit"]
 
 
-def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_path: Path) -> None:
-    prompt = tmp_path / "outside" / "prompt.md"
-    prompt.parent.mkdir()
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    session = tmp_path / "session"
-    session.mkdir()
-    output = session / "out.txt"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 2
-
-
-def test_launch_claude_subprocess_requires_read_tools_add_dir(tmp_path: Path) -> None:
-    prompt = tmp_path / "prompt.md"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "out.txt"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--read-tools",
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 2
-
-
-def test_launch_claude_subprocess_rejects_read_tools_add_dir_outside_session(tmp_path: Path) -> None:
-    prompt = tmp_path / "session" / "prompt.md"
-    prompt.parent.mkdir()
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = prompt.parent / "out.txt"
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--read-tools",
-            "--read-tools-add-dir",
-            str(outside),
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 2
-
-
 def test_render_context_files_redacts_secret_shaped_path(tmp_path: Path) -> None:
     secret = "sk-" + "A" * 24
     root = tmp_path / f"context-{secret}"
@@ -3152,213 +2992,6 @@ def test_render_context_files_redacts_secret_shaped_path(tmp_path: Path) -> None
     assert msg == ""
     assert secret not in rendered
     assert "&lt;REDACTED-TOKEN&gt;" in rendered
-
-
-def test_launch_claude_review_forwards_context_files_to_subprocess(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    prompt = tmp_path / "prompt.md"
-    diff = tmp_path / "review.diff"
-    plan = tmp_path / "plan.md"
-    feature = tmp_path / "feature.txt"
-    scope = tmp_path / "scope.txt"
-    for path in (prompt, diff, plan, feature, scope):
-        _ = path.write_text(path.name, encoding="utf-8")
-    output = tmp_path / "claude-review.out"
-    captured: list[str] = []
-
-    def fake_launch(sub_args: list[str]) -> int:
-        captured.extend(sub_args)
-        _ = output.write_text("ok", encoding="utf-8")
-        _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
-        return 0
-
-    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch)
-    rc = agents.launch_claude_review_main(
-        [
-            "--output",
-            str(output),
-            "--prompt-file",
-            str(prompt),
-            "--mode",
-            "description",
-            "--diff-file",
-            str(diff),
-            "--plan-file",
-            str(plan),
-            "--feature-file",
-            str(feature),
-            "--scope-files",
-            str(scope),
-        ],
-    )
-    assert rc == 0
-    forwarded = [captured[idx + 1] for idx, value in enumerate(captured) if value == "--context-files"]
-    assert forwarded == [str(diff), str(plan), str(feature), str(scope)]
-
-
-def test_launch_claude_review_skips_missing_implicit_context_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    prompt = tmp_path / "prompt.md"
-    diff = tmp_path / "review.diff"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    _ = diff.write_text("diff", encoding="utf-8")
-    output = tmp_path / "claude-review.out"
-    captured: list[str] = []
-
-    def fake_launch(sub_args: list[str]) -> int:
-        captured.extend(sub_args)
-        _ = output.write_text("ok", encoding="utf-8")
-        _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
-        return 0
-
-    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch)
-    rc = agents.launch_claude_review_main(
-        [
-            "--output",
-            str(output),
-            "--prompt-file",
-            str(prompt),
-            "--diff-file",
-            str(diff),
-            "--plan-file",
-            str(tmp_path / "missing-plan.md"),
-            "--feature-file",
-            str(tmp_path / "missing-feature.txt"),
-        ],
-    )
-    assert rc == 0
-    forwarded = [captured[idx + 1] for idx, value in enumerate(captured) if value == "--context-files"]
-    assert forwarded == [str(diff)]
-
-
-def test_launch_claude_subprocess_failure_sidecars_and_clean_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    claude = bin_dir / "claude"
-    _ = claude.write_text(
-        "#!/usr/bin/env bash\n"
-        "cat >/dev/null\n"
-        "printf 'boom\\n' >&2\n"
-        "exit 3\n",
-        encoding="utf-8",
-    )
-    claude.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
-    prompt = tmp_path / "prompt.md"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "out.txt"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 3
-    assert "boom" in output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8")
-    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
-    assert "STATUS=clean" in output.with_suffix(output.suffix + ".dirty-tree").read_text(encoding="utf-8")
-
-
-def test_launch_claude_review_payload_sidecar_unlink_failure_is_best_effort(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    prompt = tmp_path / "prompt.md"
-    prompt.write_text("prompt", encoding="utf-8")
-    scope = tmp_path / "scope.txt"
-    scope.write_text("python/foo.py\n", encoding="utf-8")
-    output = tmp_path / "out.txt"
-    sidecar = tmp_path / "payload.txt"
-    temp_prompt = tmp_path / "temp-prompt.txt"
-
-    def fake_render(argv: list[str], **_kwargs: object) -> object:
-        sidecar_idx = argv.index("--payload-bytes-output") + 1
-        assert Path(argv[sidecar_idx]) == sidecar
-        sidecar.write_text("11\n", encoding="utf-8")
-        return type("R", (), {"stdout": "rendered prompt body\n", "stderr": "", "returncode": 0})()
-
-    def fake_launch_subprocess(_args: list[str]) -> int:
-        output.write_text("ok", encoding="utf-8")
-        output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
-        return 0
-
-    original_unlink = Path.unlink
-    mkstemp_calls = 0
-
-    def fake_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
-        nonlocal mkstemp_calls
-        mkstemp_calls += 1
-        path = sidecar if mkstemp_calls == 1 else temp_prompt
-        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
-        return fd, str(path)
-
-    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
-        if self == sidecar:
-            raise OSError("unlink denied")
-        return original_unlink(self, *args, **kwargs)
-
-    monkeypatch.setattr(_claude_runner.proc, "run", fake_render)
-    monkeypatch.setattr(_claude_runner.tempfile, "mkstemp", fake_mkstemp)
-    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch_subprocess)
-    monkeypatch.setattr(Path, "unlink", fail_unlink)
-
-    rc = agents.launch_claude_review_main(
-        [
-            "--output",
-            str(output),
-            "--agent-file",
-            str(REPO_ROOT / "agents" / "reviewer-structure.md"),
-            "--mode",
-            "description",
-            "--description-text",
-            "payload description",
-            "--scope-files",
-            str(scope),
-            "--timeout",
-            "5",
-        ],
-    )
-
-    assert rc == 0
-    assert output.read_text(encoding="utf-8") == "ok"
-    assert sidecar.exists()
-
-
-@pytest.mark.parametrize("payload", ["not-json", '{"is_error":true,"result":"bad"}', '{"result":""}'])
-def test_launch_claude_subprocess_bad_json_envelope_uses_legacy_sentinel(
-    payload: str,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    claude = bin_dir / "claude"
-    _ = claude.write_text(
-        "#!/usr/bin/env bash\n"
-        "cat >/dev/null\n"
-        f"printf '%s\\n' {payload!r}\n",
-        encoding="utf-8",
-    )
-    claude.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
-    prompt = tmp_path / "prompt.md"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "out.txt"
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "5",
-        ],
-    )
-    assert rc == 99
-    assert output.read_text(encoding="utf-8") == "CLAUDE_JSON_RESULT_INVALID"
-    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "99\n"
 
 
 def test_cursor_ci_stall_monitor_writes_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3842,40 +3475,6 @@ def _install_fake_claude_degraded_auth(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
 
 
-def test_launch_claude_subprocess_fast_fails_on_degraded_auth(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    _install_fake_claude_degraded_auth(tmp_path, monkeypatch)
-    prompt = tmp_path / "prompt.md"
-    _ = prompt.write_text("prompt", encoding="utf-8")
-    output = tmp_path / "claude-subprocess.out"
-    start = time.monotonic()
-    rc = agents.launch_claude_subprocess_main(
-        [
-            "--prompt-file",
-            str(prompt),
-            "--output-file",
-            str(output),
-            "--timeout",
-            "20",
-        ],
-    )
-    elapsed = time.monotonic() - start
-
-    assert rc == config.EXIT_TIMEOUT
-    assert elapsed < 10
-    assert output.with_suffix(output.suffix + ".stderr").is_file()
-    assert output.with_suffix(output.suffix + ".stderr-tail").is_file()
-    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
-    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == f"{config.EXIT_TIMEOUT}\n"
-    stdout = capsys.readouterr().out
-    assert "STATUS=TIMEOUT" in stdout
-    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
-    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
-
-
 def test_launch_claude_ci_fast_fails_on_degraded_auth(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4293,7 +3892,6 @@ def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatc
         ("check_reviewers", _auth),
         ("launch_codex_ci_main", _ci_launcher),
         ("launch_review_main", _review_launcher),
-        ("launch_claude_subprocess_main", _claude_runner),
     ],
 )
 def test_agents_reexports_split_public_contract(name: str, module: object) -> None:

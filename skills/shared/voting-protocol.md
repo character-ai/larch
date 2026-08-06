@@ -59,7 +59,7 @@ After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but bel
 ## Voter Panel Composition
 
 **For plan review** (`/design` Step 3):
-- **Voter 1**: Claude — via `python/cli.py plan-review voter-dispatch` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
+- **Voter 1**: Claude — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent launch-claude-review --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
 - **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh` (waterfalls Codex, then Cursor, then Claude)
 - **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh` (waterfalls Cursor, then Codex, then Claude)
 

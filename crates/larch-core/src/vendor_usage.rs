@@ -1,4 +1,4 @@
-//! Codex JSONL usage-event parsing.
+//! Vendor usage parsing for Codex streams and Claude result envelopes.
 
 use serde_json::Value;
 use std::fmt;
@@ -15,6 +15,83 @@ pub struct UsageTotals {
     input_tokens: i64,
     cached_input_tokens: i64,
     output_tokens: i64,
+}
+
+/// Claude's four usage buckets from one JSON result envelope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "the shared `tokens` suffix is the vendor wire vocabulary"
+)]
+pub struct ClaudeUsageTotals {
+    input_tokens: i64,
+    output_tokens: i64,
+    cache_read_tokens: i64,
+    cache_create_tokens: i64,
+}
+
+impl ClaudeUsageTotals {
+    /// Build one Claude usage record.
+    #[must_use]
+    pub const fn new(
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_create_tokens: i64,
+    ) -> Self {
+        Self {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_create_tokens,
+        }
+    }
+
+    /// Return input tokens.
+    #[must_use]
+    pub const fn input_tokens(self) -> i64 {
+        self.input_tokens
+    }
+
+    /// Return output tokens.
+    #[must_use]
+    pub const fn output_tokens(self) -> i64 {
+        self.output_tokens
+    }
+
+    /// Return cache-read input tokens.
+    #[must_use]
+    pub const fn cache_read_tokens(self) -> i64 {
+        self.cache_read_tokens
+    }
+
+    /// Return cache-creation input tokens.
+    #[must_use]
+    pub const fn cache_create_tokens(self) -> i64 {
+        self.cache_create_tokens
+    }
+
+    /// Return the total across every Claude usage bucket.
+    #[must_use]
+    pub const fn total_tokens(self) -> i64 {
+        self.input_tokens
+            .saturating_add(self.output_tokens)
+            .saturating_add(self.cache_read_tokens)
+            .saturating_add(self.cache_create_tokens)
+    }
+
+    /// Render the token sidecar consumed by CI waterfall helpers.
+    #[must_use]
+    pub fn token_record(self, model: &str, raw: &str) -> String {
+        format!(
+            "TOOL=claude\nMODEL={model}\nINPUT={}\nOUTPUT={}\nCACHE_READ={}\nCACHE_CREATE={}\nTOTAL={}\nRAW={raw}\n",
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_read_tokens,
+            self.cache_create_tokens,
+            self.total_tokens(),
+        )
+    }
 }
 
 impl UsageTotals {
@@ -277,6 +354,24 @@ pub fn json_usage_number(value: Option<&Value>) -> Result<i64, UsageParseError> 
     number(value)
 }
 
+/// Parse Claude usage from a successful JSON result envelope.
+///
+/// Returns `None` when the envelope has no usable usage block, matching the
+/// legacy launchers' best-effort telemetry behavior.
+#[must_use]
+pub fn parse_claude_usage(value: &Value) -> Option<ClaudeUsageTotals> {
+    let usage = value.get("usage")?.as_object()?;
+    let number = |snake: &str, camel: &str| {
+        json_usage_number(usage.get(snake).or_else(|| usage.get(camel))).ok()
+    };
+    Some(ClaudeUsageTotals::new(
+        number("input_tokens", "inputTokens")?,
+        number("output_tokens", "outputTokens")?,
+        number("cache_read_input_tokens", "cacheReadTokens")?,
+        number("cache_creation_input_tokens", "cacheWriteTokens")?,
+    ))
+}
+
 /// Truncate a JSON float toward zero, mirroring Python's `int(float)`.
 #[allow(
     clippy::cast_possible_truncation,
@@ -293,7 +388,27 @@ fn truncate_float(value: f64) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{UsageParseError, UsageTotals, parse_codex_usage};
+    use super::{UsageParseError, UsageTotals, parse_claude_usage, parse_codex_usage};
+    use serde_json::json;
+
+    #[test]
+    fn claude_usage_preserves_subprocess_and_ci_wire_buckets() {
+        let usage = parse_claude_usage(&json!({
+            "usage": {
+                "input_tokens": 4,
+                "outputTokens": 3,
+                "cache_read_input_tokens": 2,
+                "cacheWriteTokens": 1,
+            }
+        }))
+        .expect("usage");
+        assert_eq!(usage.total_tokens(), 10);
+        assert_eq!(
+            usage.token_record("claude-sonnet-4-6", "claude_review"),
+            "TOOL=claude\nMODEL=claude-sonnet-4-6\nINPUT=4\nOUTPUT=3\nCACHE_READ=2\nCACHE_CREATE=1\nTOTAL=10\nRAW=claude_review\n"
+        );
+        assert!(parse_claude_usage(&json!({"usage": {"input_tokens": "bad"}})).is_none());
+    }
 
     #[test]
     fn nested_usage_shapes_sum_across_records() {

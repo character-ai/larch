@@ -145,6 +145,7 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.report.final_report`, `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #8090 (`final-report`), #7682 (issue surfaces), later run-log leaves |
 | `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_flush`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
+| `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
