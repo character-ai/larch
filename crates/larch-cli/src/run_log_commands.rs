@@ -3,6 +3,7 @@
 use larch_adapters::git::GixRepository;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
 use larch_adapters::runtime::LarchRuntime;
+use larch_adapters::s3_storage::{R2Endpoint, S3Storage};
 use larch_core::{
     ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
     ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
@@ -18,7 +19,7 @@ use std::{
     fs,
     io::Write as _,
     path::{Path, PathBuf},
-    process::{Command, ExitCode, Stdio},
+    process::ExitCode,
 };
 
 /// Run the Rust-owned `run-log validate-run-id` command.
@@ -144,14 +145,46 @@ pub fn storage_preflight(arguments: &[OsString]) -> ExitCode {
     }
 }
 
-enum PreflightFailure {
+pub enum PreflightFailure {
     Configuration(StorageConfigurationError),
     Provider(StoragePreflightError),
 }
 
 fn run_storage_preflight(repo_root_flag: Option<&str>) -> Result<String, PreflightFailure> {
+    let (_, resolution, environ) = resolve_storage(repo_root_flag)?;
+    if let Some(storage) = resolution.storage() {
+        preflight_enabled_storage(storage, &environ)?;
+    }
+    Ok(format_preflight_stdout(&resolution))
+}
+
+pub fn resolve_storage(
+    repo_root_flag: Option<&str>,
+) -> Result<
+    (
+        PathBuf,
+        larch_core::RunLogStorageResolution,
+        HashMap<String, String>,
+    ),
+    PreflightFailure,
+> {
+    let (repo_root, origin, environ) = resolve_repository_environment(repo_root_flag)?;
+    let resolution = resolve_run_log_storage(&repo_root, &environ, &origin)
+        .map_err(PreflightFailure::Configuration)?;
+    Ok((repo_root, resolution, environ))
+}
+
+pub fn resolve_repository_environment(
+    repo_root_flag: Option<&str>,
+) -> Result<(PathBuf, String, HashMap<String, String>), PreflightFailure> {
+    resolve_repository_environment_path(repo_root_flag.map(Path::new))
+}
+
+pub fn resolve_repository_environment_path(
+    repo_root_flag: Option<&Path>,
+) -> Result<(PathBuf, String, HashMap<String, String>), PreflightFailure> {
     let start = repo_root_flag
-        .map_or_else(env::current_dir, |value| Ok(PathBuf::from(value)))
+        .map_or_else(env::current_dir, |value| Ok(value.to_path_buf()))
         .map_err(|_| {
             PreflightFailure::Configuration(StorageConfigurationError::new(
                 "could not discover a Git repository root from startup CWD",
@@ -159,22 +192,17 @@ fn run_storage_preflight(repo_root_flag: Option<&str>) -> Result<String, Preflig
         })?;
     let (repo_root, origin) = discover_repo_identity(&start)?;
     let environ: HashMap<String, String> = env::vars().collect();
-    let resolution = resolve_run_log_storage(&repo_root, &environ, &origin)
-        .map_err(PreflightFailure::Configuration)?;
-    if let Some(storage) = resolution.storage() {
-        preflight_enabled_storage(storage, &environ)?;
-    }
-    Ok(format_preflight_stdout(&resolution))
+    Ok((repo_root, origin, environ))
 }
 
-fn preflight_enabled_storage(
+pub fn preflight_enabled_storage(
     storage: &ToolRepositoryStorage,
     environ: &HashMap<String, String>,
 ) -> Result<(), PreflightFailure> {
     let prefix = format!("{}/", storage.prefix());
     let result = match storage.scheme() {
         "gs" => preflight_gcs(storage.bucket(), &prefix),
-        "s3" | "r2" => preflight_aws_cli(storage, environ, &prefix),
+        "s3" | "r2" => preflight_s3_compatible(storage, environ, &prefix),
         _ => Err(StoragePreflightError::new(format!(
             "{} prefix preflight failed for the configured larch repository namespace; verify provider credentials and prefix-scoped list access",
             storage.scheme()
@@ -200,59 +228,33 @@ fn preflight_gcs(bucket: &str, prefix: &str) -> Result<(), StoragePreflightError
     })
 }
 
-fn preflight_aws_cli(
+fn preflight_s3_compatible(
     storage: &ToolRepositoryStorage,
     environ: &HashMap<String, String>,
     prefix: &str,
 ) -> Result<(), StoragePreflightError> {
-    // Temporary S3/R2 transport matching Python `object_store` until a native
-    // adapter clears cargo-deny duplicate review (#8076 / #8080).
-    let mut command = Command::new("aws"); // lint-subprocess-via-runner: ok temporary AWS CLI S3/R2 preflight transport until native adapter
-    command.args([
-        "s3api",
-        "list-objects-v2",
-        "--bucket",
-        storage.bucket(),
-        "--prefix",
-        prefix,
-        "--max-keys",
-        "1",
-        "--no-paginate",
-        "--output",
-        "json",
-    ]);
-    if storage.scheme() == "r2" {
-        let endpoint = validate_r2_endpoint(environ)?;
-        command.args(["--endpoint-url", &endpoint]);
-    }
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let output = command.output().map_err(|_| {
-        StoragePreflightError::new(format!(
-            "AWS CLI is required for {} storage preflight; install 'aws' and retry",
-            storage.scheme().to_ascii_uppercase()
-        ))
-    })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    if output.status.code() == Some(127) {
-        return Err(StoragePreflightError::new(format!(
-            "AWS CLI is required for {} storage preflight; install 'aws' and retry",
-            storage.scheme().to_ascii_uppercase()
-        )));
-    }
-    Err(StoragePreflightError::new(format!(
-        "{} prefix preflight failed for the configured larch repository namespace; verify provider credentials and prefix-scoped list access",
-        storage.scheme()
-    )))
+    let runtime = LarchRuntime::new().map_err(|_| storage_preflight_error(storage.scheme()))?;
+    runtime.block_on(async {
+        let store = s3_compatible_store(storage.scheme(), environ).await?;
+        store
+            .preflight_prefix(storage.bucket(), prefix)
+            .await
+            .map_err(|error| map_object_store_error(storage.scheme(), error))
+    })
 }
 
-fn validate_r2_endpoint(
+pub async fn s3_compatible_store(
+    scheme: &str,
     environ: &HashMap<String, String>,
-) -> Result<String, StoragePreflightError> {
+) -> Result<S3Storage, StoragePreflightError> {
+    if scheme == "s3" {
+        return S3Storage::s3(environ)
+            .await
+            .map_err(|error| map_object_store_error("s3", error));
+    }
+    if scheme != "r2" {
+        return Err(storage_preflight_error(scheme));
+    }
     let account = environ
         .get(larch_core::ENV_LARCH_R2_ACCOUNT_ID)
         .map(String::as_str)
@@ -261,27 +263,11 @@ fn validate_r2_endpoint(
         .get(larch_core::ENV_LARCH_R2_ENDPOINT)
         .map(String::as_str)
         .unwrap_or_default();
-    let expected_host = format!("{account}.r2.cloudflarestorage.com");
-    let valid = account.len() == 32
-        && account
-            .bytes()
-            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-        && endpoint.starts_with("https://")
-        && {
-            let rest = &endpoint["https://".len()..];
-            let host = rest.trim_end_matches('/');
-            host == expected_host
-                && !rest.contains('?')
-                && !rest.contains('#')
-                && !rest.contains('@')
-        };
-    if valid {
-        Ok(endpoint.to_owned())
-    } else {
-        Err(StoragePreflightError::new(
-            "r2 prefix preflight failed for the configured larch repository namespace; verify provider credentials and prefix-scoped list access",
-        ))
-    }
+    let endpoint =
+        R2Endpoint::parse(account, endpoint).map_err(|_| storage_preflight_error("r2"))?;
+    S3Storage::r2(endpoint, environ)
+        .await
+        .map_err(|error| map_object_store_error("r2", error))
 }
 
 fn map_object_store_error(scheme: &str, error: ObjectStoreError) -> StoragePreflightError {
@@ -291,10 +277,14 @@ fn map_object_store_error(scheme: &str, error: ObjectStoreError) -> StoragePrefl
         | ObjectStoreError::NotFound
         | ObjectStoreError::LocalIo
         | ObjectStoreError::InvalidResponse
-        | ObjectStoreError::Transport => StoragePreflightError::new(format!(
-            "{scheme} prefix preflight failed for the configured larch repository namespace; verify provider credentials and prefix-scoped list access"
-        )),
+        | ObjectStoreError::Transport => storage_preflight_error(scheme),
     }
+}
+
+fn storage_preflight_error(scheme: &str) -> StoragePreflightError {
+    StoragePreflightError::new(format!(
+        "{scheme} prefix preflight failed for the configured larch repository namespace; verify provider credentials and prefix-scoped list access"
+    ))
 }
 
 fn discover_repo_identity(start: &Path) -> Result<(PathBuf, String), PreflightFailure> {

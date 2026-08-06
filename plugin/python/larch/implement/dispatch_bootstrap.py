@@ -15,6 +15,7 @@ from larch.implement.dispatch_helpers import (
     _first_nonempty,
     _forward_result,
     _invoke_cli,
+    _invoke_larch,
     _parse_kv,
     _read_kv_file,
     _read_session_key_default,
@@ -258,7 +259,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, P
         ]
         if args.lifecycle_parent_context:
             lifecycle_args.extend(["--lifecycle-parent-context", str(args.lifecycle_parent_context)])
-        lifecycle = _invoke_cli(lifecycle_args)
+        lifecycle = _invoke_larch(lifecycle_args)
         if lifecycle.stdout:
             result.stdout = (result.stdout or "") + lifecycle.stdout
         if lifecycle.stderr:

@@ -22,7 +22,7 @@ from larch.implement.dispatch_helpers import (
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
 )
-from larch.implement.dispatch_leg import _run_cli_capture
+from larch.implement.dispatch_leg import _run_cli_capture, _run_larch_capture
 from larch.issue import execution_issues
 from larch.report import run_log_batch
 from larch.state import finalize
@@ -262,7 +262,7 @@ def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str, lifecycle_
         print("Step 18: run-log publication failed: persisted REPO_ROOT is unavailable", file=sys.stderr)
         _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
         return config.EXIT_INTERNAL_ERROR
-    publish = _run_cli_capture(
+    publish = _run_larch_capture(
         [
             "run-log",
             _LIFECYCLE_VERB_BY_ACTION[lifecycle_action],

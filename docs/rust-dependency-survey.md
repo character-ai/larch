@@ -19,6 +19,29 @@ uses `assert_cmd`, `predicates`, and `tempfile`. Deferred selections stay out of
 `Cargo.lock` until code uses them. This keeps the foundation minimal and makes
 future dependency additions explicit review points.
 
+## S3-compatible object storage (issue #8077)
+
+The survey rechecked object-storage metadata on 2026-08-05. The official
+`aws-sdk-s3` 1.140.0, `aws-config` 1.10.1, `aws-runtime` 1.9.1, and
+`aws-smithy-runtime-api` 1.14.0 crates are Apache-2.0, maintained by the AWS SDK
+and Smithy teams, and match larch's Rust 1.94.1 toolchain. The direct
+`aws-runtime` edge supplies the non-deprecated in-memory profile-file types used
+to remove process and endpoint overrides. The test-only direct Smithy runtime
+edge supplies the HTTP connector traits used by larch's small offline test
+connector, so SDK request, response, and error mapping can be exercised without
+network access or the Smithy protocol-test dependency graph. The runtime
+dependencies replace the temporary AWS CLI transport for Rust-owned S3 and R2
+lifecycle operations. Default features are disabled: larch enables the Tokio
+runtime, the current rustls AWS-LC HTTPS client, and in-process SSO support, but
+not `credential_process`. This keeps credentials inside the reviewed adapter
+and prevents profile data from introducing a child process.
+
+The SDK's generated S3 graph carries both `http` 0.2 and 1.x request models and
+the digest 0.11 family. `deny.toml` retains the global duplicate deny and names
+only the independently required older `http` 0.2.12, `http-body` 0.4.6,
+`const-oid` 0.9.6, and `sha1` 0.10.7 generations. `cargo deny --all-features`
+passes with no advisory, license, or source exception.
+
 ## Async runtime (issue #7659)
 
 The survey rechecked runtime metadata on 2026-07-18.

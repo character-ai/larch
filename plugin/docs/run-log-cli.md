@@ -2,7 +2,8 @@
 
 `python3 python/cli.py run-log ...` owns the remaining Python run-log staging,
 validation, and publication verbs. `scripts/larch.sh run-log manifest ...` owns
-durable manifest updates.
+durable manifest updates. `scripts/larch.sh run-log ...` also owns storage
+preflight and the five shared lifecycle verbs.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -51,12 +52,6 @@ make a log public-safe. See the canonical
 - `run-log publish`
 - `run-log sync`
 - `run-log migrate-layout plan|apply|verify`
-- `run-log lifecycle-start`
-- `run-log lifecycle-finalize`
-- `run-log lifecycle-failure`
-- `run-log lifecycle-cancel`
-- `run-log lifecycle-early-return`
-
 ## Rust-owned manifest updates
 
 `scripts/larch.sh run-log manifest --log-root <root> --skill <skill> --run-id
@@ -72,7 +67,8 @@ manifest writer. It publishes through `larch_adapters::atomic_write_utf8_in`,
 which writes and syncs a same-directory temporary file, atomically renames it,
 then syncs the containing directory.
 
-The archive lifecycle verbs use their own machine envelopes. Provider failures
+The Rust-owned archive lifecycle verbs use their own machine envelopes.
+Provider failures
 use the normalized error set in the storage contract. `run-log sync`
 lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and

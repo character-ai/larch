@@ -19,7 +19,7 @@ from typing import Literal
 
 from larch.core import config
 from larch.core import process_identity
-from larch.implement.dispatch_helpers import _current_cli_path
+from larch.implement.dispatch_helpers import _current_cli_path, _larch_entrypoint
 
 # Deadline constants used by commit-route composites (defined here as they
 # drive leg-timeout sizing and the public outer-timeout constants).
@@ -499,6 +499,22 @@ def _run_cli_capture(
         return result
     return subprocess.run(
         [sys.executable, str(_current_cli_path()), *args],
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _run_larch_capture(
+    args: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(_larch_entrypoint()), *args],
         cwd=str(cwd) if cwd else None,
         env=env,
         text=True,

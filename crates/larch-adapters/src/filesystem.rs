@@ -378,7 +378,14 @@ impl TemporaryRoot {
                     ));
                 }
                 Err(source) if source.kind() == io::ErrorKind::NotFound => {
-                    match fs::create_dir(&current) {
+                    let mut builder = fs::DirBuilder::new();
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::DirBuilderExt as _;
+
+                        builder.mode(0o700);
+                    }
+                    match builder.create(&current) {
                         Ok(()) => {}
                         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                         Err(error) => {

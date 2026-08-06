@@ -93,7 +93,9 @@ for the runtime guarantees and residual limits.
 
 #### S3 and R2 credentials
 
-S3 and Cloudflare R2 run-log storage use the AWS CLI and its standard
+Rust-owned lifecycle and preflight commands use the official AWS SDK and its
+non-process credential chain for S3 and Cloudflare R2. The residual Python
+`run-log publish` and `run-log sync` commands use the AWS CLI and its standard
 credential discovery. Install and configure `aws` before starting larch. For
 S3, a profile, environment credentials, or an attached role may supply access.
 Verify the exact bucket-root operation without printing object names:

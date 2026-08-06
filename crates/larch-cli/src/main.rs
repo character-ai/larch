@@ -37,6 +37,7 @@ mod release_prepare;
 mod release_publish;
 mod release_stage;
 mod release_version;
+mod run_lifecycle_commands;
 mod run_log_commands;
 mod session_env_commands;
 mod session_lifecycle_commands;
@@ -138,6 +139,21 @@ enum RunLogCommand {
     /// Update one versioned run-log manifest with durable atomic publication.
     #[command(name = "manifest", disable_help_flag = true)]
     Manifest(RawCompatibilityArguments),
+    /// Terminalize a run as operator-cancelled.
+    #[command(name = "lifecycle-cancel")]
+    LifecycleCancel(run_lifecycle_commands::LifecycleTerminalArguments),
+    /// Terminalize a run after a non-error early return.
+    #[command(name = "lifecycle-early-return")]
+    LifecycleEarlyReturn(run_lifecycle_commands::LifecycleTerminalArguments),
+    /// Terminalize a failed run.
+    #[command(name = "lifecycle-failure")]
+    LifecycleFailure(run_lifecycle_commands::LifecycleTerminalArguments),
+    /// Terminalize a successful run.
+    #[command(name = "lifecycle-finalize")]
+    LifecycleFinalize(run_lifecycle_commands::LifecycleTerminalArguments),
+    /// Admit and persist one shared lifecycle run.
+    #[command(name = "lifecycle-start")]
+    LifecycleStart(run_lifecycle_commands::LifecycleStartArguments),
     /// Resolve storage configuration and run provider prefix preflight.
     #[command(name = "storage-preflight", disable_help_flag = true)]
     StoragePreflight(RawCompatibilityArguments),
@@ -855,6 +871,37 @@ fn run(
         }
         Domain::RunLog(RunLogCommand::Manifest(arguments)) => {
             Ok(run_log_commands::manifest(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::LifecycleStart(arguments)) => {
+            Ok(run_lifecycle_commands::start(&arguments))
+        }
+        Domain::RunLog(RunLogCommand::LifecycleFinalize(arguments)) => {
+            Ok(run_lifecycle_commands::terminal(
+                &arguments,
+                "finalize",
+                larch_core::LifecycleOutcome::Success,
+            ))
+        }
+        Domain::RunLog(RunLogCommand::LifecycleFailure(arguments)) => {
+            Ok(run_lifecycle_commands::terminal(
+                &arguments,
+                "failure",
+                larch_core::LifecycleOutcome::Failure,
+            ))
+        }
+        Domain::RunLog(RunLogCommand::LifecycleCancel(arguments)) => {
+            Ok(run_lifecycle_commands::terminal(
+                &arguments,
+                "cancel",
+                larch_core::LifecycleOutcome::Cancelled,
+            ))
+        }
+        Domain::RunLog(RunLogCommand::LifecycleEarlyReturn(arguments)) => {
+            Ok(run_lifecycle_commands::terminal(
+                &arguments,
+                "early-return",
+                larch_core::LifecycleOutcome::EarlyReturn,
+            ))
         }
         Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
             Ok(run_log_commands::validate_run_id(&arguments.arguments))

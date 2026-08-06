@@ -33,8 +33,13 @@ external-default-features = "allow"
 # getrandom 0.3, r-efi 5, rand_core 0.9, and sha2 0.10, while its shared
 # signature 2 graph retains rand_core 0.6. Keep these exact exceptions until
 # that reviewed release converges with the workspace graph.
+# The official AWS SDK 1.x S3 graph signs both Smithy http 0.2 and 1.x request
+# representations and uses the digest 0.11 family. Sigstore retains const-oid
+# 0.9, and gix retains sha1 0.10. Keep the exact older generations reviewed
+# here until those independent cryptography and transport graphs converge.
 skip = [
     { name = "block-buffer", version = "=0.10.4" },
+    { name = "const-oid", version = "=0.9.6" },
     { name = "cpufeatures", version = "=0.2.17" },
     { name = "crypto-common", version = "=0.1.7" },
     { name = "digest", version = "=0.10.7" },
@@ -42,10 +47,13 @@ skip = [
     { name = "getrandom", version = "=0.3.4" },
     { name = "hashbrown", version = "=0.14.5" },
     { name = "hashbrown", version = "=0.16.1" },
+    { name = "http", version = "=0.2.12" },
+    { name = "http-body", version = "=0.4.6" },
     { name = "r-efi", version = "=5.3.0" },
     { name = "rand", version = "=0.9.5" },
     { name = "rand_core", version = "=0.6.4" },
     { name = "rand_core", version = "=0.9.5" },
+    { name = "sha1", version = "=0.10.7" },
     { name = "sha2", version = "=0.10.9" },
     { name = "syn", version = "=3.0.0" },
     { name = "untrusted", version = "=0.7.1" },

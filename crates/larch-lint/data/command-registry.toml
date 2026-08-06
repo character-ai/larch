@@ -5977,11 +5977,13 @@ verb = "lifecycle-cancel"
 python_module = "larch.report.run_lifecycle"
 python_function = "cancel_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7826
+migration_issue = 8077
+clean_install_test = "clean-install-run-log-lifecycle-cancel"
 
 [[commands]]
 domain = "run-log"
@@ -5989,11 +5991,13 @@ verb = "lifecycle-early-return"
 python_module = "larch.report.run_lifecycle"
 python_function = "early_return_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7826
+migration_issue = 8077
+clean_install_test = "clean-install-run-log-lifecycle-early-return"
 
 [[commands]]
 domain = "run-log"
@@ -6001,11 +6005,13 @@ verb = "lifecycle-failure"
 python_module = "larch.report.run_lifecycle"
 python_function = "failure_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7826
+migration_issue = 8077
+clean_install_test = "clean-install-run-log-lifecycle-failure"
 
 [[commands]]
 domain = "run-log"
@@ -6013,11 +6019,13 @@ verb = "lifecycle-finalize"
 python_module = "larch.report.run_lifecycle"
 python_function = "finalize_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7826
+migration_issue = 8077
+clean_install_test = "clean-install-run-log-lifecycle-finalize"
 
 [[commands]]
 domain = "run-log"
@@ -6025,11 +6033,13 @@ verb = "lifecycle-start"
 python_module = "larch.report.run_lifecycle"
 python_function = "start_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7826
+migration_issue = 8077
+clean_install_test = "clean-install-run-log-lifecycle-start"
 
 [[commands]]
 domain = "run-log"
@@ -8198,7 +8208,7 @@ rust = ["session write-design-env", "session write-run-params"]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8545,8 +8555,8 @@ rust = ["gh resolve-repo"]
 [[callers]]
 path = "skills/debate/SKILL.md"
 kind = "skill"
-python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
-rust = []
+python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
+rust = ["run-log lifecycle-start"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"
@@ -9307,8 +9317,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["agent degraded-tools-gate", "run-log validate-run-id", "session cleanup-tmpdir"]
+python = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["agent degraded-tools-gate", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
@@ -9379,8 +9389,8 @@ rust = []
 [[callers]]
 path = "skills/shared/run-lifecycle.md"
 kind = "skill"
-python = ["run-log lifecycle-start"]
-rust = []
+python = []
+rust = ["run-log lifecycle-start"]
 
 [[callers]]
 path = "skills/shared/session-setup-output.md"

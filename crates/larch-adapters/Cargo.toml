@@ -9,8 +9,12 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aws-config.workspace = true
+aws-runtime.workspace = true
+aws-sdk-s3.workspace = true
 bytes.workspace = true
 chrono.workspace = true
+flate2.workspace = true
 gix.workspace = true
 google-cloud-auth.workspace = true
 google-cloud-storage.workspace = true
@@ -24,13 +28,17 @@ regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sigstore-trust-root.workspace = true
 sigstore-types.workspace = true
 sigstore-verify.workspace = true
 snap.workspace = true
+tar.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+unicode-normalization.workspace = true
+unicase.workspace = true
 url.workspace = true
 uuid.workspace = true
 x509-cert.workspace = true
@@ -39,6 +47,7 @@ x509-cert.workspace = true
 nix.workspace = true
 
 [dev-dependencies]
+aws-smithy-runtime-api.workspace = true
 google-cloud-gax.workspace = true
 http.workspace = true
 larch-test-support.workspace = true

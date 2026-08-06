@@ -19,7 +19,7 @@ from larch.core import repo_roots
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
-from larch.report import run_lifecycle
+from larch.report import run_lifecycle, run_logs
 from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 from test_support import operator_repo_with_remote as _operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
@@ -479,7 +479,21 @@ def test_pause_save_uses_real_log_publish_path(
         "load_tool_repository_storage",
         fake_storage_root,
     )
-    started = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)
+    log_root = design / "larch-logs"
+    initialized = run_logs.log_init(
+        log_root=log_root,
+        skill="design",
+        run_id="RUN1",
+    )
+    started = run_lifecycle.LifecycleStart(
+        repo_root=repo,
+        storage_root=storage_root,
+        skill="design",
+        run_id="RUN1",
+        log_root=log_root,
+        run_dir=initialized.path.parent,
+        context_file=tmp_path / "context.json",
+    )
     monkeypatch.setattr(
         repo_roots,
         "repo_root_probe",
@@ -494,7 +508,18 @@ def test_pause_save_uses_real_log_publish_path(
         "load_run_context",
         fake_load_context,
     )
-    monkeypatch.setattr(run_lifecycle.run_log_publish, "publish_log_run", fake_publish_log_run)
+    def fake_finish_run(**kwargs: object) -> run_lifecycle.LifecycleTerminal:
+        publication, violations = fake_publish_log_run(log_root=started.log_root)
+        assert isinstance(publication, run_lifecycle.run_log_publish.PublicationResult)
+        outcome = kwargs["outcome"]
+        assert isinstance(outcome, str)
+        return run_lifecycle.LifecycleTerminal(
+            outcome=outcome,
+            publication=publication,
+            secret_scrub_violations=violations,
+        )
+
+    monkeypatch.setattr(run_lifecycle, "finish_run", fake_finish_run)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]

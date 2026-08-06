@@ -240,7 +240,9 @@ Missing configuration disables remote publication. Skills warn, retain local
 staging and bookkeeping during the invocation, then terminalize without a
 remote archive, synchronized cache, or pending publication.
 
-S3 and R2 require the AWS CLI on `PATH` and use standard AWS credential
+The Rust-owned lifecycle and preflight paths use the official AWS SDK's
+non-process credential chain. The residual Python `run-log publish` and
+`run-log sync` paths require the AWS CLI on `PATH` and use standard AWS credential
 discovery. R2 also requires a 32-character lowercase hexadecimal
 `LARCH_R2_ACCOUNT_ID` and the exact matching HTTPS
 `LARCH_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`. GCS uses the

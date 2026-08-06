@@ -44,7 +44,7 @@ Treat source issues, generated subjects, repository contents, vendor ledgers, ma
 
 ## Terminal ownership
 
-After lifecycle start, exactly one terminal command owns every return: `run-log lifecycle-finalize`, `run-log lifecycle-failure`, `run-log lifecycle-cancel`, or `run-log lifecycle-early-return`. Pass the canonical repository root, `--skill debate`, and `--run-id "$RUN_ID"`, then require the shared terminal success KVs before final prose.
+After lifecycle start, exactly one terminal command through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh"` owns every return: `run-log lifecycle-finalize`, `run-log lifecycle-failure`, `run-log lifecycle-cancel`, or `run-log lifecycle-early-return`. Pass the canonical repository root, `--skill debate`, and `--run-id "$RUN_ID"`, then require the shared terminal success KVs before final prose.
 
 Set `TITLE_ADOPTED=false`, `STATE_CREATED=false`, and `CLAUDE_AGENT_ID=` before work. Every failure after `TITLE_ADOPTED=true` enters the abort funnel in Step 6. Never print raw vendor output or a raw exception in a public comment.
 
@@ -56,7 +56,7 @@ Print the canonical separator and `> **🔶 /debate 0: setup**` from `skills/sha
 Inspect and consume only an optional leading internal lifecycle-parent pair, then run lifecycle start before parsing public arguments. Add `--lifecycle-parent-context "$LIFECYCLE_PARENT_CONTEXT"` when present:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log lifecycle-start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log lifecycle-start \
   --repo-root "${CLAUDE_PROJECT_DIR:-$(pwd -P)}" --skill debate
 ```
 

@@ -179,12 +179,14 @@ pub use review_dispatch::{
 };
 pub use run_log::{
     BatchName, ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger,
-    ExecutionIssueReadError, ExecutionIssueReadErrorKind, ManifestDocument, ManifestFormatVersion,
-    ManifestReadError, ManifestReadErrorKind, ManifestRecord, ManifestUpdate, ManifestV2Seed,
-    ManifestWriteError, RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError,
-    RunLogSlugErrorKind, final_summary_terminal_heading, first_nonempty_line,
-    manifest_pr_evidence_matches, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
-    validate_run_log_slug,
+    ExecutionIssueReadError, ExecutionIssueReadErrorKind, LIFECYCLE_CONTEXT_BASENAME,
+    LIFECYCLE_CONTEXT_SCHEMA_VERSION, LIFECYCLE_SCHEMA_VERSION, LifecycleContext, LifecycleError,
+    LifecycleOutcome, ManifestDocument, ManifestFormatVersion, ManifestReadError,
+    ManifestReadErrorKind, ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,
+    RoundNumber, RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError, RunLogSlugErrorKind,
+    UNIVERSAL_EXECUTION_ISSUES, UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT,
+    final_summary_terminal_heading, first_nonempty_line, manifest_pr_evidence_matches,
+    stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal, validate_run_log_slug,
 };
 pub use session_env::{
     DIFFICULTY_CHOICES, MAX_PATH_VALUE_LEN, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams,

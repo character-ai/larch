@@ -231,7 +231,8 @@ fixed status tokens. It excludes credentials, provider diagnostics, archive
 contents, and local absolute paths. The retained old prefixes remain rollback
 evidence until the separate cleanup issue passes its retention gates.
 
-The shared run lifecycle is the sole terminal archive publisher. Specialized
+The shared Rust run lifecycle, reached only through `scripts/larch.sh`, is the
+sole terminal archive publisher. Specialized
 design, implement, and review owners may select and stage richer artifacts, but
 they hand that one staging tree to the shared terminal boundary. That boundary
 enforces these security invariants:
@@ -481,7 +482,7 @@ egress contract.
 | Rust checksum-pinned scanner | `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
-| Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns `run-log storage-preflight` plus the narrow GCS authentication transport; S3/R2 preflight still uses the AWS CLI list transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
+| Run-log archive, sync, and object publication | Rust owns shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. Python retains the standalone archive, `publish`, and `sync` surfaces until their named migration leaves. Both runtimes share the provider-neutral object-store contract. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
