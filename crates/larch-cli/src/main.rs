@@ -19,6 +19,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_wri
 mod agent_commands;
 mod argparse_compat;
 mod bgjob_adapt;
+mod bgjob_commands;
 mod ci_timing;
 mod dirty_tree_commands;
 mod external_defaults_commands;
@@ -146,6 +147,18 @@ enum BgjobCommand {
     /// Start or reattach to a durable background job.
     #[command(disable_help_flag = true)]
     Adapt(RawCompatibilityArguments),
+    /// Launch a detached background job for one workflow step.
+    #[command(disable_help_flag = true)]
+    Start(RawCompatibilityArguments),
+    /// Wait one bounded chunk for a background job to finish.
+    #[command(disable_help_flag = true)]
+    Wait(RawCompatibilityArguments),
+    /// Print one row per durable background-job registry entry.
+    #[command(disable_help_flag = true)]
+    Status(RawCompatibilityArguments),
+    /// Remove finished, unreadable, and expired registry entries.
+    #[command(disable_help_flag = true)]
+    Reap(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -723,6 +736,18 @@ fn run(
         }
         Domain::Bgjob(BgjobCommand::Adapt(arguments)) => {
             Ok(bgjob_adapt::adapt(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::Start(arguments)) => {
+            Ok(bgjob_commands::start(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::Wait(arguments)) => {
+            Ok(bgjob_commands::wait(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::Status(arguments)) => {
+            Ok(bgjob_commands::status(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::Reap(arguments)) => {
+            Ok(bgjob_commands::reap(&arguments.arguments))
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::DirtyTree(command) => Ok(match command {

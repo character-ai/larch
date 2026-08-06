@@ -15,7 +15,7 @@ from test_support import (
 
 
 def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    return make_checks_session(tmp_path, monkeypatch, bgjob_daemon=route.bgjob_daemon)
+    return make_checks_session(tmp_path, monkeypatch, bgjob_model=route.bgjob_model)
 
 
 def test_step3_composite_preserves_site_budget_and_flags(
@@ -114,7 +114,7 @@ def test_bgjob_spec_uses_parent_pid_when_claude_pid_is_unset(
     monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
     monkeypatch.setattr(route.os, "getppid", lambda: 456)
     monkeypatch.setattr(
-        route.bgjob_daemon,
+        route.bgjob_model,
         "owner_identity_from_env",
         lambda pid: captured_owner_pids.append(pid) or object(),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
@@ -137,7 +137,7 @@ def test_bgjob_spec_propagates_stale_claude_owner_capture_failure(
 ) -> None:
     monkeypatch.setenv("LARCH_CLAUDE_PID", "stale")
     monkeypatch.setattr(
-        route.bgjob_daemon,
+        route.bgjob_model,
         "owner_identity_from_env",
         lambda _pid: (_ for _ in ()).throw(RuntimeError("stale owner")),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )

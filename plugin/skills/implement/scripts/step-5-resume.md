@@ -4,7 +4,7 @@ Step 5 resume bgjob launcher. It records main-agent handoff timing and, for revi
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes `step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"` after main-agent vote or coder-main-agent fixes, then repeatedly invokes `python/cli.py bgjob wait --step implement-step5-resume` until `DONE` or `DEAD`.
+`skills/implement/SKILL.md` invokes `step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"` after main-agent vote or coder-main-agent fixes, then repeatedly invokes `scripts/larch.sh bgjob wait --step implement-step5-resume` until `DONE` or `DEAD`.
 
 The `--record-only` mode remains foreground because stall and durable-bail branches need only idempotent timing capture, not a long resume loop.
 

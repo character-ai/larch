@@ -325,7 +325,7 @@ Regression coverage for this dispatcher surface lives in `python/tests/implement
 **Do NOT poll or print sidecar output while dispatching.** The foreground adapter starts or reattaches `implement-step2-dispatch`; its only launcher output is `BGJOB_STATUS=STARTED STEP=implement-step2-dispatch PGID=<n>`. Wait with the shared bgjob contract below. On `BGJOB_STATUS=WAIT`, repeat the exact wait fence with no intervening prose or tools. On `DONE`, read `$IMPLEMENT_TMPDIR/bgjob/implement-step2-dispatch.result.env`; continue only with `BGJOB_RC=0` and the complete dispatcher envelope from that file. Do not use sidecars, daemon stdout, or launcher stdout as completion evidence.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step2-dispatch --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step2-dispatch --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 The child `python/cli.py implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag; it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`. It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or fresh executable checks, uses `$IMPLEMENT_TMPDIR/feature-description.txt`, and if the Step 0 selected binary is missing, relays `STATUS=claude_fallback` with edit authority instead of hard-failing. Before relaying stdout, it resolves repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests for Step 2.4. Its full envelope is atomically published into the bgjob result env. Parse `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, additive plan-coverage KVs, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE` only from that result env. Coverage applies only to firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings from `$IMPLEMENT_TMPDIR/plan.txt`, not `### MAY_UPDATE:`. Malformed coverage on a complete path fails closed in Python. Then run 2.1.5 before branching on `STATUS`. Derive:
@@ -463,7 +463,7 @@ Print: `> **🔶 /implement 3: checks (1)**`
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step3-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step3-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 <!-- step:4 — First Commit (implementation) -->
@@ -508,7 +508,7 @@ The Step 5 adapter contract — bgjob start stdout, live-registry rejoin, canoni
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 Only when stdout contains `STEP5_REVIEW_STATUS`, parse child stdout with **token-aware** extraction: each line may contain multiple `KEY=value` tokens. Extract at least `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, and `EFFECTIVE_ROUND_CAP`.
@@ -541,7 +541,7 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step5-resume --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step5-resume --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
@@ -593,7 +593,7 @@ The Step 6 thin wrapper delegates lifecycle ownership to `bgjob adapt`. The Pyth
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step6-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step6-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env. Do NOT `eval` or `source` stdout. If `UNTRACKED_BASELINE` is present, treat it as the pre-Step-6 untracked set. If `GIT_PROBE_FAILED=true`, continue with warning semantics already embedded by the wrapper; do not reconstruct paths prompt-side.
@@ -626,7 +626,7 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step7a --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step7a --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 Treat the final `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/implement-step7a.result.env` as one KV stream. Continue only when `BGJOB_RC=0` and required Step 7a KVs are present; if `CHECKPOINT_NEXT=load-routing` is present, route the non-zero probe rc through the rebase macro before treating the step as failed. Scan `REBASE_OUTCOME` only for stream ordering, then read `CHECKPOINT_NEXT=continue|load-routing` and final KV tail for diagram/log status. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. Route `load-routing` via the **Rebase Checkpoint Macro** using `<step-prefix>=7a.r` and `<short-name>=pre-ship`.
@@ -680,7 +680,7 @@ Invoke:
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 Regression coverage: `python/tests/implement/test_implement_shell_scripts.py` (Step 8 nodes) and `skills/implement/scripts/step-8-ship.md`.

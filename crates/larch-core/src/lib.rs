@@ -2,6 +2,7 @@
 
 mod attestation;
 mod bgjob;
+mod bgjob_daemon;
 mod ci_timing;
 mod config;
 mod context;
@@ -50,10 +51,22 @@ pub use bgjob::{
     BGJOB_STATUS_STARTED, BGJOB_TMP_SUBDIR, BgjobError, ENV_BGJOB_REGISTRY_ROOT, JobSpec,
     LivenessVerdict, OwnerIdentity, RegistryEntry, ResultEnvRows, WaitResult, bgjob_dir,
     checked_dir, child_liveness, daemon_liveness, default_run_id, ensure_under, entry_expired,
-    has_live_entry, iter_entries, log_paths, private_atomic_write, read_entry, read_for,
-    registry_path, registry_root, reject_line_value, result_env_path, startup_env_path,
-    unlink_entry, validate_initial_merge_rows, validate_merge_result_env, validate_run_id,
-    validate_slug, write_entry, write_entry_at,
+    epoch_now, has_live_entry, iter_entries, log_paths, private_atomic_write, read_entry, read_for,
+    registry_path, registry_root, reject_line_value, resolve_run_id, result_env_path,
+    startup_env_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
+    validate_run_id, validate_slug, write_entry, write_entry_at,
+};
+pub use bgjob_daemon::{
+    BGJOB_DAEMON_POLL_INTERVAL_S, BGJOB_LOG_TAIL_BYTES, BGJOB_OWNER_GRACE_S,
+    BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD, BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT,
+    BGJOB_START_EPOCH_KEY, BGJOB_STARTUP_GRACE_S, BGJOB_STATUS_DEAD, BGJOB_STATUS_WAIT,
+    BGJOB_STEP_KEY, BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, ENV_BGJOB_OWNER_PID,
+    ENV_CLAUDE_PID, ENV_LARCH_CLAUDE_PID, ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S,
+    ENV_TEST_BGJOB_OWNER_GRACE_S, OwnerValidationState, OwnerValidationStep,
+    check_owner_validation, daemon_poll_interval_s, log_tail, merge_rows, ordered_rows,
+    orphan_diagnostic, owner_grace_s, owner_pid_candidate, redact_outbound, render_rows,
+    result_rows, startup_in_progress, startup_rows, timing_override_or_default,
+    validate_timing_overrides,
 };
 pub use ci_timing::{
     CiTimingRunSelection, HarnessTimingReport, HarnessTimingRow, JobTimingReport, JobTimingRow,

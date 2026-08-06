@@ -4,7 +4,7 @@ Step 6 review boundary bgjob launcher. The foreground wrapper resolves persisted
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` Step 6 composite fence. Launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>`; the orchestrator then calls `python/cli.py bgjob wait --step implement-step6-checks` until `DONE`.
+`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` Step 6 composite fence. Launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>`; the orchestrator then calls `scripts/larch.sh bgjob wait --step implement-step6-checks` until `DONE`.
 
 ## Arguments
 

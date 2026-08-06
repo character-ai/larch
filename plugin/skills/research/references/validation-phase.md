@@ -125,7 +125,7 @@ chmod +x "$RESEARCH_TMPDIR/cursor-validation-launch.sh"
 VALIDATION_CURSOR_MERGE_ENV="$RESEARCH_TMPDIR/.validation-cursor-merge.env"
 : > "$VALIDATION_CURSOR_MERGE_ENV"
 export RESEARCH_TMPDIR CLAUDE_PLUGIN_ROOT
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step validation-cursor \
   --tmpdir "$RESEARCH_TMPDIR" \
   --budget-s 1860 \
@@ -162,7 +162,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 # launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
 VALIDATION_CODEX_MERGE_ENV="$RESEARCH_TMPDIR/.validation-codex-merge.env"
 : > "$VALIDATION_CODEX_MERGE_ENV"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step validation-codex \
   --tmpdir "$RESEARCH_TMPDIR" \
   --budget-s 1860 \
@@ -222,7 +222,7 @@ COLLECT_ARGS=()
 Otherwise, after processing Claude findings, wait for each bgjob-launched external lane before collection:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \
   --step validation-<tool> \
   --tmpdir "$RESEARCH_TMPDIR" \
   --max-wait-s 270

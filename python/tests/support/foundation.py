@@ -457,7 +457,7 @@ def make_committed_repo(
 
 
 def make_checks_session(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, bgjob_daemon: Any
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, bgjob_model: Any
 ) -> tuple[Path, Path]:
     """Create the standard implementation-checks session fixture."""
     repo = make_committed_repo(tmp_path)
@@ -469,10 +469,10 @@ def make_checks_session(
     monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
 
     def fake_owner_identity(_pid: str | None) -> object:
-        return bgjob_daemon.model.OwnerIdentity(recorded=None)
+        return bgjob_model.OwnerIdentity(recorded=None)
 
     monkeypatch.setattr(
-        bgjob_daemon, "owner_identity_from_env", fake_owner_identity
+        bgjob_model, "owner_identity_from_env", fake_owner_identity
     )
     return impl, repo
 

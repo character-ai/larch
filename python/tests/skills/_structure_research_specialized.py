@@ -151,8 +151,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("[bgjob transport] skills/research must not retain run_in_background literals")
     for literal, label in (
         ("For Codex lanes, call `bgjob start` once per lane from foreground Bash with a unique `--step` slug.", "[bgjob transport] research-phase.md must require per-lane bgjob starts"),
-        ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \\', "[bgjob transport] research-phase.md must invoke bgjob start"),
-        ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \\', "[bgjob transport] research-phase.md must invoke bgjob wait"),
+        ('"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \\', "[bgjob transport] research-phase.md must invoke bgjob start"),
+        ('"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \\', "[bgjob transport] research-phase.md must invoke bgjob wait"),
         ("Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` for each research lane wait.", "[bgjob transport] research-phase.md must pin immediate repeated wait"),
         ("On `DONE` with `BGJOB_RC=0` and `STEP=research-<slot>` in the DONE stdout or", "[bgjob transport] research-phase.md must gate continuation on stdout KV or result env"),
     ):
@@ -163,8 +163,8 @@ def run(repo_root: Path) -> list[str]:
         contains(research, f"$RESEARCH_TMPDIR/.{slug}-merge.env", f"[bgjob transport] research-phase.md missing merge env for {slug}")
     for literal, label in (
         ("Cursor and Codex use foreground `bgjob start` launches with unique per-lane step slugs.", "[bgjob transport] validation-phase.md must require external bgjob starts"),
-        ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \\', "[bgjob transport] validation-phase.md must invoke bgjob start"),
-        ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \\', "[bgjob transport] validation-phase.md must invoke bgjob wait"),
+        ('"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \\', "[bgjob transport] validation-phase.md must invoke bgjob start"),
+        ('"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \\', "[bgjob transport] validation-phase.md must invoke bgjob wait"),
         ("Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` for each validation lane wait.", "[bgjob transport] validation-phase.md must pin immediate repeated wait"),
         ("On `DONE` with `BGJOB_RC=0` and `STEP=validation-<tool>` in the DONE stdout or", "[bgjob transport] validation-phase.md must gate continuation on stdout KV or result env"),
         ("`validation-code`", "[bgjob transport] validation-phase.md must retain Code lane identity"),

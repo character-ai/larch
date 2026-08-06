@@ -198,6 +198,34 @@ pub fn default_run_id(tmpdir: &Path, _clone_path: &Path) -> String {
     format!("{digest:x}")[..16].to_owned()
 }
 
+/// Resolve the run id a session process owns, without the active-run pointer.
+///
+/// An explicit value wins, then `LARCH_RUN_ID`, then the run id persisted in
+/// the session env files, and finally the tmpdir-derived fallback.
+#[must_use]
+pub fn resolve_run_id(explicit: &str, tmpdir: &Path, clone_path: &Path) -> String {
+    let mut candidates = vec![
+        explicit.to_owned(),
+        env::var("LARCH_RUN_ID").unwrap_or_default(),
+    ];
+    for name in ["session-env.sh", "source-env.sh"] {
+        if let Ok(text) = fs::read_to_string(tmpdir.join(name)) {
+            candidates.extend(text.lines().filter_map(run_id_from_line));
+        }
+    }
+    candidates
+        .into_iter()
+        .find_map(|candidate| validate_run_id(&candidate).ok())
+        .unwrap_or_else(|| default_run_id(tmpdir, clone_path))
+}
+
+fn run_id_from_line(line: &str) -> Option<String> {
+    ["LARCH_RUN_ID=", "export LARCH_RUN_ID="]
+        .iter()
+        .find_map(|prefix| line.strip_prefix(prefix))
+        .map(|raw| raw.trim().trim_matches(['\'', '"']).to_owned())
+}
+
 /// Resolve a directory, rejecting a symlink leaf and non-directory inputs.
 ///
 /// # Errors
@@ -534,7 +562,7 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
 
 /// Read the registry row for the requested run and step.
 ///
-/// An omitted run id uses the same tmpdir-derived fallback as the Python owner.
+/// An omitted run id resolves through [`resolve_run_id`], as the Python owner did.
 ///
 /// # Errors
 ///
@@ -546,10 +574,7 @@ pub fn read_for(
 ) -> Result<(PathBuf, Option<RegistryEntry>), BgjobError> {
     let tmpdir = checked_dir(tmpdir, "tmpdir", true)?;
     let clone_path = env::current_dir().map_err(|error| BgjobError::Io(error.to_string()))?;
-    let run_id = match run_id.filter(|value| !value.is_empty()) {
-        Some(value) => validate_run_id(value)?,
-        None => default_run_id(&tmpdir, &clone_path),
-    };
+    let run_id = resolve_run_id(run_id.unwrap_or_default(), &tmpdir, &clone_path);
     let path = registry_path(&run_id, step, None)?;
     Ok((path.clone(), read_entry(&path)))
 }
@@ -890,7 +915,9 @@ fn temporary_path(parent: &Path, target: &Path) -> Result<PathBuf, BgjobError> {
     ))
 }
 
-fn epoch_now() -> i64 {
+/// Return whole seconds since the Unix epoch, saturating on a clock fault.
+#[must_use]
+pub fn epoch_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| {
@@ -906,9 +933,9 @@ mod tests {
         ensure_directory, ensure_under, entry_expired, epoch_now, expand_home, has_live_entry_at,
         identity_rows, iter_entries_at, log_paths, parse_identity, private_atomic_write,
         read_entry, registry_path, reject_line_value, render_rows, resolve_candidate,
-        resolved_directory, result_env_path, startup_env_path, temporary_path, unlink_entry,
-        validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
-        validate_run_id, validate_slug, validated_path, write_entry_at,
+        resolve_run_id, resolved_directory, result_env_path, startup_env_path, temporary_path,
+        unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
+        validate_parent_chain, validate_run_id, validate_slug, validated_path, write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
@@ -1048,6 +1075,33 @@ mod tests {
             command_signature: "worker".to_owned(),
             expected_signature: String::new(),
         }
+    }
+
+    #[test]
+    fn session_env_run_ids_win_over_the_tmpdir_fallback() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = checked_dir(sandbox.path(), "tmpdir", true).expect("tmpdir");
+        let clone = env::current_dir().expect("cwd");
+        assert_eq!(
+            resolve_run_id("run-explicit", &tmpdir, &clone),
+            "run-explicit"
+        );
+        assert_eq!(
+            resolve_run_id("", &tmpdir, &clone),
+            default_run_id(&tmpdir, &clone)
+        );
+        fs::write(
+            tmpdir.join("session-env.sh"),
+            "OTHER=value\nexport LARCH_RUN_ID='run-persisted'\n",
+        )
+        .expect("session env");
+        assert_eq!(resolve_run_id("", &tmpdir, &clone), "run-persisted");
+        fs::write(
+            tmpdir.join("session-env.sh"),
+            "LARCH_RUN_ID=\"run-quoted\"\n",
+        )
+        .expect("session env");
+        assert_eq!(resolve_run_id("bad run id", &tmpdir, &clone), "run-quoted");
     }
 
     #[test]

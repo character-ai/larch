@@ -167,6 +167,41 @@ pub fn split_inline_option(option: &str) -> (&str, Option<&str>) {
         .map_or((option, None), |(name, value)| (name, Some(value)))
 }
 
+/// Take an option's inline value, or consume the next positional argument.
+///
+/// `index` advances past a consumed value so the caller's loop stays in step.
+///
+/// # Errors
+///
+/// Returns `missing` when a value-taking option ends the argument list.
+pub fn take_option_value(
+    values: &[String],
+    index: &mut usize,
+    inline: Option<&str>,
+    missing: &'static str,
+) -> Result<String, &'static str> {
+    if let Some(value) = inline {
+        return Ok(value.to_owned());
+    }
+    *index += 1;
+    values.get(*index).cloned().ok_or(missing)
+}
+
+/// Decode every argument as UTF-8 for a compatibility parser.
+///
+/// # Errors
+///
+/// Returns `invalid` when any argument is not valid UTF-8.
+pub fn utf8_arguments(
+    arguments: &[OsString],
+    invalid: &'static str,
+) -> Result<Vec<String>, &'static str> {
+    arguments
+        .iter()
+        .map(|argument| argument.to_str().map(str::to_owned).ok_or(invalid))
+        .collect()
+}
+
 /// Return whether `value` reads as an option rather than a negative number.
 #[must_use]
 pub fn looks_like_option(value: &OsStr) -> bool {

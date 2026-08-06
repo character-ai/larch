@@ -248,7 +248,7 @@ try:
         errors.append('assessment branch must contain exactly one normalize-assessment-handoff launcher')
     if 'For clean state, use the canonical one-sentence note with no G-* or I-* identifier.' not in assessments_slice:
         errors.append('assessment branch must remind arch-assessor that clean notes are identifier-free')
-    if 'python/cli.py bgjob wait --step implement-step8-assessment' in assessments_slice:
+    if 'scripts/larch.sh bgjob wait --step implement-step8-assessment' in assessments_slice:
         errors.append('assessment branch must not expose a prompt-side assessment wait fence')
     for forbidden in ('step-architectural-invariants-write-compose.sh', 'step-architectural-guidelines-write-compose.sh', 'architectural-invariant-assessment-draft.md', 'architectural-guideline-assessment-draft.md'):
         if forbidden in assessments_slice:

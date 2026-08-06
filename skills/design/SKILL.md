@@ -181,7 +181,7 @@ Params: step `design-step-final-summary`; result env `$DESIGN_TMPDIR/bgjob/desig
 Before each fresh start, truncate/recreate `$DESIGN_TMPDIR/.design-step-final-summary-result.env` so stale paths cannot satisfy the new wait. Then launch through bgjob:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start --step design-step-final-summary --tmpdir "$DESIGN_TMPDIR" --budget-s 21600 --merge-result-env "$DESIGN_TMPDIR/.design-step-final-summary-result.env" -- "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start --step design-step-final-summary --tmpdir "$DESIGN_TMPDIR" --budget-s 21600 --merge-result-env "$DESIGN_TMPDIR/.design-step-final-summary-result.env" -- "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?}"
 ```
 
 Launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step-final-summary PGID=<n>`. Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` for final-summary wait/`WAIT`/`DEAD`/`DONE` (`--max-wait-s 270`).
@@ -393,7 +393,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ### Plan review driver (`python/cli.py plan-review run`)
 
-Step 3 launches `design-step3-review.sh` as a foreground bgjob starter, then waits with chunked foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step design-step3-review --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` calls. Fresh-launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`. A live identity-valid registry row or a regular non-symlink Step 3 result env means `bgjob wait`, not a second start. The child runs `plan-review run --mode loop`; `python/larch/review/plan_review.py` owns rounds, apply, postplan, and `STEP3_REVIEW_LOOP_STATUS`. Mid-loop resumes use the same wrapper with `--starting-round "$STEP3_RESUME_ROUND"`; never rerun completed passes.
+Step 3 launches `design-step3-review.sh` as a foreground bgjob starter, then waits with chunked foreground `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step design-step3-review --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` calls. Fresh-launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`. A live identity-valid registry row or a regular non-symlink Step 3 result env means `bgjob wait`, not a second start. The child runs `plan-review run --mode loop`; `python/larch/review/plan_review.py` owns rounds, apply, postplan, and `STEP3_REVIEW_LOOP_STATUS`. Mid-loop resumes use the same wrapper with `--starting-round "$STEP3_RESUME_ROUND"`; never rerun completed passes.
 **Scout, panel dispatch, collection, aggregation, voting, and tally** stay inside `${CLAUDE_PLUGIN_ROOT}/python/larch/review/plan_review.py`; `plan-review run` owns cap, cursor, normalization, and count persist/rollback. Sentinel helper: `python/cli.py plan-review step3-state`.
 Use the shared bgjob wait contract for Step 3 launch, rejoin, `WAIT`, `DEAD`, and `DONE`.
 Parameters: step `design-step3-review`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270` with timeout `330000`; result env `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`; after every `BGJOB_STATUS=DONE`, read the result env, then require `BGJOB_RC=0`, `NEXT_ACTION`, status, and route KVs for normal continuation.

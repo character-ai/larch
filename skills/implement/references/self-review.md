@@ -33,7 +33,7 @@ The self-review launcher uses `BUDGET_S=14700` and routes completion through the
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-checks-step5-self-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-checks-step5-self-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
 After the self-review composite bgjob returns `DONE` with `BGJOB_RC=0`, parse exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract (orchestrator repair only for structural composite failures), then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, non-zero `BGJOB_RC`, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.

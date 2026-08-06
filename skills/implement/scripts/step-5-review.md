@@ -4,7 +4,7 @@ Step 5 review bgjob launcher. The default mode is a foreground bgjob start wrapp
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the scripted review loop, then repeatedly invokes `python/cli.py bgjob wait --step implement-step5-review` until `DONE` or `DEAD`.
+`skills/implement/SKILL.md` invokes this wrapper from the scripted review loop, then repeatedly invokes `scripts/larch.sh bgjob wait --step implement-step5-review` until `DONE` or `DEAD`.
 
 ## KV grammar
 

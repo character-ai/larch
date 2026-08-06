@@ -204,6 +204,28 @@ def registry_path(*, run_id: str, step: str, root: Path | None = None) -> Path:
     return ensure_under(registry / f"{run_slug}-{step_slug}.env", registry, label="registry path")
 
 
+def _read_owner_identity(raw_pid: str) -> process_identity.RecordedProcessIdentity | None:
+    if not raw_pid or not raw_pid.isdigit():
+        return None
+    return process_identity.read_process_identity(pid=int(raw_pid))
+
+
+def owner_identity_from_env(raw_owner_pid: str | None) -> OwnerIdentity:
+    """Bind the session-owner identity, never the bare pid, before a launch."""
+    candidate = (
+        raw_owner_pid
+        or os.environ.get(config.ENV_BGJOB_OWNER_PID, "")
+        or os.environ.get("LARCH_CLAUDE_PID", "")
+        or os.environ.get(config.ENV_CLAUDE_PID, "")
+    )
+    if candidate:
+        recorded = _read_owner_identity(candidate)
+        if recorded is None:
+            raise RuntimeError(f"could not capture process identity for owner pid {candidate}")
+        return OwnerIdentity(recorded=recorded)
+    raise RuntimeError("could not capture process identity for owner pid: missing session owner pid")
+
+
 def reject_line_value(value: object, *, label: str) -> str:
     text = str(value)
     if "\n" in text or "\r" in text:

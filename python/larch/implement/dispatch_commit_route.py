@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
-from larch.bgjob import daemon as bgjob_daemon
 from larch.bgjob import model as bgjob_model
 from larch.bgjob import registry as bgjob_registry
 from larch.core import config
@@ -118,7 +117,7 @@ def _bgjob_spec(request: BgjobRequest) -> bgjob_model.JobSpec:
         step=request.step,
     )
     owner_pid = os.environ.get("LARCH_CLAUDE_PID")
-    owner = bgjob_daemon.owner_identity_from_env(
+    owner = bgjob_model.owner_identity_from_env(
         str(os.getppid()) if owner_pid is None else owner_pid
     )
     command = (

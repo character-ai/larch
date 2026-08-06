@@ -1,0 +1,701 @@
+//! Daemon-side owner validation, timing controls, and wire-row composition.
+//!
+//! Every decision the background-job daemon and its foreground wait make about
+//! ownership, orphaning, and result content lives here so the process-owning
+//! CLI layer keeps only signal, fork, and file-descriptor mechanics.
+
+use std::{env, time::Duration};
+
+use crate::{
+    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BgjobError, COMMAND_LOG_LIMIT, KvDocument, ParseOptions,
+    ProcessIdentityHost, RecordedProcessIdentity, ValidationResult, bounded_command, redact,
+    reject_line_value, validate_process_identity,
+};
+
+/// Stable waiting status token.
+pub const BGJOB_STATUS_WAIT: &str = "WAIT";
+/// Stable unrecoverable status token.
+pub const BGJOB_STATUS_DEAD: &str = "DEAD";
+/// Result code recorded when the runtime budget expires.
+pub const BGJOB_RC_TIMEOUT: &str = "timeout";
+/// Result code recorded when the session owner is gone.
+pub const BGJOB_RC_ORPHANED: &str = "orphaned";
+/// Default and maximum foreground wait chunk, in seconds.
+pub const BGJOB_WAIT_MAX_CHUNK_S: i64 = 270;
+/// Extra seconds before a wait abandons its chunk unconditionally.
+pub const BGJOB_WAIT_HARD_DEADLINE_GRACE_S: u64 = 30;
+/// Seconds a startup marker keeps a wait patient before it reports `DEAD`.
+pub const BGJOB_STARTUP_GRACE_S: i64 = 25;
+/// Seconds an unvalidatable owner keeps its job alive before orphaning.
+pub const BGJOB_OWNER_GRACE_S: f64 = 120.0;
+/// Consecutive owner-validation failures required before the grace clock starts.
+pub const BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: u32 = 3;
+/// Seconds between daemon monitor polls.
+pub const BGJOB_DAEMON_POLL_INTERVAL_S: f64 = 1.0;
+/// Trailing stderr bytes a dead-daemon report may quote.
+pub const BGJOB_LOG_TAIL_BYTES: usize = 4096;
+/// Test-only override for the owner grace window.
+pub const ENV_TEST_BGJOB_OWNER_GRACE_S: &str = "LARCH_TEST_BGJOB_OWNER_GRACE_S";
+/// Test-only override for the daemon poll interval.
+pub const ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S: &str = "LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S";
+/// Explicit session-owner pid supplied by an orchestrator.
+pub const ENV_BGJOB_OWNER_PID: &str = "LARCH_BGJOB_OWNER_PID";
+/// Session-owner pid exported by the larch skill layer.
+pub const ENV_LARCH_CLAUDE_PID: &str = "LARCH_CLAUDE_PID";
+/// Session-owner pid exported by the Claude Code harness.
+pub const ENV_CLAUDE_PID: &str = "CLAUDE_PID";
+/// Result-env key naming the workflow step.
+pub const BGJOB_STEP_KEY: &str = "STEP";
+/// Startup-marker key naming the launch epoch.
+pub const BGJOB_START_EPOCH_KEY: &str = "START_EPOCH";
+
+const MIN_PACKED_ROW_TOKENS: usize = 2;
+
+/// Consecutive owner-validation failures and when the grace clock started.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct OwnerValidationState {
+    /// Monotonic instant at which the owner first stayed unvalidatable.
+    pub missing_since: Option<Duration>,
+    /// Consecutive validation failures observed so far.
+    pub failure_count: u32,
+}
+
+/// One owner-validation poll: the next state and whether the job is orphaned.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnerValidationStep {
+    /// State carried into the next poll.
+    pub state: OwnerValidationState,
+    /// Whether the owner stayed gone past the grace window.
+    pub orphaned: bool,
+    /// The failing validation, when one ran.
+    pub validation: Option<ValidationResult>,
+}
+
+/// Read a non-negative finite timing override, or fall back to `default`.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] when the override is not a finite,
+/// non-negative number of seconds.
+pub fn timing_override_or_default(
+    env_name: &str,
+    default: f64,
+    label: &str,
+) -> Result<f64, BgjobError> {
+    let raw = env::var(env_name).unwrap_or_default();
+    parse_timing_override(&raw, env_name, default, label)
+}
+
+/// Parse one raw timing override, falling back to `default` when it is unset.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] when `raw` is not a finite, non-negative
+/// number of seconds.
+pub fn parse_timing_override(
+    raw: &str,
+    env_name: &str,
+    default: f64,
+    label: &str,
+) -> Result<f64, BgjobError> {
+    if raw.is_empty() {
+        return Ok(default);
+    }
+    let invalid = || BgjobError::Invalid(format!("invalid {label} override {env_name}={raw:?}"));
+    let value = raw.parse::<f64>().map_err(|_| invalid())?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(invalid());
+    }
+    Ok(value)
+}
+
+/// Return the seconds an unvalidatable owner keeps its job alive.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] for a malformed override.
+pub fn owner_grace_s() -> Result<f64, BgjobError> {
+    timing_override_or_default(
+        ENV_TEST_BGJOB_OWNER_GRACE_S,
+        BGJOB_OWNER_GRACE_S,
+        "bgjob owner grace",
+    )
+}
+
+/// Return the seconds between daemon monitor polls.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] for a malformed override.
+pub fn daemon_poll_interval_s() -> Result<f64, BgjobError> {
+    timing_override_or_default(
+        ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S,
+        BGJOB_DAEMON_POLL_INTERVAL_S,
+        "bgjob daemon poll interval",
+    )
+}
+
+/// Reject malformed timing overrides before a daemon detaches.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] for a malformed override.
+pub fn validate_timing_overrides() -> Result<(), BgjobError> {
+    let _ = owner_grace_s()?;
+    let _ = daemon_poll_interval_s()?;
+    Ok(())
+}
+
+/// Resolve the session-owner pid from an explicit value or the session env.
+#[must_use]
+pub fn owner_pid_candidate(explicit: &str) -> Option<String> {
+    [
+        explicit.to_owned(),
+        env::var(ENV_BGJOB_OWNER_PID).unwrap_or_default(),
+        env::var(ENV_LARCH_CLAUDE_PID).unwrap_or_default(),
+        env::var(ENV_CLAUDE_PID).unwrap_or_default(),
+    ]
+    .into_iter()
+    .find(|value| !value.is_empty())
+}
+
+/// Advance the owner-validation state machine by one poll.
+///
+/// The recorded identity, not the bare pid, decides liveness, so a reused pid
+/// never resurrects a dead owner (#6604).
+#[must_use]
+pub fn check_owner_validation(
+    host: &dyn ProcessIdentityHost,
+    owner: Option<&RecordedProcessIdentity>,
+    state: OwnerValidationState,
+    now: Duration,
+    grace_s: f64,
+) -> OwnerValidationStep {
+    let Some(owner) = owner else {
+        return OwnerValidationStep {
+            state,
+            orphaned: false,
+            validation: None,
+        };
+    };
+    let validation = validate_process_identity(host, owner);
+    if validation.ok {
+        return OwnerValidationStep {
+            state: OwnerValidationState::default(),
+            orphaned: false,
+            validation: Some(validation),
+        };
+    }
+    let failure_count = state.failure_count.saturating_add(1);
+    if failure_count < BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD.max(1) {
+        return OwnerValidationStep {
+            state: OwnerValidationState {
+                missing_since: None,
+                failure_count,
+            },
+            orphaned: false,
+            validation: Some(validation),
+        };
+    }
+    let missing_since = state.missing_since.unwrap_or(now);
+    let elapsed = now.saturating_sub(missing_since).as_secs_f64();
+    OwnerValidationStep {
+        state: OwnerValidationState {
+            missing_since: Some(missing_since),
+            failure_count,
+        },
+        orphaned: elapsed >= grace_s,
+        validation: Some(validation),
+    }
+}
+
+/// Parse `KEY=value` text preserving first-appearance order and last value.
+///
+/// The Python owner returned a `dict`, so downstream readers see the order a
+/// key first appeared with the value its last row carried.
+#[must_use]
+pub fn ordered_rows(text: &str) -> Vec<(String, String)> {
+    let Ok(document) = KvDocument::parse(text, ParseOptions::legacy()) else {
+        return Vec::new();
+    };
+    let mut rows: Vec<(String, String)> = Vec::new();
+    for row in document.rows() {
+        upsert(&mut rows, row.key().to_owned(), row.value().to_owned());
+    }
+    rows
+}
+
+/// Merge a child-authored envelope into daemon-authored result rows.
+///
+/// Reserved keys stay daemon-owned, and whitespace-packed relay lines are
+/// unpacked into their individual rows.
+#[must_use]
+pub fn merge_rows(text: &str) -> Vec<(String, String)> {
+    let reserved = [BGJOB_RC_KEY, BGJOB_ELAPSED_KEY, BGJOB_STEP_KEY];
+    let mut merged: Vec<(String, String)> = ordered_rows(text)
+        .into_iter()
+        .filter(|(key, _)| !key.is_empty() && !reserved.contains(&key.as_str()))
+        .collect();
+    for line in text.lines() {
+        if line.matches('=').count() < MIN_PACKED_ROW_TOKENS {
+            continue;
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < MIN_PACKED_ROW_TOKENS
+            || !tokens.iter().all(|token| is_packed_token(token))
+        {
+            continue;
+        }
+        for (key, value) in ordered_rows(&tokens.join("\n")) {
+            if key.is_empty() || reserved.contains(&key.as_str()) {
+                continue;
+            }
+            upsert(&mut merged, key, value);
+        }
+    }
+    merged
+}
+
+/// Compose the exact completed-result rows for one finished job.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] when a merged value would forge a record.
+pub fn result_rows(
+    step: &str,
+    rc: &str,
+    elapsed_s: i64,
+    merge: &[(String, String)],
+) -> Result<Vec<(String, String)>, BgjobError> {
+    let mut rows = vec![
+        (BGJOB_RC_KEY.to_owned(), rc.to_owned()),
+        (BGJOB_ELAPSED_KEY.to_owned(), elapsed_s.to_string()),
+        (BGJOB_STEP_KEY.to_owned(), step.to_owned()),
+    ];
+    rows.extend(merge.iter().cloned());
+    rows.into_iter()
+        .map(|(key, value)| Ok((key.clone(), reject_line_value(&value, &key)?)))
+        .collect()
+}
+
+/// Compose the startup-marker rows a wait consults before reporting `DEAD`.
+#[must_use]
+pub fn startup_rows(step: &str, start_epoch: i64) -> Vec<(String, String)> {
+    vec![
+        (BGJOB_STEP_KEY.to_owned(), step.to_owned()),
+        (BGJOB_START_EPOCH_KEY.to_owned(), start_epoch.to_string()),
+    ]
+}
+
+/// Return whether a startup marker still covers an in-flight daemon launch.
+#[must_use]
+pub fn startup_in_progress(rows: &[(String, String)], step: &str, now_epoch: i64) -> bool {
+    let lookup = |key: &str| {
+        rows.iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    };
+    let Some(Ok(start_epoch)) = lookup(BGJOB_START_EPOCH_KEY).map(str::parse::<i64>) else {
+        return false;
+    };
+    let age_s = now_epoch.saturating_sub(start_epoch);
+    lookup(BGJOB_STEP_KEY) == Some(step) && (0..=BGJOB_STARTUP_GRACE_S).contains(&age_s)
+}
+
+/// Compose the redacted diagnostic appended to stderr when a job is orphaned.
+#[must_use]
+pub fn orphan_diagnostic(
+    owner: Option<&RecordedProcessIdentity>,
+    validation: &ValidationResult,
+    failure_count: u32,
+) -> String {
+    let mut rows = vec![
+        ("BGJOB_ORPHAN_REASON".to_owned(), validation.reason.clone()),
+        (
+            "OWNER_PID".to_owned(),
+            owner.map_or_else(String::new, |identity| identity.pid.to_string()),
+        ),
+        ("OWNER_FAILURE_COUNT".to_owned(), failure_count.to_string()),
+    ];
+    if let Some(current) = validation.current.as_ref() {
+        rows.extend([
+            ("OWNER_CURRENT_PGID".to_owned(), current.pgid.to_string()),
+            (
+                "OWNER_CURRENT_START_TIME".to_owned(),
+                current.start_time.clone(),
+            ),
+            (
+                "OWNER_CURRENT_COMMAND".to_owned(),
+                bounded_command(&current.command_signature, COMMAND_LOG_LIMIT),
+            ),
+        ]);
+    }
+    redact_outbound(&render_rows(&rows))
+}
+
+/// Render `KEY=value` rows, dropping any row that would forge a record.
+#[must_use]
+pub fn render_rows(rows: &[(String, String)]) -> String {
+    let mut rendered = String::new();
+    for (key, value) in rows {
+        if reject_line_value(value, key).is_ok() {
+            rendered.push_str(key);
+            rendered.push('=');
+            rendered.push_str(value);
+            rendered.push('\n');
+        }
+    }
+    rendered
+}
+
+/// Quote the trailing stderr bytes a dead-daemon report carries on one line.
+#[must_use]
+pub fn log_tail(text: &str) -> String {
+    let start = text
+        .char_indices()
+        .rev()
+        .take(BGJOB_LOG_TAIL_BYTES)
+        .last()
+        .map_or(0, |(index, _)| index);
+    let tail = text.get(start..).unwrap_or_default();
+    redact_outbound(tail).replace('\n', "\\n")
+}
+
+/// Redact outbound diagnostics while preserving the caller's newline intent.
+#[must_use]
+pub fn redact_outbound(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let redacted = redact(text).text().to_owned();
+    if text.ends_with('\n') {
+        redacted
+    } else {
+        redacted.trim_end_matches('\n').to_owned()
+    }
+}
+
+fn upsert(rows: &mut Vec<(String, String)>, key: String, value: String) {
+    if let Some((_, existing)) = rows.iter_mut().find(|(candidate, _)| *candidate == key) {
+        *existing = value;
+    } else {
+        rows.push((key, value));
+    }
+}
+
+fn is_packed_token(token: &str) -> bool {
+    let Some((key, _)) = token.split_once('=') else {
+        return false;
+    };
+    !key.is_empty()
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BGJOB_OWNER_GRACE_S, ENV_TEST_BGJOB_OWNER_GRACE_S, OwnerValidationState,
+        check_owner_validation, is_packed_token, log_tail, merge_rows, ordered_rows,
+        orphan_diagnostic, parse_timing_override, redact_outbound, render_rows, result_rows,
+        startup_in_progress, startup_rows, timing_override_or_default,
+    };
+    use crate::{
+        IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
+    };
+    use std::{path::Path, time::Duration};
+
+    struct OwnerHost {
+        live: bool,
+    }
+
+    impl ProcessIdentityHost for OwnerHost {
+        fn get_pgid(&self, pid: i32) -> Option<i32> {
+            self.live.then_some(pid)
+        }
+
+        fn probe_ps_identity(&self, _pid: i32) -> IdentityProbeOutput {
+            if self.live {
+                IdentityProbeOutput::Stdout("Fri Jul 3 17:01:02 2026 owner".to_owned())
+            } else {
+                IdentityProbeOutput::Missing
+            }
+        }
+
+        fn pgrep_children(&self, _pid: i32) -> Vec<i32> {
+            Vec::new()
+        }
+
+        fn pgrep_group(&self, _pgid: i32) -> Vec<i32> {
+            Vec::new()
+        }
+
+        fn signal_process(&self, _pid: i32, _signal: TerminateSignal) -> bool {
+            false
+        }
+
+        fn signal_group(&self, _pgid: i32, _signal: TerminateSignal) -> bool {
+            false
+        }
+
+        fn sleep(&self, _duration: Duration) {}
+
+        fn monotonic_now(&self) -> Duration {
+            Duration::ZERO
+        }
+
+        fn wall_time_secs(&self) -> f64 {
+            0.0
+        }
+
+        fn current_pid(&self) -> i32 {
+            0
+        }
+
+        fn parent_pid(&self) -> i32 {
+            0
+        }
+
+        fn parent_of(&self, _pid: i32) -> Option<i32> {
+            None
+        }
+
+        fn list_processes(&self) -> Vec<(i32, String)> {
+            Vec::new()
+        }
+
+        fn resolve_path(&self, path: &str) -> String {
+            path.to_owned()
+        }
+
+        fn append_kill_log_line(&self, _path: &Path, _line: &str) {}
+
+        fn write_identity_file(&self, _path: &Path, _text: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn read_identity_file(&self, _path: &Path) -> Option<String> {
+            None
+        }
+
+        fn remove_file(&self, _path: &Path) {}
+
+        fn is_regular_file(&self, _path: &Path) -> bool {
+            false
+        }
+
+        fn file_mtime_ns(&self, _path: &Path) -> Option<u64> {
+            None
+        }
+
+        fn read_text_lossy(&self, _path: &Path) -> Option<String> {
+            None
+        }
+    }
+
+    fn owner() -> RecordedProcessIdentity {
+        RecordedProcessIdentity {
+            pid: 4321,
+            pgid: 4321,
+            start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            command_signature: "owner".to_owned(),
+            expected_signature: String::new(),
+        }
+    }
+
+    #[test]
+    fn owner_grace_starts_only_after_three_consecutive_failures() {
+        let missing = OwnerHost { live: false };
+        let mut state = OwnerValidationState::default();
+        for poll in 0..2_u32 {
+            let step = check_owner_validation(
+                &missing,
+                Some(&owner()),
+                state,
+                Duration::from_secs(u64::from(poll)),
+                0.0,
+            );
+            assert!(!step.orphaned, "poll {poll} orphaned too early");
+            assert_eq!(step.state.missing_since, None);
+            state = step.state;
+        }
+        let step =
+            check_owner_validation(&missing, Some(&owner()), state, Duration::from_secs(2), 0.0);
+        assert!(step.orphaned);
+        assert_eq!(step.state.failure_count, 3);
+        assert_eq!(
+            step.validation.as_ref().map(|value| value.reason.as_str()),
+            Some("missing-pid")
+        );
+    }
+
+    #[test]
+    fn owner_grace_window_delays_orphaning_and_a_live_owner_resets_it() {
+        let missing = OwnerHost { live: false };
+        let mut state = OwnerValidationState::default();
+        for poll in 0..3_u32 {
+            state = check_owner_validation(
+                &missing,
+                Some(&owner()),
+                state,
+                Duration::from_secs(u64::from(poll)),
+                120.0,
+            )
+            .state;
+        }
+        assert_eq!(state.missing_since, Some(Duration::from_secs(2)));
+        let inside = check_owner_validation(
+            &missing,
+            Some(&owner()),
+            state,
+            Duration::from_secs(100),
+            120.0,
+        );
+        assert!(!inside.orphaned);
+        let outside = check_owner_validation(
+            &missing,
+            Some(&owner()),
+            state,
+            Duration::from_secs(200),
+            120.0,
+        );
+        assert!(outside.orphaned);
+
+        let live = check_owner_validation(
+            &OwnerHost { live: true },
+            Some(&owner()),
+            state,
+            Duration::from_secs(200),
+            120.0,
+        );
+        assert!(!live.orphaned);
+        assert_eq!(live.state, OwnerValidationState::default());
+
+        let absent = check_owner_validation(&missing, None, state, Duration::from_secs(200), 0.0);
+        assert!(!absent.orphaned);
+        assert!(absent.validation.is_none());
+    }
+
+    #[test]
+    fn timing_overrides_reject_malformed_values_and_keep_defaults() {
+        let grace = |raw: &str| {
+            parse_timing_override(
+                raw,
+                ENV_TEST_BGJOB_OWNER_GRACE_S,
+                BGJOB_OWNER_GRACE_S,
+                "grace",
+            )
+        };
+        assert!((grace("").expect("default") - BGJOB_OWNER_GRACE_S).abs() < f64::EPSILON);
+        assert!((grace("0.25").expect("override") - 0.25).abs() < f64::EPSILON);
+        assert!(grace("0").expect("zero override").abs() < f64::EPSILON);
+        for invalid in ["not-a-float", "-0.01", "nan", "inf"] {
+            let error = grace(invalid).expect_err("invalid override");
+            assert!(
+                format!("{error}").contains(ENV_TEST_BGJOB_OWNER_GRACE_S),
+                "{invalid}"
+            );
+        }
+        assert!(
+            (timing_override_or_default("LARCH_TEST_BGJOB_ABSENT", BGJOB_OWNER_GRACE_S, "grace")
+                .expect("absent key default")
+                - BGJOB_OWNER_GRACE_S)
+                .abs()
+                < f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn merged_result_rows_keep_daemon_authority_and_unpack_relay_lines() {
+        let merged = merge_rows("BGJOB_RC=9\nCUSTOM=ok\nSTEP=bad\nBGJOB_ELAPSED_S=999\n");
+        assert_eq!(merged, [("CUSTOM".to_owned(), "ok".to_owned())]);
+
+        let packed = merge_rows(
+            "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=1 STEP=bad\nMESSAGE=hello world\n",
+        );
+        assert_eq!(
+            merge_rows("ALPHA=1 BETA=2 ALPHA=3\n"),
+            [
+                ("ALPHA".to_owned(), "3".to_owned()),
+                ("BETA".to_owned(), "2".to_owned()),
+            ]
+        );
+        assert_eq!(
+            packed,
+            [
+                ("STATUS".to_owned(), "fail".to_owned()),
+                ("MESSAGE".to_owned(), "hello world".to_owned()),
+                ("FAILURE_REASON".to_owned(), "checks-failed".to_owned()),
+                ("EXIT_CODE".to_owned(), "1".to_owned()),
+            ]
+        );
+
+        let rows = result_rows("demo-step", "0", 7, &packed).expect("result rows");
+        assert_eq!(
+            rows.iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .take(3)
+                .collect::<Vec<_>>(),
+            ["BGJOB_RC=0", "BGJOB_ELAPSED_S=7", "STEP=demo-step"]
+        );
+        assert!(
+            result_rows(
+                "demo-step",
+                "0",
+                7,
+                &[("BAD".to_owned(), "one\ntwo".to_owned())]
+            )
+            .is_err()
+        );
+        assert_eq!(
+            ordered_rows("A=1\nA=2\nB=3\n"),
+            [
+                ("A".to_owned(), "2".to_owned()),
+                ("B".to_owned(), "3".to_owned()),
+            ]
+        );
+        assert!(!is_packed_token("lower=1"));
+        assert!(!is_packed_token("novalue"));
+    }
+
+    #[test]
+    fn startup_marker_expires_after_its_grace_window() {
+        let rows = ordered_rows(&render_rows(&startup_rows("demo-step", 1_000)));
+        assert!(startup_in_progress(&rows, "demo-step", 1_000));
+        assert!(startup_in_progress(&rows, "demo-step", 1_025));
+        assert!(!startup_in_progress(&rows, "demo-step", 1_026));
+        assert!(!startup_in_progress(&rows, "demo-step", 999));
+        assert!(!startup_in_progress(&rows, "other-step", 1_000));
+        assert!(!startup_in_progress(&[], "demo-step", 1_000));
+    }
+
+    #[test]
+    fn diagnostics_and_tails_stay_single_line_and_redacted() {
+        let validation = crate::ValidationResult {
+            ok: false,
+            reason: "missing-pid".to_owned(),
+            current: Some(owner()),
+        };
+        let diagnostic = orphan_diagnostic(Some(&owner()), &validation, 3);
+        assert!(diagnostic.contains("BGJOB_ORPHAN_REASON=missing-pid\n"));
+        assert!(diagnostic.contains("OWNER_PID=4321\n"));
+        assert!(diagnostic.contains("OWNER_FAILURE_COUNT=3\n"));
+        assert!(diagnostic.contains("OWNER_CURRENT_PGID=4321\n"));
+
+        let absent_owner = crate::ValidationResult {
+            ok: false,
+            reason: "missing-pid".to_owned(),
+            current: None,
+        };
+        assert!(orphan_diagnostic(None, &absent_owner, 3).contains("OWNER_PID=\n"));
+
+        assert_eq!(log_tail("first\nsecond\n"), "first\\nsecond\\n");
+        assert_eq!(log_tail(""), "");
+        assert_eq!(redact_outbound("plain"), "plain");
+        assert_eq!(
+            render_rows(&[("BAD".to_owned(), "one\ntwo".to_owned())]),
+            ""
+        );
+    }
+}
