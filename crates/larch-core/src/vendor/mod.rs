@@ -30,7 +30,7 @@ pub use auth::{
 };
 pub use check_reviewers::{
     CheckReviewersConfig, CheckReviewersResult, PROBE_TIMEOUT_EXIT_CODE, binary_on_path,
-    external_auth_verdict, probe_attempt_rc, resolve_probe_workdir,
+    probe_attempt_rc, resolve_probe_workdir,
 };
 pub use degraded_tools::{
     CodexGateMessage, DegradedToolsResult, EXTERNAL_TOOL_NAMES, norm_bool, norm_tristate,

@@ -110,7 +110,7 @@ pub mod env {
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 45] = [
+    pub const ALL: [&str; 46] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,

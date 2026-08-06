@@ -19,9 +19,12 @@ static CODEX_POLICY_BLOCKED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i-u)blocked by policy|Rejected\(").expect("static policy regex must compile")
 });
 static CURSOR_AUTH_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|([^-]|^)auth[-_ ]?error|authentication (failed|required)|Security (process exited with code|command failed)",
-    )
+    Regex::new(concat!(
+        r"(?i-u)Password not found|cursor-user|cursor-access-token|",
+        r"keychain[ -~]*(not found|failed)|",
+        r"auth[-_ ]?error|authentication (failed|required)|",
+        r"Security (process exited with code|command failed)",
+    ))
     .expect("static auth regex must compile")
 });
 static CODEX_AUTH_RE: LazyLock<Regex> = LazyLock::new(|| {

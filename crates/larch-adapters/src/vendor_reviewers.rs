@@ -308,7 +308,7 @@ async fn run_one_cursor_probe<R: ExternalProcessRunner>(
             }
             let stdout = String::from_utf8_lossy(output.stdout());
             let stderr = String::from_utf8_lossy(output.stderr());
-            let verdict = external_auth_verdict("cursor", &[&stdout, &stderr]);
+            let verdict = external_auth_verdict("cursor", [stdout.as_ref(), stderr.as_ref()]);
             probe_attempt_rc(exit_code, false, verdict)
         }
         Err(error) if error.kind() == ProcessErrorKind::TimedOut => PROBE_TIMEOUT_EXIT_CODE,
@@ -469,7 +469,7 @@ async fn run_one_codex_probe<R: ExternalProcessRunner>(
     if let Some(detail) = detect_codex_cli_gate(&diagnostics, resolved_model) {
         return CodexProbeAttempt::from_gate(detail);
     }
-    let verdict = external_auth_verdict("codex", &[&stdout, &stderr]);
+    let verdict = external_auth_verdict("codex", [stdout.as_ref(), stderr.as_ref()]);
     CodexProbeAttempt::from_exit(probe_attempt_rc(exit_code, timed_out, verdict))
 }
 

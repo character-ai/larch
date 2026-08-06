@@ -4,11 +4,11 @@
 //! approved process runner. This module owns the result envelope and the
 //! timeout/retry budget resolution that every probe path shares.
 
-use crate::{CodexGateDetail, PROBE_AUTH_RETRY_RC, ProbeRetryLimits, transient_probe_retries};
-use std::{
-    path::{Component, Path, PathBuf},
-    sync::OnceLock,
+use crate::{
+    CodexGateDetail, ExternalAuthVerdict, PROBE_AUTH_RETRY_RC, ProbeRetryLimits,
+    transient_probe_retries,
 };
+use std::path::{Component, Path, PathBuf};
 
 /// Process exit code Python mapped for a timed-out probe child.
 pub const PROBE_TIMEOUT_EXIT_CODE: i32 = 124;
@@ -205,62 +205,16 @@ fn parse_u64_default(raw: Option<&str>, default: u64, zero_allowed: bool) -> u64
     }
 }
 
-fn cursor_auth_re() -> &'static regex::Regex {
-    static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        // ASCII-only: this crate's regex build omits the unicode/unicode-case
-        // features, so `.` / `\W` / negated classes are rejected as invalid UTF-8.
-        regex::Regex::new(concat!(
-            r"(?i-u)Password not found|cursor-user|cursor-access-token|",
-            r"keychain[ -~]*(not found|failed)|",
-            r"auth[-_ ]?error|authentication (failed|required)|",
-            r"Security (process exited with code|command failed)",
-        ))
-        .expect("cursor auth regex")
-    })
-}
-
-fn codex_auth_re() -> &'static regex::Regex {
-    static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        regex::Regex::new(
-            r"(?i-u)auth[-_ ]?error|not logged in|login required|authentication (failed|required)|unauthorized|invalid api key",
-        )
-        .expect("codex auth regex")
-    })
-}
-
-/// Classify probe-sidecar text as auth / non-auth / unclassified.
-#[must_use]
-pub fn external_auth_verdict(tool: &str, sidecar_texts: &[&str]) -> &'static str {
-    let pattern = match tool {
-        "cursor" => cursor_auth_re(),
-        "codex" => codex_auth_re(),
-        _ => return "unclassified",
-    };
-    let mut readable = false;
-    for text in sidecar_texts {
-        if text.is_empty() {
-            continue;
-        }
-        readable = true;
-        if pattern.is_match(text) {
-            return "auth";
-        }
-    }
-    if readable { "non-auth" } else { "unclassified" }
-}
-
 /// Map an auth verdict and exit code onto the probe retry class exit code.
 #[must_use]
-pub fn probe_attempt_rc(exit_code: i32, timed_out: bool, auth_verdict: &str) -> i32 {
+pub fn probe_attempt_rc(exit_code: i32, timed_out: bool, auth_verdict: ExternalAuthVerdict) -> i32 {
     if timed_out {
         return PROBE_TIMEOUT_EXIT_CODE;
     }
     if exit_code == 0 {
         return 0;
     }
-    if auth_verdict == "auth" {
+    if auth_verdict == ExternalAuthVerdict::Auth {
         return PROBE_AUTH_RETRY_RC;
     }
     1
@@ -333,11 +287,8 @@ fn path_under_or_eq(path: &Path, root: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CheckReviewersConfig, CheckReviewersResult, binary_on_path, external_auth_verdict,
-        probe_attempt_rc,
-    };
-    use crate::PROBE_AUTH_RETRY_RC;
+    use super::{CheckReviewersConfig, CheckReviewersResult, binary_on_path, probe_attempt_rc};
+    use crate::{ExternalAuthVerdict, PROBE_AUTH_RETRY_RC, external_auth_verdict};
 
     #[test]
     fn kv_order_is_stable() {
@@ -358,17 +309,26 @@ mod tests {
     #[test]
     fn auth_verdict_and_attempt_rc() {
         assert_eq!(
-            external_auth_verdict("cursor", &["cursor-user keychain not found"]),
-            "auth"
+            external_auth_verdict("cursor", ["cursor-user keychain not found"]),
+            ExternalAuthVerdict::Auth
         );
         assert_eq!(
-            external_auth_verdict("codex", &["network unreachable"]),
-            "non-auth"
+            external_auth_verdict("codex", ["network unreachable"]),
+            ExternalAuthVerdict::NonAuth
         );
-        assert_eq!(external_auth_verdict("codex", &[""]), "unclassified");
-        assert_eq!(probe_attempt_rc(1, true, "non-auth"), 124);
-        assert_eq!(probe_attempt_rc(1, false, "auth"), PROBE_AUTH_RETRY_RC);
-        assert_eq!(probe_attempt_rc(0, false, "unclassified"), 0);
+        assert_eq!(
+            external_auth_verdict("codex", [""]),
+            ExternalAuthVerdict::Unclassified
+        );
+        assert_eq!(probe_attempt_rc(1, true, ExternalAuthVerdict::NonAuth), 124);
+        assert_eq!(
+            probe_attempt_rc(1, false, ExternalAuthVerdict::Auth),
+            PROBE_AUTH_RETRY_RC
+        );
+        assert_eq!(
+            probe_attempt_rc(0, false, ExternalAuthVerdict::Unclassified),
+            0
+        );
     }
 
     #[test]
