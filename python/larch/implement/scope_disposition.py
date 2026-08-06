@@ -1220,6 +1220,27 @@ def _require_cli_success(result: CommandResult, *, label: str) -> dict[str, str]
     return fields
 
 
+def _session_mutation_auth_args(tmpdir: Path) -> list[str]:
+    """Return the session authorization argv for a nested issue mutation."""
+    session_env_path = tmpdir / "session-env.sh"
+    if not session_env_path.is_file():
+        return []
+    run_id = (
+        session_env_path.read_text(encoding="utf-8", errors="replace")
+        .split("LARCH_RUN_ID=", 1)[-1]
+        .splitlines()[0]
+        .strip()
+    )
+    return [
+        "--context-file",
+        str(session_env_path),
+        "--run-id",
+        run_id,
+        "--trusted-root",
+        str(tmpdir),
+    ]
+
+
 def _create_followup_issue(
     *, tmpdir: Path, repo: str, tracking_issue_number: str, coverage: PlanCoverage
 ) -> FollowupIssue:
@@ -1242,24 +1263,7 @@ def _create_followup_issue(
         "--repo",
         repo,
     ]
-    session_env_path = tmpdir / "session-env.sh"
-    if session_env_path.is_file():
-        run_id = (
-            session_env_path.read_text(encoding="utf-8", errors="replace")
-            .split("LARCH_RUN_ID=", 1)[-1]
-            .splitlines()[0]
-            .strip()
-        )
-        create_args.extend(
-            [
-                "--context-file",
-                str(session_env_path),
-                "--run-id",
-                run_id,
-                "--trusted-root",
-                str(tmpdir),
-            ]
-        )
+    create_args.extend(_session_mutation_auth_args(tmpdir))
     created = _run_cli(create_args)
     fields = _require_cli_success(created, label="issue create-one")
     number = fields.get("ISSUE_NUMBER", "")
@@ -1302,20 +1306,20 @@ def _append_cross_links(
 
 
 def _add_block_relation(
-    *, repo: str, tracking_issue_number: str, followup: FollowupIssue
+    *, tmpdir: Path, repo: str, tracking_issue_number: str, followup: FollowupIssue
 ) -> None:
-    result = _run_cli(
-        [
-            "issue",
-            "add-blocked-by",
-            "--client-issue",
-            tracking_issue_number,
-            "--blocker-issue",
-            followup.number,
-            "--repo",
-            repo,
-        ]
-    )
+    args = [
+        "issue",
+        "add-blocked-by",
+        "--client-issue",
+        tracking_issue_number,
+        "--blocker-issue",
+        followup.number,
+        "--repo",
+        repo,
+    ]
+    args.extend(_session_mutation_auth_args(tmpdir))
+    result = _run_cli(args)
     _ = _require_cli_success(result, label="issue add-blocked-by")
 
 
@@ -1414,6 +1418,7 @@ def record_disposition(  # noqa: PLR0913
                 followup=followup,
             )
             _add_block_relation(
+                tmpdir=tmpdir,
                 repo=repo,
                 tracking_issue_number=tracking_issue_number,
                 followup=followup,

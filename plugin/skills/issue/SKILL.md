@@ -400,15 +400,15 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     - Increment `ISSUES_CREATED`. Append the created issue to an in-memory snapshot so later intra-run dedup iterations can also reference it if the LLM Phase 2 missed an equivalence.
 
     **Apply blocker dependencies (issue #546)** — runs immediately after a successful create. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `issue add-blocked-by`:
-      - If the entry is `<M>` (existing OPEN issue from snapshot): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue $M --repo "$REPO"`. The helper resolves `M → id` via one extra `gh api` lookup.
-      - If the entry equals `BLOCKED_BY_ISSUE`: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue $BLOCKED_BY_ISSUE --blocker-id $BLOCKED_BY_ISSUE_ID --repo "$REPO"`. The cached id from the Step 4.0 probe avoids the helper's blocker lookup.
-      - If the entry is `ITEM_<j>` (batch sibling): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue ${ISSUE_<j>_NUMBER} --blocker-id ${ISSUE_<j>_ID} --repo "$REPO"`. The cached `ISSUE_<j>_ID` (from `issue create-one` prior output for `j`) avoids the lookup. Topological order guarantees `j` was processed before `i` for any `BLOCKED_BY=ITEM_<j>` edge, so `ISSUE_<j>_ID` is always set at this point.
+      - If the entry is `<M>` (existing OPEN issue from snapshot): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue $M --repo "$REPO" --operator-invoked`. The helper resolves `M → id` via one extra `gh api` lookup.
+      - If the entry equals `BLOCKED_BY_ISSUE`: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue $BLOCKED_BY_ISSUE --blocker-id $BLOCKED_BY_ISSUE_ID --repo "$REPO" --operator-invoked`. The cached id from the Step 4.0 probe avoids the helper's blocker lookup.
+      - If the entry is `ITEM_<j>` (batch sibling): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $N --blocker-issue ${ISSUE_<j>_NUMBER} --blocker-id ${ISSUE_<j>_ID} --repo "$REPO" --operator-invoked`. The cached `ISSUE_<j>_ID` (from `issue create-one` prior output for `j`) avoids the lookup. Topological order guarantees `j` was processed before `i` for any `BLOCKED_BY=ITEM_<j>` edge, so `ISSUE_<j>_ID` is always set at this point.
 
     Parse the helper's output:
       - On `BLOCKED_BY_ADDED=true`: increment a per-item `applied` counter. Continue to next entry.
       - On `BLOCKED_BY_FAILED=true`: see "Dep-link failure recovery" below.
 
-    Then for each entry in `ITEM_<i>_BLOCKS=<M>` (BLOCKS direction — the new issue blocks an existing issue), invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $M --blocker-issue $N --blocker-id $ISSUE_ID_FROM_CREATE --repo "$REPO"`. Same parsing.
+    Then for each entry in `ITEM_<i>_BLOCKS=<M>` (BLOCKS direction — the new issue blocks an existing issue), invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $M --blocker-issue $N --blocker-id $ISSUE_ID_FROM_CREATE --repo "$REPO" --operator-invoked`. Same parsing.
 
     **Dep-link failure recovery** (per-item rollback, issue #546): on the first `BLOCKED_BY_FAILED=true` for item `i`:
       1. Invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue cleanup-failed --issue-number $N --repo "$REPO"` to close the orphan. Parse `CLOSED=true|false`. If `CLOSED=false`, emit on stderr: `**⚠ /issue: orphan close failed for #$N (<url>): <redacted-error>. Manually close.**`.

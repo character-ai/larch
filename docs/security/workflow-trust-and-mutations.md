@@ -171,7 +171,8 @@ the same rule for the Python-owned commands that still call it directly.
 `python/larch/issue/issue_create.py` and the operation-specific issue modules
 own their mutation entry points. Unauthorized calls fail before any GitHub
 request, emit the documented refusal result, and do not retry through another
-route.
+route. Within `issue_create.py`, `issue create-one`, `issue add-sub-issue`, and
+`issue add-blocked-by` each apply that check before a GitHub lookup or mutation.
 
 `python/conftest.py` sets `LARCH_ISSUE_MUTATION_DENY=true` and removes inherited
 live authorization for tests. Denial overrides a valid parent session. Tests
