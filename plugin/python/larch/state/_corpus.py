@@ -31,7 +31,6 @@ from larch.state._tokens import (
 from larch.state._detail_log import _read_validated_failure_detail_log
 from larch.state._escalation import _artifact_path, _validate_artifact_prefix
 
-MAX_PUBLIC_FILE_BYTES = 256_000
 SAFE_SMALL_INTEGER_DIGITS = 4
 
 _SENSITIVE_TOKEN_ALLOWLIST = frozenset({
@@ -188,46 +187,6 @@ def build_sensitive_corpus_from_evidence(
     out_file.write_text("\n".join(line.strip() for line in lines if line.strip()) + "\n", encoding="utf-8")
 
 
-def validate_tier_b_public_file(args: argparse.Namespace) -> int:
-    path = Path(args.public_file)
-    raw_tmpdir = args.tmpdir or args.implement_tmpdir
-    tmpdir = Path(raw_tmpdir)
-    if not (path.is_absolute() and not path.is_symlink() and path.is_file()):
-        emit(key="PUBLIC_FILE_VALID", value="false")
-        return 1
-    if path.stat().st_size > MAX_PUBLIC_FILE_BYTES:
-        emit(key="PUBLIC_FILE_VALID", value="false")
-        return 1
-    corpus_path_str = getattr(args, "sensitive_corpus_file", None)
-    if not corpus_path_str:
-        emit(key="PUBLIC_FILE_VALID", value="false")
-        return 1
-    cp = Path(corpus_path_str)
-    if not (cp.is_absolute() and not cp.is_symlink() and (cp == tmpdir or tmpdir in cp.parents) and cp.is_file()):
-        emit(key="PUBLIC_FILE_VALID", value="false")
-        return 1
-    effective = tmpdir / f"{(getattr(args, 'artifact_prefix', '') or 'stall-recovery')}-sensitive-corpus.public.effective"
-    build_sensitive_corpus_from_evidence(
-        tmpdir=tmpdir,
-        sensitive_file=cp,
-        class_file=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_CLASSIFICATION_FILE, prefix=getattr(args, "artifact_prefix", "") or ""),
-        attempts_file=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ATTEMPTS_FILE, prefix=getattr(args, "artifact_prefix", "") or ""),
-        ledger=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_LEDGER, prefix=getattr(args, "artifact_prefix", "") or ""),
-        fallback=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_FALLBACK, prefix=getattr(args, "artifact_prefix", "") or ""),
-        marker=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_RECORD_FAILURE_MARKER, prefix=getattr(args, "artifact_prefix", "") or ""),
-        out_file=effective,
-    )
-    try:
-        if _sensitive_token_rejects_file(corpus_path=effective, candidate_path=path):
-            emit(key="PUBLIC_FILE_VALID", value="false")
-            return 1
-    except OSError:
-        emit(key="PUBLIC_FILE_VALID", value="false")
-        return 1
-    with contextlib.suppress(OSError):
-        effective.unlink()
-    emit(key="PUBLIC_FILE_VALID", value="true")
-    return 0
 
 
 def populate_sensitive_corpus(args: argparse.Namespace) -> int:

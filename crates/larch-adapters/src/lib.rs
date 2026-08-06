@@ -28,6 +28,7 @@ pub mod progress_state;
 pub mod run_log_manifest;
 mod session_env;
 mod session_lifecycle;
+pub mod stall_recovery;
 pub mod statusline;
 
 pub use cursor_config::CursorConfigContext;

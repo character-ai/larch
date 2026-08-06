@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import argparse
 import re
 from pathlib import Path
 
@@ -15,14 +14,12 @@ from larch.state._tokens import (
     _COMMON_PHASES,
     _GENERIC_PHASES,
     _reject_rawish_terminal_value,
-    _reject_rawish_token_value,
     _safe_bail_reason_value,
     _safe_outcome,
     _safe_source_script_value,
     _safe_step,
     _safe_token,
     _validate_tmpdir_local_file,
-    emit,
 )
 
 _TERMINAL_STATE_ALLOWED_KEYS = {
@@ -38,27 +35,6 @@ _TERMINAL_STATE_REQUIRED_KEYS = {
     "STALL_STEP", "PHASE", "SITE", "TRIGGER", "BAIL_REASON", "EXIT_CODE",
     "FAILURE_DETAIL_LOG", "SOURCE_SCRIPT",
 }
-
-
-def validate_token(args: argparse.Namespace) -> int:
-    token = args.token or ""
-    kind = getattr(args, "token_kind", "") or ""
-    profile = getattr(args, "profile", "implement") or "implement"
-    generic = profile == "generic"
-    if not token or _reject_rawish_token_value(token):
-        emit(key="TOKEN_VALID", value="false")
-        return 1
-    if kind == "bail":
-        valid = _safe_bail_reason_value(token, generic=generic)
-    elif kind:
-        valid = _safe_token(kind=kind, value=token, generic=generic)
-    else:
-        valid = True
-    if kind and not valid:
-        emit(key="TOKEN_VALID", value="false")
-        return 1
-    emit(key="TOKEN_VALID", value="true")
-    return 0
 
 
 def _terminal_state_value_valid(*, key: str, value: str, tmpdir: Path, generic: bool) -> bool:
@@ -141,15 +117,3 @@ def _validated_terminal_state_values(*, tmpdir: Path, state_file: Path, generic:
         if not _terminal_state_value_valid(key=key, value=value, tmpdir=tmpdir, generic=generic):
             return None
     return found
-
-
-def validate_terminal_state(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir)
-    profile = getattr(args, "profile", "implement") or "implement"
-    generic = profile == "generic"
-    state_file = Path(getattr(args, "primary_state_file", None) or tmpdir / "design-failure-terminal-state.env")
-    if _validated_terminal_state_values(tmpdir=tmpdir, state_file=state_file, generic=generic) is None:
-        emit(key="VALID", value="false")
-        return 1
-    emit(key="VALID", value="true")
-    return 0

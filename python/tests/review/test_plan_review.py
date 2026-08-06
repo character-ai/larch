@@ -15,6 +15,7 @@ from typing import cast
 
 from larch.calibration import difficulty
 from larch.core import logging_util
+from larch.design import design_terminal
 from larch.review import plan_review
 from larch.review import plan_review_common
 from larch.review import plan_review_loop
@@ -562,8 +563,12 @@ def test_step3_normalizer_static_contract_pins() -> None:
     ],
 )
 def test_stage_panel_init_failed_records_canonical_tokens_for_prelaunch_reason(
-    tmp_path: Path, reason: str, evidence_ref: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str, evidence_ref: str
 ) -> None:
+    def rust_validation_ok(**_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(design_terminal, "_run_stall_rust", rust_validation_ok)  # pyright: ignore[reportPrivateUsage]
     assert plan_review_normalize.stage_panel_init_failed(design_tmpdir=tmp_path, trigger=reason) == 0
     state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
     assert "TRIGGER=panel-init-failed" in state

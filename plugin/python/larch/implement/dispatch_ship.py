@@ -21,6 +21,7 @@ from larch.issue import oos_filer
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.git import git, gh, rebase
@@ -428,7 +429,8 @@ def _ship_route_write_retry_count(*, path: Path, value: int) -> None:
 
 
 def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
-    result = _run_cli_capture([
+    result = proc.run([
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "stall-recovery",
         "seed-terminal-state",
         "--implement-tmpdir",
@@ -443,7 +445,12 @@ def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
             "ship route-exit: transient retry-cap stall seed failed; continuing with NEXT_ACTION=stall",
             file=sys.stderr,
         )
-        _forward_child_output_to_stderr(result)
+        _forward_child_output_to_stderr(subprocess.CompletedProcess(
+            result.argv,
+            result.returncode,
+            result.stdout,
+            result.stderr,
+        ))
 
 
 def _ship_pre_fix_fail(message: str) -> int:

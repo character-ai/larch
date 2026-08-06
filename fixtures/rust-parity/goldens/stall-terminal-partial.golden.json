@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "terminal.env": {
+      "text": "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "VALID=false\n"
+  }
+}

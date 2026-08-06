@@ -37,6 +37,7 @@ Commands:
   release            Release-maintenance commands
   session            Session state compatibility commands
   slack              Slack announcement helpers
+  stall-recovery     Stall-recovery state and validation commands
   test-shard         Pack and rewrite deterministic test-shard assignments
   gh                 GitHub workflow helper commands
   push               Push commands with typed Git network operations

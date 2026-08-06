@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
-from larch.core.repo_roots import repo_root_probe
+from larch.core.repo_roots import larch_entrypoint, repo_root_probe
 from larch.git import gh
 from larch.core.ctx import Ctx
 from larch.issue import title_match
@@ -278,6 +278,39 @@ def _run_stall_main(*, callable_obj: Callable[..., int], argv: Sequence[str], st
         return 1
 
 
+def _run_stall_rust(
+    *,
+    verb: str,
+    argv: Sequence[str],
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> int:
+    result = proc.run(_stall_rust_argv(verb=verb, argv=argv))
+    try:
+        if stdout_path is not None:
+            stdout_path.write_text(result.stdout, encoding="utf-8")
+        if stderr_path is not None:
+            stderr_path.write_text(result.stderr, encoding="utf-8")
+    except OSError:
+        return 1
+    return result.returncode
+
+
+def _run_stall_rust_capture(*, verb: str, argv: Sequence[str]) -> proc.CommandResult:
+    return proc.run(_stall_rust_argv(verb=verb, argv=argv))
+
+
+def _stall_rust_argv(*, verb: str, argv: Sequence[str]) -> list[str]:
+    entrypoint = str(larch_entrypoint(Path(__file__).resolve().parents[3]))
+    if verb == "is-larch-dev-clone":
+        return [entrypoint, "stall-recovery", "is-larch-dev-clone", *argv]
+    if verb == "validate-terminal-state":
+        return [entrypoint, "stall-recovery", "validate-terminal-state", *argv]
+    if verb == "validate-token":
+        return [entrypoint, "stall-recovery", "validate-token", *argv]
+    raise ValueError(f"unsupported Rust stall-recovery command: {verb}")
+
+
 def _safe_failure_detail_log(*, raw: str, design_tmpdir: Path) -> Path | None:
     if not raw:
         return None
@@ -354,8 +387,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         for kind, value in required.items():
             if not value:
                 raise _CoreUsageError(f"{kind} is required")
-            rc = _run_stall_main(
-                callable_obj=stall_recovery.validate_token_main,
+            rc = _run_stall_rust(
+                verb="validate-token",
                 argv=[
                     *_stall_args(design_tmpdir),
                     "--token-kind",
@@ -369,8 +402,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         for kind, value in (("root-cause", ns.root_cause_hint), ("outcome", ns.summary_outcome)):
             if not value:
                 continue
-            rc = _run_stall_main(
-                callable_obj=stall_recovery.validate_token_main,
+            rc = _run_stall_rust(
+                verb="validate-token",
                 argv=[
                     *_stall_args(design_tmpdir),
                     "--token-kind",
@@ -432,8 +465,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if ns.evidence_ref:
             lines.append(f"EVIDENCE_REF={ns.evidence_ref}")
         candidate.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        rc = _run_stall_main(
-            callable_obj=stall_recovery.validate_terminal_state_main,
+        rc = _run_stall_rust(
+            verb="validate-terminal-state",
             argv=[
                 *_stall_args(design_tmpdir),
                 "--primary-state-file",
@@ -486,10 +519,11 @@ def _tier_a_eligible(design_tmpdir: Path) -> bool:
     root = _resolve_working_tree_root(design_tmpdir)
     if not root:
         return False
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-        rc = stall_recovery.is_larch_dev_clone_main([*_stall_args(design_tmpdir), "--working-tree-root", root])
-    return rc == 0 and "LARCH_DEV_CLONE=true" in buf.getvalue().splitlines()
+    result = _run_stall_rust_capture(
+        verb="is-larch-dev-clone",
+        argv=[*_stall_args(design_tmpdir), "--working-tree-root", root],
+    )
+    return result.returncode == 0 and "LARCH_DEV_CLONE=true" in result.stdout.splitlines()
 
 
 def _copy_if_file(*, source: Path, dest: Path) -> None:
@@ -1035,8 +1069,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not terminal_state.exists():
             write_fallback_chat("missing-terminal-state")
             return 0, []
-        if _run_stall_main(
-            callable_obj=stall_recovery.validate_terminal_state_main,
+        if _run_stall_rust(
+            verb="validate-terminal-state",
             argv=[*helper_common(), "--primary-state-file", str(terminal_state)],
             stderr_path=design_tmpdir / "design-failure-validate-terminal-state.stderr.log",
         ) != 0:

@@ -41,6 +41,7 @@ mod run_log_commands;
 mod session_env_commands;
 mod session_lifecycle_commands;
 mod slack_commands;
+mod stall_recovery_commands;
 mod state_commands;
 mod test_shards;
 
@@ -112,6 +113,9 @@ enum Domain {
     /// Slack announcement helpers.
     #[command(subcommand)]
     Slack(SlackCommand),
+    /// Stall-recovery state and validation commands.
+    #[command(name = "stall-recovery", disable_help_flag = true)]
+    StallRecovery(RawCompatibilityArguments),
     /// Pack and rewrite deterministic test-shard assignments.
     #[command(subcommand)]
     TestShard(TestShardCommand),
@@ -809,6 +813,7 @@ fn run(
         Domain::Release(command) => run_release(command),
         Domain::Session(command) => Ok(run_session(command)),
         Domain::Slack(command) => Ok(slack_commands::run(command)),
+        Domain::StallRecovery(arguments) => Ok(stall_recovery_commands::run(&arguments.arguments)),
         Domain::TestShard(command) => Ok(test_shards::run(command)),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());

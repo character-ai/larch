@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "skills/implement/SKILL.md": {
+      "text": "fixture\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "LARCH_DEV_CLONE=true\n"
+  }
+}
