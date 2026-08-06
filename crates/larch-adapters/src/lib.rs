@@ -36,9 +36,6 @@ pub mod statusline;
 
 pub use codex_home::{CodexHomeContext, CodexHomeError, CodexHomePreparer};
 pub use cursor_config::CursorConfigContext;
-pub use vendor_reviewers::{
-    CheckReviewersContext, check_reviewers, prepare_codex_home, run_cursor_model_list,
-};
 pub use file_io::{
     FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
     guarded_update_env, read_first_raw_key, read_kv_raw, read_optional_utf8_lossy,
@@ -75,6 +72,9 @@ pub use session_lifecycle::{
     CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SessionIdOutcome, append_cleanup_audit,
     parent_process_id, remove_session_tmpdir, resolve_implement_tmpdir, validate_design_tmpdir,
     write_session_id,
+};
+pub use vendor_reviewers::{
+    CheckReviewersContext, check_reviewers, prepare_codex_home, run_cursor_model_list,
 };
 
 /// Return metadata compiled into the adapter layer.

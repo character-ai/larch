@@ -919,22 +919,25 @@ def test_step0_session_refreshes_reviewer_values_before_writing_env(
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(list(cmd))
-        if cmd[2:4] == ["session", "setup"]:
+        # proc.run passes argv as a tuple; keep membership checks tuple/list-safe.
+        if list(cmd[2:4]) == ["session", "setup"]:
             return subprocess.CompletedProcess(cmd, 0, f"SESSION_TMPDIR={design}\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
-        if list(cmd[2:4]) == ["run-log", "lifecycle-start"]:
+        if "lifecycle-start" in cmd:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
-        if cmd[2:4] == ["agent", "check-reviewers"]:
+        if "check-reviewers" in cmd:
             return subprocess.CompletedProcess(cmd, 0, "CODEX_PRESENT=true\nCURSOR_PRESENT=true\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n", "")
-        if cmd[2:4] == ["agent", "degraded-tools-gate"]:
+        if "degraded-tools-gate" in cmd:
             return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+        if "write-design-env" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     assert design_step0.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
-    probe_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["agent", "check-reviewers"])
-    write_idx = next(index for index, cmd in enumerate(commands) if cmd[1:3] == ["session", "write-design-env"])
+    probe_idx = next(index for index, cmd in enumerate(commands) if "check-reviewers" in cmd)
+    write_idx = next(index for index, cmd in enumerate(commands) if "write-design-env" in cmd)
     write_cmd = commands[write_idx]
     assert probe_idx < write_idx
     assert _cmd_arg(write_cmd, "--codex-present") == "true"

@@ -15,7 +15,7 @@ use crate::{
     },
 };
 use larch_core::{
-    CURSOR_MODEL_LIST_ARGV, CURSOR_PREFLIGHT_AUTH_RC, CODEX_REVIEW_MODEL_DEFAULT,
+    CODEX_REVIEW_MODEL_DEFAULT, CURSOR_MODEL_LIST_ARGV, CURSOR_PREFLIGHT_AUTH_RC,
     CheckReviewersConfig, CheckReviewersResult, ChildEnvironment, CodexEnvAuth, CodexModelRole,
     CodexProbeAttempt, CodexProbeLoop, CursorModelListOutcome, CursorProbeLoop,
     ExternalProcessRunner, ExternalProgram, ModelTool, PROBE_NO_RETRY_RC, PROBE_TIMEOUT_EXIT_CODE,
@@ -86,12 +86,12 @@ pub async fn check_reviewers<R: ExternalProcessRunner>(
         ProbeTtl::from_seconds(config.ttl_seconds, config.negative_ttl_seconds),
     );
 
-    let (cursor_present, cursor_probe_timed_out) = if cursor_binary_found && !config.skip_cursor_probe
-    {
-        probe_cursor(runner, config, context, &cache, cancellation).await
-    } else {
-        (false, false)
-    };
+    let (cursor_present, cursor_probe_timed_out) =
+        if cursor_binary_found && !config.skip_cursor_probe {
+            probe_cursor(runner, config, context, &cache, cancellation).await
+        } else {
+            (false, false)
+        };
 
     let (codex_present, codex_probe_timed_out, codex_gate_detail) =
         if codex_binary_found && !config.skip_codex_probe {
@@ -205,8 +205,11 @@ async fn probe_cursor<R: ExternalProcessRunner>(
         return (cached, false);
     }
 
-    let preflight_config =
-        CursorPreflightConfig::from_values(context.platform, context.cursor_api_key, "agent check-reviewers");
+    let preflight_config = CursorPreflightConfig::from_values(
+        context.platform,
+        context.cursor_api_key,
+        "agent check-reviewers",
+    );
     let startup_lock = startup_lock(VendorProgram::Cursor, context);
     let auth_context = VendorAuthContext {
         temporary_root: context.temporary_root,
@@ -227,8 +230,7 @@ async fn probe_cursor<R: ExternalProcessRunner>(
         return (false, false);
     };
 
-    let Ok(session) =
-        CursorProbeSession::open(context.temporary_root, context.home, credential)
+    let Ok(session) = CursorProbeSession::open(context.temporary_root, context.home, credential)
     else {
         let _ = cache.write_verdict("cursor", false);
         return (false, false);
@@ -322,11 +324,7 @@ async fn probe_codex<R: ExternalProcessRunner>(
     context: CheckReviewersContext<'_>,
     cache: &ProbeCache,
     cancellation: &dyn ProcessCancellation,
-) -> (
-    bool,
-    bool,
-    Option<larch_core::CodexGateDetail>,
-) {
+) -> (bool, bool, Option<larch_core::CodexGateDetail>) {
     let model_result = resolve_model_args(
         ModelTool::Codex,
         true,
@@ -478,18 +476,25 @@ async fn run_one_codex_probe<R: ExternalProcessRunner>(
 }
 
 fn startup_lock(program: VendorProgram, context: CheckReviewersContext<'_>) -> StartupLockConfig {
-    StartupLockConfig::from_values(program, context.platform, context.user, None, None, Some("0"))
-        .unwrap_or_else(|_| {
-            StartupLockConfig::from_values(
-                program,
-                context.platform,
-                Some("larch"),
-                None,
-                None,
-                Some("0"),
-            )
-            .expect("fallback startup lock config")
-        })
+    StartupLockConfig::from_values(
+        program,
+        context.platform,
+        context.user,
+        None,
+        None,
+        Some("0"),
+    )
+    .unwrap_or_else(|_| {
+        StartupLockConfig::from_values(
+            program,
+            context.platform,
+            Some("larch"),
+            None,
+            None,
+            Some("0"),
+        )
+        .expect("fallback startup lock config")
+    })
 }
 
 /// Acquire-and-release wrapper scoped to one probe spawn.

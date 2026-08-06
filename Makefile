@@ -884,6 +884,8 @@ test-check-mid-run-dirty-tree:
 test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty
 
+# Rust CLI smoke aliases remain standalone; see CARVE_OUTS in
+# scripts/test-harness-shards-coverage.sh.
 test-check-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands
 

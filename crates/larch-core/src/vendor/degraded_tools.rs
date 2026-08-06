@@ -193,7 +193,10 @@ impl DegradedToolsResult {
             format!("DEGRADED={}", if self.degraded { "true" } else { "false" }),
             format!("CODEX_STATE={}", self.codex_state),
             format!("CURSOR_STATE={}", self.cursor_state),
-            format!("BOTH_DOWN={}", if self.both_down { "true" } else { "false" }),
+            format!(
+                "BOTH_DOWN={}",
+                if self.both_down { "true" } else { "false" }
+            ),
         ];
         if self.both_down {
             lines.push("DEGRADED_HARD_FAIL=true".to_owned());
@@ -246,9 +249,12 @@ mod tests {
         assert!(result.degraded());
         let kv = result.kv_lines();
         assert!(kv.iter().any(|line| line == "DEGRADED_HARD_FAIL=true"));
-        assert!(result.explanation().iter().any(|line| {
-            line.contains("Both external vendors are unavailable")
-        }));
+        assert!(
+            result
+                .explanation()
+                .iter()
+                .any(|line| { line.contains("Both external vendors are unavailable") })
+        );
     }
 
     #[test]
@@ -257,8 +263,11 @@ mod tests {
             DegradedToolsResult::classify("true", "true", "false", "false", "review", None);
         assert!(result.degraded());
         assert!(!result.both_down());
-        assert!(result.explanation().iter().any(|line| {
-            line.contains("Exactly one external vendor is unavailable")
-        }));
+        assert!(
+            result
+                .explanation()
+                .iter()
+                .any(|line| { line.contains("Exactly one external vendor is unavailable") })
+        );
     }
 }

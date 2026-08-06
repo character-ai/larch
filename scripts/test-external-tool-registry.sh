@@ -134,18 +134,22 @@ fi
 # 14. Registry-driven consumers handle every registered external tool and step2 resolves paths from a nested cwd.
 reviewer_err="$(mktemp /tmp/larch-registry-reviewers-err-XXXXXX)"
 reviewer_output=""
-if reviewer_output=$("$REPO_ROOT/scripts/larch.sh" agent check-reviewers --skip-codex-probe --skip-cursor-probe 2>"$reviewer_err"); then
-    for tool in codex cursor; do
-        upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
-        assert_contains "check-reviewers binary key for $tool" "${upper}_BINARY_FOUND=" "$reviewer_output"
-    done
-    if grep -q 'internal error: unsupported reviewer tool' "$reviewer_err"; then
-        fail "check-reviewers emitted unsupported-tool internal error"
-    else
-        pass
-    fi
+if [[ "$RUST_AVAILABLE" != 1 ]]; then
+    skip "agent check-reviewers"
 else
-    fail "check-reviewers should not fail: $(cat "$reviewer_err")"
+    if reviewer_output=$("$REPO_ROOT/scripts/larch.sh" agent check-reviewers --skip-codex-probe --skip-cursor-probe 2>"$reviewer_err"); then
+        for tool in codex cursor; do
+            upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
+            assert_contains "check-reviewers binary key for $tool" "${upper}_BINARY_FOUND=" "$reviewer_output"
+        done
+        if grep -q 'internal error: unsupported reviewer tool' "$reviewer_err"; then
+            fail "check-reviewers emitted unsupported-tool internal error"
+        else
+            pass
+        fi
+    else
+        fail "check-reviewers should not fail: $(cat "$reviewer_err")"
+    fi
 fi
 rm -f "$reviewer_err"
 

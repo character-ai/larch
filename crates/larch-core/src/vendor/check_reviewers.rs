@@ -118,11 +118,7 @@ impl CheckReviewersResult {
             ),
             format!(
                 "CURSOR_PRESENT={}",
-                if self.cursor_present {
-                    "true"
-                } else {
-                    "false"
-                }
+                if self.cursor_present { "true" } else { "false" }
             ),
             format!(
                 "CODEX_PROBE_TIMED_OUT={}",
@@ -183,7 +179,8 @@ impl CheckReviewersConfig {
         #[allow(clippy::cast_possible_truncation)] // retry budgets stay well below usize::MAX
         let max_auth_retries = parse_u64_default(auth_retries, 5, false) as usize;
         #[allow(clippy::cast_possible_truncation)] // retry budgets stay well below usize::MAX
-        let transient_override = probe_retries.map(|raw| parse_u64_default(Some(raw), 2, true) as usize);
+        let transient_override =
+            probe_retries.map(|raw| parse_u64_default(Some(raw), 2, true) as usize);
         let max_transient = transient_probe_retries(transient_override, max_auth_retries);
         #[allow(clippy::cast_possible_truncation)] // retry budgets stay well below usize::MAX
         let max_timeout = parse_u64_default(timeout_retries, 0, true) as usize;
@@ -300,7 +297,11 @@ fn is_executable(path: &Path) -> bool {
 
 /// Resolve a probe working directory, preferring a git toplevel when available.
 #[must_use]
-pub fn resolve_probe_workdir(cwd: &Path, project_dir: Option<&Path>, git_toplevel: Option<&Path>) -> PathBuf {
+pub fn resolve_probe_workdir(
+    cwd: &Path,
+    project_dir: Option<&Path>,
+    git_toplevel: Option<&Path>,
+) -> PathBuf {
     if let Some(project) = project_dir
         && let Some(toplevel) = git_toplevel_for(project, git_toplevel)
     {
@@ -319,7 +320,9 @@ fn git_toplevel_for(start: &Path, discovered: Option<&Path>) -> Option<PathBuf> 
         .or_else(|| {
             // Callers that already resolved a toplevel for `start` pass it in;
             // when absent, keep the start path rather than spawning git here.
-            let _ = start.components().any(|component| component == Component::RootDir);
+            let _ = start
+                .components()
+                .any(|component| component == Component::RootDir);
             None
         })
 }
@@ -376,6 +379,9 @@ mod tests {
         assert_eq!(config.ttl_seconds, 60);
         assert_eq!(config.timeout_seconds, 60);
         assert!(config.skip_cursor_probe);
-        assert!(!binary_on_path("definitely-missing-larch-binary", Some("/tmp")));
+        assert!(!binary_on_path(
+            "definitely-missing-larch-binary",
+            Some("/tmp")
+        ));
     }
 }

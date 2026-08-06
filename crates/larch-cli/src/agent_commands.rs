@@ -491,11 +491,17 @@ fn check_reviewers_command(arguments: &CheckReviewersArguments) -> ExitCode {
 }
 
 fn degraded_tools_gate_command(arguments: &DegradedToolsGateArguments) -> ExitCode {
-    let codex_binary_found =
-        flag_or_env(arguments.codex_binary_found.as_deref(), "CODEX_BINARY_FOUND", "unknown");
+    let codex_binary_found = flag_or_env(
+        arguments.codex_binary_found.as_deref(),
+        "CODEX_BINARY_FOUND",
+        "unknown",
+    );
     let codex_present = flag_or_env(arguments.codex_present.as_deref(), "CODEX_PRESENT", "");
-    let cursor_binary_found =
-        flag_or_env(arguments.cursor_binary_found.as_deref(), "CURSOR_BINARY_FOUND", "unknown");
+    let cursor_binary_found = flag_or_env(
+        arguments.cursor_binary_found.as_deref(),
+        "CURSOR_BINARY_FOUND",
+        "unknown",
+    );
     let cursor_present = flag_or_env(arguments.cursor_present.as_deref(), "CURSOR_PRESENT", "");
     if codex_present.is_empty() {
         eprintln!(
@@ -556,11 +562,7 @@ fn resolve_model_pins_command(arguments: &ResolveModelPinsArguments) -> ExitCode
     } else {
         None
     };
-    let report = resolve_model_pins(
-        &arguments.codex_state,
-        &arguments.cursor_state,
-        cursor_list,
-    );
+    let report = resolve_model_pins(&arguments.codex_state, &arguments.cursor_state, cursor_list);
     emit_kv("CURSOR_MODEL_PINS", report.cursor.status());
     if !report.cursor.detail().is_empty() {
         emit_kv("CURSOR_MODEL_PIN_DETAIL", report.cursor.detail());
@@ -574,8 +576,7 @@ fn resolve_model_pins_command(arguments: &ResolveModelPinsArguments) -> ExitCode
 
 /// Resolve the probe/cache temporary root from `TMPDIR` or `/tmp`.
 fn probe_temporary_root() -> Option<TemporaryRoot> {
-    let raw = env::var_os(env_names::TMPDIR)
-        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+    let raw = env::var_os(env_names::TMPDIR).map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
     let canonical = fs::canonicalize(&raw).ok()?;
     TemporaryRoot::resolve(Some(&canonical)).ok()
 }
@@ -614,23 +615,18 @@ fn codex_gate_message_for_probe_failed(
         ttl,
     );
     let env_map: BTreeMap<String, String> = env::vars().collect();
-    let resolved_model = match resolve_model_args(
-        ModelTool::Codex,
-        true,
-        "",
-        CodexModelRole::Review,
-        &env_map,
-    ) {
-        Ok(result) => {
-            let model = extract_model_from_argv(result.argv());
-            if model.is_empty() {
-                CODEX_REVIEW_MODEL_DEFAULT.to_owned()
-            } else {
-                model
+    let resolved_model =
+        match resolve_model_args(ModelTool::Codex, true, "", CodexModelRole::Review, &env_map) {
+            Ok(result) => {
+                let model = extract_model_from_argv(result.argv());
+                if model.is_empty() {
+                    CODEX_REVIEW_MODEL_DEFAULT.to_owned()
+                } else {
+                    model
+                }
             }
-        }
-        Err(_) => return None,
-    };
+            Err(_) => return None,
+        };
     let auth = codex_env_auth_from_key(env::var(env_names::OPENAI_API_KEY).ok().as_deref());
     let identity = codex_probe_identity(auth, &resolved_model);
     cache

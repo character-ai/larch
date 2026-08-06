@@ -53,7 +53,11 @@ pub struct VendorModelPinResult {
 impl VendorModelPinResult {
     /// Build a pin result.
     #[must_use]
-    pub fn new(vendor: impl Into<String>, status: impl Into<String>, detail: impl Into<String>) -> Self {
+    pub fn new(
+        vendor: impl Into<String>,
+        status: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
         Self {
             vendor: vendor.into(),
             status: status.into(),
@@ -97,7 +101,7 @@ pub fn cursor_pinned_model_declarations() -> Vec<PinnedModel> {
     for model_id in [
         CURSOR_GROK_4_5_HIGH_MODEL, // trivial
         CURSOR_GROK_4_5_HIGH_MODEL, // moderate
-        CURSOR_DEFAULT_MODEL,      // hard
+        CURSOR_DEFAULT_MODEL,       // hard
     ] {
         if seen_impl.insert(model_id) {
             declarations.push(PinnedModel {
@@ -193,11 +197,7 @@ pub fn parse_cursor_model_list(stdout: &str) -> Option<std::collections::BTreeSe
         let captures = cursor_model_line_re().captures(line)?;
         ids.insert(captures[1].to_owned());
     }
-    if ids.is_empty() {
-        None
-    } else {
-        Some(ids)
-    }
+    if ids.is_empty() { None } else { Some(ids) }
 }
 
 fn sanitize_detail(value: &str) -> String {
@@ -283,7 +283,11 @@ pub fn resolve_cursor_model_pins_from_list(
 #[must_use]
 pub fn resolve_codex_model_pins(vendor_state: &str) -> VendorModelPinResult {
     if vendor_state != "ok" {
-        return VendorModelPinResult::new("codex", MODEL_PINS_STATUS_SKIPPED, "vendor probe not ok");
+        return VendorModelPinResult::new(
+            "codex",
+            MODEL_PINS_STATUS_SKIPPED,
+            "vendor probe not ok",
+        );
     }
     let pin_summary = codex_pinned_model_declarations()
         .into_iter()

@@ -7,20 +7,19 @@ import argparse
 import contextlib
 import json
 import os
-import shutil
 import subprocess
 import sys
-import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 import pytest
 
 from larch.agents import agents
 from larch.core import config
 from larch.core import logging_util
-from larch.core.proc import CommandResult
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.agents import _run_external
 from larch.agents import _auth
@@ -33,6 +32,9 @@ from larch.agents import _launch_failure
 from larch.agents import _types
 from larch.design import plan_grammar
 from test_support import codex_usage_stdout, completed, is_codex_usage_command, ok
+
+if TYPE_CHECKING:
+    from larch.core.proc import CommandResult
 
 USAGE_MISSING_DIAGNOSTIC = "agent parse-codex-usage: no usage events\n"
 REPO_ROOT = Path(__file__).resolve().parents[3]
