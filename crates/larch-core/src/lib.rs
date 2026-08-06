@@ -13,6 +13,7 @@ mod github;
 mod github_actions;
 mod github_auth;
 mod logging_util;
+mod message_error;
 mod object_store;
 mod outcome;
 mod process;

@@ -22,25 +22,27 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
-  agent          Vendor-agent launch and diagnostic commands
-  bgjob          Durable background-job compatibility commands
-  ci-timing      Collect GitHub Actions timing inputs for test rebalancing
-  dirty-tree     Working-tree checkpoint and scope compatibility commands
-  example        Non-production commands that exercise dispatcher wiring
-  git            Local Git repository commands
-  kv             Exact `KEY=value` stream readers
-  lint           Repository policy lint commands
-  plugin         Plugin metadata commands
-  progress       Clone-scoped progress breadcrumbs and the larch statusline
-  object-store   Narrow provider transports used by Python-owned run-log workflows
-  release        Release-maintenance commands
-  session        Session state compatibility commands
-  test-shard     Pack and rewrite deterministic test-shard assignments
-  gh             GitHub workflow helper commands
-  push           Push commands with typed Git network operations
-  run-log        Committed run-log identity and layout helpers
-  upgrade-larch  Upgrade the installed larch plugin and executable
-  help           Print this message or the help of the given subcommand(s)
+  agent              Vendor-agent launch and diagnostic commands
+  bgjob              Durable background-job compatibility commands
+  ci-timing          Collect GitHub Actions timing inputs for test rebalancing
+  dirty-tree         Working-tree checkpoint and scope compatibility commands
+  external-defaults  External tool default readers
+  example            Non-production commands that exercise dispatcher wiring
+  git                Local Git repository commands
+  kv                 Exact `KEY=value` stream readers
+  lint               Repository policy lint commands
+  plugin             Plugin metadata commands
+  progress           Clone-scoped progress breadcrumbs and the larch statusline
+  object-store       Narrow provider transports used by Python-owned run-log workflows
+  release            Release-maintenance commands
+  session            Session state compatibility commands
+  slack              Slack announcement helpers
+  test-shard         Pack and rewrite deterministic test-shard assignments
+  gh                 GitHub workflow helper commands
+  push               Push commands with typed Git network operations
+  run-log            Committed run-log identity and layout helpers
+  upgrade-larch      Upgrade the installed larch plugin and executable
+  help               Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

@@ -57,33 +57,7 @@ pub struct RoleDefault {
 }
 
 /// Resolver contract error mapped to CLI exit 2.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ExternalDefaultError {
-    message: String,
-}
-
-impl ExternalDefaultError {
-    fn message(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-
-    /// Return the operator-facing diagnostic.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.message
-    }
-}
-
-impl std::fmt::Display for ExternalDefaultError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for ExternalDefaultError {}
-
+pub type ExternalDefaultError = crate::message_error::MessageError;
 /// Vendor selection result for `external-defaults resolve-vendor`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolveResult {
@@ -357,7 +331,7 @@ pub fn role_default(role_id: &str) -> Result<&'static RoleDefault, ExternalDefau
     ROLE_DEFAULTS
         .iter()
         .find(|role| role.role_id == role_id)
-        .ok_or_else(|| ExternalDefaultError::message(format!("unknown role: {role_id}")))
+        .ok_or_else(|| ExternalDefaultError::new(format!("unknown role: {role_id}")))
 }
 
 /// Return every role that has a documentation phase.
@@ -378,7 +352,7 @@ fn available(
         "codex" => Ok(codex_present),
         "cursor" => Ok(cursor_present),
         "claude" => Ok(true),
-        other => Err(ExternalDefaultError::message(format!(
+        other => Err(ExternalDefaultError::new(format!(
             "invalid tool {other:?}"
         ))),
     }
@@ -420,7 +394,7 @@ pub fn resolve_vendor(
 ) -> Result<ResolveResult, ExternalDefaultError> {
     let role = role_default(role_id)?;
     if role.kind != RoleKind::FirstAvailable {
-        return Err(ExternalDefaultError::message(format!(
+        return Err(ExternalDefaultError::new(format!(
             "{role_id}: resolve_vendor requires kind=first_available"
         )));
     }
@@ -454,7 +428,7 @@ pub fn parse_bool_flag(value: &str, flag: &str) -> Result<bool, ExternalDefaultE
     match value {
         "true" => Ok(true),
         "false" => Ok(false),
-        _ => Err(ExternalDefaultError::message(format!(
+        _ => Err(ExternalDefaultError::new(format!(
             "{flag} must be true or false"
         ))),
     }

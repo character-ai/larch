@@ -46,7 +46,7 @@ impl ModelTool {
         match raw {
             "cursor" => Ok(Self::Cursor),
             "codex" => Ok(Self::Codex),
-            other => Err(ModelArgError::message(format!(
+            other => Err(ModelArgError::new(format!(
                 "--tool must be 'cursor' or 'codex' (got: {other})"
             ))),
         }
@@ -65,7 +65,7 @@ impl CodexModelRole {
             "review" => Ok(Self::Review),
             "vote" => Ok(Self::Vote),
             "fix" => Ok(Self::Fix),
-            other => Err(ModelArgError::message(format!(
+            other => Err(ModelArgError::new(format!(
                 "--codex-role must be default|review|vote|fix (got: {other})"
             ))),
         }
@@ -94,33 +94,7 @@ impl ModelArgResult {
 }
 
 /// Fail-closed model-argument resolution error.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ModelArgError {
-    message: String,
-}
-
-impl ModelArgError {
-    fn message(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-
-    /// Return the operator-facing diagnostic.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.message
-    }
-}
-
-impl std::fmt::Display for ModelArgError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for ModelArgError {}
-
+pub type ModelArgError = crate::message_error::MessageError;
 /// Resolve Cursor or Codex model argv from an environment map.
 ///
 /// # Errors
@@ -258,7 +232,7 @@ fn resolve_effort(env_map: &BTreeMap<String, String>) -> (String, String) {
 fn reject_blank(value: &str, context: &str) -> Result<String, ModelArgError> {
     reject_control(value, context)?;
     if value.trim().is_empty() {
-        return Err(ModelArgError::message(format!(
+        return Err(ModelArgError::new(format!(
             "{context} must not be blank or whitespace-only"
         )));
     }
@@ -267,7 +241,7 @@ fn reject_blank(value: &str, context: &str) -> Result<String, ModelArgError> {
 
 fn reject_control(value: &str, context: &str) -> Result<(), ModelArgError> {
     if value.chars().any(is_posix_cntrl) {
-        return Err(ModelArgError::message(format!(
+        return Err(ModelArgError::new(format!(
             "{context} must not contain POSIX [[:cntrl:]] characters"
         )));
     }
@@ -290,7 +264,7 @@ pub fn validate_emitted_token(token: &str) -> Result<(), ModelArgError> {
         return Ok(());
     }
     if token.chars().any(is_posix_cntrl) {
-        return Err(ModelArgError::message(
+        return Err(ModelArgError::new(
             "emitted argv token must not contain POSIX [[:cntrl:]] characters",
         ));
     }
