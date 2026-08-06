@@ -15,7 +15,6 @@ const GLOBAL_FLAGS: &[&str] = &[
 ];
 
 type Globals = BTreeMap<String, String>;
-
 fn tmpdir(globals: &Globals) -> String {
     globals
         .get("--implement-tmpdir")

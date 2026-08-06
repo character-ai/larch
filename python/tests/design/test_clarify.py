@@ -874,6 +874,10 @@ def test_design_clarify_route_state_failure_is_phase_split(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def rust_validation_ok(**_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(clarify.design_terminal, "_run_stall_rust", rust_validation_ok)  # pyright: ignore[reportPrivateUsage]
     source_env = tmp_path / "source-env.sh"
     _write_source_env(source_env, tmp_path, repo="")
     (tmp_path / "target.env").write_text("REPO=owner/repo\n", encoding="utf-8")
