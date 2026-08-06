@@ -903,17 +903,26 @@ def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
     assert "99" not in (tmp_path / "drift-baseline.env").read_text(encoding="utf-8")
 
 
-def test_record_report_evidence_writes_escalation_ledger(tmp_path: Path) -> None:
-    proc = run_cli(
-        "plan-review",
-        "run",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--record-report-evidence",
-        "tally-error",
-    )
-    assert proc.returncode == 0, proc.stderr
+def test_record_report_evidence_writes_escalation_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ledger = tmp_path / "design-failure-escalation-ledger.tsv"
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert argv[0].endswith("/scripts/larch.sh")
+        assert argv[1:3] == ["stall-recovery", "record-escalation"]
+        _ = ledger.write_text("utc=test\ttrigger=tally-error\tphase=validation\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_normalize.subprocess, "run", fake_run)
+    rc = plan_review_normalize.step3_record_report_evidence(
+        status="tally-error",
+        design_tmpdir=tmp_path,
+        cli_surface=True,
+    )
+
+    assert rc == 0
     assert ledger.exists()
     text = ledger.read_text(encoding="utf-8")
     assert "trigger=tally-error" in text

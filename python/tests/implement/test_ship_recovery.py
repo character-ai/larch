@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 
@@ -15,7 +14,6 @@ from larch.errors import ShipError
 from larch.git.gh import PullRequest
 from larch.implement import ship_recovery
 from larch.report import final_report
-from larch.state import stall_recovery
 
 
 def _session(
@@ -322,7 +320,6 @@ def test_reconcile_rerun_converges(
     monkeypatch.setattr(
         ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
     )
-
     for _ in range(2):
         assert (
             ship_recovery.reconcile_manual_merge_main(
@@ -380,18 +377,17 @@ def test_bd267d84_operator_waiver_manual_merge_replay_writes_merged_final_summar
     monkeypatch.setattr(
         ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
     )
+    monkeypatch.setattr(
+        final_report.rust_runtime,
+        "normalized_stall_outcome_values",
+        lambda *_args, **_kwargs: {"IMPLEMENT_NORMALIZED_OUTCOME": "merged"},
+    )
 
     assert ship_recovery.reconcile_manual_merge_main(
         ["--implement-tmpdir", str(tmp_path), "--pr", "7049"]
     ) == 0
-    values = stall_recovery.normalized_outcome_values(
-        argparse.Namespace(
-            implement_tmpdir=str(tmp_path), in_memory_stall_tracking="false"
-        )
-    )
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
-    assert values["IMPLEMENT_NORMALIZED_OUTCOME"] == "merged"
     assert json.loads(manifest.read_text(encoding="utf-8"))["status"] == "done"
     assert json.loads(manifest.read_text(encoding="utf-8"))["pr_number"] == 7049
     assert rc == 0

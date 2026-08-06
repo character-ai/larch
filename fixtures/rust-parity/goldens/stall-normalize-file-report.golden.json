@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "file.env": {
+      "text": "FILE_FAILURE_REPORT_STATUS=filed\nFILE_FAILURE_REPORT_URL=https://github.com/o/r/issues/42\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_URL=https://github.com/o/r/issues/42\nSTALL_RECOVERY_REPORT_ISSUE_URL=https://github.com/o/r/issues/42\nSTALL_RECOVERY_REPORT_ISSUE_NUMBER=42\n"
+  }
+}

@@ -12,6 +12,8 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
 from larch.implement.dispatch_helpers import (
     _emit_kv,
@@ -97,8 +99,9 @@ def _emit_stall_layers(layers: StallLayers) -> None:
 
 
 def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, env: dict[str, str]) -> dict[str, str]:
-    result = _run_cli_capture(
+    result = proc.run(
         [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
             "stall-recovery",
             "normalize-outcome",
             "--implement-tmpdir",

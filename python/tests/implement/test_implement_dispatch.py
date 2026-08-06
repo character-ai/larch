@@ -2375,8 +2375,9 @@ def _install_step18_normalize(
     calls: list[list[str]] | None = None,
 ) -> None:
     def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert Path(args[0]).name == "larch.sh"
         if calls is not None:
-            calls.append(list(args))
+            calls.append(list(args[1:]))
         return subprocess.CompletedProcess(
             list(args),
             0,
@@ -2388,8 +2389,7 @@ def _install_step18_normalize(
             "",
         )
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
-    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_step18.proc, "run", fake_capture)
 
 
 def _install_step18_logs_flush(
@@ -2469,11 +2469,8 @@ def test_step18_gate_logs_flush_active_stall_breaks_out_without_logs_flush(
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "ship-pr-state.sh").write_text("STALL_TRACKING=1\n", encoding="utf-8")
     monkeypatch.setattr(
-        implement_dispatch,
-        "_run_cli_capture",
-        lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"),
+        dispatch_step18.proc, "run", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall")
     )
-    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"))
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",
@@ -2528,11 +2525,8 @@ def test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_f
     tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setattr(dispatch_step18, "_abandoned_checks_bgjob_stall_step", lambda _tmpdir: "3")
     monkeypatch.setattr(
-        implement_dispatch,
-        "_run_cli_capture",
-        lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"),
+        dispatch_step18.proc, "run", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall")
     )
-    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"))
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",

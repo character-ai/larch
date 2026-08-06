@@ -11,6 +11,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
 
+use larch_core::{ClassifyTextInput, classify_text};
 use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
 use tempfile::TempDir;
 
@@ -293,6 +294,7 @@ fn run_log_arguments(id: &str) -> &'static [&'static str] {
     }
 }
 
+#[rustfmt::skip]
 const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-admission-fork-env", "admission", "fork-env"),
     CleanInstallCase::new("clean-install-admission-gate", "admission", "gate"),
@@ -651,6 +653,14 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "stall-recovery",
         "clear-stall",
     ),
+    CleanInstallCase::new("clean-install-stall-recovery-classify", "stall-recovery", "classify"),
+    CleanInstallCase::new("clean-install-stall-recovery-init-attempts", "stall-recovery", "init-attempts"),
+    CleanInstallCase::new("clean-install-stall-recovery-normalize-file-failure-report-env", "stall-recovery", "normalize-file-failure-report-env"),
+    CleanInstallCase::new("clean-install-stall-recovery-normalize-issue-env", "stall-recovery", "normalize-issue-env"),
+    CleanInstallCase::new("clean-install-stall-recovery-normalize-outcome", "stall-recovery", "normalize-outcome"),
+    CleanInstallCase::new("clean-install-stall-recovery-record-attempt", "stall-recovery", "record-attempt"),
+    CleanInstallCase::new("clean-install-stall-recovery-record-escalation", "stall-recovery", "record-escalation"),
+    CleanInstallCase::new("clean-install-stall-recovery-retry-policy", "stall-recovery", "retry-policy"),
     CleanInstallCase::new(
         "clean-install-stall-recovery-compose-report",
         "stall-recovery",
@@ -1071,7 +1081,10 @@ impl StallRecoveryFixture {
                 .map(|(path, contents)| SeedFile::text(path, contents))
                 .collect(),
             side_effect_records: Vec::new(),
-            normalization: vec![NormalizationRule::SandboxRoot],
+            normalization: vec![
+                NormalizationRule::SandboxRoot,
+                NormalizationRule::Rfc3339Utc,
+            ],
         }
     }
 }
@@ -1160,6 +1173,7 @@ const STALL_REPORT_CHAT_SEEDS: &[(&str, &str)] = &[
         "verdict=larch-defect\nconfidence=high\nsummary=Safe summary\n\nclient-secret-value\n",
     ),
 ];
+#[rustfmt::skip]
 const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
     StallRecoveryFixture::new(
         "stall-token-generic",
@@ -1288,7 +1302,36 @@ const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
         &[],
     )
     .with_environment(STALL_DRY_RUN_ENVIRONMENT),
+    StallRecoveryFixture::new("stall-classify-checks-signal", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env", "--bail-reason", "checks-child-failed", "--stall-step", "3", "--exit-code", "-15"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nPHASE=checks\n")]),
+    StallRecoveryFixture::new("stall-init-attempts", "init-attempts", &["--implement-tmpdir", "{sandbox}"], &[]),
+    StallRecoveryFixture::new("stall-record-attempt", "record-attempt", &["--implement-tmpdir", "{sandbox}", "--class", "test-failure", "--signature", "sig-1", "--resume-hint", "step2-impl"], &[("stall-recovery-attempts.env", "version=1\r\ncreated_utc=2026-01-01T00:00:00+00:00\r\n")]),
+    StallRecoveryFixture::new("stall-retry-policy", "retry-policy", &["--class", "transient-infra"], &[]),
+    StallRecoveryFixture::new("stall-normalize-outcome", "normalize-outcome", &["--implement-tmpdir", "{sandbox}"], &[("ship-pr-state.sh", "STALL_TRACKING=false\nMERGE_RESULT=merged\nPR_NUMBER=42\n")]),
+    StallRecoveryFixture::new("stall-normalize-issue", "normalize-issue-env", &["--implement-tmpdir", "{sandbox}", "--issue-stdout-file", "{sandbox}/issue.out", "--issue-exit-code", "0"], &[("issue.out", "ISSUES_FAILED=0\nISSUE_1_NUMBER=42\nISSUE_1_URL=https://github.com/o/r/issues/42\n")]),
+    StallRecoveryFixture::new("stall-normalize-file-report", "normalize-file-failure-report-env", &["--implement-tmpdir", "{sandbox}", "--file-failure-report-env", "{sandbox}/file.env"], &[("file.env", "FILE_FAILURE_REPORT_STATUS=filed\nFILE_FAILURE_REPORT_URL=https://github.com/o/r/issues/42\n")]),
+    StallRecoveryFixture::new("stall-record-escalation", "record-escalation", &["--implement-tmpdir", "{sandbox}", "--site", "step2", "--trigger", "step2-impl", "--step", "2", "--phase", "implementation", "--dispatcher", "codex", "--exit-code", "1"], &[]),
 ];
+
+#[test]
+#[rustfmt::skip]
+fn every_classifier_branch_matches_the_frozen_python_table() {
+    let python = find_executable("python3");
+    let fixture = fixture_directory().join("stall_recovery_reference.py");
+    for line in include_str!("../../../fixtures/rust-parity/stall-classifier-cases.tsv").lines().skip(1) {
+        let [name, text, bail, step, detail, exit, implement] = line.split('\t').collect::<Vec<_>>().try_into().expect("seven columns");
+        let detail = detail == "true";
+        let implement = implement == "true";
+        let output = Command::new(&python)
+            .args([path_text(&fixture), "classify-text", "--text", text, "--bail", bail, "--step", step,
+                "--detail-valid", if detail { "true" } else { "false" }, "--exit-code", exit,
+                "--implement", if implement { "true" } else { "false" }])
+            .output().expect("run frozen classifier");
+        assert!(output.status.success(), "Python classifier failed for {name}");
+        let result = classify_text(ClassifyTextInput { text, bail, step, detail_log_valid: detail, exit_code: exit, implement });
+        let expected = format!("FAILURE_CLASS={}\nCLASSIFIED_HINT={}\nPATTERN={}\n", result.failure_class, result.resume_hint, result.pattern);
+        assert_eq!(String::from_utf8(output.stdout).expect("UTF-8"), expected, "classifier parity case {name}");
+    }
+}
 
 #[test]
 fn stall_recovery_commands_have_reviewed_parity() {

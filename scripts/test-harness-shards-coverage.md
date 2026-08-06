@@ -8,8 +8,10 @@ shard lists, checks the umbrella target references all shard targets, and
 requires the shard containing this guard to list it first so partition failures
 surface before longer harness work. Standalone aliases that deliberately stay
 outside the shards, including `test-classify-bump`, `test-promote-release`,
-`test-release-prepare`, `test-release-set-version`, and the Rust agent-command
-aliases `test-compose-collector-failure-log`, `test-wait-for-reviewers`,
+`test-release-prepare`, `test-release-set-version`, the mixed
+`test-stall-recovery-report` aggregate and its Rust
+`test-stall-recovery-report-2` / `test-stall-recovery-report-3` aliases, and the
+Rust agent-command aliases `test-compose-collector-failure-log`, `test-wait-for-reviewers`,
 `test-classify-diff-mode`, `test-gather-branch-context`,
 `test-run-external-agent-args`, `test-check-reviewers`,
 `test-degraded-tools-gate`, and the Rust run-log alias

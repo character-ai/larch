@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from contextlib import suppress
 from dataclasses import dataclass
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch.core import rust_runtime
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.git import git
@@ -18,7 +18,6 @@ from larch.report import final_report
 from larch.outcomes import Outcome
 from larch.report import run_log_flush, run_log_manifest
 from larch.state import finalize
-from larch.state import stall_recovery
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
 
@@ -90,11 +89,12 @@ def _staged_summary_heading_is_stalled(*, ctx: RunContext) -> bool:
     return final_report.summary_heading_is_stalled(summary.read_text(encoding="utf-8", errors="replace"))
 
 
-def _live_recovered_outcome(ctx: RunContext) -> str:
+def _live_recovered_outcome(runner: Runner, ctx: RunContext) -> str:
     if _ship_has_active_failure_signal(Path(ctx.tmpdir)):
         return ""
-    values = stall_recovery.normalized_outcome_values(
-        argparse.Namespace(implement_tmpdir=ctx.tmpdir, in_memory_stall_tracking="")
+    values = rust_runtime.normalized_stall_outcome_values(
+        runner,
+        implement_tmpdir=ctx.tmpdir,
     )
     outcome = values.get("IMPLEMENT_NORMALIZED_OUTCOME", "")
     return outcome if outcome in {"pr-created", "pr-created-draft", "merged"} else ""
@@ -117,7 +117,7 @@ def reconcile_staged_stalled_summary_if_recovered(
     resolved_counters = counters or ShipReconciliationCounters()
     if (
         not _staged_summary_heading_is_stalled(ctx=ctx)
-        or not _live_recovered_outcome(ctx)
+        or not _live_recovered_outcome(runner, ctx)
     ):
         return None
     refresh = run_log_flush.refresh_logs_checkpoint(

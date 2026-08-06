@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "stall-recovery-attempts.env": {
+      "text": "version=1\ncreated_utc=<TIMESTAMP>\nattempt_count=0\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ATTEMPTS_FILE=<SANDBOX>/stall-recovery-attempts.env\nATTEMPT_COUNT=0\n"
+  }
+}

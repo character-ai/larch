@@ -1628,8 +1628,7 @@ def _record_validator_escalation(*, status: str, rc: int, log_file: str, ctx: Ct
         return
     plugin_root = ctx.claude_plugin_root if ctx is not None and ctx.claude_plugin_root else os.environ["CLAUDE_PLUGIN_ROOT"]
     args = [
-        sys.executable,
-        str(Path(plugin_root) / "python" / "cli.py"),
+        str(larch_entrypoint(Path(plugin_root))),
         "stall-recovery",
         "record-escalation",
         "--profile",

@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "stall-recovery-attempts.env": {
+      "text": "version=1\ncreated_utc=<TIMESTAMP>\nattempt_count=1\nattempt.1.class=test-failure\nattempt.1.signature=sig-1\nattempt.1.resume_hint=step2-impl\nattempt.1.outcome=failed\nattempt.1.utc=<TIMESTAMP>\nlast_class=test-failure\nlast_signature=sig-1\nlast_resume_hint=step2-impl\nlast_outcome=failed\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ATTEMPT_COUNT=1\n"
+  }
+}

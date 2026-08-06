@@ -566,19 +566,19 @@ test-run-step2-dispatch:
 test-step2-dispatch:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step2_dispatch
 
-# test-stall-recovery-report runs all split sections sequentially (local-dev convenience,
-# NOT a test-harnesses prerequisite, see CARVE_OUTS in scripts/test-harness-shards-coverage.sh).
-# CI shards use the three section targets below directly.
+# test-stall-recovery-report runs the remaining Python lint test and the focused Rust
+# core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;
+# see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'retry_policy or normalize_issue_env or normalize_outcome or classify or record_attempt or init_attempts or main_accepts or global_flags'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k '(record_escalation or dedup_tier or compose_report or lint_subcommand) and not (sensitive_corpus or redact_text or report_dedup or chat_print or populate_sensitive_corpus)'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-core stall_recovery
 
 test-stall-recovery-report-3:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'sensitive_corpus or redact_text or report_dedup or chat_print or populate_sensitive_corpus'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-adapters stall_recovery
 
 test-resolve-upstream-larch-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
