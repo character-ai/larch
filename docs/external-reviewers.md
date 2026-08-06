@@ -32,7 +32,7 @@ Piece 1 of `/debate` lands read-only persistent-session transport helpers withou
 
 ## Launching External Reviewers
 
-External reviewers are launched via `python3 python/cli.py agent run-external-agent`, which provides:
+External reviewers are launched via `scripts/larch.sh agent run-external-agent`, which provides:
 
 - **Timeout enforcement** — Kills the process after a configurable timeout
 - **Sentinel file creation** — Writes a `.done` file containing the exit code when the process completes

@@ -123,7 +123,7 @@ def test_retry_success_and_metadata_fail_closed(capsys: pytest.CaptureFixture[st
     _ = bad_out.write_text("", encoding="utf-8")
     _write_done(ok_out)
     _write_done(bad_out)
-    _write_meta(ok_out, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
+    _write_meta(ok_out, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
     _write_meta(bad_out, cmd=None)
 
     assert collect_results.collect_results_main(["--timeout", "2", str(ok_out), str(bad_out)]) == 0

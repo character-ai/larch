@@ -384,11 +384,13 @@ verb = "run-external-agent"
 python_module = "larch.agents.agents"
 python_function = "run_external_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8109
+clean_install_test = "clean-install-agent-run-external-agent"
 
 [[commands]]
 domain = "agent"
@@ -8094,7 +8096,7 @@ rust = []
 path = "python/larch/agents/collect_results.py"
 kind = "python-runtime"
 python = []
-rust = ["agent wait-reviewers"]
+rust = ["agent run-external-agent", "agent wait-reviewers"]
 
 [[callers]]
 path = "python/larch/core/config.py"
@@ -8184,7 +8186,7 @@ rust = []
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt"]
+rust = ["agent cursor-wrap-prompt", "agent run-external-agent"]
 
 [[callers]]
 path = "python/larch/git/rebase.py"
@@ -8316,7 +8318,7 @@ rust = []
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "git commit"]
+rust = ["agent cursor-wrap-prompt", "agent run-external-agent", "git commit"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
@@ -8399,8 +8401,8 @@ rust = ["bgjob reap"]
 [[callers]]
 path = "scripts/external-tool-registry.sh"
 kind = "script"
-python = ["agent check-reviewers", "agent collect-results", "agent run-external-agent", "implement step2-dispatch"]
-rust = ["agent model-args"]
+python = ["agent check-reviewers", "agent collect-results", "implement step2-dispatch"]
+rust = ["agent model-args", "agent run-external-agent"]
 
 [[callers]]
 path = "scripts/file-failure-report-cross-repo.sh"
@@ -9239,8 +9241,8 @@ rust = ["bgjob start", "bgjob wait", "session cleanup-tmpdir"]
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-codex-exec", "agent run-external-agent", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent model-args", "bgjob start", "bgjob wait"]
+python = ["agent collect-results", "agent launch-codex-exec", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
@@ -9287,8 +9289,8 @@ rust = ["bgjob start", "bgjob wait"]
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent run-external-agent", "agent run-negotiation-round"]
-rust = ["agent model-args", "agent wait-reviewers"]
+python = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent run-negotiation-round"]
+rust = ["agent model-args", "agent run-external-agent", "agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"

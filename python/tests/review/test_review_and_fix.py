@@ -2452,6 +2452,11 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     cursor_calls = [call for call in run_calls if "run-external-agent" in call[0]]
     assert len(cursor_calls) == 1
     cursor_argv = cursor_calls[0][0]
+    assert cursor_argv[:3] == [
+        str(coder_runner.larch_entrypoint(coder_runner._plugin_root())),
+        "agent",
+        "run-external-agent",
+    ]
     assert cursor_argv[cursor_argv.index("--model") + 1] == "test"
     argv = timing_calls[0][0]
     assert argv[argv.index("--ledger") + 1] == str(tmp_path / "timing-ledger.tsv")

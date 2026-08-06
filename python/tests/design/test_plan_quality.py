@@ -1727,6 +1727,7 @@ def test_auto_fix_cursor_dispatch_sets_no_open_browser(tmp_path: Path, monkeypat
         raise AssertionError(f"unexpected subprocess: {cmd_list}")
 
     monkeypatch.delenv("NO_OPEN_BROWSER", raising=False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
     monkeypatch.setattr(plan_quality.agents, "resolve_model_args", fake_resolve_model_args)
     monkeypatch.setattr(plan_quality.subprocess, "check_output", fake_check_output)
     monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
@@ -1742,6 +1743,7 @@ def test_auto_fix_cursor_dispatch_sets_no_open_browser(tmp_path: Path, monkeypat
 
     assert rc == 0
     assert captured_spawn_env["NO_OPEN_BROWSER"] == "1"
+    assert captured_spawn_cmd[:3] == [str(plugin / "scripts" / "larch.sh"), "agent", "run-external-agent"]
     cursor_argv = captured_spawn_cmd[captured_spawn_cmd.index("--") + 1 :]
     assert cursor_argv[:3] == ["cursor", "agent", "-p"]
 

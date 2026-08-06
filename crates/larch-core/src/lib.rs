@@ -16,6 +16,7 @@ mod github_auth;
 mod logging_util;
 mod message_error;
 mod object_store;
+mod ordered_json;
 mod outcome;
 mod process;
 mod process_identity;
@@ -116,6 +117,7 @@ pub use logging_util::emit_kv;
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
 };
+pub use ordered_json::OrderedJson;
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
@@ -218,20 +220,20 @@ pub use upgrade_larch::{
     classify as classify_upgrade,
 };
 pub use vendor::{
-    CAP_HIT_PAYLOAD, CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CODEX_PROBE_GATE_IMMEDIATE_TTL,
-    COLLECTOR_NS_STRONG_HEADER, CURSOR_AUTH_MAX_ATTEMPTS, CURSOR_AUTH_RETRY_DELAY,
-    CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR, CURSOR_DEGRADED_RESPONSE,
-    CURSOR_DEGRADED_RESULT_BYTES_CEILING, CURSOR_DESCRIPTOR, CURSOR_EMPTY_RESPONSE,
-    CURSOR_KEYCHAIN_ACCOUNT, CURSOR_KEYCHAIN_SERVICE, CURSOR_NO_ISSUES_JSON,
+    CAP_HIT_PAYLOAD, CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CODEX_POLICY_REJECTION_EXCERPT_BYTES,
+    CODEX_POLICY_REJECTION_TAIL_BYTES, CODEX_PROBE_GATE_IMMEDIATE_TTL, COLLECTOR_NS_STRONG_HEADER,
+    CURSOR_AUTH_MAX_ATTEMPTS, CURSOR_AUTH_RETRY_DELAY, CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR,
+    CURSOR_DEGRADED_RESPONSE, CURSOR_DEGRADED_RESULT_BYTES_CEILING, CURSOR_DESCRIPTOR,
+    CURSOR_EMPTY_RESPONSE, CURSOR_KEYCHAIN_ACCOUNT, CURSOR_KEYCHAIN_SERVICE, CURSOR_NO_ISSUES_JSON,
     CURSOR_NO_WORK_INPUT_TOKEN_FLOOR, CURSOR_PREFLIGHT_AUTH_RC, CURSOR_PREREAD_FAIL_MSG,
     CURSOR_PREREAD_FAIL_RC, CapHitArtifacts, ClaudeEnvelopeStatus, CodexEnvAuth, CodexProbeAttempt,
     CodexProbeLoop, CodexPromptSentinelRead, CodexPromptSidecarArgs, CodexReviewAuthPort,
-    CursorCredential, CursorPreflightFailure, CursorProbeLoop, CursorResultWrite,
-    CursorReviewAuthPort, CursorStallRecord, DEFAULT_CURSOR_LAUNCH_JITTER_MS,
+    CodexSessionParseError, CursorCredential, CursorPreflightFailure, CursorProbeLoop,
+    CursorResultWrite, CursorReviewAuthPort, CursorStallRecord, DEFAULT_CURSOR_LAUNCH_JITTER_MS,
     DirtyBaselineCapturePlan, DirtyTreeBaselinePort, ENV_CURSOR_LAUNCH_JITTER_MS,
     ENV_CURSOR_RETRY_EMPTY_RESULT, ENV_TOKEN_BUDGET_CAP_REVIEW, ENV_TRANSIENT_RETRY_DELAY,
-    HostPlatform, LaunchTimingRecord, NO_OPEN_BROWSER_ON, PROBE_AUTH_RETRY_RC, PROBE_NO_RETRY_RC,
-    PROBE_TRANSIENT_RC, ProbeConclusion, ProbeRetryLimits, ProbeStep, ProbeTtl,
+    ExternalAuthVerdict, HostPlatform, LaunchTimingRecord, NO_OPEN_BROWSER_ON, PROBE_AUTH_RETRY_RC,
+    PROBE_NO_RETRY_RC, PROBE_TRANSIENT_RC, ProbeConclusion, ProbeRetryLimits, ProbeStep, ProbeTtl,
     REQUIRED_CAPABILITIES, REVIEW_MAX_TRANSIENT_RETRIES, ResearchOutputValidator,
     RetryArtifactResetPlan, ReviewAuthVerdict, ReviewPreflightRefusal, SpecialistRenderPort,
     StreamResetPlan, TimeoutStallRecord, TimingTaskKind, TimingTaskKindError, VENDOR_DESCRIPTORS,
@@ -245,22 +247,23 @@ pub use vendor::{
     build_codex_resume_argv, build_codex_session_argv, build_cursor_argv,
     build_cursor_create_chat_argv, build_cursor_resume_argv, build_record_launch_timing_argv,
     build_vendor_registry, check_token_budget_cap, codex_auth_args, codex_compact_sentinel_offset,
-    codex_env_auth_from_key, codex_gate_detail_file_name, codex_probe_identity,
-    codex_probe_update_lock_file_name, cursor_child_environment, cursor_has_structured_findings,
-    cursor_input_work_tokens, cursor_keychain_arguments, cursor_launch_jitter_ms,
-    cursor_line_no_issues, cursor_normalize_no_issues, cursor_output_tokens,
-    cursor_preflight_failure_message, cursor_preflight_refusal, cursor_result_is_no_issues,
-    effective_review_token_cap, elapsed_minute_message, extract_model_from_argv,
-    fresh_probe_verdict, is_cursor_empty_result, keychain_credential, parse_claude_envelope,
-    parse_codex_gate_detail, plan_capture_cursor_dirty_baseline, plan_cursor_result_write,
-    plan_retry_artifact_reset, plan_stream_reset, probe_cache_user, probe_stamp_contents,
-    probe_stamp_file_name, read_codex_prompt_sentinel, render_cap_hit_artifacts,
-    render_clean_readonly_dirty_tree, render_codex_gate_detail, render_codex_prompt_sidecar,
-    render_cursor_degraded_diag, render_cursor_empty_response, render_cursor_no_work_diag,
-    render_cursor_stall_json, render_preflight_bundle, render_timeout_stall_json,
-    render_unknown_dirty_tree, resolve_codex_review_model, review_retry_delay_secs,
-    run_codex_review_preflight, run_cursor_review_preflight, run_vendor_launch,
-    run_with_vendor_retries, transient_probe_retries, trust_config_arg,
+    codex_env_auth_from_key, codex_gate_detail_file_name, codex_policy_rejection_excerpt,
+    codex_probe_identity, codex_probe_update_lock_file_name, cursor_child_environment,
+    cursor_has_structured_findings, cursor_input_work_tokens, cursor_keychain_arguments,
+    cursor_launch_jitter_ms, cursor_line_no_issues, cursor_normalize_no_issues,
+    cursor_output_tokens, cursor_preflight_failure_message, cursor_preflight_refusal,
+    cursor_result_is_no_issues, effective_review_token_cap, elapsed_minute_message,
+    external_auth_verdict, extract_model_from_argv, fresh_probe_verdict, is_cursor_empty_result,
+    keychain_credential, parse_claude_envelope, parse_codex_gate_detail, parse_codex_session_id,
+    plan_capture_cursor_dirty_baseline, plan_cursor_result_write, plan_retry_artifact_reset,
+    plan_stream_reset, probe_cache_user, probe_stamp_contents, probe_stamp_file_name,
+    read_codex_prompt_sentinel, render_cap_hit_artifacts, render_clean_readonly_dirty_tree,
+    render_codex_gate_detail, render_codex_prompt_sidecar, render_cursor_degraded_diag,
+    render_cursor_empty_response, render_cursor_no_work_diag, render_cursor_stall_json,
+    render_preflight_bundle, render_timeout_stall_json, render_unknown_dirty_tree,
+    resolve_codex_review_model, review_retry_delay_secs, run_codex_review_preflight,
+    run_cursor_review_preflight, run_vendor_launch, run_with_vendor_retries, sanitize_tool_label,
+    strip_codex_config, transient_probe_retries, trust_config_arg,
     write_cursor_dirty_tree_from_baseline,
 };
 pub use vendor_diagnostics::{

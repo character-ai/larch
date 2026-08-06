@@ -205,7 +205,6 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
     binary_flag = os.environ.get(config.ENV_CURSOR_BINARY_FOUND, "")
     if binary_flag == "false" or not _cursor_available():
         return False
-    cli = _plugin_root() / "python" / "cli.py"
     if not agents.cursor_preread_service_token():
         return False
     if not agents.cursor_auth_preflight(caller="review-and-fix coder").ok:
@@ -225,7 +224,7 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
     ledger = _resolve_coder_timing_ledger(round_dir)
     start_s = int(time.time())
     result = _run([
-        "python3", str(cli), "agent", "run-external-agent",
+        str(larch_entrypoint(_plugin_root())), "agent", "run-external-agent",
         "--tool", "cursor",
         "--output", str(output),
         "--timeout", "1800",

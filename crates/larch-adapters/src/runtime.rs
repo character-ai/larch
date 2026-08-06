@@ -337,15 +337,15 @@ pub async fn shutdown_child<C>(child: &mut C, grace: Duration) -> io::Result<C::
 where
     C: ChildProcess,
 {
-    let graceful_error = child.request_shutdown().err();
+    let graceful_error = request_shutdown_with_retry(child).await.err();
     if graceful_error.is_none()
         && let Ok(status) = time::timeout(grace, child.wait()).await
     {
-        child.force_kill()?;
+        force_kill_with_retry(child).await?;
         return status;
     }
 
-    if let Err(force_error) = child.force_kill() {
+    if let Err(force_error) = force_kill_with_retry(child).await {
         let _reap_attempt = time::timeout(grace, child.wait()).await;
         return Err(graceful_error.unwrap_or(force_error));
     }
@@ -355,6 +355,36 @@ where
         return Err(error);
     }
     status
+}
+
+const PROCESS_GROUP_SIGNAL_RETRY_DELAY: Duration = Duration::from_millis(10);
+
+async fn request_shutdown_with_retry<C>(child: &mut C) -> io::Result<()>
+where
+    C: ChildProcess,
+{
+    retry_permission_denied(|| child.request_shutdown()).await
+}
+
+async fn force_kill_with_retry<C>(child: &mut C) -> io::Result<()>
+where
+    C: ChildProcess,
+{
+    retry_permission_denied(|| child.force_kill()).await
+}
+
+async fn retry_permission_denied(operation: impl FnMut() -> io::Result<()>) -> io::Result<()> {
+    let mut operation = operation;
+    match operation() {
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            // A process group can be changing membership while its leader is
+            // reaped. Retry once before reporting a control failure so teardown
+            // still reaches its descendants.
+            time::sleep(PROCESS_GROUP_SIGNAL_RETRY_DELAY).await;
+            operation()
+        }
+        result => result,
+    }
 }
 
 /// The operating-system event that requested root cancellation.
@@ -541,7 +571,9 @@ mod tests {
         graceful: bool,
         graceful_exit: Option<i32>,
         graceful_fails: bool,
+        graceful_permission_denials: usize,
         forced: bool,
+        force_permission_denials: usize,
         waits: usize,
     }
 
@@ -550,6 +582,13 @@ mod tests {
 
         fn request_shutdown(&mut self) -> io::Result<()> {
             self.graceful = true;
+            if self.graceful_permission_denials > 0 {
+                self.graceful_permission_denials -= 1;
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "transient graceful shutdown denial",
+                ));
+            }
             if self.graceful_fails {
                 Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
@@ -562,7 +601,15 @@ mod tests {
 
         fn force_kill(&mut self) -> io::Result<()> {
             self.forced = true;
-            Ok(())
+            if self.force_permission_denials > 0 {
+                self.force_permission_denials -= 1;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "transient force-kill denial",
+                ))
+            } else {
+                Ok(())
+            }
         }
 
         fn wait(&mut self) -> ChildWait<'_, Self::Exit> {
@@ -622,6 +669,25 @@ mod tests {
             .block_on(shutdown_child(&mut child, Duration::from_secs(5)))
             .expect("graceful exit");
         assert_eq!(status, 143);
+        assert!(child.forced);
+    }
+
+    #[test]
+    fn child_shutdown_retries_a_transient_group_signal_denial() {
+        let runtime = LarchRuntime::paused_current_thread().expect("test runtime should build");
+        let mut child = FakeChild {
+            graceful_exit: Some(143),
+            graceful_permission_denials: 1,
+            force_permission_denials: 1,
+            ..FakeChild::default()
+        };
+
+        let status = runtime
+            .block_on(shutdown_child(&mut child, Duration::from_secs(5)))
+            .expect("one transient group-control denial should be retried");
+
+        assert_eq!(status, 143);
+        assert!(child.graceful);
         assert!(child.forced);
     }
 }

@@ -435,12 +435,10 @@ These knobs apply to the Step 0 runtime probes emitted into session-env via `ses
 - **`LARCH_PROBE_TIMEOUT_RETRIES`** — additional retries after a timeout exit (default `0`). Non-negative integer; invalid, empty, or negative values fall back to `0`. `N` allows up to `N + 1` total timeout attempts, so worst-case repeated-timeout latency is `(N + 1) * LARCH_PROBE_TIMEOUT_SECONDS`. The default keeps health-gate timeout latency unchanged.
 - **`LARCH_PROBE_RETRIES`** — additional retries after the first transient non-auth probe failure (default `2`). Non-negative integer; `0` disables transient retry. Non-numeric or empty values fall back to `2`. `N` allows up to `N + 1` total probe calls on repeated `rc == 1` failures. When unset and `LARCH_EXTERNAL_AUTH_RETRIES=1`, transient retries are forced to `0` for health-gate fast-fail compatibility; setting `LARCH_PROBE_RETRIES` explicitly overrides that suppression. Timeout exits use `LARCH_PROBE_TIMEOUT_RETRIES` instead.
 - **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum total probe invocations on repeated auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). This controls auth-classified failures only; transient `rc == 1` retries use `LARCH_PROBE_RETRIES`, and timeout exits use `LARCH_PROBE_TIMEOUT_RETRIES`.
-- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `python3 python/cli.py agent run-external-agent`. Every Codex/Cursor launch via that CLI gets the gate on by default (`60` via the resolver fallback when nothing else resolves); set `0` to opt out; a positive value overrides the default. Resolution order is the process environment, `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`. When enabled, launches first reuse `agent check-reviewers` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
+- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — timeout for callers that perform external vendor health or model checks. It does not change `scripts/larch.sh agent run-external-agent`; that command enforces the explicit `--timeout` supplied by its caller.
 
-`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is auto-on for all callers via the resolver
-default; `/design` and `/implement` session writers also persist `60` explicitly.
-Standalone `/review` and `/research` inherit the gate without session-env writers.
-This closes the activation gap previously tracked in OOS #3369.
+`/design` and `/implement` session writers persist the default value (`60`) for
+the callers that use these checks.
 
 Darwin-only external CLI startup locking uses the shared path
 `/tmp/larch-external-startup-$USER.lock` for Codex and Cursor because both
@@ -498,7 +496,7 @@ All Codex reviewer rows use the `review` role at every tier and for every archet
 
 ### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
 
-On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `python3 python/cli.py agent run-external-agent` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.
+On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `scripts/larch.sh agent run-external-agent` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.
 
 - **Default:** `30` (design chose 30 over issue #3202's filed 50).
 - **`0`:** disables tail capture and chat surfacing.

@@ -116,7 +116,7 @@ trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
 CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent cursor-wrap-prompt "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 LARCH_CURSOR_VALIDATION_LAUNCH
@@ -137,7 +137,7 @@ export RESEARCH_TMPDIR CLAUDE_PLUGIN_ROOT
 The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-cursor PGID=<n>`.
 Do not call `bgjob wait` unless the launch printed that exact marker; if it did not, route directly to the lane's existing launch-class failure branch instead of waiting.
 
-> **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not published in run logs.
+> **Diagnostic note**: this lane uses `scripts/larch.sh agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not published in run logs.
 
 **Cursor fallback** (if `cursor_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 

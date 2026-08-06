@@ -404,7 +404,9 @@ def _env_without_test_hooks() -> dict[str, str]:
 def _retry_env_for_tool(tool: str) -> dict[str, str]:
     if tool == "cursor":
         agents.cursor_auth_export_env()
-    return _env_without_test_hooks()
+    environment = _env_without_test_hooks()
+    _ = environment.setdefault("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    return environment
 
 
 def _safe_meta_path_value(value: str) -> bool:
@@ -458,8 +460,7 @@ def _launch_cmd_json_retry(
         _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: STDERR_SINK contains ..")
         return False
     args = [
-        sys.executable,
-        str(PY_CLI),
+        str(larch_entrypoint(REPO_ROOT)),
         "agent",
         "run-external-agent",
         "--tool",

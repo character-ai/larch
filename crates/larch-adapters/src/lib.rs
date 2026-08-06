@@ -1,6 +1,7 @@
 //! Concrete adapters for filesystem, process, Git, time, and service boundaries.
 
 pub mod clock;
+pub mod codex_home;
 pub mod cursor_config;
 pub mod git;
 pub mod github;
@@ -30,6 +31,7 @@ mod session_env;
 mod session_lifecycle;
 pub mod statusline;
 
+pub use codex_home::{CodexHomeContext, CodexHomeError, CodexHomePreparer};
 pub use cursor_config::CursorConfigContext;
 pub use file_io::{
     FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
@@ -53,8 +55,8 @@ pub use git::{
     TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error,
 };
 pub use process::{
-    NoopProcessObserver, OpenFileHolderStatus, TokioProcessRunner, probe_open_file_holder,
-    probe_process_command_name,
+    NoopProcessObserver, OpenFileHolderStatus, ProcessFileRouting, ProcessOutputRouting,
+    ProcessStdinRouting, TokioProcessRunner, probe_open_file_holder, probe_process_command_name,
 };
 pub use process_identity::SystemProcessIdentityHost;
 pub use session_env::{

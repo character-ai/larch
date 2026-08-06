@@ -25,6 +25,8 @@ pub mod env {
     pub const CURSOR_API_KEY: &str = "CURSOR_API_KEY";
     /// Isolated Cursor configuration directory injected into vendor children.
     pub const CURSOR_CONFIG_DIR: &str = "CURSOR_CONFIG_DIR";
+    /// Isolated Codex home directory injected into vendor children.
+    pub const CODEX_HOME: &str = "CODEX_HOME";
     /// Temporary directory for an active design run.
     pub const DESIGN_TMPDIR: &str = "DESIGN_TMPDIR";
     /// Explicit GitHub CLI configuration directory used by typed `gh` operations.
@@ -106,13 +108,14 @@ pub mod env {
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 44] = [
+    pub const ALL: [&str; 45] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
         CLAUDE_PLUGIN_OPTION_CURSOR_MODEL,
         CLAUDE_PLUGIN_DATA,
         CLAUDE_PLUGIN_ROOT,
+        CODEX_HOME,
         CURSOR_API_KEY,
         CURSOR_CONFIG_DIR,
         DESIGN_TMPDIR,

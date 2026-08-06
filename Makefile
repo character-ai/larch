@@ -620,8 +620,10 @@ test-launch-codex-ci:
 test-run-negotiation-round:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k negotiation_round
 
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-run-external-agent-args:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k run_external_agent_args
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent_rejects_invalid_arguments_before_creating_sidecars
 
 test-quick-mode-docs-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
@@ -939,7 +941,8 @@ test-gather-branch-context:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands gather_branch_context
 
 test-run-external-agent:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or run_external_agent_args or model_args or degraded_tools)'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
 
 agent-sync:
 	python3 python/cli.py generate check

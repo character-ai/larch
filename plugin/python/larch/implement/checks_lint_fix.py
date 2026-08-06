@@ -1166,7 +1166,6 @@ def _run_cursor(  # noqa: PLR0913,RUF100
     runner: Runner,
     *,
     scripts_dir: Path,
-    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -1222,7 +1221,7 @@ def _run_cursor(  # noqa: PLR0913,RUF100
             tool="cursor",
             argv=[
                 "bash", "-c", 'exec "${@:2}" >"$1" 2>&1', "bash",
-                str(cursor_wrapper_log), "python3", str(agent_cli), "agent",
+                str(cursor_wrapper_log), str(larch_entrypoint(plugin_root())), "agent",
                 "run-external-agent", "--tool", "cursor", "--output", str(cursor_log),
                 "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC), "--capture-stdout", "--",
                 *argv,
@@ -1738,7 +1737,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             log_name = "codex.log"
         else:
             launcher_rc = _run_cursor(
-                runner, scripts_dir=scripts, agent_cli=agent_cli, run_dir=run_dir,
+                runner, scripts_dir=scripts, run_dir=run_dir,
                 repo_root=repo_root, prompt_body=prompt_body,
             )
             log_name = "cursor.log"

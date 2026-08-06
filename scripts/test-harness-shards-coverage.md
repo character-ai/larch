@@ -10,7 +10,7 @@ surface before longer harness work. Standalone aliases that deliberately stay
 outside the shards, including `test-classify-bump`, `test-promote-release`,
 `test-release-prepare`, `test-release-set-version`, and the Rust agent-command
 aliases `test-compose-collector-failure-log`, `test-wait-for-reviewers`,
-`test-classify-diff-mode`, and `test-gather-branch-context`, must be listed in
-`CARVE_OUTS` and documented beside their Makefile targets. Keep this sibling doc
-in sync with the harness whenever shard parsing or Makefile target contracts
-change.
+`test-classify-diff-mode`, `test-gather-branch-context`, and
+`test-run-external-agent-args`, must be listed in `CARVE_OUTS` and documented
+beside their Makefile targets. Keep this sibling doc in sync with the harness
+whenever shard parsing or Makefile target contracts change.

@@ -179,6 +179,55 @@ def _compose(arguments: list[str]) -> int:
     return 0
 
 
+def _run_external_agent(arguments: list[str]) -> int:
+    """Minimal Rust-command double for Python callers that retry an artifact."""
+    output = ""
+    capture_stdout = False
+    capture_stdout_only = False
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            index += 1
+            break
+        if argument == "--output" and index + 1 < len(arguments):
+            output = arguments[index + 1]
+            index += 2
+        elif argument in {"--tool", "--timeout", "--stderr-sink"} and index + 1 < len(arguments):
+            index += 2
+        elif argument == "--capture-stdout":
+            capture_stdout = True
+            index += 1
+        elif argument == "--capture-stdout-only":
+            capture_stdout_only = True
+            index += 1
+        else:
+            return 1
+    command = arguments[index:]
+    if not output or not command or Path(command[0]).name not in {"claude", "codex", "cursor"}:
+        return 1
+    target = Path(output)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stdout_handle = target.open("wb") if capture_stdout or capture_stdout_only else None
+    stderr_handle = target.with_suffix(target.suffix + ".diag").open("wb") if capture_stdout_only else None
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=stdout_handle,
+            stderr=subprocess.STDOUT if capture_stdout else stderr_handle,
+        )
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
+        if stderr_handle is not None:
+            stderr_handle.close()
+    _ = target.with_suffix(target.suffix + ".done").write_text(
+        f"{result.returncode}\n", encoding="utf-8"
+    )
+    return result.returncode
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -193,6 +242,7 @@ def main(arguments: list[str]) -> int:
             ("agent", "wait-reviewers"): _wait,
             ("agent", "gather-branch-context"): _gather,
             ("agent", "compose-collector-failure-log"): _compose,
+            ("agent", "run-external-agent"): _run_external_agent,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

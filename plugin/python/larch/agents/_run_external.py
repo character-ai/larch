@@ -47,8 +47,6 @@ from larch.agents._types import (
     _write,
     _append,
     _parse_positive_or_zero_int,
-    _is_positive_int,
-    _validate_meta_path,
     _sanitize_tool_label,
     _json_array,
 )
@@ -596,91 +594,6 @@ def run_external_agent(
             with contextlib.suppress(FileNotFoundError):
                 paths.failure_diag.unlink()
         _write(path=done, text=f"{exit_code}\n")
-
-
-def run_external_agent_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    args = argv if argv is not None else sys.argv[1:]
-    tool = ""
-    output = ""
-    timeout_raw = ""
-    stderr_sink = ""
-    capture_stdout = False
-    capture_stdout_only = False
-    idx = 0
-    while idx < len(args):
-        arg = args[idx]
-        if arg == "--":
-            idx += 1
-            break
-        if arg == "--tool" and idx + 1 < len(args):
-            tool = args[idx + 1]
-            idx += 2
-        elif arg == "--output" and idx + 1 < len(args):
-            output = args[idx + 1]
-            idx += 2
-        elif arg == "--timeout" and idx + 1 < len(args):
-            timeout_raw = args[idx + 1]
-            idx += 2
-        elif arg == "--stderr-sink" and idx + 1 < len(args):
-            stderr_sink = args[idx + 1]
-            idx += 2
-        elif arg == "--capture-stdout":
-            capture_stdout = True
-            idx += 1
-        elif arg == "--capture-stdout-only":
-            capture_stdout_only = True
-            idx += 1
-        elif arg == "--help":
-            _err("Usage: cli.py agent run-external-agent --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] [--stderr-sink PATH] -- CMD...")
-            return 0
-        else:
-            _err(f"Unknown option: {arg}")
-            return 1
-    cmd = args[idx:]
-    if not tool or not output or not timeout_raw:
-        _err("ERROR: --tool, --output, and --timeout are required")
-        return 1
-    if capture_stdout and capture_stdout_only:
-        _err("ERROR: --capture-stdout and --capture-stdout-only are mutually exclusive")
-        return 1
-    if not _validate_meta_path(label="--output", value=output):
-        return 1
-    if stderr_sink and not _validate_meta_path(label="--stderr-sink", value=stderr_sink):
-        return 1
-    if not _is_positive_int(timeout_raw):
-        _err(f"ERROR: --timeout must be a positive integer, got '{timeout_raw}'")
-        return 1
-    ctx = Ctx.from_env()
-    suffix = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, default="")
-    if suffix and suffix != ".inner.done":
-        _err(f"ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '{suffix}'; expected '.inner.done'")
-        return 1
-    poll = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, default="10") or "10"
-    try:
-        poll_interval = float(poll)
-        if poll_interval <= 0:
-            raise ValueError
-    except ValueError:
-        _err(f"ERROR: RUN_EXTERNAL_AGENT_POLL_INTERVAL must be a positive number, got '{poll}'")
-        return 1
-    if not cmd:
-        _err("ERROR: no command specified after --")
-        return 1
-    result = run_external_agent(
-        tool=tool,
-        output=output,
-        timeout_seconds=int(timeout_raw, 10),
-        cmd=cmd,
-        capture_stdout=capture_stdout,
-        capture_stdout_only=capture_stdout_only,
-        stderr_sink=stderr_sink,
-        env=ctx.subprocess_env(),
-        ctx=ctx,
-        inner_sentinel_suffix=suffix or ".done",
-        poll_interval=poll_interval,
-    )
-    return result.exit_code
 
 
 def _positive_int_ctx(*, ctx: Ctx | None, name: str, default: int) -> int:
