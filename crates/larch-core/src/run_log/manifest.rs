@@ -1,6 +1,11 @@
 //! Versioned run-log manifest reader.
 
-use std::{collections::BTreeMap, error::Error, fmt, path::Path};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    fmt::{self, Write as _},
+    path::Path,
+};
 
 use serde_json::Value;
 
@@ -375,12 +380,16 @@ impl ManifestDocument {
     }
 
     /// Render byte-compatible Python `json.dumps(..., indent=2, sort_keys=True)` output.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an internally held JSON value cannot be serialized.
     #[must_use]
     pub fn canonical_json(&self) -> String {
-        let mut output = String::new();
-        write_canonical_json(&Value::Object(self.data.clone()), 0, &mut output);
-        output.push('\n');
-        output
+        let sorted = sorted_json(&Value::Object(self.data.clone()));
+        let rendered = serde_json::to_string_pretty(&sorted)
+            .expect("a JSON manifest document is always serializable");
+        ensure_ascii_json(&rendered) + "\n"
     }
 
     fn from_record(record: &ManifestRecord, value: Value) -> Result<Self, ManifestWriteError> {
@@ -491,8 +500,6 @@ fn python_repr_string(value: &str) -> String {
             '\u{08}' => output.push_str("\\x08"),
             '\u{0C}' => output.push_str("\\x0c"),
             control if control.is_control() => {
-                use std::fmt::Write as _;
-
                 write!(output, "\\x{:02x}", control as u32)
                     .expect("writing to a String cannot fail");
             }
@@ -503,108 +510,32 @@ fn python_repr_string(value: &str) -> String {
     output
 }
 
-fn write_canonical_json(value: &Value, depth: usize, output: &mut String) {
+fn ensure_ascii_json(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_ascii() {
+            output.push(character);
+            continue;
+        }
+        let mut units = [0; 2];
+        for unit in character.encode_utf16(&mut units) {
+            write!(output, "\\u{unit:04x}").expect("writing to a String cannot fail");
+        }
+    }
+    output
+}
+
+fn sorted_json(value: &Value) -> Value {
     match value {
-        Value::Null => output.push_str("null"),
-        Value::Bool(flag) => output.push_str(if *flag { "true" } else { "false" }),
-        Value::Number(number) => output.push_str(&number.to_string()),
-        Value::String(text) => write_json_string(text, output),
-        Value::Array(values) => write_json_array(values, depth, output),
-        Value::Object(values) => write_json_object(values, depth, output),
-    }
-}
-
-fn write_json_array(values: &[Value], depth: usize, output: &mut String) {
-    if values.is_empty() {
-        output.push_str("[]");
-        return;
-    }
-    output.push_str("[\n");
-    for (index, value) in values.iter().enumerate() {
-        write_indent(depth + 1, output);
-        write_canonical_json(value, depth + 1, output);
-        if index + 1 != values.len() {
-            output.push(',');
+        Value::Array(values) => Value::Array(values.iter().map(sorted_json).collect()),
+        Value::Object(values) => {
+            let sorted: BTreeMap<String, Value> = values
+                .iter()
+                .map(|(key, value)| (key.clone(), sorted_json(value)))
+                .collect();
+            Value::Object(sorted.into_iter().collect())
         }
-        output.push('\n');
-    }
-    write_indent(depth, output);
-    output.push(']');
-}
-
-fn write_json_object(values: &serde_json::Map<String, Value>, depth: usize, output: &mut String) {
-    if values.is_empty() {
-        output.push_str("{}");
-        return;
-    }
-    let mut keys: Vec<&String> = values.keys().collect();
-    keys.sort_unstable();
-    output.push_str("{\n");
-    for (index, key) in keys.iter().enumerate() {
-        write_indent(depth + 1, output);
-        write_json_string(key, output);
-        output.push_str(": ");
-        if let Some(value) = values.get(*key) {
-            write_canonical_json(value, depth + 1, output);
-        }
-        if index + 1 != keys.len() {
-            output.push(',');
-        }
-        output.push('\n');
-    }
-    write_indent(depth, output);
-    output.push('}');
-}
-
-fn write_indent(depth: usize, output: &mut String) {
-    output.push_str(&"  ".repeat(depth));
-}
-
-fn write_json_string(value: &str, output: &mut String) {
-    output.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\u{08}' => output.push_str("\\b"),
-            '\u{0C}' => output.push_str("\\f"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            control if control.is_control() => write_json_u16_escape(
-                u16::try_from(control as u32).expect("control character is within u16 range"),
-                output,
-            ),
-            ascii if ascii.is_ascii() => output.push(ascii),
-            unicode if (unicode as u32) <= 0xFFFF => {
-                write_json_u16_escape(
-                    u16::try_from(unicode as u32).expect("BMP character is within u16 range"),
-                    output,
-                );
-            }
-            unicode => {
-                let offset = unicode as u32 - 0x1_0000;
-                write_json_u16_escape(
-                    u16::try_from(0xD800 + (offset >> 10))
-                        .expect("Unicode high surrogate is within u16 range"),
-                    output,
-                );
-                write_json_u16_escape(
-                    u16::try_from(0xDC00 + (offset & 0x3FF))
-                        .expect("Unicode low surrogate is within u16 range"),
-                    output,
-                );
-            }
-        }
-    }
-    output.push('"');
-}
-
-fn write_json_u16_escape(value: u16, output: &mut String) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    output.push_str("\\u");
-    for shift in [12, 8, 4, 0] {
-        output.push(HEX[((value >> shift) & 0xF) as usize] as char);
+        scalar => scalar.clone(),
     }
 }
 

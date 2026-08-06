@@ -6,6 +6,7 @@ use std::{
 };
 
 use assert_cmd::Command as AssertCommand;
+use larch_core::{KvDocument, ParseOptions};
 use larch_test_support::{
     ExecutionSnapshot, ReportingParityOracle, RunLogFixture, RunLogSnapshot, RunLogTree,
 };
@@ -207,10 +208,12 @@ fn manifest_command_rejects_log_root_escape_from_implement_tmpdir() {
 }
 
 fn envelope(stdout: &[u8]) -> BTreeMap<String, String> {
-    String::from_utf8_lossy(stdout)
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+    let stdout = String::from_utf8_lossy(stdout);
+    KvDocument::parse(&stdout, ParseOptions::legacy())
+        .expect("manifest envelope should be valid KEY=value output")
+        .rows()
+        .iter()
+        .map(|row| (row.key().to_owned(), row.value().to_owned()))
         .collect()
 }
 

@@ -4,10 +4,11 @@ use larch_adapters::git::GixRepository;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
 use larch_adapters::runtime::LarchRuntime;
 use larch_core::{
-    ConfigKey, ConfigScope, ManifestUpdate, ObjectStore, ObjectStoreError, RepositoryRead,
-    RunLogLayout, RunLogSlug, StorageConfigurationError, StoragePreflightError,
-    ToolRepositoryStorage, format_preflight_stdout, repository_leaf_from_remote,
-    resolve_run_log_storage, validate_run_log_slug,
+    ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
+    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
+    StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage,
+    format_preflight_stdout, repository_leaf_from_remote, resolve_run_log_storage,
+    validate_run_log_slug,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -429,13 +430,19 @@ fn parse_manifest(arguments: &[OsString]) -> Result<ManifestArguments, ManifestP
 }
 
 fn parse_manifest_updates(fields: &[String]) -> Result<Vec<ManifestUpdate>, String> {
+    let options = ParseOptions {
+        malformed_lines: MalformedLinePolicy::Reject,
+        ..ParseOptions::legacy()
+    };
     fields
         .iter()
         .map(|assignment| {
-            let Some((key, raw)) = assignment.split_once('=') else {
+            let document = KvDocument::parse(assignment, options)
+                .map_err(|_error| format!("invalid field assignment: {assignment}"))?;
+            let [row] = document.rows() else {
                 return Err(format!("invalid field assignment: {assignment}"));
             };
-            Ok((key.to_owned(), parse_manifest_scalar(raw)))
+            Ok((row.key().to_owned(), parse_manifest_scalar(row.value())))
         })
         .collect()
 }
