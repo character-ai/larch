@@ -611,7 +611,7 @@ def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> No
 def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.MonkeyPatch) -> None:
     # Library `resolve_model_args` stays in-process for still-Python launchers
     # (#8107); CLI `agent model-args` is Rust-owned with separate parity coverage.
-    from larch.agents import resolve_model_args  # noqa: PLC0415
+    from larch.agents.agents import resolve_model_args  # noqa: PLC0415
 
     for key in ("LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "LARCH_CURSOR_MODEL", "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
         monkeypatch.delenv(key, raising=False)
