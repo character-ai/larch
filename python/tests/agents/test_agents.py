@@ -743,20 +743,6 @@ def test_launch_claude_subprocess_missing_binary_writes_sidecars(
     assert "STATUS=ERROR" in stdout
     assert f"OUTPUT_FILE={output}" in stdout
 
-
-def test_degraded_tools_empty_presence_is_distinct_bug_signal() -> None:
-    result = agents.degraded_tools_result(
-        codex_binary_found="true",
-        codex_present="",
-        cursor_binary_found="true",
-        cursor_present="true",
-        skill="implement",
-    )
-    assert result.degraded is True
-    assert result.presence_input_empty is True
-    assert result.codex_state == "probe-failed"
-
-
 def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
     sink = tmp_path / "agent.stderr"
@@ -1248,916 +1234,46 @@ def test_run_external_agent_spawns_despite_unhealthy_probe_env(
     assert result.exit_code == 0
 
 
-def test_check_reviewers_kv_order_and_skip_flags(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for name in ("codex", "cursor"):
-        path = bin_dir / name
-        _ = path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-        path.chmod(0o755)
-    monkeypatch.setenv("PATH", str(bin_dir))
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    rc = agents.check_reviewers_main(["--skip-codex-probe", "--skip-cursor-probe"])
-    assert rc == 0
-    assert capsys.readouterr().out.splitlines() == [
-        "CODEX_BINARY_FOUND=true",
-        "CURSOR_BINARY_FOUND=true",
-        "CODEX_PRESENT=false",
-        "CURSOR_PRESENT=false",
-        "CODEX_PROBE_TIMED_OUT=false",
-        "CURSOR_PROBE_TIMED_OUT=false",
-    ]
-
-
-def test_check_reviewers_binary_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
-    result = agents.check_reviewers(env={"PATH": str(tmp_path / "empty-bin"), "TMPDIR": str(tmp_path)})
-    assert result == agents.CheckReviewersResult(codex_binary_found=False, cursor_binary_found=False, codex_present=False, cursor_present=False)
-
-
-def test_check_reviewers_positive_and_negative_stamp_rules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "USER": "stamp-user"}
-    with _auth._temporary_environ(env):  # pylint: disable=protected-access
-        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
-    _ = stamp.write_text("true\n", encoding="utf-8")
-    assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is True
-    _ = stamp.write_text("false\n", encoding="utf-8")
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(1))
-    assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is False
-    assert agents.check_reviewers(skip_cursor_probe=True, env={**env, "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60"}).codex_present is False
-
-
-def test_check_reviewers_expired_stamp_misses_and_auth_retry(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_EXTERNAL_AUTH_RETRIES": "2"}
-    with _auth._temporary_environ(env):  # pylint: disable=protected-access
-        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
-    _ = stamp.write_text("true\n", encoding="utf-8")
-    old = time.time() - 120
-    agents.os.utime(stamp, (old, old))
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(2 if calls == 1 else 0)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env=env,
+def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = agents.run_external_agent_main(
+        [
+            "--tool",
+            "claude",
+            "--output",
+            str(tmp_path / "out.txt"),
+            "--timeout",
+            "0",
+            "--",
+            sys.executable,
+            "-c",
+            "print('should not run')",
+        ],
     )
-    assert result.codex_present is True
-    assert calls == 2
+    assert rc == 1
+    assert "--timeout must be a positive integer" in capsys.readouterr().err
 
 
-def test_check_reviewers_codex_login_and_env_key_stamps_are_isolated(tmp_path: Path) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    base = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60"}
-    with _auth._temporary_environ(base):  # pylint: disable=protected-access
-        login_identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        _auth._probe_stamp_path(login_identity).write_text("true\n", encoding="utf-8")  # pylint: disable=protected-access
-    with _auth._temporary_environ({**base, "OPENAI_API_KEY": "sk-test"}):  # pylint: disable=protected-access
-        env_identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        _auth._probe_stamp_path(env_identity).write_text("false\n", encoding="utf-8")  # pylint: disable=protected-access
-    assert agents.check_reviewers(skip_cursor_probe=True, env=base).codex_present is True
-    assert agents.check_reviewers(skip_cursor_probe=True, env={**base, "OPENAI_API_KEY": "sk-test"}).codex_present is False
-
-
-def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    calls = 0
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-
-    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
-        return agents.AuthVerdict(ok=False, rc=2, message="missing")
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        cfg_dir.mkdir()
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
-
-    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
-        if setup is not None:
-            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
-
-    def fake_cursor_probe(_timeout: int) -> int:
-        nonlocal calls
-        calls += 1
-        return 2
-
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "5",
-            "CURSOR_API_KEY": "test-key",
-        },
+def test_run_external_agent_args_rejects_bad_stderr_sink_without_sidecars(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    rc = agents.run_external_agent_main(
+        [
+            "--tool",
+            "claude",
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+            "--stderr-sink",
+            str(tmp_path / "bad\nsink.log"),
+            "--",
+            sys.executable,
+            "-c",
+            "print('should not run')",
+        ],
     )
-    assert result.cursor_present is False
-    assert calls == 1
-
-
-def test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    calls = 0
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-
-    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
-        return agents.AuthVerdict(ok=False, rc=2, message="missing")
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        cfg_dir.mkdir()
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
-
-    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
-        if setup is not None:
-            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
-
-    def fake_cursor_probe(_timeout: int) -> int:
-        nonlocal calls
-        calls += 1
-        return 1
-
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "5",
-            "LARCH_PROBE_RETRIES": "2",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.cursor_present is False
-    assert calls == 1
-
-
-def test_check_reviewers_invalid_env_normalization(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    seen_timeouts: list[int] = []
-
-    def fake_probe(timeout: int) -> agents.CodexProbeResult:
-        seen_timeouts.append(timeout)
-        return agents.CodexProbeResult(0 if len(seen_timeouts) == 3 else 1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_TIMEOUT_SECONDS": "bad",
-            "LARCH_EXTERNAL_AUTH_RETRIES": "0",
-            "LARCH_PROBE_RETRIES": "bad",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is True
-    assert seen_timeouts == [60, 60, 60]
-
-
-def test_check_reviewers_transient_failure_retries_until_exhausted(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "5",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is False
-    assert result.codex_probe_timed_out is False
-    assert calls == 3
-
-
-def test_check_reviewers_transient_failure_retries_until_success(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(0 if calls == 2 else 1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is True
-    assert calls == 2
-
-
-def test_check_reviewers_transient_failure_zero_budget_one_shot(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_RETRIES": "0",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is False
-    assert calls == 1
-
-
-def test_check_reviewers_probe_no_retry_rc_one_shot(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(agents._PROBE_NO_RETRY_RC)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.codex_present is False
-    assert calls == 1
-
-
-def test_check_reviewers_codex_timeout_one_shot_by_default(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(config.EXIT_TIMEOUT)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.codex_present is False
-    assert result.codex_probe_timed_out is True
-    assert calls == 1
-
-
-def test_check_reviewers_codex_timeout_retry_can_succeed(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(0 if calls == 2 else config.EXIT_TIMEOUT)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_TIMEOUT_RETRIES": "1",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is True
-    assert result.codex_probe_timed_out is False
-    assert calls == 2
-
-
-def test_check_reviewers_cursor_timeout_retry_can_succeed(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-    calls = 0
-
-    def fake_probe(_timeout: int) -> int:
-        nonlocal calls
-        calls += 1
-        return 0 if calls == 2 else config.EXIT_TIMEOUT
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        cfg_dir.mkdir()
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
-
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_TIMEOUT_RETRIES": "1",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.cursor_present is True
-    assert result.cursor_probe_timed_out is False
-    assert calls == 2
-    assert not cfg_dir.exists()
-
-
-def test_check_reviewers_invalid_timeout_retry_env_is_one_shot(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(config.EXIT_TIMEOUT)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_PROBE_TIMEOUT_RETRIES": "bad",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is False
-    assert result.codex_probe_timed_out is True
-    assert calls == 1
-
-
-def test_check_reviewers_timeout_budget_is_independent(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    rcs = [config.EXIT_TIMEOUT, agents._AUTH_RETRY_RC, config.EXIT_TIMEOUT, 1, 0]
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        return agents.CodexProbeResult(rcs.pop(0))
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "2",
-            "LARCH_PROBE_RETRIES": "1",
-            "LARCH_PROBE_TIMEOUT_RETRIES": "2",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is True
-    assert result.codex_probe_timed_out is False
-    assert not rcs
-
-
-def test_check_reviewers_health_gate_unset_probe_retries_one_shot(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is False
-    assert calls == 1
-
-
-def test_check_reviewers_health_gate_explicit_probe_retries_override(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(1)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
-            "LARCH_PROBE_RETRIES": "2",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is False
-    assert calls == 3
-
-
-def test_check_reviewers_auth_and_transient_budgets_are_independent(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    rcs = [1, agents._AUTH_RETRY_RC, 1, 0]
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        return agents.CodexProbeResult(rcs.pop(0))
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "LARCH_EXTERNAL_AUTH_RETRIES": "2",
-            "LARCH_PROBE_RETRIES": "2",
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert result.codex_present is True
-    assert not rcs
-
-
-def test_check_reviewers_codex_auth_setup_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    probe_calls = 0
-    real_probe = agents._run_one_codex_probe
-
-    def counting_probe(timeout: int) -> agents.CodexProbeResult:
-        nonlocal probe_calls
-        probe_calls += 1
-        return real_probe(timeout)
-
-    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", counting_probe)
-    result = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.codex_present is False
-    assert probe_calls == 1
-
-
-def test_check_reviewers_cursor_transient_retry_until_success(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-    calls = 0
-    cleanup_calls = 0
-
-    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
-        return agents.AuthVerdict(ok=True, rc=0, message="")
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        cfg_dir.mkdir()
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
-
-    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
-        nonlocal cleanup_calls
-        cleanup_calls += 1
-        if setup is not None:
-            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
-
-    def fake_cursor_probe(_timeout: int) -> int:
-        nonlocal calls
-        calls += 1
-        return 0 if calls == 2 else 1
-
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.cursor_present is True
-    assert calls == 2
-    assert cleanup_calls == 1
-    assert not cfg_dir.exists()
-
-
-def test_check_reviewers_cursor_transient_retry_until_exhausted(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-    calls = 0
-    cleanup_calls = 0
-
-    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
-        return agents.AuthVerdict(ok=True, rc=0, message="")
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        cfg_dir.mkdir()
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
-
-    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
-        nonlocal cleanup_calls
-        cleanup_calls += 1
-        if setup is not None:
-            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
-
-    def fake_cursor_probe(_timeout: int) -> int:
-        nonlocal calls
-        calls += 1
-        return 1
-
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.cursor_present is False
-    assert result.cursor_probe_timed_out is False
-    assert calls == 3
-    assert cleanup_calls == 1
-    assert not cfg_dir.exists()
-
-
-def test_check_reviewers_cursor_setup_chain_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    probe_calls = 0
-
-    def fake_probe(_timeout: int) -> int:
-        nonlocal probe_calls
-        probe_calls += 1
-        return 0
-
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", lambda: None)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_probe)
-    result = agents.check_reviewers(
-        skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert result.cursor_present is False
-    assert probe_calls == 0
-
-
-def test_check_reviewers_cursor_private_config_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    cfg_dir = tmp_path / "larch-cursor-cfg-test"
-    cfg_dir.mkdir()
-    old_cfg = agents.os.environ.get("CURSOR_CONFIG_DIR")
-
-    def fake_setup() -> agents._CursorProbeSetup:
-        agents.os.environ["CURSOR_CONFIG_DIR"] = str(cfg_dir)
-        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=old_cfg)  # pylint: disable=protected-access
-
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(_auth, "_run_one_cursor_probe", lambda _timeout: 0)
-    monkeypatch.setattr(
-        agents,
-        "cursor_auth_preflight",
-        lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""),
-    )
-    agents.check_reviewers(
-        skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert not cfg_dir.exists()
-    assert agents.os.environ.get("CURSOR_CONFIG_DIR") == old_cfg
-
-
-def test_cursor_probe_setup_chain_ignores_config_copy_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    user_cfg = tmp_path / ".cursor" / "cli-config.json"
-    user_cfg.parent.mkdir(parents=True)
-    _ = user_cfg.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(_auth, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(_auth, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_auth, "_probe_tmpdir", lambda: tmp_path)
-    monkeypatch.setattr(agents.Path, "home", lambda: tmp_path)
-
-    def fail_copyfile(_src: Path, _dst: Path) -> None:
-        raise OSError("permission denied")
-
-    monkeypatch.setattr(agents.shutil, "copyfile", fail_copyfile)
-    setup = agents._cursor_probe_setup_chain()  # pylint: disable=protected-access
-    assert setup is not None
-    try:
-        assert setup.cfg_tmp.is_dir()
-    finally:
-        agents._cursor_probe_cleanup_private_config_dir(setup)  # pylint: disable=protected-access
-
-
-def test_check_reviewers_probe_temp_home_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(0))
-    agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert not any(path.name.startswith("larch-codex-probe-home-") for path in tmp_path.iterdir())
-
-
-def test_check_reviewers_codex_argv_no_secrets_in_cmd(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    secret = "sk-" + "A" * 24
-    seen_cmds: list[Sequence[str]] = []
-    real_run_probe = agents._run_probe_command
-
-    def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
-        seen_cmds.append(list(cmd))
-        return 0
-
-    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
-    agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={
-            "PATH": str(bin_dir),
-            "TMPDIR": str(tmp_path),
-            "OPENAI_API_KEY": secret,
-            "LARCH_PROBE_TTL_SECONDS": "0",
-        },
-    )
-    assert seen_cmds
-    assert not any(secret in str(arg) for cmd in seen_cmds for arg in cmd)
-    _ = real_run_probe  # keep reference for lint
-
-
-def test_check_reviewers_codex_probe_resolves_workdir(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-
-    def fake_resolve(_cwd: str) -> str:
-        return "/resolved/probe-workdir"
-
-    def fake_prepare(_home: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
-        _ = trusted_instructions_file
-        return (0, "")
-
-    monkeypatch.setattr(_auth, "_resolve_review_codex_workdir", fake_resolve)
-    monkeypatch.setattr(_auth, "_prepare_codex_home", fake_prepare)
-    seen_cmds: list[Sequence[str]] = []
-
-    def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
-        seen_cmds.append(list(cmd))
-        return 0
-
-    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
-    agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert seen_cmds
-    cmd = list(seen_cmds[0])
-    assert cmd[cmd.index("-C") + 1] == "/resolved/probe-workdir"
-    assert 'projects."/resolved/probe-workdir".trust_level="trusted"' in cmd
-
-
-def test_check_reviewers_cursor_probe_resolves_workspace(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    cursor.chmod(0o755)
-
-    def fake_resolve(_cwd: str) -> str:
-        return "/resolved/probe-workdir"
-
-    def cursor_auth_ok(*, caller: str = "agent check-reviewers") -> agents.AuthVerdict:
-        _ = caller
-        return agents.AuthVerdict(ok=True, rc=0, message="")
-
-    def cleanup_noop(_setup: object) -> None:
-        return None
-
-    def setup_chain_stub() -> object:
-        return object()
-
-    monkeypatch.setattr(_auth, "_resolve_review_codex_workdir", fake_resolve)
-    monkeypatch.setattr(_auth, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", setup_chain_stub)
-    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", cleanup_noop)
-    seen_cmds: list[Sequence[str]] = []
-
-    def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
-        seen_cmds.append(list(cmd))
-        return 0
-
-    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
-    agents.check_reviewers(
-        skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
-    )
-    assert seen_cmds
-    cmd = list(seen_cmds[0])
-    assert cmd[cmd.index("--workspace") + 1] == "/resolved/probe-workdir"
-
+    assert rc == 1
+    assert not output.with_suffix(output.suffix + ".meta").exists()
+    assert not output.with_suffix(output.suffix + ".done").exists()
 
 def test_run_negotiation_round_cursor_probe_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
@@ -3434,30 +2550,6 @@ def test_render_context_files_redacts_and_xml_escapes(tmp_path: Path) -> None:
     assert 'path="' in rendered
     assert "&lt;" in rendered
     assert "&amp;" in rendered
-
-
-def test_degraded_tools_gate_flag_precedence_and_both_down(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CODEX_PRESENT", "true")
-    rc = agents.degraded_tools_gate_main(
-        [
-            "--codex-binary-found",
-            "false",
-            "--codex-present",
-            "false",
-            "--cursor-binary-found",
-            "false",
-            "--cursor-present",
-            "false",
-            "--skill",
-            "implement",
-        ],
-    )
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "DEGRADED=true" in out
-    assert "BOTH_DOWN=true" in out
-    assert "CODEX_STATE=binary-missing" in out
-
 
 def test_ci_prompt_includes_role_specific_recovery_guidance(tmp_path: Path) -> None:
     failure_log = tmp_path / "failure.log"
@@ -5848,6 +4940,23 @@ def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsy
             cursor_present=False,
         ),
     )
+    monkeypatch.setattr(
+        _auth,
+        "degraded_tools_result",
+        lambda **_kwargs: agents.DegradedToolsResult(
+            degraded=True,
+            codex_state="ok",
+            cursor_state="binary-missing",
+            both_down=False,
+            presence_input_empty=False,
+            explanation=(),
+        ),
+    )
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_pins",
+        lambda **_kwargs: ("skipped", "", "unverifiable", "codex has no model-list surface"),
+    )
     rc = agents.status_check_main([])
     assert rc == 0
     out = capsys.readouterr().out
@@ -5875,6 +4984,23 @@ def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch
         raise RuntimeError("probe failed")
 
     monkeypatch.setattr(_auth, "check_reviewers", raise_probe)
+    monkeypatch.setattr(
+        _auth,
+        "degraded_tools_result",
+        lambda **_kwargs: agents.DegradedToolsResult(
+            degraded=True,
+            codex_state="binary-missing",
+            cursor_state="binary-missing",
+            both_down=True,
+            presence_input_empty=False,
+            explanation=(),
+        ),
+    )
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_pins",
+        lambda **_kwargs: ("skipped", "", "skipped", ""),
+    )
     assert agents.status_check_main([]) == 0
     out = capsys.readouterr().out
     assert "LARCH_PLUGIN_VERSION=unknown" in out
@@ -5907,28 +5033,24 @@ def test_status_check_appends_current_codex_gate_detail(
         ),
     )
     monkeypatch.setattr(_auth, "_current_codex_gate_detail", lambda: detail)
-
-    pin_ids = sorted(set(config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY.values()))
-    models_stdout = "Available models\n\n" + "".join(f"{mid} - Display {mid}\n" for mid in pin_ids)
-
-    class _OkModelsRunner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            _ = timeout, cwd, env, check, stdout, stderr
-            assert tuple(argv) == config.CURSOR_MODEL_LIST_ARGV
-            return CommandResult(tuple(argv), 0, models_stdout, "", 0.01)
-
-    assert agents.status_check_main([], runner=_OkModelsRunner()) == 0
-
+    monkeypatch.setattr(
+        _auth,
+        "degraded_tools_result",
+        lambda **_kwargs: agents.DegradedToolsResult(
+            degraded=True,
+            codex_state="probe-failed",
+            cursor_state="ok",
+            both_down=False,
+            presence_input_empty=False,
+            explanation=(),
+        ),
+    )
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_pins",
+        lambda **_kwargs: ("ok", "", "skipped", "vendor probe not ok"),
+    )
+    assert agents.status_check_main([]) == 0
     assert capsys.readouterr().out.splitlines() == [
         "LARCH_PLUGIN_VERSION=1.2.3",
         "CODEX_BINARY_FOUND=true",
@@ -5960,34 +5082,33 @@ def test_status_check_model_pins_unknown_id(
             cursor_present=True,
         ),
     )
-
-    class _MissingPinRunner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            _ = argv, timeout, cwd, env, check, stdout, stderr
-            return CommandResult(
-                config.CURSOR_MODEL_LIST_ARGV,
-                0,
-                "Available models\n\nother-model - Other\n",
-                "",
-                0.01,
-            )
-
-    assert agents.status_check_main([], runner=_MissingPinRunner()) == 0
+    monkeypatch.setattr(
+        _auth,
+        "degraded_tools_result",
+        lambda **_kwargs: agents.DegradedToolsResult(
+            degraded=False,
+            codex_state="ok",
+            cursor_state="ok",
+            both_down=False,
+            presence_input_empty=False,
+            explanation=(),
+        ),
+    )
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_pins",
+        lambda **_kwargs: (
+            "unknown-id",
+            "CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY=missing-model",
+            "unverifiable",
+            "codex has no model-list surface",
+        ),
+    )
+    assert agents.status_check_main([]) == 0
     out = capsys.readouterr().out
     assert "CURSOR_MODEL_PINS=unknown-id" in out
-    assert "CURSOR_MODEL_PIN_DETAIL=CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY=" in out
+    assert "CURSOR_MODEL_PIN_DETAIL=" in out
     assert "CODEX_MODEL_PINS=unverifiable" in out
-    assert "DEGRADED=false" in out
 
 
 def test_status_check_model_pins_list_failed(
@@ -5999,33 +5120,33 @@ def test_status_check_model_pins_list_failed(
         _auth,
         "check_reviewers",
         lambda: agents.CheckReviewersResult(
-            codex_binary_found=False,
+            codex_binary_found=True,
             cursor_binary_found=True,
-            codex_present=False,
+            codex_present=True,
             cursor_present=True,
         ),
     )
-
-    class _FailListRunner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            _ = argv, timeout, cwd, env, check, stdout, stderr
-            return CommandResult(config.CURSOR_MODEL_LIST_ARGV, 1, "", "boom\n", 0.01)
-
-    assert agents.status_check_main([], runner=_FailListRunner()) == 0
+    monkeypatch.setattr(
+        _auth,
+        "degraded_tools_result",
+        lambda **_kwargs: agents.DegradedToolsResult(
+            degraded=False,
+            codex_state="ok",
+            cursor_state="ok",
+            both_down=False,
+            presence_input_empty=False,
+            explanation=(),
+        ),
+    )
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_pins",
+        lambda **_kwargs: ("list-failed", "cursor agent models exited 1", "unverifiable", "codex has no model-list surface"),
+    )
+    assert agents.status_check_main([]) == 0
     out = capsys.readouterr().out
     assert "CURSOR_MODEL_PINS=list-failed" in out
-    assert "CURSOR_MODEL_PIN_DETAIL=cursor agent models exited 1: boom" in out
-    assert "CODEX_MODEL_PINS=skipped" in out
+    assert "CURSOR_MODEL_PIN_DETAIL=" in out
 
 
 def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6053,19 +5174,6 @@ def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, m
     ledger_idx = render_args.index("--findings-ledger-file")
     assert render_args[ledger_idx + 1] == str(impl / "findings-ledger.tsv")
     assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
-
-
-def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
-    monkeypatch.setattr(
-        _auth,
-        "resolve_model_args",
-        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("LARCH_CODEX_REVIEW_MODEL must not be blank or whitespace-only")),
-    )
-
-    assert agents._run_one_codex_probe(1).rc == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
-
 
 @pytest.mark.parametrize(
     ("diagnostic", "fallback", "expected_model", "expected_signal"),
@@ -6103,33 +5211,6 @@ def test_detect_codex_cli_gate(
 def test_detect_codex_cli_gate_near_misses(diagnostic: str) -> None:
     assert agents.detect_codex_cli_gate(diagnostic, fallback_model="gpt-5.6-luna") is None
 
-
-def test_codex_probe_uses_review_role_and_stops_on_gate(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "gpt-5.6-review-test")
-    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
-    seen: list[str] = []
-
-    def fake_probe(cmd: Sequence[str], **kwargs: object) -> int:
-        seen.extend(cmd)
-        stderr = kwargs["stderr"]
-        assert isinstance(stderr, Path)
-        stderr.write_text("requires a newer version of Codex\n", encoding="utf-8")
-        return 1
-
-    monkeypatch.setattr(_auth, "_run_probe_command", fake_probe)
-
-    result = agents._run_one_codex_probe(1)  # pylint: disable=protected-access
-
-    assert seen[seen.index("-m") + 1] == "gpt-5.6-review-test"
-    assert result.rc == agents._PROBE_NO_RETRY_RC
-    assert result.gate_detail is not None
-    assert result.gate_detail.model == "gpt-5.6-review-test"
-
-
 def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
     monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
@@ -6161,173 +5242,6 @@ def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(ValueError, match="LARCH_CODEX_VOTE_MODEL"):
         agents.resolve_model_args("codex", codex_role="vote")
 
-
-def test_check_reviewers_gate_detail_cache_identity_and_ttl_zero_handoff(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-
-    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(
-            agents._PROBE_NO_RETRY_RC,
-            agents.CodexGateDetail(
-                model="gpt-5.6-luna",
-                signal="newer-codex-required",
-                message="codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
-            ),
-        )
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
-    base = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"}
-    result = agents.check_reviewers(skip_cursor_probe=True, env=base)
-
-    assert result.codex_gate_detail is not None
-    with _auth._temporary_environ(base):  # pylint: disable=protected-access
-        assert _auth._current_codex_gate_detail() == result.codex_gate_detail  # pylint: disable=protected-access
-    assert calls == 1
-
-    changed = agents.check_reviewers(
-        skip_cursor_probe=True,
-        env={**base, "LARCH_CODEX_REVIEW_MODEL": "gpt-5.6-other"},
-    )
-    assert changed.codex_gate_detail is not None
-    assert calls == 2
-
-
-def test_check_reviewers_cached_negative_reloads_and_healthy_probe_clears_gate_detail(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    codex = bin_dir / "codex"
-    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    codex.chmod(0o755)
-    calls = 0
-    detail = agents.CodexGateDetail(
-        model="gpt-5.6-luna",
-        signal="newer-codex-required",
-        message="codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
-    )
-
-    def gated_probe(_timeout: int) -> agents.CodexProbeResult:
-        nonlocal calls
-        calls += 1
-        return agents.CodexProbeResult(agents._PROBE_NO_RETRY_RC, detail)
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", gated_probe)
-    cached_env = {
-        "PATH": str(bin_dir),
-        "TMPDIR": str(tmp_path),
-        "LARCH_PROBE_TTL_SECONDS": "60",
-        "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60",
-    }
-    assert agents.check_reviewers(skip_cursor_probe=True, env=cached_env).codex_gate_detail == detail
-    assert agents.check_reviewers(skip_cursor_probe=True, env=cached_env).codex_gate_detail == detail
-    assert calls == 1
-
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(0))
-    healthy_env = {**cached_env, "LARCH_PROBE_TTL_SECONDS": "0"}
-    assert agents.check_reviewers(skip_cursor_probe=True, env=healthy_env).codex_present is True
-    with _auth._temporary_environ(healthy_env):  # pylint: disable=protected-access
-        assert _auth._current_codex_gate_detail() is None  # pylint: disable=protected-access
-
-
-def test_read_codex_gate_detail_rejects_expired_mismatched_and_malformed_handoffs(tmp_path: Path) -> None:
-    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
-    detail = agents.CodexGateDetail(
-        model=config.CODEX_REVIEW_MODEL_DEFAULT,
-        signal="newer-codex-required",
-        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
-    )
-    with _auth._temporary_environ(env):  # pylint: disable=protected-access
-        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        path = _auth._codex_gate_detail_path(identity)  # pylint: disable=protected-access
-        _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
-        old = time.time() - 120
-        os.utime(path, (old, old))
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
-
-        _ = path.write_text(json.dumps({"schema_version": 1, "identity": "other", "model": detail.model, "signal": detail.signal, "message": detail.message}), encoding="utf-8")
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
-
-        _ = path.write_text("{", encoding="utf-8")
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
-
-        _ = path.write_bytes(b"\xff")
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
-
-
-def test_read_codex_gate_detail_rejects_stale_record_after_clear_failure(tmp_path: Path) -> None:
-    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
-    detail = agents.CodexGateDetail(
-        model=config.CODEX_REVIEW_MODEL_DEFAULT,
-        signal="newer-codex-required",
-        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
-    )
-    with _auth._temporary_environ(env):  # pylint: disable=protected-access
-        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
-        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
-        _auth._write_probe_stamp(stamp=stamp, value=True)  # pylint: disable=protected-access
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
-
-
-def test_codex_probe_update_lock_serializes_gate_detail_updates(tmp_path: Path) -> None:
-    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
-    detail = agents.CodexGateDetail(
-        model=config.CODEX_REVIEW_MODEL_DEFAULT,
-        signal="newer-codex-required",
-        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
-    )
-    with _auth._temporary_environ(env):  # pylint: disable=protected-access
-        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
-        stale_started = threading.Event()
-        release_stale = threading.Event()
-        healthy_started = threading.Event()
-        healthy_published = threading.Event()
-
-        def publish_stale_gate() -> None:
-            with _auth._codex_probe_update_lock(identity):  # pylint: disable=protected-access
-                stale_started.set()
-                assert release_stale.wait(timeout=1)
-                _auth._write_probe_stamp(  # pylint: disable=protected-access
-                    stamp=_auth._probe_stamp_path(identity),  # pylint: disable=protected-access
-                    value=False,
-                )
-                _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
-
-        def publish_healthy_probe() -> None:
-            healthy_started.set()
-            with _auth._codex_probe_update_lock(identity):  # pylint: disable=protected-access
-                _auth._write_probe_stamp(  # pylint: disable=protected-access
-                    stamp=_auth._probe_stamp_path(identity),  # pylint: disable=protected-access
-                    value=True,
-                )
-                _auth._clear_codex_gate_detail(identity)  # pylint: disable=protected-access
-                healthy_published.set()
-
-        stale = threading.Thread(target=publish_stale_gate)
-        healthy = threading.Thread(target=publish_healthy_probe)
-        stale.start()
-        assert stale_started.wait(timeout=1)
-        healthy.start()
-        assert healthy_started.wait(timeout=1)
-        assert not healthy_published.wait(timeout=0.1)
-        release_stale.set()
-        stale.join(timeout=1)
-        healthy.join(timeout=1)
-        assert not stale.is_alive()
-        assert not healthy.is_alive()
-        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
 
 
 def test_parse_drafter_output_extracts_dialectic_without_promoting(tmp_path: Path) -> None:

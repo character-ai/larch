@@ -65,6 +65,8 @@ pub mod env {
     pub const LARCH_PROBE_TIMEOUT_SECONDS: &str = "LARCH_PROBE_TIMEOUT_SECONDS";
     /// Lifetime of a cached successful reviewer-probe verdict, in seconds.
     pub const LARCH_PROBE_TTL_SECONDS: &str = "LARCH_PROBE_TTL_SECONDS";
+    /// Timeout for Cursor model-list health checks used by model-pin resolution.
+    pub const LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: &str = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT";
     /// Optional tail length for a failed-agent stderr excerpt.
     pub const LARCH_FAILED_AGENT_STDERR_TAIL_LINES: &str = "LARCH_FAILED_AGENT_STDERR_TAIL_LINES";
     /// Release version pinned by the release workflow during a local upgrade.
@@ -133,6 +135,7 @@ pub mod env {
         LARCH_CURSOR_MODEL,
         LARCH_EXPECTED_STABLE_VERSION,
         LARCH_EXTERNAL_AUTH_RETRIES,
+        LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT,
         LARCH_LOGS_URI,
         LARCH_NO_LOGS_COMMIT,
         LARCH_PROBE_NEGATIVE_TTL_SECONDS,

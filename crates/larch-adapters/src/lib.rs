@@ -18,6 +18,7 @@ pub mod upgrade_larch;
 pub mod vendor_auth;
 pub mod vendor_diagnostics;
 pub mod vendor_lifecycle;
+pub mod vendor_reviewers;
 
 use larch_core::BuildMetadata;
 
@@ -35,6 +36,9 @@ pub mod statusline;
 
 pub use codex_home::{CodexHomeContext, CodexHomeError, CodexHomePreparer};
 pub use cursor_config::CursorConfigContext;
+pub use vendor_reviewers::{
+    CheckReviewersContext, check_reviewers, prepare_codex_home, run_cursor_model_list,
+};
 pub use file_io::{
     FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_utf8, atomic_write_utf8_in,
     guarded_update_env, read_first_raw_key, read_kv_raw, read_optional_utf8_lossy,

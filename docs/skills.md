@@ -307,7 +307,7 @@ The workflow is intentionally single-clone (per-clone single-flight lock; multip
 
 **Source**: [`skills/status/SKILL.md`](../skills/status/SKILL.md)
 
-Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `agent check-reviewers` for binary/runtime probes, then `python3 python/cli.py agent degraded-tools-gate` to classify each vendor as `ok`, `binary-missing`, or `probe-failed`. When a vendor probe is `ok`, also resolves that vendor's pinned model ids from `config.py` against the vendor's live model list (Cursor via `cursor agent models`; Codex reports `unverifiable` because it has no model-list surface). Reports whether `/implement` requires confirmation to continue with one unavailable vendor dropped from the reduced panel, or hard-fails until at least one vendor is fixed when both are unavailable.
+Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `agent check-reviewers` for binary/runtime probes, then `scripts/larch.sh agent degraded-tools-gate` to classify each vendor as `ok`, `binary-missing`, or `probe-failed`. When a vendor probe is `ok`, also resolves that vendor's pinned model ids from `config.py` against the vendor's live model list (Cursor via `cursor agent models`; Codex reports `unverifiable` because it has no model-list surface). Reports whether `/implement` requires confirmation to continue with one unavailable vendor dropped from the reduced panel, or hard-fails until at least one vendor is fixed when both are unavailable.
 
 ### `/upgrade-larch`
 

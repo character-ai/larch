@@ -1,6 +1,7 @@
 //! Vendor-agent commands composed over typed core and adapter boundaries.
 
 use std::{
+    collections::BTreeMap,
     env,
     ffi::{OsStr, OsString},
     fmt::Write as _,
@@ -19,24 +20,28 @@ use larch_adapters::{
     ConfinedPath, ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitPath as GitCliPath,
     GitRef, GixRepository, NoopProcessObserver, PathIntent, PluginRoot, ProcessFileRouting,
     ProcessStdinRouting, TemporaryRoot, TokioProcessRunner, atomic_write_bytes,
-    atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy, read_utf8,
-    remove_optional_file,
+    atomic_write_utf8_in, check_reviewers, ensure_directory_chain, read_optional_utf8_lossy,
+    read_utf8, remove_optional_file, run_cursor_model_list,
     runtime::{Cancellation, LarchRuntime},
-    vendor_auth::{CursorPreflightConfig, VendorAuthContext, cursor_auth_preflight},
+    vendor_auth::{CursorPreflightConfig, ProbeCache, VendorAuthContext, cursor_auth_preflight},
     vendor_diagnostics::{
         parse_codex_usage_file, select_failed_agent_stderr_source, write_collector_failure_log,
         write_failed_agent_stderr_tail, write_failure_diag,
     },
     vendor_lifecycle::StartupLockConfig,
+    vendor_reviewers::CheckReviewersContext,
 };
 use larch_core::{
-    ChildEnvironment, CodexModelRole, Commit, CursorCredential, ExternalProgram,
-    LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessError, ProcessErrorKind,
-    RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, Revision,
-    StderrCaptureMode, VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS,
+    CODEX_REVIEW_MODEL_DEFAULT, CheckReviewersConfig, ChildEnvironment, CodexGateMessage,
+    CodexModelRole, Commit, CursorCredential, DegradedToolsResult, ExternalProgram,
+    LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProbeTtl, ProcessError,
+    ProcessErrorKind, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow,
+    Revision, StderrCaptureMode, VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS,
     WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff, claude_model_from_transcript,
-    codex_policy_rejection_excerpt, cursor_child_environment, emit_kv, env as env_names,
-    parse_generated_paths, resolve_model_args, sanitize_tool_label,
+    codex_env_auth_from_key, codex_policy_rejection_excerpt, codex_probe_identity,
+    cursor_child_environment, emit_kv, env as env_names, extract_model_from_argv,
+    model_list_timeout_seconds, norm_bool, norm_tristate, parse_generated_paths,
+    resolve_model_args, resolve_model_pins, sanitize_tool_label, tool_state,
     transcript_path_from_claude_source, validate_emitted_token, wait_for_reviewers,
 };
 
@@ -59,6 +64,15 @@ const SHARED_STARTUP_LOCK_ROOT: &str = "/tmp";
 pub enum AgentCommand {
     /// Prove Cursor can authenticate before a Cursor lane launches.
     CursorAuthPreflight,
+    /// Probe Codex and Cursor binary presence and runtime health.
+    #[command(name = "check-reviewers")]
+    CheckReviewers(CheckReviewersArguments),
+    /// Classify degraded external-tool availability for one skill Step 0 gate.
+    #[command(name = "degraded-tools-gate")]
+    DegradedToolsGate(DegradedToolsGateArguments),
+    /// Resolve config-pinned vendor model ids against live vendor lists.
+    #[command(name = "resolve-model-pins")]
+    ResolveModelPins(ResolveModelPinsArguments),
     /// Wrap a Cursor prompt with the pinned max-mode preamble.
     #[command(name = "cursor-wrap-prompt", disable_help_flag = true)]
     CursorWrapPrompt(AgentRawArguments),
@@ -88,6 +102,45 @@ pub enum AgentCommand {
     /// Atomically compose a redacted collector failure-log carrier.
     #[command(disable_help_flag = true)]
     ComposeCollectorFailureLog(AgentRawArguments),
+}
+
+#[derive(Args)]
+pub struct CheckReviewersArguments {
+    /// Skip the Codex health probe (binary discovery still runs).
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    skip_codex_probe: bool,
+    /// Skip the Cursor health probe (binary discovery still runs).
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    skip_cursor_probe: bool,
+}
+
+#[derive(Args)]
+pub struct DegradedToolsGateArguments {
+    /// Codex binary-found tri-state (`true` / `false` / other → `unknown`).
+    #[arg(long)]
+    codex_binary_found: Option<String>,
+    /// Codex presence from the durable session-env (`true` / `false`).
+    #[arg(long)]
+    codex_present: Option<String>,
+    /// Cursor binary-found tri-state (`true` / `false` / other → `unknown`).
+    #[arg(long)]
+    cursor_binary_found: Option<String>,
+    /// Cursor presence from the durable session-env (`true` / `false`).
+    #[arg(long)]
+    cursor_present: Option<String>,
+    /// Skill name rendered into the operator explanation.
+    #[arg(long, default_value = "this")]
+    skill: String,
+}
+
+#[derive(Args)]
+pub struct ResolveModelPinsArguments {
+    /// Codex vendor state from the degraded-tools gate (`ok`, `binary-missing`, …).
+    #[arg(long, required = true)]
+    codex_state: String,
+    /// Cursor vendor state from the degraded-tools gate (`ok`, `binary-missing`, …).
+    #[arg(long, required = true)]
+    cursor_state: String,
 }
 
 #[derive(Args)]
@@ -126,6 +179,9 @@ pub struct AgentRawArguments {
 pub fn run(command: AgentCommand) -> ExitCode {
     match command {
         AgentCommand::CursorAuthPreflight => cursor_auth_preflight_command(),
+        AgentCommand::CheckReviewers(arguments) => check_reviewers_command(&arguments),
+        AgentCommand::DegradedToolsGate(arguments) => degraded_tools_gate_command(&arguments),
+        AgentCommand::ResolveModelPins(arguments) => resolve_model_pins_command(&arguments),
         AgentCommand::CursorWrapPrompt(arguments) => cursor_wrap_prompt(&arguments),
         AgentCommand::ExternalToolRegistry(arguments) => external_tool_registry(&arguments),
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
@@ -366,6 +422,220 @@ fn cursor_auth_preflight_command() -> ExitCode {
     }
     eprintln!("{}", verdict.message);
     ExitCode::from(u8::try_from(verdict.rc).unwrap_or(1))
+}
+
+fn check_reviewers_command(arguments: &CheckReviewersArguments) -> ExitCode {
+    let caller = "agent check-reviewers";
+    let Ok(runtime) = LarchRuntime::current_thread() else {
+        eprintln!("{caller}: could not start the local runtime");
+        return ExitCode::from(1);
+    };
+    let Ok(working_directory) = env::current_dir() else {
+        eprintln!("{caller}: could not resolve the working directory");
+        return ExitCode::from(1);
+    };
+    let Some(temporary_root) = probe_temporary_root() else {
+        eprintln!("{caller}: could not resolve the temporary root");
+        return ExitCode::from(1);
+    };
+    let Some(home) = env::var_os(env_names::HOME).map(PathBuf::from) else {
+        eprintln!("{caller}: HOME is unset");
+        return ExitCode::from(1);
+    };
+    let path_env = env::var(env_names::PATH).ok();
+    let user = env::var(env_names::USER).ok();
+    let openai_api_key = env::var(env_names::OPENAI_API_KEY).ok();
+    let cursor_api_key = env::var(env_names::CURSOR_API_KEY).ok();
+    let env_map: BTreeMap<String, String> = env::vars().collect();
+    let config = CheckReviewersConfig::from_env_values(
+        env::var(env_names::LARCH_PROBE_TTL_SECONDS).ok().as_deref(),
+        env::var(env_names::LARCH_PROBE_NEGATIVE_TTL_SECONDS)
+            .ok()
+            .as_deref(),
+        env::var(env_names::LARCH_PROBE_TIMEOUT_SECONDS)
+            .ok()
+            .as_deref(),
+        env::var(env_names::LARCH_EXTERNAL_AUTH_RETRIES)
+            .ok()
+            .as_deref(),
+        env::var(env_names::LARCH_PROBE_RETRIES).ok().as_deref(),
+        env::var(env_names::LARCH_PROBE_TIMEOUT_RETRIES)
+            .ok()
+            .as_deref(),
+        arguments.skip_codex_probe,
+        arguments.skip_cursor_probe,
+        None,
+    );
+    let context = CheckReviewersContext {
+        temporary_root: &temporary_root,
+        home: &home,
+        working_directory: &working_directory,
+        path_env: path_env.as_deref(),
+        user: user.as_deref(),
+        openai_api_key: openai_api_key.as_deref(),
+        cursor_api_key: cursor_api_key.as_deref(),
+        platform: platform_name(),
+        env_map: &env_map,
+    };
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let result = runtime.block_on(check_reviewers(
+        &runner,
+        &config,
+        context,
+        &Cancellation::new(),
+    ));
+    for line in result.kv_lines() {
+        println!("{line}");
+    }
+    ExitCode::SUCCESS
+}
+
+fn degraded_tools_gate_command(arguments: &DegradedToolsGateArguments) -> ExitCode {
+    let codex_binary_found =
+        flag_or_env(arguments.codex_binary_found.as_deref(), "CODEX_BINARY_FOUND", "unknown");
+    let codex_present = flag_or_env(arguments.codex_present.as_deref(), "CODEX_PRESENT", "");
+    let cursor_binary_found =
+        flag_or_env(arguments.cursor_binary_found.as_deref(), "CURSOR_BINARY_FOUND", "unknown");
+    let cursor_present = flag_or_env(arguments.cursor_present.as_deref(), "CURSOR_PRESENT", "");
+    if codex_present.is_empty() {
+        eprintln!(
+            "agent degraded-tools-gate: ERROR: --codex-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)"
+        );
+    }
+    if cursor_present.is_empty() {
+        eprintln!(
+            "agent degraded-tools-gate: ERROR: --cursor-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)"
+        );
+    }
+    let codex_gate_message =
+        codex_gate_message_for_probe_failed(&codex_binary_found, &codex_present);
+    let result = DegradedToolsResult::classify(
+        &codex_binary_found,
+        &codex_present,
+        &cursor_binary_found,
+        &cursor_present,
+        &arguments.skill,
+        codex_gate_message.as_ref(),
+    );
+    for line in result.kv_lines() {
+        println!("{line}");
+    }
+    if result.degraded() {
+        println!("DEGRADED_EXPLANATION_BEGIN");
+        for line in result.explanation() {
+            println!("{line}");
+        }
+        println!("DEGRADED_EXPLANATION_END");
+    }
+    ExitCode::SUCCESS
+}
+
+fn resolve_model_pins_command(arguments: &ResolveModelPinsArguments) -> ExitCode {
+    let caller = "agent resolve-model-pins";
+    let cursor_list = if arguments.cursor_state == "ok" {
+        let Ok(runtime) = LarchRuntime::current_thread() else {
+            eprintln!("{caller}: could not start the local runtime");
+            return ExitCode::from(1);
+        };
+        let Ok(working_directory) = env::current_dir() else {
+            eprintln!("{caller}: could not resolve the working directory");
+            return ExitCode::from(1);
+        };
+        let timeout = Duration::from_secs(model_list_timeout_seconds(
+            env::var(env_names::LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT)
+                .ok()
+                .as_deref(),
+        ));
+        let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+        Some(runtime.block_on(run_cursor_model_list(
+            &runner,
+            &working_directory,
+            timeout,
+            &Cancellation::new(),
+        )))
+    } else {
+        None
+    };
+    let report = resolve_model_pins(
+        &arguments.codex_state,
+        &arguments.cursor_state,
+        cursor_list,
+    );
+    emit_kv("CURSOR_MODEL_PINS", report.cursor.status());
+    if !report.cursor.detail().is_empty() {
+        emit_kv("CURSOR_MODEL_PIN_DETAIL", report.cursor.detail());
+    }
+    emit_kv("CODEX_MODEL_PINS", report.codex.status());
+    if !report.codex.detail().is_empty() {
+        emit_kv("CODEX_MODEL_PIN_DETAIL", report.codex.detail());
+    }
+    ExitCode::SUCCESS
+}
+
+/// Resolve the probe/cache temporary root from `TMPDIR` or `/tmp`.
+fn probe_temporary_root() -> Option<TemporaryRoot> {
+    let raw = env::var_os(env_names::TMPDIR)
+        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+    let canonical = fs::canonicalize(&raw).ok()?;
+    TemporaryRoot::resolve(Some(&canonical)).ok()
+}
+
+/// Resolve a CLI flag, falling back to an environment variable, then a default.
+fn flag_or_env(cli: Option<&str>, env_name: &str, default: &str) -> String {
+    if let Some(value) = cli {
+        return value.to_owned();
+    }
+    env::var(env_name).unwrap_or_else(|_| default.to_owned())
+}
+
+/// Read a cached Codex gate-detail message when Codex would classify as probe-failed.
+fn codex_gate_message_for_probe_failed(
+    codex_binary_found: &str,
+    codex_present: &str,
+) -> Option<CodexGateMessage> {
+    let binary = norm_tristate(codex_binary_found);
+    let present = norm_bool(codex_present);
+    if tool_state(binary, present) != "probe-failed" {
+        return None;
+    }
+    let temporary_root = probe_temporary_root()?;
+    let ttl_seconds = env::var(env_names::LARCH_PROBE_TTL_SECONDS)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .unwrap_or(60);
+    let negative_ttl_seconds = env::var(env_names::LARCH_PROBE_NEGATIVE_TTL_SECONDS)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    let ttl = ProbeTtl::from_seconds(ttl_seconds, negative_ttl_seconds);
+    let cache = ProbeCache::new(
+        temporary_root,
+        env::var(env_names::USER).ok().as_deref(),
+        ttl,
+    );
+    let env_map: BTreeMap<String, String> = env::vars().collect();
+    let resolved_model = match resolve_model_args(
+        ModelTool::Codex,
+        true,
+        "",
+        CodexModelRole::Review,
+        &env_map,
+    ) {
+        Ok(result) => {
+            let model = extract_model_from_argv(result.argv());
+            if model.is_empty() {
+                CODEX_REVIEW_MODEL_DEFAULT.to_owned()
+            } else {
+                model
+            }
+        }
+        Err(_) => return None,
+    };
+    let auth = codex_env_auth_from_key(env::var(env_names::OPENAI_API_KEY).ok().as_deref());
+    let identity = codex_probe_identity(auth, &resolved_model);
+    cache
+        .read_gate_detail(&identity, ttl.standalone_gate_max_age())
+        .map(|detail| CodexGateMessage::new(detail.message().to_owned()))
 }
 
 fn parse_codex_usage(arguments: &ParseCodexUsageArguments) -> ExitCode {

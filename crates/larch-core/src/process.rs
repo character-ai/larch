@@ -445,6 +445,7 @@ pub enum ChildEnvironment {
     OpenAiApiKey,
     CursorApiKey,
     CursorConfigDir,
+    /// Isolated Codex home directory injected into probe and launch children.
     CodexHome,
     NoOpenBrowser,
     ClaudePluginRoot,

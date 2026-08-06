@@ -12,7 +12,7 @@ allowed-tools: Bash
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `agent check-reviewers` for binary/runtime probes, then `agent degraded-tools-gate` to classify each vendor as `ok`, `binary-missing`, or `probe-failed`. When a vendor probe is `ok`, also resolves that vendor's pinned model ids from `config.py` against the vendor's live model list (Cursor via `cursor agent models`; Codex reports `unverifiable` because it has no model-list surface).
+Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0 through `status check`: binary/runtime probes, then degraded-tools classification of each vendor as `ok`, `binary-missing`, or `probe-failed`. When a vendor probe is `ok`, also resolves that vendor's pinned model ids against the vendor's live model list (Cursor via `cursor agent models`; Codex reports `unverifiable` because it has no model-list surface).
 
 <!-- step:1 — Run status check -->
 

@@ -155,6 +155,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "classify-diff",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-check-reviewers",
+        "agent",
+        "check-reviewers",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-compose-collector-failure-log",
         "agent",
         "compose-collector-failure-log",
@@ -170,6 +175,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "cursor-wrap-prompt",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-degraded-tools-gate",
+        "agent",
+        "degraded-tools-gate",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-external-tool-registry",
         "agent",
         "external-tool-registry",
@@ -179,6 +189,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-agent-read-claude-model",
         "agent",
         "read-claude-model",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-resolve-model-pins",
+        "agent",
+        "resolve-model-pins",
     ),
     CleanInstallCase::new(
         "clean-install-external-defaults-docs",

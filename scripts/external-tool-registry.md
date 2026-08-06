@@ -7,7 +7,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 ## Sourced by
 
 - `scripts/larch.sh agent model-args`
-- `python/cli.py agent check-reviewers`
+- `scripts/larch.sh agent check-reviewers`
 - `python/cli.py agent collect-results`
 - `python/cli.py implement step2-dispatch`
 

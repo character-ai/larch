@@ -14,12 +14,10 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("agent", "check-reviewers"): ("larch.agents.agents", "check_reviewers_main", False),
     ("agent", "collect-results"): ("larch.agents.collect_results", "collect_results_main", False),
     ("agent", "dispatch-waterfall"): ("larch.agents.agent_waterfall", "dispatch_waterfall_main", False),
     ("agent", "dispatch-voters"): ("larch.agents.agent_voters", "dispatch_voters_main", False),
     ("agent", "run-negotiation-round"): ("larch.agents.agents", "run_negotiation_round_main", False),
-    ("agent", "degraded-tools-gate"): ("larch.agents.agents", "degraded_tools_gate_main", False),
     ("status", "check"): ("larch.agents.agents", "status_check_main", False),
     ("agent", "launch-review"): ("larch.agents.agents", "launch_review_main", False),
     ("agent", "launch-codex-ci"): ("larch.agents.agents", "launch_codex_ci_main", False),
