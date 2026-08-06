@@ -628,3 +628,92 @@ fn cursor_probe_auth_failure_marks_absent() {
     assert!(!result.cursor_probe_timed_out());
     assert_eq!(runner.requests().len(), 1);
 }
+
+#[test]
+fn cursor_model_list_spawn_error_is_non_timeout_failure() {
+    let temp = tempfile::tempdir().expect("temp");
+    let workdir = fs::canonicalize(temp.path()).expect("canonical");
+    let runtime = LarchRuntime::current_thread().expect("runtime");
+    let runner = FakeProcessRunner::new([Err(ProcessError::new(
+        ProcessErrorKind::Spawn,
+        "spawn failed",
+        None,
+    ))]);
+    let outcome = runtime.block_on(run_cursor_model_list(
+        &runner,
+        &workdir,
+        Duration::from_secs(1),
+        &NeverCancelled,
+    ));
+    assert!(!outcome.timed_out);
+    assert_eq!(outcome.returncode, 1);
+    assert!(outcome.stdout.is_empty());
+    assert!(outcome.stderr.is_empty());
+}
+
+#[test]
+fn codex_home_links_operator_auth_when_env_key_omitted() {
+    let temp = tempfile::tempdir().expect("temp");
+    let home = temp.path().join("home");
+    let codex_dir = home.join(".codex");
+    fs::create_dir_all(&codex_dir).expect("codex dir");
+    let auth = codex_dir.join("auth.json");
+    fs::write(&auth, b"{\"tokens\":{}}").expect("auth");
+    fs::write(
+        codex_dir.join("config.toml"),
+        "model = \"kept\"\napi_key = '''\nsecret-multiline\n'''\nother = 1\n",
+    )
+    .expect("config");
+
+    let root = temporary_root(temp.path());
+    let probe_home = SecureTempDir::create(&root, "larch-codex-probe-home-").expect("probe home");
+    prepare_codex_home(probe_home.path(), &home, None).expect("prepare");
+
+    let linked = probe_home.path().join("auth.json");
+    assert!(linked.exists());
+    let meta = fs::symlink_metadata(&linked).expect("symlink meta");
+    assert!(meta.file_type().is_symlink());
+    let stripped = fs::read_to_string(probe_home.path().join("config.toml")).expect("config");
+    assert!(stripped.contains("model = \"kept\""));
+    assert!(stripped.contains("other = 1"));
+    assert!(!stripped.contains("secret-multiline"));
+    assert!(!stripped.contains("api_key"));
+}
+
+#[test]
+fn cursor_and_codex_probe_spawn_errors_mark_absent() {
+    let temp = tempfile::tempdir().expect("temp");
+    let bin = temp.path().join("bin");
+    make_executable(&bin, "cursor");
+    make_executable(&bin, "codex");
+    let home = tempfile::tempdir().expect("home");
+    let runner = FakeProcessRunner::new([
+        Err(ProcessError::new(
+            ProcessErrorKind::Spawn,
+            "cursor spawn failed",
+            None,
+        )),
+        Err(ProcessError::new(
+            ProcessErrorKind::Spawn,
+            "codex spawn failed",
+            None,
+        )),
+    ]);
+
+    let result = run_check(
+        &runner,
+        &config(false, false),
+        temp.path(),
+        home.path(),
+        Some(bin.to_str().expect("utf8")),
+        Some(SECRET),
+    );
+
+    assert!(result.cursor_binary_found());
+    assert!(result.codex_binary_found());
+    assert!(!result.cursor_present());
+    assert!(!result.codex_present());
+    assert!(!result.cursor_probe_timed_out());
+    assert!(!result.codex_probe_timed_out());
+    assert!(runner.requests().len() >= 2);
+}

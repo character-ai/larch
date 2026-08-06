@@ -287,8 +287,12 @@ fn path_under_or_eq(path: &Path, root: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CheckReviewersConfig, CheckReviewersResult, binary_on_path, probe_attempt_rc};
+    use super::{
+        CheckReviewersConfig, CheckReviewersResult, binary_on_path, probe_attempt_rc,
+        resolve_probe_workdir,
+    };
     use crate::{ExternalAuthVerdict, PROBE_AUTH_RETRY_RC, external_auth_verdict};
+    use std::path::Path;
 
     #[test]
     fn kv_order_is_stable() {
@@ -304,6 +308,31 @@ mod tests {
                 "CURSOR_PROBE_TIMED_OUT=true".to_owned(),
             ]
         );
+        let flipped = CheckReviewersResult::new(false, true, false, true, true, false, None);
+        assert_eq!(
+            flipped.kv_lines(),
+            vec![
+                "CODEX_BINARY_FOUND=false".to_owned(),
+                "CURSOR_BINARY_FOUND=true".to_owned(),
+                "CODEX_PRESENT=false".to_owned(),
+                "CURSOR_PRESENT=true".to_owned(),
+                "CODEX_PROBE_TIMED_OUT=true".to_owned(),
+                "CURSOR_PROBE_TIMED_OUT=false".to_owned(),
+            ]
+        );
+        let all_false = CheckReviewersResult::new(false, false, false, false, false, false, None);
+        assert_eq!(
+            all_false.kv_lines(),
+            vec![
+                "CODEX_BINARY_FOUND=false".to_owned(),
+                "CURSOR_BINARY_FOUND=false".to_owned(),
+                "CODEX_PRESENT=false".to_owned(),
+                "CURSOR_PRESENT=false".to_owned(),
+                "CODEX_PROBE_TIMED_OUT=false".to_owned(),
+                "CURSOR_PROBE_TIMED_OUT=false".to_owned(),
+            ]
+        );
+        assert!(all_false.codex_gate_detail().is_none());
     }
 
     #[test]
@@ -329,6 +358,14 @@ mod tests {
             probe_attempt_rc(0, false, ExternalAuthVerdict::Unclassified),
             0
         );
+        assert_eq!(
+            probe_attempt_rc(7, false, ExternalAuthVerdict::NonAuth),
+            1
+        );
+        assert_eq!(
+            probe_attempt_rc(7, false, ExternalAuthVerdict::Unclassified),
+            1
+        );
     }
 
     #[test]
@@ -343,5 +380,51 @@ mod tests {
             "definitely-missing-larch-binary",
             Some("/tmp")
         ));
+        assert!(!binary_on_path("codex", None));
+        assert!(!binary_on_path("codex", Some("")));
+        let invalid = CheckReviewersConfig::from_env_values(
+            Some("not-a-number"),
+            Some("-1"),
+            Some("0"),
+            Some("bogus"),
+            Some("x"),
+            Some(""),
+            true,
+            false,
+            Some(9),
+        );
+        assert_eq!(invalid.ttl_seconds, 60);
+        assert_eq!(invalid.negative_ttl_seconds, 0);
+        assert_eq!(invalid.timeout_seconds, 9);
+        assert!(invalid.skip_codex_probe);
+    }
+
+    #[test]
+    fn resolve_probe_workdir_prefers_aligned_git_toplevel() {
+        let cwd = Path::new("/repo/subdir");
+        let project = Path::new("/repo");
+        let toplevel = Path::new("/repo");
+        assert_eq!(
+            resolve_probe_workdir(cwd, Some(project), Some(toplevel)),
+            toplevel
+        );
+        assert_eq!(
+            resolve_probe_workdir(cwd, None, Some(toplevel)),
+            toplevel
+        );
+        // Misaligned project still falls back to cwd/toplevel alignment.
+        assert_eq!(
+            resolve_probe_workdir(cwd, Some(Path::new("/other")), Some(toplevel)),
+            toplevel
+        );
+        assert_eq!(resolve_probe_workdir(cwd, None, None), cwd);
+        assert_eq!(
+            resolve_probe_workdir(
+                Path::new("/elsewhere"),
+                Some(Path::new("/other")),
+                Some(Path::new("/unrelated")),
+            ),
+            Path::new("/elsewhere")
+        );
     }
 }

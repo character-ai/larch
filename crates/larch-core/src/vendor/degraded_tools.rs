@@ -225,6 +225,44 @@ mod tests {
         assert_eq!(tool_state("true", "false"), "probe-failed");
         assert_eq!(tool_state("unknown", "false"), "unavailable");
         assert_eq!(state_phrase("ok"), "available");
+        assert_eq!(
+            state_phrase("unavailable"),
+            "UNAVAILABLE: session health probe did not pass"
+        );
+        assert_eq!(state_phrase("not-a-real-state"), "unknown");
+    }
+
+    #[test]
+    fn codex_gate_message_overrides_probe_failed_phrase() {
+        use super::CodexGateMessage;
+        let gate = CodexGateMessage::new("cached gate detail");
+        assert_eq!(gate.message(), "cached gate detail");
+        let result = DegradedToolsResult::classify(
+            "true",
+            "false",
+            "true",
+            "true",
+            "implement",
+            Some(&gate),
+        );
+        assert!(result.degraded());
+        assert!(!result.both_down());
+        assert_eq!(result.codex_state(), "probe-failed");
+        assert_eq!(result.cursor_state(), "ok");
+        assert!(
+            result
+                .explanation()
+                .iter()
+                .any(|line| line.contains("cached gate detail"))
+        );
+        let healthy = DegradedToolsResult::classify("true", "true", "true", "true", "design", None);
+        assert!(!healthy.degraded());
+        assert_eq!(healthy.kv_lines(), vec![
+            "DEGRADED=false".to_owned(),
+            "CODEX_STATE=ok".to_owned(),
+            "CURSOR_STATE=ok".to_owned(),
+            "BOTH_DOWN=false".to_owned(),
+        ]);
     }
 
     #[test]

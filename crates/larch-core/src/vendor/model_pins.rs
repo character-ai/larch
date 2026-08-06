@@ -347,10 +347,13 @@ pub fn model_list_timeout_seconds(raw: Option<&str>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome, MODEL_PINS_STATUS_OK,
-        MODEL_PINS_STATUS_SKIPPED, MODEL_PINS_STATUS_UNKNOWN_ID, MODEL_PINS_STATUS_UNPARSEABLE,
-        MODEL_PINS_STATUS_UNVERIFIABLE, cursor_pinned_models, parse_cursor_model_list,
-        resolve_codex_model_pins, resolve_cursor_model_pins_from_list, resolve_model_pins,
+        CURSOR_MODEL_LIST_HEADER, CursorModelListOutcome, EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC,
+        MODEL_PINS_STATUS_LIST_FAILED, MODEL_PINS_STATUS_OK, MODEL_PINS_STATUS_SKIPPED,
+        MODEL_PINS_STATUS_UNKNOWN_ID, MODEL_PINS_STATUS_UNPARSEABLE,
+        MODEL_PINS_STATUS_UNVERIFIABLE, VendorModelPinResult, codex_pinned_models,
+        cursor_pinned_models, list_failed_detail, model_list_timeout_seconds,
+        parse_cursor_model_list, resolve_codex_model_pins, resolve_cursor_model_pins_from_list,
+        resolve_model_pins,
     };
     use crate::vendor_model::{CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL};
     use std::fmt::Write as _;
@@ -435,5 +438,68 @@ mod tests {
             }),
         );
         assert_eq!(unparseable.status(), MODEL_PINS_STATUS_UNPARSEABLE);
+    }
+
+    #[test]
+    fn pin_accessors_timeout_and_list_failure_edges() {
+        let pin = VendorModelPinResult::new("cursor", MODEL_PINS_STATUS_OK, "detail\nline");
+        assert_eq!(pin.vendor(), "cursor");
+        assert_eq!(pin.status(), MODEL_PINS_STATUS_OK);
+        assert_eq!(pin.detail(), "detail\nline");
+
+        let codex_pins = codex_pinned_models();
+        assert!(!codex_pins.is_empty());
+        assert!(codex_pins.windows(2).all(|pair| pair[0].model_id <= pair[1].model_id));
+
+        assert_eq!(
+            list_failed_detail(124, "ignored", true),
+            "cursor agent models timed out"
+        );
+        assert_eq!(
+            list_failed_detail(2, "", false),
+            "cursor agent models exited 2"
+        );
+        assert_eq!(
+            list_failed_detail(3, "boom\r\nline", false),
+            "cursor agent models exited 3: boom  line"
+        );
+
+        let missing_list = resolve_cursor_model_pins_from_list("ok", None);
+        assert_eq!(missing_list.status(), MODEL_PINS_STATUS_LIST_FAILED);
+        assert!(missing_list.detail().contains("without a result"));
+
+        let failed_list = resolve_cursor_model_pins_from_list(
+            "ok",
+            Some(CursorModelListOutcome {
+                returncode: 9,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+            }),
+        );
+        assert_eq!(failed_list.status(), MODEL_PINS_STATUS_LIST_FAILED);
+        assert!(failed_list.detail().contains("exited 9"));
+
+        let skipped_codex = resolve_codex_model_pins("probe-failed");
+        assert_eq!(skipped_codex.status(), MODEL_PINS_STATUS_SKIPPED);
+        assert_eq!(skipped_codex.vendor(), "codex");
+
+        assert_eq!(
+            model_list_timeout_seconds(None),
+            EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
+        );
+        assert_eq!(
+            model_list_timeout_seconds(Some("")),
+            EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
+        );
+        assert_eq!(model_list_timeout_seconds(Some("1.2")), 2);
+        assert_eq!(
+            model_list_timeout_seconds(Some("0")),
+            EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
+        );
+        assert_eq!(
+            model_list_timeout_seconds(Some("nope")),
+            EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
+        );
     }
 }
