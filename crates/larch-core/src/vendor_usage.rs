@@ -264,6 +264,19 @@ fn number(value: Option<&Value>) -> Result<i64, UsageParseError> {
     }
 }
 
+/// Parse one JSON usage-token field the way Python `_num` does.
+///
+/// Missing values become zero. Non-numeric shapes return
+/// [`UsageParseError::NonNumericToken`].
+///
+/// # Errors
+///
+/// Returns [`UsageParseError::NonNumericToken`] when the value is present but
+/// not a numeric token Python `_num` would accept.
+pub fn json_usage_number(value: Option<&Value>) -> Result<i64, UsageParseError> {
+    number(value)
+}
+
 /// Truncate a JSON float toward zero, mirroring Python's `int(float)`.
 #[allow(
     clippy::cast_possible_truncation,

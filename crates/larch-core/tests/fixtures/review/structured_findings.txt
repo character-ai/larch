@@ -1,0 +1,3 @@
+Some prose.
+{"schema_version": 1, "scope": "in_scope", "what": "bug"}
+{"no_issues_found": true}
