@@ -819,6 +819,10 @@ def _reconcile_manifest_for_terminal_report(
     if not fields:
         return 0, ""
     entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
+    environment = {
+        **os.environ,
+        config.ENV_CLAUDE_PLUGIN_ROOT: str(entrypoint.parent.parent),
+    }
     cmd = [
         str(entrypoint),
         "run-log",
@@ -832,7 +836,13 @@ def _reconcile_manifest_for_terminal_report(
     ]
     for field in fields:
         cmd.extend(["--field", field])
-    completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    completed = subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=environment,
+    )
     if completed.returncode != 0:
         err = (completed.stderr or completed.stdout or "manifest update failed").strip()
         return completed.returncode or 1, f"run-log manifest reconcile failed: {err[:300]}"

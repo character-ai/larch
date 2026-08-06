@@ -445,11 +445,19 @@ fn parse_manifest_scalar(raw: &str) -> serde_json::Value {
         "null" => serde_json::Value::Null,
         "true" => serde_json::Value::Bool(true),
         "false" => serde_json::Value::Bool(false),
-        _ if manifest_integer(raw) => raw
-            .parse::<i64>()
-            .map(serde_json::Value::from)
-            .or_else(|_error| raw.parse::<u64>().map(serde_json::Value::from))
-            .unwrap_or_else(|_error| serde_json::Value::String(raw.to_owned())),
+        _ if manifest_integer(raw) => {
+            let negative = raw.starts_with('-');
+            let digits = raw.strip_prefix('-').unwrap_or(raw).trim_start_matches('0');
+            let normalized = if digits.is_empty() {
+                "0".to_owned()
+            } else if negative {
+                format!("-{digits}")
+            } else {
+                digits.to_owned()
+            };
+            serde_json::from_str(&normalized)
+                .unwrap_or_else(|_error| serde_json::Value::String(raw.to_owned()))
+        }
         _ => serde_json::Value::String(raw.to_owned()),
     }
 }

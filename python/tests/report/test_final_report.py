@@ -1929,10 +1929,14 @@ def test_write_final_report_manifest_stamp_and_failure(
     )
     (run_dir / "final-summary.md").write_text("prior\n", encoding="utf-8")
     captured: list[list[str]] = []
+    environments: list[dict[str, str]] = []
 
-    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if "run-log" in argv and "manifest" in argv:
             captured.append(list(argv))
+            environment = kwargs.get("env")
+            if isinstance(environment, dict):
+                environments.append(environment)
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
@@ -1942,6 +1946,9 @@ def test_write_final_report_manifest_stamp_and_failure(
     rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=False)
     assert (rc, url, err) == (0, "", "")
     assert captured
+    assert environments[0][config.ENV_CLAUDE_PLUGIN_ROOT] == str(
+        Path(final_report.__file__).resolve().parents[3]
+    )
     argv = captured[0]
     assert argv[0].endswith("scripts/larch.sh")
     assert "run-log" in argv

@@ -33,6 +33,8 @@ fn manifest_arguments(tree: &RunLogTree) -> Vec<String> {
         "--field".to_owned(),
         "pr_number=17".to_owned(),
         "--field".to_owned(),
+        "large_integer=00018446744073709551616000000000000000000000".to_owned(),
+        "--field".to_owned(),
         "z_extension=snowman ☃".to_owned(),
     ]
 }
@@ -227,6 +229,7 @@ manifest._update_manifest_v2(
         "status": True,
         "steps_ran.step8": True,
         "pr_number": 17,
+        "large_integer": 18446744073709551616000000000000000000000,
         "z_extension": "snowman ☃",
     },
 )

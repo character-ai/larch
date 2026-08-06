@@ -898,7 +898,7 @@ mod tests {
             larch_version: "56.2.2".to_owned(),
             main_model: "gpt-5.6".to_owned(),
             effort: "high".to_owned(),
-            steps_ran: [("step8".to_owned(), json!(true))].into_iter().collect(),
+            steps_ran: std::iter::once(("step8".to_owned(), json!(true))).collect(),
             extra: [
                 ("issue_number".to_owned(), json!(8072)),
                 ("z_extension".to_owned(), json!("snowman ☃")),
