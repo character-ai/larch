@@ -111,4 +111,4 @@ Runtime logic is Python-first. Residual Bash is the explicit manifest inventory 
 
 ## Bgjob runtime package
 
-`python/larch/bgjob/` contains the stdlib-only long-running job transport exposed as `python3 python/cli.py bgjob {start,wait,status,reap}`. It records identity-checked registry rows, redirects daemon logs under the session tmpdir, and writes atomic `KEY=value` result envs for foreground wait loops.
+`bgjob {adapt,start,wait,status,reap}` is Rust-owned; invoke it through `scripts/larch.sh`. `python/larch/bgjob/` retains only the shared record, path-validation, and registry-reading helpers that other Python runtime modules still import.

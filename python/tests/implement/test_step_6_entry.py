@@ -14,7 +14,7 @@ from test_support import (
 
 
 def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    return make_checks_session(tmp_path, monkeypatch, bgjob_daemon=route.bgjob_daemon)
+    return make_checks_session(tmp_path, monkeypatch, bgjob_model=route.bgjob_model)
 
 
 def test_parent_seeds_identity_and_forwards_child_arguments(

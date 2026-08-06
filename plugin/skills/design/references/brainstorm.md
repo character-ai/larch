@@ -75,7 +75,7 @@ Before every fresh external lane start, truncate or recreate that lane's merge i
 **Framing** (when the registry-selected tool is external and available):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step design-brainstorm-framing \
   --tmpdir "$DESIGN_TMPDIR" \
   --budget-s 1260 \
@@ -87,7 +87,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
 **Scope** (when the registry-selected tool is external and available):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step design-brainstorm-scope \
   --tmpdir "$DESIGN_TMPDIR" \
   --budget-s 1260 \
@@ -96,7 +96,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
 
-Fresh-launch stdout for each lane must be exactly `BGJOB_STATUS=STARTED STEP=<lane-step> PGID=<n>`. Wait on each launched lane with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step <lane-step> --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` and timeout `330000`. `BGJOB_STATUS=WAIT` means the next action for that lane is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. After `BGJOB_STATUS=DONE`, read `$DESIGN_TMPDIR/bgjob/<lane-step>.result.env`; continue to collection only when `BGJOB_RC=0`. `DEAD`, missing `BGJOB_RC`, non-zero `BGJOB_RC`, `BGJOB_RC=timeout`, or `BGJOB_RC=orphaned` uses the existing launch-failure and dirty-tree recovery path.
+Fresh-launch stdout for each lane must be exactly `BGJOB_STATUS=STARTED STEP=<lane-step> PGID=<n>`. Wait on each launched lane with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step <lane-step> --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` and timeout `330000`. `BGJOB_STATUS=WAIT` means the next action for that lane is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. After `BGJOB_STATUS=DONE`, read `$DESIGN_TMPDIR/bgjob/<lane-step>.result.env`; continue to collection only when `BGJOB_RC=0`. `DEAD`, missing `BGJOB_RC`, non-zero `BGJOB_RC`, `BGJOB_RC=timeout`, or `BGJOB_RC=orphaned` uses the existing launch-failure and dirty-tree recovery path.
 
 **Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `python/cli.py agent collect-results` row required for a purely in-session path).
 

@@ -10,7 +10,7 @@ This is the surviving `/implement` Step 2 dispatch contract after the shell-to-P
 
 ## Step 2 dispatcher
 
-**Orchestrator wait contract**: `skills/implement/scripts/step-2-dispatch.sh` starts or reattaches the durable `implement-step2-dispatch` bgjob. The orchestrator waits only through `python/cli.py bgjob wait`; on `BGJOB_STATUS=WAIT`, it repeats the identical wait fence with no intervening tool or prose, and it reads the result env only after `DONE`. It MUST NOT call `ScheduleWakeup`. See `skills/implement/SKILL.md` NEVER #8.
+**Orchestrator wait contract**: `skills/implement/scripts/step-2-dispatch.sh` starts or reattaches the durable `implement-step2-dispatch` bgjob. The orchestrator waits only through `scripts/larch.sh bgjob wait`; on `BGJOB_STATUS=WAIT`, it repeats the identical wait fence with no intervening tool or prose, and it reads the result env only after `DONE`. It MUST NOT call `ScheduleWakeup`. See `skills/implement/SKILL.md` NEVER #8.
 
 **Invariants**:
 - Implementer-coder set: `{claude} ∪ external_tools`. `claude` is the implementer-only fallback path, never an external tool. The `TOOL=` envelope-line contract on external implementer paths continues to mean external implementer only.

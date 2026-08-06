@@ -398,15 +398,15 @@ def run(repo_root: Path) -> list[str]:
         ]:
             require_near(skill, script, "Bgjob foreground launch required", f"bgjob launch pin for {script}", 1400)
             require_near(skill, script, f"BGJOB_STATUS=STARTED STEP={step} PGID=<n>", f"bgjob started stdout pin for {script}", 1400)
-            require_near(skill, launcher + f"python/cli.py bgjob wait --step {step}", "BGJOB_STATUS=WAIT", f"bgjob wait repeat pin for {step}", 1400)
+            require_near(skill, launcher + f"scripts/larch.sh bgjob wait --step {step}", "BGJOB_STATUS=WAIT", f"bgjob wait repeat pin for {step}", 1400)
         self_review_composite = launcher + "skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review"
         require_near("skills/implement/references/self-review.md", self_review_composite, "Bgjob foreground launch required", "self-review bgjob pin", 1400)
         require_near("skills/implement/references/self-review.md", self_review_composite, "BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>", "self-review bgjob started pin", 1400)
-        require_near("skills/implement/references/self-review.md", launcher + "python/cli.py bgjob wait --step implement-checks-step5-self-review", "BGJOB_STATUS=WAIT", "self-review bgjob wait pin", 1400)
+        require_near("skills/implement/references/self-review.md", launcher + "scripts/larch.sh bgjob wait --step implement-checks-step5-self-review", "BGJOB_STATUS=WAIT", "self-review bgjob wait pin", 1400)
         require_near("skills/implement/references/self-review.md", self_review_composite, "BUDGET_S=14700", "self-review budget pin", 1400)
         require_near(skill, launcher + "skills/implement/scripts/step-6-entry.sh", "> **Continue after bgjob `DONE`.**", "Step 6 bgjob continuation opener", 2000)
         require_near(skill, launcher + "skills/implement/scripts/step-8-ship.sh", "BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>", "Step 8 ship bgjob started pin", 2200)
-        require_near(skill, launcher + "python/cli.py bgjob wait --step implement-step8-ship", "BGJOB_STATUS=WAIT", "Step 8 ship bgjob wait pin", 2200)
+        require_near(skill, launcher + "scripts/larch.sh bgjob wait --step implement-step8-ship", "BGJOB_STATUS=WAIT", "Step 8 ship bgjob wait pin", 2200)
 
         require(skill, "PHASE=checks` and `PR_NUMBER` is empty/absent", "SKILL pre-driver predicate checks phase and empty pr")
         require(skill, "Seeded-but-no-PR state is still pre-driver", "SKILL seeded no-pr retry stays pre-driver")
@@ -1041,7 +1041,7 @@ def run(repo_root: Path) -> list[str]:
             "Dispatch by `RESUME_HINT`",
             "`step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline",
             "`step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh`",
-            'The wrapper must rejoin a live identity-valid `implement-step8-ship` registry row with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0`',
+            'The wrapper must rejoin a live identity-valid `implement-step8-ship` registry row with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0`',
             "refuse a second driver start, and clear only stale or dead rows before a fresh start",
             "If the wrapper prints `BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>`, continue with chunked `bgjob wait` per `skills/shared/bgjob-wait.md`",
             "left an identity-checked dead bgjob registry row",

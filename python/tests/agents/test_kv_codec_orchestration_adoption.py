@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import pytest
 
 from larch.agents import _vendor, collect_results
-from larch.bgjob import daemon as bgjob_daemon
 from larch.core import config
 from larch.implement import (
     checks_lint_fix,
@@ -57,21 +56,6 @@ def test_collector_records_last_wins_within_block_and_ignores_preamble() -> None
         {"REVIEWER_FILE": "a.md", "STATUS": "new"},
         {"REVIEWER_FILE": "b.md", "STATUS": "only"},
     ]
-
-
-def test_bgjob_daemon_packed_rows_last_wins(tmp_path: Path) -> None:
-    merge = tmp_path / "merge.env"
-    _ = merge.write_text(
-        f"{config.BGJOB_RC_KEY}=9\nSTEP=keep\nKEEP=from-line\n"
-        "ALPHA=1 BETA=2 ALPHA=3\n",
-        encoding="utf-8",
-    )
-    rows = dict(bgjob_daemon._merge_rows(merge))
-    assert config.BGJOB_RC_KEY not in rows
-    assert "STEP" not in rows
-    assert rows["KEEP"] == "from-line"
-    assert rows["ALPHA"] == "3"
-    assert rows["BETA"] == "2"
 
 
 def test_parse_launcher_exit_first_digit_or_none() -> None:

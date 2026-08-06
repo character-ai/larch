@@ -1,20 +1,23 @@
-//! Rust-owned `bgjob adapt` compatibility boundary.
+//! Rust-owned `bgjob adapt` durable decision and reattachment protocol.
 //!
-//! The daemon, wait, status, and reap commands remain Python-owned during the
-//! staged migration. This command owns the durable decision, registry, and
-//! reattachment protocol and invokes only the retained Python `bgjob start`
-//! seam to create the daemon process.
+//! This command owns the completed-result, registry, and reattachment
+//! decisions, and delegates the one launch it may perform to the Rust daemon
+//! in [`crate::bgjob_commands`].
 
+use crate::{
+    argparse_compat::{split_inline_option, take_option_value, utf8_arguments},
+    bgjob_commands,
+};
 use larch_adapters::{
     SystemProcessIdentityHost, validate_design_tmpdir as validate_session_tmpdir,
 };
 use larch_core::{
     BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED,
     BgjobError, JobSpec, KvDocument, LivenessVerdict, MalformedLinePolicy, OwnerIdentity,
-    ParseOptions, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
-    cleanup_cache_sessions_root, daemon_liveness, default_run_id, ensure_under, entry_expired,
-    log_paths, parse_allowlisted_env_line, private_atomic_write, read_entry, read_process_identity,
-    registry_path, registry_root, result_env_path, validate_initial_merge_rows,
+    ParseOptions, RecordedProcessIdentity, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
+    cleanup_cache_sessions_root, daemon_liveness, ensure_under, entry_expired, log_paths,
+    parse_allowlisted_env_line, private_atomic_write, read_entry, read_process_identity,
+    registry_path, registry_root, resolve_run_id, result_env_path, validate_initial_merge_rows,
     validate_merge_result_env, validate_run_id, validate_slug,
 };
 use std::{
@@ -24,7 +27,7 @@ use std::{
     fs,
     io::Write as _,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::ExitCode,
 };
 
 #[cfg(unix)]
@@ -212,10 +215,7 @@ fn write_stdout(value: &str) -> ExitCode {
 }
 
 fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static str> {
-    let values = arguments
-        .iter()
-        .map(|argument| argument.to_str().map(str::to_owned).ok_or("invalid-input"))
-        .collect::<Result<Vec<_>, _>>()?;
+    let values = utf8_arguments(arguments, "invalid-input")?;
     let mut parsed = ParsedArguments::default();
     let mut index = 0;
     let mut command_mode = false;
@@ -237,37 +237,54 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
             index += 1;
             continue;
         }
-        let (name, inline) = split_option(value);
+        let (name, inline) = split_inline_option(value);
         match name {
-            "--step" => parsed.step = option_value(&values, &mut index, inline)?,
-            "--tmpdir" => parsed.tmpdir = option_value(&values, &mut index, inline)?,
-            "--run-id" => parsed.run_id = option_value(&values, &mut index, inline)?,
+            "--step" => {
+                parsed.step = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
+            "--tmpdir" => {
+                parsed.tmpdir = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
+            "--run-id" => {
+                parsed.run_id = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
             "--budget-s" => {
-                let raw = option_value(&values, &mut index, inline)?;
+                let raw = take_option_value(&values, &mut index, inline, "invalid-input")?;
                 parsed.budget_s = raw.parse::<i64>().ok();
                 if parsed.budget_s.is_none() {
                     return Err("invalid-input");
                 }
             }
-            "--log-dir" => parsed.log_dir = option_value(&values, &mut index, inline)?,
-            "--owner-pid" => parsed.owner_pid = option_value(&values, &mut index, inline)?,
-            "--sentinel" => parsed
-                .sentinels
-                .push(option_value(&values, &mut index, inline)?),
+            "--log-dir" => {
+                parsed.log_dir = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
+            "--owner-pid" => {
+                parsed.owner_pid = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
+            "--sentinel" => parsed.sentinels.push(take_option_value(
+                &values,
+                &mut index,
+                inline,
+                "invalid-input",
+            )?),
             "--session-env-path" => {
-                parsed.session_env_path = option_value(&values, &mut index, inline)?;
+                parsed.session_env_path =
+                    take_option_value(&values, &mut index, inline, "invalid-input")?;
             }
             "--clear-on-fresh" => {
-                parsed.clear_on_fresh = option_value(&values, &mut index, inline)?;
+                parsed.clear_on_fresh =
+                    take_option_value(&values, &mut index, inline, "invalid-input")?;
             }
             "--input-fingerprint" => {
-                parsed.input_fingerprint = option_value(&values, &mut index, inline)?;
+                parsed.input_fingerprint =
+                    take_option_value(&values, &mut index, inline, "invalid-input")?;
             }
             "--merge-result-env" => {
-                parsed.merge_result_env = option_value(&values, &mut index, inline)?;
+                parsed.merge_result_env =
+                    take_option_value(&values, &mut index, inline, "invalid-input")?;
             }
             "--initial-merge-row" => {
-                let row = option_value(&values, &mut index, inline)?;
+                let row = take_option_value(&values, &mut index, inline, "invalid-input")?;
                 parsed
                     .initial_merge_rows
                     .push(parse_single_kv_row(&row).ok_or("invalid-input")?);
@@ -291,12 +308,6 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
     Ok(parsed)
 }
 
-fn split_option(value: &str) -> (&str, Option<&str>) {
-    value.find('=').map_or((value, None), |position| {
-        (&value[..position], Some(&value[position + 1..]))
-    })
-}
-
 fn parse_single_kv_row(value: &str) -> Option<(String, String)> {
     if value.contains(['\n', '\r']) {
         return None;
@@ -306,18 +317,6 @@ fn parse_single_kv_row(value: &str) -> Option<(String, String)> {
         return None;
     };
     Some((row.key().to_owned(), row.value().to_owned()))
-}
-
-fn option_value(
-    values: &[String],
-    index: &mut usize,
-    inline: Option<&str>,
-) -> Result<String, &'static str> {
-    if let Some(value) = inline {
-        return Ok(value.to_owned());
-    }
-    *index += 1;
-    values.get(*index).cloned().ok_or("invalid-input")
 }
 
 fn build_request(
@@ -384,30 +383,6 @@ fn resolve_tmpdir(raw: &str, session_values: &SessionValues) -> DecisionResult<P
         .map_err(|_| DecisionError::token("invalid-input"))
 }
 
-fn resolve_run_id(explicit: &str, tmpdir: &Path, cwd: &Path) -> String {
-    let mut candidates = vec![
-        explicit.to_owned(),
-        env::var("LARCH_RUN_ID").unwrap_or_default(),
-    ];
-    for name in ["session-env.sh", "source-env.sh"] {
-        let path = tmpdir.join(name);
-        if let Ok(text) = fs::read_to_string(path) {
-            candidates.extend(text.lines().filter_map(run_id_from_line));
-        }
-    }
-    candidates
-        .into_iter()
-        .find_map(|candidate| validate_run_id(&candidate).ok())
-        .unwrap_or_else(|| default_run_id(tmpdir, cwd))
-}
-
-fn run_id_from_line(line: &str) -> Option<String> {
-    ["LARCH_RUN_ID=", "export LARCH_RUN_ID="]
-        .iter()
-        .find_map(|prefix| line.strip_prefix(prefix))
-        .map(|raw| raw.trim().trim_matches(['\'', '"']).to_owned())
-}
-
 fn canonical_or_absolute(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| {
         if path.is_absolute() {
@@ -440,20 +415,21 @@ fn resolve_session_env_argv(arguments: &[OsString]) -> ExitCode {
 }
 
 fn parse_resolver_arguments(arguments: &[OsString]) -> Result<(PathBuf, String), &'static str> {
-    let values = arguments
-        .iter()
-        .map(|argument| argument.to_str().map(str::to_owned).ok_or("invalid-input"))
-        .collect::<Result<Vec<_>, _>>()?;
+    let values = utf8_arguments(arguments, "invalid-input")?;
     let mut path = String::new();
     let mut owner_pid = String::new();
     let mut resolved = false;
     let mut index = 0;
     while index < values.len() {
-        let (name, inline) = split_option(&values[index]);
+        let (name, inline) = split_inline_option(&values[index]);
         match name {
             "--resolve-session-env" if inline.is_none() => resolved = true,
-            "--session-env-path" => path = option_value(&values, &mut index, inline)?,
-            "--owner-pid" => owner_pid = option_value(&values, &mut index, inline)?,
+            "--session-env-path" => {
+                path = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
+            "--owner-pid" => {
+                owner_pid = take_option_value(&values, &mut index, inline, "invalid-input")?;
+            }
             _ => return Err("invalid-input"),
         }
         index += 1;
@@ -616,6 +592,19 @@ impl SystemAdapterHost {
             .then_some(candidate)
             .ok_or_else(|| DecisionError::token("invalid-input"))
     }
+
+    /// Bind the owner identity, not the bare pid, before the daemon detaches.
+    fn captured_owner(&self, raw: &str) -> DecisionResult<Option<RecordedProcessIdentity>> {
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let pid = raw
+            .parse::<i32>()
+            .map_err(|_| DecisionError::token("invalid-input"))?;
+        read_process_identity(&self.identity_host, pid, "")
+            .map(Some)
+            .ok_or_else(|| DecisionError::token("daemon-start-failed"))
+    }
 }
 
 impl AdapterHost for SystemAdapterHost {
@@ -632,49 +621,19 @@ impl AdapterHost for SystemAdapterHost {
     }
 
     fn start(&self, request: &StartRequest) -> DecisionResult<String> {
-        let output = python_start_command(request)
-            .output()
+        let mut spec = request.spec.clone();
+        spec.owner = OwnerIdentity {
+            recorded: self.captured_owner(&request.owner_pid)?,
+        };
+        let mut environment = request.session_values.rows.clone();
+        environment.push((
+            "CLAUDE_PLUGIN_ROOT".to_owned(),
+            request.plugin_root.display().to_string(),
+        ));
+        let stdout = bgjob_commands::spawn_daemon(&spec, &environment)
             .map_err(|_| DecisionError::token("daemon-start-exception"))?;
-        if !output.status.success() {
-            return Err(DecisionError::token("daemon-start-failed"));
-        }
-        let stdout = String::from_utf8(output.stdout)
-            .map_err(|_| DecisionError::token("daemon-start-failed"))?;
         validate_started_stdout(stdout, &request.spec.step)
     }
-}
-
-fn python_start_command(request: &StartRequest) -> Command {
-    let mut command = Command::new("python3"); // lint-subprocess-via-runner: ok retained Python-owned bgjob start compatibility seam until #8063
-    command
-        .arg(request.plugin_root.join("python/cli.py"))
-        .arg("bgjob")
-        .arg("start")
-        .arg("--step")
-        .arg(&request.spec.step)
-        .arg("--tmpdir")
-        .arg(&request.spec.tmpdir)
-        .arg("--run-id")
-        .arg(&request.spec.run_id)
-        .arg("--budget-s")
-        .arg(request.spec.budget_s.to_string())
-        .arg("--log-dir")
-        .arg(&request.spec.log_dir)
-        .env("CLAUDE_PLUGIN_ROOT", &request.plugin_root);
-    for (key, value) in &request.session_values.rows {
-        command.env(key, value);
-    }
-    if !request.owner_pid.is_empty() {
-        command.arg("--owner-pid").arg(&request.owner_pid);
-    }
-    for sentinel in &request.spec.sentinel_paths {
-        command.arg("--sentinel").arg(sentinel);
-    }
-    if let Some(merge_result_env) = &request.spec.merge_result_env {
-        command.arg("--merge-result-env").arg(merge_result_env);
-    }
-    command.arg("--").args(&request.spec.command);
-    command
 }
 
 fn validate_started_stdout(stdout: String, step: &str) -> DecisionResult<String> {
@@ -1429,11 +1388,11 @@ mod tests {
         OwnerIdentity, RegistryEntry, SessionValues, StartRequest, SystemAdapterHost, adapt,
         build_request, format_done, has_top_level_option, log_paths, parse_arguments,
         parse_completed_rows, parse_resolver_arguments, parse_single_kv_row, plugin_root_from_file,
-        process_state, python_start_command, read_trusted_regular, rehydrate_plugin_root_from,
-        resolve_run_id, resolve_session_env, resolve_session_env_argv, resolve_tmpdir,
-        result_env_path, run_id_from_line, run_with_host, session_env_source, shell_quote,
-        stat_fingerprint, trusted_session_link, unlink_regular_under, valid_owner_pid,
-        validate_design_tmpdir, validate_started_stdout, write_stdout,
+        process_state, read_trusted_regular, rehydrate_plugin_root_from, resolve_run_id,
+        resolve_session_env, resolve_session_env_argv, resolve_tmpdir, result_env_path,
+        run_with_host, session_env_source, shell_quote, stat_fingerprint, trusted_session_link,
+        unlink_regular_under, valid_owner_pid, validate_design_tmpdir, validate_started_stdout,
+        write_stdout,
     };
     use larch_core::{RecordedProcessIdentity, write_entry_at};
     use std::{
@@ -2423,16 +2382,6 @@ mod tests {
         for value in ["", "0", "01", "12345678", "12x"] {
             assert!(!valid_owner_pid(value), "{value:?}");
         }
-        assert_eq!(
-            run_id_from_line("export LARCH_RUN_ID='run-1'"),
-            Some("run-1".to_owned())
-        );
-        assert_eq!(
-            run_id_from_line("LARCH_RUN_ID=run-2"),
-            Some("run-2".to_owned())
-        );
-        assert_eq!(run_id_from_line("OTHER=value"), None);
-
         let sandbox = tempfile::tempdir().expect("tempdir");
         let current = sandbox.path().canonicalize().expect("canonical sandbox");
         assert_eq!(
@@ -2551,72 +2500,6 @@ mod tests {
         assert!(options.replace_completed_result);
         assert_eq!(options.input_fingerprint, "fingerprint");
         assert_eq!(owner_pid, "123");
-    }
-
-    #[test]
-    fn python_start_command_preserves_the_wire_contract() {
-        let sandbox = tempfile::tempdir().expect("tempdir");
-        let tmpdir = sandbox.path().canonicalize().expect("canonical tmpdir");
-        let sentinel = tmpdir.join("sentinel.env");
-        let merge = tmpdir.join("merge.env");
-        let log_dir = tmpdir.join("logs");
-        let arguments = wire_arguments(&tmpdir, &sentinel, &merge, &log_dir);
-        let (job, _, _, owner_pid) =
-            build_request(parse_arguments(&arguments).expect("arguments")).expect("request");
-
-        let request = StartRequest {
-            spec: job,
-            plugin_root: current_dir(),
-            session_values: SessionValues {
-                rows: vec![("SESSION_ID".to_owned(), "session one".to_owned())],
-            },
-            owner_pid,
-        };
-        let command = python_start_command(&request);
-        assert_eq!(command.get_program(), "python3");
-        let args = command
-            .get_args()
-            .map(|argument| argument.to_str().expect("utf8 argument"))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            args,
-            [
-                current_dir()
-                    .join("python/cli.py")
-                    .to_str()
-                    .expect("utf8 cli"),
-                "bgjob",
-                "start",
-                "--step",
-                "demo-step",
-                "--tmpdir",
-                tmpdir.to_str().expect("utf8 tmpdir"),
-                "--run-id",
-                "run-1",
-                "--budget-s",
-                "30",
-                "--log-dir",
-                log_dir
-                    .canonicalize()
-                    .expect("canonical log dir")
-                    .to_str()
-                    .expect("utf8 log dir"),
-                "--owner-pid",
-                "123",
-                "--sentinel",
-                sentinel.to_str().expect("utf8 sentinel"),
-                "--merge-result-env",
-                merge.to_str().expect("utf8 merge"),
-                "--",
-                "worker",
-            ]
-        );
-        assert!(command.get_envs().any(|(key, value)| {
-            key == "SESSION_ID" && value == Some(std::ffi::OsStr::new("session one"))
-        }));
-        assert!(command.get_envs().any(|(key, value)| {
-            key == "CLAUDE_PLUGIN_ROOT" && value == Some(current_dir().as_os_str())
-        }));
     }
 
     #[test]

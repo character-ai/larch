@@ -191,7 +191,7 @@ def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(
-        dispatch_commit_route.bgjob_daemon,
+        dispatch_commit_route.bgjob_model,
         "owner_identity_from_env",
         lambda _pid: bgjob_model.OwnerIdentity(recorded=None),
     )
@@ -269,7 +269,7 @@ def test_step5_review_stale_result_is_cleared_but_unsafe_result_is_refused(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(
-        dispatch_commit_route.bgjob_daemon,
+        dispatch_commit_route.bgjob_model,
         "owner_identity_from_env",
         lambda _pid: bgjob_model.OwnerIdentity(recorded=None),
     )
@@ -4894,7 +4894,7 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert "CHECKS_TERMINAL_ACTIONS" in identity_mod
     assert "identity-integrity-failed" in identity_mod or "CHECKS_IDENTITY_INTEGRITY_FAILED_ACTION" in identity_mod
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
-    assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
+    assert "scripts/larch.sh bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
     assert "timeout: 14700000" not in skill
     assert "run-step-checks.sh --site step5-self-review --commit-site step5-self-review" in self_review_ref

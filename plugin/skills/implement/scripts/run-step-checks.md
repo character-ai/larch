@@ -25,7 +25,7 @@ Shared classifier: `python3 python/cli.py implement checks-result-identity`.
 
 ## KV grammar
 
-The bgjob child writes helper stdout plus verified identity fields into the merge-result env. After `python/cli.py bgjob wait` returns `DONE`, the orchestrator reads `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env` and gates continuation on `BGJOB_RC=0` plus the required site KVs. A live registry row or identity-valid completed result env reuses `bgjob wait`; stale completed result envs are cleared before a fresh `bgjob start`.
+The bgjob child writes helper stdout plus verified identity fields into the merge-result env. After `scripts/larch.sh bgjob wait` returns `DONE`, the orchestrator reads `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env` and gates continuation on `BGJOB_RC=0` plus the required site KVs. A live registry row or identity-valid completed result env reuses `bgjob wait`; stale completed result envs are cleared before a fresh `bgjob start`.
 
 ## Invariants
 

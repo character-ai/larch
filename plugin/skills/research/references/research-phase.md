@@ -163,7 +163,7 @@ Truncate that lane's merge env immediately before every start, then launch:
 ```bash
 RESEARCH_LANE_MERGE_ENV="$RESEARCH_TMPDIR/.research-<slot>-merge.env"
 : > "$RESEARCH_LANE_MERGE_ENV"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step research-<slot> \
   --tmpdir "$RESEARCH_TMPDIR" \
   --budget-s 1860 \
@@ -195,7 +195,7 @@ COLLECT_ARGS=()
 For each Codex lane that was actually started, wait on its unique bgjob step before adding that output path to `COLLECT_ARGS`:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \
   --step research-<slot> \
   --tmpdir "$RESEARCH_TMPDIR" \
   --max-wait-s 270

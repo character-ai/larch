@@ -217,7 +217,7 @@ done <<EOF
 $asset_run_out
 EOF
 test -n "$ASSET_RUN_ID"
-python3 "$PWD/python/cli.py" bgjob start \
+"$PWD/scripts/larch.sh" bgjob start \
   --step release-assets \
   --tmpdir "$NOTES_DIR" \
   --budget-s 7200 \
@@ -231,7 +231,7 @@ Wait for the tag-triggered asset workflow only through this command, with Bash `
 
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
-python3 "$PWD/python/cli.py" bgjob wait \
+"$PWD/scripts/larch.sh" bgjob wait \
   --step release-assets \
   --tmpdir "$NOTES_DIR" \
   --max-wait-s 270
@@ -454,7 +454,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `python/cli.py bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `scripts/larch.sh bgjob {start,wait}`
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

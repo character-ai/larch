@@ -212,12 +212,16 @@ cut those callers over. A fixed-string comparison, field equality, or closed
 parser must handle interpolated labels, markers, refs, and identifiers. Do not
 interpolate untrusted data into a regular expression or shell program.
 
-Rust owns durable bgjob registry records and `bgjob adapt`
-(`crates/larch-core/src/bgjob.rs` and `crates/larch-cli/src/bgjob_adapt.rs`).
-The adapter confines its state files and holds a pinned decision lock before it
-reattaches or launches. Its only Python subprocess is the retained
-Python-owned `bgjob start` compatibility seam; daemon `wait`, `status`, and
-`reap` remain Python-owned until #8063 completes their cutover.
+Rust owns every bgjob command: durable registry records, `bgjob adapt`, and the
+daemon `start`, `wait`, `status`, and `reap` surfaces
+(`crates/larch-core/src/bgjob.rs`, `crates/larch-core/src/bgjob_daemon.rs`,
+`crates/larch-cli/src/bgjob_adapt.rs`, and
+`crates/larch-cli/src/bgjob_commands.rs`). The adapter confines its state files
+and holds a pinned decision lock before it reattaches or launches. `start`
+detaches the daemon by re-executing the same verified binary in a daemon role,
+and the daemon binds the owner's recorded process identity, never a bare pid, so
+a reused pid never keeps an orphaned job alive (#6604). The daemon terminates a
+timed-out or orphaned child only through validated process-group termination.
 
 ## Workflow Boundaries
 
