@@ -462,8 +462,12 @@ Public report renderers use bounded allowlists of closed enums, sanitized step
 and exit fields, fixed templates, bounded attempts, and bounded root-cause
 summaries. They exclude raw logs, stdout, stderr, plans, issue bodies, feature
 descriptions, repository and branch names, local and session paths, URLs,
-credentials, evidence digests, raw state, and run identifiers. Public dedup
-signatures and comments use only the same bounded public fields. The Rust-owned
+credentials, evidence digests, raw state, and arbitrary run identifiers. The
+only run-identifier exception is the public `Run ID` field sourced from
+`RUN_ID`, `LARCH_RUN_ID`, or `SESSION_ID` when it is nonempty and limited to
+ASCII letters, digits, `.`, `_`, `:`, and `-`; token-session identifiers remain
+sensitive. Public dedup signatures and comments use only the same bounded
+public fields. The Rust-owned
 `stall-recovery validate-tier-b-public-file` command rebuilds the effective
 sensitive corpus under the validated session root and rejects oversized,
 symlinked, path-bearing, remote-bearing, or corpus-matching public text. The

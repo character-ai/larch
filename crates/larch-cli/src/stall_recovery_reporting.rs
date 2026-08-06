@@ -1690,8 +1690,9 @@ fn hex_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RootCause, hex_digest, redact_public, report_signature, safe_title_summary,
-        write_public_payload,
+        RootCause, hex_digest, issue_url_number, redact_public, report_signature,
+        report_skill_label, safe_bail, safe_class, safe_phase_value, safe_step_value,
+        safe_title_summary, write_public_payload,
     };
     use larch_adapters::TemporaryRoot;
 
@@ -1749,5 +1750,27 @@ mod tests {
                 .is_err()
         );
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn public_reporting_helpers_reject_unsafe_values_and_preserve_known_labels() {
+        assert_eq!(safe_class("not-a-class"), "unrecoverable");
+        assert_eq!(safe_step_value("unsafe step"), "unknown");
+        assert_eq!(safe_phase_value("unsafe phase"), "unknown");
+        assert_eq!(safe_bail("unsafe bail"), "redacted");
+        assert_eq!(
+            issue_url_number("https://github.com/character-ai/larch/issues/8066"),
+            Some("8066")
+        );
+        assert_eq!(
+            issue_url_number("https://github.com/character-ai/larch/pull/8066"),
+            None
+        );
+        assert_eq!(report_skill_label("generic", "design-failure"), "/design");
+        assert_eq!(report_skill_label("generic", "review-failure"), "/review");
+        assert_eq!(
+            report_skill_label("implement", "design-failure"),
+            "/implement"
+        );
     }
 }
