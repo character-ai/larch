@@ -462,8 +462,12 @@ Public report renderers use bounded allowlists of closed enums, sanitized step
 and exit fields, fixed templates, bounded attempts, and bounded root-cause
 summaries. They exclude raw logs, stdout, stderr, plans, issue bodies, feature
 descriptions, repository and branch names, local and session paths, URLs,
-credentials, evidence digests, raw state, and run identifiers. Public dedup
-signatures and comments use only the same bounded public fields. The Rust-owned
+credentials, evidence digests, raw state, and arbitrary run identifiers. The
+only run-identifier exception is the public `Run ID` field sourced from
+`RUN_ID`, `LARCH_RUN_ID`, or `SESSION_ID` when it is nonempty and limited to
+ASCII letters, digits, `.`, `_`, `:`, and `-`; token-session identifiers remain
+sensitive. Public dedup signatures and comments use only the same bounded
+public fields. The Rust-owned
 `stall-recovery validate-tier-b-public-file` command rebuilds the effective
 sensitive corpus under the validated session root and rejects oversized,
 symlinked, path-bearing, remote-bearing, or corpus-matching public text. The
@@ -471,6 +475,18 @@ cross-repository helper reaches it only through `scripts/larch.sh`. A missing
 validator, sensitive corpus, repository resolver, network result, or valid
 created URL falls back to a sanitized local report for manual filing. It never
 falls back to the raw evidence.
+
+The Rust-owned `stall-recovery compose-report`, `chat-print`,
+`dedup-tier-a-report`, and `populate-sensitive-corpus` commands keep their
+reporting boundary in the Rust runtime. `compose-report` renders the title,
+body, and Tier A slices in memory, applies the shared `larch_core` redactor,
+then verifies the redacted payload and effective sensitive corpus before any
+atomic public-artifact write. Redaction and corpus failures prevent the write;
+a failed read-back postcondition triggers confined cleanup of that payload.
+Tier A dedup receives only that sanitized body. The shared Rust adapter
+validates optional detail logs as confined, regular files no larger than 64 KiB
+before reading them or selecting a ledger sidecar. The sensitive-corpus command
+rebuilds its corpus from validated session-root evidence through that adapter.
 
 Tier A failure reporting inside a larch development clone may use fuller local
 context only through the normal issue publisher and same-target classification.

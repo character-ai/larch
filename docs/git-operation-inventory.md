@@ -46,6 +46,7 @@ crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_drafter.py	later-domain	#7678	dynamic
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic

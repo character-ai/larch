@@ -47,6 +47,7 @@ mod session_gate_commands;
 mod session_lifecycle_commands;
 mod slack_commands;
 mod stall_recovery_commands;
+mod stall_recovery_reporting;
 mod state_commands;
 mod test_shards;
 

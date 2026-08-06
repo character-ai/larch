@@ -1,7 +1,7 @@
 //! Filesystem, Git, and bgjob effects for Rust-owned stall-recovery commands.
 use crate::{
-    GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot, atomic_write_utf8_in,
-    ensure_directory_chain,
+    GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot, atomic_write_bytes_in,
+    atomic_write_utf8_in, ensure_directory_chain,
 };
 use larch_core::{
     CommentPolicy, CrStrip, DuplicatePolicy, KvDocument, ParseOptions, RepositoryRead,
@@ -10,10 +10,13 @@ use larch_core::{
     validate_process_identity,
 };
 use regex::Regex;
+use sha2::{Digest as _, Sha256};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
-    env, fs,
-    fs::OpenOptions,
-    io::ErrorKind,
+    env,
+    fs::{self, File, OpenOptions},
+    io::{ErrorKind, Read as _},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -30,7 +33,8 @@ const CLEAR_UPDATES: &[(&str, &str)] = &[
     ("IMPLEMENT_BAIL_REASON", ""),
     ("EXIT_CODE", "unknown"),
 ];
-const EVIDENCE_NAMES: &[&str] = &[
+/// Fixed evidence artifacts that contribute sensitive tokens to a stall report.
+pub const STALL_RECOVERY_EVIDENCE_NAMES: &[&str] = &[
     "ship-pr-state.sh",
     "finalize-state.sh",
     "session-env.sh",
@@ -52,7 +56,9 @@ const EVIDENCE_NAMES: &[&str] = &[
     "design-publish-log.stderr.log",
 ];
 const MAX_PUBLIC_FILE_BYTES: u64 = 256_000;
-const MAX_DETAIL_FILE_BYTES: u64 = 65_536;
+/// Maximum byte length accepted for an optional failure-detail artifact.
+pub const MAX_DETAIL_FILE_BYTES: u64 = 65_536;
+const MAX_DETAIL_FILE_BYTES_USIZE: usize = 65_536;
 static URL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https?://[^\s`)\]]+").expect("fixed regex"));
 static GIT_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -250,23 +256,22 @@ pub fn tier_b_public_file_is_valid(
 /// Detect whether the active repository is a non-forked larch development clone.
 #[must_use]
 pub fn is_larch_dev_clone(tmpdir: &Path, working_tree_root: Option<&Path>) -> bool {
-    let forked = ["ship-pr-state.sh", "session-env.sh"]
-        .iter()
-        .find_map(|name| {
-            let path = tmpdir.join(name);
-            regular_nonsymlink(&path, None)
-                .then(|| read_lossy(&path).ok())
-                .flatten()
-                .and_then(|text| {
-                    let value = read_last_value(&text, "FORKED_TARGET");
-                    (!value.is_empty()).then_some(value)
-                })
-        })
-        .unwrap_or_default();
-    if matches!(
-        forked.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    ) {
+    let forked = STATE_LAYERS.iter().any(|name| {
+        let path = tmpdir.join(name);
+        regular_nonsymlink(&path, None)
+            .then(|| read_lossy(&path).ok())
+            .flatten()
+            .is_some_and(|text| {
+                matches!(
+                    read_last_value(&text, "FORKED_TARGET")
+                        .trim()
+                        .to_ascii_lowercase()
+                        .as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+    });
+    if forked {
         return false;
     }
     let root = working_tree_root.map(Path::to_path_buf).or_else(|| {
@@ -277,6 +282,279 @@ pub fn is_larch_dev_clone(tmpdir: &Path, working_tree_root: Option<&Path>) -> bo
             .map(|path| PathBuf::from(String::from_utf8_lossy(path.as_bytes()).into_owned()))
     });
     root.is_some_and(|root| regular_nonsymlink(&root.join("skills/implement/SKILL.md"), None))
+}
+
+/// Stable validation failures for an optional failure-detail log.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FailureDetailLogError {
+    /// The caller supplied a relative path.
+    NonAbsolute,
+    /// The path or a confined component is a symlink.
+    Symlink,
+    /// The path is not below the validated temporary root.
+    OutsideTmpdir,
+    /// The file disappeared before it could be opened.
+    Missing,
+    /// The path is not a regular file.
+    NotRegularFile,
+    /// The file exceeds the 64 KiB optional-evidence limit.
+    Oversize,
+    /// The operating system refused a safe read.
+    Unreadable,
+}
+
+impl FailureDetailLogError {
+    /// Return the legacy stable suffix used in ledger diagnostics.
+    #[must_use]
+    pub const fn suffix(self) -> &'static str {
+        match self {
+            Self::NonAbsolute => "non-absolute",
+            Self::Symlink => "symlink",
+            Self::OutsideTmpdir => "outside-tmpdir",
+            Self::Missing => "missing",
+            Self::NotRegularFile => "not-regular-file",
+            Self::Oversize => "oversize",
+            Self::Unreadable => "unreadable",
+        }
+    }
+
+    /// Render the legacy user-facing validation diagnostic for `flag`.
+    #[must_use]
+    pub fn message(self, flag: &str) -> String {
+        match self {
+            Self::NonAbsolute => format!("stall-recovery: {flag} must be absolute"),
+            Self::Symlink => format!("stall-recovery: {flag} must not be a symlink"),
+            Self::OutsideTmpdir | Self::Missing | Self::NotRegularFile => {
+                format!("stall-recovery: {flag} outside implement tmpdir")
+            }
+            Self::Oversize => format!("stall-recovery: {flag} exceeds 64KiB"),
+            Self::Unreadable => format!("stall-recovery: {flag} unreadable"),
+        }
+    }
+}
+
+/// Classify a failure-detail path without reading its content.
+///
+/// The path must be absolute, regular, non-symlinked, below `root`, and at
+/// most [`MAX_DETAIL_FILE_BYTES`] long.
+///
+/// # Errors
+///
+/// Returns the stable validation reason when the file is unsafe, too large, or
+/// unreadable.
+pub fn classify_failure_detail_log(
+    root: &TemporaryRoot,
+    path: &Path,
+) -> Result<(), FailureDetailLogError> {
+    open_failure_detail_log(root, path, Some(MAX_DETAIL_FILE_BYTES)).map(|_| ())
+}
+
+/// Read a validated failure-detail log as lossy UTF-8.
+///
+/// # Errors
+///
+/// Returns the stable validation reason when the file is unsafe, too large, or
+/// unreadable.
+pub fn read_validated_failure_detail_log(
+    root: &TemporaryRoot,
+    path: &Path,
+) -> Result<String, FailureDetailLogError> {
+    let (mut file, _size) = open_failure_detail_log(root, path, Some(MAX_DETAIL_FILE_BYTES))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| FailureDetailLogError::Unreadable)?;
+    if bytes.len() > MAX_DETAIL_FILE_BYTES_USIZE {
+        return Err(FailureDetailLogError::Oversize);
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Read optional failure evidence, returning an empty string for unsafe input.
+#[must_use]
+pub fn read_optional_failure_detail_evidence(root: &TemporaryRoot, path: &Path) -> String {
+    read_validated_failure_detail_log(root, path).unwrap_or_default()
+}
+
+/// Materialize a bounded, private sidecar from an oversized detail log.
+///
+/// The returned path is absolute and confined below `root`. The sidecar name
+/// uses the legacy SHA-256 seed so ledger references remain stable.
+#[must_use]
+pub fn materialize_truncated_failure_detail_log(
+    root: &TemporaryRoot,
+    path: &Path,
+) -> Option<PathBuf> {
+    let (mut source, size) = open_failure_detail_log(root, path, None).ok()?;
+    let mut prefix = Vec::with_capacity(MAX_DETAIL_FILE_BYTES_USIZE);
+    source
+        .by_ref()
+        .take(MAX_DETAIL_FILE_BYTES)
+        .read_to_end(&mut prefix)
+        .ok()?;
+    let canonical = fs::canonicalize(path).ok()?;
+    if !canonical.starts_with(root.path()) {
+        return None;
+    }
+    let mut digest = Sha256::new();
+    digest.update(canonical.to_string_lossy().as_bytes());
+    digest.update([0]);
+    digest.update(size.to_string().as_bytes());
+    digest.update([0]);
+    digest.update(&prefix);
+    let fingerprint = format!("{:x}", digest.finalize());
+    let name = format!(
+        "stall-recovery-failure-detail-log-{}.truncated.log",
+        &fingerprint[..16]
+    );
+    let sidecar = root.path().join(&name);
+    atomic_write_bytes_in(root, &sidecar, &prefix, false, 0o600).ok()?;
+    classify_failure_detail_log(root, &sidecar)
+        .is_ok()
+        .then_some(sidecar)
+}
+
+/// Find the newest valid failure-detail sidecar named by escalation evidence.
+#[must_use]
+pub fn latest_failure_detail_log_sidecar(
+    root: &TemporaryRoot,
+    ledger: &Path,
+    fallback: &Path,
+) -> Option<PathBuf> {
+    detail_log_ledger_fields(root, ledger, fallback)
+        .into_iter()
+        .filter_map(|(utc, sequence, value)| {
+            if value.contains('\0') || Path::new(&value).is_absolute() {
+                None
+            } else {
+                let path = root.path().join(value);
+                classify_failure_detail_log(root, &path)
+                    .is_ok()
+                    .then_some((utc, sequence, path))
+            }
+        })
+        .max_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)))
+        .map(|(_, _, path)| path)
+}
+
+/// Read the primary detail log, or the newest valid ledger sidecar when allowed.
+///
+/// The returned path is the validated source used for the content. Invalid
+/// primary input is intentionally ignored before considering a sidecar, which
+/// preserves the former reporting fallback contract.
+#[must_use]
+pub fn read_failure_detail_log_with_sidecar_fallback(
+    root: &TemporaryRoot,
+    primary: &str,
+    ledger: &Path,
+    fallback: &Path,
+    allow_without_primary: bool,
+) -> Option<(String, PathBuf)> {
+    if !primary.is_empty() {
+        let path = PathBuf::from(primary);
+        if let Ok(detail) = read_validated_failure_detail_log(root, &path) {
+            return Some((detail, path));
+        }
+    } else if !allow_without_primary {
+        return None;
+    }
+    let sidecar = latest_failure_detail_log_sidecar(root, ledger, fallback)?;
+    read_validated_failure_detail_log(root, &sidecar)
+        .ok()
+        .map(|detail| (detail, sidecar))
+}
+
+fn detail_log_ledger_fields(
+    root: &TemporaryRoot,
+    ledger: &Path,
+    fallback: &Path,
+) -> Vec<(String, usize, String)> {
+    let mut found = Vec::new();
+    let mut sequence = 0;
+    for path in [ledger, fallback] {
+        if !safe_regular_file(root, path, None) {
+            continue;
+        }
+        let Ok(text) = read_lossy(path) else {
+            continue;
+        };
+        for row in text.lines() {
+            sequence += 1;
+            let mut utc = "";
+            let mut detail = "";
+            let Ok(document) = KvDocument::parse(&row.replace('\t', "\n"), ParseOptions::legacy())
+            else {
+                continue;
+            };
+            for field in document.rows() {
+                if field.key() == "utc" {
+                    utc = field.value();
+                } else if field.key() == "failure_detail_log" {
+                    detail = field.value();
+                }
+            }
+            if !detail.is_empty() {
+                found.push((utc.to_owned(), sequence, detail.to_owned()));
+            }
+        }
+    }
+    found
+}
+
+fn open_failure_detail_log(
+    root: &TemporaryRoot,
+    path: &Path,
+    max_size: Option<u64>,
+) -> Result<(File, u64), FailureDetailLogError> {
+    if !path.is_absolute() {
+        return Err(FailureDetailLogError::NonAbsolute);
+    }
+    if !path.starts_with(root.path()) {
+        return Err(FailureDetailLogError::OutsideTmpdir);
+    }
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(FailureDetailLogError::Symlink);
+        }
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return Err(FailureDetailLogError::Missing);
+        }
+        Err(_) => return Err(FailureDetailLogError::Unreadable),
+    };
+    if !metadata.is_file() {
+        return Err(FailureDetailLogError::NotRegularFile);
+    }
+    if max_size.is_some_and(|limit| metadata.len() > limit) {
+        return Err(FailureDetailLogError::Oversize);
+    }
+    root.confine(path, PathIntent::Read)
+        .map_err(|_| FailureDetailLogError::OutsideTmpdir)?;
+    let file = open_failure_detail_file(path)?;
+    let opened = file
+        .metadata()
+        .map_err(|_| FailureDetailLogError::Unreadable)?;
+    if !opened.is_file() {
+        return Err(FailureDetailLogError::NotRegularFile);
+    }
+    if max_size.is_some_and(|limit| opened.len() > limit) {
+        return Err(FailureDetailLogError::Oversize);
+    }
+    Ok((file, opened.len()))
+}
+
+fn open_failure_detail_file(path: &Path) -> Result<File, FailureDetailLogError> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::libc::O_NOFOLLOW);
+    options.open(path).map_err(|error| {
+        #[cfg(unix)]
+        if error.raw_os_error() == Some(nix::libc::ELOOP) {
+            return FailureDetailLogError::Symlink;
+        }
+        let _ = error;
+        FailureDetailLogError::Unreadable
+    })
 }
 
 fn inspect_state(path: &Path) -> Result<Option<String>, StateMutationError> {
@@ -421,22 +699,27 @@ fn abandoned_checks_registry_rows(
 fn build_sensitive_corpus(root: &TemporaryRoot, sensitive: &Path, prefix: &str) -> String {
     let mut sources = vec![
         sensitive.to_path_buf(),
-        artifact_path(root.path(), "stall-recovery-classification.env", prefix),
-        artifact_path(root.path(), "stall-recovery-attempts.env", prefix),
-        artifact_path(root.path(), "stall-recovery-escalation-ledger.tsv", prefix),
-        artifact_path(
+        stall_recovery_artifact_path(root.path(), "stall-recovery-classification.env", prefix),
+        stall_recovery_artifact_path(root.path(), "stall-recovery-attempts.env", prefix),
+        stall_recovery_artifact_path(root.path(), "stall-recovery-escalation-ledger.tsv", prefix),
+        stall_recovery_artifact_path(
             root.path(),
             "stall-recovery-escalation-fallback.tsv",
             prefix,
         ),
-        artifact_path(
+        stall_recovery_artifact_path(
             root.path(),
             "stall-recovery-escalation-record-failure.env",
             prefix,
         ),
     ];
-    sources.extend(EVIDENCE_NAMES.iter().map(|name| root.path().join(name)));
-    let class_file = artifact_path(root.path(), "stall-recovery-classification.env", prefix);
+    sources.extend(
+        STALL_RECOVERY_EVIDENCE_NAMES
+            .iter()
+            .map(|name| root.path().join(name)),
+    );
+    let class_file =
+        stall_recovery_artifact_path(root.path(), "stall-recovery-classification.env", prefix);
     if let Ok(text) = read_lossy(&class_file) {
         let detail = read_last_value(&text, "FAILURE_DETAIL_LOG");
         let detail_path = Path::new(&detail);
@@ -447,6 +730,19 @@ fn build_sensitive_corpus(root: &TemporaryRoot, sensitive: &Path, prefix: &str) 
             sources.push(detail_path);
         }
     }
+    build_sensitive_corpus_from_evidence(root, sources)
+}
+
+/// Build the effective sensitive-token corpus from confined report evidence.
+///
+/// Every input path is revalidated below `root`; missing, symlinked, and
+/// non-regular files contribute no data. Callers can therefore pass optional
+/// report artifacts without widening the trusted filesystem boundary.
+#[must_use]
+pub fn build_sensitive_corpus_from_evidence(
+    root: &TemporaryRoot,
+    sources: impl IntoIterator<Item = PathBuf>,
+) -> String {
     let mut lines = Vec::new();
     for source in sources {
         if !safe_regular_file(root, &source, None) {
@@ -473,7 +769,9 @@ fn build_sensitive_corpus(root: &TemporaryRoot, sensitive: &Path, prefix: &str) 
         + "\n"
 }
 
-fn artifact_path(tmpdir: &Path, default_name: &str, prefix: &str) -> PathBuf {
+/// Build the default artifact path beneath a caller-validated temporary root.
+#[must_use]
+pub fn stall_recovery_artifact_path(tmpdir: &Path, default_name: &str, prefix: &str) -> PathBuf {
     if prefix.is_empty() || prefix == "stall-recovery" {
         tmpdir.join(default_name)
     } else {
@@ -533,7 +831,14 @@ fn read_lossy(path: &Path) -> Result<String, ()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{StateMutationError, clear_stall, seed_terminal_state, terminal_state_is_valid};
+    use super::{
+        FailureDetailLogError, MAX_DETAIL_FILE_BYTES, MAX_DETAIL_FILE_BYTES_USIZE,
+        StateMutationError, classify_failure_detail_log, clear_stall, is_larch_dev_clone,
+        latest_failure_detail_log_sidecar, materialize_truncated_failure_detail_log,
+        read_failure_detail_log_with_sidecar_fallback, read_validated_failure_detail_log,
+        seed_terminal_state, terminal_state_is_valid,
+    };
+    use crate::TemporaryRoot;
     use std::fs;
 
     #[test]
@@ -576,5 +881,107 @@ mod tests {
         )
         .expect("fixture");
         assert!(!terminal_state_is_valid(temp.path(), &state, true));
+    }
+
+    #[test]
+    fn larch_dev_clone_rejects_a_fork_marker_in_every_state_layer() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let state = temporary.path().join("state");
+        let project = temporary.path().join("project");
+        fs::create_dir_all(state.as_path()).expect("state fixture");
+        fs::create_dir_all(project.join("skills/implement")).expect("project fixture");
+        fs::write(project.join("skills/implement/SKILL.md"), "fixture\n").expect("project marker");
+        fs::write(state.join("ship-pr-state.sh"), "FORKED_TARGET=false\n").expect("ship state");
+        fs::write(state.join("finalize-state.sh"), "FORKED_TARGET=true\n").expect("finalize state");
+
+        assert!(!is_larch_dev_clone(&state, Some(&project)));
+    }
+
+    #[test]
+    fn failure_detail_log_reads_only_small_confined_regular_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temp.path())).expect("temporary root");
+        let detail = root.path().join("detail.log");
+        fs::write(&detail, "bounded detail\n").expect("detail fixture");
+
+        assert_eq!(classify_failure_detail_log(&root, &detail), Ok(()));
+        assert_eq!(
+            read_validated_failure_detail_log(&root, &detail),
+            Ok("bounded detail\n".to_owned())
+        );
+        assert_eq!(
+            classify_failure_detail_log(&root, &root.path().join("missing.log")),
+            Err(FailureDetailLogError::Missing)
+        );
+        assert_eq!(
+            FailureDetailLogError::Oversize.message("--failure-detail-log"),
+            "stall-recovery: --failure-detail-log exceeds 64KiB"
+        );
+    }
+
+    #[test]
+    fn failure_detail_log_materializes_and_reads_the_newest_ledger_sidecar() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temp.path())).expect("temporary root");
+        let detail = root.path().join("large-detail.log");
+        fs::write(&detail, vec![b'x'; MAX_DETAIL_FILE_BYTES_USIZE + 1])
+            .expect("oversized detail fixture");
+        assert_eq!(
+            classify_failure_detail_log(&root, &detail),
+            Err(FailureDetailLogError::Oversize)
+        );
+
+        let sidecar = materialize_truncated_failure_detail_log(&root, &detail)
+            .expect("materialized detail sidecar");
+        let fingerprint = sidecar
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("stall-recovery-failure-detail-log-"))
+            .and_then(|name| name.strip_suffix(".truncated.log"))
+            .expect("legacy sidecar name");
+        assert_eq!(fingerprint.len(), 16);
+        assert!(fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(
+            fs::metadata(&sidecar).expect("sidecar metadata").len(),
+            MAX_DETAIL_FILE_BYTES
+        );
+        let relative = sidecar
+            .strip_prefix(root.path())
+            .expect("confined sidecar")
+            .display()
+            .to_string();
+        let ledger = root.path().join("ledger.tsv");
+        fs::write(
+            &ledger,
+            format!("utc=2026-01-01T00:00:00Z\tfailure_detail_log={relative}\n"),
+        )
+        .expect("ledger fixture");
+        let fallback = root.path().join("fallback.tsv");
+
+        assert_eq!(
+            latest_failure_detail_log_sidecar(&root, &ledger, &fallback),
+            Some(sidecar.clone())
+        );
+        let (detail, selected) =
+            read_failure_detail_log_with_sidecar_fallback(&root, "", &ledger, &fallback, true)
+                .expect("sidecar fallback");
+        assert_eq!(selected, sidecar);
+        assert_eq!(detail.len(), MAX_DETAIL_FILE_BYTES_USIZE);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failure_detail_log_rejects_a_symlink() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temp.path())).expect("temporary root");
+        let target = root.path().join("target.log");
+        let link = root.path().join("detail.log");
+        fs::write(&target, "bounded detail\n").expect("detail fixture");
+        std::os::unix::fs::symlink(&target, &link).expect("detail symlink");
+
+        assert_eq!(
+            classify_failure_detail_log(&root, &link),
+            Err(FailureDetailLogError::Symlink)
+        );
     }
 }

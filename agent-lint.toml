@@ -347,6 +347,11 @@ exclude = [
   "scripts/read-result-env.sh",
   "scripts/test-read-result-env.sh",
   "scripts/test-read-result-env.md",
+  # The Rust-owned stall-recovery reporter invokes these fixed plugin-root
+  # helpers through validated PathBuf values. G004 cannot follow Rust process
+  # calls, so it cannot observe these live Rust-only references.
+  "scripts/resolve-upstream-larch-repo.sh",
+  "scripts/file-failure-report-cross-repo.sh",
   # Makefile-only harnesses for upstream-repo resolution and cross-repo failure
   # filing. Agent-lint's G004/dead-script graph does not follow Makefile targets.
   "scripts/test-resolve-upstream-larch-repo.sh",

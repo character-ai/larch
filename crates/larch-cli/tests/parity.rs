@@ -622,14 +622,34 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "validate-run-id",
     ),
     CleanInstallCase::new(
+        "clean-install-stall-recovery-chat-print",
+        "stall-recovery",
+        "chat-print",
+    ),
+    CleanInstallCase::new(
         "clean-install-stall-recovery-clear-stall",
         "stall-recovery",
         "clear-stall",
     ),
     CleanInstallCase::new(
+        "clean-install-stall-recovery-compose-report",
+        "stall-recovery",
+        "compose-report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-dedup-tier-a-report",
+        "stall-recovery",
+        "dedup-tier-a-report",
+    ),
+    CleanInstallCase::new(
         "clean-install-stall-recovery-is-larch-dev-clone",
         "stall-recovery",
         "is-larch-dev-clone",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-populate-sensitive-corpus",
+        "stall-recovery",
+        "populate-sensitive-corpus",
     ),
     CleanInstallCase::new(
         "clean-install-stall-recovery-seed-terminal-state",
@@ -979,6 +999,7 @@ struct StallRecoveryFixture {
     verb: &'static str,
     arguments: &'static [&'static str],
     seeds: &'static [(&'static str, &'static str)],
+    environment: &'static [(&'static str, &'static str)],
 }
 
 impl StallRecoveryFixture {
@@ -993,22 +1014,37 @@ impl StallRecoveryFixture {
             verb,
             arguments,
             seeds,
+            environment: &[],
         }
     }
 
+    const fn with_environment(
+        mut self,
+        environment: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        self.environment = environment;
+        self
+    }
+
     fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.verb))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust = Program::new(rust).args(
+            ["stall-recovery", self.verb]
+                .into_iter()
+                .chain(self.arguments.iter().copied()),
+        );
+        for (key, value) in self.environment {
+            python = python.env(key, value);
+            rust = rust.env(key, value);
+        }
         ParityCase {
             name: self.name,
-            python: Program::new(python).args(
-                std::iter::once(path_text(fixture))
-                    .chain(std::iter::once(self.verb))
-                    .chain(self.arguments.iter().copied()),
-            ),
-            rust: Program::new(rust).args(
-                ["stall-recovery", self.verb]
-                    .into_iter()
-                    .chain(self.arguments.iter().copied()),
-            ),
+            python,
+            rust,
             seed_files: self
                 .seeds
                 .iter()
@@ -1040,6 +1076,69 @@ const STALL_DEV_ARGS: &[&str] = &[
     "{sandbox}",
     "--working-tree-root",
     "{sandbox}",
+];
+const STALL_REPORT_ENVIRONMENT: &[(&str, &str)] = &[
+    ("CLAUDE_PROJECT_DIR", "{sandbox}"),
+    ("LARCH_STALL_RECOVERY_DRY_RUN", "1"),
+];
+const STALL_DRY_RUN_ENVIRONMENT: &[(&str, &str)] = &[("LARCH_STALL_RECOVERY_DRY_RUN", "1")];
+const STALL_REPORT_COMPOSE_ARGS: &[&str] = &[
+    "--implement-tmpdir",
+    "{sandbox}",
+    "--surface",
+    "issue-input",
+    "--report-kind",
+    "terminal-failure",
+];
+const STALL_REPORT_COMPOSE_SEEDS: &[(&str, &str)] = &[
+    ("skills/implement/SKILL.md", "fixture\n"),
+    (
+        "stall-recovery-classification.env",
+        "FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\nBAIL_REASON=review-required\nRESUME_HINT=none\nEXIT_CODE=1\n",
+    ),
+    (
+        "stall-recovery-attempts.env",
+        "version=1\nattempt_count=0\n",
+    ),
+    (
+        "stall-recovery-root-cause.md",
+        "verdict=larch-defect\nconfidence=high\nsummary=Safe title\n\nProse.\n",
+    ),
+    ("session-env.sh", "LARCH_RUN_ID=run-1\nBRANCH_NAME=topic\n"),
+];
+const STALL_REPORT_CORPUS_ARGS: &[&str] = &["--implement-tmpdir", "{sandbox}"];
+const STALL_REPORT_CORPUS_SEEDS: &[(&str, &str)] = &[
+    ("stall-recovery-sensitive-corpus.env", "existing-token\n"),
+    (
+        "stall-recovery-classification.env",
+        "FAILURE_CLASS=lint-failure\nSTALL_STEP=5\n",
+    ),
+    (
+        "plan.txt",
+        "https://client.example.test/private\nexample raw line\n",
+    ),
+];
+const STALL_REPORT_CHAT_SEEDS: &[(&str, &str)] = &[
+    (
+        "stall-recovery-classification.env",
+        "FAILURE_CLASS=lint-failure\nSTALL_STEP=5\nPHASE=review\nEXIT_CODE=1\n",
+    ),
+    (
+        "stall-recovery-attempts.env",
+        "version=1\nattempt_count=0\n",
+    ),
+    (
+        "stall-recovery-root-cause.md",
+        "verdict=larch-defect\nconfidence=high\nsummary=Safe title\n\nProse.\n",
+    ),
+    (
+        "stall-recovery-sensitive-corpus.env",
+        "client-secret-value\n",
+    ),
+    (
+        "stall-recovery-bounded-root-cause.md",
+        "verdict=larch-defect\nconfidence=high\nsummary=Safe summary\n\nclient-secret-value\n",
+    ),
 ];
 const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
     StallRecoveryFixture::new(
@@ -1143,6 +1242,32 @@ const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
             ("ship-pr-state.sh", "FORKED_TARGET=true\n"),
         ],
     ),
+    StallRecoveryFixture::new(
+        "stall-report-compose-tier-a",
+        "compose-report",
+        STALL_REPORT_COMPOSE_ARGS,
+        STALL_REPORT_COMPOSE_SEEDS,
+    )
+    .with_environment(STALL_REPORT_ENVIRONMENT),
+    StallRecoveryFixture::new(
+        "stall-report-populate-sensitive-corpus",
+        "populate-sensitive-corpus",
+        STALL_REPORT_CORPUS_ARGS,
+        STALL_REPORT_CORPUS_SEEDS,
+    ),
+    StallRecoveryFixture::new(
+        "stall-report-chat-sensitive",
+        "chat-print",
+        STALL_REPORT_CORPUS_ARGS,
+        STALL_REPORT_CHAT_SEEDS,
+    ),
+    StallRecoveryFixture::new(
+        "stall-report-dedup-dry-run",
+        "dedup-tier-a-report",
+        STALL_REPORT_CORPUS_ARGS,
+        &[],
+    )
+    .with_environment(STALL_DRY_RUN_ENVIRONMENT),
 ];
 
 #[test]

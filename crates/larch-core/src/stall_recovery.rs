@@ -1,6 +1,10 @@
 //! Pure validation policy for stall-recovery state and public artifacts.
 use regex::Regex;
 use std::{collections::BTreeMap, sync::LazyLock};
+
+/// Canonical prefix for public bug-report titles.
+pub const BUG_TITLE_PREFIX: &str = "[BUG]";
+
 const OUTCOMES: &str = "failed-plan-write failed-publish failed-postplan failed-clarify failed-judge-panel failed-publish-tail approved approved-partition";
 const GENERIC_SITES: &str = "step2b gate-b step3-review discussion-round2 step5c design-publish clarify-loop judge-panel decompose-panel";
 const COMMON_SITES: &str = "step2 step3 step5 step5-self-review step5-mav step6 step8 step18a review-loop lint-fix-loop ship-pr ship-pr-ci-initial ship-pr-ci-merge ship-pr-ci-per-job ship-pr-internal recovery-inline";
@@ -142,7 +146,11 @@ pub fn public_text_is_sensitive(corpus: &str, candidate: &str) -> bool {
         {
             continue;
         }
-        if let Some((_, value)) = token.split_once('=') {
+        if let Some((key, value)) = token.split_once('=') {
+            if matches!(key, "RUN_ID" | "LARCH_RUN_ID" | "SESSION_ID") && safe_run_identifier(value)
+            {
+                continue;
+            }
             if has(SENSITIVE_TOKEN_ALLOWLIST, value) || sensitive_value_allowlisted(value) {
                 continue;
             }
@@ -281,12 +289,7 @@ fn candidate_has_sensitive_assignment(candidate: &str) -> bool {
     ASSIGNMENT_RE.captures_iter(candidate).any(|capture| {
         let key = &capture[1];
         let value = capture[2].trim_end_matches(['.', ',', ';', ':', ')']);
-        if matches!(key, "RUN_ID" | "LARCH_TOKEN_SESSION_ID")
-            && !value.is_empty()
-            && value.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-')
-            })
-        {
+        if matches!(key, "RUN_ID" | "LARCH_RUN_ID" | "SESSION_ID") && safe_run_identifier(value) {
             return false;
         }
         if matches!(key, "LARCH_PLUGIN_VERSION" | "LARCH_VERSION")
@@ -299,6 +302,13 @@ fn candidate_has_sensitive_assignment(candidate: &str) -> bool {
         }
         !sensitive_value_allowlisted(value)
     })
+}
+
+fn safe_run_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
 }
 
 #[cfg(test)]
@@ -378,5 +388,21 @@ mod tests {
         assert!(public_text_is_sensitive("", "TOKEN=secret-value"));
         assert!(!public_text_is_sensitive("approved\n", "approved"));
         assert!(!public_text_is_sensitive("X=approved\n", "X=approved"));
+        assert!(!public_text_is_sensitive(
+            "LARCH_RUN_ID=report-8066\n",
+            "| Run ID | `report-8066` |"
+        ));
+        assert!(!public_text_is_sensitive(
+            "SESSION_ID=report-8066\n",
+            "| Run ID | `report-8066` |"
+        ));
+        assert!(public_text_is_sensitive(
+            "LARCH_RUN_ID=private/path\n",
+            "| Run ID | `private/path` |"
+        ));
+        assert!(public_text_is_sensitive(
+            "LARCH_TOKEN_SESSION_ID=opaque-session\n",
+            "| Run ID | `opaque-session` |"
+        ));
     }
 }

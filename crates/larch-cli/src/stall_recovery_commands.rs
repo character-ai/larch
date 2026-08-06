@@ -1,4 +1,5 @@
 //! Thin compatibility boundary for Rust-owned stall-recovery commands.
+use crate::stall_recovery_reporting;
 use larch_adapters::stall_recovery::{
     StateMutationError, clear_stall, is_larch_dev_clone, seed_terminal_state,
     terminal_state_is_valid, tier_b_public_file_is_valid,
@@ -45,8 +46,89 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         "validate-terminal-state" => validate_terminal(&globals, command_arguments),
         "validate-tier-b-public-file" => validate_public(&globals, command_arguments),
         "is-larch-dev-clone" => detect_dev_clone(&globals, command_arguments),
+        "compose-report" => compose_report(&globals, command_arguments, false),
+        "chat-print" => compose_report(&globals, command_arguments, true),
+        "dedup-tier-a-report" => dedup_tier_a_report(&globals, command_arguments),
+        "populate-sensitive-corpus" => populate_sensitive_corpus(&globals, command_arguments),
         other => usage_error(&format!("unknown subcommand: {other}")),
     }
+}
+
+const COMPOSE_REPORT_FLAGS: &[&str] = &[
+    "--implement-tmpdir",
+    "--report-kind",
+    "--surface",
+    "--attempts-file",
+    "--classification-file",
+    "--escalation-ledger-file",
+    "--escalation-fallback-file",
+    "--record-failure-marker",
+    "--root-cause-file",
+    "--bounded-root-cause-file",
+    "--title-file",
+    "--sensitive-corpus-file",
+    "--output-file",
+    "--profile",
+    "--artifact-prefix",
+    "--primary-state-file",
+    "--finalize-state-file",
+    "--session-env-file",
+];
+
+fn compose_report(globals: &Globals, arguments: &[String], force_chat_print: bool) -> ExitCode {
+    let options = match parse_options(arguments, COMPOSE_REPORT_FLAGS) {
+        OptionParse::Help => {
+            return help(if force_chat_print {
+                "chat-print"
+            } else {
+                "compose-report"
+            });
+        }
+        OptionParse::Error(message) => return usage_error(&message),
+        OptionParse::Values(options) => options,
+    };
+    stall_recovery_reporting::compose(globals, &options, force_chat_print)
+}
+
+fn dedup_tier_a_report(globals: &Globals, arguments: &[String]) -> ExitCode {
+    let options = match parse_options(
+        arguments,
+        &[
+            "--implement-tmpdir",
+            "--body-file",
+            "--attempts-file",
+            "--escalation-ledger-file",
+            "--root-cause-file",
+            "--context-file",
+            "--artifact-prefix",
+        ],
+    ) {
+        OptionParse::Help => return help("dedup-tier-a-report"),
+        OptionParse::Error(message) => return usage_error(&message),
+        OptionParse::Values(options) => options,
+    };
+    stall_recovery_reporting::dedup_tier_a_report(globals, &options)
+}
+
+fn populate_sensitive_corpus(globals: &Globals, arguments: &[String]) -> ExitCode {
+    let options = match parse_options(
+        arguments,
+        &[
+            "--implement-tmpdir",
+            "--sensitive-corpus-file",
+            "--classification-file",
+            "--attempts-file",
+            "--escalation-ledger-file",
+            "--escalation-fallback-file",
+            "--record-failure-marker",
+            "--artifact-prefix",
+        ],
+    ) {
+        OptionParse::Help => return help("populate-sensitive-corpus"),
+        OptionParse::Error(message) => return usage_error(&message),
+        OptionParse::Values(options) => options,
+    };
+    stall_recovery_reporting::populate_sensitive_corpus(globals, &options)
 }
 
 fn clear(globals: &Globals, arguments: &[String]) -> ExitCode {

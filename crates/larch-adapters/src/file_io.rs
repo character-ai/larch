@@ -235,6 +235,24 @@ pub fn atomic_write_utf8_in(
     })
 }
 
+/// Atomically publish bytes below a validated temporary root.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for unsafe paths, directory creation, or publication
+/// failures.
+pub fn atomic_write_bytes_in(
+    root: &TemporaryRoot,
+    target: &Path,
+    bytes: &[u8],
+    create_parent: bool,
+    mode: u32,
+) -> Result<(), FileIoError> {
+    atomic_write_in_with(root, target, create_parent, mode, |file| {
+        file.write_all(bytes)
+    })
+}
+
 /// Testable rooted variant of [`atomic_write_utf8_in`].
 pub fn atomic_write_in_with(
     root: &TemporaryRoot,

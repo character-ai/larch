@@ -226,8 +226,8 @@ pub use slack_announce::{
     webhook_scheme_allowed,
 };
 pub use stall_recovery::{
-    artifact_prefix_valid, public_text_is_sensitive, safe_phase, safe_step, terminal_state_valid,
-    token_valid,
+    BUG_TITLE_PREFIX, artifact_prefix_valid, public_text_is_sensitive, safe_phase, safe_step,
+    terminal_state_valid, token_valid,
 };
 pub use storage::{
     ENV_LARCH_LOGS_URI, ENV_LARCH_R2_ACCOUNT_ID, ENV_LARCH_R2_ENDPOINT, ENV_LARCH_STORAGE_BASE_URI,
