@@ -292,28 +292,26 @@ publisher wires that helper for that skill. The landed callers are the
 `/implement` terminal publisher and `python/cli.py design log-publish`.
 
 `breadcrumbs/` is a directory artifact, not a larch-log batch. The implement
-publisher and `python/cli.py design log-publish` invoke the
-shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
+publisher and `python/cli.py design log-publish` reach the Rust owner through
+`scripts/larch.sh run-log publish-breadcrumbs`, and the shared run lifecycle
+calls that owner directly. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
 hints only; publication stages quiet logs from the session root, not
 live runtime streams under those directories.
 
-Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
-be under an active session tmpdir), else the log-root parent's `breadcrumbs/`.
-That directory is a hint only: publication derives the session root with
-`dirname` and stages matching `larch-quiet-<script>-<pid>.log` files from the
-session root rather than scanning published inputs from `breadcrumbs/` itself.
-The source hint and every staged file must resolve under
-`IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
-`larch_log_breadcrumbs_under_session_tmp`; otherwise publication skips
-breadcrumb staging and returns success without creating or replacing the
-published `breadcrumbs/` directory.
+Source resolution uses the log-root parent's `breadcrumbs/`. That directory is
+a hint only: publication derives the session root from the hint's parent and
+stages matching `larch-quiet-<script>-<pid>.log` files from the session root
+rather than scanning published inputs from `breadcrumbs/` itself. The derived
+session root must resolve under `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` when
+any of those is set; otherwise publication skips breadcrumb staging and returns
+success without creating or replacing the published `breadcrumbs/` directory.
 
 Per-script session-root quiet logs whose basenames match exactly
 `larch-quiet-<script>-<pid>.log` are staged. Each accepted file is individually
-redacted through `redact tmpdir-paths | redact secrets --streaming
---state-file <tmp>`, then all redacted content is **concatenated** into a single
+redacted through the shared Rust redaction owner (sensitive paths first, then
+every secret family), then all redacted content is **concatenated** into a single
 `larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` with per-source header lines
 `=== <basename> ===`. The individual source files are not published separately.
 Quiet-log sourcing uses `dirname` of the breadcrumbs source path and runs even

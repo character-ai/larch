@@ -36,48 +36,25 @@ def _write_terminal_artifacts(run_dir: Path) -> None:
     _ = (run_dir / "execution-issues.ndjson").write_text("", encoding="utf-8")
 
 
-def _patch_commit_seams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _ = subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    copied: list[str] = []
+def _prepare_tmp_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_id: str = "run-abc") -> str:
+    """Prepare one staged run for archive, returning its refusal message or "".
+
+    Breadcrumb publication is a Rust-owned subprocess, so it is stubbed out:
+    these cases pin the required-artifact completeness gate that runs before
+    any publication, not the breadcrumb payload.
+    """
     monkeypatch.setattr(run_log_commit, "_publish_breadcrumbs_with_warning", lambda **_kwargs: None)
-
-    def fake_git_stdout(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        _ = cwd
-        if argv[:3] == ["git", "rev-parse", "--abbrev-ref"]:
-            return subprocess.CompletedProcess(argv, 0, "feature\n", "")
-        if argv[:3] == ["git", "symbolic-ref", "--short"]:
-            return subprocess.CompletedProcess(argv, 0, "origin/main\n", "")
-        if argv[:3] == ["git", "status", "--porcelain"]:
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        raise AssertionError(f"unexpected git argv: {argv}")
-
-    def fake_copy_tree_to_repo(
-        *,
-        log_root: Path,
-        repo_root: Path,
-        skill: str,
-        run_id: str,
-    ) -> tuple[list[str], Path, int, str | None]:
-        _ = log_root
-        copied.append(f"{skill}/{run_id}")
-        return [f"larch-logs/{skill}/{run_id}"], repo_root / "larch-logs" / skill / run_id, 0, None
-
-    monkeypatch.setattr(run_log_commit, "_git_stdout", fake_git_stdout)
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", fake_copy_tree_to_repo)
-    return copied
-
-
-def _commit_tmp_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_id: str = "run-abc") -> tuple[CommandResult, list[str]]:
-    copied = _patch_commit_seams(monkeypatch, tmp_path)
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=tmp_path / "larch-logs",
-        skill="implement",
-        run_id=run_id,
-        cwd=str(tmp_path / "repo"),
-    )
-    return result, copied
+    try:
+        prepared = run_log_commit.prepare_run_for_archive(
+            log_root=tmp_path / "larch-logs",
+            skill="implement",
+            run_id=run_id,
+            repo_root=tmp_path / "repo",
+        )
+    except ShipError as exc:
+        return str(exc)
+    assert prepared.run_dir == tmp_path / "larch-logs" / "implement" / run_id
+    return ""
 
 
 def test_refresh_difficulty_record_merges_resolution_fields(
@@ -276,19 +253,16 @@ def test_unconfigured_terminal_transcript_requires_artifact_or_recorded_waiver(
     assert result.ok is False
 
 
-def test_run_log_commit_all_required_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_log_archive_prep_all_required_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir, steps_ran={"step18": True})
     _write_terminal_artifacts(run_dir)
     _ = (run_dir / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == 0
-    assert copied == ["implement/run-abc"]
+    assert _prepare_tmp_run(tmp_path, monkeypatch) == ""
 
 
-def test_run_log_commit_allows_recorded_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_log_archive_prep_allows_recorded_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir, steps_ran={"step18": True})
     _write_terminal_artifacts(run_dir)
@@ -298,25 +272,18 @@ def test_run_log_commit_allows_recorded_transcript_omission(tmp_path: Path, monk
         encoding="utf-8",
     )
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == 0
-    assert copied == ["implement/run-abc"]
+    assert _prepare_tmp_run(tmp_path, monkeypatch) == ""
 
 
-def test_run_log_commit_fails_silent_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_log_archive_prep_fails_silent_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir, steps_ran={"step18": True})
     _write_terminal_artifacts(run_dir)
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == config.RUN_LOG_INCOMPLETE_RC
-    assert "session-transcript.jsonl" in result.stderr
-    assert not copied
+    assert "session-transcript.jsonl" in _prepare_tmp_run(tmp_path, monkeypatch)
 
 
-def test_run_log_commit_rejects_session_local_status_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_log_archive_prep_rejects_session_local_status_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir, steps_ran={"step18": True})
     _write_terminal_artifacts(run_dir)
@@ -325,14 +292,10 @@ def test_run_log_commit_rejects_session_local_status_only(tmp_path: Path, monkey
         encoding="utf-8",
     )
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == config.RUN_LOG_INCOMPLETE_RC
-    assert "session-transcript.jsonl" in result.stderr
-    assert not copied
+    assert "session-transcript.jsonl" in _prepare_tmp_run(tmp_path, monkeypatch)
 
 
-def test_run_log_commit_code_review_tally_requires_full_findings(
+def test_run_log_archive_prep_code_review_tally_requires_full_findings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -340,14 +303,10 @@ def test_run_log_commit_code_review_tally_requires_full_findings(
     _write_manifest(run_dir)
     _ = (run_dir / "code-review-tally.json").write_text("{}", encoding="utf-8")
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == config.RUN_LOG_INCOMPLETE_RC
-    assert "review-findings-full.jsonl" in result.stderr
-    assert not copied
+    assert "review-findings-full.jsonl" in _prepare_tmp_run(tmp_path, monkeypatch)
 
 
-def test_run_log_commit_step7a_without_code_review_does_not_require_full_findings(
+def test_run_log_archive_prep_step7a_without_code_review_does_not_require_full_findings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -356,10 +315,7 @@ def test_run_log_commit_step7a_without_code_review_does_not_require_full_finding
     _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
     _ = (run_dir / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
 
-    result, copied = _commit_tmp_run(tmp_path, monkeypatch)
-
-    assert result.returncode == 0
-    assert copied == ["implement/run-abc"]
+    assert _prepare_tmp_run(tmp_path, monkeypatch) == ""
 
 
 def test_preterminal_outcome_label_check_rejects_terminal_labels() -> None:
@@ -457,7 +413,6 @@ def test_refresh_logs_checkpoint_keeps_incomplete_tree_mutable(tmp_path: Path, m
         manifest_path=str(run_dir / "manifest.json"),
     )
     monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
-    _ = _patch_commit_seams(monkeypatch, tmp_path)
 
     skip = run_log_flush.refresh_logs_checkpoint(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path / "repo"))
 
@@ -492,7 +447,6 @@ def test_run_log_checkpoint_main_keeps_incomplete_tree_mutable(
     _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
-    _ = _patch_commit_seams(monkeypatch, tmp_path)
 
     rc = run_log_flush.run_log_checkpoint_main([])
 
@@ -521,32 +475,8 @@ def test_run_log_checkpoint_main_stages_preterminal_forbidden_label(
     assert capsys.readouterr().err == ""
 
 
-def test_run_log_commit_missing_run_dir_preserves_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    copied = _patch_commit_seams(monkeypatch, tmp_path)
-
-    def fake_copy_tree_to_repo(
-        *,
-        log_root: Path,
-        repo_root: Path,
-        skill: str,
-        run_id: str,
-    ) -> tuple[list[str], Path, int, str | None]:
-        _ = log_root, skill, run_id
-        copied.append("copy-called")
-        return [], repo_root / "larch-logs" / "implement" / "run-abc", 0, None
-
-    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", fake_copy_tree_to_repo)
-
-    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
-        log_root=tmp_path / "larch-logs",
-        skill="implement",
-        run_id="run-abc",
-        cwd=str(tmp_path / "repo"),
-    )
-
-    assert result.returncode == 0
-    assert result.returncode != config.RUN_LOG_INCOMPLETE_RC
-    assert copied == ["copy-called"]
+def test_run_log_archive_prep_missing_run_dir_fails_loudly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert "run-log staging directory is missing or unsafe" in _prepare_tmp_run(tmp_path, monkeypatch)
 
 
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false

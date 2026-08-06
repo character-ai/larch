@@ -306,7 +306,7 @@ basenames. Legacy stream files and monitor sidecars stay local. Every selected
 quiet log must remain within the active session root, be a regular non-symlink
 file, and satisfy the hardlink and basename checks.
 
-Each quiet log passes independently through temporary-path and streaming secret
+Each quiet log passes independently through sensitive-path and secret
 redaction. The publisher concatenates the sanitized files into one
 `larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` through a staging directory
 and atomic promotion. Any enforced validation or redaction failure rejects the
@@ -491,7 +491,7 @@ egress contract.
 | Python redaction | `python/larch/core/redact.py` |
 | Rust checksum-pinned scanner | `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
-| Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
+| Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py`. Rust owns breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and the `run-log publish-breadcrumbs` boundary in `crates/larch-cli/src/run_log_commands.rs`. |
 | Run-log archive, sync, and object publication | Rust owns shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. Python retains the standalone archive, `publish`, and `sync` surfaces until their named migration leaves. Both runtimes share the provider-neutral object-store contract. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |

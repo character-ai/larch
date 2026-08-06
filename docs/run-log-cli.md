@@ -38,7 +38,6 @@ make a log public-safe. See the canonical
 - `run-log refresh`
 - `run-log prepare-terminal-snapshot`
 - `run-log capture-transcript`
-- `run-log publish-breadcrumbs`
 - `run-log archive`
 - `run-log materialize`
 - `run-log publish`
@@ -69,6 +68,33 @@ scrubbed.
 `run-log append-entry` and `run-log append-failure` serialize on a
 `mkdir`-based `<log>.lock.d` directory lock, so concurrent appends from
 separate processes never interleave a record.
+
+## Rust-owned breadcrumb publication
+
+`scripts/larch.sh run-log publish-breadcrumbs --source-dir <hint> --dest-dir
+<breadcrumbs>` publishes one run's breadcrumbs. `--source-dir` names the
+session's `breadcrumbs/` hint, so the session root that holds the
+`larch-quiet-<script>-<pid>.log` files is its parent. The command concatenates
+those logs in filename order as `=== <name> ===` sections over redacted
+bodies, then replaces `--dest-dir` atomically through a same-parent staging
+directory, so an interrupted publication leaves either the previous
+breadcrumbs or the complete new ones. Republishing the same session is
+idempotent.
+
+Publishing nothing is success: a missing source root, a source root outside
+every active session tmpdir, and a source root with no quiet logs all exit `0`
+without writing. The confinement check compares the derived session root
+against `IMPLEMENT_TMPDIR`, `DESIGN_TMPDIR`, `REVIEW_TMPDIR`, and
+`RESEARCH_TMPDIR`; when none is set there is no reference root, and the source
+is treated as confined exactly as the retired Python owner did. A symlinked or
+hardlinked quiet log, an unreadable source entry, a redacted body that does not
+survive re-redaction, and a destination that is not a plain directory exit `1`
+and leave the previously published tree in place. A missing required option
+exits `2`.
+
+`larch_adapters::run_lifecycle::publish_breadcrumbs` is the single owner; the
+shared lifecycle terminalizer calls it directly, and `run-log publish` reaches
+it through this command.
 
 ## Rust-owned manifest updates
 

@@ -173,6 +173,9 @@ enum RunLogCommand {
     /// Update one versioned run-log manifest with durable atomic publication.
     #[command(name = "manifest", disable_help_flag = true)]
     Manifest(RawCompatibilityArguments),
+    /// Publish the session's redacted quiet logs as a run's breadcrumbs.
+    #[command(name = "publish-breadcrumbs", disable_help_flag = true)]
+    PublishBreadcrumbs(RawCompatibilityArguments),
     /// Terminalize a run as operator-cancelled.
     #[command(name = "lifecycle-cancel")]
     LifecycleCancel(run_lifecycle_commands::LifecycleTerminalArguments),
@@ -1007,6 +1010,9 @@ fn run(
         ),
         Domain::RunLog(RunLogCommand::ValidateRunId(arguments)) => {
             Ok(run_log_commands::validate_run_id(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::PublishBreadcrumbs(arguments)) => {
+            Ok(run_log_commands::publish_breadcrumbs(&arguments.arguments))
         }
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {

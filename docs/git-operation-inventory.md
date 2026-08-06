@@ -85,7 +85,6 @@ python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/final_report.py	later-domain	#7683	rev-parse
-python/larch/report/run_log_commit.py	later-domain	#7683	add,clean,commit,diff,reset,restore,rev-parse,status,symbolic-ref
 python/larch/report/run_log_flush.py	later-domain	#7683	diff
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic

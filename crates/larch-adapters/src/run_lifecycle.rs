@@ -4,6 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write as _,
     fs::{self, File, OpenOptions},
+    hash::BuildHasher,
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
     sync::LazyLock,
@@ -460,7 +461,7 @@ pub async fn finish(
         .storage()
         .ok_or_else(|| LifecycleError::new("enabled lifecycle storage is missing"))?;
     let store = store.ok_or_else(|| LifecycleError::new("enabled object store is missing"))?;
-    let breadcrumb_warning = publish_breadcrumbs(
+    let breadcrumb_warning = publish_run_breadcrumbs(
         &started.context.log_root,
         &started.context.run_dir,
         request.environment,
@@ -1099,7 +1100,7 @@ fn artifact_present_or_waived(
     })
 }
 
-fn publish_breadcrumbs(
+fn publish_run_breadcrumbs(
     log_root: &Path,
     run_dir: &Path,
     environment: &HashMap<String, String>,
@@ -1110,11 +1111,32 @@ fn publish_breadcrumbs(
     let Some(source) = log_root.parent() else {
         return Ok(());
     };
-    if !source.is_dir() || !breadcrumb_source_confined(source, environment)? {
+    publish_breadcrumbs(source, &run_dir.join("breadcrumbs"), environment)
+}
+
+/// Publish the session's redacted quiet logs into one `breadcrumbs/` directory.
+///
+/// `source_root` is the session root that holds `larch-quiet-<script>-<pid>.log`
+/// files; `destination` is replaced atomically, so an interrupted publication
+/// leaves either the previous directory or the complete new one. Publishing
+/// nothing is success: a missing source root, a source root outside every
+/// active session tmpdir, and a source root with no quiet logs are all no-ops.
+///
+/// # Errors
+///
+/// Returns an error for a symlinked or hardlinked quiet log, an unreadable
+/// source entry, a redacted body that does not survive re-redaction, or a
+/// destination that is not a plain directory.
+pub fn publish_breadcrumbs<S: BuildHasher>(
+    source_root: &Path,
+    destination: &Path,
+    environment: &HashMap<String, String, S>,
+) -> Result<(), LifecycleError> {
+    if !source_root.is_dir() || !breadcrumb_source_confined(source_root, environment)? {
         return Ok(());
     }
     let mut output = String::new();
-    for entry in sorted_entries(source)? {
+    for entry in sorted_entries(source_root)? {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !QUIET_LOG_NAME.is_match(&name) {
             continue;
@@ -1139,27 +1161,32 @@ fn publish_breadcrumbs(
             output.push('\n');
         }
     }
-    if !output.is_empty() {
-        replace_breadcrumbs(run_dir, output.as_bytes())?;
+    if output.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    // Fail closed at the owning function rather than relying on the caller's
+    // later full-tree scrub: publication is irreversible egress, so a body the
+    // redactor cannot prove clean never reaches the destination.
+    let verified = redact(&output);
+    if !verified.findings().is_empty() || verified.text() != output {
+        return Err(LifecycleError::new(format!(
+            "secret survived scrubbing in breadcrumbs for {}",
+            destination.display()
+        )));
+    }
+    replace_breadcrumbs(destination, output.as_bytes())
 }
 
-fn replace_breadcrumbs(run_dir: &Path, contents: &[u8]) -> Result<(), LifecycleError> {
-    let destination = run_dir.join("breadcrumbs");
-    let parent = run_dir
+fn replace_breadcrumbs(destination: &Path, contents: &[u8]) -> Result<(), LifecycleError> {
+    let parent = destination
         .parent()
-        .ok_or_else(|| LifecycleError::new("run directory has no parent"))?;
-    let run_name = run_dir
+        .ok_or_else(|| LifecycleError::new("breadcrumbs destination has no parent"))?;
+    let name = destination
         .file_name()
         .and_then(|value| value.to_str())
-        .ok_or_else(|| LifecycleError::new("run directory name is not valid UTF-8"))?;
-    let staged = parent.join(format!(
-        ".{run_name}.breadcrumbs.{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
-    let backup = parent.join(format!(".{run_name}.breadcrumbs.removing"));
+        .ok_or_else(|| LifecycleError::new("breadcrumbs destination name is not valid UTF-8"))?;
+    let staged = parent.join(format!(".{name}.{}-{}", std::process::id(), Uuid::new_v4()));
+    let backup = parent.join(format!(".{name}.removing"));
     let result = (|| {
         ensure_safe_directory(&staged)?;
         atomic_write(&staged.join("quiet.log"), contents, 0o600)?;
@@ -1175,16 +1202,16 @@ fn replace_breadcrumbs(run_dir: &Path, contents: &[u8]) -> Result<(), LifecycleE
             if destination.exists() {
                 remove_tree_strict(&backup)?;
             } else {
-                fs::rename(&backup, &destination).map_err(io_error)?;
+                fs::rename(&backup, destination).map_err(io_error)?;
             }
         }
         let moved = destination.exists();
         if moved {
-            fs::rename(&destination, &backup).map_err(io_error)?;
+            fs::rename(destination, &backup).map_err(io_error)?;
         }
-        if let Err(error) = fs::rename(&staged, &destination) {
+        if let Err(error) = fs::rename(&staged, destination) {
             if moved && !destination.exists() {
-                let _ = fs::rename(&backup, &destination);
+                let _ = fs::rename(&backup, destination);
             }
             return Err(io_error(error));
         }
@@ -1200,9 +1227,17 @@ fn replace_breadcrumbs(run_dir: &Path, contents: &[u8]) -> Result<(), LifecycleE
     result
 }
 
-fn breadcrumb_source_confined(
+/// Defense-in-depth: is the breadcrumb source under an active session tmpdir?
+///
+/// Every live caller derives the source from a session root, so this never
+/// trips on the supported path; it guards a caller that passes an escaped or
+/// operator-controlled hint. When no session tmpdir variable is set there is no
+/// reference root to compare against, so the source is treated as confined,
+/// preserving the retired Python owner's behavior for callers that run outside
+/// a session.
+fn breadcrumb_source_confined<S: BuildHasher>(
     source: &Path,
-    environment: &HashMap<String, String>,
+    environment: &HashMap<String, String, S>,
 ) -> Result<bool, LifecycleError> {
     let roots: Vec<PathBuf> = [
         "IMPLEMENT_TMPDIR",

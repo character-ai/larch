@@ -75,6 +75,19 @@ only as the shared source for the `run-log write-round` test double in
 `python/tests/support/rust_agent_stub.py`, so the double cannot become a second
 implementation. Delete both when the remaining run-log verbs cut over.
 
+**Breadcrumb publication cut over in #8074.** `run-log publish-breadcrumbs` is
+Rust-owned. `larch_adapters::run_lifecycle::publish_breadcrumbs` is the single
+owner: the already-migrated lifecycle terminalizer calls it directly, and
+`crates/larch-cli/src/run_log_commands.rs` exposes it as the command boundary.
+The same leaf deleted the superseded Python Git-commit implementation in
+`python/larch/report/run_log_commit.py` — `_commit_run`, `larch_log_commit_main`,
+`commit_larch_logs`, `_larch_log_commit`, `prepare_run_tree_for_publication`,
+the repo-copy and volatile-cleanup helpers, and the pre-commit retry ladder had
+no production caller after the flush retirement in #7995. The module keeps only
+`prepare_run_for_archive` and its scrub helpers, which `run-log publish` still
+consumes, plus `_publish_breadcrumbs_with_warning`, now a Rust consumer that
+builds an argv and executes `scripts/larch.sh`.
+
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py` (the gzip-embedded `tally-plan-review.sh` body is retained for contract tests but no longer executed). Treat the remaining delegated Python entry points as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.
