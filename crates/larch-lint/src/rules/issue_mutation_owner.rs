@@ -5,19 +5,29 @@ use std::{
     path::Path,
 };
 
+use syn::{
+    Expr, ExprCall, ExprMethodCall, ItemFn, ItemMod, ItemUse, UseTree,
+    spanned::Spanned,
+    visit::{self, Visit},
+};
 use tree_sitter::Node;
 
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
     syntax::{
-        ShellCommand, json_shell_commands, markdown_shell_commands, parse_python, shell_commands,
+        RustSyntax, ShellCommand, json_shell_commands, markdown_shell_commands, parse_python,
+        shell_commands,
     },
 };
 
 const NAME: &str = "issue-mutation-owner";
 const DESCRIPTION: &str = "Reject raw GitHub issue field mutation outside the typed owner";
-const OWNER: &str = "python/larch/issue/issue_mutation.py";
+const PYTHON_OWNER: &str = "python/larch/issue/issue_mutation.py";
+const RUST_OWNER: &str = "crates/larch-adapters/src/github/issue_mutation.rs";
+// The semantic `GitHubService` transport necessarily invokes Octocrab itself.
+const RUST_TRANSPORT_ADAPTER: &str = "crates/larch-adapters/src/github_rest.rs";
 const OWNER_GUIDANCE: &str = "use larch.issue.issue_mutation";
+const RUST_OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
 
 const RAW_HELPERS: &[&str] = &[
     "issue_edit",
@@ -31,6 +41,7 @@ const GRAPHQL_MUTATIONS: &[&str] = &[
     "addLabelsToLabelable",
     "removeLabelsFromLabelable",
 ];
+const RUST_WRITE_METHODS: &[&str] = &["edit_issue", "add_label", "remove_label"];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
@@ -56,7 +67,9 @@ impl Rule for IssueMutationOwnerRule {
         let mut findings = Vec::new();
         for path in repository.paths() {
             let path_text = path.as_str();
-            if path_text == OWNER || is_fixture(path_text) {
+            if matches!(path_text, PYTHON_OWNER | RUST_OWNER | RUST_TRANSPORT_ADAPTER)
+                || is_fixture(path_text)
+            {
                 continue;
             }
             let Some(surface) = surface(path_text) else {
@@ -65,6 +78,7 @@ impl Rule for IssueMutationOwnerRule {
             let source = repository.read_utf8(path)?;
             findings.extend(match surface {
                 Surface::Python => check_python(path_text, &source)?,
+                Surface::Rust => check_rust(path_text, &source)?,
                 Surface::Shell => check_shell(path_text, &source, 0)?,
                 Surface::Markdown => check_markdown(path_text, &source)?,
                 Surface::Json => check_json(path_text, &source)?,
@@ -81,6 +95,7 @@ crate::register_rule!(METADATA, RULE);
 #[derive(Clone, Copy)]
 enum Surface {
     Python,
+    Rust,
     Shell,
     Markdown,
     Json,
@@ -90,6 +105,12 @@ fn surface(path: &str) -> Option<Surface> {
     let extension = Path::new(path).extension()?.to_str()?;
     if path.starts_with("python/larch/") && extension.eq_ignore_ascii_case("py") {
         return Some(Surface::Python);
+    }
+    if path.starts_with("crates/")
+        && !path.starts_with("crates/larch-lint/")
+        && extension.eq_ignore_ascii_case("rs")
+    {
+        return Some(Surface::Rust);
     }
     if path.starts_with("skills/") || path.starts_with("agents/") {
         if extension.eq_ignore_ascii_case("md") {
@@ -124,6 +145,7 @@ fn is_fixture(path: &str) -> bool {
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 enum MutationKind {
     Helper(String),
+    Rust(String),
     Cli,
     Rest,
     GraphQl(&'static str),
@@ -134,6 +156,9 @@ impl MutationKind {
         match self {
             Self::Helper(name) => {
                 format!("raw issue mutation helper {name}; {OWNER_GUIDANCE}")
+            }
+            Self::Rust(name) => {
+                format!("raw Rust issue field mutation {name}; {RUST_OWNER_GUIDANCE}")
             }
             Self::Cli => format!("raw gh issue edit argv; {OWNER_GUIDANCE}"),
             Self::Rest => format!("raw issue REST PATCH; {OWNER_GUIDANCE}"),
@@ -161,6 +186,144 @@ fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
         .into_iter()
         .map(|(line, kind)| Ok(Finding::new(path, line_number(path, line)?, kind.message())))
         .collect()
+}
+
+fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
+    let syntax = RustSyntax::parse(path, source)?;
+    let mut imports = RustMutationVisitor::default();
+    imports.visit_file(syntax.file());
+    let mut visitor = RustMutationVisitor {
+        github_service_aliases: imports.github_service_aliases,
+        github_service_glob: imports.github_service_glob,
+        matches: BTreeSet::new(),
+    };
+    visitor.visit_file(syntax.file());
+    visitor
+        .matches
+        .into_iter()
+        .map(|(line, kind)| Ok(Finding::new(path, line, kind.message())))
+        .collect()
+}
+
+#[derive(Default)]
+struct RustMutationVisitor {
+    github_service_aliases: BTreeSet<String>,
+    github_service_glob: bool,
+    matches: BTreeSet<(u32, MutationKind)>,
+}
+
+impl<'ast> Visit<'ast> for RustMutationVisitor {
+    fn visit_item_use(&mut self, item: &'ast ItemUse) {
+        collect_github_service_aliases(
+            &item.tree,
+            false,
+            &mut self.github_service_aliases,
+            &mut self.github_service_glob,
+        );
+        visit::visit_item_use(self, item);
+    }
+
+    fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+        if !has_test_attribute(&item.attrs) {
+            visit::visit_item_mod(self, item);
+        }
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if !has_test_attribute(&item.attrs) {
+            visit::visit_item_fn(self, item);
+        }
+    }
+
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        if let Some(method) = qualified_rust_write_method(&call.func, self) {
+            self.matches.insert((line_number_span(call.span()), MutationKind::Rust(method)));
+        }
+        visit::visit_expr_call(self, call);
+    }
+
+    fn visit_expr_method_call(&mut self, call: &'ast ExprMethodCall) {
+        let method = call.method.to_string();
+        if self.can_call_github_service() && RUST_WRITE_METHODS.contains(&method.as_str()) {
+            self.matches.insert((line_number_span(call.span()), MutationKind::Rust(method)));
+        }
+        visit::visit_expr_method_call(self, call);
+    }
+}
+
+impl RustMutationVisitor {
+    fn can_call_github_service(&self) -> bool {
+        self.github_service_glob || !self.github_service_aliases.is_empty()
+    }
+}
+
+fn collect_github_service_aliases(
+    tree: &UseTree,
+    inside_larch_core: bool,
+    aliases: &mut BTreeSet<String>,
+    glob: &mut bool,
+) {
+    match tree {
+        UseTree::Path(path) => collect_github_service_aliases(
+            &path.tree,
+            inside_larch_core || path.ident == "larch_core",
+            aliases,
+            glob,
+        ),
+        UseTree::Name(name) if inside_larch_core && name.ident == "GitHubService" => {
+            aliases.insert(String::from("GitHubService"));
+        }
+        UseTree::Rename(rename) if inside_larch_core && rename.ident == "GitHubService" => {
+            aliases.insert(rename.rename.to_string());
+        }
+        UseTree::Glob(_) if inside_larch_core => *glob = true,
+        UseTree::Group(group) => {
+            for item in &group.items {
+                collect_github_service_aliases(item, inside_larch_core, aliases, glob);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn qualified_rust_write_method(call: &Expr, visitor: &RustMutationVisitor) -> Option<String> {
+    let Expr::Path(path) = call else {
+        return None;
+    };
+    let method = path.path.segments.last()?.ident.to_string();
+    if !RUST_WRITE_METHODS.contains(&method.as_str()) {
+        return None;
+    }
+    let owner = path
+        .path
+        .segments
+        .iter()
+        .rev()
+        .nth(1)
+        .map(|segment| segment.ident.to_string())?;
+    (owner == "GitHubService"
+        || visitor.github_service_glob
+        || visitor.github_service_aliases.contains(&owner))
+    .then_some(method)
+}
+
+fn has_test_attribute(attributes: &[syn::Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        attribute
+            .path()
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "test")
+            || (attribute.path().is_ident("cfg")
+                && attribute
+                    .meta
+                    .require_list()
+                    .is_ok_and(|list| list.tokens.to_string().contains("test")))
+    })
+}
+
+fn line_number_span(span: proc_macro2::Span) -> u32 {
+    u32::try_from(span.start().line).unwrap_or(1)
 }
 
 fn collect_python_imports(node: Node<'_>, source: &str, imports: &mut PythonImports) {

@@ -4,6 +4,7 @@ use predicates::prelude::*;
 use support::TempRepo;
 
 const OWNER_GUIDANCE: &str = "use larch.issue.issue_mutation";
+const RUST_OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
 
 #[test]
 fn rejects_raw_python_helpers_aliases_multiline_calls_and_wrappers() {
@@ -107,6 +108,34 @@ invoke(runner, ["issue", "edit", "7", "--title", "aliased"])
 }
 
 #[test]
+fn rejects_raw_rust_issue_field_mutations_outside_the_owner() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-cli/src/direct.rs",
+        br#"fn rewrite(service: &impl GitHubService) {
+    service.edit_issue(request, cancellation);
+    GitHubService::remove_label(service, repository, 7, "old", cancellation);
+}
+
+use larch_core::GitHubService;
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-mutation-owner"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(format!(
+            "crates/larch-cli/src/direct.rs:2: raw Rust issue field mutation edit_issue; {RUST_OWNER_GUIDANCE}"
+        )))
+        .stdout(predicate::str::contains(format!(
+            "crates/larch-cli/src/direct.rs:3: raw Rust issue field mutation remove_label; {RUST_OWNER_GUIDANCE}"
+        )))
+        .stderr("");
+}
+
+#[test]
 fn rejects_shell_markdown_and_hook_commands() {
     let repository = TempRepo::new();
     repository.write(
@@ -151,6 +180,10 @@ gh.issue_edit(runner, "7", repo="owner/repo", title="new")
 runner.run(["gh", "issue", "edit", "7"])
 "#;
     repository.write("python/larch/issue/issue_mutation.py", fixture);
+    repository.write(
+        "crates/larch-adapters/src/github/issue_mutation.rs",
+        b"use larch_core::GitHubService;\n\nfn owner(service: &impl GitHubService) {\n    service.edit_issue(request, cancellation);\n}\n",
+    );
     repository.write("python/tests/issue/test_direct.py", fixture);
     repository.write("python/larch/fixtures/direct.py", fixture);
     repository.write(

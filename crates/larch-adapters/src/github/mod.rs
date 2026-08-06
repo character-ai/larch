@@ -2,6 +2,7 @@
 //! pull-request, review, issue-graph, and release operations built on it.
 
 mod attestation;
+mod issue_mutation;
 mod mutation_auth;
 mod operations;
 mod release;
@@ -11,6 +12,7 @@ pub use attestation::{
     AttestationServiceErrorKind, AttestationTransport, OctocrabAttestationTransport,
 };
 
+pub use issue_mutation::IssueMutationOwner;
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
     CreatedPullRequest, DependencyMutation, DependencyMutationReceipt, DependencyRef,
