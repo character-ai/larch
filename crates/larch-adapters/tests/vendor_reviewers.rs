@@ -10,11 +10,10 @@ use larch_adapters::{
 };
 use larch_core::{
     CODEX_REVIEW_MODEL_DEFAULT, CURSOR_MODEL_LIST_HEADER, CheckReviewersConfig, ChildEnvironment,
-    CodexGateDetail, ExternalProgram, HostUtilityProgram,
-    MODEL_PINS_STATUS_LIST_FAILED, PROBE_TIMEOUT_EXIT_CODE, ProbeTtl, ProcessError,
-    ProcessErrorKind, VendorProgram, codex_env_auth_from_key, codex_gate_detail_file_name,
-    codex_probe_identity, detect_codex_cli_gate, list_failed_detail, probe_stamp_file_name,
-    resolve_model_pins,
+    CodexGateDetail, ExternalProgram, HostUtilityProgram, MODEL_PINS_STATUS_LIST_FAILED,
+    PROBE_TIMEOUT_EXIT_CODE, ProbeTtl, ProcessError, ProcessErrorKind, VendorProgram,
+    codex_env_auth_from_key, codex_gate_detail_file_name, codex_probe_identity,
+    detect_codex_cli_gate, list_failed_detail, probe_stamp_file_name, resolve_model_pins,
 };
 use larch_test_support::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder};
 use std::{
@@ -85,8 +84,11 @@ fn codex_cache(temp: &Path) -> ProbeCache {
 }
 
 fn gate_detail() -> CodexGateDetail {
-    detect_codex_cli_gate("requires a newer version of Codex", CODEX_REVIEW_MODEL_DEFAULT)
-        .expect("gate detail")
+    detect_codex_cli_gate(
+        "requires a newer version of Codex",
+        CODEX_REVIEW_MODEL_DEFAULT,
+    )
+    .expect("gate detail")
 }
 
 fn keychain_miss() -> Result<larch_core::ProcessOutput, ProcessError> {
@@ -524,8 +526,7 @@ enabled = true
     let probe_home = SecureTempDir::create(&root, "larch-codex-probe-home-").expect("probe home");
     prepare_codex_home(probe_home.path(), &home, None).expect("prepare");
 
-    let stripped =
-        fs::read_to_string(probe_home.path().join("config.toml")).expect("probe config");
+    let stripped = fs::read_to_string(probe_home.path().join("config.toml")).expect("probe config");
     assert!(stripped.contains("model = \"gpt-test\""));
     assert!(stripped.contains("[features]"));
     assert!(!stripped.contains("openai-larch-env"));
@@ -589,14 +590,12 @@ fn cursor_preread_failure_on_darwin_skips_agent_probe() {
     assert!(!result.cursor_present());
     assert!(!result.cursor_probe_timed_out());
     assert_eq!(runner.requests().len(), 4);
-    assert!(
-        runner.requests().iter().all(|request| {
-            matches!(
-                request.program(),
-                &ExternalProgram::HostUtility(HostUtilityProgram::Security)
-            )
-        })
-    );
+    assert!(runner.requests().iter().all(|request| {
+        matches!(
+            request.program(),
+            &ExternalProgram::HostUtility(HostUtilityProgram::Security)
+        )
+    }));
 
     let stamp = temporary_root(temp.path())
         .path()

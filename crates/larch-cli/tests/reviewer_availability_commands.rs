@@ -3,8 +3,7 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::{TemporaryRoot, vendor_auth::ProbeCache};
 use larch_core::{
-    CODEX_REVIEW_MODEL_DEFAULT, CodexEnvAuth, ProbeTtl, detect_codex_cli_gate,
-    codex_probe_identity,
+    CODEX_REVIEW_MODEL_DEFAULT, CodexEnvAuth, ProbeTtl, codex_probe_identity, detect_codex_cli_gate,
 };
 use predicates::prelude::*;
 use std::{fs, os::unix::fs::PermissionsExt, path::Path};
@@ -258,8 +257,11 @@ fn degraded_tools_gate_surfaces_cached_codex_gate_detail_for_probe_failed() {
     let canonical = fs::canonicalize(tmp.path()).expect("canonical tmp");
     let user = "larch-test";
     let identity = codex_probe_identity(CodexEnvAuth::Omit, CODEX_REVIEW_MODEL_DEFAULT);
-    let detail = detect_codex_cli_gate("requires a newer version of Codex", CODEX_REVIEW_MODEL_DEFAULT)
-        .expect("gate detail");
+    let detail = detect_codex_cli_gate(
+        "requires a newer version of Codex",
+        CODEX_REVIEW_MODEL_DEFAULT,
+    )
+    .expect("gate detail");
     let root = TemporaryRoot::resolve(Some(&canonical)).expect("temporary root");
     let cache = ProbeCache::new(root, Some(user), ProbeTtl::from_seconds(60, 30));
     cache.write_verdict(&identity, false).expect("stamp");
