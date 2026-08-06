@@ -21,6 +21,7 @@ mod argparse_compat;
 mod bgjob_adapt;
 mod ci_timing;
 mod dirty_tree_commands;
+mod external_defaults_commands;
 mod git_commands;
 mod github_repository_resolution;
 mod gitleaks;
@@ -38,12 +39,15 @@ mod release_version;
 mod run_log_commands;
 mod session_env_commands;
 mod session_lifecycle_commands;
+mod slack_commands;
 mod state_commands;
 mod test_shards;
 
 use agent_commands::AgentCommand;
 use ci_timing::CiTimingCommand;
+use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
+use slack_commands::SlackCommand;
 use test_shards::TestShardCommand;
 
 #[derive(Parser)]
@@ -75,6 +79,9 @@ enum Domain {
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
+    /// External tool default readers.
+    #[command(subcommand, name = "external-defaults")]
+    ExternalDefaults(ExternalDefaultsCommand),
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
@@ -101,6 +108,9 @@ enum Domain {
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
+    /// Slack announcement helpers.
+    #[command(subcommand)]
+    Slack(SlackCommand),
     /// Pack and rewrite deterministic test-shard assignments.
     #[command(subcommand)]
     TestShard(TestShardCommand),
@@ -733,6 +743,7 @@ fn run(
                 dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
             }
         }),
+        Domain::ExternalDefaults(command) => Ok(external_defaults_commands::run(command)),
         Domain::Example(ExampleCommand::Echo(arguments)) => {
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
@@ -772,6 +783,7 @@ fn run(
         }),
         Domain::Release(command) => run_release(command),
         Domain::Session(command) => Ok(run_session(command)),
+        Domain::Slack(command) => Ok(slack_commands::run(command)),
         Domain::TestShard(command) => Ok(test_shards::run(command)),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());

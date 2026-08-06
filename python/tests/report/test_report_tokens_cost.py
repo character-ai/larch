@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -609,22 +608,15 @@ def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> No
 
 
 def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Library `resolve_model_args` stays in-process for still-Python launchers
+    # (#8107); CLI `agent model-args` is Rust-owned with separate parity coverage.
+    from larch.agents.agents import resolve_model_args  # noqa: PLC0415
+
     for key in ("LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "LARCH_CURSOR_MODEL", "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
         monkeypatch.delenv(key, raising=False)
 
-    def resolved(tool: str, flag: str) -> str:
-        cli = Path(__file__).resolve().parents[2] / "cli.py"
-        result = subprocess.run(
-            [sys.executable, str(cli), "agent", "model-args", "--tool", tool],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        args = result.stdout.splitlines()
-        return args[args.index(flag) + 1]
-
-    assert resolved("codex", "-m") == DEFAULT_VENDOR_MODEL["codex"]
-    assert resolved("cursor", "--model") == DEFAULT_VENDOR_MODEL["cursor"]
+    assert resolve_model_args("codex").argv[1] == DEFAULT_VENDOR_MODEL["codex"]
+    assert resolve_model_args("cursor").argv[1] == DEFAULT_VENDOR_MODEL["cursor"]
 
 
 def test_codex_mini_rate_row_is_available() -> None:

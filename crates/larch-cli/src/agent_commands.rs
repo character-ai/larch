@@ -22,9 +22,11 @@ use larch_adapters::{
     vendor_lifecycle::StartupLockConfig,
 };
 use larch_core::{
-    Commit, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, Revision,
-    VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS, WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff,
-    emit_kv, env as env_names, parse_generated_paths, wait_for_reviewers,
+    CodexModelRole, Commit, ModelTool, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost,
+    ReviewerWaitRow, Revision, VendorProgram, WAIT_DEFAULT_POLL_INTERVAL_SECONDS,
+    WAIT_DEFAULT_TIMEOUT_SECONDS, classify_diff, claude_model_from_transcript, emit_kv,
+    env as env_names, parse_generated_paths, resolve_model_args,
+    transcript_path_from_claude_source, validate_emitted_token, wait_for_reviewers,
 };
 
 const WAIT_USAGE: &str =
@@ -40,8 +42,20 @@ const SHARED_STARTUP_LOCK_ROOT: &str = "/tmp";
 pub enum AgentCommand {
     /// Prove Cursor can authenticate before a Cursor lane launches.
     CursorAuthPreflight,
+    /// Wrap a Cursor prompt with the pinned max-mode preamble.
+    #[command(name = "cursor-wrap-prompt", disable_help_flag = true)]
+    CursorWrapPrompt(AgentRawArguments),
+    /// Emit the external-tool and implementer-coder taxonomy.
+    #[command(name = "external-tool-registry")]
+    ExternalToolRegistry(ExternalToolRegistryArguments),
+    /// Resolve Cursor or Codex model argv tokens.
+    #[command(name = "model-args")]
+    ModelArgs(ModelArgsArguments),
     /// Sum Codex token usage from a `--json` events stream.
     ParseCodexUsage(ParseCodexUsageArguments),
+    /// Read the active Claude session model id.
+    #[command(name = "read-claude-model")]
+    ReadClaudeModel,
     /// Wait for reviewer completion sentinels with legacy-compatible diagnostics.
     #[command(disable_help_flag = true)]
     WaitReviewers(AgentRawArguments),
@@ -62,6 +76,24 @@ pub struct ParseCodexUsageArguments {
     events_jsonl: PathBuf,
 }
 
+#[derive(Args)]
+pub struct ModelArgsArguments {
+    #[arg(long)]
+    tool: String,
+    #[arg(long = "with-effort")]
+    with_effort: bool,
+    #[arg(long = "default-model", default_value = "")]
+    default_model: String,
+    #[arg(long = "codex-role", default_value = "default")]
+    codex_role: String,
+}
+
+#[derive(Args)]
+pub struct ExternalToolRegistryArguments {
+    #[arg(long, default_value = "kv")]
+    kind: String,
+}
+
 /// Raw legacy-compatible arguments handled by the command implementation.
 #[derive(Args)]
 #[command(trailing_var_arg = true)]
@@ -74,7 +106,11 @@ pub struct AgentRawArguments {
 pub fn run(command: AgentCommand) -> ExitCode {
     match command {
         AgentCommand::CursorAuthPreflight => cursor_auth_preflight_command(),
+        AgentCommand::CursorWrapPrompt(arguments) => cursor_wrap_prompt(&arguments),
+        AgentCommand::ExternalToolRegistry(arguments) => external_tool_registry(&arguments),
+        AgentCommand::ModelArgs(arguments) => model_args(&arguments),
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
+        AgentCommand::ReadClaudeModel => read_claude_model(),
         AgentCommand::WaitReviewers(arguments) => wait_reviewers(&arguments),
         AgentCommand::ClassifyDiff(arguments) => classify_diff_command(&arguments),
         AgentCommand::GatherBranchContext(arguments) => gather_branch_context(&arguments),
@@ -82,6 +118,168 @@ pub fn run(command: AgentCommand) -> ExitCode {
             compose_collector_failure_log(&arguments)
         }
     }
+}
+
+fn model_args(arguments: &ModelArgsArguments) -> ExitCode {
+    let tool = match ModelTool::parse(&arguments.tool) {
+        Ok(tool) => tool,
+        Err(error) => {
+            eprintln!("agent model-args: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let codex_role = match CodexModelRole::parse(&arguments.codex_role) {
+        Ok(role) => role,
+        Err(error) => {
+            eprintln!("agent model-args: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let env_map = env::vars().collect();
+    let result = match resolve_model_args(
+        tool,
+        arguments.with_effort,
+        &arguments.default_model,
+        codex_role,
+        &env_map,
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("agent model-args: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    if !result.warning().is_empty() {
+        eprintln!("agent model-args: {}", result.warning());
+    }
+    for token in result.argv() {
+        if token.is_empty() {
+            continue;
+        }
+        if let Err(error) = validate_emitted_token(token) {
+            eprintln!("agent model-args: {error}");
+            return ExitCode::from(1);
+        }
+        println!("{token}");
+    }
+    ExitCode::SUCCESS
+}
+
+fn read_claude_model() -> ExitCode {
+    let model = resolve_claude_model_from_environment();
+    emit_kv("CLAUDE_MODEL", &model);
+    ExitCode::SUCCESS
+}
+
+fn resolve_claude_model_from_environment() -> String {
+    if let Some(model) = model_from_claude_source_file() {
+        return model;
+    }
+    let Ok(home) = env::var("HOME") else {
+        return "unknown".to_owned();
+    };
+    let Ok(repo_root) = discover_repo_root() else {
+        return "unknown".to_owned();
+    };
+    let encoded = repo_root.replace('/', "-");
+    let project_dir = PathBuf::from(home)
+        .join(".claude")
+        .join("projects")
+        .join(encoded);
+    let Ok(entries) = fs::read_dir(&project_dir) else {
+        return "unknown".to_owned();
+    };
+    if let Some(model) = model_from_requested_session(&project_dir) {
+        return model;
+    }
+    let mut latest: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        match &latest {
+            Some((stamp, _)) if modified <= *stamp => {}
+            _ => latest = Some((modified, path)),
+        }
+    }
+    let Some((_, path)) = latest else {
+        return "unknown".to_owned();
+    };
+    fs::read_to_string(path).map_or_else(
+        |_| "unknown".to_owned(),
+        |body| claude_model_from_transcript(&body),
+    )
+}
+
+fn model_from_claude_source_file() -> Option<String> {
+    let source_file = env::var("LARCH_CLAUDE_SOURCE_FILE").ok()?;
+    let text = fs::read_to_string(source_file).ok()?;
+    let path = transcript_path_from_claude_source(&text)?;
+    let body = fs::read_to_string(path).ok()?;
+    Some(claude_model_from_transcript(&body))
+}
+
+fn model_from_requested_session(project_dir: &Path) -> Option<String> {
+    let session_id = env::var("LARCH_CLAUDE_SESSION_ID")
+        .or_else(|_| env::var("CLAUDE_CODE_SESSION_ID"))
+        .ok()?;
+    if session_id.is_empty() {
+        return None;
+    }
+    let candidate = project_dir.join(format!("{session_id}.jsonl"));
+    if !candidate.is_file() {
+        return Some("unknown".to_owned());
+    }
+    let body = fs::read_to_string(candidate).ok()?;
+    Some(claude_model_from_transcript(&body))
+}
+
+fn discover_repo_root() -> Result<String, ()> {
+    let cwd = env::current_dir().map_err(|_| ())?;
+    let repository = GixRepository::discover(&cwd).map_err(|_| ())?;
+    let work_dir = repository.location().work_dir.ok_or(())?;
+    let path = PathBuf::from(String::from_utf8_lossy(work_dir.as_bytes()).into_owned());
+    let canonical = fs::canonicalize(path).map_err(|_| ())?;
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
+fn cursor_wrap_prompt(arguments: &AgentRawArguments) -> ExitCode {
+    let Some(prompt) = arguments.arguments.first() else {
+        eprintln!("agent cursor-wrap-prompt: a single prompt argument is required");
+        return ExitCode::from(1);
+    };
+    let prompt = prompt.to_string_lossy();
+    print!(" /max-mode on. Prompt: {prompt}");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    ExitCode::SUCCESS
+}
+
+fn external_tool_registry(arguments: &ExternalToolRegistryArguments) -> ExitCode {
+    match arguments.kind.as_str() {
+        "external-tools" => {
+            println!("codex");
+            println!("cursor");
+        }
+        "implementer-coders" => {
+            println!("claude");
+            println!("codex");
+            println!("cursor");
+        }
+        "kv" => {
+            emit_kv("EXTERNAL_TOOLS", "codex,cursor");
+            emit_kv("IMPLEMENTER_CODERS", "claude,codex,cursor");
+        }
+        other => {
+            eprintln!("agent external-tool-registry: unsupported --kind {other}");
+            return ExitCode::from(1);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Report the operating system under the name the vendor gates already use.

@@ -14,7 +14,6 @@ import re
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Sequence
@@ -184,20 +183,6 @@ def cursor_auth_export_env() -> None:
         os.environ["CURSOR_API_KEY"] = key
     else:
         os.environ.pop("CURSOR_API_KEY", None)
-
-
-def cursor_wrap_prompt_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    args = argv if argv is not None else sys.argv[1:]
-    if not args:
-        _err("agent cursor-wrap-prompt: a single prompt argument is required")
-        return 1
-    stream = logging_util.contract_stream()
-    _ = stream.write(f" /max-mode on. Prompt: {args[0]}")
-    stream.flush()
-    return 0
-
-
 
 
 def _max_transient_probe_retries(max_auth_retries: int) -> int:
@@ -773,24 +758,6 @@ EXTERNAL_TOOL_NAMES: tuple[str, ...] = ("codex", "cursor")
 
 def external_tool_names() -> tuple[str, ...]:
     return EXTERNAL_TOOL_NAMES
-
-
-def external_tool_registry_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent external-tool-registry")
-    parser.add_argument("--kind", choices=("external-tools", "implementer-coders", "kv"), default="kv")
-    args = parser.parse_args(argv)
-    if args.kind == "external-tools":
-        for tool in EXTERNAL_TOOL_NAMES:
-            _emit(tool)
-    elif args.kind == "implementer-coders":
-        _emit("claude")
-        for tool in EXTERNAL_TOOL_NAMES:
-            _emit(tool)
-    else:
-        logging_util.emit_kv(key="EXTERNAL_TOOLS", value=",".join(EXTERNAL_TOOL_NAMES))
-        logging_util.emit_kv(key="IMPLEMENTER_CODERS", value="claude,codex,cursor")
-    return 0
 
 
 def _norm_bool(value: str) -> str:

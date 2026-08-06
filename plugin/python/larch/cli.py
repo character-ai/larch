@@ -14,10 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("agent", "model-args"): ("larch.agents.agents", "model_args_main", False),
-    ("agent", "read-claude-model"): ("larch.agents.agents", "read_claude_model_main", False),
-    ("agent", "cursor-wrap-prompt"): ("larch.agents.agents", "cursor_wrap_prompt_main", False),
-    ("agent", "external-tool-registry"): ("larch.agents.agents", "external_tool_registry_main", False),
     ("agent", "check-reviewers"): ("larch.agents.agents", "check_reviewers_main", False),
     ("agent", "collect-results"): ("larch.agents.collect_results", "collect_results_main", False),
     ("agent", "dispatch-waterfall"): ("larch.agents.agent_waterfall", "dispatch_waterfall_main", False),
@@ -433,9 +429,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("scout", "dynamic-archetypes"): ("larch.design.plan_scout", "dynamic_archetypes_main", False),
     ("scout", "plan-archetypes"): ("larch.design.plan_scout", "plan_archetypes_main", False),
     ("scout", "filter-manifest"): ("larch.design.plan_scout", "filter_manifest_main", False),
-    ("external-defaults", "role"): ("larch.core.external_defaults", "role_main", True),
-    ("external-defaults", "resolve-vendor"): ("larch.core.external_defaults", "resolve_vendor_main", True),
-    ("external-defaults", "docs"): ("larch.core.external_defaults", "docs_main", True),
     ("research", "validate-citations"): ("larch.research.research", "validate_citations_main", False),
     ("research", "render-findings-batch"): ("larch.research.research", "render_findings_batch_main", False),
     ("research", "run-planner"): ("larch.research.research", "run_research_planner_main", False),
@@ -693,7 +686,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("final-report", "write"): ("larch.report.final_report", "write_final_report_main", True),
     ("final-report", "step18b"): ("larch.report.final_report", "step18b_final_report_main", True),
     ("tracking", "post-issue"): ("larch.git.pr_body", "post_tracking_issue_main", True),
-    ("slack", "issue-announce"): ("larch.git.pr_body", "slack_issue_announce_main", True),
     ("diagram", "code-flow"): ("larch.git.pr_body", "generate_code_flow_diagram_main", True),
     ("render", "run-summary"): ("larch.git.pr_body", "render_run_summary_main", True),
     ("pr", "compose-summary"): ("larch.git.pr_body", "compose_pr_summary_main", True),

@@ -5,10 +5,23 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# scripts/larch.sh is the only approved Rust entrypoint and reads this root.
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 BOOTSTRAP_SH="$REPO_ROOT/python/larch/state/bootstrap.py"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 DISPATCH_PY="$REPO_ROOT/python/larch/implement/dispatch_step2.py"
+
+# `external-defaults role` is Rust-owned (#8107). Skip the live registry probe
+# when no built binary is available (Python-only harness shards).
+RUST_AVAILABLE=0
+for candidate in "${LARCH_BINARY:-}" "$REPO_ROOT/target/release/larch" "$REPO_ROOT/target/debug/larch"; do
+    if [[ -n "$candidate" && -x "$candidate" ]] && "$candidate" external-defaults role --help >/dev/null 2>&1; then
+        export LARCH_BINARY="$candidate"
+        RUST_AVAILABLE=1
+        break
+    fi
+done
 
 fail() {
     echo "FAIL: $1" >&2
@@ -32,9 +45,13 @@ assert_not_contains() {
 }
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
-role_out="$(python3 "$REPO_ROOT/python/cli.py" external-defaults role --role implement.step2_coder)"
-printf '%s\n' "$role_out" | grep -Fq 'KIND=waterfall' || fail "step2 coder role kind missing"
-printf '%s\n' "$role_out" | grep -Fq 'ORDER=codex,cursor,claude' || fail "step2 coder registry order changed"
+if [[ "$RUST_AVAILABLE" == 1 ]]; then
+    role_out="$("$REPO_ROOT/scripts/larch.sh" external-defaults role --role implement.step2_coder)"
+    printf '%s\n' "$role_out" | grep -Fq 'KIND=waterfall' || fail "step2 coder role kind missing"
+    printf '%s\n' "$role_out" | grep -Fq 'ORDER=codex,cursor,claude' || fail "step2 coder registry order changed"
+else
+    echo "SKIP: external-defaults role implement.step2_coder (no built larch binary; set LARCH_BINARY)" >&2
+fi
 assert_contains "$BOOTSTRAP_SH" 'from larch.calibration.difficulty import resolve_step2_effective_difficulty' "shared difficulty resolver import"
 assert_contains "$BOOTSTRAP_SH" 'config.CODER_TOOL_ORDER_BY_DIFFICULTY.get(' "difficulty-keyed coder preference"
 assert_contains "$BOOTSTRAP_SH" 'external_defaults.tool_order("implement.step2_coder")' "invalid-difficulty registry fallback"

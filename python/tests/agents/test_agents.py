@@ -578,33 +578,6 @@ def test_run_external_agent_inner_sentinel_suffix_ctx_override(tmp_path: Path) -
     assert not output.with_suffix(output.suffix + ".done").exists()
 
 
-def test_cursor_wrap_prompt_exact_stdout(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = agents.cursor_wrap_prompt_main(["hello"])
-    assert rc == 0
-    assert capsys.readouterr().out == " /max-mode on. Prompt: hello"
-
-
-def test_read_claude_model_main_unknown_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> agents.CommandResult:
-        return ok(())
-
-    monkeypatch.setattr(agents.proc, "run", fake_run)
-    rc = agents.read_claude_model_main([])
-    assert rc == 0
-    assert capsys.readouterr().out == "CLAUDE_MODEL=unknown\n"
-
-
-def test_record_cursor_usage_ignores_malformed_fields(tmp_path: Path) -> None:
-    output = tmp_path / "cursor.out"
-    _ = output.write_text('{"usage":{"inputTokens":"not-a-number","outputTokens":1}}\n', encoding="utf-8")
-    agents._record_cursor_usage_from_output(output=output, label="cursor_ci_fix")  # pylint: disable=protected-access
-    assert not output.with_suffix(output.suffix + ".token-record").exists()
-    assert "usage token value is not numeric" in output.with_suffix(output.suffix + ".sidecar").read_text(encoding="utf-8")
-
-
 def test_cursor_auth_trims_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CURSOR_API_KEY", "  crsr_key  ")
     verdict = agents.cursor_auth_preflight()
@@ -6146,55 +6119,14 @@ def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, m
     assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
 
 
-def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
-    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
-    monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
-    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
-
-    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "custom")
-    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "custom")
-    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "custom")
-
-
-def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LARCH_CODEX_MODEL", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", raising=False)
-
-    assert agents.resolve_model_args("codex", codex_role="default", default_model="custom-default").argv[:2] == ("-m", "custom-default")
-
-
-def test_codex_role_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
-
-    with pytest.raises(ValueError, match="LARCH_CODEX_REVIEW_MODEL"):
-        agents.resolve_model_args("codex", codex_role="review")
-
-
-def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_CODEX_VOTE_MODEL", "mini\nbad")
-
-    with pytest.raises(ValueError, match="LARCH_CODEX_VOTE_MODEL"):
-        agents.resolve_model_args("codex", codex_role="vote")
-
-
-def test_model_args_main_codex_role_uses_default_model_after_role_env(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
-    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
-
-    rc = agents.model_args_main(["--tool", "codex", "--codex-role", "review", "--default-model", "custom"])
-
-    assert rc == 0
-    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "custom"]
-
-
 def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
+    monkeypatch.setattr(
+        _auth,
+        "resolve_model_args",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("LARCH_CODEX_REVIEW_MODEL must not be blank or whitespace-only")),
+    )
 
     assert agents._run_one_codex_probe(1).rc == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
 
@@ -6260,6 +6192,38 @@ def test_codex_probe_uses_review_role_and_stops_on_gate(
     assert result.rc == agents._PROBE_NO_RETRY_RC
     assert result.gate_detail is not None
     assert result.gate_detail.model == "gpt-5.6-review-test"
+
+
+def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
+    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "custom")
+
+
+def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_CODEX_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="default", default_model="custom-default").argv[:2] == ("-m", "custom-default")
+
+
+def test_codex_role_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_REVIEW_MODEL"):
+        agents.resolve_model_args("codex", codex_role="review")
+
+
+def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_VOTE_MODEL", "mini\nbad")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_VOTE_MODEL"):
+        agents.resolve_model_args("codex", codex_role="vote")
 
 
 def test_check_reviewers_gate_detail_cache_identity_and_ttl_zero_handoff(

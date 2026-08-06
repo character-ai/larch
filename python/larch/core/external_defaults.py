@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import shutil
-import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -211,64 +209,3 @@ def voter_dispatch_policy(role_id: str) -> config.VoterDispatchPolicy | None:
 
 def doc_rows() -> tuple[config.RoleDefault, ...]:
     return tuple(role for role in config.ROLE_DEFAULTS.values() if role.doc_phase)
-
-
-def _bool_arg(value: str, *, flag: str) -> bool:
-    if value not in {"true", "false"}:
-        raise ExternalDefaultError(f"{flag} must be true or false")
-    return value == "true"
-
-
-def role_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py external-defaults role")
-    _ = parser.add_argument("--role", required=True)
-    args = parser.parse_args(argv)
-    try:
-        role = role_default(args.role)
-    except ExternalDefaultError as exc:
-        print(f"ERROR={exc}", file=sys.stderr)
-        return 2
-    print(f"ROLE={role.role_id}")
-    print(f"KIND={role.kind}")
-    if role.order:
-        print(f"ORDER={','.join(role.order)}")
-    if role.env_override:
-        print(f"ENV_OVERRIDE={role.env_override}")
-    if role.slots:
-        print(f"SLOT_COUNT={len(role.slots)}")
-    if role.voter_policies:
-        print(f"VOTER_COUNT={len(role.voter_policies)}")
-    return 0
-
-
-def resolve_vendor_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py external-defaults resolve-vendor")
-    _ = parser.add_argument("--role", required=True)
-    _ = parser.add_argument("--codex-present", default="false")
-    _ = parser.add_argument("--cursor-present", default="false")
-    args = parser.parse_args(argv)
-    try:
-        result = resolve_vendor(
-            args.role,
-            codex_present=_bool_arg(args.codex_present, flag="--codex-present"),
-            cursor_present=_bool_arg(args.cursor_present, flag="--cursor-present"),
-        )
-    except ExternalDefaultError as exc:
-        print(f"ERROR={exc}", file=sys.stderr)
-        return 2
-    print(f"ROLE={args.role}")
-    print(f"VENDOR={result.vendor}")
-    if result.skip_reason:
-        print(f"SKIP_REASON={result.skip_reason}")
-    return 0
-
-
-def docs_main(argv: list[str]) -> int:
-    if argv:
-        print("external-defaults docs: no arguments expected", file=sys.stderr)
-        return 2
-    rows = doc_rows()
-    print(f"DOC_ROW_COUNT={len(rows)}")
-    for role in rows:
-        print(f"DOC_ROW={role.role_id}\t{role.doc_phase}\t{role.doc_role}\t{role.doc_skills}\t{role.doc_fallback}")
-    return 0

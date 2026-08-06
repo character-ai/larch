@@ -3,19 +3,14 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Literal
 
 from larch.core import config
 from larch.core.ctx import Ctx
 from larch import io as larch_io
-from larch.core import logging_util
-from larch.core import proc
 
 from larch.agents import _types
 from larch.agents._types import (
@@ -23,13 +18,10 @@ from larch.agents._types import (
     _REFUSAL_RE,
     _QUOTA_RE,
     _CTRL_RE,
-    _PY_CLI,
     LaunchFailure,
     CodexGateDetail,
     TierAttempt,
     ModelArgResult,
-    _err,
-    _emit,
     _read_text,
 )
 
@@ -361,55 +353,3 @@ def resolve_model_args(
             effort = "high"
         argv.extend(["-c", f'model_reasoning_effort="{effort}"'])
     return ModelArgResult(tuple(argv), warning)
-
-
-def model_args_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent model-args")
-    parser.add_argument("--tool", required=True)
-    parser.add_argument("--with-effort", action="store_true")
-    parser.add_argument("--default-model", default="", help="Default model for the default Codex role, or for role paths after their env override and before the role default.")
-    parser.add_argument("--codex-role", choices=("default", "review", "vote", "fix"), default="default")
-    args = parser.parse_args(argv)
-    ctx = Ctx.from_mapping(os.environ)
-    try:
-        result = resolve_model_args(args.tool, with_effort=args.with_effort, default_model=args.default_model, codex_role=args.codex_role, ctx=ctx)
-    except ValueError as exc:
-        _err(f"agent model-args: {exc}")
-        return 1
-    if result.warning:
-        _err(f"agent model-args: {result.warning}")
-    for token in result.argv:
-        if not token:
-            continue
-        if _CTRL_RE.search(token):
-            _err("agent model-args: emitted argv token must not contain POSIX [[:cntrl:]] characters")
-            return 1
-        _emit(token)
-    return 0
-
-
-def read_claude_model() -> str:
-    source = proc.run([sys.executable, str(_PY_CLI), "token", "claude-source"])
-    transcript = larch_io.kv_value(text=source.stdout, key="TRANSCRIPT_PATH", duplicate_policy="first")
-    if not transcript:
-        return "unknown"
-    path = Path(transcript)
-    if not path.is_file():
-        return "unknown"
-    try:
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            obj = json.loads(raw)
-            model = obj.get("message", {}).get("model", "") if obj.get("type") == "assistant" else ""
-            if isinstance(model, str) and model:
-                return model
-    except (OSError, json.JSONDecodeError):
-        return "unknown"
-    return "unknown"
-
-
-def read_claude_model_main(argv: list[str] | None = None) -> int:
-    _ = argv
-    logging_util.quiet_init(argv0="cli.py")
-    logging_util.emit_kv(key="CLAUDE_MODEL", value=read_claude_model())
-    return 0

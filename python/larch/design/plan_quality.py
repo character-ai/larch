@@ -32,7 +32,7 @@ from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
-from larch.core.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
@@ -997,7 +997,12 @@ def _dispatch_vendor_fix(
         preflight = run_dir / "cursor.preflight.log"
         preflight.write_text("", encoding="utf-8")
         prompt_body = prompt.read_text(encoding="utf-8", errors="replace")
-        wrap = subprocess.run([sys.executable, str(cli), "agent", "cursor-wrap-prompt", prompt_body], text=True, capture_output=True, check=False)
+        wrap = subprocess.run(
+            [str(larch_entrypoint(plugin)), "agent", "cursor-wrap-prompt", prompt_body],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
         if wrap.returncode != 0:
             return 1
         wrapped = wrap.stdout

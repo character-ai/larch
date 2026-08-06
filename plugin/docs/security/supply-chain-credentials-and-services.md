@@ -252,6 +252,18 @@ private configuration directory and the resolved credential together. Both are
 released when the session value is dropped, so success, failure, timeout, and
 cancellation take one cleanup path.
 
+### Slack issue-announce webhook transport
+
+`slack issue-announce` runs in Rust through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. It posts a short implement-run
+announcement to the optional `LARCH_SLACK_WEBHOOK_URL` webhook. The URL is a
+credential: the command never prints it, never writes it into STATUS/REASON/ERROR
+rows, and redacts it from transport diagnostics before emission. Only `http` and
+`https` schemes are accepted; other schemes fail closed. `--best-effort` maps
+validation and transport failures to exit 0 while still emitting
+`STATUS=failed`. The concrete HTTP client lives in
+`crates/larch-adapters/src/http_client.rs`; core owns planning and redaction only.
+
 ### Object storage credentials and transport
 
 Cloud Storage uses the larch-owned `ObjectStore` port, the official Rust client,
