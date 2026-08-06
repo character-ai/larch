@@ -10,7 +10,6 @@ scripts/cleanup-sessionstart.sh
 scripts/deny-edit-write.sh
 scripts/external-tool-registry.sh
 scripts/file-failure-report-cross-repo.sh
-scripts/flush-vendor-failure-diagnostics.sh
 scripts/hook-anti-read-poll.sh
 scripts/larch.sh
 scripts/sessionstart-statusline.sh
@@ -33,7 +32,6 @@ scripts/test-design-multi-round-integration.sh
 scripts/test-effort-prose.sh
 scripts/test-external-tool-registry.sh
 scripts/test-file-failure-report-cross-repo.sh
-scripts/test-flush-vendor-failure-diagnostics.sh
 scripts/test-harness-shards-coverage.sh
 scripts/test-hook-anti-read-poll.sh
 scripts/test-sessionstart-statusline.sh

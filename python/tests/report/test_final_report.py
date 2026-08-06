@@ -28,6 +28,19 @@ def _stub_rust_outcome_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rust_runtime, "normalized_stall_outcome_values", frozen_normalized_outcome)
 
 
+def _fail_atomic_write_for(
+    monkeypatch: pytest.MonkeyPatch, *, filename: str, message: str
+) -> None:
+    original = final_report.larch_io.atomic_write
+
+    def patched(path: Path, text: str, **kwargs: Any) -> None:
+        if path.name == filename:
+            raise OSError(message)
+        original(path, text, **kwargs)
+
+    monkeypatch.setattr(final_report.larch_io, "atomic_write", patched)
+
+
 def test_derive_pr_line_counts_consumes_typed_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ship = tmp_path / "ship-pr-state.sh"
     _ = ship.write_text("PR_URL=https://example.test/pr/42\n", encoding="utf-8")
@@ -171,14 +184,7 @@ def test_write_final_report_summary_final_write_failure_returns_error(
     monkeypatch,  # type: ignore[no-untyped-def]
 ) -> None:
     _write_minimal_state(tmp_path)
-    original_write_text = Path.write_text
-
-    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.name == "summary-final.md":
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(Path, "write_text", patched_write_text)
+    _fail_atomic_write_for(monkeypatch, filename="summary-final.md", message="disk full")
 
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
@@ -581,14 +587,9 @@ def test_write_final_report_runlog_copy_failure_surfaces_reason(
     """
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)
-    original_write_text = Path.write_text
-
-    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.name == "final-summary.md":
-            raise OSError("run-log copy blocked")
-        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(Path, "write_text", patched_write_text)
+    _fail_atomic_write_for(
+        monkeypatch, filename="final-summary.md", message="run-log copy blocked"
+    )
 
     rc, _url, err = final_report.write_final_report(tmp_path)
 
@@ -650,14 +651,7 @@ def test_write_final_report_summary_write_failure_persists_reason(
 ) -> None:
     """#6979: the fatal summary-write failure still returns its reason (now durable)."""
     _write_minimal_state(tmp_path)
-    original_write_text = Path.write_text
-
-    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.name == "summary-final.md":
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(Path, "write_text", patched_write_text)
+    _fail_atomic_write_for(monkeypatch, filename="summary-final.md", message="disk full")
 
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
@@ -698,6 +692,24 @@ def test_final_report_token_fields_uses_manifest_main_model_and_claude_sub_by_mo
     assert fields["cost_unavailable"] is False
     assert fields["claude_cost"] == "3.00"
     assert fields["claude_sub_cost"] == "1.00"
+
+
+def test_final_report_token_fields_honors_explicit_rate_environment(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs/implement/run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000},
+        }),
+        encoding="utf-8",
+    )
+    fields = final_report._final_report_token_fields(
+        implement_tmpdir=tmp_path,
+        run_id="run1",
+        environ={"LARCH_CLAUDE_INPUT_RATE_PER_M": "7.25"},
+    )
+    assert fields["claude_cost"] == "7.25"
 
 
 def test_final_report_token_fields_glm_main_uses_glm_rates(tmp_path: Path) -> None:
@@ -1766,6 +1778,30 @@ def test_write_final_report_main_missing_tmpdir_emits_failed_envelope(
     assert "STATUS=failed" in out
     assert "COMMENT_URL=" in out
     assert "ERROR=usage" in out
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--cost-overrides-json", '{"PATH":"/attacker"}'],
+        ["--normalized-outcome", "merged\n## injected"],
+    ],
+)
+def test_write_final_report_main_rejects_untrusted_internal_overrides(
+    extra: list[str],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = final_report.write_final_report_main([
+        "--implement-tmpdir",
+        str(tmp_path),
+        *extra,
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "STATUS=failed" in out
+    assert "ERROR=final report render failed:" in out
 
 
 def test_write_final_report_main_upsert_failure_emits_status_failed(

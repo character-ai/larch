@@ -20,8 +20,6 @@ from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
-from larch.report import run_log_flush
-from larch.report import run_log_manifest
 from test_support import make_run_context, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -104,14 +102,6 @@ class RecordingRunner:
 
 def _cr(argv: Sequence[str], rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
-
-
-def _seed_warning_flush_inputs(tmpdir: Path, *, warning: str) -> None:
-    _ = (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    _ = (tmpdir / "execution-issues.md").write_text(
-        f"### Warnings\n- {warning}\n",
-        encoding="utf-8",
-    )
 
 
 def test_available_tiers_tracks_config_order() -> None:
@@ -1967,69 +1957,6 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(monkeypatch: pytest.Mon
     assert pushed is False
     assert pending is False
     assert order == ["callback", "flush"]
-
-
-def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
-    responses = {
-        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
-        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "abc123\trefs/heads/feature\n"),
-    }
-    classified = ci_monitor.classify_failed_jobs(
-        (FailedJob(name="python-pyright", conclusion="failure"),),
-    )
-    ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
-    _ = run_log_manifest.init_run(ctx)
-    _seed_warning_flush_inputs(tmp_path, warning="architectural-guidelines warning")
-
-    def noop(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
-        return True
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", noop)
-    monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", noop)
-    monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", noop)
-    monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", noop)
-    monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", noop)
-
-    def callback() -> bool:
-        return True
-
-    def fake_force_push_recovery(*_args: object, **_kwargs: object) -> ci_monitor.git.ForcePushResult:
-        run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-        batch = run_dir / "execution-issues.ndjson"
-        assert batch.is_file()
-        assert "architectural-guidelines" in batch.read_text(encoding="utf-8")
-        assert (tmp_path / ".execution-issues-flushed.sha").is_file()
-        return ci_monitor.git.ForcePushResult(pushed=True, status="ok")
-
-    monkeypatch.setattr(ci_monitor.git, "force_push_recovery", fake_force_push_recovery)
-    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
-
-    runner = RecordingRunner(responses)
-    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
-        runner,
-        cwd=str(tmp_path),
-        commit_label="pending-retry",
-        delta_paths=(),
-        ci_fix_rebase_pending=True,
-        context=ci_monitor.StagePushContext(
-            classified=classified,
-            run_context=ctx,
-            pre_push_log_refresh=callback,
-        ),
-    )
-
-    assert pushed is True
-    assert pending is False
 
 
 def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(

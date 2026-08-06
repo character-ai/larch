@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from larch.core import architectural_guidelines, config
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.rust_runtime import RunLogRefreshOutput as RefreshSkip
 from larch.core.run_context import RunContext
 from larch.report import exec_issue_detail
 from larch.report import tokens
@@ -171,13 +172,6 @@ class Manifest:
             "updated_at": self.updated_at,
         })
         return data
-
-
-@dataclass(frozen=True)
-class RefreshSkip:
-    skipped: bool
-    reason: str
-    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -1126,34 +1120,6 @@ def _write_manifest(*, ctx: RunContext, manifest: Manifest) -> None:
     )
 
 
-def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
-    tmpdir = Path(ctx.tmpdir)
-    finalize_state = tmpdir / "finalize-state.sh"
-    if ctx.state_file:
-        merge_result = _read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
-        run_id = _read_state_kv(state_file=ctx.state_file, key="RUN_ID")
-        no_logs_commit = _read_state_kv(state_file=ctx.state_file, key="NO_LOGS_COMMIT") == "true"
-    else:
-        merge_result = ctx.merge_result
-        run_id = ctx.run_id
-        no_logs_commit = ctx.no_logs_commit
-    if not merge_result:
-        merge_result = _read_kv_file(path=finalize_state, key="MERGE_RESULT")
-    if not run_id:
-        run_id = _read_kv_file(path=finalize_state, key="RUN_ID")
-    if (tmpdir / "post-merge-sentinel").is_file() and not merge_result:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
-    if merge_result in config.POST_MERGE_MERGE_RESULTS:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
-    if not run_id:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_RUN_ID)
-    if not validate_run_id_slug(run_id):
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_INVALID_RUN_ID)
-    if no_logs_commit:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
-    return RefreshSkip(skipped=False, reason="")
-
-
 def _manifest_step9a1_explicitly_skipped(manifest: Manifest) -> bool:
     return manifest.steps_ran.get("step9a1") is False
 
@@ -1185,7 +1151,6 @@ __all__ = [
     "_manifest_step9a1_explicitly_skipped",
     "_manifest_steps_ran_nonempty_without_step9a1",
     "_now_utc",
-    "_pre_push_probe",
     "_read_manifest_v2",
     "_read_session_env_key",
     "_read_state_kv",

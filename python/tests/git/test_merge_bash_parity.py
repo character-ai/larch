@@ -15,7 +15,8 @@ from larch.core.proc import CommandResult
 from larch.git import gh
 from larch.git import git
 from larch.git import merge as merge_module
-from larch.report import run_log_manifest, run_log_flush
+from larch.core import rust_runtime as run_log_flush
+from larch.report import run_log_manifest
 from test_support import (
     PR_VIEW_OPEN_JSON,
     RecordingRunner,
@@ -81,6 +82,7 @@ def test_python_merge_behind_emits_admin_merged(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=None)
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED

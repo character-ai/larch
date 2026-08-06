@@ -19,3 +19,8 @@ reason = "Issue 8089 landed a Rust library reader in larch-core::report while pr
 artifact = "difficulty-rating.json"
 side = "external-writer"
 reason = "Issue 8085 adds a Rust phase-detail reader while production difficulty-record writes remain in Python calibration owners until their cutover leaf."
+
+[[grandfathered]]
+artifact = ".ship-route-exit-handoff.env"
+side = "external-writer"
+reason = "Issue 8078 adds the Rust terminal-snapshot reader while the production writer remains in Python ship route-exit until its #7681 cutover."

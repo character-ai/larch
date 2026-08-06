@@ -4,24 +4,21 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from larch.core import architectural_guidelines
+from larch.core import rust_runtime
 from larch.core import config
 from larch import io as larch_io
 from larch.report import final_report
-from larch.report import run_log_batch, run_log_commit, run_log_flush, run_log_manifest, run_logs
+from larch.report import run_log_batch, run_log_commit, run_log_manifest, run_logs
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch, _append_batch  # pyright: ignore[reportPrivateUsage]
-from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
@@ -36,7 +33,7 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def _stub_rust_outcome_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep Python unit tests independent of an installed Rust binary."""
-    monkeypatch.setattr(run_log_flush.rust_runtime, "normalized_stall_outcome_values", frozen_normalized_outcome)
+    monkeypatch.setattr(rust_runtime, "normalized_stall_outcome_values", frozen_normalized_outcome)
 
 
 @dataclass
@@ -170,28 +167,6 @@ def test_write_batch_uses_cache_scratch_when_log_root_is_under_repo(
     assert cache.is_dir()
 
 
-def test_capture_transcript_scratch_dir_uses_cache_when_log_root_is_under_repo(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    cache = tmp_path / "cache"
-    repo.mkdir()
-
-    def fake_cache_scratch() -> Path:
-        cache.mkdir(parents=True, exist_ok=True)
-        return cache
-
-    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(run_log_flush, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
-
-    assert (
-        run_log_flush._capture_transcript_scratch_dir(  # pyright: ignore[reportPrivateUsage]
-            tmpdir="",
-            log_root=repo / "nested" / "larch-logs",
-        )
-        == cache
-    )
 
 
 def test_capture_transcript_scratch_dir_uses_active_checkout_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,18 +248,6 @@ def test_guideline_outcome_batch_rejects_schema_mismatches(
         )
 
 
-def test_guideline_outcome_sidecar_stages_pre_commit(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    sidecar = architectural_guidelines.guideline_ship_outcome_path(tmp_path)
-    _ = sidecar.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
-
-    run_log_flush._stage_guideline_ship_outcome(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        log_root=tmp_path / "larch-logs",
-    )
-
-    staged = tmp_path / "larch-logs" / "implement" / "run-abc" / "architectural-guideline-outcome.json"
-    assert json.loads(staged.read_text(encoding="utf-8"))["reason"] == "note-pinned"
 
 
 def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -299,101 +262,18 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert calls["nofollow"] is True
 
 
-def test_refresh_logs_checkpoint_state_file_less_does_not_require_repo_cwd(tmp_path: Path) -> None:
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path), cwd=None)
-    assert not skip.skipped
 
 
-def test_refresh_logs_checkpoint_state_file_less_stages_without_git_commit(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    runner = RecordingRunner()
-
-    def fake_commit(
-        *,
-        log_root: Path,
-        skill: str = "implement",
-        run_id: str = "",
-        cwd: str | None = None,
-        pre_scrub_violations: int = 0,
-    ) -> CommandResult:
-        _ = log_root, skill, run_id, pre_scrub_violations
-        assert cwd == str(tmp_path)
-        runner.git_commits += 1
-        return CommandResult(("git", "commit"), 0, "", "", 0.01)
-
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
-    assert not skip.skipped
-    assert runner.git_commits == 0
 
 
-def test_refresh_logs_checkpoint_skips_post_merge(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("MERGE_RESULT=merged\nRUN_ID=run-abc\n", encoding="utf-8")
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
-    assert skip.reason == config.REFRESH_SKIP_POST_MERGE
 
 
-def test_refresh_postmerge_snapshot_no_git_commit(tmp_path: Path) -> None:
-    runner = RecordingRunner()
-    ctx = _ctx(tmp_path).with_(pr_number=17)
-    _ = run_log_manifest.init_run(ctx)
-    _ = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_MERGED)
-    assert runner.git_commits == 0
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["status"] == config.MANIFEST_STATUS_DONE
-    assert manifest["pr_number"] == 17
-    assert "pr_number" not in manifest["steps_ran"]
 
 
-def test_refresh_postmerge_snapshot_does_not_write_done_manifest_before_reports(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    ctx = _ctx(tmp_path).with_(pr_number=17)
-    _ = run_log_manifest.init_run(ctx)
-
-    def fail_report(*_a: object, **_k: object) -> None:
-        raise ShipError("write-final-report failed")
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_postmerge_snapshot(
-        ctx, merge_result=config.MERGE_RESULT_MERGED, runner=RecordingRunner()
-    )
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert skip.skipped is True
-    assert manifest["status"] == config.MANIFEST_STATUS_PARTIAL
-    assert "pr_number" not in manifest
 
 
-def test_refresh_postmerge_snapshot_manifest_write_oserror_returns_recovery_skip(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx)
-
-    def boom(*_a: object, **_k: object) -> None:
-        raise OSError("disk full")
-
-    monkeypatch.setattr(run_log_manifest, "_write_manifest", boom)
-    monkeypatch.setattr(run_log_flush, "_write_manifest", boom)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_MERGED)
-    assert skip.skipped is True
-    assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_refresh_postmerge_snapshot_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx)
-    _ = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_ERROR)
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["status"] == config.MANIFEST_STATUS_PARTIAL
 
 
 def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
@@ -505,89 +385,10 @@ def test_manifest_status_read_only_uses_effective_run_id_path(tmp_path: Path) ->
     assert run_log_manifest.manifest_status(ctx) == ""
 
 
-def test_execution_issues_batch_from_markdown(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "execution-issues.md").write_text(
-        "### Tool Failures\nline one\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    batch_dir.mkdir(parents=True)
-    run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        batch_dir=batch_dir,
-        step_label="pre-push",
-        source_label="test",
-    )
-    batch = batch_dir / "execution-issues.ndjson"
-    assert batch.is_file()
-    text = batch.read_text(encoding="utf-8")
-    assert "Tool Failures" in text
-    assert "-----BEGIN" not in text
 
 
-def test_execution_issues_batch_redacts_pem(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
-    _ = (tmp_path / "execution-issues.md").write_text(
-        f"### Tool Failures\n{secret}\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    batch_dir.mkdir(parents=True)
-    run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        batch_dir=batch_dir,
-        step_label="pre-push",
-        source_label="test",
-    )
-    batch = batch_dir / "execution-issues.ndjson"
-    assert batch.is_file()
-    assert secret not in batch.read_text(encoding="utf-8")
 
 
-def test_execution_issues_batch_dedupes_repeated_warning_events(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    issue_log = tmp_path / "execution-issues.md"
-    _ = issue_log.write_text("### Warnings\n- **Step 7a**: transient warning\n", encoding="utf-8")
-    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    batch_dir.mkdir(parents=True)
-
-    for _index in range(2):
-        run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
-            ctx=ctx,
-            batch_dir=batch_dir,
-            step_label="pre-push",
-            source_label="test",
-        )
-    _ = issue_log.write_text(
-        "### Warnings\n- **Step 7a**: transient warning\n- **Step 8**: new warning\n",
-        encoding="utf-8",
-    )
-    run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        batch_dir=batch_dir,
-        step_label="pre-push",
-        source_label="test",
-    )
-
-    rows = [
-        json.loads(line)
-        for line in (batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()
-    ]
-    assert [row["body"].strip() for row in rows] == [
-        "- **Step 7a**: transient warning",
-        "- **Step 8**: new warning",
-    ]
 
 
 def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
@@ -603,22 +404,6 @@ def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
     assert manifest.steps_ran.get("recovered") is True
 
 
-def test_token_batch_refresh_json_not_written_to_batch_dir(tmp_path: Path) -> None:
-    # Refresh JSON files are volatile in-loop snapshots and must NOT be copied
-    # into the committed run tree (issue #3708 Phase 1).  This test verifies
-    # the PEM-containing edge case: even with bad content in the refresh file,
-    # nothing is written to batch_dir under the refresh basename.
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    pem = "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIB\n"
-    _ = (tmp_path / "token-report-refresh.json").write_text(pem, encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    run_log_flush._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        log_root=tmp_path / "larch-logs",
-    )
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    assert not (run_dir / "token-report-refresh.json").exists()
 
 
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
@@ -626,30 +411,8 @@ def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
     assert run_logs.path_under_repo(repo_root=tmp_path, rel_path="docs/plan.md")
 
 
-@pytest.mark.parametrize("merge_result", ["merged", "admin_merged", "already_merged"])
-def test_refresh_logs_checkpoint_skips_post_merge_matrix(tmp_path: Path, merge_result: str) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text(f"MERGE_RESULT={merge_result}\nRUN_ID=run-abc\n", encoding="utf-8")
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
-    assert skip.reason == config.REFRESH_SKIP_POST_MERGE
 
 
-@pytest.mark.parametrize(
-    ("line", "reason"),
-    [
-        ("RUN_ID=run-abc\nNO_LOGS_COMMIT=true\n", config.REFRESH_SKIP_NO_LOGS_COMMIT),
-        ("", config.REFRESH_SKIP_NO_RUN_ID),
-        ("RUN_ID=../bad\n", config.REFRESH_SKIP_INVALID_RUN_ID),
-    ],
-)
-def test_refresh_logs_checkpoint_skip_reason_tokens(tmp_path: Path, line: str, reason: str) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text(line, encoding="utf-8")
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
-    assert skip.skipped
-    assert skip.reason == reason
 
 
 def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
@@ -664,311 +427,22 @@ def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
     assert not run_log_batch.is_placeholder_run_id("")
 
 
-def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
-    # Refresh JSON files must NOT be written to batch_dir (issue #3708 Phase 1).
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    _ = (tmp_path / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
-    run_log_flush._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
-        ctx=_ctx(tmp_path, str(state)),
-        log_root=tmp_path / "larch-logs",
-    )
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    assert not (run_dir / "token-report-refresh.json").exists()
-    assert not (run_dir / "timing-report-refresh.json").exists()
 
 
-def test_refresh_logs_checkpoint_happy_path_stages_without_git_commit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
-    commits: list[bool] = []
-
-    def fake_commit(
-        *,
-        log_root: object,
-        skill: object = None,
-        run_id: object = None,
-        cwd: str | None = None,
-        pre_scrub_violations: int = 0,
-    ) -> CommandResult:
-        _ = log_root, skill, run_id, pre_scrub_violations, cwd
-        commits.append(True)
-        return CommandResult(
-            ("git", "commit"),
-            0,
-            "a" * 40 + "\n",
-            "",
-            0.0,
-        )
-
-    def noop_write_final_report(**_kw: object) -> None:
-        pass
-
-    def noop_capture(**_kw: object) -> None:
-        pass
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
-    assert not skip.skipped
-    assert not commits
-    manifest = json.loads(
-        (tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json").read_text(
-            encoding="utf-8",
-        ),
-    )
-    assert "step9a1" not in manifest["steps_ran"]
 
 
-def test_refresh_logs_checkpoint_update_manifest_failure_returns_recovery_skip(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-
-    def fail_update(*_a: object, **_k: object) -> run_log_manifest.Manifest:
-        raise ShipError("manifest recovery failed")
-
-    monkeypatch.setattr(run_log_manifest, "update_manifest", fail_update)
-    monkeypatch.setattr(run_log_flush, "update_manifest", fail_update)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-    assert skip.skipped is True
-    assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_refresh_logs_checkpoint_does_not_call_git_commit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-
-    def fail_commit(*_a: object, **_k: object) -> CommandResult:
-        raise ShipError("commit failed")
-
-    def noop(*_a: object, **_k: object) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-    assert skip.skipped is False
 
 
-@pytest.mark.parametrize(
-    ("forked", "state_text", "finalize_text", "flags_text", "files", "expected"),
-    [
-        (True, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
-        (False, "RUN_ID=run-abc\nFORKED_TARGET=true\n", "", "", ("run-statistics.md",), True),
-        (
-            False,
-            "RUN_ID=run-abc\n",
-            "DESIGN_ONLY_DONE=true\n",
-            "NO_ISSUES=true\n",
-            (),
-            False,
-        ),
-        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), False),
-        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
-        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson", "run-statistics.md"), True),
-        (False, "RUN_ID=run-abc\n", "", "", (), None),
-    ],
-)
-def test_step9a1_heuristic_matrix(
-    tmp_path: Path,
-    forked: bool,
-    state_text: str,
-    finalize_text: str,
-    flags_text: str,
-    files: tuple[str, ...],
-    expected: bool | None,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text(state_text, encoding="utf-8")
-    if finalize_text:
-        _ = (tmp_path / "finalize-state.sh").write_text(finalize_text, encoding="utf-8")
-    if flags_text:
-        _ = (tmp_path / "run-flags.sh").write_text(flags_text, encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    for filename in files:
-        if filename == "run-statistics.md":
-            _ = (run_dir / filename).write_text("Run run-abc: 0 OOS issue(s) filed.\n", encoding="utf-8")
-        elif filename == "oos-issues.ndjson":
-            _ = (run_dir / filename).write_text('{"phase":"implement"}\n', encoding="utf-8")
-        else:
-            _ = (run_dir / filename).write_text("x\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state)).with_(forked=forked)
-    assert run_log_flush._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
 
 
-def test_step9a1_heuristic_manifest_explicit_values(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
-    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":false}}\n', encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    assert run_log_flush._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
-    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":true}}\n', encoding="utf-8")
-    assert run_log_flush._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
 
 
-def test_refresh_logs_checkpoint_downgrades_stale_step9a1_true_with_ndjson_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
-    manifest_path = run_dir / "manifest.json"
-    _ = manifest_path.write_text(
-        json.dumps({"status": "partial", "version": "1", "run_id": "run-abc", "steps_ran": {"step9a1": True}}),
-        encoding="utf-8",
-    )
-
-    def noop(*_a: object, **_k: object) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-
-    def noop_commit(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("",), 0, "", "", 0.0)
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_commit_run", noop_commit, raising=False)  # type: ignore[arg-type]
-    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-    assert not skip.skipped
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["steps_ran"]["step9a1"] is False
 
 
-def test_refresh_logs_checkpoint_multi_flush_shipping_then_pr_created(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    state = tmp_path / "ship-pr-state.sh"
-    _ = state.write_text(
-        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\nDRAFT=false\n",
-        encoding="utf-8",
-    )
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _stub_rust_manifest_command(monkeypatch)
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda **_k: {"cost_unavailable": True})  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0), raising=False)  # type: ignore[arg-type]
-
-    skip1 = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-    assert not skip1.skipped
-    final1 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading1 = final1.split(":", 1)[-1].split("\n", 1)[0].strip()
-    assert heading1 == "shipping"
-
-    _ = state.write_text(
-        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
-        "PHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
-        encoding="utf-8",
-    )
-
-    skip2 = run_log_flush.refresh_logs_checkpoint(
-        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
-    )
-    assert not skip2.skipped
-    final2 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading2 = final2.split(":", 1)[-1].split("\n", 1)[0].strip()
-    assert heading2 == "pr-created"
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
-    assert manifest["steps_ran"].get("step8") is True
 
 
-def test_refresh_logs_checkpoint_rewrites_stalled_summary_after_clean_pr_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    state = tmp_path / "ship-pr-state.sh"
-    _ = state.write_text(
-        "RUN_ID=run-abc\nSTALL_TRACKING=true\nMERGE=true\nPR_NUMBER=\nPHASE=stalled\nMERGE_RESULT=\nDRAFT=false\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / "finalize-state.sh").write_text(
-        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\n",
-        encoding="utf-8",
-    )
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _stub_rust_manifest_command(monkeypatch)
-
-    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-        _ = implement_tmpdir, run_id
-        return {"cost_unavailable": True}
-
-    def fake_commit(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
-
-    skip1 = run_log_flush.refresh_logs_checkpoint(
-        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
-    )
-    assert not skip1.skipped
-    stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert ": stalled" in stalled_summary
-    assert "- **Outcome**: ❌ STALLED" in stalled_summary
-
-    _ = state.write_text(
-        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
-        "PHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
-        encoding="utf-8",
-    )
-
-    skip2 = run_log_flush.refresh_logs_checkpoint(
-        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
-    )
-
-    assert not skip2.skipped
-    recovered_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert ": pr-created" in recovered_summary
-    assert "- **Outcome**: ✅ DONE" in recovered_summary
-    assert "- **Outcome**: stalled" not in recovered_summary
-    assert "- **Outcome**: STALLED" not in recovered_summary
-    assert "- **Outcome**: ❌ STALLED" not in recovered_summary
 
 
 @pytest.mark.parametrize("heading_separator", [": ", " — "])
@@ -1192,130 +666,16 @@ def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
     assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
 
 
-def test_refresh_logs_checkpoint_retains_reloaded_step8_after_final_report_reconcile(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["steps_ran"] = {"step8": False}
-    _ = manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    def fake_write_final_report(**_kw: object) -> None:
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-        loaded["steps_ran"]["step8"] = True
-        _ = manifest_path.write_text(json.dumps(loaded), encoding="utf-8")
-
-    def noop(*_a: object, **_k: object) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
-
-    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-
-    assert not skip.skipped
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["steps_ran"]["step8"] is True
 
 
-def test_refresh_logs_checkpoint_strict_final_report_error_returns_recovery_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-
-    def fail_report(*_a: object, **_k: object) -> None:
-        raise ShipError("reconcile failed")
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
-
-    skip = run_log_flush.refresh_logs_checkpoint(
-        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
-    )
-
-    assert skip.skipped
-    assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_refresh_logs_checkpoint_strict_final_report_skips_tracking_upsert(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _stub_rust_manifest_command(monkeypatch)
-    seen: list[bool] = []
-
-    def fake_write_final_report(
-        *,
-        skip_tracking_upsert: bool = False,
-        **_kw: object,
-    ) -> None:
-        seen.append(skip_tracking_upsert)
-        _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
-
-    def noop(*_a: object, **_k: object) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
-
-    skip = run_log_flush.refresh_logs_checkpoint(
-        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
-    )
-
-    assert not skip.skipped
-    assert seen == [True, True]
 
 
-def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    run_log_flush._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        log_root=tmp_path / "larch-logs",
-    )
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    assert not (tmp_path / "token-report-refresh.json").exists()
-    assert not (run_dir / "token-report-refresh.json").exists()
 
 
-def test_stage_ship_route_handoff_copies_when_present(tmp_path: Path) -> None:
-    handoff = tmp_path / ".ship-route-exit-handoff.env"
-    _ = handoff.write_text("NEXT_ACTION=ci-fix\nFAILED_RUN_ID=abc123\n", encoding="utf-8")
-    ctx = _ctx(tmp_path)
-    log_root = tmp_path / "larch-logs"
-    run_log_flush._stage_ship_route_handoff(ctx=ctx, log_root=log_root)  # pyright: ignore[reportPrivateUsage]
-    dest = log_root / "implement" / "run-abc" / "ship-route-exit-handoff.env"
-    assert dest.is_file()
-    assert "NEXT_ACTION=ci-fix" in dest.read_text(encoding="utf-8")
 
 
-def test_stage_ship_route_handoff_skips_when_absent(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    log_root = tmp_path / "larch-logs"
-    run_log_flush._stage_ship_route_handoff(ctx=ctx, log_root=log_root)  # pyright: ignore[reportPrivateUsage]
-    dest = log_root / "implement" / "run-abc" / "ship-route-exit-handoff.env"
-    assert not dest.exists()
 
 
 def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
@@ -1333,21 +693,6 @@ def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
     assert run_log_manifest.read_state_kv(state_file=str(state), key="RUN_ID") == ""
 
 
-def test_refresh_logs_checkpoint_stages_without_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    _ = run_log_manifest.init_run(ctx)
-
-    def noop(*_a: object, **_k: object) -> None:
-        return None
-
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    runner = RecordingRunner()
-    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx, cwd=None)
-    assert not skip.skipped
 
 
 def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
@@ -1778,49 +1123,8 @@ def test_debate_append_rejection_preserves_prior_content(
     assert path.read_text(encoding="utf-8") == before
 
 
-def test_run_log_checkpoint_warns_when_stage_fails(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
-    _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
-
-    def fail_stage(*_args: object, **_kwargs: object) -> None:
-        raise OSError("stage unavailable")
-
-    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", fail_stage)
-    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", fail_stage)  # type: ignore[arg-type]
-
-    rc = run_log_flush.run_log_checkpoint_main([])
-
-    assert rc == config.EXIT_INTERNAL_ERROR
-    assert "WARN: run-log checkpoint failed: stage unavailable" in capsys.readouterr().err
 
 
-def test_larch_log_flush_does_not_call_git_commit(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
-    _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
-
-    def fail_commit(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(
-            ("run-log", "commit"),
-            1,
-            "",
-            "refusing to replace symlink destination: /some/path\n",
-            0.0,
-        )
-
-    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
-
-    rc = run_log_flush.run_log_checkpoint_main([])
-
-    assert rc == 0
-    assert capsys.readouterr().err == ""
 
 
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
@@ -1904,172 +1208,6 @@ def test_publish_breadcrumbs_consumer_skips_non_larch_logs_root(
         log_root=tmp_path / "review-logs",
         dest=tmp_path / "review-logs" / "review" / "run-abc",
     )
-
-
-def test_refresh_logs_checkpoint_does_not_probe_git_volatile_state(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    def fake_commit(*_a: object, **_k: object) -> CommandResult:
-        return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
-
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
-    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
-    assert not skip.skipped
-
-
-def test_render_ledger_reports_uses_direct_renderers(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "timing-ledger.tsv").write_text(
-        "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    captured: dict[str, str] = {}
-
-    def capture_env(env: object) -> None:
-        if isinstance(env, Mapping):
-            env_map = cast("Mapping[object, object]", env)
-            captured.update(
-                {key: value for key, value in env_map.items() if isinstance(key, str) and isinstance(value, str)}
-            )
-
-    def fake_token_report(**kwargs: object) -> dict[str, object]:
-        capture_env(kwargs.get("env"))
-        return {"claude": {}}
-
-    def fake_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
-        capture_env(env)
-        return {"per_step": []}
-
-    def fake_resolve_timing_ledger_path(**_: object) -> Path:
-        return tmp_path / "timing-ledger.tsv"
-
-    monkeypatch.setattr(tokens, "token_report", fake_token_report)
-    monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
-    monkeypatch.setattr(timing, "resolve_timing_ledger_path", fake_resolve_timing_ledger_path)
-    write_batches: list[str] = []
-
-    def fake_write_batch(
-        *, batch: str, input_file: Path, **_kw: object
-    ) -> tuple[Path, bool, bool]:
-        write_batches.append(batch)
-        return (input_file, True, False)
-
-    monkeypatch.setattr(run_log_batch, "_write_batch", fake_write_batch)
-    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
-    ctx = _ctx(tmp_path, str(state))
-    runner = RecordingRunner()
-    run_log_flush._render_ledger_reports(runner=runner, ctx=ctx, log_root=tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
-
-    assert (tmp_path / "token-report-refresh.json").is_file()
-    assert (tmp_path / "timing-report-refresh.json").is_file()
-    assert captured.get("LARCH_TIMING_SKILL") == "implement"
-    assert "DESIGN_TMPDIR" not in captured
-    assert "token-report" in write_batches
-    assert "timing-report" in write_batches
-
-
-def _ledger_report_fixture(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> tuple[RecordingRunner, RunContext, list[str]]:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "timing-ledger.tsv").write_text(
-        "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    _ledger_path = tmp_path / "timing-ledger.tsv"
-    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kw: _ledger_path)  # type: ignore[arg-type]
-    write_batches: list[str] = []
-
-    def fake_write_batch(
-        *, batch: str, input_file: Path, **_kw: object
-    ) -> tuple[Path, bool, bool]:
-        write_batches.append(batch)
-        return (input_file, True, False)
-
-    monkeypatch.setattr(run_log_batch, "_write_batch", fake_write_batch)
-    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
-    return RecordingRunner(), _ctx(tmp_path, str(state)), write_batches
-
-
-def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
-
-    def raise_token_report(**_kwargs: object) -> dict[str, object]:
-        msg = "token renderer failed"
-        raise RuntimeError(msg)
-
-    monkeypatch.setattr(tokens, "token_report", raise_token_report)
-    run_log_flush._render_ledger_reports(runner=runner, ctx=ctx, log_root=tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
-
-    assert not (tmp_path / "token-report-refresh.json").exists()
-    assert (tmp_path / "timing-report-refresh.json").is_file()
-    assert "token-report" not in write_batches
-    assert "timing-report" in write_batches
-
-
-def test_render_ledger_reports_token_succeeds_when_timing_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
-
-    def fake_token_report(**_kwargs: object) -> dict[str, object]:
-        return {"claude": {}}
-
-    def raise_render_json(_self: timing.TimingReport, **_: object) -> dict[str, object]:  # type: ignore[misc]
-        raise RuntimeError("timing renderer failed")
-
-    monkeypatch.setattr(tokens, "token_report", fake_token_report)
-    monkeypatch.setattr(timing.TimingReport, "render_json", raise_render_json)
-    run_log_flush._render_ledger_reports(runner=runner, ctx=ctx, log_root=tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
-
-    assert (tmp_path / "token-report-refresh.json").is_file()
-    assert not (tmp_path / "timing-report-refresh.json").exists()
-    assert "token-report" in write_batches
-    assert "timing-report" not in write_batches
-
-
-def test_render_ledger_reports_writes_empty_timing_json(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    runner, ctx, _write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
-
-    def fake_token_report(**_kwargs: object) -> dict[str, object]:
-        return {"claude": {}}
-
-    def empty_render_json(_self: timing.TimingReport, **_: object) -> dict[str, object]:  # type: ignore[misc]
-        return {}
-
-    monkeypatch.setattr(tokens, "token_report", fake_token_report)
-    monkeypatch.setattr(timing.TimingReport, "render_json", empty_render_json)
-    run_log_flush._render_ledger_reports(runner=runner, ctx=ctx, log_root=tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
-
-    timing_path = tmp_path / "timing-report-refresh.json"
-    assert timing_path.is_file()
-    assert json.loads(timing_path.read_text(encoding="utf-8")) == {}
-
-
-def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    design_tmp = tmp_path / "design"
-    design_tmp.mkdir()
-    _ = (design_tmp / "run-params.json").write_text(json.dumps({}), encoding="utf-8")
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
-    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmp))
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    env = run_log_flush._report_subprocess_env(_ctx(tmp_path, str(state)))  # pyright: ignore[reportPrivateUsage]
-    assert env["LARCH_TIMING_SKILL"] == "implement"
-    assert "DESIGN_TMPDIR" not in env
 
 
 def _write_run_manifest(run_dir: Path, *, skill: str, steps_ran: dict[str, object] | None = None) -> None:
@@ -2460,241 +1598,16 @@ def test_design_completed_step3_without_plan_review_does_not_reach_round_require
     assert missing == []
 
 
-def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.refresh_run_logs_main(["--implement-tmpdir", str(tmp_path)])
-    assert rc == 0
-    assert f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_STATE_FILE_MISSING}" in buf.getvalue()
 
 
-def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.capture_transcript_main(
-            [
-                "--source-file",
-                str(tmp_path / "missing.txt"),
-                "--log-root",
-                str(tmp_path / "larch-logs"),
-                "--skill",
-                "implement",
-                "--run-id",
-                "RUN1",
-                "--no-logs-commit",
-                "true",
-            ],
-        )
-    assert rc == 0
-    assert "SESSION_TRANSCRIPT_STATUS=source-file-missing" in buf.getvalue()
 
 
-def test_capture_transcript_main_rejects_invalid_run_id_before_path_lookup(
-    tmp_path: Path,
-) -> None:
-    outside = tmp_path / "outside" / "session-transcript.jsonl"
-    outside.parent.mkdir(parents=True)
-    _ = outside.write_text('{"type":"message"}\n', encoding="utf-8")
-    issues_log = tmp_path / "execution-issues.md"
-    _ = issues_log.write_text("", encoding="utf-8")
-
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.capture_transcript_main(
-            [
-                "--source-file",
-                str(tmp_path / "missing.txt"),
-                "--log-root",
-                str(tmp_path / "larch-logs"),
-                "--tmpdir",
-                str(tmp_path),
-                "--skill",
-                "implement",
-                "--run-id",
-                "../../../outside",
-                "--no-logs-commit",
-                "true",
-                "--refresh-mode",
-                "true",
-                "--execution-issues-log",
-                str(issues_log),
-            ],
-        )
-    assert rc == 0
-    captured = buf.getvalue()
-    assert "SESSION_TRANSCRIPT_STATUS=invalid-run-id" in captured
-    assert "source-file-missing" not in captured
-    assert outside.read_text(encoding="utf-8") == '{"type":"message"}\n'
 
 
-def test_capture_transcript_main_defer_commit_no_warning(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """defer_commit=true success path must not append a Warnings entry."""
-    transcript = tmp_path / "transcript.jsonl"
-    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
-    source = tmp_path / "source.txt"
-    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
-    log_root = tmp_path / "larch-logs"
-    issues_log = tmp_path / "execution-issues.md"
-    _ = issues_log.write_text("", encoding="utf-8")
-
-    def _fake_run(
-        args: list[str], **_kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        for i, arg in enumerate(args):
-            if arg == "--output" and i + 1 < len(args):
-                _ = Path(args[i + 1]).write_text('{"type":"stub"}\n', encoding="utf-8")
-                break
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(run_log_batch.proc, "run", _fake_run)  # type: ignore[attr-defined]
-
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.capture_transcript_main(
-            [
-                "--source-file",
-                str(source),
-                "--log-root",
-                str(log_root),
-                "--tmpdir",
-                str(tmp_path),
-                "--skill",
-                "implement",
-                "--run-id",
-                "RUN1",
-                "--no-logs-commit",
-                "false",
-                "--execution-issues-log",
-                str(issues_log),
-                "--defer-commit",
-                "true",
-            ]
-        )
-    assert rc == 0
-    assert "SESSION_TRANSCRIPT_STATUS=captured" in buf.getvalue()
-    assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
 
 
-def test_capture_transcript_main_stages_preterminal_stalled_summary(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    transcript = tmp_path / "transcript.jsonl"
-    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
-    source = tmp_path / "source.txt"
-    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
-    log_root = tmp_path / "larch-logs"
-    issues_log = tmp_path / "execution-issues.md"
-    _ = issues_log.write_text("", encoding="utf-8")
-    run_dir = log_root / "implement" / "run-1"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
-
-    def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        output = Path(args[args.index("--output") + 1])
-        _ = output.write_text('{"type":"stub"}\n', encoding="utf-8")
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    def fake_write_batch(
-        *,
-        log_root: Path,
-        skill: str,
-        run_id: str,
-        batch: str,
-        input_file: str,
-    ) -> tuple[Path, bool, bool]:
-        target = log_root / skill / run_id / f"{batch}.jsonl"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(Path(input_file).read_text(encoding="utf-8"), encoding="utf-8")
-        return target, True, False
-
-    monkeypatch.setattr(subprocess, "run", _fake_run)
-    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
-
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.capture_transcript_main(
-            [
-                "--source-file",
-                str(source),
-                "--log-root",
-                str(log_root),
-                "--tmpdir",
-                str(tmp_path),
-                "--skill",
-                "implement",
-                "--run-id",
-                "run-1",
-                "--no-logs-commit",
-                "false",
-                "--execution-issues-log",
-                str(issues_log),
-            ]
-        )
-
-    assert rc == 0
-    captured = buf.getvalue()
-    assert "SESSION_TRANSCRIPT_STATUS=captured" in captured
-    assert "pre-terminal" not in issues_log.read_text(encoding="utf-8")
 
 
-def test_capture_transcript_main_uses_explicit_tmpdir_for_render_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    system_tmp = tmp_path / "system-tmp"
-    scratch_tmp = tmp_path / "scratch-tmp"
-    system_tmp.mkdir()
-    scratch_tmp.mkdir()
-    monkeypatch.setattr(run_log_flush.tempfile, "tempdir", str(system_tmp))
-    transcript = tmp_path / "transcript.jsonl"
-    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
-    source = tmp_path / "source.txt"
-    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
-    log_root = tmp_path / "larch-logs"
-    rendered_payload = '{"type":"stub"}\n'
-
-    def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if args and args[0] == "git" and "rev-parse" in args and "--show-toplevel" in args:
-            return subprocess.CompletedProcess(args, 0, stdout=f"{tmp_path.parent / 'repo-root'}\n", stderr="")
-        if "--output" not in args:
-            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-        output = Path(args[args.index("--output") + 1])
-        assert output.is_relative_to(scratch_tmp)
-        assert not output.is_relative_to(system_tmp)
-        _ = output.write_text(rendered_payload, encoding="utf-8")
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", _fake_run)
-
-    buf = StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = run_log_flush.capture_transcript_main(
-            [
-                "--source-file",
-                str(source),
-                "--log-root",
-                str(log_root),
-                "--tmpdir",
-                str(scratch_tmp),
-                "--skill",
-                "implement",
-                "--run-id",
-                "RUN1",
-                "--defer-commit",
-                "true",
-            ]
-        )
-
-    captured = buf.getvalue()
-    committed = log_root / "implement" / "RUN1" / "session-transcript.jsonl"
-    assert rc == 0
-    assert "SESSION_TRANSCRIPT_STATUS=captured" in captured
-    assert "write-failed" not in captured
-    assert committed.read_text(encoding="utf-8") == rendered_payload
 
 
 def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:

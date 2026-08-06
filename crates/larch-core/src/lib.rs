@@ -263,11 +263,11 @@ pub use slack_announce::{
 pub use stall_recovery::{
     BUG_TITLE_PREFIX, Classification, ClassifyTextInput, FileFailureReport, IssueNormalization,
     NormalizeOutcomeInput, artifact_prefix_valid, classification_signature, classify_text,
-    failure_detail_sidecar_name, first_nonempty, normalize_file_failure_report,
-    normalize_issue_output, normalize_outcome_values, public_text_is_sensitive, resume_hint_for,
-    retry_policy, safe_bail_value, safe_dispatcher_value, safe_pattern_value, safe_phase,
-    safe_phase_value, safe_step, safe_step_value, state as state_value, terminal_state_valid,
-    token_valid, truthy,
+    failure_detail_sidecar_name, first_nonempty, is_terminal_merge_result,
+    normalize_file_failure_report, normalize_issue_output, normalize_outcome_values,
+    public_text_is_sensitive, resume_hint_for, retry_policy, safe_bail_value,
+    safe_dispatcher_value, safe_pattern_value, safe_phase, safe_phase_value, safe_step,
+    safe_step_value, state as state_value, terminal_state_valid, token_valid, truthy,
 };
 pub use storage::{
     ENV_LARCH_LOGS_URI, ENV_LARCH_R2_ACCOUNT_ID, ENV_LARCH_R2_ENDPOINT, ENV_LARCH_STORAGE_BASE_URI,

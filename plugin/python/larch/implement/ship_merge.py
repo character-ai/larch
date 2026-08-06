@@ -16,7 +16,7 @@ from larch.git import gh
 from larch.git import git
 from larch.git import rebase
 from larch.outcomes import Outcome
-from larch.report import run_log_flush, run_log_manifest
+from larch.report import run_log_manifest
 from larch.implement.ship_state import _write_ship_state, _breadcrumb, _progress_note
 from larch.implement.ship_result import ShipResult
 from larch.implement.ship_pr import _write_terminal_state, _publish_post_pr_terminal_snapshot
@@ -168,7 +168,7 @@ def _ship_rebase_phase(
         transient_retries=transient_retries,
     )
     _breadcrumb(step="rebase", detail="Flush+Push")
-    pre_rebase: run_log_manifest.RefreshSkip = run_log_flush.refresh_logs_checkpoint(
+    pre_rebase: rust_runtime.RunLogRefreshOutput = rust_runtime.refresh_logs_checkpoint(
         runner=runner, ctx=working.with_(state_file=None), cwd=cwd
     )
     if (

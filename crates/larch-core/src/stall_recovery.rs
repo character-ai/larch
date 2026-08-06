@@ -74,6 +74,12 @@ const TERMINAL_MERGE_RESULTS: &str = "merged admin_merged already_merged";
 const STALE_FINALIZE_KEYS: &[&str] = &["STALL_TRACKING", "STALL_STEP", "PHASE", "BAIL_REASON", "IMPLEMENT_BAIL_REASON", "EXIT_CODE", "BAIL_NEEDS_USER_INPUT"];
 type State = BTreeMap<String, String>;
 
+/// Return whether a merge result closes the post-merge mutation window.
+#[must_use]
+pub fn is_terminal_merge_result(value: &str) -> bool {
+    has(TERMINAL_MERGE_RESULTS, value.trim())
+}
+
 /// Effect-free input to the stall classifier.
 #[derive(Clone, Copy, Debug, Default)]
 #[rustfmt::skip]
@@ -236,7 +242,7 @@ pub fn normalize_outcome_values(input: NormalizeOutcomeInput<'_>) -> Vec<(String
     let forked = first_nonempty(&[state(input.ship, "FORKED_TARGET"), state(&fin, "FORKED_TARGET"), state_or(input.session, "FORKED_TARGET", "false")]);
     let ci_passed = layered_or(input.ship, &fin, "CI_PASSED", "false");
     let design_done = state_or(&fin, "DESIGN_ONLY_DONE", "false"); let bail_user = layered_or(input.ship, &fin, "BAIL_NEEDS_USER_INPUT", "false");
-    let terminal_merge = has(TERMINAL_MERGE_RESULTS, merge_result);
+    let terminal_merge = is_terminal_merge_result(merge_result);
     let stall_terminal = (terminal_merge && truthy(memory_stall)) || stall_signal_is_terminal(input.ship, &fin, bail_user);
     let has_failure = has_failure_signals(input.ship, &fin, bail_user);
     let mut outcome = if (any_stall || phase_stalled) && stall_terminal {
@@ -865,6 +871,8 @@ mod tests {
     fn outcome_normalization_covers_precedence_and_stale_overlays() {
         type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [(&'a str, &'a str)], &'a str, &'a str); let cases: &[Case<'_>] = &[
             ("merged-before-fork", &[("MERGE_RESULT", "merged"), ("FORKED_TARGET", "true")], &[], "", "merged"),
+            ("admin-merged", &[("MERGE_RESULT", "admin_merged")], &[], "", "merged"),
+            ("already-merged", &[("MERGE_RESULT", "already_merged")], &[], "", "force-merged-externally"),
             ("merge-with-bail", &[("MERGE_RESULT", "merged"), ("BAIL_REASON", "review-required")], &[], "", "bailed"),
             ("memory-stall", &[("MERGE_RESULT", "merged")], &[], "true", "stalled"),
             ("stale-finalize", &[("PR_NUMBER", "8"), ("PHASE", "ci-initial"), ("STALL_TRACKING", "false")], &[("STALL_TRACKING", "true"), ("PHASE", "stalled")], "", "pr-created"),

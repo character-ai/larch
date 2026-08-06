@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from larch.core import rust_runtime
 from larch.core.proc import CommandResult
 from larch.core.rust_runtime import (
     dirty_tree_baseline,
@@ -11,6 +12,7 @@ from larch.core.rust_runtime import (
     phantom_probe,
 )
 from test_support import RecordingRunner
+from tests.support.foundation import make_run_context
 
 
 def test_phantom_probe_relays_validated_rust_envelope() -> None:
@@ -176,3 +178,56 @@ def test_issue_info_relays_the_value_row_and_absent_refusals() -> None:
         "o/r",
     ]
     assert runner.calls[1][-6:] == ["issue", "info", "--issue", "7", "--field", "url"]
+
+
+def test_run_log_refresh_parser_preserves_composite_wire_fields() -> None:
+    success = rust_runtime._refresh_skip_from_result(  # pyright: ignore[reportPrivateUsage]
+        CommandResult(("larch",), 0, "REFRESH_COMMITTED=true\n", "", 0.01),
+    )
+    skipped = rust_runtime._refresh_skip_from_result(  # pyright: ignore[reportPrivateUsage]
+        CommandResult(
+            ("larch",),
+            0,
+            "REFRESH_SKIPPED=true REASON=no-logs-commit\n",
+            "",
+            0.01,
+        ),
+    )
+    blocked = rust_runtime._refresh_skip_from_result(  # pyright: ignore[reportPrivateUsage]
+        CommandResult(
+            ("larch",),
+            0,
+            "REFRESH_COMMITTED=false REASON=preterminal-outcome ERROR=terminal label refused\n",
+            "",
+            0.01,
+        ),
+    )
+
+    assert not success.skipped
+    assert (skipped.skipped, skipped.reason, skipped.error) == (
+        True,
+        "no-logs-commit",
+        "",
+    )
+    assert (blocked.skipped, blocked.reason, blocked.error) == (
+        True,
+        "preterminal-outcome",
+        "terminal label refused",
+    )
+
+
+def test_state_backed_refresh_omits_stale_context_merge_result() -> None:
+    ctx = make_run_context(
+        state_file="/tmp/session/ship-state.env",
+        merge_result="merged",
+    )
+
+    persisted_args = rust_runtime._run_log_refresh_args(ctx)  # pyright: ignore[reportPrivateUsage]
+    explicit_args = rust_runtime._run_log_refresh_args(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        merge_result="admin_merged",
+    )
+
+    assert "--merge-result" not in persisted_args
+    index = explicit_args.index("--merge-result")
+    assert explicit_args[index + 1] == "admin_merged"

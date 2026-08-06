@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from collections.abc import Mapping
 
+from larch import io as larch_io
 from larch.core import config as _larch_config
 from larch.report import markdown_block
 from larch.report import tokens
@@ -885,6 +886,9 @@ def timing_report_main(argv: list[str] | None = None) -> int:
     output: Path | None = None
     append: Path | None = None
     raw_ledger: str | None = None
+    implement_tmpdir: str = ""
+    outlier_threshold: str = ""
+    test_now: str = ""
     idx = 0
     try:
         while idx < len(args):
@@ -903,6 +907,12 @@ def timing_report_main(argv: list[str] | None = None) -> int:
                 output = Path(args[idx + 1]); idx += 2
             elif arg == "--ledger":
                 raw_ledger = args[idx + 1]; idx += 2
+            elif arg == "--implement-tmpdir":
+                implement_tmpdir = args[idx + 1]; idx += 2
+            elif arg == "--outlier-threshold":
+                outlier_threshold = args[idx + 1]; idx += 2
+            elif arg == "--test-now":
+                test_now = args[idx + 1]; idx += 2
             elif arg == "--append-timing-section":
                 append = Path(args[idx + 1]); mode = "full"; idx += 2
             else:
@@ -911,15 +921,30 @@ def timing_report_main(argv: list[str] | None = None) -> int:
             raise ValueError("missing report mode")
         if fmt not in {"json", "markdown"}:
             raise ValueError(f"unknown format: {fmt}")
-        result = render_report(mode=mode, fmt=fmt, ledger=raw_ledger, append_timing_section=append)
+        report_env: dict[str, str] = dict(os.environ)
+        if implement_tmpdir:
+            report_env["IMPLEMENT_TMPDIR"] = implement_tmpdir
+            report_env["LARCH_TIMING_SKILL"] = "implement"
+            _ = report_env.pop("DESIGN_TMPDIR", None)
+        if outlier_threshold:
+            report_env["LARCH_TIMING_OUTLIER_THRESHOLD_S"] = outlier_threshold
+        if test_now:
+            report_env["LARCH_TEST_TIMING_NOW"] = test_now
+        result = render_report(
+            mode=mode,
+            fmt=fmt,
+            ledger=raw_ledger,
+            append_timing_section=append,
+            env=report_env,
+        )
         if result.rendered is None:
             raise ValueError("ledger path unavailable")
         rendered = result.rendered
         text = rendered + "\n"
         if mode == "full" and output is not None:
-            tmp = output.with_name(output.name + ".tmp")
-            _ = tmp.write_text(text, encoding="utf-8")
-            _ = tmp.replace(output)
+            larch_io.atomic_write(
+                output, text, prefix=".timing-report-", nofollow=True
+            )
         elif append is None:
             _ = sys.stdout.write(text)
     except (IndexError, OSError, ValueError) as exc:

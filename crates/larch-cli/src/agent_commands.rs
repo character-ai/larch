@@ -260,7 +260,9 @@ fn read_claude_model() -> ExitCode {
 }
 
 pub fn resolve_claude_model_from_environment() -> String {
-    if let Some(model) = model_from_claude_source_file() {
+    if let Some(source_file) = env::var_os("LARCH_CLAUDE_SOURCE_FILE")
+        && let Some(model) = resolve_claude_model_from_source_file(Path::new(&source_file))
+    {
         return model;
     }
     let Ok(home) = env::var("HOME") else {
@@ -304,8 +306,7 @@ pub fn resolve_claude_model_from_environment() -> String {
     )
 }
 
-fn model_from_claude_source_file() -> Option<String> {
-    let source_file = env::var("LARCH_CLAUDE_SOURCE_FILE").ok()?;
+pub fn resolve_claude_model_from_source_file(source_file: &Path) -> Option<String> {
     let text = fs::read_to_string(source_file).ok()?;
     let path = transcript_path_from_claude_source(&text)?;
     let body = fs::read_to_string(path).ok()?;

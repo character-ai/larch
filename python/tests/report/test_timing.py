@@ -7,6 +7,7 @@ import os
 import stat
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import cast
 
 from larch.report import progress_file
 
@@ -515,6 +516,38 @@ def test_timing_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFix
     out = capsys.readouterr().out
     assert "Step 0:" in out
     assert "elapsed=" in out
+
+
+def test_timing_report_main_preserves_design_environment_without_internal_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_render_report(**kwargs: object) -> timing.TimingReportResult:
+        report_env = cast("dict[object, object]", kwargs["env"])
+        typed_env = {
+            key: value
+            for key, value in report_env.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        assert len(typed_env) == len(report_env)
+        captured.update(typed_env)
+        return timing.TimingReportResult(
+            ledger_path=tmp_path / "timing-ledger.tsv",
+            rendered="design report",
+            status="rendered",
+        )
+
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
+    monkeypatch.setattr(timing, "render_report", fake_render_report)
+
+    rc = timing.timing_report_main(["--terse", "--ledger", str(tmp_path / "timing-ledger.tsv")])
+
+    assert rc == 0
+    assert captured["DESIGN_TMPDIR"] == str(tmp_path)
+    assert captured["LARCH_TIMING_SKILL"] == "design"
 
 
 def test_timing_report_full_without_marks(tmp_path: Path) -> None:

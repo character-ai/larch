@@ -73,7 +73,7 @@ Terminal runs must leave explicit `steps_ran` values through `python/cli.py fina
 
 ## Execution-issues checkpoint and metadata refresh
 
-`CI_PASSED=true` does not append execution issues after green CI. Step 7a checkpoints only its pending issue tail. Later steps may add entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; shared external-implementer and pre-push paths (`python/cli.py run-log checkpoint`, `python/cli.py run-log refresh`) stage recovery snapshots. Step 18 rebuilds the complete terminal snapshot, sanitizes it, and publishes one immutable archive. Step 19 then performs cleanup without log writes.
+`CI_PASSED=true` does not append execution issues after green CI. Step 7a checkpoints only its pending issue tail. Later steps may add entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; shared external-implementer and pre-push paths use the verified `scripts/larch.sh` runtime for Rust-owned `run-log checkpoint` and `run-log refresh` recovery snapshots. Step 18 rebuilds the complete terminal snapshot, sanitizes it, and publishes one immutable archive. Step 19 then performs cleanup without log writes.
 
 Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip the refresh helper entirely; do not call GitHub for issue `#0`.
 

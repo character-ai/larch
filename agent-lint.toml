@@ -365,9 +365,6 @@ exclude = [
   # skill prose, matching the same Makefile-only pattern as the other
   # run-log test-* harnesses above.
   "python/test_redact.py",
-  # python3 python/cli.py implement-finalize invokes these Step 8b / teardown helpers
-  # through Bash-to-Bash edges; agent-lint does not follow those calls.
-  "scripts/flush-vendor-failure-diagnostics.sh",
   # Step 1 launcher split: compose-goals-test is now invoked by
   # python/cli.py plan step1-log rather than directly from SKILL.md, and
   # agent-lint does not follow Python-to-Python launcher edges. The launcher
@@ -832,12 +829,6 @@ exclude = [
   # issue #3039: Makefile-only harness wired via
   # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
   "python/test_design_summary.py",
-  # scripts/test-flush-vendor-failure-diagnostics.sh is the offline regression
-  # harness for scripts/flush-vendor-failure-diagnostics.sh (#3713 vendor-failure
-  # batch flush). Referenced only from Makefile (test-flush-vendor-failure-diagnostics
-  # target, test-harnesses-7 shard) and its sibling .md, matching the Makefile-only
-  # harness pattern above.
-  "scripts/test-flush-vendor-failure-diagnostics.sh",
   # python/cli.py merge pr's admin-first / plain-fallback ordering, safety gates,
   # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
   # and `git` via PATH and asserts merge outcomes plus the same-version cases
@@ -893,7 +884,6 @@ exclude = [
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "scripts/test-flush-vendor-failure-diagnostics.md",
   "python/session_env.py (session restore-finalize-state)",
   # python/test_alias_skill.py and python/tests/skills/test_skill_structure.py
   # are the sibling contracts for the two alias-rework regression harnesses

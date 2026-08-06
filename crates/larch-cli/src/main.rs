@@ -49,6 +49,8 @@ mod release_version;
 mod run_lifecycle_commands;
 mod run_log_commands;
 mod run_log_entry_commands;
+#[rustfmt::skip]
+mod run_log_flush_commands;
 mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
@@ -157,6 +159,12 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum RunLogCommand {
+    /// Refresh recoverable artifacts after one implementation checkpoint.
+    #[command(name = "checkpoint", disable_help_flag = true)]
+    Checkpoint(RawCompatibilityArguments),
+    /// Render and stage one filtered session transcript.
+    #[command(name = "capture-transcript", disable_help_flag = true)]
+    CaptureTranscript(RawCompatibilityArguments),
     /// Synthesize a v2 run manifest for one skill and run id.
     #[command(name = "init", disable_help_flag = true)]
     Init(RawCompatibilityArguments),
@@ -187,6 +195,12 @@ enum RunLogCommand {
     /// Publish the session's redacted quiet logs as a run's breadcrumbs.
     #[command(name = "publish-breadcrumbs", disable_help_flag = true)]
     PublishBreadcrumbs(RawCompatibilityArguments),
+    /// Prepare the complete mutable snapshot immediately before publication.
+    #[command(name = "prepare-terminal-snapshot", disable_help_flag = true)]
+    PrepareTerminalSnapshot(RawCompatibilityArguments),
+    /// Refresh the mutable implement run-log staging tree.
+    #[command(name = "refresh", disable_help_flag = true)]
+    Refresh(RawCompatibilityArguments),
     /// Terminalize a run as operator-cancelled.
     #[command(name = "lifecycle-cancel")]
     LifecycleCancel(run_lifecycle_commands::LifecycleTerminalArguments),
@@ -1042,6 +1056,18 @@ fn run(
         }
         Domain::RunLog(RunLogCommand::PublishBreadcrumbs(arguments)) => {
             Ok(run_log_commands::publish_breadcrumbs(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Checkpoint(arguments)) => {
+            Ok(run_log_flush_commands::checkpoint(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::CaptureTranscript(arguments)) => Ok(
+            run_log_flush_commands::capture_transcript(&arguments.arguments),
+        ),
+        Domain::RunLog(RunLogCommand::PrepareTerminalSnapshot(arguments)) => Ok(
+            run_log_flush_commands::prepare_terminal_snapshot(&arguments.arguments),
+        ),
+        Domain::RunLog(RunLogCommand::Refresh(arguments)) => {
+            Ok(run_log_flush_commands::refresh(&arguments.arguments))
         }
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {

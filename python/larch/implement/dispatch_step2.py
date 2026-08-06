@@ -1022,7 +1022,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
                 return st.emit_bailed("commit-failed")
         with contextlib.suppress(OSError):
             commit_stderr.unlink()
-        _invoke_cli(["run-log", "checkpoint"], cwd=repo_root)
+        _invoke_larch(["run-log", "checkpoint"], cwd=repo_root)
 
     sanitized = _sanitize_manifest_obj(raw_obj)
     _write_text_atomic(path=st.manifest_path, text=json.dumps(sanitized, indent=2, sort_keys=False) + "\n")

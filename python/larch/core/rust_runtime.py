@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core.proc import Runner
+from larch.core.proc import CommandResult, ProcRunner, Runner
 from larch.core.repo_roots import larch_entrypoint
+from larch.core.run_context import RunContext
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,121 @@ class CheckpointProbeOutput:
     stderr: str
     routing: dict[str, str]
     advisory_lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RunLogRefreshOutput:
+    """Validated result from the Rust-owned mutable run-log refresh."""
+
+    skipped: bool
+    reason: str
+    error: str = ""
+
+
+def _run_log_refresh_args(
+    ctx: RunContext,
+    *,
+    strict_final_report: bool = False,
+    postmerge: bool = False,
+    merge_result: str = "",
+    render_reports: bool = True,
+) -> list[str]:
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "run-log",
+        "refresh",
+        "--implement-tmpdir",
+        ctx.tmpdir,
+        "--run-id",
+        ctx.run_id,
+        "--no-logs-commit",
+        "true" if ctx.no_logs_commit else "false",
+        "--forked-target",
+        "true" if ctx.forked else "false",
+        "--stall-tracking",
+        "true" if ctx.stall_tracking else "false",
+    ]
+    for option, value in (
+        ("--state-file", ctx.state_file or ""),
+        (
+            "--merge-result",
+            merge_result or ("" if ctx.state_file else ctx.merge_result),
+        ),
+        ("--stall-step", ctx.stall_step),
+        ("--pr-number", str(ctx.pr_number or "")),
+    ):
+        if value:
+            argv.extend([option, value])
+    if strict_final_report:
+        argv.extend(["--strict-final-report", "true"])
+    if postmerge:
+        argv.extend([
+            "--postmerge", "true",
+            "--render-reports", "true" if render_reports else "false",
+        ])
+    return argv
+
+
+def _refresh_skip_from_result(result: CommandResult) -> RunLogRefreshOutput:
+    returncode: int = result.returncode
+    stdout: str = result.stdout
+    stderr: str = result.stderr
+    tokens: dict[str, str] = larch_io.parse_kv(
+        "\n".join(stdout.split()),
+        skip_empty_key=True,
+        allowed_keys={"REFRESH_COMMITTED", "REFRESH_SKIPPED", "REASON"},
+    )
+    if returncode == 0 and tokens.get("REFRESH_COMMITTED") == "true":
+        return RunLogRefreshOutput(skipped=False, reason="")
+    reason: str = tokens.get("REASON", "manifest-recovery-failed")
+    error: str = stdout.partition(" ERROR=")[2].strip()
+    if returncode != 0 or "REASON" not in tokens:
+        error = error or " ".join((stderr or stdout).split())[:500]
+    return RunLogRefreshOutput(skipped=True, reason=reason, error=error)
+
+
+def refresh_logs_checkpoint(
+    runner: Runner,
+    *,
+    ctx: RunContext,
+    cwd: str | None = None,
+    strict_final_report: bool = False,
+) -> RunLogRefreshOutput:
+    """Refresh mutable run-log artifacts through their Rust owner."""
+    result: CommandResult = runner.run(
+        _run_log_refresh_args(ctx, strict_final_report=strict_final_report),
+        cwd=cwd,
+    )
+    return _refresh_skip_from_result(result)
+
+
+def refresh_postmerge_snapshot(
+    ctx: RunContext,
+    *,
+    merge_result: str | None = None,
+    runner: Runner | None = None,
+) -> RunLogRefreshOutput:
+    """Refresh the post-merge snapshot through the same Rust flush owner."""
+    active_runner: Runner = runner or ProcRunner()
+    result: CommandResult = active_runner.run(
+        _run_log_refresh_args(
+            ctx,
+            postmerge=True,
+            merge_result=merge_result or "",
+            render_reports=runner is not None,
+        )
+    )
+    return _refresh_skip_from_result(result)
+
+
+def finalize_postmerge_logs(
+    ctx: RunContext,
+    *,
+    merge_result: str | None = None,
+    runner: Runner | None = None,
+) -> RunLogRefreshOutput:
+    """Finalize post-merge logs through the Rust refresh owner."""
+    return refresh_postmerge_snapshot(ctx, merge_result=merge_result, runner=runner)
 
 
 _STALL_OUTCOME_KEYS = frozenset({

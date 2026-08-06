@@ -40,8 +40,7 @@ The logs phase runs the Step 18b final-report refresh, records closing token and
 timing marks, then invokes:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" \
-  run-log prepare-terminal-snapshot \
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" run-log prepare-terminal-snapshot \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --run-id "$RUN_ID"
 ```

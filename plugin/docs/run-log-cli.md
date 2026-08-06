@@ -1,9 +1,10 @@
 # Run-log CLI contract
 
-`python3 python/cli.py run-log ...` owns the remaining Python run-log staging,
-validation, and publication verbs. `scripts/larch.sh run-log manifest ...` owns
-durable manifest updates. `scripts/larch.sh run-log ...` also owns storage
-preflight and the five shared lifecycle verbs.
+`scripts/larch.sh run-log ...` owns Rust run-log initialization, entry writes,
+mutable flushes, transcript capture, durable manifest updates, storage
+preflight, and the five shared lifecycle verbs. `python3 python/cli.py run-log
+...` owns the remaining Python archive, materialization, publication, sync, and
+layout-migration verbs.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -34,10 +35,6 @@ make a log public-safe. See the canonical
 
 ## Remaining Python-owned verbs
 
-- `run-log checkpoint`
-- `run-log refresh`
-- `run-log prepare-terminal-snapshot`
-- `run-log capture-transcript`
 - `run-log archive`
 - `run-log materialize`
 - `run-log publish`
@@ -68,6 +65,18 @@ scrubbed.
 `run-log append-entry` and `run-log append-failure` serialize on a
 `mkdir`-based `<log>.lock.d` directory lock, so concurrent appends from
 separate processes never interleave a record.
+
+## Rust-owned mutable flush
+
+`run-log checkpoint`, `refresh`, `prepare-terminal-snapshot`, and
+`capture-transcript` are Rust-owned. Every production caller enters through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The Rust owner may invoke remaining
+Python report commands as documented compatibility dependencies until their
+named migration leaves cut over. Rust controls flush ordering, batch
+aggregation, and manifest reconciliation around those bounded dependencies.
+Batch replacement and append use same-directory temporary
+files, atomic renames, directory syncs, and the shared append lock. Repeating a
+flush replaces derived reports instead of duplicating their rows.
 
 ## Rust-owned breadcrumb publication
 

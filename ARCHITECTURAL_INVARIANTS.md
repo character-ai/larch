@@ -116,7 +116,7 @@ completed green (#6263), and rejected and neutral finding bodies were absent
 from durable logs with nothing recorded anywhere (#6027). Mechanical backing:
 a post-flush manifest completeness check that asserts the expected artifact set,
 or its recorded execution-issue entries, before archive publication, with
-regression tests in `python/tests/report/test_run_log_flush.py`.
+regression tests in `crates/larch-cli/tests/run_log_flush.rs`.
 
 ### I-Commit-1: A durable run-log field embeds its content, never a pointer into a session-tmpdir file
 
@@ -132,7 +132,7 @@ allowed publication window. Evidence of violation: pre-terminal snapshots froze
 merged runs as bailed or stalled in durable logs, corrupting every downstream
 outcome census (#5646, #5676, #5970, #4900). Mechanical backing: `/implement`
 keeps refreshes mutable and publishes only from Step 18 after terminal
-reconciliation. Regression coverage lives in `python/tests/report/test_run_log_flush.py`,
+reconciliation. Regression coverage lives in `crates/larch-cli/tests/run_log_flush.rs`,
 `python/tests/report/test_run_logs.py`, and
 `python/tests/implement/test_implement_shell_scripts.py`.
 

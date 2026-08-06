@@ -74,7 +74,7 @@ failure → `STATUS=failed`, non-zero exit.
 
 ## `RUN_ID` validation
 
-After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script rejects values that contain `/` or `..` using the same **character-class rejection** as `python/cli.py run-log refresh` (`*/*` / `*'..'*)`; treat `run-log refresh` as a pattern reference only. Here, a rejected `RUN_ID` fails closed: it emits `COMMENT_URL=` (empty), `STATUS=failed`, and `ERROR="invalid RUN_ID (path-traversal characters rejected)"`, and exits non-zero without creating or modifying anything under the run log directory tree (`larch-logs/implement/<RUN_ID>/`). By contrast, `run-log refresh` treats invalid `RUN_ID` as a non-fatal skip (`REFRESH_SKIPPED=true`, `REASON=invalid-run-id`) and exits `0`.
+After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script rejects values that contain `/` or `..`, matching the traversal checks in the Rust-owned `run-log refresh` command (`*/*` / `*'..'*)`. Rust additionally applies the shared ASCII slug allowlist. Treat `run-log refresh` as a pattern reference only. Here, a rejected `RUN_ID` fails closed: it emits `COMMENT_URL=` (empty), `STATUS=failed`, and `ERROR="invalid RUN_ID (path-traversal characters rejected)"`, and exits non-zero without creating or modifying anything under the run log directory tree (`larch-logs/implement/<RUN_ID>/`). By contrast, `run-log refresh` treats invalid `RUN_ID` as a non-fatal skip (`REFRESH_SKIPPED=true`, `REASON=invalid-run-id`) and exits `0`.
 
 ## `--comment-only`
 

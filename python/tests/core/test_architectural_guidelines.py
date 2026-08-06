@@ -15,8 +15,7 @@ import pytest
 from larch.core import architectural_guidelines as ag
 from larch.core.assessment_kind import GUIDELINES, INVARIANTS, AssessmentKind
 from larch.implement import ship_guidelines
-from larch.report import run_log_flush
-from test_support import make_run_context
+from larch.issue import execution_issues
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -405,7 +404,7 @@ completed green (#6263), and rejected and neutral finding bodies were absent
 from committed logs with nothing recorded anywhere (#6027). Mechanical backing:
 a post-flush manifest completeness check that asserts the expected artifact set,
 or its recorded execution-issue entries, before the run-log commit, with
-regression tests in `python/tests/report/test_run_log_flush.py`.
+regression tests in `crates/larch-cli/tests/run_log_flush.rs`.
 
 ## Agent contracts
 
@@ -2450,17 +2449,20 @@ def test_append_deviation_note_dedupes_against_ndjson_batch(tmp_path: Path) -> N
     (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
     batch_dir = tmpdir / "larch-logs" / "implement" / run_id
     batch_dir.mkdir(parents=True)
-    ctx = make_run_context(run_id=run_id, tmpdir=str(tmpdir), manifest_path=str(tmpdir / "manifest.json"))
-
-    run_log_flush._render_execution_issues_batch(
-        ctx=ctx,
-        batch_dir=batch_dir,
+    batch = batch_dir / "execution-issues.ndjson"
+    records = tmpdir / "execution-issue-records.ndjson"
+    assert execution_issues.write_execution_issues_records(
+        input_file=issue_log,
+        record_file=records,
+        sha=execution_issues.sha256_file(issue_log),
+        batch_path=batch,
         step_label="pre-push",
         source_label="test",
-    )
+    ) == 1
+    _ = batch.write_text(records.read_text(encoding="utf-8"), encoding="utf-8")
     batch_rows = [
         json.loads(line)
-        for line in (batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()
+        for line in batch.read_text(encoding="utf-8").splitlines()
     ]
     assert batch_rows[0]["category"] == "Warnings"
     issue_log.write_text("", encoding="utf-8")

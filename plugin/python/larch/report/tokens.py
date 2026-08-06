@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, UTC
@@ -803,7 +804,8 @@ def _canonical_dir(path: str | Path) -> Path | None:
 
 
 def _validate_under_tmp(raw: str, *, env: Mapping[str, str] | None = None) -> Path:
-    root = _tmp_root(env)
+    env_map: Mapping[str, str] = os.environ if env is None else env
+    root = _tmp_root(env_map)
     if root is None:
         msg = "cannot canonicalize TMPDIR"
         raise ValueError(msg)
@@ -818,6 +820,10 @@ def _validate_under_tmp(raw: str, *, env: Mapping[str, str] | None = None) -> Pa
     private = _canonical_dir("/private/tmp")
     if private is not None:
         allowed.append(private)
+    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "RESEARCH_TMPDIR"):
+        workflow_root: Path | None = _canonical_dir(env_map.get(key, ""))
+        if workflow_root is not None:
+            allowed.append(workflow_root)
     if not any(resolved == base or base in resolved.parents for base in allowed):
         msg = f"ledger must resolve under TMPDIR: {raw}"
         raise ValueError(msg)
@@ -2931,12 +2937,18 @@ def token_report_main(argv: list[str] | None = None) -> int:
     mode = ""
     fmt = "markdown"
     output: Path | None = None
-    ledger: Path | None = None
+    raw_ledger: str | None = None
     transcript: Path | None = None
     session_dir: Path | None = None
+    source_file: Path | None = None
+    implement_tmpdir: Path | None = None
     append: Path | None = None
     buckets = False
     vendor: str | None = None
+    scrape_output: Path | None = None
+    scrape_timing_output: Path | None = None
+    scrape_sidecars: list[tuple[str, Path]] = []
+    scrape_timing_sidecars: list[tuple[str, Path]] = []
     idx = 0
     try:
         while idx < len(args):
@@ -2954,32 +2966,97 @@ def token_report_main(argv: list[str] | None = None) -> int:
             elif arg == "--output":
                 output = Path(args[idx + 1]); idx += 2
             elif arg == "--ledger":
-                ledger = _validate_under_tmp(args[idx + 1]); idx += 2
+                raw_ledger = args[idx + 1]; idx += 2
             elif arg == "--transcript":
                 transcript = Path(args[idx + 1]); idx += 2
             elif arg == "--session-dir":
                 session_dir = Path(args[idx + 1]); idx += 2
+            elif arg == "--source-file":
+                source_file = Path(args[idx + 1]); idx += 2
+            elif arg == "--implement-tmpdir":
+                implement_tmpdir = Path(args[idx + 1]); idx += 2
             elif arg == "--append-token-report":
                 append = Path(args[idx + 1]); mode = "full"; idx += 2
             elif arg == "--buckets":
                 buckets = True; idx += 1
             elif arg == "--vendor":
                 vendor = args[idx + 1]; idx += 2
+            elif arg in {"--scrape-sidecar", "--scrape-timing-sidecar"}:
+                sidecar_parts: tuple[str, str, str] = args[idx + 1].partition("=")
+                tool, separator, raw_path = sidecar_parts
+                if not separator or not tool or not raw_path:
+                    raise ValueError(f"invalid sidecar: {args[idx + 1]}")
+                pair: tuple[str, Path] = (tool, Path(raw_path))
+                if arg == "--scrape-sidecar":
+                    scrape_sidecars.append(pair)
+                else:
+                    scrape_timing_sidecars.append(pair)
+                idx += 2
+            elif arg == "--scrape-run-output":
+                scrape_output = Path(args[idx + 1]); idx += 2
+            elif arg == "--scrape-timing-output":
+                scrape_timing_output = Path(args[idx + 1]); idx += 2
             else:
                 raise ValueError(f"unknown flag: {arg}")
+        if scrape_output is not None:
+            if implement_tmpdir is None:
+                raise ValueError("scrape mode requires --implement-tmpdir")
+            scratch_root: Path = implement_tmpdir.resolve(strict=True)
+            for scrape_path in (scrape_output, scrape_timing_output):
+                if scrape_path is None:
+                    continue
+                scrape_parent: Path = scrape_path.parent.resolve(strict=True)
+                if scrape_parent != scratch_root and scratch_root not in scrape_parent.parents:
+                    raise ValueError("scrape output must stay under --implement-tmpdir")
+                larch_io.assert_no_symlink_path_or_ancestors(scrape_path)
+            with tempfile.TemporaryDirectory(dir=scrape_output.parent) as raw_tmpdir:
+                temp_root: Path = Path(raw_tmpdir)
+                token_temp: Path = temp_root / "token.ndjson"
+                timing_temp: Path = temp_root / "timing.ndjson"
+                records: tuple[TokenRecord, ...] = scrape_run(
+                    sidecar_paths=tuple(scrape_sidecars),
+                    timing_sidecar_paths=tuple(scrape_timing_sidecars),
+                    output_path=token_temp,
+                    timing_output_path=timing_temp,
+                )
+                if records:
+                    larch_io.atomic_write(scrape_output, token_temp.read_text(encoding="utf-8"), prefix=".token-report-", nofollow=True)
+                if scrape_timing_output is not None and timing_temp.is_file():
+                    larch_io.atomic_write(
+                        scrape_timing_output,
+                        timing_temp.read_text(encoding="utf-8"),
+                        prefix=".timing-report-",
+                        nofollow=True,
+                    )
+            return 0
+        report_env: dict[str, str] = dict(os.environ)
+        if implement_tmpdir is not None:
+            report_env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
+        if source_file is not None:
+            report_env["LARCH_CLAUDE_SOURCE_FILE"] = str(source_file)
+        ledger: Path | None = (
+            _validate_under_tmp(raw_ledger, env=report_env) if raw_ledger else None
+        )
         if buckets:
-            rendered = token_report(ledger_path=ledger, transcript_path=transcript, session_dir=session_dir, buckets=True, vendor=vendor)
+            rendered = token_report(
+                ledger_path=ledger,
+                transcript_path=transcript,
+                session_dir=session_dir,
+                buckets=True,
+                vendor=vendor,
+                env=report_env,
+            )
             print(rendered)
             return 0
         if not mode:
             raise ValueError("missing report mode")
         _validate_report_format(fmt)
-        rendered = token_report(ledger_path=ledger, transcript_path=transcript, session_dir=session_dir, mode=mode, fmt=fmt, append_token_report=append)
+        rendered = token_report(ledger_path=ledger, transcript_path=transcript, session_dir=session_dir, mode=mode, fmt=fmt, append_token_report=append, env=report_env)
         text = json.dumps(rendered, sort_keys=True) + "\n" if isinstance(rendered, dict) else str(rendered) + "\n"
         if mode == "full" and output is not None:
-            tmp = output.with_name(output.name + ".tmp")
-            _ = tmp.write_text(text, encoding="utf-8")
-            _ = tmp.replace(output)
+            larch_io.atomic_write(
+                output, text, prefix=".token-report-", nofollow=True
+            )
         elif append is None:
             _ = sys.stdout.write(text)
     except (IndexError, OSError, ValueError) as exc:

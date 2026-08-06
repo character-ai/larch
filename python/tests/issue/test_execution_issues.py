@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 
 from larch.issue import execution_issues
-from larch.report import run_log_flush
-from test_support import make_run_context
 
 
 def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:
@@ -388,22 +386,18 @@ def test_safety_net_dedupes_records_written_by_pre_push_flusher(tmp_path: Path) 
     log_root = (tmp_path / "larch-logs").resolve()
     batch_dir = log_root / "implement" / "run-shared"
     batch_dir.mkdir(parents=True)
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-shared\n", encoding="utf-8")
-
-    ctx = make_run_context(
-        run_id="run-shared",
-        tmpdir=str(tmp_path),
-        manifest_path=str(tmp_path / "manifest.json"),
-        state_file=str(state),
-    )
     _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
-        ctx=ctx,
-        batch_dir=batch_dir,
+    batch = batch_dir / "execution-issues.ndjson"
+    records = tmp_path / "records.ndjson"
+    assert execution_issues.write_execution_issues_records(
+        input_file=issue_log,
+        record_file=records,
+        sha=execution_issues.sha256_file(issue_log),
+        batch_path=batch,
         step_label="pre-push",
         source_label="test",
-    )
+    ) == 1
+    _ = batch.write_text(records.read_text(encoding="utf-8"), encoding="utf-8")
 
     rc, status, records, _append_log = execution_issues.flush_execution_issues_safety_net(
         log_root=log_root,
@@ -412,7 +406,7 @@ def test_safety_net_dedupes_records_written_by_pre_push_flusher(tmp_path: Path) 
     )
 
     assert (rc, status, records) == (0, "no-records", 0)
-    assert len((batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()) == 1
+    assert len(batch.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_flush_execution_issues_safety_net_append_failure_preserves_source_log(
@@ -461,3 +455,25 @@ def test_flush_execution_issues_safety_net_main_emits_kv_contract(
     assert "FLUSH_STATUS=" in out
     assert "RECORDS=" in out
     assert issue_log.read_text(encoding="utf-8") == "### Warnings\n- one\n"
+
+
+def test_flush_execution_issues_record_mode_confines_the_destination(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    destination = nested / "records.ndjson"
+
+    rc = execution_issues.flush_execution_issues_safety_net_main([
+        "--log-root", str((tmp_path / "larch-logs").resolve()),
+        "--run-id", "run-5",
+        "--issue-log", str(issue_log),
+        "--record-file", str(destination),
+    ])
+
+    assert rc == execution_issues.VALIDATION_FAILED_RC
+    assert not destination.exists()
+    assert "ERROR=validation failed" in capsys.readouterr().out

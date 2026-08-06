@@ -52,6 +52,7 @@ crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
+python/larch/calibration/difficulty.py	later-domain	#7686	diff
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse
 python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
 python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,remote,rev-parse,show-ref,status,submodule,worktree
@@ -87,7 +88,6 @@ python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/final_report.py	later-domain	#7683	rev-parse
-python/larch/report/run_log_flush.py	later-domain	#7683	diff
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic
 python/larch/research/research_eval.py	later-domain	#7684	dynamic
