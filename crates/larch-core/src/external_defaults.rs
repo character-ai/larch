@@ -352,9 +352,7 @@ fn available(
         "codex" => Ok(codex_present),
         "cursor" => Ok(cursor_present),
         "claude" => Ok(true),
-        other => Err(ExternalDefaultError::new(format!(
-            "invalid tool {other:?}"
-        ))),
+        other => Err(ExternalDefaultError::new(format!("invalid tool {other:?}"))),
     }
 }
 
