@@ -84,9 +84,9 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 ## Claude Code Reviewer Subagent archetype (both-absent floor)
 
-Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then round 2 prunes on round-1 productivity under the fixed cap of 2; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains `launch-claude-review.sh` subprocess scope.
+Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then round 2 prunes on round-1 productivity under the fixed cap of 2; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains in `scripts/larch.sh agent launch-claude-review` subprocess scope.
 
-**Voter 1** (Claude) in the 3-voter panel is **not** an Agent-tool subagent: `python/plan_review.py` drives `python/cli.py plan-review voter-dispatch`, which launches Voter 1 through `python/cli.py agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other `launch-claude-review.sh` lanes.
+**Voter 1** (Claude) in the 3-voter panel is **not** an Agent-tool subagent: `python/plan_review.py` drives `python/cli.py plan-review voter-dispatch`, which launches Voter 1 through `scripts/larch.sh agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other Rust-owned Claude-review lanes.
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 
@@ -105,7 +105,7 @@ Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/review
   ```
 - **`{OUTPUT_INSTRUCTION}`** = `"What the concern is"` + `"Suggested revision to the plan"`
 
-Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). **Voter 1** is launched by `python/cli.py plan-review voter-dispatch` via `launch-claude-review.sh`; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
+Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). **Voter 1** is launched by `python/cli.py plan-review voter-dispatch` via `scripts/larch.sh agent launch-claude-review`; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
 
 ---
 

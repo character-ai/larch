@@ -6,14 +6,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from larch.core import config
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint
 from larch.core import proc
 from larch.core import redact
 from larch.report.run_log_batch import execution_issue_identity
@@ -464,10 +463,9 @@ def assess_issue_details(category: str, details: tuple[IssueDetail, ...]) -> dic
             prompt_file = work / "prompt.txt"
             output_file = work / "output.txt"
             _ = prompt_file.write_text(prompt, encoding="utf-8")
-            cli = plugin_root(Path(__file__).resolve().parents[1]) / "python" / "cli.py"
             completed = proc.run(
                 [
-                    sys.executable, str(cli),
+                    str(larch_entrypoint(Path(__file__).resolve().parents[3])),
                     "agent", "launch-claude-subprocess",
                     "--prompt-file", str(prompt_file),
                     "--output-file", str(output_file),

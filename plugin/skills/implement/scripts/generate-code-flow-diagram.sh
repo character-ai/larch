@@ -58,7 +58,7 @@ mkdir -p "$IMPLEMENT_TMPDIR" || {
 if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS:-}" ]]; then
     DIAGRAM_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
 else
-    DIAGRAM_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-subprocess)
+    DIAGRAM_LAUNCH_CMD=("$PLUGIN_ROOT/scripts/larch.sh" agent launch-claude-subprocess)
 fi
 prompt="$IMPLEMENT_TMPDIR/code-flow-prompt.md"
 raw="$IMPLEMENT_TMPDIR/code-flow-diagram.raw.md"

@@ -19,8 +19,8 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ExternalProcessRunner as _, ExternalProgram, ProcessOutput, ProcessRequest, PythonVerbProgram,
-    is_valid_plugin_root_value,
+    ChildEnvironment, ExternalProcessRunner as _, ExternalProgram, ProcessOutput, ProcessRequest,
+    PythonVerbProgram, is_valid_plugin_root_value,
 };
 
 /// Bounded capture for a delegated verb's standard streams.
@@ -42,7 +42,7 @@ pub fn run_python_verb(
     let program = PythonVerbProgram::new(&root).map_err(|error| error.to_string())?;
     let runtime = LarchRuntime::current_thread().map_err(|error| error.to_string())?;
     let working_directory = env::current_dir().map_err(|error| error.to_string())?;
-    let request = ProcessRequest::new(
+    let mut request = ProcessRequest::new(
         ExternalProgram::PythonVerb(program),
         arguments,
         working_directory,
@@ -51,6 +51,24 @@ pub fn run_python_verb(
         NonZeroUsize::new(VERB_OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN),
     )
     .map_err(|error| error.to_string())?;
+    for key in [
+        ChildEnvironment::ClaudePluginRoot,
+        ChildEnvironment::ClaudePluginData,
+        ChildEnvironment::DesignTmpdir,
+        ChildEnvironment::ImplementTmpdir,
+        ChildEnvironment::LarchRenderCacheDir,
+        ChildEnvironment::LarchTokenLedger,
+        ChildEnvironment::LarchTokenSessionId,
+        ChildEnvironment::LarchTimingLedger,
+        ChildEnvironment::LarchTimingSkill,
+        ChildEnvironment::ResearchTmpdir,
+        ChildEnvironment::ReviewTmpdir,
+        ChildEnvironment::SessionEnvPath,
+    ] {
+        if let Some(value) = env::var_os(key.name()) {
+            request = request.with_environment(key, value);
+        }
+    }
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
     runtime
         .block_on(runner.run(request, &Cancellation::new()))
@@ -63,6 +81,36 @@ pub fn run_python_verb(
 /// report, while failing the launch would lose the vendor work it accounts for.
 pub fn run_python_verb_best_effort(arguments: impl IntoIterator<Item = OsString>) {
     let _ignored = run_python_verb(arguments, Duration::from_secs(120));
+}
+
+/// Record a vendor task's wall-clock through the still-Python timing writer.
+pub fn record_vendor_timing(
+    vendor: &str,
+    task_kind: &str,
+    start_s: impl std::fmt::Display,
+    end_s: impl std::fmt::Display,
+    output: &Path,
+    exit_code: i32,
+    status: &str,
+) {
+    run_python_verb_best_effort([
+        OsString::from("timing"),
+        OsString::from("record-vendor-task"),
+        OsString::from("--vendor"),
+        OsString::from(vendor),
+        OsString::from("--task-kind"),
+        OsString::from(task_kind),
+        OsString::from("--start-s"),
+        OsString::from(start_s.to_string()),
+        OsString::from("--end-s"),
+        OsString::from(end_s.to_string()),
+        OsString::from("--output"),
+        output.as_os_str().to_os_string(),
+        OsString::from("--exit-code"),
+        OsString::from(exit_code.to_string()),
+        OsString::from("--status"),
+        OsString::from(status),
+    ]);
 }
 
 /// Resolve the plugin root that owns the still-Python verb dispatcher.

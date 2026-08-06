@@ -17,6 +17,7 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.review.review_types import FOCUS_AREA_SET, FOCUS_AREA_VALUES, render_wire_values
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -509,7 +510,7 @@ def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
         launch_env = Path(str(output) + ".claude.launch.env")
         launch_env.parent.mkdir(parents=True, exist_ok=True)
         launch_cmd_env = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", "").strip()
-        launch_cmd: list[str] = [launch_cmd_env] if launch_cmd_env else ["python3", os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_PY_CLI", str(PLUGIN_ROOT / "python" / "cli.py")), "agent", "launch-claude-subprocess"]
+        launch_cmd: list[str] = [launch_cmd_env] if launch_cmd_env else [str(larch_entrypoint(PLUGIN_ROOT)), "agent", "launch-claude-subprocess"]
         with launch_env.open("w", encoding="utf-8") as handle:
             launch_result: subprocess.CompletedProcess[bytes] = subprocess.run(
                 [*launch_cmd, "--model", "claude-sonnet-4-6", "--prompt-file", str(prompt_file), "--output-file", str(raw), "--timeout", str(timeout), "--timing-task-kind", "scout-dynamic-archetypes", "--read-tools", "--read-tools-add-dir", str(staged_dir)],

@@ -21,6 +21,16 @@ pub mod env {
     pub const CLAUDE_PLUGIN_ROOT: &str = "CLAUDE_PLUGIN_ROOT";
     /// Persistent data root owned by the installed Claude plugin.
     pub const CLAUDE_PLUGIN_DATA: &str = "CLAUDE_PLUGIN_DATA";
+    /// Marks the bounded Claude child as exempt from the foreground-run hook.
+    pub const LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT: &str = "LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT";
+    /// Session-scoped token ledger used by migration-era Python telemetry verbs.
+    pub const LARCH_TOKEN_LEDGER: &str = "LARCH_TOKEN_LEDGER";
+    /// Session-scoped token identity used by migration-era Python telemetry verbs.
+    pub const LARCH_TOKEN_SESSION_ID: &str = "LARCH_TOKEN_SESSION_ID";
+    /// Session-scoped timing ledger used by migration-era Python telemetry verbs.
+    pub const LARCH_TIMING_LEDGER: &str = "LARCH_TIMING_LEDGER";
+    /// Workflow label used by migration-era Python timing telemetry verbs.
+    pub const LARCH_TIMING_SKILL: &str = "LARCH_TIMING_SKILL";
     /// Cursor API credential used by Cursor subprocesses.
     pub const CURSOR_API_KEY: &str = "CURSOR_API_KEY";
     /// Isolated Cursor configuration directory injected into vendor children.
@@ -29,14 +39,22 @@ pub mod env {
     pub const CODEX_HOME: &str = "CODEX_HOME";
     /// Temporary directory for an active design run.
     pub const DESIGN_TMPDIR: &str = "DESIGN_TMPDIR";
+    /// Temporary directory for an active implementation run.
+    pub const IMPLEMENT_TMPDIR: &str = "IMPLEMENT_TMPDIR";
+    /// Optional cache root for rendered specialist prompts.
+    pub const LARCH_RENDER_CACHE_DIR: &str = "LARCH_RENDER_CACHE_DIR";
+    /// Temporary directory for an active research run.
+    pub const RESEARCH_TMPDIR: &str = "RESEARCH_TMPDIR";
+    /// Temporary directory for an active review run.
+    pub const REVIEW_TMPDIR: &str = "REVIEW_TMPDIR";
+    /// Persisted environment file for the active session.
+    pub const SESSION_ENV_PATH: &str = "SESSION_ENV_PATH";
     /// Explicit GitHub CLI configuration directory used by typed `gh` operations.
     pub const GH_CONFIG_DIR: &str = "GH_CONFIG_DIR";
     /// Optional Google Application Default Credentials file.
     pub const GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
     /// Current user's home directory.
     pub const HOME: &str = "HOME";
-    /// Temporary directory for an active implementation run.
-    pub const IMPLEMENT_TMPDIR: &str = "IMPLEMENT_TMPDIR";
     /// Issue number associated with the current workflow.
     pub const ISSUE_NUMBER: &str = "ISSUE_NUMBER";
     /// Wrapper-invoked absolute path to the real larch binary.
@@ -110,7 +128,7 @@ pub mod env {
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 46] = [
+    pub const ALL: [&str; 55] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
@@ -127,6 +145,7 @@ pub mod env {
         IMPLEMENT_TMPDIR,
         ISSUE_NUMBER,
         LARCH_BINARY,
+        LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
         LARCH_CODEX_EFFORT,
         LARCH_CODEX_FIX_MODEL,
         LARCH_CODEX_MODEL,
@@ -145,14 +164,22 @@ pub mod env {
         LARCH_PROBE_TTL_SECONDS,
         LARCH_R2_ACCOUNT_ID,
         LARCH_R2_ENDPOINT,
+        LARCH_RENDER_CACHE_DIR,
         LARCH_RUN_ID,
         LARCH_STORAGE_BASE_URI,
+        LARCH_TIMING_LEDGER,
+        LARCH_TIMING_SKILL,
+        LARCH_TOKEN_LEDGER,
+        LARCH_TOKEN_SESSION_ID,
         LOGNAME,
         NO_OPEN_BROWSER,
         OPENAI_API_KEY,
         PATH,
         REPO,
+        RESEARCH_TMPDIR,
+        REVIEW_TMPDIR,
         SESSION_ID,
+        SESSION_ENV_PATH,
         SESSION_TMPDIR,
         TMPDIR,
         USER,
@@ -174,6 +201,9 @@ mod tests {
         assert_eq!(env::LARCH_RUN_ID, "LARCH_RUN_ID");
         assert_eq!(env::DESIGN_TMPDIR, "DESIGN_TMPDIR");
         assert_eq!(env::IMPLEMENT_TMPDIR, "IMPLEMENT_TMPDIR");
+        assert_eq!(env::RESEARCH_TMPDIR, "RESEARCH_TMPDIR");
+        assert_eq!(env::REVIEW_TMPDIR, "REVIEW_TMPDIR");
+        assert_eq!(env::SESSION_ENV_PATH, "SESSION_ENV_PATH");
         assert_eq!(env::CLAUDE_PLUGIN_ROOT, "CLAUDE_PLUGIN_ROOT");
         assert_eq!(env::REPO, "REPO");
         assert_eq!(env::ISSUE_NUMBER, "ISSUE_NUMBER");

@@ -352,6 +352,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "read-claude-model",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-launch-claude-review",
+        "agent",
+        "launch-claude-review",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-claude-subprocess",
+        "agent",
+        "launch-claude-subprocess",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-resolve-model-pins",
         "agent",
         "resolve-model-pins",

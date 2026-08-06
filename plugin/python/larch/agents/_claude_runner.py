@@ -1,12 +1,10 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalMemberAccess=false, reportPrivateUsage=false, reportUnusedFunction=false
-"""Claude subprocess runner and waterfall orchestrator."""
+"""Compatibility helpers for remaining Python CI and waterfall callers."""
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import html
-import json
 import os
 import re
 import subprocess
@@ -19,11 +17,9 @@ from pathlib import Path
 from larch.core import config
 from larch.git import git
 from larch import io as larch_io
-from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
-from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, read_panel_payload_bytes, _panel_logging_enabled
 
 from larch.agents._types import (
     _CLAUDE_AUTH_FAST_FAIL_WINDOW,
@@ -31,36 +27,20 @@ from larch.agents._types import (
     _CLAUDE_REVIEW_READ_ONLY_PREAMBLE,
     _CLAUDE_STDERR_SCAN_TAIL_BYTES,
     _MAX_CONTEXT_FILES,
-    _MAX_CLAUDE_TIMEOUT,
     _CTRL_RE,
     _PY_CLI,
     WaterfallResult,
     TierAttempt,
-    _err,
+    _append,
     _read_text,
     _write,
-    _append,
-    _is_positive_int,
-    _json_array,
     _plugin_root,
 )
 from larch.agents._launch_failure import (
     effective_failure_class,
 )
-from larch.agents._failure_diag import (
-    _compose_failure_diag,
-    _write_stderr_tail,
-    _num,
-    _first_not_none,
-)
-from larch.agents._run_external import (
-    _stop_policy_rejected_process,
-    _emit_claude_subprocess_failure_fields,
-    _under,
-)
-from larch.agents._review_launcher import (
-    _review_specialist_render_args,
-)
+from larch.agents._failure_diag import _num, _first_not_none
+from larch.agents._run_external import _stop_policy_rejected_process, _under
 
 def _panel_payload_bytes_from_env() -> int:
     raw = os.environ.get("LARCH_PANEL_PAYLOAD_BYTES", "").strip()
@@ -307,261 +287,6 @@ def _with_claude_read_only_preamble(prompt: str) -> str:
     if prompt.startswith(_CLAUDE_REVIEW_READ_ONLY_PREAMBLE):
         return prompt
     return _CLAUDE_REVIEW_READ_ONLY_PREAMBLE + "\n\n" + prompt
-
-
-def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-subprocess")
-    parser.add_argument("--read-tools", action="store_true")
-    parser.add_argument("--read-tools-add-dir", default="")
-    parser.add_argument("--model", default="claude-sonnet-4-6")
-    parser.add_argument("--prompt-file", required=True)
-    parser.add_argument("--output-file", required=True)
-    parser.add_argument("--timeout", required=True)
-    parser.add_argument("--timing-task-kind", default="claude-review")
-    parser.add_argument("--allow-root", action="append", default=[])
-    parser.add_argument("--context-files", action="append", default=[])
-    args = parser.parse_args(argv)
-    output = Path(args.output_file)
-    prompt_file = Path(args.prompt_file)
-    if not _is_positive_int(args.timeout) or int(args.timeout, 10) > _MAX_CLAUDE_TIMEOUT:
-        _err("agent launch-claude-subprocess: --timeout must be a positive integer <= 1800")
-        return 2
-    if not args.model or any(ch.isspace() for ch in args.model):
-        _err("agent launch-claude-subprocess: --model must be a single non-empty token")
-        return 2
-    if not prompt_file.is_file() or prompt_file.is_symlink():
-        _err("agent launch-claude-subprocess: invalid --prompt-file")
-        return 2
-    session_root, output_msg = _validate_claude_output(output)
-    if session_root is None:
-        _err(f"agent launch-claude-subprocess: {output_msg}")
-        return 2
-    roots = [_plugin_root(), session_root]
-    prompt_ok, prompt_msg = _validate_prompt_file(path=prompt_file, roots=roots)
-    if not prompt_ok:
-        _err(f"agent launch-claude-subprocess: {prompt_msg}")
-        return 2
-    for raw in args.allow_root:
-        p = Path(raw)
-        if not p.is_dir() or p.is_symlink():
-            _err("agent launch-claude-subprocess: --allow-root must be an existing non-symlink directory")
-            return 2
-        resolved = p.resolve()
-        if not _root_allowed_for_context(root=resolved, session_root=session_root):
-            _err("agent launch-claude-subprocess: --allow-root must resolve under the session root, plugin root, or repository")
-            return 2
-        roots.append(resolved)
-    if args.read_tools:
-        if not args.read_tools_add_dir:
-            _err("agent launch-claude-subprocess: --read-tools-add-dir is required with --read-tools")
-            return 2
-        rt = Path(args.read_tools_add_dir)
-        if not rt.is_dir() or rt.is_symlink():
-            _err("agent launch-claude-subprocess: --read-tools-add-dir must be an existing non-symlink directory")
-            return 2
-        rt_resolved = rt.resolve()
-        if not _under(path=rt_resolved, root=session_root):
-            _err("agent launch-claude-subprocess: --read-tools-add-dir must resolve under the session root")
-            return 2
-        roots.append(rt_resolved)
-    context_paths = [Path(p) for p in args.context_files]
-    ctx_rc, context_text, ctx_msg = _render_context_files(paths=context_paths, roots=roots)
-    if ctx_rc != 0:
-        _err(f"agent launch-claude-subprocess: {ctx_msg}")
-        return ctx_rc
-    prompt = prompt_file.read_text(encoding="utf-8", errors="replace")
-    full_prompt = _with_claude_read_only_preamble(prompt + ("\n\n" + context_text if context_text else ""))
-    cmd = ["claude", "--print", "--output-format", "json", "--model", args.model]
-    if args.read_tools:
-        # --permission-mode plan limits tool-approval prompts.  When ANTHROPIC_API_KEY
-        # is set, claude uses API-key mode and the api-key takes precedence over the
-        # claude.ai login; the "connectors disabled" stderr warning that appears on ~82%
-        # of runs is a red herring (it prints on successful votes too).  The intermittent
-        # "No messages returned from query" empty-output failure (4.3% rate, Claude lane)
-        # is a transient Claude API-side hiccup unrelated to this flag.  The fix is the
-        # one-retry-on-empty/124 pattern applied per-lane in #5677 (design voter),
-        # #5714 (code-flow and ci lint-fixer).
-        cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
-    prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
-    for stale in (output.with_suffix(output.suffix + ".stderr"), output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
-        with contextlib.suppress(FileNotFoundError):
-            stale.unlink()
-    _write(path=prompt_sidecar, text=full_prompt)
-    _write(path=output.with_suffix(output.suffix + ".meta"), text=f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nPROMPT_FILE={prompt_sidecar}\nCMD_JSON={_json_array(cmd)}\n")
-    start = time.time()
-    result = _run_claude_with_stdin(cmd=cmd, prompt=full_prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
-    end = time.time()
-    elapsed = int(end - start)
-    exit_code = result.returncode
-    raw = result.stdout
-    promoted, status = "", "signal"
-    if exit_code == 0:
-        try:
-            obj = json.loads(raw)
-            value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
-            if isinstance(value, str) and value:
-                promoted = value
-                status = "complete"
-                _record_claude_sub_usage(obj=obj, raw=_claude_token_raw(args.timing_task_kind), model=args.model)
-            else:
-                exit_code = 99
-                promoted = "CLAUDE_JSON_RESULT_INVALID"
-        except json.JSONDecodeError:
-            exit_code = 99
-            promoted = "CLAUDE_JSON_RESULT_INVALID"
-    else:
-        promoted = raw
-    _write(path=output, text=promoted)
-    if result.stderr:
-        _write(path=output.with_suffix(output.suffix + ".stderr"), text=result.stderr)
-    if exit_code != 0:
-        stderr_file = output.with_suffix(output.suffix + ".stderr")
-        if stderr_file.is_file() and stderr_file.stat().st_size > 0:
-            _write_stderr_tail(source=stderr_file, output=output)
-        _compose_failure_diag(output, sink=str(stderr_file))
-    else:
-        for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
-            with contextlib.suppress(FileNotFoundError):
-                stale.unlink()
-    _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text="STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n")
-    _write(path=output.with_suffix(output.suffix + ".done"), text=f"{exit_code}\n")
-    proc.run(
-        [
-            sys.executable,
-            str(_PY_CLI),
-            "timing",
-            "record-vendor-task",
-            "--vendor",
-            "claude",
-            "--task-kind",
-            args.timing_task_kind,
-            "--start-s",
-            str(int(start)),
-            "--end-s",
-            str(int(end)),
-            "--output",
-            str(output),
-            "--exit-code",
-            str(exit_code),
-            "--status",
-            status,
-        ],
-    )
-    # Emit STATUS based on exit_code (tracks whether JSON promotion succeeded),
-    # but return the subprocess's own returncode so callers that check the
-    logging_util.emit_kv(key="STATUS", value="OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
-    logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
-    logging_util.emit_kv(key="ELAPSED", value=str(elapsed))
-    _emit_claude_subprocess_failure_fields(output=output, launcher_exit=exit_code)
-    return exit_code
-
-
-def launch_claude_review_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-review")
-    parser.add_argument("--output", "--output-file", dest="output", required=True)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--agent-file")
-    group.add_argument("--prompt-file")
-    group.add_argument("--prompt")
-    parser.add_argument("--mode", default="")
-    parser.add_argument("--role", choices=("reviewer", "voter"), default="reviewer")
-    parser.add_argument("--model", default="")
-    parser.add_argument("--read-tools-add-dir", default="")
-    parser.add_argument("--context-files", action="append", default=[])
-    parser.add_argument("--description-text", default="")
-    parser.add_argument("--scope-files", default="")
-    parser.add_argument("--diff-file", default="")
-    parser.add_argument("--commit-count", default="")
-    parser.add_argument("--plan-file", default="")
-    parser.add_argument("--feature-file", default="")
-    parser.add_argument("--session-env-path", default="")
-    parser.add_argument("--difficulty", default="")
-    parser.add_argument("--timeout", default="1800")
-    parser.add_argument("--timing-task-kind", default="claude-review")
-    args = parser.parse_args(argv)
-    timeout = min(int(args.timeout, 10), 1800) if _is_positive_int(args.timeout) else 0
-    if timeout == 0:
-        _err("agent launch-claude-review: --timeout must be a positive integer")
-        return 2
-    model = args.model or (os.environ.get("LARCH_VOTER_MODEL", "claude-sonnet-4-6") if args.role == "voter" else "claude-sonnet-4-6")
-    temp_prompt = ""
-    payload_bytes = 0
-    prompt_tmpdir = Path(args.output).parent
-    prompt_tmpdir.mkdir(parents=True, exist_ok=True)
-    if args.prompt is not None:
-        fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-prompt-", dir=str(prompt_tmpdir))
-        os.close(fd)
-        _write(path=temp_prompt, text=args.prompt)
-        prompt_file = temp_prompt
-    elif args.agent_file:
-        render_ns = argparse.Namespace(**vars(args))
-        render_ns.mode = args.mode or "diff"
-        render_args = [
-            sys.executable,
-            str(_PY_CLI),
-            "render",
-            "specialist",
-            *_review_specialist_render_args(render_ns),
-        ]
-        fd, payload_sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(prompt_tmpdir))
-        os.close(fd)
-        payload_sidecar = Path(payload_sidecar_name)
-        with contextlib.suppress(OSError):
-            payload_sidecar.unlink()
-        render_args.extend(["--payload-bytes-output", str(payload_sidecar)])
-        rendered = proc.run(render_args)
-        if rendered.returncode != 0:
-            _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")
-            return 2
-        payload_bytes = read_panel_payload_bytes(payload_sidecar)
-        with contextlib.suppress(OSError):
-            payload_sidecar.unlink()
-        body = rendered.stdout
-        fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-agent-", dir=str(prompt_tmpdir))
-        os.close(fd)
-        _write(path=temp_prompt, text=body)
-        prompt_file = temp_prompt
-    else:
-        prompt_file = args.prompt_file
-        payload_bytes = _panel_payload_bytes_from_env()
-    if _panel_logging_enabled():
-        append_panel_prompt_size(
-            artifact_path=panel_prompt_size_artifact_for_output(output=Path(args.output)),
-            output=Path(args.output),
-            tool="claude",
-            prompt_file=prompt_file,
-            agent_file=args.agent_file or "",
-            payload_bytes=payload_bytes,
-        )
-    try:
-        forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value and Path(value).is_file()]
-        sub_args = [
-            "--model",
-            model,
-            "--prompt-file",
-            prompt_file,
-            "--output-file",
-            args.output,
-            "--timeout",
-            str(timeout),
-            "--timing-task-kind",
-            args.timing_task_kind,
-        ]
-        if args.read_tools_add_dir:
-            sub_args.extend(["--read-tools", "--read-tools-add-dir", args.read_tools_add_dir])
-        for ctx in [*args.context_files, *forwarded_contexts]:
-            sub_args.extend(["--context-files", ctx, "--allow-root", str(Path(ctx).parent)])
-        rc = launch_claude_subprocess_main(sub_args)
-        done = Path(args.output).with_suffix(Path(args.output).suffix + ".done")
-        if not done.is_file():
-            _write(path=done, text=f"{rc}\n")
-        return rc
-    finally:
-        if temp_prompt:
-            with contextlib.suppress(FileNotFoundError):
-                Path(temp_prompt).unlink()
 
 
 _DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"

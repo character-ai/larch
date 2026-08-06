@@ -25,6 +25,15 @@ session files, environment variables, caches, and temporary files. Larch path,
 type, containment, and symlink checks reduce accidental or cross-root writes;
 they do not create a same-user confidentiality boundary.
 
+The Rust-owned Claude subprocess and review launchers validate prompt and
+context inputs against their allowed roots, then supply the rendered prompt as
+a confined regular-file stdin. The shared external-process adapter revalidates
+those input and output files at open time and uses no-follow opens where the
+platform supports them. Launcher outputs and diagnostic sidecars remain
+session-private artifacts with private creation modes where supported. These checks reduce
+accidental cross-root writes and symlink substitution; they do not turn vendor
+input or output into a publication-safe artifact.
+
 ## Redaction and Secret Scanning
 
 ### Redaction invariants

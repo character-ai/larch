@@ -18,9 +18,9 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import external_defaults
-from larch.core.repo_roots import larch_entrypoint
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.core import retry
 from larch.design.design_step0_env import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
@@ -902,7 +902,7 @@ def dispatch_panel(  # noqa: C901,PLR0912,PLR0915,RUF100
         generic_prompt.write_text("\n".join(parts) + "\n", encoding="utf-8")
         tail_src.unlink(missing_ok=True)
         env_launch = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", "").strip()
-        launch_cmd: list[str] = [env_launch] if env_launch else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-claude-review"]
+        launch_cmd: list[str] = [env_launch] if env_launch else [str(larch_entrypoint(PLUGIN_ROOT)), "agent", "launch-claude-review"]
         with (generic_output.with_suffix(generic_output.suffix + ".launch-stderr")).open("wb") as stderr_handle:
             launch: subprocess.CompletedProcess[bytes] = subprocess.run(
                 [*launch_cmd, "--output", str(generic_output), "--prompt-file", str(generic_prompt), "--mode", "description", "--model", "claude-sonnet-4-6", "--timeout", str(timeout), "--timing-task-kind", "claude-decomp-generic", "--feature-file", str(feature)],

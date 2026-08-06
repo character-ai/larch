@@ -1212,7 +1212,7 @@ def test_generate_code_flow_diagram_labels_launcher_failure_class(
     assert "tail=" in result.reason
 
 
-def test_generate_code_flow_diagram_uses_py_cli_launcher(
+def test_generate_code_flow_diagram_uses_rust_entrypoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1225,7 +1225,7 @@ def test_generate_code_flow_diagram_uses_py_cli_launcher(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"]:
             return subprocess.CompletedProcess(argv, 0, stdout="python/larch/git/pr_body.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             launch_argv.extend(argv)
             output_file = Path(argv[argv.index("--output-file") + 1])
             _ = output_file.write_text(
@@ -1242,8 +1242,10 @@ def test_generate_code_flow_diagram_uses_py_cli_launcher(
     assert result.status == "ok"
     assert result.diagram_file
     assert result.reason == ""
-    assert launch_argv[1] == str(pr_body._PY_CLI)
-    assert launch_argv[2:4] == ["agent", "launch-claude-subprocess"]
+    assert launch_argv[0] == str(
+        pr_body.larch_entrypoint(Path(pr_body.__file__).resolve().parents[3])
+    )
+    assert launch_argv[1:3] == ["agent", "launch-claude-subprocess"]
     timeout_idx = launch_argv.index("--timeout")
     assert launch_argv[timeout_idx + 1] == str(pr_body._CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS)
     assert launch_argv[timeout_idx + 1] != "600"
@@ -1264,7 +1266,7 @@ def test_generate_code_flow_diagram_retries_on_timeout(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             call_count += 1
             output_file = Path(argv[argv.index("--output-file") + 1])
             if call_count == 1:
@@ -1309,7 +1311,7 @@ def test_generate_code_flow_diagram_retries_on_empty_output(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             call_count += 1
             output_file = Path(argv[argv.index("--output-file") + 1])
             if call_count == 1:
@@ -1348,7 +1350,7 @@ def test_generate_code_flow_diagram_no_retry_on_hard_failure(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             call_count += 1
             # Hard failure: exit 1, no output file written
             return subprocess.CompletedProcess(argv, 1, stdout="launcher-init-failed", stderr="")
@@ -1378,7 +1380,7 @@ def test_generate_code_flow_diagram_retries_up_to_max_on_persistent_failure(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             call_count += 1
             output_file = Path(argv[argv.index("--output-file") + 1])
             # Always fail with empty output (triggers retry)
@@ -1414,7 +1416,7 @@ def test_generate_code_flow_diagram_reads_stderr_sidecar(
             return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
         if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
-        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+        if argv[1:3] == ["agent", "launch-claude-subprocess"]:
             # Write the .stderr sidecar as the real launcher would, leave stdout empty
             _ = raw_path.with_suffix(raw_path.suffix + ".stderr").write_text(auth_message + "\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 1, stdout="launcher-init-failed", stderr="")

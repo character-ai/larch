@@ -234,11 +234,13 @@ verb = "launch-claude-review"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_review_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8110
+clean_install_test = "clean-install-agent-launch-claude-review"
 
 [[commands]]
 domain = "agent"
@@ -258,11 +260,13 @@ verb = "launch-claude-subprocess"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_subprocess_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8110
+clean_install_test = "clean-install-agent-launch-claude-subprocess"
 
 [[commands]]
 domain = "agent"
@@ -8213,6 +8217,12 @@ python = ["render voter"]
 rust = []
 
 [[callers]]
+path = "python/larch/agents/agent_waterfall.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-review"]
+
+[[callers]]
 path = "python/larch/agents/collect_results.py"
 kind = "python-runtime"
 python = []
@@ -8246,13 +8256,19 @@ rust = []
 path = "python/larch/design/decompose.py"
 kind = "python-runtime"
 python = []
-rust = ["run-log append-failure"]
+rust = ["agent launch-claude-review", "run-log append-failure"]
 
 [[callers]]
 path = "python/larch/design/design_core.py"
 kind = "python-runtime"
 python = []
 rust = ["run-log append-failure"]
+
+[[callers]]
+path = "python/larch/design/design_dialectic.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-subprocess"]
 
 [[callers]]
 path = "python/larch/design/design_oos.py"
@@ -8324,7 +8340,19 @@ rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery 
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-codex-exec", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation"]
+
+[[callers]]
+path = "python/larch/design/plan_scout.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-subprocess"]
+
+[[callers]]
+path = "python/larch/git/pr_body.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-subprocess"]
 
 [[callers]]
 path = "python/larch/git/rebase.py"
@@ -8435,6 +8463,12 @@ python = ["run-log cleanup-implement-logs"]
 rust = []
 
 [[callers]]
+path = "python/larch/report/exec_issue_detail.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-subprocess"]
+
+[[callers]]
 path = "python/larch/report/final_report.py"
 kind = "python-runtime"
 python = []
@@ -8487,6 +8521,12 @@ path = "python/larch/review/plan_review_normalize.py"
 kind = "python-runtime"
 python = []
 rust = ["stall-recovery record-escalation"]
+
+[[callers]]
+path = "python/larch/review/plan_review_panel.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-review"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
@@ -8713,8 +8753,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/dialectic-clarifier.md"
 kind = "skill"
-python = ["agent launch-claude-subprocess", "design dialectic-write-candidates", "design step2b-postplan", "design step35-settle"]
-rust = []
+python = ["design dialectic-write-candidates", "design step2b-postplan", "design step35-settle"]
+rust = ["agent launch-claude-subprocess"]
 
 [[callers]]
 path = "skills/design/references/discussion-rounds.md"
@@ -8749,8 +8789,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["agent launch-claude-review", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review preview", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
-rust = ["bgjob wait"]
+python = ["decompose panel-dispatch", "plan-review panel-dispatch", "plan-review preview", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
+rust = ["agent launch-claude-review", "bgjob wait"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
@@ -9073,8 +9113,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/generate-code-flow-diagram.sh"
 kind = "skill"
-python = ["agent launch-claude-subprocess", "mermaid sanitize"]
-rust = []
+python = ["mermaid sanitize"]
+rust = ["agent launch-claude-subprocess"]
 
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.md"
@@ -9409,8 +9449,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["agent degraded-tools-gate", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
+python = ["agent dispatch-voters", "agent dispatch-waterfall", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent launch-claude-subprocess", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
@@ -9445,8 +9485,8 @@ rust = ["bgjob start", "bgjob wait"]
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-claude-review"]
-rust = ["agent degraded-tools-gate", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
+python = ["agent collect-results"]
+rust = ["agent degraded-tools-gate", "agent launch-claude-review", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"
@@ -9512,7 +9552,7 @@ rust = []
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
 python = ["agent dispatch-voters", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = ["agent launch-codex-exec"]
+rust = ["agent launch-claude-review", "agent launch-codex-exec"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

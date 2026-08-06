@@ -21,7 +21,7 @@ use std::{
 use larch_adapters::{
     ConfinedPath, NoopProcessObserver, PathIntent, ProcessFileRouting, ProcessStdinRouting,
     TemporaryRoot, TokioProcessRunner, atomic_write_utf8_in, ensure_directory_chain,
-    read_optional_utf8_lossy, remove_optional_file,
+    open_confined_read, read_optional_utf8_lossy, remove_optional_file,
     runtime::{Cancellation, LarchRuntime},
     vendor_auth::{CursorPreflightConfig, VendorAuthContext, cursor_auth_preflight},
     vendor_diagnostics::{
@@ -577,6 +577,7 @@ fn run_prepared_external_agent(
         request,
         &cancellation,
         routing,
+        &prepared.root,
         policy_watch.as_ref(),
         launch.poll_interval,
     ));
@@ -726,6 +727,7 @@ async fn run_file_routed_external_agent(
     request: larch_core::ProcessRequest,
     cancellation: &Cancellation,
     routing: ProcessFileRouting,
+    root: &TemporaryRoot,
     policy_watch: Option<&ConfinedPath>,
     poll_interval: Duration,
 ) -> (
@@ -740,7 +742,7 @@ async fn run_file_routed_external_agent(
             result = &mut launch => {
                 if policy_excerpt.is_none()
                     && let Some(path) = policy_watch
-                    && let Some(excerpt) = codex_policy_excerpt_from_file(path)
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(root, path)
                 {
                     policy_excerpt = Some(excerpt);
                 }
@@ -748,7 +750,7 @@ async fn run_file_routed_external_agent(
             }
             _ = ticker.tick(), if policy_watch.is_some() && policy_excerpt.is_none() => {
                 if let Some(path) = policy_watch
-                    && let Some(excerpt) = codex_policy_excerpt_from_file(path)
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(root, path)
                 {
                     eprintln!("❌ codex agent: exec_command policy rejection detected, killing");
                     cancellation.cancel();
@@ -759,17 +761,10 @@ async fn run_file_routed_external_agent(
     }
 }
 
-fn codex_policy_excerpt_from_file(path: &ConfinedPath) -> Option<String> {
-    path.revalidate().ok()?;
-    let mut file = fs::File::open(path.path()).ok()?;
-    let length = file.metadata().ok()?.len();
+fn codex_policy_excerpt_from_file(root: &TemporaryRoot, path: &ConfinedPath) -> Option<String> {
     let cap = u64::try_from(larch_core::CODEX_POLICY_REJECTION_TAIL_BYTES + 1).ok()?;
-    if length > cap {
-        file.seek(SeekFrom::Start(length - cap)).ok()?;
-    }
-    let mut bytes = Vec::with_capacity(usize::try_from(length.min(cap)).ok()?);
-    file.read_to_end(&mut bytes).ok()?;
-    let excerpt = codex_policy_rejection_excerpt(&String::from_utf8_lossy(&bytes));
+    let text = read_external_agent_text_tail(root, path.path(), Some(cap)).ok()?;
+    let excerpt = codex_policy_rejection_excerpt(&text);
     (!excerpt.is_empty()).then_some(excerpt)
 }
 
@@ -844,7 +839,7 @@ fn append_launcher_text(root: &TemporaryRoot, path: &Path, text: &str) -> Result
         .map_err(|error| error.to_string())
 }
 
-fn remove_external_agent_stale(root: &TemporaryRoot, path: &Path) -> Result<(), String> {
+pub fn remove_external_agent_stale(root: &TemporaryRoot, path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
         Ok(_metadata) => {
             let confined = root
@@ -857,26 +852,48 @@ fn remove_external_agent_stale(root: &TemporaryRoot, path: &Path) -> Result<(), 
     }
 }
 
-fn read_external_agent_text(root: &TemporaryRoot, path: &Path) -> Result<String, String> {
+pub fn read_external_agent_text(root: &TemporaryRoot, path: &Path) -> Result<String, String> {
+    read_external_agent_text_tail(root, path, None)
+}
+
+pub fn read_external_agent_text_tail(
+    root: &TemporaryRoot,
+    path: &Path,
+    tail_bytes: Option<u64>,
+) -> Result<String, String> {
     match fs::symlink_metadata(path) {
         Ok(_metadata) => {
             let confined = root
                 .confine(path, PathIntent::Read)
                 .map_err(|error| error.to_string())?;
-            fs::read(confined.path())
-                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-                .map_err(|error| error.to_string())
+            read_confined_agent_text(&confined, tail_bytes)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(error) => Err(error.to_string()),
     }
 }
 
+fn read_confined_agent_text(
+    path: &ConfinedPath,
+    tail_bytes: Option<u64>,
+) -> Result<String, String> {
+    let mut file = open_confined_read(path).map_err(|error| error.to_string())?;
+    if let Some(max_bytes) = tail_bytes {
+        let length = file.metadata().map_err(|error| error.to_string())?.len();
+        file.seek(SeekFrom::Start(length.saturating_sub(max_bytes)))
+            .map_err(|error| error.to_string())?;
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 fn output_size(path: &Path) -> u64 {
     fs::metadata(path).map_or(0, |metadata| metadata.len())
 }
 
-fn spawn_error_exit_code(error: &ProcessError) -> i32 {
+pub fn spawn_error_exit_code(error: &ProcessError) -> i32 {
     if error.kind() == ProcessErrorKind::Spawn && error.message().contains("Permission denied") {
         126
     } else if error.kind() == ProcessErrorKind::Spawn {

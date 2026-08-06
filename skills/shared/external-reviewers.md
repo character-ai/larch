@@ -50,7 +50,7 @@ When processing reviewer results, failed external slots should fall through the 
 
 - Phase 1 launches the slot's assigned external tool when its binary is present or the manifest intentionally attempts the slot.
 - Phase 2 retries the slot with the other binary-present external tool.
-- Phase 3 launches a Claude reviewer subprocess via `python/cli.py agent launch-claude-review`.
+- Phase 3 launches a Claude reviewer subprocess via `scripts/larch.sh agent launch-claude-review`.
 
 Use this warning template when a slot reaches Phase 3:
 

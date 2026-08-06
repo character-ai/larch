@@ -6,10 +6,13 @@ use std::{
     error::Error,
     fmt,
     fs::{self, File},
-    io::{self, Write},
+    io::{self, Read as _, Write},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 
 /// Stable failure classes for filesystem-backed text primitives.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,14 +73,33 @@ impl fmt::Display for FileIoError {
 
 impl Error for FileIoError {}
 
+/// Open a regular file confined with [`PathIntent::Read`] without following symlinks.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for unsafe paths or I/O failures.
+pub fn open_confined_read(path: &ConfinedPath) -> Result<File, FileIoError> {
+    let raw_path = require_intent(path, PathIntent::Read)?;
+    let mut options = File::options();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::libc::O_NOFOLLOW);
+    options
+        .open(raw_path)
+        .map_err(|error| io_error(raw_path, &error))
+}
+
 /// Read a regular file confined with [`PathIntent::Read`] as strict UTF-8.
 ///
 /// # Errors
 ///
 /// Returns [`FileIoError`] for unsafe paths, I/O failures, or invalid UTF-8.
 pub fn read_utf8(path: &ConfinedPath) -> Result<String, FileIoError> {
-    let raw_path = require_intent(path, PathIntent::Read)?;
-    let bytes = fs::read(raw_path).map_err(|error| io_error(raw_path, &error))?;
+    let raw_path = path.path();
+    let mut file = open_confined_read(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| io_error(raw_path, &error))?;
     String::from_utf8(bytes).map_err(|error| {
         FileIoError::new(FileIoErrorKind::InvalidUtf8, raw_path, error.to_string())
     })
@@ -472,7 +494,7 @@ pub fn path_safety_error(path: &Path, error: &PathSafetyError) -> FileIoError {
 mod tests {
     use super::{
         FileIoErrorKind, atomic_write_utf8, atomic_write_utf8_in, atomic_write_with,
-        durability_error, guarded_update_env, read_first_raw_key, read_kv_raw,
+        durability_error, guarded_update_env, open_confined_read, read_first_raw_key, read_kv_raw,
         read_session_kv_text, read_utf8, rename_same_directory,
     };
     use crate::{PathIntent, PathSafetyErrorKind, TemporaryRoot};
@@ -571,6 +593,30 @@ mod tests {
                 .kind(),
             FileIoErrorKind::InvalidMode
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confined_reads_revalidate_before_opening() {
+        let directory = tempfile::tempdir().expect("tempdir should create");
+        let root = temporary_root(&directory);
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        fs::write(&source, b"safe").expect("source fixture");
+        fs::write(&target, b"target").expect("target fixture");
+        let confined = root
+            .confine("source", PathIntent::Read)
+            .expect("source should confine");
+        fs::remove_file(&source).expect("remove source");
+        std::os::unix::fs::symlink(&target, &source).expect("swap source with symlink");
+
+        assert_eq!(
+            open_confined_read(&confined)
+                .expect_err("swapped symlink must fail")
+                .kind(),
+            FileIoErrorKind::Symlink
+        );
+        assert_eq!(fs::read(&target).expect("target unchanged"), b"target");
     }
 
     #[test]

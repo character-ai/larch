@@ -23,7 +23,7 @@ import tempfile
 import time
 from collections.abc import Callable, Sequence
 
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint
 
 
 
@@ -623,8 +623,7 @@ def _ballot_text(*, candidates: CandidateSet, steelmen: dict[tuple[str, str], st
 
 def _launcher_argv(*, design: Path, prompt: Path, output: Path, timeout: int, task_kind: str) -> list[str]:
     return [
-        sys.executable,
-        str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "agent",
         "launch-claude-subprocess",
         "--prompt-file",
