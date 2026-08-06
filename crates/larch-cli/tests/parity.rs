@@ -399,6 +399,36 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "run-log",
         "validate-run-id",
     ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-clear-stall",
+        "stall-recovery",
+        "clear-stall",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-is-larch-dev-clone",
+        "stall-recovery",
+        "is-larch-dev-clone",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-seed-terminal-state",
+        "stall-recovery",
+        "seed-terminal-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-validate-terminal-state",
+        "stall-recovery",
+        "validate-terminal-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-validate-tier-b-public-file",
+        "stall-recovery",
+        "validate-tier-b-public-file",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-validate-token",
+        "stall-recovery",
+        "validate-token",
+    ),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
     CleanInstallCase::new(
@@ -672,6 +702,191 @@ fn session_kv_commands_have_reviewed_parity() {
     ];
 
     for fixture in cases {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+struct StallRecoveryFixture {
+    name: &'static str,
+    verb: &'static str,
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl StallRecoveryFixture {
+    const fn new(
+        name: &'static str,
+        verb: &'static str,
+        arguments: &'static [&'static str],
+        seeds: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        Self {
+            name,
+            verb,
+            arguments,
+            seeds,
+        }
+    }
+
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture))
+                    .chain(std::iter::once(self.verb))
+                    .chain(self.arguments.iter().copied()),
+            ),
+            rust: Program::new(rust).args(
+                ["stall-recovery", self.verb]
+                    .into_iter()
+                    .chain(self.arguments.iter().copied()),
+            ),
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const STALL_TERMINAL: &str = "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=approved\nSTALL_STEP=8a\nPHASE=ship-pr\nSITE=ship-pr\nTRIGGER=main-agent-required\nBAIL_REASON=review-required\nEXIT_CODE=4\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=ship-pr\n";
+const STALL_TERMINAL_ARGS: &[&str] = &[
+    "--implement-tmpdir",
+    "{sandbox}",
+    "--primary-state-file",
+    "{sandbox}/terminal.env",
+];
+const STALL_PUBLIC_ARGS: &[&str] = &[
+    "--implement-tmpdir",
+    "{sandbox}",
+    "--public-file",
+    "{sandbox}/public.md",
+    "--sensitive-corpus-file",
+    "{sandbox}/stall-recovery-sensitive-corpus.env",
+];
+const STALL_DEV_ARGS: &[&str] = &[
+    "--implement-tmpdir",
+    "{sandbox}",
+    "--working-tree-root",
+    "{sandbox}",
+];
+const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
+    StallRecoveryFixture::new(
+        "stall-token-generic",
+        "validate-token",
+        &[
+            "--profile",
+            "generic",
+            "--token-kind",
+            "step",
+            "--value",
+            "step2b",
+        ],
+        &[],
+    ),
+    StallRecoveryFixture::new(
+        "stall-token-raw-rejected",
+        "validate-token",
+        &["--token", "bad value"],
+        &[],
+    ),
+    StallRecoveryFixture::new(
+        "stall-token-implement-bail",
+        "validate-token",
+        &["--token-kind", "bail", "--token", "review-required"],
+        &[],
+    ),
+    StallRecoveryFixture::new(
+        "stall-terminal-valid",
+        "validate-terminal-state",
+        STALL_TERMINAL_ARGS,
+        &[("terminal.env", STALL_TERMINAL)],
+    ),
+    StallRecoveryFixture::new(
+        "stall-terminal-partial",
+        "validate-terminal-state",
+        STALL_TERMINAL_ARGS,
+        &[(
+            "terminal.env",
+            "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\n",
+        )],
+    ),
+    StallRecoveryFixture::new(
+        "stall-seed-fresh",
+        "seed-terminal-state",
+        &["--implement-tmpdir", "{sandbox}"],
+        &[],
+    ),
+    StallRecoveryFixture::new(
+        "stall-seed-rewrite",
+        "seed-terminal-state",
+        &[
+            "--implement-tmpdir",
+            "{sandbox}",
+            "--stall-step",
+            "8a",
+            "--phase",
+            "ci-initial",
+        ],
+        &[("ship-pr-state.sh", "KEEP=yes\nSTALL_STEP=9\nPHASE=merge\n")],
+    ),
+    StallRecoveryFixture::new(
+        "stall-clear",
+        "clear-stall",
+        &["--implement-tmpdir", "{sandbox}"],
+        &[(
+            "ship-pr-state.sh",
+            "KEEP=yes\nSTALL_TRACKING=true\nSTALL_STEP=8\n",
+        )],
+    ),
+    StallRecoveryFixture::new(
+        "stall-public-valid",
+        "validate-tier-b-public-file",
+        STALL_PUBLIC_ARGS,
+        &[
+            ("public.md", "Sanitized report\n"),
+            ("stall-recovery-sensitive-corpus.env", "secret-value\n"),
+        ],
+    ),
+    StallRecoveryFixture::new(
+        "stall-public-sensitive",
+        "validate-tier-b-public-file",
+        STALL_PUBLIC_ARGS,
+        &[
+            ("public.md", "Found secret-value\n"),
+            ("stall-recovery-sensitive-corpus.env", "secret-value\n"),
+        ],
+    ),
+    StallRecoveryFixture::new(
+        "stall-dev-clone",
+        "is-larch-dev-clone",
+        STALL_DEV_ARGS,
+        &[("skills/implement/SKILL.md", "fixture\n")],
+    ),
+    StallRecoveryFixture::new(
+        "stall-dev-clone-forked",
+        "is-larch-dev-clone",
+        STALL_DEV_ARGS,
+        &[
+            ("skills/implement/SKILL.md", "fixture\n"),
+            ("ship-pr-state.sh", "FORKED_TARGET=true\n"),
+        ],
+    ),
+];
+
+#[test]
+fn stall_recovery_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("stall_recovery_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+    for fixture in STALL_RECOVERY_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));

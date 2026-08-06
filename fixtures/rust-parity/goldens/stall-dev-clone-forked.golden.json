@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "FORKED_TARGET=true\n"
+    },
+    "skills/implement/SKILL.md": {
+      "text": "fixture\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "LARCH_DEV_CLONE=false\n"
+  }
+}

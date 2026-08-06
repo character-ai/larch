@@ -205,12 +205,14 @@ after process identity is re-verified. The Rust runtime owns process-identity
 capture, validated process-group termination, and
 `session kill-background-processes` (`crates/larch-core/src/process_identity.rs`,
 `crates/larch-adapters/src/process_identity.rs`,
-`crates/larch-cli/src/kill_background.rs`). Python still owns the shared
-`process_identity` helpers consumed by bgjob, stall-recovery, and the
-plan-review / review-and-fix loop-identity commands until later #7677 leaves
-cut those callers over. A fixed-string comparison, field equality, or closed
-parser must handle interpolated labels, markers, refs, and identifiers. Do not
-interpolate untrusted data into a regular expression or shell program.
+`crates/larch-cli/src/kill_background.rs`). Rust-owned stall-state clearing
+consumes the Rust bgjob registry and process-identity validation directly.
+Python still owns the shared `process_identity` helpers consumed by the Python
+bgjob runtime, stall classification, and the plan-review / review-and-fix
+loop-identity commands until later #7677 leaves cut those callers over. A
+fixed-string comparison, field equality, or closed parser must handle
+interpolated labels, markers, refs, and identifiers. Do not interpolate
+untrusted data into a regular expression or shell program.
 
 Rust owns every bgjob command: durable registry records, `bgjob adapt`, and the
 daemon `start`, `wait`, `status`, and `reap` surfaces

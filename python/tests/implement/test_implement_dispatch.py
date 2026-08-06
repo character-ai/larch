@@ -1364,16 +1364,21 @@ def test_ship_route_exit_fourth_transient_seeds_stall(
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
 
     def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(list(args))
         return subprocess.CompletedProcess(args, 0, "", "")
+
+    def fake_rust(args: Sequence[str], **_kwargs: object) -> CommandResult:
+        calls.append(list(args))
+        return CommandResult(tuple(args), 0, "SEEDED=true\nSEED_MODE=rewrite\n", "", 0.0)
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_ship.proc, "run", fake_rust)
     _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
 
     assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
     assert capsys.readouterr().out == "NEXT_ACTION=stall\n"
     assert calls == [[
+        str(Path(dispatch_ship.__file__).resolve().parents[3] / "scripts" / "larch.sh"),
         "stall-recovery",
         "seed-terminal-state",
         "--implement-tmpdir",

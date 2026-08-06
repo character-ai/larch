@@ -579,10 +579,10 @@ test-stall-recovery-report-1:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'retry_policy or normalize_issue_env or normalize_outcome or classify or record_attempt or init_attempts or main_accepts or global_flags'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'record_escalation or dedup_tier or compose_report or lint_subcommand or clear_stall or seed_terminal or sensitive_corpus or redact_text or report_dedup'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k '(record_escalation or dedup_tier or compose_report or lint_subcommand) and not (sensitive_corpus or redact_text or report_dedup or chat_print or populate_sensitive_corpus)'
 
 test-stall-recovery-report-3:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'validate_token or validate_terminal or validate_tier_b'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q -k 'sensitive_corpus or redact_text or report_dedup or chat_print or populate_sensitive_corpus'
 
 test-resolve-upstream-larch-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh

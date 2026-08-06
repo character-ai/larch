@@ -452,7 +452,11 @@ and exit fields, fixed templates, bounded attempts, and bounded root-cause
 summaries. They exclude raw logs, stdout, stderr, plans, issue bodies, feature
 descriptions, repository and branch names, local and session paths, URLs,
 credentials, evidence digests, raw state, and run identifiers. Public dedup
-signatures and comments use only the same bounded public fields. A missing
+signatures and comments use only the same bounded public fields. The Rust-owned
+`stall-recovery validate-tier-b-public-file` command rebuilds the effective
+sensitive corpus under the validated session root and rejects oversized,
+symlinked, path-bearing, remote-bearing, or corpus-matching public text. The
+cross-repository helper reaches it only through `scripts/larch.sh`. A missing
 validator, sensitive corpus, repository resolver, network result, or valid
 created URL falls back to a sanitized local report for manual filing. It never
 falls back to the raw evidence.
@@ -480,6 +484,7 @@ egress contract.
 | Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns `run-log storage-preflight` plus the narrow GCS authentication transport; S3/R2 preflight still uses the AWS CLI list transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |
+| Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Tracking, plan, diagram, and public-report publication | The typed Python CLI owners named by each workflow; service calls use the current typed GitHub adapter where migrated |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 

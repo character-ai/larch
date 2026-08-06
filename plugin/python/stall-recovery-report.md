@@ -1,6 +1,6 @@
-# python/cli.py stall-recovery
+# Stall-recovery runtime
 
-`python/cli.py stall-recovery` is the deterministic `/implement` stall recovery helper. It classifies terminal stalls, records script-to-main-agent escalation handoffs, normalizes final outcomes, and composes exactly one public report only on terminal failure or escalation-success teardown.
+Stall recovery is a mixed-runtime domain during the Rust migration. `scripts/larch.sh stall-recovery` owns `clear-stall`, `seed-terminal-state`, `validate-token`, `validate-terminal-state`, `validate-tier-b-public-file`, and `is-larch-dev-clone`. `python/cli.py stall-recovery` owns the remaining report, classification, normalization, escalation, and lint commands. Each production command has one owner and no fallback.
 
 ## Canonical `/implement` artifacts
 
@@ -29,7 +29,7 @@ The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
 
 Generic mode is selected with `--profile generic`. Supported generic flags are `--artifact-prefix`, `--implement-tmpdir`, `--primary-state-file`, `--finalize-state-file`, and `--session-env-file`. Flags may appear before the subcommand, and state override flags are honored by `classify` and `compose-report`.
 
-The generic profile exposes two validation APIs:
+The generic profile exposes two Rust-owned validation APIs through `scripts/larch.sh stall-recovery`:
 
 - `validate-token --token-kind outcome|step|phase|site|trigger|bail|source-script|root-cause --value <token>` validates safe vocab without sourcing private helper internals.
 - `validate-terminal-state --primary-state-file <file>` validates required terminal-state keys, design vocab, path confinement, symlink rejection, and redaction rules.
@@ -51,10 +51,10 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 - `compose-report --report-kind terminal-failure|escalation-success --surface issue-input|chat-print ...` is the single public report-rendering API. It writes Tier A issue input or Tier B chat-print output and emits normalized report env fields.
 - `dedup-tier-a-report --implement-tmpdir <path>` runs the normalized Tier A exact-signature dedup pre-pass against the same current repository that `/larch:issue` will use.
 - `normalize-file-failure-report-env ...` maps cross-repo helper `FILE_FAILURE_REPORT_*` output to canonical `STALL_RECOVERY_REPORT_*` output.
-- `validate-tier-b-public-file ...` reuses the Tier B sensitive-token rejection path for bounded public comment bodies.
+- `validate-tier-b-public-file ...` rebuilds the effective sensitive corpus and applies the Tier B sensitive-token rejection boundary to bounded public comment bodies.
 - `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns. It collapses embedded carriage returns and newlines in accepted issue metadata before validation so the persisted env file remains one `KEY=value` row per line.
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
-- `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles.
+- `is-larch-dev-clone`, `clear-stall`, and `seed-terminal-state` keep their existing operational roles through the Rust runtime. `lint` remains Python-owned.
 
 `clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 
@@ -104,7 +104,7 @@ summary=<single-line safe summary>
 
 Tier A is a larch dev clone with `FORKED_TARGET=false`. Tier A uses `issue-input`, bypasses TSV field allowlists, and redacts secrets from the complete public heading and body. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after secret redaction. Tier A files in the current larch repository through `/larch:issue`, but first runs exact-signature dedup against that same current repository.
 
-Tier B covers consumer repos and forked runs. Tier B writes the sanitized `chat-print` artifact, resolves the upstream larch repository from `.claude-plugin/plugin.json`, then files or comments in that upstream repository through `scripts/file-failure-report-cross-repo.sh`. It renders allowlisted machine fields plus validated bounded root-cause prose. `compose-report` requires `stall-recovery-sensitive-corpus.env` for Tier B and rejects bounded prose, titles, chat-print output, and public dedup comment bodies that contain excluded client-bearing values or raw evidence text. Allowlisted larch operational enums and machine fields are exempt, including step tokens, phase tokens, site tokens, trigger tokens, bail tokens, dispatcher names, `lint-fix-loop`, `ship-pr`, and `main-agent-required`.
+Tier B covers consumer repos and forked runs. Tier B writes the sanitized `chat-print` artifact, resolves the upstream larch repository from `.claude-plugin/plugin.json`, then files or comments in that upstream repository through `scripts/file-failure-report-cross-repo.sh`. It renders allowlisted machine fields plus validated bounded root-cause prose. `compose-report` requires `stall-recovery-sensitive-corpus.env` for Tier B. The cross-repository helper routes final body and comment validation through the Rust-owned `scripts/larch.sh stall-recovery validate-tier-b-public-file` boundary, which rejects excluded client-bearing values and raw evidence text. Allowlisted larch operational enums and machine fields are exempt, including step tokens, phase tokens, site tokens, trigger tokens, bail tokens, dispatcher names, `lint-fix-loop`, `ship-pr`, and `main-agent-required`.
 
 Consumer and forked runs file Tier B reports on the public upstream larch repository under the operator's GitHub identity. If repo resolution, lookup, auth, network, create, or comment posting fails, the helper emits `STALL_RECOVERY_REPORT_STATUS=fallback-print-required` and preserves `stall-recovery-chat-print.md` for manual filing.
 

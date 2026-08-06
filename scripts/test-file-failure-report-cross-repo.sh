@@ -5,9 +5,43 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SCRIPT="$SCRIPT_DIR/file-failure-report-cross-repo.sh"
+SOURCE_SCRIPT="$SCRIPT_DIR/file-failure-report-cross-repo.sh"
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/larch-cross-repo-report.XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
+
+HARNESS_PLUGIN_ROOT="$TMPROOT/plugin"
+mkdir -p "$HARNESS_PLUGIN_ROOT/scripts"
+cp "$SOURCE_SCRIPT" "$HARNESS_PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh"
+cp -R "$SCRIPT_DIR/../python" "$HARNESS_PLUGIN_ROOT/"
+cat >"$HARNESS_PLUGIN_ROOT/scripts/larch.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${1:-}" = stall-recovery ] && [ "${2:-}" = validate-tier-b-public-file ] || exit 2
+shift 2
+public_file=""
+corpus_file=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --public-file) public_file=${2:-}; shift 2 ;;
+        --sensitive-corpus-file) corpus_file=${2:-}; shift 2 ;;
+        --profile|--artifact-prefix|--implement-tmpdir) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '%s\n' "$public_file" >>"${LARCH_STUB_LOG:?}"
+[ -f "$public_file" ] && [ ! -L "$public_file" ] || exit 1
+[ -f "$corpus_file" ] && [ ! -L "$corpus_file" ] || exit 1
+while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    if grep -Fq -- "$token" "$public_file"; then
+        printf '%s\n' 'PUBLIC_FILE_VALID=false'
+        exit 1
+    fi
+done <"$corpus_file"
+printf '%s\n' 'PUBLIC_FILE_VALID=true'
+STUB
+chmod +x "$HARNESS_PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh" "$HARNESS_PLUGIN_ROOT/scripts/larch.sh"
+SCRIPT="$HARNESS_PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh"
 
 PASS=0
 FAIL=0
@@ -116,7 +150,7 @@ STUB
 run_script() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -125,7 +159,7 @@ run_script() {
 run_script_dry() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -237,6 +271,7 @@ if [ ! -e "$dir/gh.log" ]; then pass "dry-run: no gh calls"; else fail "dry-run:
 dir=$(make_case tier-b-accept)
 GH_STUB_CASE=tier-b-accept; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
 assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: bounded public slices accepted"
+contains "$dir/larch.log" "comment.md" "tier-b: validation routes through larch runtime"
 
 dir=$(make_case tier-b-unsafe)
 printf '### [BUG] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
@@ -262,12 +297,11 @@ assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/
 dir=$(make_case tier-b-missing-validator)
 fake_root="$dir/fake-plugin"
 mkdir -p "$fake_root/scripts"
-cp "$SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
+cp "$SOURCE_SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
 chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
 mkdir -p "$fake_root/python"
 cp "$SCRIPT_DIR/../python/cli.py" "$fake_root/python/cli.py"
 cp -R "$SCRIPT_DIR/../python/larch" "$fake_root/python/"
-rm "$fake_root/python/larch/state/_report.py"
 GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE
 set +e
 PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$dir/out-validator" 2>"$dir/out-validator.err"

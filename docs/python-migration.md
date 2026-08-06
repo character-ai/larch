@@ -40,6 +40,18 @@ selector, runtime fallback, or staged consumer split. The storage contract in
 `docs/run-log-archive.md` survives the owner change; the Python implementation
 does not.
 
+### Stall-recovery mixed-runtime cutover
+
+Issue #8064 moves exactly six commands to Rust: `clear-stall`,
+`seed-terminal-state`, `validate-token`, `validate-terminal-state`,
+`validate-tier-b-public-file`, and `is-larch-dev-clone`. Their callers use
+`scripts/larch.sh`, their Python registrations and command implementations are
+removed, and their registry milestones are complete. The other thirteen
+stall-recovery commands, including `lint`, remain Python-owned until their
+separate leaves. Shared Python helpers may remain while a Python-owned command
+still consumes them; they are not fallback implementations for the six
+Rust-owned commands.
+
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py` (the gzip-embedded `tally-plan-review.sh` body is retained for contract tests but no longer executed). Treat the remaining delegated Python entry points as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.

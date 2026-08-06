@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "KEEP=yes\nSTALL_STEP=8a\nPHASE=ci-initial\nSTALL_TRACKING=true\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "SEEDED=true\nSEED_MODE=rewrite\n"
+  }
+}

@@ -650,13 +650,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         True,
     ),
     ("stall-recovery", "normalize-issue-env"): ("larch.state.stall_recovery", "normalize_issue_env_main", True),
-    ("stall-recovery", "validate-token"): ("larch.state.stall_recovery", "validate_token_main", True),
-    ("stall-recovery", "validate-terminal-state"): ("larch.state.stall_recovery", "validate_terminal_state_main", True),
-    ("stall-recovery", "validate-tier-b-public-file"): (
-        "larch.state.stall_recovery",
-        "validate_tier_b_public_file_main",
-        True,
-    ),
     ("stall-recovery", "populate-sensitive-corpus"): (
         "larch.state.stall_recovery",
         "populate_sensitive_corpus_main",
@@ -665,9 +658,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("stall-recovery", "chat-print"): ("larch.state.stall_recovery", "chat_print_main", True),
     ("stall-recovery", "record-attempt"): ("larch.state.stall_recovery", "record_attempt_main", True),
     ("stall-recovery", "retry-policy"): ("larch.state.stall_recovery", "retry_policy_main", True),
-    ("stall-recovery", "is-larch-dev-clone"): ("larch.state.stall_recovery", "is_larch_dev_clone_main", True),
-    ("stall-recovery", "clear-stall"): ("larch.state.stall_recovery", "clear_stall_main", True),
-    ("stall-recovery", "seed-terminal-state"): ("larch.state.stall_recovery", "seed_terminal_state_main", True),
     ("stall-recovery", "lint"): ("larch.state.stall_recovery", "lint_main", True),
     ("implement", "step-7a"): ("larch.implement.step_7a", "main", True),
     ("implement", "preflight"): ("larch.implement.preflight", "preflight_main", True),

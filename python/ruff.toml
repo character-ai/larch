@@ -889,10 +889,6 @@ ignore = [
     "C901",
     "PLR0911",
 ]
-"_state_mgmt.py" = [
-    "C901",
-    "PLR0911",
-]
 "_validate.py" = [
     "C901",
     "PLR0911",

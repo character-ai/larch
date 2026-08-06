@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-STALL_RECOVERY_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery)
+STALL_RECOVERY_VALIDATE_PUBLIC_CLI=("$PLUGIN_ROOT/scripts/larch.sh" stall-recovery validate-tier-b-public-file)
 
 usage() {
     echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--mutation-context PATH --run-id ID --trusted-root PATH] [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
@@ -162,7 +162,7 @@ reject_tier_b_public_file_if_unsafe() {
     [ -n "$validate_tmpdir" ] || validate_tmpdir="$body_dir"
     resolve_tier_b_sensitive_corpus_file "$body_file"
     tier_b_profile_args_for_files "$body_file" "${sensitive_corpus_file:-}"
-    if [ ! -f "$PLUGIN_ROOT/python/cli.py" ]; then
+    if [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ]; then
         echo "file-failure-report-cross-repo.sh: tier-b public-file validator unavailable" >"$err"
         return 0
     fi
@@ -178,14 +178,14 @@ reject_tier_b_public_file_if_unsafe() {
         }
     fi
     if [ "${#TIER_B_PROFILE_ARGS[@]}" -gt 0 ]; then
-        if ! "${STALL_RECOVERY_CLI[@]}" validate-tier-b-public-file \
+        if ! "${STALL_RECOVERY_VALIDATE_PUBLIC_CLI[@]}" \
             "${TIER_B_PROFILE_ARGS[@]}" \
             --implement-tmpdir "$validate_tmpdir" \
             --public-file "$candidate_file" \
             --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then
             return 0
         fi
-    elif ! "${STALL_RECOVERY_CLI[@]}" validate-tier-b-public-file \
+    elif ! "${STALL_RECOVERY_VALIDATE_PUBLIC_CLI[@]}" \
         --implement-tmpdir "$validate_tmpdir" \
         --public-file "$candidate_file" \
         --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then

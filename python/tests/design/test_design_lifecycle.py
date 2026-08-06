@@ -47,12 +47,82 @@ from tests.support.design_wire import dialectic_candidate_json, plan_body, run_p
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
+from larch.state import _tokens as stall_tokens
+from larch.state import _validate as stall_validate
 from larch.design.design_step0_env import load_bash_quoted_env
 from larch.design.design_terminal import phase_driver_read_result_env
 from test_support import write_design_source_env
 
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
+pytestmark = pytest.mark.usefixtures("stall_rust_commands")
+
+
+@pytest.fixture
+def stall_rust_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    def parsed(argv: Sequence[str]) -> dict[str, str]:
+        return {
+            argv[index]: argv[index + 1]
+            for index in range(len(argv) - 1)
+            if argv[index].startswith("--")
+        }
+
+    def run_rust(
+        *,
+        verb: str,
+        argv: Sequence[str],
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        values = parsed(argv)
+        generic = values.get("--profile") == "generic"
+        valid = False
+        key = ""
+        if verb == "validate-token":
+            token = values.get("--token") or values.get("--value", "")
+            kind = values.get("--token-kind", "")
+            valid = bool(token) and not stall_tokens._reject_rawish_token_value(token)  # pyright: ignore[reportPrivateUsage]
+            if valid and kind == "bail":
+                valid = stall_tokens._safe_bail_reason_value(token, generic=generic)  # pyright: ignore[reportPrivateUsage]
+            elif valid and kind:
+                valid = stall_tokens._safe_token(kind=kind, value=token, generic=generic)  # pyright: ignore[reportPrivateUsage]
+            key = "TOKEN_VALID"
+        elif verb == "validate-terminal-state":
+            tmpdir = Path(values.get("--implement-tmpdir", "."))
+            primary = values.get("--primary-state-file", "")
+            state = Path(primary) if primary else tmpdir / "design-failure-terminal-state.env"
+            valid = stall_validate._validated_terminal_state_values(  # pyright: ignore[reportPrivateUsage]
+                tmpdir=tmpdir,
+                state_file=state,
+                generic=generic,
+            ) is not None
+            key = "VALID"
+        output = f"{key}={'true' if valid else 'false'}\n"
+        if stdout_path is not None:
+            stdout_path.write_text(output, encoding="utf-8")
+        if stderr_path is not None:
+            stderr_path.write_text("", encoding="utf-8")
+        return 0 if valid else 1
+
+    def capture_rust(*, verb: str, argv: Sequence[str]) -> CommandResult:
+        values = parsed(argv)
+        tmpdir = Path(values.get("--implement-tmpdir", "."))
+        root = Path(values.get("--working-tree-root", ""))
+        forked = stall_tokens.read_kv(
+            path=tmpdir / "ship-pr-state.sh", key="FORKED_TARGET"
+        ) or stall_tokens.read_kv(
+            path=tmpdir / "session-env.sh", key="FORKED_TARGET"
+        )
+        valid = (
+            verb == "is-larch-dev-clone"
+            and not stall_tokens._truthy(forked)  # pyright: ignore[reportPrivateUsage]
+            and (root / "skills/implement/SKILL.md").is_file()
+        )
+        output = f"LARCH_DEV_CLONE={'true' if valid else 'false'}\n"
+        return CommandResult((verb, *argv), 0, output, "", 0.0)
+
+    monkeypatch.setattr(design_terminal, "_run_stall_rust", run_rust)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_terminal, "_run_stall_rust_capture", capture_rust)  # pyright: ignore[reportPrivateUsage]
 
 
 def _fake_parse_none(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
@@ -3631,8 +3701,6 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
                 return 0
             if callable_obj is stall_recovery.populate_sensitive_corpus_main:
                 return 0
-            if callable_obj is stall_recovery.validate_terminal_state_main:
-                return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
             if callable_obj is stall_recovery.init_attempts_main:
                 return 0
             if callable_obj is stall_recovery.classify_main and stdout_path is not None:
@@ -3803,8 +3871,6 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
             return 1
         if callable_obj is stall_recovery.populate_sensitive_corpus_main:
             return 0
-        if callable_obj is stall_recovery.validate_terminal_state_main:
-            return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:
@@ -3841,8 +3907,6 @@ def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, 
             return 0
         if callable_obj is stall_recovery.populate_sensitive_corpus_main:
             return 0
-        if callable_obj is stall_recovery.validate_terminal_state_main:
-            return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:

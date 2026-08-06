@@ -28,6 +28,7 @@ mod run_log;
 mod session_env;
 mod session_state;
 mod slack_announce;
+mod stall_recovery;
 mod storage;
 mod telemetry;
 mod test_shards;
@@ -196,6 +197,10 @@ pub use slack_announce::{
     inputs_from_files, mark_posted, parent_issue_path, plan_slack_issue_announce,
     read_kv_from_text, redact_webhook_url, session_id_path, ship_state_path, transport_failure,
     webhook_scheme_allowed,
+};
+pub use stall_recovery::{
+    artifact_prefix_valid, public_text_is_sensitive, safe_phase, safe_step, terminal_state_valid,
+    token_valid,
 };
 pub use storage::{
     ENV_LARCH_LOGS_URI, ENV_LARCH_R2_ACCOUNT_ID, ENV_LARCH_R2_ENDPOINT, ENV_LARCH_STORAGE_BASE_URI,
