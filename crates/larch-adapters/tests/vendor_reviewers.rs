@@ -91,12 +91,13 @@ fn gate_detail() -> CodexGateDetail {
     .expect("gate detail")
 }
 
-fn keychain_miss() -> Result<larch_core::ProcessOutput, ProcessError> {
-    Ok(ProcessOutputBuilder::failure(1)
+fn keychain_miss() -> larch_core::ProcessOutput {
+    ProcessOutputBuilder::failure(1)
         .stderr(b"The specified item could not be found in the keychain.\n".to_vec())
-        .build())
+        .build()
 }
 
+#[allow(clippy::too_many_arguments)] // test harness mirrors CheckReviewersContext fields
 fn run_check_on_platform(
     runner: &FakeProcessRunner,
     config: &CheckReviewersConfig,
@@ -569,10 +570,10 @@ fn cursor_preread_failure_on_darwin_skips_agent_probe() {
     make_executable(&bin, "cursor");
     let home = tempfile::tempdir().expect("home");
     let runner = FakeProcessRunner::new([
-        keychain_miss(),
-        keychain_miss(),
-        keychain_miss(),
-        keychain_miss(),
+        Ok(keychain_miss()),
+        Ok(keychain_miss()),
+        Ok(keychain_miss()),
+        Ok(keychain_miss()),
     ]);
 
     let result = run_check_on_platform(
