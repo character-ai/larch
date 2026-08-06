@@ -27,3 +27,16 @@ impl std::fmt::Display for MessageError {
 }
 
 impl std::error::Error for MessageError {}
+
+#[cfg(test)]
+mod tests {
+    use super::MessageError;
+
+    #[test]
+    fn message_error_exposes_display_and_as_str() {
+        let error = MessageError::new("blank model");
+        assert_eq!(error.as_str(), "blank model");
+        assert_eq!(error.to_string(), "blank model");
+        let _: &dyn std::error::Error = &error;
+    }
+}
