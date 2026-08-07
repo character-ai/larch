@@ -624,6 +624,8 @@ jobs:
           done
       - name: Run repository and plugin validations with coverage executable
         id: repository-validation
+        env:
+          LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-coverage-validation-%p.profraw
         run: |
           set -euo pipefail
           started="$(date +%s)"

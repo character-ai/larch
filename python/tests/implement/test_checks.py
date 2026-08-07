@@ -3912,6 +3912,15 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert '"$coverage_larch" release plugin-runtime' in rust_coverage
     assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
     assert "git diff --exit-code -- plugin" in rust_coverage
+    coverage_validation = rust_coverage.split(
+        "Run repository and plugin validations with coverage executable", 1
+    )[1].split("Record skipped repository policy validation", 1)[0]
+    validation_profile = (
+        "LLVM_PROFILE_FILE: ${{ runner.temp }}/"
+        "larch-coverage-validation-%p.profraw"
+    )
+    assert validation_profile in coverage_validation
+    assert coverage_validation.index(validation_profile) < coverage_validation.index("run: |")
     coverage_binary_artifact = rust_coverage.split(
         "Upload coverage-built Rust executable for cross-language integration tests", 1
     )[1].split("Start Rust coverage cache save timing", 1)[0]

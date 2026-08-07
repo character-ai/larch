@@ -13,13 +13,20 @@ import pytest
 from larch.report import run_lifecycle
 
 
-def test_consumer_reaches_rust_through_its_bootstrap(tmp_path: Path) -> None:
+def test_consumer_reaches_rust_through_its_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     binary = os.environ.get("LARCH_TEST_RUST_BINARY", "")
     if not binary:
         pytest.skip("CI Rust test binary is unavailable")
 
     repo = tmp_path / "client"
     repo.mkdir()
+    profile_directory = tmp_path / "runner-temp"
+    profile_directory.mkdir()
+    monkeypatch.setenv(
+        "LLVM_PROFILE_FILE", str(profile_directory / "larch-python-%p.profraw")
+    )
     _ = subprocess.run(
         ["git", "init", "--quiet", str(repo)],
         check=True,
@@ -40,6 +47,8 @@ def test_consumer_reaches_rust_through_its_bootstrap(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
+    # Deliberately omit LLVM_PROFILE_FILE: the lifecycle bootstrap must retain
+    # the ambient redirect for the coverage-built executable.
     environment = {
         "HOME": str(tmp_path / "home"),
         "LARCH_BINARY": binary,
@@ -48,9 +57,6 @@ def test_consumer_reaches_rust_through_its_bootstrap(tmp_path: Path) -> None:
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
         "XDG_STATE_HOME": str(tmp_path / "state"),
     }
-    profile_file = os.environ.get("LLVM_PROFILE_FILE")
-    if profile_file:
-        environment["LLVM_PROFILE_FILE"] = profile_file
 
     started = run_lifecycle.start_run(
         repo_root=repo,
@@ -71,6 +77,8 @@ def test_consumer_reaches_rust_through_its_bootstrap(tmp_path: Path) -> None:
     assert terminal.outcome == "success"
     assert terminal.publication is None
     assert terminal.storage_mode == "disabled"
+    assert list(profile_directory.glob("larch-python-*.profraw"))
+    assert not list(repo.rglob("default_*.profraw"))
 
 
 def test_consumer_uses_its_own_bootstrap_when_ambient_root_differs(
