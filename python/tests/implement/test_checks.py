@@ -4096,6 +4096,8 @@ def test_rust_ci_change_selection_observation_contract() -> None:
         "Normal, build, and dev path-dependency edges",
         "The allowlist is empty",
         "full-workspace coverage threshold",
+        "non-ancestor base",
+        "normal/build upstream",
         "Do not enable partial or skip enforcement",
         "periodic full-run backstop",
     ):
@@ -4105,6 +4107,7 @@ def test_rust_ci_change_selection_observation_contract() -> None:
         "read-only workflow",
         "artifact for audit",
         "no supplementary path",
+        "normal/build upstream closure",
         "false-safe classification",
     ):
         assert required_detail in workflow_trust

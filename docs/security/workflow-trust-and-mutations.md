@@ -291,9 +291,11 @@ permissions and only observes a proposed mode. It checks out the pull-request
 head with full history, supplies the event base and head SHA to the Python
 selector, and keeps every required Rust lane independent of its result. The
 selector validates commit identity and checked-out state before inspecting a
-diff. It accepts the GitHub base only when it is an ancestor; otherwise it uses
-only a verified merge base. Missing history, a malformed or empty diff, unknown
-path, metadata failure, or unsupported workspace shape is a `full` result.
+diff. It accepts the GitHub base only when it is an ancestor; a non-ancestor
+base is `full` because metadata from the checked-out head cannot prove the
+dependency closure of a merge tree. Missing history, a malformed or empty diff,
+unknown path, metadata failure, or unsupported workspace shape is a `full`
+result.
 
 The only narrower proposal is a Rust-source-only package closure. It is derived
 from locked offline Cargo metadata and includes normal, build, and dev reverse
@@ -302,6 +304,9 @@ rendering. The step summary HTML-escapes changed path data, and the structured
 result is an artifact for audit, not an authorization token. Current `skip`
 ownership is intentionally empty: no supplementary path is skipped while
 repository-wide policy lacks a separately proven required validation owner.
+Changes to `larch-cli` and its local normal/build upstream closure are also
+`full` until a partial plan reproduces the verified executable, repository and
+plugin validation, artifact upload, and Python integration consumers.
 
 Observation never suppresses `rust-lint`, `rust-deny`, coverage, artifact,
 repository-policy, plugin-validation, or Python-artifact handoff. Enforcement

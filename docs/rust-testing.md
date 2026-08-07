@@ -251,10 +251,11 @@ status and final status output remain visible in the job log.
 pull-request head with full history, then invokes the stdlib-only
 `python3 python/cli.py ci rust-select` command with the GitHub event base and
 head SHAs. The command verifies both commits and the checked-out head. It uses
-the event base only when it is an ancestor of the head; otherwise it verifies a
-merge base before diffing. A missing commit, shallow history, empty or malformed
-diff, unsupported status, metadata parse failure, or internal selector error
-proposes `full`.
+the event base only when it is an ancestor of the head; a non-ancestor base
+proposes `full` instead of diffing from a merge base whose resulting merge tree
+could have dependencies absent from head metadata. A missing commit, shallow
+history, empty or malformed diff, unsupported status, metadata parse failure,
+or internal selector error proposes `full`.
 
 The observer emits one deterministic JSON result, uploads it as the
 `rust-ci-selection-observation` artifact, and renders an HTML-escaped step
@@ -278,6 +279,10 @@ The selector has three modes:
   `--all-targets --all-features --locked` Clippy, locked all-feature tests, and
   a separate locked all-feature doctest command for affected library packages.
   A partial result neither runs nor claims the full-workspace coverage threshold.
+  Changes to `larch-cli`, or to any package in its local normal/build upstream
+  closure, instead propose `full`: the current partial command plan does not
+  reproduce the verified executable, repository policy and plugin validation,
+  artifact upload, or Python integration consumers those packages affect.
 - `skip` is reserved for an audited supplementary-only allowlist whose every
   path family has a named required validation owner. The allowlist is empty in
   this rollout because `larch lint all` examines repository-wide content. Thus

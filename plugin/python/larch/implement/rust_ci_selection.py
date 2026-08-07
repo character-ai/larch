@@ -29,6 +29,8 @@ _EVENT_RE: Final = re.compile(r"^[a-z0-9_-]{1,64}$")
 _PACKAGE_NAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _CHANGE_STATUS_RE: Final = re.compile(r"^(?:A|M|D|R[0-9]+|C[0-9]+)$")
 _LIBRARY_TARGET_KINDS: Final = frozenset({"lib", "proc-macro"})
+_REQUIRED_CONSUMER_PACKAGE_NAME: Final = "larch-cli"
+_NORMAL_OR_BUILD_DEPENDENCY_KINDS: Final = frozenset({"normal", "build"})
 
 
 class _SelectionError(Exception):
@@ -68,7 +70,13 @@ class _Package:
     root_parts: tuple[str, ...]
     source_roots: tuple[tuple[str, ...], ...]
     has_library: bool
-    dependency_roots: tuple[tuple[str, ...], ...]
+    dependencies: tuple[_Dependency, ...]
+
+
+@dataclass(frozen=True)
+class _Dependency:
+    root_parts: tuple[str, ...]
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -195,7 +203,7 @@ def _select_pull_request(
     checked_out_head = _resolve_head(runner, repo_root=repo_root)
     if checked_out_head != resolved_head:
         raise _SelectionError("checked-out-head-does-not-match-pr-head")
-    comparison_base, base_source = _verified_comparison_base(
+    _require_pr_base_ancestor(
         runner,
         repo_root=repo_root,
         base_sha=resolved_base,
@@ -204,7 +212,7 @@ def _select_pull_request(
     changes = _read_changes(
         runner,
         repo_root=repo_root,
-        base_sha=comparison_base,
+        base_sha=resolved_base,
         head_sha=resolved_head,
     )
     try:
@@ -212,6 +220,8 @@ def _select_pull_request(
         packages = _read_workspace_packages(runner, repo_root=repo_root)
         changed_package_ids = _changed_package_ids(changes, packages=packages)
         closure_ids = _reverse_dependency_closure(changed_package_ids, packages=packages)
+        if changed_package_ids.intersection(_required_consumer_upstream_closure(packages)):
+            raise _SelectionError("required-ci-consumer-closure")
         packages_by_id = {package.identifier: package for package in packages}
         affected_packages = tuple(sorted(packages_by_id[identifier].name for identifier in closure_ids))
         changed_packages = {packages_by_id[identifier].name for identifier in changed_package_ids}
@@ -224,9 +234,9 @@ def _select_pull_request(
         return Selection(
             mode="partial",
             event_name=event_name,
-            base_sha=comparison_base,
+            base_sha=resolved_base,
             head_sha=resolved_head,
-            base_source=base_source,
+            base_source="github-pr-base",
             changed_paths=changes,
             affected_packages=affected_packages,
             reverse_dependents=reverse_dependents,
@@ -240,18 +250,18 @@ def _select_pull_request(
     except _SelectionError as exc:
         return _full_selection(
             event_name=event_name,
-            base_sha=comparison_base,
+            base_sha=resolved_base,
             head_sha=resolved_head,
-            base_source=base_source,
+            base_source="github-pr-base",
             reason=exc.reason,
             changes=changes,
         )
     except Exception:
         return _full_selection(
             event_name=event_name,
-            base_sha=comparison_base,
+            base_sha=resolved_base,
             head_sha=resolved_head,
-            base_source=base_source,
+            base_source="github-pr-base",
             reason="selector-internal-error",
             changes=changes,
         )
@@ -319,40 +329,26 @@ def _resolve_head(runner: Runner, *, repo_root: Path) -> str:
     return _single_sha(output, reason="invalid-checked-out-head-output")
 
 
-def _verified_comparison_base(
+def _require_pr_base_ancestor(
     runner: Runner,
     *,
     repo_root: Path,
     base_sha: str,
     head_sha: str,
-) -> tuple[str, str]:
+) -> None:
     ancestor = runner.run(
         ("git", "merge-base", "--is-ancestor", base_sha, head_sha),
         cwd=str(repo_root),
         timeout=_GIT_TIMEOUT_SECONDS,
     )
     if ancestor.returncode == 0:
-        return base_sha, "github-pr-base"
-    if ancestor.returncode != 1:
-        raise _SelectionError("merge-base-ancestry-verification-failed")
-
-    output = _run_required(
-        runner,
-        repo_root=repo_root,
-        argv=("git", "merge-base", base_sha, head_sha),
-        stage="merge-base",
-        timeout=_GIT_TIMEOUT_SECONDS,
-    )
-    merge_base = _single_sha(output, reason="invalid-merge-base-output")
-    for endpoint, endpoint_name in ((base_sha, "base"), (head_sha, "head")):
-        verification = runner.run(
-            ("git", "merge-base", "--is-ancestor", merge_base, endpoint),
-            cwd=str(repo_root),
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-        if verification.returncode != 0:
-            raise _SelectionError(f"merge-base-not-ancestor-of-{endpoint_name}")
-    return merge_base, "verified-merge-base"
+        return
+    if ancestor.returncode == 1:
+        # Cargo metadata is read from the checked-out PR head. A rewritten or
+        # advanced base can contain a new dependent absent from that tree, so
+        # a merge-base diff cannot safely justify a partial plan.
+        raise _SelectionError("pr-base-is-not-an-ancestor-of-pr-head")
+    raise _SelectionError("merge-base-ancestry-verification-failed")
 
 
 def _read_changes(
@@ -493,8 +489,8 @@ def _read_workspace_packages(runner: Runner, *, repo_root: Path) -> tuple[_Packa
         raise _SelectionError("unsupported-workspace-package-identity")
     workspace_roots = {package.root_parts for package in packages}
     for package in packages:
-        for dependency_root in package.dependency_roots:
-            if dependency_root not in workspace_roots:
+        for dependency in package.dependencies:
+            if dependency.root_parts not in workspace_roots:
                 raise _SelectionError("unmapped-local-workspace-dependency")
     return tuple(sorted(packages, key=lambda package: package.name))
 
@@ -528,11 +524,15 @@ def _parse_package(value: object, *, repo_root: Path) -> _Package:
         if not _parts_start_with(target_source, root_parts):
             raise _SelectionError("cargo-metadata-target-outside-package")
         source_roots.append(target_source[:-1])
-    dependency_roots: list[tuple[str, ...]] = []
+    dependencies: list[_Dependency] = []
     for raw_dependency in _list(package.get("dependencies"), reason="cargo-metadata-invalid-dependencies"):
         dependency = _object(raw_dependency, reason="cargo-metadata-invalid-dependencies")
-        kind = dependency.get("kind")
-        if kind is not None and (not isinstance(kind, str) or kind not in {"build", "dev"}):
+        raw_kind = dependency.get("kind")
+        if raw_kind is None:
+            kind = "normal"
+        elif isinstance(raw_kind, str) and raw_kind in {"normal", "build", "dev"}:
+            kind = raw_kind
+        else:
             raise _SelectionError("unsupported-cargo-dependency-kind")
         dependency_path = dependency.get("path")
         if dependency_path is None:
@@ -541,14 +541,18 @@ def _parse_package(value: object, *, repo_root: Path) -> _Package:
             _required_string(dependency_path, None, reason="cargo-metadata-invalid-dependency-path"),
             repo_root=repo_root,
         )
-        dependency_roots.append(_path_parts(dependency_root.relative_to(repo_root)))
+        dependencies.append(
+            _Dependency(root_parts=_path_parts(dependency_root.relative_to(repo_root)), kind=kind)
+        )
     return _Package(
         identifier=identifier,
         name=name,
         root_parts=root_parts,
         source_roots=tuple(sorted(set(source_roots))),
         has_library=has_library,
-        dependency_roots=tuple(sorted(set(dependency_roots))),
+        dependencies=tuple(
+            sorted(set(dependencies), key=lambda dependency: (dependency.root_parts, dependency.kind))
+        ),
     )
 
 
@@ -654,8 +658,8 @@ def _reverse_dependency_closure(
     by_root = {package.root_parts: package.identifier for package in packages}
     reverse: dict[str, set[str]] = {package.identifier: set() for package in packages}
     for package in packages:
-        for dependency_root in package.dependency_roots:
-            dependency_id = by_root.get(dependency_root)
+        for dependency in package.dependencies:
+            dependency_id = by_root.get(dependency.root_parts)
             if dependency_id is None:
                 raise _SelectionError("unmapped-local-workspace-dependency")
             reverse[dependency_id].add(package.identifier)
@@ -667,6 +671,30 @@ def _reverse_dependency_closure(
             if dependent not in closure:
                 closure.add(dependent)
                 pending.append(dependent)
+    return frozenset(closure)
+
+
+def _required_consumer_upstream_closure(packages: tuple[_Package, ...]) -> frozenset[str]:
+    """Return larch-cli and local normal/build dependencies needed by CI consumers."""
+    by_name = {package.name: package for package in packages}
+    consumer = by_name.get(_REQUIRED_CONSUMER_PACKAGE_NAME)
+    if consumer is None:
+        return frozenset()
+    by_id = {package.identifier: package for package in packages}
+    by_root = {package.root_parts: package.identifier for package in packages}
+    closure = {consumer.identifier}
+    pending = [consumer.identifier]
+    while pending:
+        current = by_id[pending.pop()]
+        for dependency in current.dependencies:
+            if dependency.kind not in _NORMAL_OR_BUILD_DEPENDENCY_KINDS:
+                continue
+            dependency_id = by_root.get(dependency.root_parts)
+            if dependency_id is None:
+                raise _SelectionError("unmapped-local-workspace-dependency")
+            if dependency_id not in closure:
+                closure.add(dependency_id)
+                pending.append(dependency_id)
     return frozenset(closure)
 
 

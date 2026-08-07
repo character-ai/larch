@@ -15,7 +15,6 @@ from larch.implement import rust_ci_selection as selection
 
 BASE_SHA = "a" * 40
 HEAD_SHA = "b" * 40
-MERGE_BASE_SHA = "c" * 40
 
 
 def _result(argv: Sequence[str], *, stdout: str = "", returncode: int = 0) -> CommandResult:
@@ -92,7 +91,6 @@ def _runner_for_pull_request(
     base_sha: str = BASE_SHA,
     head_sha: str = HEAD_SHA,
     base_is_ancestor: bool = True,
-    merge_base: str = MERGE_BASE_SHA,
     missing_base: bool = False,
 ) -> FakeRunner:
     responses: dict[tuple[str, ...], CommandResult] = {
@@ -112,17 +110,6 @@ def _runner_for_pull_request(
             returncode=0 if base_is_ancestor else 1,
         ),
     }
-    comparison_base = base_sha if base_is_ancestor else merge_base
-    if not base_is_ancestor:
-        responses[("git", "merge-base", base_sha, head_sha)] = _result(
-            ("git", "merge-base", base_sha, head_sha), stdout=f"{merge_base}\n"
-        )
-        responses[("git", "merge-base", "--is-ancestor", merge_base, base_sha)] = _result(
-            ("git", "merge-base", "--is-ancestor", merge_base, base_sha)
-        )
-        responses[("git", "merge-base", "--is-ancestor", merge_base, head_sha)] = _result(
-            ("git", "merge-base", "--is-ancestor", merge_base, head_sha)
-        )
     diff_argv = (
         "git",
         "diff",
@@ -131,7 +118,7 @@ def _runner_for_pull_request(
         "-z",
         "--find-renames=50%",
         "--find-copies=50%",
-        f"{comparison_base}..{head_sha}",
+        f"{base_sha}..{head_sha}",
     )
     responses[diff_argv] = _result(diff_argv, stdout=diff)
     metadata_argv = ("cargo", "metadata", "--no-deps", "--format-version", "1", "--locked", "--offline")
@@ -165,6 +152,33 @@ def _workspace(root: Path) -> str:
             name="larch-cli",
             relative_root="crates/cli",
             dependencies=(("crates/adapters", "dev"),),
+        ),
+    ]
+    return _metadata(root, packages)
+
+
+def _required_consumer_workspace(root: Path) -> str:
+    packages = [
+        _package(root, identifier="core", name="larch-core", relative_root="crates/larch-core"),
+        _package(root, identifier="lint", name="larch-lint", relative_root="crates/larch-lint"),
+        _package(
+            root,
+            identifier="adapters",
+            name="larch-adapters",
+            relative_root="crates/larch-adapters",
+            dependencies=(("crates/larch-core", None),),
+        ),
+        _package(
+            root,
+            identifier="cli",
+            name="larch-cli",
+            relative_root="crates/larch-cli",
+            dependencies=(
+                ("crates/larch-adapters", None),
+                ("crates/larch-core", None),
+                ("crates/larch-lint", "build"),
+            ),
+            has_library=False,
         ),
     ]
     return _metadata(root, packages)
@@ -233,19 +247,26 @@ def test_missing_or_shallow_base_commit_selects_full(tmp_path: Path) -> None:
     assert not any(call[0] == "cargo" for call in runner.calls)
 
 
-def test_verified_merge_base_is_used_when_pr_base_is_not_an_ancestor(tmp_path: Path) -> None:
+def test_advanced_base_with_a_dependent_absent_from_head_metadata_selects_full(tmp_path: Path) -> None:
+    # A normal PR workflow would test a merge candidate that includes the base's
+    # new dependent. Metadata from the checked-out head cannot prove that
+    # dependent is in the selected closure, so no fallback diff may be partial.
     runner = _runner_for_pull_request(
         tmp_path,
         diff=_diff(("M", "crates/core/src/lib.rs")),
-        metadata=_workspace(tmp_path),
+        metadata=_metadata(
+            tmp_path,
+            [_package(tmp_path, identifier="core", name="core", relative_root="crates/core")],
+        ),
         base_is_ancestor=False,
     )
 
     result = _select(tmp_path, runner)
 
-    assert result.mode == "partial"
-    assert result.base_sha == MERGE_BASE_SHA
-    assert result.base_source == "verified-merge-base"
+    assert result.mode == "full"
+    assert result.full_run_trigger == "pr-base-is-not-an-ancestor-of-pr-head"
+    assert not any(call[:2] == ("git", "diff") for call in runner.calls)
+    assert not any(call[:2] == ("cargo", "metadata") for call in runner.calls)
 
 
 @pytest.mark.parametrize(
@@ -322,6 +343,29 @@ def test_missing_cargo_target_source_path_selects_full(tmp_path: Path) -> None:
 
     assert result.mode == "full"
     assert result.full_run_trigger == "cargo-metadata-invalid-target-source"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "crates/larch-cli/src/main.rs",
+        "crates/larch-core/src/lib.rs",
+        "crates/larch-lint/src/lib.rs",
+        "crates/larch-adapters/src/lib.rs",
+    ],
+)
+def test_required_ci_consumer_or_normal_build_upstream_change_selects_full(tmp_path: Path, path: str) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", path)),
+        metadata=_required_consumer_workspace(tmp_path),
+    )
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "required-ci-consumer-closure"
+    assert not result.partial_commands
 
 
 def test_reverse_dependency_closure_is_transitive_and_deterministic(tmp_path: Path) -> None:

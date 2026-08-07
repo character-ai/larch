@@ -336,8 +336,8 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           # The selector verifies both supplied commits and refuses a shallow
-          # or mismatched checkout. Full history makes a verified merge-base
-          # fallback available when the event base is no longer an ancestor.
+          # or mismatched checkout. It selects full when the event base is not
+          # an ancestor, so head metadata always describes the diff's result.
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Observe proposed Rust CI selection
