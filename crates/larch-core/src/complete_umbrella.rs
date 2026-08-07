@@ -256,16 +256,16 @@ mod tests {
 
     #[test]
     fn title_transitions_change_only_the_workflow_prefix() {
-        let original = "[UMBRELLA] Ship the feature";
-        let active = complete_umbrella_start_title(original).expect("start title");
-        assert_eq!(active, "[IMPLEMENTING] [UMBRELLA] Ship the feature");
+        let original = format!("{UMBRELLA_PREFIX}Ship the feature");
+        let active = complete_umbrella_start_title(&original).expect("start title");
+        assert_eq!(active, format!("{IMPLEMENTING_PREFIX}{original}"));
         assert_eq!(
             complete_umbrella_start_title(&active).expect("idempotent start"),
             active
         );
         assert_eq!(
             complete_umbrella_done_title(&active).expect("done title"),
-            "[DONE] [UMBRELLA] Ship the feature"
+            format!("{DONE_PREFIX}{UMBRELLA_PREFIX}Ship the feature")
         );
     }
 
