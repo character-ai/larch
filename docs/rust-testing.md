@@ -230,9 +230,10 @@ The production candidate sets `CARGO_INCREMENTAL=0`,
 nextest with `NEXTEST_TEST_THREADS=4`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
 the environment exported by `cargo llvm-cov show-env`. The same environment
-then builds the `larch` CLI into
-`target/llvm-cov-target/debug/larch`; no uninstrumented `target/debug/larch`
-is built. The lane runs `cargo llvm-cov nextest --no-report` and a separate
+then builds the `larch` CLI with Cargo's `--profile test`, which resolves to
+`target/llvm-cov-target/debug/larch`; it does not compile a second CLI with
+the dev profile or build an uninstrumented `target/debug/larch`. The lane runs
+`cargo llvm-cov nextest --no-report` and a separate
 `cargo test --doc` command. `--no-report` preserves the coverage artifact
 set between normal-test phases; the stable toolchain runs doctests without
 cargo-llvm-cov's nightly-only doctest instrumentation. The report command

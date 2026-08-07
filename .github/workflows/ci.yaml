@@ -581,10 +581,11 @@ jobs:
             cargo nextest run --workspace --all-features --locked \
               --target-dir "$coverage_target_dir" --no-run
             # nextest compiles test executables, but the top-level CLI is not
-            # guaranteed to be one of them. Build it under the same coverage
-            # environment and target directory for downstream validation and
-            # Python integration tests.
-            cargo build --package larch-cli --bin larch --all-features --locked \
+            # guaranteed to be one of them. Build it with Cargo's test profile
+            # under the same coverage environment and target directory for
+            # downstream validation and Python integration tests, rather than
+            # compiling the CLI again with the dev profile.
+            cargo build --profile test --package larch-cli --bin larch --all-features --locked \
               --target-dir "$coverage_target_dir"
           )
           run_timed compilation compile_coverage

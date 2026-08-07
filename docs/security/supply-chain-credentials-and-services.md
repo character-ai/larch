@@ -53,12 +53,12 @@ whether cache save succeeded or was skipped; a manual dispatch is marked
 tool.
 
 The coverage execution job builds the `larch` CLI under the same
-instrumented target directory as its full workspace tests. Before the job
-uploads `larch-linux-test-binary`, it fails closed unless the
-coverage-target executable at `target/llvm-cov-target/debug/larch` is runnable
-and reports its version. The same executable runs repository policy and plugin
-projection validation before either it or the LCOV report is uploaded. The
-`python-tests` job waits for the stable `rust-coverage` result and
+instrumented target directory and Cargo test profile as its full workspace
+tests. Before the job uploads `larch-linux-test-binary`, it fails closed unless
+the coverage-target executable at `target/llvm-cov-target/debug/larch` is
+runnable and reports its version. The same executable runs repository policy
+and plugin projection validation before either it or the LCOV report is
+uploaded. The `python-tests` job waits for the stable `rust-coverage` result and
 downloads that named artifact; `if-no-files-found: error` prevents an absent
 producer artifact from being treated as a successful handoff.
 

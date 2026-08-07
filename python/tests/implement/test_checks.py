@@ -3880,7 +3880,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
-    assert "cargo build --package larch-cli --bin larch --all-features --locked \\" in rust_coverage
+    assert "cargo build --profile test --package larch-cli --bin larch --all-features --locked \\" in rust_coverage
+    assert "cargo build --package larch-cli --bin larch --all-features --locked \\" not in rust_coverage
     assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
