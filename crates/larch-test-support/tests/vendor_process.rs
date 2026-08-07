@@ -15,6 +15,7 @@ const VENDORS: [VendorProgram; 3] = [
     VendorProgram::Codex,
     VendorProgram::Cursor,
 ];
+const TIMEOUT_AND_CANCELLATION_DELAY: Duration = Duration::from_secs(1);
 
 struct DelayedCancellation(Duration);
 
@@ -114,7 +115,7 @@ fn every_vendor_replays_timeout_and_cancellation_with_partial_output() {
         let timeout_request = harness
             .request_with(
                 &timeout_script,
-                VendorRunOptions::default().with_timeout(Duration::from_secs(2)),
+                VendorRunOptions::default().with_timeout(TIMEOUT_AND_CANCELLATION_DELAY),
             )
             .expect("timeout request");
         let error = runtime
@@ -139,7 +140,7 @@ fn every_vendor_replays_timeout_and_cancellation_with_partial_output() {
                     harness
                         .request(&cancel_script)
                         .expect("cancellation request"),
-                    &DelayedCancellation(Duration::from_secs(2)),
+                    &DelayedCancellation(TIMEOUT_AND_CANCELLATION_DELAY),
                 ),
             )
             .expect_err("cancelled fixture must stop");
