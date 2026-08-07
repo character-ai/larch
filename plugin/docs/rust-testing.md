@@ -213,14 +213,33 @@ follows:
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
 - `rust-build-test` remains the transitional owner of the full build, tests,
   repository policy, plugin projection, and Linux executable artifact.
-- `rust-coverage` enforces the workspace line baseline and writes
-  `target/llvm-cov/lcov.info`.
+- `rust-coverage` uses a selected `cargo llvm-cov nextest` profile, runs
+  workspace doctests separately, enforces the workspace line baseline, and
+  writes `target/llvm-cov/lcov.info`.
 
 The coverage job installs checksum-verified pinned `cargo-nextest` and
-`cargo-llvm-cov` binaries for later test-profile work. It does not change the
-current coverage test command or install a tool from source. Normal local
+`cargo-llvm-cov` binaries without a source-install fallback. Normal local
 checks use changed-path Clippy and do not install coverage tooling or create
 instrumented artifacts.
+
+The production profile sets `CARGO_INCREMENTAL=0`,
+`CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=1`, and runs
+nextest with `NEXTEST_TEST_THREADS=10`. It cleans prior coverage state, builds
+one coverage-instrumented artifact set with `cargo llvm-cov nextest --no-run`,
+then runs `cargo llvm-cov nextest --no-report --no-clean` and a separate
+`cargo llvm-cov test --doc --no-report --no-clean` command. The report command
+retains the existing line threshold and filename exclusions. The separate
+doctest command stays required even when the workspace currently has no
+doctests.
+
+Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
+and writes the same command-phase data to its GitHub step summary. The named
+GitHub cache-action steps provide the cache restore and save timings; the
+summary also records coverage-tool cache hit state. A manually dispatched CI
+run with `coverage_profile_benchmark=true` performs two samples of both test
+optimization levels and every nextest thread count from 4 through 16. The
+optional `coverage_profile_runner` input permits the documented
+`large_ubuntu_4cpu` availability trial without changing a required PR lane.
 
 Cargo registry and Git inputs are cached separately from compiler output. The
 lint lane may restore a manifest-keyed dependency cache under `target/debug`,

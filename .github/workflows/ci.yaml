@@ -2,6 +2,20 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      coverage_profile_benchmark:
+        description: Run the opt-level and nextest-thread coverage profile sweep
+        required: false
+        default: false
+        type: boolean
+      coverage_profile_runner:
+        description: Runner to compare for the manually dispatched coverage profile sweep
+        required: false
+        default: ubuntu-24.04
+        type: choice
+        options:
+          - ubuntu-24.04
+          - large_ubuntu_4cpu
   pull_request:
     branches:
       - main
@@ -422,10 +436,17 @@ jobs:
           git diff --exit-code -- plugin
 
   # Whole-workspace coverage stays separate from test sharding so its measured
-  # baseline and exclusions remain stable.
+  # baseline and exclusions remain stable. Normal PR and main runs use exactly
+  # one selected profile. An explicit workflow_dispatch input enables the
+  # profile sweep without making a benchmark matrix a required PR check.
   rust-coverage:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_runner || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        test_opt_level: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '["0", "1"]' || '["1"]') }}
+        sample: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '[1, 2]' || '[1]') }}
     env:
       CARGO_NEXTEST_VERSION: "0.9.137"
       CARGO_NEXTEST_ARCHIVE_SHA256: "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311"
@@ -435,6 +456,12 @@ jobs:
       CARGO_LLVM_COV_BINARY_SHA256: "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042"
       RUST_COVERAGE_MIN_LINES: "88.000"
       RUST_COVERAGE_IGNORE_REGEX: '(^|/)(crates/larch-test-support|tests|fixtures)(/|$)|/build\.rs$'
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}
+      NEXTEST_TEST_THREADS: "10"
+      COVERAGE_PROFILE_BENCHMARK: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 'true' || 'false' }}
+      COVERAGE_PROFILE_SAMPLE: ${{ matrix.sample }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -442,6 +469,12 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
+      - name: Initialize Rust coverage phase timing
+        run: |
+          set -euo pipefail
+          timing_file="$RUNNER_TEMP/rust-coverage-phases.tsv"
+          printf 'phase\tseconds\texit_code\n' > "$timing_file"
+          printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file" >> "$GITHUB_ENV"
       - name: Restore cargo-nextest binary
         id: nextest-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -508,15 +541,45 @@ jobs:
           test "$(cargo llvm-cov --version)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
       - name: Install llvm-tools component
         run: rustup component add llvm-tools-preview
-      - name: Test Rust workspace with coverage
+      - name: Run Rust coverage phases
         run: |
           set -euo pipefail
-          cargo llvm-cov --workspace --all-features --locked \
-            --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
-            --summary-only --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"
+
+          run_timed() {
+            phase="$1"
+            shift
+            started="$(date +%s)"
+            if "$@"; then
+              result=0
+            else
+              result=$?
+            fi
+            finished="$(date +%s)"
+            printf '%s\t%s\t%s\n' "$phase" "$((finished - started))" "$result" >> "$COVERAGE_TIMING_FILE"
+            return "$result"
+          }
+
+          run_timed profile-cleanup cargo llvm-cov clean --workspace
+          run_timed compilation cargo llvm-cov nextest --no-report --no-clean \
+            --workspace --all-features --locked --no-run
+
+          thread_counts="$NEXTEST_TEST_THREADS"
+          if [ "$COVERAGE_PROFILE_BENCHMARK" = true ]; then
+            thread_counts="4 6 8 10 12 14 16"
+          fi
+
           mkdir -p target/llvm-cov
-          cargo llvm-cov report --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
-            --lcov --output-path target/llvm-cov/lcov.info
+          for test_threads in $thread_counts; do
+            run_timed "profile-cleanup-${test_threads}" cargo llvm-cov clean --profraw-only
+            run_timed "test-execution-${test_threads}" cargo llvm-cov nextest --no-report --no-clean \
+              --workspace --all-features --locked --test-threads "$test_threads"
+            run_timed "doctests-${test_threads}" cargo llvm-cov test --no-report --no-clean \
+              --doc --workspace --all-features --locked
+            run_timed "coverage-report-${test_threads}" cargo llvm-cov report \
+              --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
+              --lcov --output-path target/llvm-cov/lcov.info \
+              --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"
+          done
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -535,6 +598,30 @@ jobs:
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.llvm-cov-cache.outputs.cache-primary-key }}
+      - name: Summarize Rust coverage phase timings
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$COVERAGE_TIMING_FILE"
+          cache_nextest="${{ steps.nextest-cache.outputs.cache-hit }}"
+          cache_llvm_cov="${{ steps.llvm-cov-cache.outputs.cache-hit }}"
+          {
+            printf '## Rust coverage phase timings\n\n'
+            printf 'Profile: test opt level %s; selected nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
+              "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
+            printf 'Cache hits: cargo-nextest %s; cargo-llvm-cov %s. GitHub job-step timestamps record checkout, Cargo-input restore, tool restore, and cache-save durations.\n\n' \
+              "$cache_nextest" "$cache_llvm_cov"
+            printf '```tsv\n'
+            cat "$COVERAGE_TIMING_FILE"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Rust coverage phase timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}
+          path: ${{ runner.temp }}/rust-coverage-phases.tsv
+          if-no-files-found: error
 
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.

@@ -3741,7 +3741,8 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "make rust-lint" in rust_build_test
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
-    assert "cargo llvm-cov --workspace --all-features --locked \\" in workflow
+    assert "cargo llvm-cov nextest --no-report --no-clean" in workflow
+    assert "cargo llvm-cov test --no-report --no-clean" in workflow
     assert "make rust-coverage" not in workflow
     assert "rust-coverage" not in makefile
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
@@ -3838,6 +3839,22 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo install" not in rust_coverage
     assert "cargo nextest --version" in rust_coverage
     assert "cargo llvm-cov --version" in rust_coverage
+    assert "coverage_profile_benchmark:" in workflow
+    assert "coverage_profile_runner:" in workflow
+    assert "large_ubuntu_4cpu" in workflow
+    assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage
+    assert 'NEXTEST_TEST_THREADS: "10"' in rust_coverage
+    assert 'CARGO_INCREMENTAL: "0"' in rust_coverage
+    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage
+    assert "cargo llvm-cov nextest --no-report --no-clean \\" in rust_coverage
+    assert "--workspace --all-features --locked --no-run" in rust_coverage
+    assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
+    assert "cargo llvm-cov clean --profraw-only" in rust_coverage
+    assert "cargo llvm-cov test --no-report --no-clean \\" in rust_coverage
+    assert "--doc --workspace --all-features --locked" in rust_coverage
+    assert '--fail-under-lines "${RUST_COVERAGE_MIN_LINES}"' in rust_coverage
+    assert "rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
+    assert "## Rust coverage phase timings" in rust_coverage
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index("Save cargo-nextest binary")
