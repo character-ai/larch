@@ -3966,6 +3966,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "name: larch-linux-test-binary" in python_tests
     assert "path: .ci-bin" in python_tests
     assert "chmod 755 .ci-bin/larch" in python_tests
+    python_test_execution = python_tests.split(
+        "Run Python tests (shard ${{ matrix.shard }} of 20)", 1
+    )[1]
+    assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in python_test_execution
 
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:

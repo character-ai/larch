@@ -1090,6 +1090,9 @@ jobs:
         env:
           PYTEST_SHARD_ID: ${{ matrix.shard }}
           PYTEST_SHARD_COUNT: "20"
+          # The coverage-instrumented executable must not leave profraw files
+          # in the temporary repositories owned by Python integration tests.
+          LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw
         run: make py-test
 
   # Aggregate gate for the python-tests matrix (see test-harnesses-gate for the
