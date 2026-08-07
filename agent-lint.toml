@@ -1076,6 +1076,7 @@ files = [
   "skills/block-issue/SKILL.md",
   "skills/bug/SKILL.md",
   "skills/combine-issues/SKILL.md",
+  "skills/complete-umbrella/SKILL.md",
   "skills/deps/SKILL.md",
   "skills/debate/SKILL.md",
   "skills/design/SKILL.md",
@@ -1122,6 +1123,7 @@ reason = "Backtick-quoted snake_case tokens in these prompts are state keys, fie
 
 [[lint.overrides]]
 files = [
+  "skills/complete-umbrella/SKILL.md",
   "skills/design/SKILL.md",
   "skills/implement/SKILL.md",
   "skills/research/SKILL.md",
@@ -1165,6 +1167,7 @@ files = [
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",
   "skills/combine-issues/SKILL.md",
+  "skills/complete-umbrella/SKILL.md",
   "skills/deps/SKILL.md",
   "skills/debate/SKILL.md",
   "skills/design/SKILL.md",
@@ -1223,6 +1226,7 @@ files = [
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",
   "skills/combine-issues/SKILL.md",
+  "skills/complete-umbrella/SKILL.md",
   "skills/deps/SKILL.md",
   "skills/debate/SKILL.md",
   "skills/design/SKILL.md",
@@ -1260,6 +1264,7 @@ files = [
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",
   "skills/combine-issues/SKILL.md",
+  "skills/complete-umbrella/SKILL.md",
   "skills/debate/SKILL.md",
   "skills/deps/SKILL.md",
   "skills/design/SKILL.md",

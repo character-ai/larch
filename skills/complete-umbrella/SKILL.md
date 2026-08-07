@@ -46,8 +46,13 @@ Parse `$ARGUMENTS` as exactly one positive integer, accepting an optional leadin
 Resolve the canonical repository root and repository slug through the released shim:
 
 ```bash
-REPO_ROOT=$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" && pwd -P)
+if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
+  echo "**⚠ /complete-umbrella: CLAUDE_PROJECT_DIR is required. Aborting.**"
+  exit 1
+fi
+REPO_ROOT=$(cd "$CLAUDE_PROJECT_DIR" && pwd -P)
 REPO=$(cd "$REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh resolve-repo)
+# lint-consecutive-bash: ok repository identity must validate before the separate parent title mutation
 ```
 
 Require `REPO` to use exact `OWNER/REPO` syntax. Then immediately run:
@@ -70,6 +75,7 @@ SETUP_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup \
   --skip-preflight \
   --skip-branch-check \
   --skip-repo-check)
+# lint-consecutive-bash: ok session setup output must validate before the separate hook activation
 ```
 
 Parse and require its `SESSION_TMPDIR`. Then activate the Write hook before the first `Write` call:
@@ -144,6 +150,7 @@ Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDI
     --output-root "$COMPLETE_UMBRELLA_TMPDIR" \
     --output "$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.json" \
     --result-env "$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env"
+# lint-consecutive-bash: ok bgjob launch must return STARTED before the separate repeated-wait fence
 ```
 
 Require the exact `BGJOB_STATUS=STARTED` marker for `STEP`. Wait only with:
@@ -210,7 +217,7 @@ Before any public mutation, validate both files:
 
 Require `GAP_VALID=true` and the exact umbrella number. A validation failure hard-fails without invoking `/issue`.
 
-Remove any stale `gap-issue.sentinel`. Invoke the `larch:issue` Skill with this exact argument shape, placing the lifecycle context first:
+Remove any stale `gap-issue.sentinel`. Invoke `larch:issue` via the Skill tool with this exact argument shape, placing the lifecycle context first:
 
 ```text
 --lifecycle-parent-context <CONTEXT_FILE> --repo <REPO> --title-prefix "[LEAF OF N]" --body-file <gap-body.md> --no-dedup --sentinel-file <gap-issue.sentinel> <contents of gap-title.txt>

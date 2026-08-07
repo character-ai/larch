@@ -27,6 +27,7 @@ Commands:
   blocker            Issue blocker discovery
   bgjob              Durable background-job compatibility commands
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
+  complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
   dirty-tree         Working-tree checkpoint and scope compatibility commands
   external-defaults  External tool default readers
   example            Non-production commands that exercise dispatcher wiring
