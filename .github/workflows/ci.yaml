@@ -466,7 +466,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}
-      NEXTEST_TEST_THREADS: "4"
+      NEXTEST_TEST_THREADS: "16"
       COVERAGE_PROFILE_BENCHMARK: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 'true' || 'false' }}
       COVERAGE_PROFILE_SAMPLE: ${{ matrix.sample }}
       # A target cache is opt-in only after three comparable warm-cache main
