@@ -3751,12 +3751,36 @@ fn hung_command_fails_at_the_case_boundary() {
     assert!(error.contains("timed out after 50ms"));
 }
 
+const CLEAN_INSTALL_PARTITION_COUNT: usize = 4;
+
 #[test]
-fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
+fn rust_owned_selector_matrix_partition_0_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(0);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_1_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(1);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_2_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(2);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_3_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(3);
+}
+
+fn assert_clean_install_partition(partition: usize) {
     let fixture = clean_install_fixture();
-    for case in CLEAN_INSTALL_CASES {
+    for (index, case) in CLEAN_INSTALL_CASES.iter().copied().enumerate() {
+        if index % CLEAN_INSTALL_PARTITION_COUNT != partition {
+            continue;
+        }
         fs::write(&fixture.events, b"").expect("clear clean-install event log");
-        let output = run_clean_install_case(&fixture, *case, None);
+        let output = run_clean_install_case(&fixture, case, None);
         assert_eq!(
             output.status.code(),
             Some(case.expected_exit()),
@@ -3766,7 +3790,7 @@ fn rust_owned_selector_matrix_enters_through_verified_clean_install_script() {
         );
         let events = fs::read_to_string(&fixture.events).expect("read clean-install events");
         let lines: Vec<&str> = events.lines().collect();
-        let expected_dispatch = clean_install_dispatch(&fixture, *case);
+        let expected_dispatch = clean_install_dispatch(&fixture, case);
         assert_eq!(lines.first(), Some(&"--version"), "{}", case.id);
         assert_eq!(lines.get(1), Some(&"bootstrap self-check"), "{}", case.id);
         assert_eq!(
