@@ -5,7 +5,7 @@
 //! verb bridge. This module owns only the review command composition.
 
 use crate::{
-    agent_commands::AgentRawArguments,
+    agent_commands::{AgentRawArguments, generated_paths},
     argparse_compat::split_inline_option,
     claude_commands::{panel_artifact_path, panel_slot_kind, parse_uint},
     dirty_tree_commands,
@@ -33,13 +33,13 @@ use larch_core::{
     ExternalProcessRunner as _, ExternalProgram, LaunchFailureInputs, LauncherArtifact,
     LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessRequest, PythonVerbProgram,
     REVIEW_MAX_TRANSIENT_RETRIES, RepositoryRead, ResearchOutputValidator, SpecialistRenderPort,
-    VendorLaunchRequest, VendorProgram, codex_env_auth_from_key, cursor_child_environment,
-    cursor_launch_jitter_ms, cursor_normalize_no_issues, effective_review_token_cap, emit_kv,
-    external_auth_verdict, is_cursor_empty_result, is_quota_failure, is_transient_infra_failure,
-    json_usage_number, plan_capture_cursor_dirty_baseline, plan_cursor_result_write,
-    read_codex_prompt_sentinel, redact, render_cap_hit_artifacts, render_codex_prompt_sidecar,
-    render_preflight_bundle, render_unknown_dirty_tree, resolve_model_args,
-    review_retry_delay_secs,
+    VendorLaunchRequest, VendorProgram, classify_diff, codex_env_auth_from_key,
+    cursor_child_environment, cursor_launch_jitter_ms, cursor_normalize_no_issues,
+    effective_review_token_cap, emit_kv, external_auth_verdict, is_cursor_empty_result,
+    is_quota_failure, is_transient_infra_failure, json_usage_number,
+    plan_capture_cursor_dirty_baseline, plan_cursor_result_write, read_codex_prompt_sentinel,
+    redact, render_cap_hit_artifacts, render_codex_prompt_sidecar, render_preflight_bundle,
+    render_unknown_dirty_tree, resolve_model_args, review_retry_delay_secs,
 };
 use std::{
     collections::BTreeMap,
@@ -815,11 +815,16 @@ fn render_specialist_prompt(
         unique
     ));
     let mut render_arguments = vec![OsString::from("render"), OsString::from("specialist")];
-    render_arguments.extend(
-        normal_specialist_render_args(args, artifacts)
-            .into_iter()
-            .map(OsString::from),
-    );
+    let mut normal_arguments = normal_specialist_render_args(args, artifacts);
+    if let Some(diff_mode) = specialist_diff_mode(&args.mode, &args.diff_file).map_err(|()| {
+        (
+            1,
+            "render-specialist-prompt.sh: diff classification failed".to_owned(),
+        )
+    })? {
+        normal_arguments.extend(["--diff-mode".to_owned(), diff_mode]);
+    }
+    render_arguments.extend(normal_arguments.into_iter().map(OsString::from));
     render_arguments.extend([
         OsString::from("--payload-bytes-output"),
         payload.as_os_str().to_owned(),
@@ -911,6 +916,21 @@ impl SpecialistRenderPort for PythonSpecialistRenderer<'_> {
                 .into_iter()
                 .map(OsString::from),
         );
+        match specialist_diff_mode(
+            sentinel.get("MODE").map_or("", String::as_str),
+            sentinel.get("DIFF_FILE").map_or("", String::as_str),
+        ) {
+            Ok(Some(diff_mode)) => {
+                render_arguments.extend([OsString::from("--diff-mode"), diff_mode.into()]);
+            }
+            Ok(None) => {}
+            Err(()) => {
+                return (
+                    1,
+                    "render-specialist-prompt.sh: diff classification failed".to_owned(),
+                );
+            }
+        }
         let Some(result) = run_python(self.session, render_arguments) else {
             return (
                 1,
@@ -925,6 +945,17 @@ impl SpecialistRenderPort for PythonSpecialistRenderer<'_> {
         let stdout = String::from_utf8_lossy(result.stdout()).into_owned();
         (rc, if stderr.is_empty() { stdout } else { stderr })
     }
+}
+
+fn specialist_diff_mode(mode: &str, diff_file: &str) -> Result<Option<String>, ()> {
+    if mode != "diff" || diff_file.is_empty() {
+        return Ok(None);
+    }
+    let generated = generated_paths().map_err(|_| ())?;
+    let diff = read_optional_utf8_lossy(Path::new(diff_file))
+        .map_err(|_| ())?
+        .ok_or(())?;
+    Ok(Some(classify_diff(&diff, &generated).as_str().to_owned()))
 }
 
 fn sentinel_specialist_render_args(sentinel: &BTreeMap<String, String>) -> Vec<String> {

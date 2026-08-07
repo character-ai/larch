@@ -1008,7 +1008,7 @@ fn classify_diff_command(arguments: &AgentRawArguments) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn generated_paths() -> Result<std::collections::BTreeSet<String>, String> {
+pub fn generated_paths() -> Result<std::collections::BTreeSet<String>, String> {
     let root = env::var_os(larch_core::env::CLAUDE_PLUGIN_ROOT)
         .map(PathBuf::from)
         .ok_or_else(|| {
