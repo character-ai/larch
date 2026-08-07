@@ -3694,7 +3694,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
     hooks = _precommit_hook_rows(precommit)
-    rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-build-test:", 1)[0]
+    rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
+    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split("\n  rust-coverage:", 1)[0]
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
     lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
@@ -3726,19 +3728,23 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "python-pyright:" in workflow
     assert "agent-lint:" in workflow
     assert "rust-lint:" in workflow
+    assert "rust-deny:" in workflow
     assert "rust-build-test:" in workflow
     assert "\n  rust-clippy:" not in workflow
     assert "rust-coverage:" in workflow
     assert "rust-gate:" in workflow
-    assert "needs: [rust-lint, rust-build-test, rust-coverage]" in workflow
-    assert "make rust-fmt" in workflow
+    assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in workflow
+    assert "make rust-fmt" in rust_lint
     assert "make rust-clippy" in rust_lint
+    assert "make rust-lint" not in rust_lint
+    assert "cargo-deny-action" not in rust_lint
+    assert "make rust-lint" in rust_build_test
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
     assert "cargo llvm-cov --workspace --all-features --locked \\" in workflow
     assert "make rust-coverage" not in workflow
     assert "rust-coverage" not in makefile
-    assert "cargo-deny-action@" in workflow
+    assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
     for hook in (
         "cargo-fmt",
         "cargo-clippy",
@@ -3750,6 +3756,97 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
         assert hook in lint_local_skip
     assert "ruff" in lint_skip
     assert "ruff" not in lint_local_skip
+
+
+def test_rust_ci_cache_tool_and_gate_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
+    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_coverage = workflow.split("\n  rust-coverage:", 1)[1].split("\n  rust-gate:", 1)[0]
+    rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
+    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
+    cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
+    cargo_input_key = (
+        "cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-"
+        "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}"
+    )
+
+    assert "concurrency:" in workflow
+    assert "group: ${{ github.workflow }}-${{ github.event_name == 'pull_request'" in workflow
+    assert "format('pr-{0}', github.event.pull_request.number)" in workflow
+    assert "format('ref-{0}', github.ref)" in workflow
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+
+    for env_value in (
+        'CARGO_INCREMENTAL: "0"',
+        'CARGO_PROFILE_DEV_DEBUG: "0"',
+        'CARGO_PROFILE_TEST_DEBUG: "0"',
+    ):
+        assert env_value in rust_lint
+    assert cargo_input_key in rust_lint
+    assert cargo_input_key in rust_build_test
+    assert cargo_input_key in rust_coverage
+    assert cargo_input_key in gitleaks
+
+    lint_target_cache = rust_lint.split("Restore Rust lint dependencies", 1)[1].split(
+        "Check Rust formatting", 1
+    )[0]
+    assert "path: target/debug" in lint_target_cache
+    assert "restore-keys:" not in lint_target_cache
+    assert "crates/**/*.rs" not in rust_lint
+    assert "cargo clean --workspace" in rust_lint
+    assert "actions/cache/restore@" + cache_sha in rust_lint
+    assert "actions/cache/save@" + cache_sha in rust_lint
+    assert (
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+        " && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'"
+    ) in rust_lint
+
+    build_input_cache = rust_build_test.split("Cache Cargo inputs", 1)[1].split(
+        "Build Rust workspace", 1
+    )[0]
+    coverage_input_cache = rust_coverage.split("Cache Cargo inputs", 1)[1].split(
+        "Install cargo-nextest", 1
+    )[0]
+    gitleaks_input_cache = gitleaks.split("Cache Cargo inputs", 1)[1].split(
+        "Cache gitleaks binary", 1
+    )[0]
+    assert "target" not in build_input_cache
+    assert "target" not in coverage_input_cache
+    assert "target" not in gitleaks_input_cache
+
+    assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
+    assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in rust_deny
+    assert "arguments: --locked --all-features" in rust_deny
+    assert "path: ~/.cargo/bin/cargo-nextest" in rust_coverage
+    assert "path: ~/.cargo/bin/cargo-llvm-cov" in rust_coverage
+    assert "cargo-nextest-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_NEXTEST_VERSION }}" in rust_coverage
+    assert "cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}" in rust_coverage
+    for checksum in (
+        "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311",
+        "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550",
+        "9a75fe29538d3800b3da57f6f6efb64cba5c720a257bf0cb8b51f39d495a9168",
+        "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042",
+    ):
+        assert checksum in rust_coverage
+    assert "--retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120" in rust_coverage
+    assert 'test "$(tar -tzf "$nextest_archive")" = "cargo-nextest"' in rust_coverage
+    assert 'test "$(tar -tzf "$llvm_cov_archive")" = "cargo-llvm-cov"' in rust_coverage
+    assert "sha256sum --check --strict" in rust_coverage
+    assert "cargo install" not in rust_coverage
+    assert "cargo nextest --version" in rust_coverage
+    assert "cargo llvm-cov --version" in rust_coverage
+    assert "actions/cache/restore@" + cache_sha in rust_coverage
+    assert "actions/cache/save@" + cache_sha in rust_coverage
+    assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index("Save cargo-nextest binary")
+
+    assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in rust_gate
+    for result_name in ("lint_result", "deny_result", "build_test_result", "coverage_result"):
+        assert result_name in rust_gate
+    assert "if: always()" in rust_gate
+
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
