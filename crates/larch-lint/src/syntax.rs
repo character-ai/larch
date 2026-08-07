@@ -153,13 +153,26 @@ impl ShellCommand {
 /// Returns an error when the Bash parser cannot parse the source.
 pub fn shell_commands(source: &str, line_offset: usize) -> Result<Vec<ShellCommand>, LintError> {
     let tree = parse_bash(source)?;
-    Ok(leaf_bash_commands(&tree)
+    Ok(shell_commands_from_tree(&tree, source, line_offset))
+}
+
+/// Extract normalized shell commands from already parsed Bash syntax.
+///
+/// This keeps callers that operate on repository snapshots from reparsing the
+/// same source when another rule has already requested its Bash syntax.
+#[must_use]
+pub fn shell_commands_from_tree(
+    tree: &tree_sitter::Tree,
+    source: &str,
+    line_offset: usize,
+) -> Vec<ShellCommand> {
+    leaf_bash_commands(tree)
         .into_iter()
         .map(|command| ShellCommand {
             line: command.start_position().row + line_offset + 1,
             words: shell_command_words(command, source),
         })
-        .collect())
+        .collect()
 }
 
 /// Return normalized words for one parsed leaf Bash command.

@@ -46,7 +46,6 @@ use tree_sitter::Node;
 use crate::suppression;
 use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
-    syntax::parse_python,
 };
 use super::syn_helpers::python_identifier_names;
 
@@ -126,7 +125,9 @@ impl Rule for RunLogCorpusWalkersRule {
             if is_python_owner_or_exempt(path) || is_excluded_python_path(path.as_str()) {
                 continue;
             }
-            findings.extend(scan_python_source(path.as_str(), &repository.read_utf8(path)?)?);
+            let source = repository.read_utf8(path)?;
+            let syntax = repository.python_syntax(path)?;
+            findings.extend(scan_python_source(path.as_str(), &source, &syntax)?);
         }
         findings.sort();
         findings.dedup();
@@ -181,11 +182,14 @@ fn scan_source(path: &str, source: &str, walker: &Regex) -> Result<Vec<Finding>,
     Ok(findings)
 }
 
-fn scan_python_source(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_python(source)?;
+fn scan_python_source(
+    path: &str,
+    source: &str,
+    syntax: &tree_sitter::Tree,
+) -> Result<Vec<Finding>, LintError> {
     let mut symbols = PythonWalkerSymbols::default();
     let mut detections = BTreeSet::new();
-    collect_python_walkers(tree.root_node(), source, &mut symbols, &mut detections);
+    collect_python_walkers(syntax.root_node(), source, &mut symbols, &mut detections);
     detections
         .into_iter()
         .map(|(line, detection)| {

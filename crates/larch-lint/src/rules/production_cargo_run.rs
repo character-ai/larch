@@ -8,7 +8,7 @@ use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
     syntax::{
         ShellCommand, json_shell_commands, leaf_bash_commands, markdown_shell_commands,
-        normalize_shell_word, parse_bash, parse_python, shell_command_words, shell_commands,
+        normalize_shell_word, parse_bash, shell_command_words, shell_commands_from_tree,
     },
 };
 
@@ -49,9 +49,11 @@ impl Rule for ProductionCargoRunRule {
             let source = repository.read_utf8(path)?;
             let extension = extension(path_text).unwrap_or("");
             findings.extend(if extension.eq_ignore_ascii_case("sh") {
-                check_shell(path_text, &source, 0)?
+                let syntax = repository.bash_syntax(path)?;
+                check_commands(path_text, shell_commands_from_tree(&syntax, &source, 0))?
             } else if extension.eq_ignore_ascii_case("py") {
-                check_python(path_text, &source)?
+                let syntax = repository.python_syntax(path)?;
+                check_python(path_text, &source, &syntax)?
             } else if extension.eq_ignore_ascii_case("md") {
                 check_markdown(path_text, &source)?
             } else if extension.eq_ignore_ascii_case("json") {
@@ -78,10 +80,6 @@ fn is_fixture_surface(path: &str) -> bool {
             .rsplit('/')
             .next()
             .is_some_and(|name| name.starts_with("test-"))
-}
-
-fn check_shell(path: &str, source: &str, line_offset: usize) -> Result<Vec<Finding>, LintError> {
-    check_commands(path, shell_commands(source, line_offset)?)
 }
 
 fn check_commands(path: &str, commands: Vec<ShellCommand>) -> Result<Vec<Finding>, LintError> {
@@ -148,11 +146,14 @@ fn is_target_larch(word: &str) -> bool {
         || normalized.ends_with("target/release/larch.exe")
 }
 
-fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_python(source)?;
-    let callables = subprocess_callables(tree.root_node(), source);
+fn check_python(
+    path: &str,
+    source: &str,
+    syntax: &tree_sitter::Tree,
+) -> Result<Vec<Finding>, LintError> {
+    let callables = subprocess_callables(syntax.root_node(), source);
     let mut lines = BTreeSet::new();
-    collect_python_calls(tree.root_node(), source, &callables, &mut lines);
+    collect_python_calls(syntax.root_node(), source, &callables, &mut lines);
     lines
         .into_iter()
         .map(|line| {

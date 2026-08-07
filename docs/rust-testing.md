@@ -237,13 +237,16 @@ the dev profile or build an uninstrumented `target/debug/larch`. The lane runs
 `cargo test --doc` command. `--no-report` preserves the coverage artifact
 set between normal-test phases; the stable toolchain runs doctests without
 cargo-llvm-cov's nightly-only doctest instrumentation. The report command
-retains the existing line threshold and filename exclusions. After the report,
-the lane fails closed unless the coverage-target executable is runnable and
-reports its version, then uses that executable for `larch lint all`, both
-plugin-runtime commands, and the generated-projection clean-diff check before
-uploading it for Python integration tests. The separate doctest command stays
-required even when the workspace currently has no doctests. Nextest's slow-test
-status and final status output remain visible in the job log.
+retains the existing line threshold and filename exclusions. For each coverage
+path, after nextest and before its report, the lane fails closed unless the
+coverage-target executable is runnable and reports its version, then uses it
+for exactly one `larch lint all` invocation. That invocation writes a sorted
+per-rule timing TSV and contributes to the unchanged line gate. After the
+report, the lane uses the executable for both plugin-runtime commands and the
+generated-projection clean-diff check before uploading it for Python integration
+tests. The separate doctest command stays required even when the workspace
+currently has no doctests. Nextest's slow-test status and final status output
+remain visible in the job log.
 
 ### Pull-request Rust selection observation
 
@@ -316,11 +319,13 @@ toolchain, runner-provided linker, `CARGO_INCREMENTAL=0`,
 `coverage_profile_benchmark=true` runs three samples of both test optimization
 levels and every nextest thread count from 4 through 16. It compiles one
 coverage-instrumented artifact set per profile, clears only `profraw` data
-between thread counts, and reports the raw end-to-end coverage-phase totals
-(common profile cleanup, compilation, doctests, plus that thread count's
-cleanup, nextest, and report) and their median. A candidate that varies by more
-than 10% across its first two samples is rerun before comparison. The coverage
-line gate is unchanged; a profile whose report fails it is not eligible.
+between thread counts, runs one complete repository-policy scan after each
+nextest pass and before that path's coverage report, and reports the raw
+end-to-end coverage-phase totals (common profile cleanup, compilation,
+doctests, plus that thread count's cleanup, nextest, policy, and report) and
+their median. A candidate that varies by more than 10% across its first two
+samples is rerun before comparison. The coverage line gate is unchanged; a
+profile whose report fails it is not eligible.
 
 ### Current-main-derived candidate evidence
 
@@ -358,15 +363,19 @@ final `main` evidence or declare a final winner from them. After merge, collect
 three comparable successful `main`-ref samples of the configured profile before
 making that final claim.
 
-Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
-and writes it to the GitHub step summary. The coverage TSV records cache
-restore, tool setup, profile cleanup, compilation, doctests, every test and
-report phase, each end-to-end total, repository validation, and cache save.
-Cache save records an explicit `workflow_dispatch-read-only` skip for manual
+Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
+a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.
+The coverage TSV records cache restore, tool setup, profile cleanup,
+compilation, doctests, every test, repository-policy, report, plugin-validation
+phase, each end-to-end total, and cache save. The policy artifact has one
+deterministically ordered `rule\tmilliseconds` table per coverage path; it is
+written by the covered `larch lint all` invocation before its report. Cache
+save records an explicit `workflow_dispatch-read-only` skip for manual
 benchmarks. The documented pre-consolidation run measured 3–8 s for cache
-restore, 8–12 s for tool setup, 172 s for repository validation, and 0 s for
-the intentionally skipped cache save. The consolidated lane records the same
-validation phase in its own TSV.
+restore, 8–12 s for tool setup, 172 s for the former post-report repository
+validation, and 0 s for the intentionally skipped cache save. Those historical
+timings are not comparable with the covered policy phase; use the policy
+artifact for current per-rule evidence.
 
 Cargo registry and Git inputs use a restore-only cache action in every Rust
 lane. Only a successful primary-key miss on a `main` push may invoke the

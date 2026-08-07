@@ -195,7 +195,7 @@ fn required_document(repository: &Repository, path: &str) -> Result<String, Lint
     if repository.paths().binary_search(&document).is_err() {
         return Err(LintError::new(format!("{path}: required documentation file is missing")));
     }
-    repository.read_utf8(&document)
+    repository.read_utf8(&document).map(|source| source.to_string())
 }
 
 crate::register_rule!(METADATA, RULE);

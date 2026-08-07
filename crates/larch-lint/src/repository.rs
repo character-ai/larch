@@ -1,13 +1,17 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     path::{Component, Path, PathBuf},
     process::Command,
+    sync::{Arc, OnceLock},
 };
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
-use crate::runner::LintError;
+use crate::{
+    runner::LintError,
+    syntax::{parse_bash, parse_python},
+};
 
 /// A validated, UTF-8 repository-relative path.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -199,12 +203,42 @@ fn materialized_tracked_paths(tagged: &[u8]) -> Result<Vec<u8>, LintError> {
     Ok(paths)
 }
 
-/// A repository snapshot whose files are current non-ignored regular files.
 #[derive(Debug)]
+struct SourceFile {
+    bytes: Arc<[u8]>,
+    utf8: OnceLock<Result<Arc<str>, String>>,
+}
+
+impl SourceFile {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes: Arc::from(bytes),
+            utf8: OnceLock::new(),
+        }
+    }
+
+    fn utf8(&self, path: &RepoPath) -> Result<Arc<str>, LintError> {
+        match self.utf8.get_or_init(|| {
+            std::str::from_utf8(&self.bytes)
+                .map(Arc::<str>::from)
+                .map_err(|error| error.to_string())
+        }) {
+            Ok(source) => Ok(Arc::clone(source)),
+            Err(error) => Err(LintError::new(format!(
+                "{path}: cannot read UTF-8 source: {error}"
+            ))),
+        }
+    }
+}
+
+/// A repository snapshot whose files are current non-ignored regular files.
 pub struct Repository {
     root: PathBuf,
     paths: Vec<RepoPath>,
     committed_paths: Vec<RepoPath>,
+    sources: BTreeMap<RepoPath, SourceFile>,
+    bash_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
+    python_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
 }
 
 impl Repository {
@@ -222,6 +256,9 @@ impl Repository {
         let discovered = parse_tracked_paths(&stream)?;
         let committed = parse_tracked_paths(&git.committed_paths(&root)?)?;
         let mut paths = Vec::with_capacity(discovered.len());
+        let mut sources = BTreeMap::new();
+        let mut bash_syntax = BTreeMap::new();
+        let mut python_syntax = BTreeMap::new();
         for path in discovered {
             // `plugin/` is a generated, byte-for-byte runtime projection. Lint
             // its canonical source paths once instead of reporting duplicates.
@@ -241,7 +278,15 @@ impl Repository {
                         "{path}: tracked path is not a regular file"
                     )));
                 }
-                Ok(RegularFileStatus::Regular) => paths.push(path),
+                Ok(RegularFileStatus::Regular) => {
+                    let bytes = std::fs::read(&candidate).map_err(|error| {
+                        LintError::new(format!("{path}: cannot read source: {error}"))
+                    })?;
+                    bash_syntax.insert(path.clone(), OnceLock::new());
+                    python_syntax.insert(path.clone(), OnceLock::new());
+                    sources.insert(path.clone(), SourceFile::new(bytes));
+                    paths.push(path);
+                }
                 Err(error) => {
                     return Err(LintError::new(format!(
                         "{path}: cannot inspect tracked path: {error}"
@@ -253,6 +298,9 @@ impl Repository {
             root,
             paths,
             committed_paths: committed,
+            sources,
+            bash_syntax,
+            python_syntax,
         })
     }
 
@@ -282,16 +330,17 @@ impl Repository {
         self.committed_paths.binary_search(path).is_ok()
     }
 
-    /// Read one tracked regular file as UTF-8.
+    /// Read one snapshotted regular file as UTF-8.
     ///
     /// # Errors
     ///
-    /// Returns an error when `path` is not tracked, is no longer a regular
-    /// file, cannot be read, or is not UTF-8.
-    pub fn read_utf8(&self, path: &RepoPath) -> Result<String, LintError> {
-        let bytes = self.read_bytes(path)?;
-        String::from_utf8(bytes)
-            .map_err(|error| LintError::new(format!("{path}: cannot read UTF-8 source: {error}")))
+    /// Returns an error when `path` is absent from the validated snapshot or
+    /// its snapshotted bytes are not UTF-8.
+    pub fn read_utf8(&self, path: &RepoPath) -> Result<Arc<str>, LintError> {
+        self.sources
+            .get(path)
+            .ok_or_else(|| LintError::new(format!("{path}: path is not tracked")))?
+            .utf8(path)
     }
 
     /// Read a required tracked regular file as UTF-8.
@@ -299,40 +348,67 @@ impl Repository {
     /// # Errors
     ///
     /// Returns `missing_message` when `path` is absent from the snapshot, or
-    /// propagates the regular-file and UTF-8 validation errors from
+    /// propagates the snapshot and UTF-8 validation errors from
     /// [`Self::read_utf8`].
     pub fn read_required_utf8(
         &self,
         path: &RepoPath,
         missing_message: impl Into<String>,
-    ) -> Result<String, LintError> {
+    ) -> Result<Arc<str>, LintError> {
         if self.paths.binary_search(path).is_err() {
             return Err(LintError::new(missing_message));
         }
         self.read_utf8(path)
     }
 
-    /// Read one tracked regular file as bytes.
+    /// Read one snapshotted regular file as bytes.
     ///
     /// # Errors
     ///
-    /// Returns an error when `path` is not tracked, is no longer a regular
-    /// file, or cannot be read.
-    pub fn read_bytes(&self, path: &RepoPath) -> Result<Vec<u8>, LintError> {
-        if self.paths.binary_search(path).is_err() {
-            return Err(LintError::new(format!("{path}: path is not tracked")));
+    /// Returns an error when `path` is absent from the validated snapshot.
+    pub fn read_bytes(&self, path: &RepoPath) -> Result<Arc<[u8]>, LintError> {
+        self.sources
+            .get(path)
+            .map(|source| Arc::clone(&source.bytes))
+            .ok_or_else(|| LintError::new(format!("{path}: path is not tracked")))
+    }
+
+    /// Return shared parsed Bash syntax for one snapshotted source file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `path` is not tracked or its source cannot be parsed.
+    pub fn bash_syntax(&self, path: &RepoPath) -> Result<Arc<tree_sitter::Tree>, LintError> {
+        self.cached_syntax(path, &self.bash_syntax, parse_bash)
+    }
+
+    /// Return shared parsed Python syntax for one snapshotted source file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `path` is not tracked or its source cannot be parsed.
+    pub fn python_syntax(&self, path: &RepoPath) -> Result<Arc<tree_sitter::Tree>, LintError> {
+        self.cached_syntax(path, &self.python_syntax, parse_python)
+    }
+
+    fn cached_syntax(
+        &self,
+        path: &RepoPath,
+        cache: &BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
+        parse: fn(&str) -> Result<tree_sitter::Tree, LintError>,
+    ) -> Result<Arc<tree_sitter::Tree>, LintError> {
+        let source = self.read_utf8(path)?;
+        let syntax = cache
+            .get(path)
+            .ok_or_else(|| LintError::new(format!("{path}: path is not tracked")))?;
+        match syntax.get_or_init(|| {
+            parse(&source)
+                .map(Arc::new)
+                .map_err(|error| format!("{path}: {error}"))
+        }) {
+            Ok(syntax) => Ok(Arc::clone(syntax)),
+            Err(error) => Err(LintError::new(error.clone())),
         }
-        let candidate = self.root.join(path.as_str());
-        let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
-            LintError::new(format!("{path}: cannot inspect tracked path: {error}"))
-        })?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            return Err(LintError::new(format!(
-                "{path}: tracked path is no longer a regular file"
-            )));
-        }
-        std::fs::read(candidate)
-            .map_err(|error| LintError::new(format!("{path}: cannot read source: {error}")))
     }
 }
 
@@ -408,7 +484,10 @@ fn compile_globs(patterns: &[&str]) -> Result<GlobSet, LintError> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
 
     use super::{
         Git, LintError, PathSelector, RepoPath, Repository, materialized_tracked_paths,
@@ -495,6 +574,54 @@ mod tests {
         .expect("discover fixture repository");
         let path = RepoPath::parse("invalid.txt").expect("valid path");
         assert!(repository.read_utf8(&path).is_err());
+    }
+
+    #[test]
+    fn snapshot_reuses_contents_and_parsed_syntax() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        std::fs::write(temporary.path().join("module.py"), "print('before')\n")
+            .expect("write Python fixture");
+        std::fs::write(
+            temporary.path().join("script.sh"),
+            "printf '%s\\n' before\n",
+        )
+        .expect("write Bash fixture");
+        let repository = Repository::discover(
+            &FakeGit {
+                root: temporary.path().to_path_buf(),
+                stream: b"script.sh\0module.py\0".to_vec(),
+            },
+            temporary.path(),
+        )
+        .expect("discover fixture repository");
+        let python = RepoPath::parse("module.py").expect("valid Python path");
+        let shell = RepoPath::parse("script.sh").expect("valid Bash path");
+
+        let first_bytes = repository.read_bytes(&python).expect("read Python bytes");
+        let second_bytes = repository.read_bytes(&python).expect("reuse Python bytes");
+        assert!(Arc::ptr_eq(&first_bytes, &second_bytes));
+
+        let first_source = repository.read_utf8(&python).expect("read Python source");
+        let second_source = repository.read_utf8(&python).expect("reuse Python source");
+        assert!(Arc::ptr_eq(&first_source, &second_source));
+        std::fs::write(temporary.path().join("module.py"), "print('after')\n")
+            .expect("mutate fixture after discovery");
+        assert_eq!(
+            repository
+                .read_utf8(&python)
+                .expect("read snapshot")
+                .as_ref(),
+            "print('before')\n"
+        );
+
+        let first_python = repository.python_syntax(&python).expect("parse Python");
+        let second_python = repository
+            .python_syntax(&python)
+            .expect("reuse Python parse");
+        assert!(Arc::ptr_eq(&first_python, &second_python));
+        let first_bash = repository.bash_syntax(&shell).expect("parse Bash");
+        let second_bash = repository.bash_syntax(&shell).expect("reuse Bash parse");
+        assert!(Arc::ptr_eq(&first_bash, &second_bash));
     }
 
     #[test]
