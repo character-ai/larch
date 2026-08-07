@@ -157,12 +157,6 @@ from larch.agents._auth import (  # noqa: F401
     resolve_model_pins,
 )
 from larch.agents._ci_launcher import (  # noqa: F401
-    _validate_ci_args,
-    _validate_conflict_files_csv,
-    _validate_failure_log_path,
-    _read_failure_context,
-    _ci_parser,
-    _ci_prompt,
     _implement_parser,
     _validate_implement_common,
     _path_under,

@@ -196,11 +196,13 @@ verb = "launch-claude-ci"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_ci_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8111
+clean_install_test = "clean-install-agent-launch-claude-ci"
 
 [[commands]]
 domain = "agent"
@@ -274,11 +276,13 @@ verb = "launch-codex-ci"
 python_module = "larch.agents.agents"
 python_function = "launch_codex_ci_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8111
+clean_install_test = "clean-install-agent-launch-codex-ci"
 
 [[commands]]
 domain = "agent"
@@ -326,11 +330,13 @@ verb = "launch-cursor-ci"
 python_module = "larch.agents.agents"
 python_function = "launch_cursor_ci_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8111
+clean_install_test = "clean-install-agent-launch-cursor-ci"
 
 [[commands]]
 domain = "agent"
@@ -8236,6 +8242,12 @@ path = "python/larch/agents/_ci_launcher.py"
 kind = "python-runtime"
 python = []
 rust = ["run-log append-entry", "run-log append-failure"]
+
+[[callers]]
+path = "python/larch/agents/_claude_runner.py"
+kind = "python-runtime"
+python = []
+rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci"]
 
 [[callers]]
 path = "python/larch/agents/_run_external.py"

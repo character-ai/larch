@@ -15,7 +15,7 @@ use std::{
     num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use larch_adapters::{
@@ -29,13 +29,14 @@ use larch_adapters::{
     },
     vendor_lifecycle::{
         StartupLockConfig, external_startup_lock_acquire, external_startup_lock_release_after,
+        stall_channel_progress, write_cursor_ci_stall_artifacts,
     },
 };
 use larch_core::{
-    ChildEnvironment, CursorCredential, ExternalAuthVerdict, ExternalProgram, LauncherArtifactKind,
-    LauncherArtifactPaths, ProcessError, ProcessErrorKind, ReviewAuthVerdict, StderrCaptureMode,
-    VendorProgram, codex_policy_rejection_excerpt, cursor_child_environment, env as env_names,
-    external_auth_verdict, sanitize_tool_label,
+    ChildEnvironment, CursorCredential, CursorStallRecord, ExternalAuthVerdict, ExternalProgram,
+    LauncherArtifactKind, LauncherArtifactPaths, ProcessError, ProcessErrorKind, ReviewAuthVerdict,
+    StderrCaptureMode, VendorProgram, codex_policy_rejection_excerpt, cursor_child_environment,
+    env as env_names, external_auth_verdict, render_cursor_stall_json, sanitize_tool_label,
 };
 
 /// Bounded in-memory capture used only for the process port's own accounting.
@@ -48,6 +49,8 @@ const SHARED_STARTUP_LOCK_ROOT: &str = "/tmp";
 const DEFAULT_AUTH_RETRIES: usize = 5;
 /// Environment override for the authentication-retry budget.
 const AUTH_RETRIES_ENV: &str = "LARCH_EXTERNAL_AUTH_RETRIES";
+/// Exit code published for a deadline or stall kill.
+pub const TIMEOUT_EXIT_CODE: i32 = 124;
 
 /// Where the launched vendor's standard streams are routed.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -122,6 +125,25 @@ pub struct ExternalAgentLaunch {
     /// Confined file supplying the child's standard input, when the vendor
     /// consumes its prompt from a stream rather than argv.
     pub stdin: Option<ConfinedPath>,
+    /// Progress channel watched for a stall, when the caller enforces one.
+    pub stall_watch: Option<ExternalAgentStallWatch>,
+}
+
+/// One stall channel watched while a vendor runs.
+///
+/// A stall is not a timeout: the deadline still applies, but a launch whose
+/// progress channel stops moving for longer than `threshold` is killed early
+/// and publishes the shared Cursor stall record before the signal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalAgentStallWatch {
+    /// Legacy channel selector: `stdout`, `tree:<root>`, or `file:<path>`.
+    pub channel: String,
+    /// Time without channel progress that counts as a stall.
+    pub threshold: Duration,
+    /// Repository consulted for the stall record's `git_state` excerpt.
+    pub repository: PathBuf,
+    /// Round directory that also receives a timestamped copy of the record.
+    pub sidecar_directory: Option<PathBuf>,
 }
 
 /// Terminal result of one launch.
@@ -572,15 +594,24 @@ fn run_prepared_external_agent(
     let (routing, policy_watch) = external_agent_file_routing(launch, prepared);
     let cancellation = Cancellation::new();
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    let (result, policy_excerpt) = runtime.block_on(run_file_routed_external_agent(
+    let (result, policy_excerpt, stalled) = runtime.block_on(run_file_routed_external_agent(
         &runner,
         request,
         &cancellation,
         routing,
-        &prepared.root,
-        policy_watch.as_ref(),
-        launch.poll_interval,
+        WatchedLaunch {
+            root: &prepared.root,
+            policy_watch: policy_watch.as_ref(),
+            poll_interval: launch.poll_interval,
+            stall: launch.stall_watch.as_ref(),
+            prepared,
+            tool: &launch.tool,
+        },
     ));
+    if stalled {
+        finish_external_agent_launch(launch, prepared, TIMEOUT_EXIT_CODE);
+        return TIMEOUT_EXIT_CODE;
+    }
     let exit_code = external_agent_exit_code(launch, prepared, result, policy_excerpt.is_some());
     if let Some(excerpt) = policy_excerpt {
         append_external_agent_policy_failure(prepared, &excerpt);
@@ -722,43 +753,153 @@ impl VendorRequestEnvironment for larch_core::ProcessRequest {
     }
 }
 
+/// Everything one watched launch samples while the vendor is still running.
+struct WatchedLaunch<'a> {
+    root: &'a TemporaryRoot,
+    policy_watch: Option<&'a ConfinedPath>,
+    poll_interval: Duration,
+    stall: Option<&'a ExternalAgentStallWatch>,
+    prepared: &'a PreparedExternalAgentFiles,
+    tool: &'a str,
+}
+
 async fn run_file_routed_external_agent(
     runner: &TokioProcessRunner,
     request: larch_core::ProcessRequest,
     cancellation: &Cancellation,
     routing: ProcessFileRouting,
-    root: &TemporaryRoot,
-    policy_watch: Option<&ConfinedPath>,
-    poll_interval: Duration,
+    watched: WatchedLaunch<'_>,
 ) -> (
     Result<larch_core::ProcessOutput, ProcessError>,
     Option<String>,
+    bool,
 ) {
     let mut launch = Box::pin(runner.run_with_files(request, cancellation, routing));
-    let mut ticker = tokio::time::interval(poll_interval);
+    let mut ticker = tokio::time::interval(watched.poll_interval);
     let mut policy_excerpt = None;
+    let mut stalled = false;
+    let mut progress = watched
+        .stall
+        .map(|watch| StallProgress::start(watch, watched.prepared.paths.output()));
     loop {
         tokio::select! {
             result = &mut launch => {
                 if policy_excerpt.is_none()
-                    && let Some(path) = policy_watch
-                    && let Some(excerpt) = codex_policy_excerpt_from_file(root, path)
+                    && let Some(path) = watched.policy_watch
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(watched.root, path)
                 {
                     policy_excerpt = Some(excerpt);
                 }
-                return (result, policy_excerpt);
+                return (result, policy_excerpt, stalled);
             }
-            _ = ticker.tick(), if policy_watch.is_some() && policy_excerpt.is_none() => {
-                if let Some(path) = policy_watch
-                    && let Some(excerpt) = codex_policy_excerpt_from_file(root, path)
+            _ = ticker.tick(), if watched.policy_watch.is_some() || progress.is_some() => {
+                if policy_excerpt.is_none()
+                    && let Some(path) = watched.policy_watch
+                    && let Some(excerpt) = codex_policy_excerpt_from_file(watched.root, path)
                 {
                     eprintln!("❌ codex agent: exec_command policy rejection detected, killing");
                     cancellation.cancel();
                     policy_excerpt = Some(excerpt);
                 }
+                if let (Some(watch), Some(state)) = (watched.stall, progress.as_mut())
+                    && let Some(elapsed) =
+                        state.stalled_for(watch, watched.prepared.paths.output())
+                {
+                    publish_stall_artifacts(watched.prepared, watch, elapsed);
+                    eprintln!(
+                        "⚠ {} agent: STALLED after {}s without progress, killing",
+                        watched.tool,
+                        elapsed.as_secs()
+                    );
+                    cancellation.cancel();
+                    stalled = true;
+                    progress = None;
+                }
             }
         }
     }
+}
+
+/// The last observed progress marker for one stall channel.
+struct StallProgress {
+    marker: f64,
+    since: Instant,
+}
+
+impl StallProgress {
+    fn start(watch: &ExternalAgentStallWatch, output: &Path) -> Self {
+        let (_changed, marker) = stall_channel_progress(&watch.channel, output, -1.0);
+        Self {
+            marker,
+            since: Instant::now(),
+        }
+    }
+
+    /// Sample the channel and report how long it has been without progress.
+    fn stalled_for(&mut self, watch: &ExternalAgentStallWatch, output: &Path) -> Option<Duration> {
+        let (progressed, marker) = stall_channel_progress(&watch.channel, output, self.marker);
+        if progressed {
+            self.marker = marker;
+            self.since = Instant::now();
+        }
+        let elapsed = self.since.elapsed();
+        (!watch.threshold.is_zero() && elapsed >= watch.threshold).then_some(elapsed)
+    }
+}
+
+/// Publish the shared Cursor stall record and its human-readable diag note.
+fn publish_stall_artifacts(
+    prepared: &PreparedExternalAgentFiles,
+    watch: &ExternalAgentStallWatch,
+    elapsed: Duration,
+) {
+    append_diag(
+        prepared,
+        &format!(
+            "Stall detected: channel={} time_since_last_progress={}s\n",
+            watch.channel,
+            elapsed.as_secs()
+        ),
+    );
+    let repository = watch
+        .channel
+        .strip_prefix("tree:")
+        .map_or_else(|| watch.repository.clone(), PathBuf::from);
+    let git_status = crate::repository_porcelain(&repository).unwrap_or_default();
+    let transcript = format!(
+        "{}\n{}",
+        read_external_agent_text_tail(&prepared.root, prepared.paths.output(), Some(8_000))
+            .unwrap_or_default(),
+        read_external_agent_text_tail(&prepared.root, &prepared.diag, Some(8_000))
+            .unwrap_or_default(),
+    );
+    // The approved process port publishes no child identity, so the record's
+    // `pid` field is zero and no `ps` snapshot is captured. No consumer reads
+    // either; the channel, elapsed time, git state, and transcript tail carry
+    // the diagnosis.
+    let record =
+        CursorStallRecord::new(watch.channel.clone(), 0, elapsed, &git_status, &transcript);
+    let _written = write_cursor_ci_stall_artifacts(&prepared.root, &prepared.paths, None, &record);
+    let Some(directory) = watch.sidecar_directory.as_ref() else {
+        return;
+    };
+    if ensure_directory_chain(directory).is_err() {
+        return;
+    }
+    let Ok(sidecar_root) = TemporaryRoot::resolve(Some(directory)) else {
+        return;
+    };
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let _written = atomic_write_utf8_in(
+        &sidecar_root,
+        &directory.join(format!("cursor-ci-stall-{stamp}-0.json")),
+        &render_cursor_stall_json(&record),
+        true,
+        0o600,
+    );
 }
 
 fn codex_policy_excerpt_from_file(root: &TemporaryRoot, path: &ConfinedPath) -> Option<String> {

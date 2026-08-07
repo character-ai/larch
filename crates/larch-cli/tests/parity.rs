@@ -360,6 +360,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "agent",
         "launch-review",
     ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-codex-ci",
+        "agent",
+        "launch-codex-ci",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-cursor-ci",
+        "agent",
+        "launch-cursor-ci",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-claude-ci",
+        "agent",
+        "launch-claude-ci",
+    ),
     CleanInstallCase::new("clean-install-agent-model-args", "agent", "model-args"),
     CleanInstallCase::new(
         "clean-install-agent-read-claude-model",

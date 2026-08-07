@@ -32,13 +32,13 @@ use larch_core::{
     ENV_CURSOR_RETRY_EMPTY_RESULT, ENV_TOKEN_BUDGET_CAP_REVIEW, ENV_TRANSIENT_RETRY_DELAY,
     ExternalProcessRunner as _, ExternalProgram, LaunchFailureInputs, LauncherArtifact,
     LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessRequest, PythonVerbProgram,
-    REVIEW_MAX_TRANSIENT_RETRIES, RepositoryRead, ResearchOutputValidator, SpecialistRenderPort,
+    REVIEW_MAX_TRANSIENT_RETRIES, ResearchOutputValidator, SpecialistRenderPort,
     VendorLaunchRequest, VendorProgram, classify_diff, codex_env_auth_from_key,
     cursor_child_environment, cursor_launch_jitter_ms, cursor_normalize_no_issues,
     effective_review_token_cap, emit_kv, external_auth_verdict, is_cursor_empty_result,
     is_quota_failure, is_transient_infra_failure, json_usage_number,
     plan_capture_cursor_dirty_baseline, plan_cursor_result_write, read_codex_prompt_sentinel,
-    redact, render_cap_hit_artifacts, render_codex_prompt_sidecar, render_preflight_bundle,
+    render_cap_hit_artifacts, render_codex_prompt_sidecar, render_preflight_bundle,
     render_unknown_dirty_tree, resolve_model_args, review_retry_delay_secs,
 };
 use std::{
@@ -1271,40 +1271,31 @@ fn launch_cursor(
     let start = epoch_seconds();
     let prompt_sidecar = artifacts.path(LauncherArtifactKind::Prompt);
     artifacts.write(&prompt_sidecar, original_prompt);
-    let model_args = if let Some(model) = args.cursor_model.as_ref() {
-        vec!["--model".to_owned(), model.clone()]
-    } else {
-        match resolve_model_args(
-            ModelTool::Cursor,
-            true,
-            "",
-            CodexModelRole::Default,
-            &env::vars().collect(),
-        ) {
-            Ok(resolved) => resolved.argv().to_vec(),
-            Err(error) => {
-                record_timing(
-                    session,
-                    VendorProgram::Cursor,
-                    &timing_kind,
-                    start,
-                    artifacts.output(),
-                    1,
-                );
-                preflight_failure(
-                    args,
-                    artifacts,
-                    ReviewTool::Cursor,
-                    &format!("cursor_launcher_load_model_args failed (exit 1): {error}"),
-                    1,
-                    true,
-                    Some(&render_unknown_dirty_tree(
-                        false,
-                        "model-args-preflight-no-agent-ran",
-                    )),
-                );
-                return 1;
-            }
+    let model_args = match crate::launcher_support::cursor_model_argv(args.cursor_model.as_deref())
+    {
+        Ok(resolved_model_argv) => resolved_model_argv,
+        Err(error) => {
+            record_timing(
+                session,
+                VendorProgram::Cursor,
+                &timing_kind,
+                start,
+                artifacts.output(),
+                1,
+            );
+            preflight_failure(
+                args,
+                artifacts,
+                ReviewTool::Cursor,
+                &format!("cursor_launcher_load_model_args failed (exit 1): {error}"),
+                1,
+                true,
+                Some(&render_unknown_dirty_tree(
+                    false,
+                    "model-args-preflight-no-agent-ran",
+                )),
+            );
+            return 1;
         }
     };
     let baseline_plan = plan_capture_cursor_dirty_baseline(&artifacts.paths);
@@ -1603,6 +1594,7 @@ fn run_review_retries(request: &ReviewRetryRequest<'_>) -> RetryOutcome {
             environment: environment.to_owned(),
             working_directory: Some(working_directory.to_path_buf()),
             stdin: None,
+            stall_watch: None,
         }) {
             Ok(outcome) => outcome.exit_code,
             Err(error) => {
@@ -1947,7 +1939,9 @@ fn append_launch_failure(
     );
     let source = failure_source(artifacts, sink.as_deref());
     let (class, reason) = classify_failure(artifacts, tool, retry.exit_code, &source);
-    if let Some(log) = execution_issues_log(args) {
+    if let Some(log) =
+        crate::launcher_support::execution_issues_log(&args.selected_session_env_path())
+    {
         let _ignored = run_python(
             session,
             [
@@ -1975,7 +1969,11 @@ fn append_launch_failure(
             ],
         );
     }
-    append_vendor_failure_diagnostic(&source, &args.site, tool, retry.exit_code);
+    crate::launcher_support::append_vendor_failure_diagnostic(
+        &source,
+        &format!("{} {}-review", args.site, tool.as_str()),
+        retry.exit_code,
+    );
 }
 
 fn failure_source(artifacts: &ReviewArtifacts, sink: Option<&Path>) -> PathBuf {
@@ -2058,63 +2056,6 @@ fn emit_launcher_result(artifacts: &ReviewArtifacts, tool: ReviewTool, exit_code
     emit_kv("LAUNCHER_FAILURE_CLASS", class);
     emit_kv("LAUNCHER_FAILURE_REASON", reason);
     emit_kv("OUTPUT", &artifacts.output_raw);
-}
-
-fn execution_issues_log(args: &ReviewArguments) -> Option<PathBuf> {
-    env::var_os("LARCH_EXECUTION_ISSUES_LOG")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            let session = args.selected_session_env_path();
-            (!session.is_empty())
-                .then(|| PathBuf::from(session).parent().map(Path::to_path_buf))?
-                .map(|path| path.join("execution-issues.md"))
-        })
-        .or_else(|| {
-            ["IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "REVIEW_TMPDIR"]
-                .into_iter()
-                .find_map(|name| {
-                    env::var_os(name)
-                        .filter(|value| !value.is_empty())
-                        .map(PathBuf::from)
-                })
-                .map(|path| path.join("execution-issues.md"))
-        })
-}
-
-fn append_vendor_failure_diagnostic(source: &Path, site: &str, tool: ReviewTool, exit_code: i32) {
-    let Some(root_path) = env::var_os("IMPLEMENT_TMPDIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-    else {
-        return;
-    };
-    let Ok(root) = TemporaryRoot::resolve(Some(&root_path)) else {
-        return;
-    };
-    let parts = root.path().join("vendor-failure-diagnostics.parts");
-    if ensure_directory_chain(&parts).is_err() {
-        return;
-    }
-    let Ok(parts_root) = TemporaryRoot::resolve(Some(&parts)) else {
-        return;
-    };
-    let body = read_safe_diagnostic(source)
-        .unwrap_or_else(|| format!("no diagnostics captured (exit {exit_code})\n"));
-    let text = format!(
-        "===== {site} {}-review =====\nexit-code: {exit_code}\n{}\n",
-        tool.as_str(),
-        body.trim_end(),
-    );
-    let cap = env::var("LARCH_VENDOR_FAILURE_DIAG_BYTES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(16 * 1024);
-    let redacted = redact(&text).text().chars().take(cap).collect::<String>();
-    let sequence = PART_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let name = format!("part.{}.{}.{}", std::process::id(), epoch_nanos(), sequence);
-    let target = parts_root.path().join(name);
-    let _ignored = atomic_write_utf8_in(&parts_root, &target, &redacted, true, 0o600);
 }
 
 fn record_codex_usage(artifacts: &ReviewArtifacts, session: &ReviewSession, model: &str) {
@@ -2636,22 +2577,14 @@ fn review_workdir() -> PathBuf {
     .into_iter()
     .flatten()
     {
-        if let Some(root) = git_workdir(&candidate) {
+        if let Some(root) = crate::launcher_support::git_workdir(&candidate) {
             return root;
         }
     }
     session_clone_path()
         .or_else(|| clone_path_from_parent_walk(&cwd))
-        .and_then(|path| git_workdir(&path))
+        .and_then(|path| crate::launcher_support::git_workdir(&path))
         .unwrap_or(cwd)
-}
-
-fn git_workdir(path: &Path) -> Option<PathBuf> {
-    let repository = larch_adapters::GixRepository::discover(path).ok()?;
-    let work_dir = repository.location().work_dir?;
-    Some(PathBuf::from(
-        String::from_utf8_lossy(work_dir.as_bytes()).into_owned(),
-    ))
 }
 
 fn session_clone_path() -> Option<PathBuf> {

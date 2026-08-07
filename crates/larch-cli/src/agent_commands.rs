@@ -76,6 +76,15 @@ pub enum AgentCommand {
     /// Launch one Codex or Cursor reviewer with legacy-compatible artifacts.
     #[command(name = "launch-review", disable_help_flag = true)]
     LaunchReview(AgentRawArguments),
+    /// Launch the Codex CI fixer with legacy-compatible artifacts.
+    #[command(name = "launch-codex-ci", disable_help_flag = true)]
+    LaunchCodexCi(AgentRawArguments),
+    /// Launch the Cursor CI fixer with legacy-compatible artifacts.
+    #[command(name = "launch-cursor-ci", disable_help_flag = true)]
+    LaunchCursorCi(AgentRawArguments),
+    /// Launch the Claude CI fixer with legacy-compatible artifacts.
+    #[command(name = "launch-claude-ci", disable_help_flag = true)]
+    LaunchClaudeCi(AgentRawArguments),
     /// Sum Codex token usage from a `--json` events stream.
     ParseCodexUsage(ParseCodexUsageArguments),
     /// Read the active Claude session model id.
@@ -189,6 +198,15 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::ExternalToolRegistry(arguments) => external_tool_registry(&arguments),
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
         AgentCommand::LaunchReview(arguments) => crate::agent_review::launch_review(&arguments),
+        AgentCommand::LaunchCodexCi(arguments) => {
+            crate::ci_launcher_commands::launch_codex_ci(&arguments)
+        }
+        AgentCommand::LaunchCursorCi(arguments) => {
+            crate::ci_launcher_commands::launch_cursor_ci(&arguments)
+        }
+        AgentCommand::LaunchClaudeCi(arguments) => {
+            crate::ci_launcher_commands::launch_claude_ci(&arguments)
+        }
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::ReadClaudeModel => read_claude_model(),
         AgentCommand::LaunchClaudeSubprocess(arguments) => {
@@ -788,6 +806,7 @@ fn build_run_external_agent_arguments(options: RunExternalAgentOptions) -> RunEx
         sentinel_suffix,
         poll_interval,
         stdin: None,
+        stall_watch: None,
     }))
 }
 
