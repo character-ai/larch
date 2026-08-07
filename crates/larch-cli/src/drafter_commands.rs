@@ -636,20 +636,7 @@ fn record_codex_usage(
             let _written = atomic_write_utf8_in(root, token_record, &record, true, 0o600);
         }
         CodexUsageSink::Ledger => {
-            let mut arguments = vec![
-                OsString::from("token"),
-                OsString::from("record-vendor"),
-                OsString::from("codex"),
-                OsString::from(format!("input={}", totals.uncached_input_tokens())),
-                OsString::from(format!("cache_read={}", totals.cached_input_tokens())),
-                OsString::from(format!("output={}", totals.output_tokens())),
-                OsString::from(format!("total={}", totals.total_tokens())),
-                OsString::from(format!("raw={label}")),
-            ];
-            if !model.is_empty() {
-                arguments.push(OsString::from(format!("model={model}")));
-            }
-            run_python_verb_best_effort(arguments);
+            crate::launcher_support::record_codex_vendor_usage(&totals, label, model);
         }
     }
 }

@@ -11,61 +11,46 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     process::ExitCode,
-    sync::{Arc, Mutex, PoisonError},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use larch_adapters::{
-    CodexHomeContext, CursorConfigContext, NoopProcessObserver, PathIntent, TemporaryRoot,
-    TokioProcessRunner, atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy,
-    runtime::{Cancellation, LarchRuntime},
-    vendor_auth::{
-        CursorPreflightConfig, CursorTokenPreread, VendorAuthContext, cursor_auth_preflight,
-        cursor_preread_service_token,
-    },
+    CodexHomeContext, TemporaryRoot,
     vendor_diagnostics::{parse_codex_usage_file, write_failure_diag},
-    vendor_lifecycle::{StartupLockConfig, write_timeout_stall_json},
+    vendor_lifecycle::write_timeout_stall_json,
 };
 use larch_core::{
-    AuthVerdict, CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, ChildEnvironment, CodexModelRole,
-    ExternalAuthVerdict, LaunchFailureInputs, LauncherArtifact, LauncherArtifactKind,
-    LauncherArtifactPaths, ModelTool, SafeText, SyncLauncherHooks, TimeoutStallRecord,
-    VendorLaunchRequest, VendorProcessResult, VendorProgram, classify_launch_failure,
-    codex_env_auth_from_key, emit_kv, env as env_names, external_auth_verdict, outcome_exit_code,
-    parse_claude_envelope, parse_claude_usage, resolve_model_args, run_ready_launch,
+    CODEX_DESCRIPTOR, CURSOR_DESCRIPTOR, ChildEnvironment, CodexModelRole, LauncherArtifact,
+    LauncherArtifactKind, ModelTool, SafeText, TimeoutStallRecord, VendorLaunchRequest,
+    VendorProgram, codex_env_auth_from_key, emit_kv, resolve_model_args,
 };
 
 use crate::{
     agent_commands::AgentRawArguments,
-    argparse_compat::split_inline_option,
-    external_agent::{
-        BareVendorOutput, BareVendorRun, ExternalAgentLaunch, ExternalAgentRouting,
-        ExternalAgentStallWatch, platform_name, run_bare_vendor,
-        run_external_agent_with_auth_retries, shared_startup_lock_root,
-    },
+    external_agent::{ExternalAgentRouting, ExternalAgentStallWatch},
     launcher_support::{
-        LauncherFailureEnvelope, emit_launcher_failure_envelope, record_claude_sub_usage,
+        CLAUDE_OPUS_MODEL, CLAUDE_SONNET_1M_MODEL, ClaudeFixLane, ClaudeFixLaunch,
+        CursorPreflightRequest, FlagScanError, LauncherArtifacts, PreflightRefusal,
+        VendorLaunchExecution, VendorLaunchPlan, append_ci_failure, cursor_configuration_context,
+        cursor_launch_credential, cursor_usage_buckets, emit_launcher_result, is_control_character,
+        is_non_empty_file, is_positive_int, launch_claude_fix, read_text,
+        run_vendor_launch_execution, scan_flag_arguments, valid_model_token, vendor_on_path,
+        vendor_workdir, write_preflight_bundle,
     },
-    python_verb::{record_vendor_timing, run_python_verb_best_effort},
+    python_verb::run_python_verb_best_effort,
     valid_meta_path,
 };
 
 /// Every diagnostic the shared validator emits carries this prefix.
 const CI_PROG: &str = "agent launch-ci";
+/// Execution-issues site label every CI-fix launcher records under.
+const CI_SITE: &str = "ci fixer";
 /// Seconds of Cursor CI channel silence that count as a stall.
 const DEFAULT_CURSOR_CI_STALL_THRESHOLD_SECONDS: u64 = 180;
-/// Interval between in-flight policy and stall samples.
-const POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// Largest plan or failure context spliced into a CI prompt, in characters.
 const CONTEXT_CHARACTER_LIMIT: usize = 20_000;
 /// Largest `--failure-log` this launcher will read.
 const FAILURE_LOG_BYTE_LIMIT: u64 = 1024 * 1024;
-/// Claude model for the conflict-resolution role.
-const CLAUDE_CI_FIX_MODEL: &str = "claude-opus-4-8";
-/// Claude model for the CI-fix role.
-const CLAUDE_CI_RECOVERY_MODEL: &str = "claude-sonnet-4-6[1m]";
-/// Ledger name the 1M Sonnet alias records under.
-const CLAUDE_SONNET_BASE: &str = "claude-sonnet-4-6";
 
 /// Which vendor a CI launch drives.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -79,27 +64,11 @@ pub enum CiTool {
 }
 
 impl CiTool {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Cursor => "cursor",
-            Self::Claude => "claude",
-        }
-    }
-
     const fn prompt_label(self) -> &'static str {
         match self {
             Self::Codex => "Codex",
             Self::Cursor => "Cursor",
             Self::Claude => "Claude",
-        }
-    }
-
-    const fn vendor(self) -> VendorProgram {
-        match self {
-            Self::Codex => VendorProgram::Codex,
-            Self::Cursor => VendorProgram::Cursor,
-            Self::Claude => VendorProgram::Claude,
         }
     }
 
@@ -192,28 +161,20 @@ fn parse_arguments(arguments: &[OsString]) -> CiParse {
         timeout: "1800".to_owned(),
         ..CiArguments::default()
     };
-    let mut index = 0;
-    while index < arguments.len() {
-        let value = arguments[index].to_string_lossy();
-        if value == "--help" || value == "-h" {
-            return CiParse::Help;
-        }
-        let (flag, inline) = split_inline_option(&value);
-        if !ci_option_requires_value(flag) {
-            return CiParse::Error(format!("unrecognized arguments: {value}"));
-        }
-        let parameter = match inline {
-            Some(inline) => inline.to_owned(),
-            None => match arguments.get(index + 1) {
-                Some(next) => {
-                    index += 1;
-                    next.to_string_lossy().into_owned()
-                }
-                None => return CiParse::Error(format!("argument {flag}: expected one argument")),
-            },
+    if let Err(error) = scan_flag_arguments(
+        arguments,
+        &|flag| ci_option_requires_value(flag),
+        &mut |flag, value| set_ci_option(&mut args, flag, value),
+    ) {
+        return match error {
+            FlagScanError::Help => CiParse::Help,
+            FlagScanError::Unrecognized(value) => {
+                CiParse::Error(format!("unrecognized arguments: {value}"))
+            }
+            FlagScanError::MissingValue(flag) => {
+                CiParse::Error(format!("argument {flag}: expected one argument"))
+            }
         };
-        set_ci_option(&mut args, flag, parameter);
-        index += 1;
     }
     let mut missing: Vec<&str> = Vec::new();
     for (name, value) in [
@@ -307,22 +268,6 @@ fn validate_arguments(args: &CiArguments) -> Result<(), u8> {
     Ok(())
 }
 
-fn is_positive_int(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| character.is_ascii_digit())
-        && value.parse::<u64>().is_ok_and(|parsed| parsed > 0)
-}
-
-fn valid_model_token(value: &str) -> bool {
-    !value.is_empty()
-        && !value.chars().any(char::is_whitespace)
-        && !value.chars().any(is_control_character)
-}
-
-const fn is_control_character(character: char) -> bool {
-    (character as u32) < 0x20 || character as u32 == 0x7f
-}
-
 /// Reject a conflict-file list that is not a safe repo-relative CSV.
 fn validate_conflict_files_csv(value: &str) -> Result<(), &'static str> {
     if value.chars().any(is_control_character) {
@@ -386,12 +331,6 @@ fn validate_failure_log_path(path: &Path) -> Result<(), &'static str> {
 // Prompt composition
 // ---------------------------------------------------------------------------
 
-fn read_text(path: &Path) -> String {
-    read_optional_utf8_lossy(path)
-        .unwrap_or_default()
-        .unwrap_or_default()
-}
-
 /// Read one untrusted context file, truncate it, and redact it.
 fn read_untrusted_context(raw: &str) -> String {
     if raw.is_empty() {
@@ -442,245 +381,14 @@ fn ci_prompt(tool: CiTool, args: &CiArguments) -> String {
 // Artifact helpers
 // ---------------------------------------------------------------------------
 
-/// The launcher artifact family for one CI launch.
-struct CiArtifacts {
-    root: TemporaryRoot,
-    paths: LauncherArtifactPaths,
-    raw_output: String,
-}
-
-impl CiArtifacts {
-    fn create(output: &str) -> Result<Self, String> {
-        let path = PathBuf::from(output);
-        let parent = path
-            .parent()
-            .ok_or_else(|| "--output has no parent directory".to_owned())?;
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| "--output must name a file".to_owned())?
-            .to_owned();
-        ensure_directory_chain(parent).map_err(|error| error.to_string())?;
-        // The resolved root is canonical, so artifact paths are rebuilt under it.
-        // A path that still names an uncanonical parent — `/tmp` on macOS — would
-        // fail every confined write, and those writes are deliberately silent.
-        let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
-        let resolved = root.path().join(file_name);
-        Ok(Self {
-            root,
-            paths: LauncherArtifactPaths::new(resolved),
-            raw_output: output.to_owned(),
-        })
-    }
-
-    fn write(&self, path: &Path, text: &str) {
-        let _written = atomic_write_utf8_in(&self.root, path, text, true, 0o600);
-    }
-
-    fn append(&self, path: &Path, text: &str) {
-        let existing = read_text(path);
-        self.write(path, &format!("{existing}{text}"));
-    }
-
-    /// Promote an inner completion sentinel to the published one.
-    fn promote_inner_done(&self) {
-        let inner = self.paths.path(LauncherArtifactKind::InnerDone);
-        if inner.is_file() {
-            let _renamed = std::fs::rename(&inner, self.paths.path(LauncherArtifactKind::Done));
-        }
-    }
-}
-
-/// Publish the CI preflight refusal bundle for a launch that ran no vendor.
-fn write_preflight_bundle(
-    artifacts: &CiArtifacts,
-    tool: CiTool,
-    args: &CiArguments,
-    launcher_exit: i32,
-    failure_reason: &str,
-    binary_present: bool,
-) {
-    artifacts.write(artifacts.paths.output(), "");
-    artifacts.write(
-        &artifacts.paths.path(LauncherArtifactKind::Diag),
-        &format!("STATUS=FAILED\nFAILURE_REASON={failure_reason}\n"),
-    );
-    artifacts.write(
-        &artifacts.paths.path(LauncherArtifactKind::Meta),
-        &format!(
-            "TOOL={}\nTIMEOUT={}\nCAPTURE_STDOUT=false\nOUTPUT_FILE={}\nCMD_JSON=[]\n",
-            tool.as_str(),
-            args.timeout,
-            artifacts.raw_output,
-        ),
-    );
-    artifacts.write(
-        &artifacts.paths.path(LauncherArtifactKind::Done),
-        &format!("{launcher_exit}\n"),
-    );
-    emit_kv("LAUNCHER_EXIT", &launcher_exit.to_string());
-    emit_launcher_failure_envelope(&LauncherFailureEnvelope {
-        launcher_exit,
-        tool: tool.vendor(),
-        auth_verdict: AuthVerdict::Unclassified,
-        binary_present,
-        sidecar: format!("STATUS=FAILED\nFAILURE_REASON={failure_reason}\n"),
-        output: String::new(),
-        fallback_reason: failure_reason,
-        output_label: &artifacts.raw_output,
-    });
-}
-
-/// Choose the diagnostic carrier that describes one CI failure.
-fn failure_source(artifacts: &CiArtifacts) -> PathBuf {
-    [
-        LauncherArtifactKind::FailureDiag,
-        LauncherArtifactKind::Sidecar,
-        LauncherArtifactKind::Diag,
-    ]
-    .into_iter()
-    .map(|kind| artifacts.paths.path(kind))
-    .find(|path| {
-        std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
-    })
-    .unwrap_or_else(|| artifacts.paths.path(LauncherArtifactKind::Diag))
-}
-
-/// Classify one CI launch failure from its published artifacts.
-fn classify(
-    artifacts: &CiArtifacts,
-    tool: CiTool,
-    launcher_exit: i32,
-    source: &Path,
-    binary_present: bool,
-) -> (String, String) {
-    let texts = [
-        read_text(source),
-        read_text(&artifacts.paths.path(LauncherArtifactKind::Sidecar)),
-        read_text(&artifacts.paths.path(LauncherArtifactKind::Diag)),
-        read_text(&artifacts.paths.path(LauncherArtifactKind::Stderr)),
-        read_text(artifacts.paths.output()),
-    ];
-    let verdict = external_auth_verdict(tool.as_str(), texts.iter().map(String::as_str));
-    let sidecar = LauncherArtifact::present(read_text(source));
-    let output = LauncherArtifact::present(read_text(artifacts.paths.output()));
-    let failure = classify_launch_failure(&LaunchFailureInputs {
-        launcher_exit,
-        tool: tool.vendor(),
-        auth_verdict: if verdict == ExternalAuthVerdict::Auth {
-            AuthVerdict::Auth
-        } else {
-            AuthVerdict::Unclassified
-        },
-        binary_present,
-        sidecar: Some(&sidecar),
-        output: Some(&output),
-    });
-    (
-        failure.class().as_str().to_owned(),
-        failure.reason().as_str().to_owned(),
-    )
-}
-
-/// Emit the launcher-result envelope every CI caller parses.
-fn emit_ci_launcher_result(
-    artifacts: &CiArtifacts,
-    tool: CiTool,
-    launcher_exit: i32,
-    binary_present: bool,
-) {
-    let source = failure_source(artifacts);
-    let (class, reason) = classify(artifacts, tool, launcher_exit, &source, binary_present);
-    emit_kv("LAUNCHER_EXIT", &launcher_exit.to_string());
-    emit_kv("LAUNCHER_FAILURE_CLASS", &class);
-    emit_kv("LAUNCHER_FAILURE_REASON", &reason);
-    emit_kv("OUTPUT", &artifacts.raw_output);
-}
-
-/// Record one nonzero CI launch in the execution-issues log and diagnostics.
-fn append_ci_failure(
-    artifacts: &CiArtifacts,
-    tool: CiTool,
-    launcher_exit: i32,
-    binary_present: bool,
-) {
-    if launcher_exit == 0 {
-        return;
-    }
-    let source = failure_source(artifacts);
-    let (class, reason) = classify(artifacts, tool, launcher_exit, &source, binary_present);
-    if let Some(log) = crate::launcher_support::execution_issues_log(
-        &env::var("SESSION_ENV_PATH").unwrap_or_default(),
-    ) {
-        run_python_verb_best_effort([
-            OsString::from("run-log"),
-            OsString::from("append-failure"),
-            OsString::from("--log"),
-            log.into_os_string(),
-            OsString::from("--site"),
-            OsString::from("ci fixer"),
-            OsString::from("--tool"),
-            OsString::from(format!("{}-ci", tool.as_str())),
-            OsString::from("--exit-code"),
-            OsString::from(launcher_exit.to_string()),
-            OsString::from("--category"),
-            OsString::from("CI Issues"),
-            OsString::from("--output-file"),
-            source.as_os_str().to_owned(),
-            OsString::from("--verdict"),
-            OsString::from(if reason.is_empty() { &class } else { &reason }),
-            OsString::from("--redact"),
-        ]);
-    }
-    crate::launcher_support::append_vendor_failure_diagnostic(
-        &source,
-        &format!("ci fixer {}-ci", tool.as_str()),
-        launcher_exit,
-    );
-}
-
-fn unix_seconds() -> i64 {
-    i64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-    )
-    .unwrap_or(0)
-}
-
-fn set_started(cell: &Mutex<i64>) {
-    *cell.lock().unwrap_or_else(PoisonError::into_inner) = unix_seconds();
-}
-
-fn started_at(cell: &Mutex<i64>) -> i64 {
-    *cell.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-fn vendor_on_path(program: VendorProgram) -> bool {
-    let Ok(path) = env::var("PATH") else {
-        return false;
-    };
-    env::split_paths(&path).any(|directory| directory.join(program.executable()).is_file())
-}
-
 /// Resolve the repository the CI fixer edits.
-fn ci_workdir() -> PathBuf {
-    let current = env::current_dir().unwrap_or_else(|_error| PathBuf::from("."));
-    if let Some(project) = env::var_os("CLAUDE_PROJECT_DIR").filter(|value| !value.is_empty())
-        && let Some(toplevel) = crate::launcher_support::git_workdir(Path::new(&project))
-    {
-        return toplevel;
-    }
-    crate::launcher_support::git_workdir(&current).unwrap_or(current)
-}
-
-fn append_outer_meta(artifacts: &CiArtifacts, tool: CiTool, workdir: &Path) {
+fn append_outer_meta(artifacts: &LauncherArtifacts, tool: CiTool, workdir: &Path) {
     artifacts.append(
-        &artifacts.paths.path(LauncherArtifactKind::Meta),
+        &artifacts.path(LauncherArtifactKind::Meta),
         &format!(
             "OUTER_LAUNCHER=agent {}\nOUTER_LAUNCHER_PROMPT_FILE={}\nOUTER_LAUNCHER_WORKDIR={}\n",
             tool.verb(),
-            artifacts.paths.path(LauncherArtifactKind::Prompt).display(),
+            artifacts.path(LauncherArtifactKind::Prompt).display(),
             workdir.display(),
         ),
     );
@@ -695,7 +403,7 @@ fn append_outer_meta(artifacts: &CiArtifacts, tool: CiTool, workdir: &Path) {
     reason = "preflight, launch, and terminal artifacts are one ordered lifecycle"
 )]
 fn launch_codex(args: &CiArguments) -> i32 {
-    let artifacts = match CiArtifacts::create(&args.output) {
+    let artifacts = match LauncherArtifacts::create(&args.output) {
         Ok(artifacts) => artifacts,
         Err(error) => {
             eprintln!("{CI_PROG}: {error}");
@@ -703,31 +411,35 @@ fn launch_codex(args: &CiArguments) -> i32 {
         }
     };
     let prompt = ci_prompt(CiTool::Codex, args);
-    artifacts.write(&artifacts.paths.path(LauncherArtifactKind::Prompt), &prompt);
-    let workdir = ci_workdir();
+    artifacts.write(&artifacts.path(LauncherArtifactKind::Prompt), &prompt);
+    let workdir = vendor_workdir();
     if !vendor_on_path(VendorProgram::Codex) {
         write_preflight_bundle(
             &artifacts,
-            CiTool::Codex,
-            args,
+            VendorProgram::Codex,
+            &args.timeout,
             127,
-            "codex binary missing",
-            false,
+            PreflightRefusal {
+                failure_reason: "codex binary missing",
+                binary_present: false,
+            },
         );
-        append_ci_failure(&artifacts, CiTool::Codex, 127, false);
+        append_ci_failure(&artifacts, VendorProgram::Codex, 127, CI_SITE, false);
         return 0;
     }
     let auth = codex_env_auth_from_key(env::var("OPENAI_API_KEY").ok().as_deref());
     let Ok(temporary_root) = TemporaryRoot::resolve(Some(&env::temp_dir())) else {
         write_preflight_bundle(
             &artifacts,
-            CiTool::Codex,
-            args,
+            VendorProgram::Codex,
+            &args.timeout,
             1,
-            "codex auth setup failed: could not resolve temporary root",
-            true,
+            PreflightRefusal {
+                failure_reason: "codex auth setup failed: could not resolve temporary root",
+                binary_present: true,
+            },
         );
-        append_ci_failure(&artifacts, CiTool::Codex, 1, true);
+        append_ci_failure(&artifacts, VendorProgram::Codex, 1, CI_SITE, true);
         return 0;
     };
     let home = env::var_os("HOME").map_or_else(env::temp_dir, PathBuf::from);
@@ -736,13 +448,21 @@ fn launch_codex(args: &CiArguments) -> i32 {
         Err(error) => {
             write_preflight_bundle(
                 &artifacts,
-                CiTool::Codex,
-                args,
+                VendorProgram::Codex,
+                &args.timeout,
                 error.exit_code(),
-                &error.to_string(),
+                PreflightRefusal {
+                    failure_reason: &error.to_string(),
+                    binary_present: true,
+                },
+            );
+            append_ci_failure(
+                &artifacts,
+                VendorProgram::Codex,
+                error.exit_code(),
+                CI_SITE,
                 true,
             );
-            append_ci_failure(&artifacts, CiTool::Codex, error.exit_code(), true);
             return 0;
         }
     };
@@ -761,13 +481,15 @@ fn launch_codex(args: &CiArguments) -> i32 {
         Err(error) => {
             write_preflight_bundle(
                 &artifacts,
-                CiTool::Codex,
-                args,
+                VendorProgram::Codex,
+                &args.timeout,
                 1,
-                &format!("model args failed: {error}"),
-                true,
+                PreflightRefusal {
+                    failure_reason: &format!("model args failed: {error}"),
+                    binary_present: true,
+                },
             );
-            append_ci_failure(&artifacts, CiTool::Codex, 1, true);
+            append_ci_failure(&artifacts, VendorProgram::Codex, 1, CI_SITE, true);
             return 0;
         }
     };
@@ -782,78 +504,42 @@ fn launch_codex(args: &CiArguments) -> i32 {
     request.add_dirs = vec![workdir.display().to_string()];
     request.codex_env_auth = auth;
 
-    let events = artifacts.paths.path(LauncherArtifactKind::Events);
-    let sidecar = artifacts.paths.path(LauncherArtifactKind::Sidecar);
-    let token_record = artifacts.paths.path(LauncherArtifactKind::TokenRecord);
-    let started = Mutex::new(unix_seconds());
+    let events = artifacts.path(LauncherArtifactKind::Events);
+    let sidecar = artifacts.path(LauncherArtifactKind::Sidecar);
+    let token_record = artifacts.path(LauncherArtifactKind::TokenRecord);
     let timeout_seconds = args.timeout_seconds();
-    let execute = |argv: &[String]| -> VendorProcessResult {
-        set_started(&started);
-        VendorProcessResult::new(run_vendor(&ExternalAgentLaunch {
-            tool: CiTool::Codex.as_str().to_owned(),
-            output: artifacts.raw_output.clone(),
-            timeout_seconds,
-            command: argv.to_vec(),
-            program: VendorProgram::Codex,
-            routing: ExternalAgentRouting::Streams {
-                stdout: Some(events.clone()),
-                stderr: Some(sidecar.clone()),
-            },
-            stderr_sink: None,
-            working_directory: Some(workdir.clone()),
-            environment: vec![(
-                ChildEnvironment::CodexHome,
-                context.path().as_os_str().to_owned(),
-            )],
-            sentinel_suffix: LauncherArtifactKind::InnerDone.suffix(),
-            poll_interval: POLL_INTERVAL,
-            stdin: None,
-            stall_watch: None,
-        }))
-    };
-    let timing = |result: &VendorProcessResult| {
-        record_vendor_timing(
-            "codex",
-            &timing_kind,
-            started_at(&started),
-            unix_seconds(),
-            artifacts.paths.output(),
-            result.exit_code,
-            if result.exit_code == 0 {
-                "complete"
-            } else {
-                "signal"
-            },
-        );
-    };
-    let quota = |_result: &VendorProcessResult| {
-        if !is_non_empty_file(&events) {
-            artifacts.write(&events, "{}\n");
-        }
-        if larch_core::is_quota_failure(Some(&LauncherArtifact::present(read_text(&events)))) {
-            artifacts.append(
-                &sidecar,
-                "codex-quota: usage limit / quota reported on the codex exec --json events stream\n",
-            );
-        }
-    };
+    let quota = || mirror_codex_quota(&artifacts, &events, &sidecar);
     let usage = |model: &str| {
         record_codex_token_record(&artifacts, &events, &sidecar, &token_record, model);
         if token_record.is_file() {
             emit_kv("TOKEN_RECORD", &token_record.display().to_string());
         }
     };
-    let mut hooks = SyncLauncherHooks::new(&execute);
-    hooks.mirror_quota = Some(&quota);
-    hooks.record_timing = Some(&timing);
-    hooks.record_usage = Some(&usage);
-    let exit_code = match run_ready_launch(&CODEX_DESCRIPTOR, "workspace-write", &request, &hooks) {
-        Ok(outcome) => outcome_exit_code(&outcome, 1),
-        Err(error) => {
-            eprintln!("{CI_PROG}: {error}");
-            1
-        }
-    };
+    let exit_code = run_vendor_launch_execution(&VendorLaunchExecution {
+        descriptor: &CODEX_DESCRIPTOR,
+        profile: "workspace-write",
+        request: &request,
+        plan: VendorLaunchPlan {
+            program: VendorProgram::Codex,
+            artifacts: &artifacts,
+            timeout_seconds,
+            routing: ExternalAgentRouting::Streams {
+                stdout: Some(events.clone()),
+                stderr: Some(sidecar.clone()),
+            },
+            working_directory: workdir.clone(),
+            environment: vec![(
+                ChildEnvironment::CodexHome,
+                context.path().as_os_str().to_owned(),
+            )],
+            stall_watch: None,
+        },
+        prog: CI_PROG,
+        timing_kind: &timing_kind,
+        before_execute: None,
+        mirror_quota: Some(&quota),
+        record_usage: Some(&usage),
+    });
     append_outer_meta(&artifacts, CiTool::Codex, &workdir);
     let _written = write_timeout_stall_json(
         &artifacts.root,
@@ -866,18 +552,14 @@ fn launch_codex(args: &CiArguments) -> i32 {
         true,
     );
     artifacts.promote_inner_done();
-    append_ci_failure(&artifacts, CiTool::Codex, exit_code, true);
-    emit_ci_launcher_result(&artifacts, CiTool::Codex, exit_code, true);
+    append_ci_failure(&artifacts, VendorProgram::Codex, exit_code, CI_SITE, true);
+    emit_launcher_result(&artifacts, VendorProgram::Codex, exit_code, true);
     0
-}
-
-fn is_non_empty_file(path: &Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
 }
 
 /// Publish one Codex CI launch's token record, or explain why it could not.
 fn record_codex_token_record(
-    artifacts: &CiArtifacts,
+    artifacts: &LauncherArtifacts,
     events: &Path,
     sidecar: &Path,
     token_record: &Path,
@@ -907,16 +589,6 @@ fn record_codex_token_record(
     );
 }
 
-fn run_vendor(launch: &ExternalAgentLaunch) -> i32 {
-    match run_external_agent_with_auth_retries(launch) {
-        Ok(outcome) => outcome.exit_code,
-        Err(error) => {
-            eprintln!("{CI_PROG}: {error}");
-            1
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // agent launch-cursor-ci
 // ---------------------------------------------------------------------------
@@ -926,47 +598,53 @@ fn run_vendor(launch: &ExternalAgentLaunch) -> i32 {
     reason = "preflight, launch, and terminal artifacts are one ordered lifecycle"
 )]
 fn launch_cursor(args: &CiArguments) -> i32 {
-    let artifacts = match CiArtifacts::create(&args.output) {
+    let artifacts = match LauncherArtifacts::create(&args.output) {
         Ok(artifacts) => artifacts,
         Err(error) => {
             eprintln!("{CI_PROG}: {error}");
             return 2;
         }
     };
-    let workdir = ci_workdir();
+    let workdir = vendor_workdir();
     if !vendor_on_path(VendorProgram::Cursor) {
         write_preflight_bundle(
             &artifacts,
-            CiTool::Cursor,
-            args,
+            VendorProgram::Cursor,
+            &args.timeout,
             127,
-            "cursor binary missing",
-            false,
+            PreflightRefusal {
+                failure_reason: "cursor binary missing",
+                binary_present: false,
+            },
         );
-        append_ci_failure(&artifacts, CiTool::Cursor, 127, false);
+        append_ci_failure(&artifacts, VendorProgram::Cursor, 127, CI_SITE, false);
         return 0;
     }
-    let credential = match cursor_preflight(&workdir) {
+    let credential = match cursor_launch_credential(&CursorPreflightRequest {
+        diagnostic_prefix: CI_PROG,
+        caller: "agent launch-cursor-ci",
+        workdir: &workdir,
+    }) {
         Ok(credential) => credential,
         Err((rc, message)) => {
             eprintln!("{message}");
-            artifacts.write(artifacts.paths.output(), "");
+            artifacts.write(artifacts.output(), "");
             artifacts.write(
-                &artifacts.paths.path(LauncherArtifactKind::Diag),
+                &artifacts.path(LauncherArtifactKind::Diag),
                 &format!("{message}\n"),
             );
             let _written = write_failure_diag(&artifacts.root, &artifacts.paths, None, None, None);
             artifacts.write(
-                &artifacts.paths.path(LauncherArtifactKind::Done),
+                &artifacts.path(LauncherArtifactKind::Done),
                 &format!("{rc}\n"),
             );
-            append_ci_failure(&artifacts, CiTool::Cursor, rc, true);
-            emit_ci_launcher_result(&artifacts, CiTool::Cursor, rc, true);
+            append_ci_failure(&artifacts, VendorProgram::Cursor, rc, CI_SITE, true);
+            emit_launcher_result(&artifacts, VendorProgram::Cursor, rc, true);
             return 0;
         }
     };
     let prompt = format!(" /max-mode on. Prompt: {}", ci_prompt(CiTool::Cursor, args));
-    artifacts.write(&artifacts.paths.path(LauncherArtifactKind::Prompt), &prompt);
+    artifacts.write(&artifacts.path(LauncherArtifactKind::Prompt), &prompt);
     let model_args = if args.model.is_empty() {
         match resolve_model_args(
             ModelTool::Cursor,
@@ -979,44 +657,35 @@ fn launch_cursor(args: &CiArguments) -> i32 {
             Err(error) => {
                 write_preflight_bundle(
                     &artifacts,
-                    CiTool::Cursor,
-                    args,
+                    VendorProgram::Cursor,
+                    &args.timeout,
                     1,
-                    &format!("model args failed: {error}"),
-                    true,
+                    PreflightRefusal {
+                        failure_reason: &format!("model args failed: {error}"),
+                        binary_present: true,
+                    },
                 );
-                append_ci_failure(&artifacts, CiTool::Cursor, 1, true);
+                append_ci_failure(&artifacts, VendorProgram::Cursor, 1, CI_SITE, true);
                 return 0;
             }
         }
     } else {
         vec!["--model".to_owned(), args.model.clone()]
     };
-    let home = env::var_os("HOME").map_or_else(env::temp_dir, PathBuf::from);
-    let Ok(temporary_root) = TemporaryRoot::resolve(Some(&env::temp_dir())) else {
-        write_preflight_bundle(
-            &artifacts,
-            CiTool::Cursor,
-            args,
-            1,
-            "cursor auth setup failed: could not resolve temporary root",
-            true,
-        );
-        append_ci_failure(&artifacts, CiTool::Cursor, 1, true);
-        return 0;
-    };
-    let cursor_config = match CursorConfigContext::create(&temporary_root, &home) {
+    let cursor_config = match cursor_configuration_context() {
         Ok(context) => context,
-        Err(error) => {
+        Err(message) => {
             write_preflight_bundle(
                 &artifacts,
-                CiTool::Cursor,
-                args,
+                VendorProgram::Cursor,
+                &args.timeout,
                 1,
-                &format!("cursor auth setup failed: {error}"),
-                true,
+                PreflightRefusal {
+                    failure_reason: &message,
+                    binary_present: true,
+                },
             );
-            append_ci_failure(&artifacts, CiTool::Cursor, 1, true);
+            append_ci_failure(&artifacts, VendorProgram::Cursor, 1, CI_SITE, true);
             return 0;
         }
     };
@@ -1029,9 +698,8 @@ fn launch_cursor(args: &CiArguments) -> i32 {
     request.timing_task_kind.clone_from(&timing_kind);
     request.model_args = model_args;
 
-    let sidecar = artifacts.paths.path(LauncherArtifactKind::Sidecar);
-    let token_record = artifacts.paths.path(LauncherArtifactKind::TokenRecord);
-    let started = Mutex::new(unix_seconds());
+    let sidecar = artifacts.path(LauncherArtifactKind::Sidecar);
+    let token_record = artifacts.path(LauncherArtifactKind::TokenRecord);
     let timeout_seconds = args.timeout_seconds();
     let stall_watch = ExternalAgentStallWatch {
         channel: if args.role == "fix" {
@@ -1041,59 +709,35 @@ fn launch_cursor(args: &CiArguments) -> i32 {
         },
         threshold: Duration::from_secs(cursor_stall_threshold_seconds()),
         repository: workdir.clone(),
-        sidecar_directory: cursor_stall_sidecar_directory(artifacts.paths.output()),
+        sidecar_directory: cursor_stall_sidecar_directory(artifacts.output()),
     };
     let mut child_environment = larch_core::cursor_child_environment(credential.as_ref());
     child_environment.push(cursor_config.child_environment());
-    let execute = |argv: &[String]| -> VendorProcessResult {
-        set_started(&started);
-        VendorProcessResult::new(run_vendor(&ExternalAgentLaunch {
-            tool: CiTool::Cursor.as_str().to_owned(),
-            output: artifacts.raw_output.clone(),
-            timeout_seconds,
-            command: argv.to_vec(),
-            program: VendorProgram::Cursor,
-            routing: ExternalAgentRouting::CaptureStdoutOnly,
-            stderr_sink: None,
-            working_directory: Some(workdir.clone()),
-            environment: child_environment.clone(),
-            sentinel_suffix: LauncherArtifactKind::InnerDone.suffix(),
-            poll_interval: POLL_INTERVAL,
-            stdin: None,
-            stall_watch: Some(stall_watch.clone()),
-        }))
-    };
-    let timing = |result: &VendorProcessResult| {
-        record_vendor_timing(
-            "cursor",
-            &timing_kind,
-            started_at(&started),
-            unix_seconds(),
-            artifacts.paths.output(),
-            result.exit_code,
-            if result.exit_code == 0 {
-                "complete"
-            } else {
-                "signal"
-            },
-        );
-    };
     let usage = |model: &str| {
         record_cursor_usage(&artifacts, &sidecar, &token_record, model);
         if token_record.is_file() {
             emit_kv("TOKEN_RECORD", &token_record.display().to_string());
         }
     };
-    let mut hooks = SyncLauncherHooks::new(&execute);
-    hooks.record_timing = Some(&timing);
-    hooks.record_usage = Some(&usage);
-    let exit_code = match run_ready_launch(&CURSOR_DESCRIPTOR, "ci-write", &request, &hooks) {
-        Ok(outcome) => outcome_exit_code(&outcome, 1),
-        Err(error) => {
-            eprintln!("{CI_PROG}: {error}");
-            1
-        }
-    };
+    let exit_code = run_vendor_launch_execution(&VendorLaunchExecution {
+        descriptor: &CURSOR_DESCRIPTOR,
+        profile: "ci-write",
+        request: &request,
+        plan: VendorLaunchPlan {
+            program: VendorProgram::Cursor,
+            artifacts: &artifacts,
+            timeout_seconds,
+            routing: ExternalAgentRouting::CaptureStdoutOnly,
+            working_directory: workdir.clone(),
+            environment: child_environment,
+            stall_watch: Some(stall_watch),
+        },
+        prog: CI_PROG,
+        timing_kind: &timing_kind,
+        before_execute: None,
+        mirror_quota: None,
+        record_usage: Some(&usage),
+    });
     // The launcher rewrites `.meta` when it prepares the artifact family, so the
     // outer record is appended only after the vendor has finished.
     append_outer_meta(&artifacts, CiTool::Cursor, &workdir);
@@ -1108,8 +752,8 @@ fn launch_cursor(args: &CiArguments) -> i32 {
         false,
     );
     artifacts.promote_inner_done();
-    append_ci_failure(&artifacts, CiTool::Cursor, exit_code, true);
-    emit_ci_launcher_result(&artifacts, CiTool::Cursor, exit_code, true);
+    append_ci_failure(&artifacts, VendorProgram::Cursor, exit_code, CI_SITE, true);
+    emit_launcher_result(&artifacts, VendorProgram::Cursor, exit_code, true);
     0
 }
 
@@ -1142,40 +786,15 @@ fn cursor_stall_sidecar_directory(output: &Path) -> Option<PathBuf> {
 }
 
 /// Publish the Cursor token record parsed from the launcher output envelope.
-fn record_cursor_usage(artifacts: &CiArtifacts, sidecar: &Path, token_record: &Path, model: &str) {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&read_text(artifacts.paths.output()))
-    else {
+fn record_cursor_usage(
+    artifacts: &LauncherArtifacts,
+    sidecar: &Path,
+    token_record: &Path,
+    model: &str,
+) {
+    let Some(buckets) = cursor_usage_buckets(artifacts, sidecar) else {
         return;
     };
-    let Some(usage) = value.get("usage") else {
-        return;
-    };
-    // A bucket the vendor omitted counts as zero, matching the retired parser.
-    let zero = serde_json::Value::from(0);
-    let read = |primary: &str, alternate: &str| -> Result<i64, larch_core::UsageParseError> {
-        larch_core::json_usage_number(Some(
-            usage
-                .get(primary)
-                .or_else(|| usage.get(alternate))
-                .unwrap_or(&zero),
-        ))
-    };
-    let totals = match (
-        read("inputTokens", "input_tokens"),
-        read("outputTokens", "output_tokens"),
-        read("cacheReadTokens", "cache_read_input_tokens"),
-        read("cacheWriteTokens", "cache_creation_input_tokens"),
-    ) {
-        (Ok(input), Ok(output), Ok(cache_read), Ok(cache_create)) => {
-            (input, output, cache_read, cache_create)
-        }
-        (Err(error), ..) | (_, Err(error), ..) | (.., Err(error), _) | (.., Err(error)) => {
-            artifacts.append(sidecar, &format!("agent parse-cursor-usage: {error}\n"));
-            return;
-        }
-    };
-    let (input, output, cache_read, cache_create) = totals;
-    let total = input + output + cache_read + cache_create;
     let model_line = if model.is_empty() {
         String::new()
     } else {
@@ -1184,7 +803,12 @@ fn record_cursor_usage(artifacts: &CiArtifacts, sidecar: &Path, token_record: &P
     artifacts.write(
         token_record,
         &format!(
-            "TOOL=cursor\nINPUT={input}\nOUTPUT={output}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW=cursor_ci_fix\n{model_line}"
+            "TOOL=cursor\nINPUT={}\nOUTPUT={}\nCACHE_READ={}\nCACHE_CREATE={}\nTOTAL={}\nRAW=cursor_ci_fix\n{model_line}",
+            buckets.input,
+            buckets.output,
+            buckets.cache_read,
+            buckets.cache_create,
+            buckets.total(),
         ),
     );
     run_python_verb_best_effort([
@@ -1195,75 +819,12 @@ fn record_cursor_usage(artifacts: &CiArtifacts, sidecar: &Path, token_record: &P
     ]);
 }
 
-/// Prove Cursor can authenticate, returning the pre-read service credential.
-fn cursor_preflight(workdir: &Path) -> Result<Option<larch_core::CursorCredential>, (i32, String)> {
-    let runtime = LarchRuntime::current_thread()
-        .map_err(|_error| (1, format!("{CI_PROG}: could not start the local runtime")))?;
-    let lock_root = shared_startup_lock_root().ok_or_else(|| {
-        (
-            1,
-            format!("{CI_PROG}: could not resolve the shared vendor startup-lock directory"),
-        )
-    })?;
-    let startup_lock = StartupLockConfig::from_values(
-        VendorProgram::Cursor,
-        platform_name(),
-        env::var(env_names::USER).ok().as_deref(),
-        None,
-        None,
-        None,
-    )
-    .map_err(|_error| {
-        (
-            1,
-            format!("{CI_PROG}: USER is unusable as a startup-lock path component"),
-        )
-    })?;
-    let config = CursorPreflightConfig::from_values(
-        platform_name(),
-        env::var(env_names::CURSOR_API_KEY).ok().as_deref(),
-        "agent launch-cursor-ci",
-    );
-    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    let cancellation = Cancellation::new();
-    let context = VendorAuthContext {
-        temporary_root: &lock_root,
-        startup_lock: &startup_lock,
-        working_directory: workdir,
-    };
-    let verdict = runtime.block_on(cursor_auth_preflight(
-        &runner,
-        &config,
-        context,
-        &cancellation,
-    ));
-    if !verdict.ok {
-        return Err((verdict.rc, verdict.message));
-    }
-    match runtime.block_on(cursor_preread_service_token(
-        &runner,
-        &config,
-        context,
-        &cancellation,
-    )) {
-        CursorTokenPreread::Proceed(credential) => Ok(credential),
-        CursorTokenPreread::Unreadable => Err((
-            larch_core::CURSOR_PREREAD_FAIL_RC,
-            larch_core::CURSOR_PREREAD_FAIL_MSG.to_owned(),
-        )),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // agent launch-claude-ci
 // ---------------------------------------------------------------------------
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "the Claude envelope branches and terminal artifacts are one ordered lifecycle"
-)]
 fn launch_claude(args: &CiArguments) -> i32 {
-    let artifacts = match CiArtifacts::create(&args.output) {
+    let artifacts = match LauncherArtifacts::create(&args.output) {
         Ok(artifacts) => artifacts,
         Err(error) => {
             eprintln!("{CI_PROG}: {error}");
@@ -1272,192 +833,42 @@ fn launch_claude(args: &CiArguments) -> i32 {
     };
     let model = if args.model.is_empty() {
         if args.role == "fix" {
-            CLAUDE_CI_RECOVERY_MODEL
+            CLAUDE_SONNET_1M_MODEL
         } else {
-            CLAUDE_CI_FIX_MODEL
+            CLAUDE_OPUS_MODEL
         }
         .to_owned()
     } else {
         args.model.clone()
     };
-    let prompt = ci_prompt(CiTool::Claude, args);
-    let prompt_path = artifacts.paths.path(LauncherArtifactKind::Prompt);
-    artifacts.write(&prompt_path, &prompt);
-    if !vendor_on_path(VendorProgram::Claude) {
-        write_preflight_bundle(
-            &artifacts,
-            CiTool::Claude,
-            args,
-            127,
-            "claude binary missing",
-            false,
-        );
-        append_ci_failure(&artifacts, CiTool::Claude, 127, false);
-        return 0;
-    }
-    let workdir = env::current_dir().unwrap_or_else(|_error| PathBuf::from("."));
-    let command: Vec<String> = [
-        "claude",
-        "-p",
-        "--output-format",
-        "json",
-        "--model",
-        &model,
-        "--add-dir",
-        &workdir.display().to_string(),
-        "--allowedTools",
-        "Read,Edit,Write",
-    ]
-    .map(str::to_owned)
-    .to_vec();
-    let stdout_path = artifacts.paths.path(LauncherArtifactKind::Events);
-    let stderr_path = artifacts.paths.path(LauncherArtifactKind::Stderr);
-    let start = unix_seconds();
-    let mut exit_code = run_claude(
-        &artifacts,
-        &command,
-        args.timeout_seconds(),
-        &workdir,
-        &prompt_path,
-        &stdout_path,
-        &stderr_path,
-    );
-    let end = unix_seconds();
-    let stdout = read_text(&stdout_path);
-    let stderr = read_text(&stderr_path);
-    let mut diagnostics: Vec<String> = Vec::new();
-    let mut envelope_raw: Option<String> = None;
-    if !stdout.is_empty() && exit_code == 0 {
-        let envelope = parse_claude_envelope(&stdout);
-        match envelope.status {
-            larch_core::ClaudeEnvelopeStatus::Ok => {
-                artifacts.write(artifacts.paths.output(), &envelope.text);
-                envelope_raw = Some(stdout);
-            }
-            larch_core::ClaudeEnvelopeStatus::MalformedJson => {
-                exit_code = 1;
-                artifacts.write(artifacts.paths.output(), "CLAUDE_CI_MALFORMED_JSON\n");
-                diagnostics.push(format!("Malformed Claude CI JSON:\n{stdout}"));
-            }
-            larch_core::ClaudeEnvelopeStatus::IsError => {
-                exit_code = 1;
-                artifacts.write(artifacts.paths.output(), "CLAUDE_CI_ERROR_RESPONSE\n");
-                diagnostics.push(stdout);
-            }
-            larch_core::ClaudeEnvelopeStatus::NonObject
-            | larch_core::ClaudeEnvelopeStatus::MissingResult
-            | larch_core::ClaudeEnvelopeStatus::NonStringResult
-            | larch_core::ClaudeEnvelopeStatus::EmptyResult => {
-                exit_code = 1;
-                artifacts.write(artifacts.paths.output(), "CLAUDE_CI_EMPTY_RESULT\n");
-                diagnostics.push(stdout);
-            }
-        }
-    } else {
-        artifacts.write(artifacts.paths.output(), &stdout);
-    }
-    if !stderr.is_empty() {
-        diagnostics.push(stderr);
-    }
-    if !diagnostics.is_empty() {
-        artifacts.write(
-            &artifacts.paths.path(LauncherArtifactKind::Diag),
-            SafeText::from_untrusted(diagnostics.join("\n")).as_str(),
-        );
-    }
-    if exit_code != 0 {
-        let _written = write_failure_diag(&artifacts.root, &artifacts.paths, None, None, None);
-    }
-    record_vendor_timing(
-        "claude",
-        &args.timing_kind("claude-ci"),
-        start,
-        end,
-        artifacts.paths.output(),
-        exit_code,
-        if exit_code == 0 { "complete" } else { "signal" },
-    );
-    if let Some(raw) = envelope_raw {
-        record_claude_ci_usage(&artifacts, &raw, &model);
-    }
-    artifacts.write(
-        &artifacts.paths.path(LauncherArtifactKind::Done),
-        &format!("{exit_code}\n"),
-    );
-    append_ci_failure(&artifacts, CiTool::Claude, exit_code, true);
-    emit_ci_launcher_result(&artifacts, CiTool::Claude, exit_code, true);
-    0
-}
-
-/// Run Claude with its prompt on standard input through the approved layer.
-fn run_claude(
-    artifacts: &CiArtifacts,
-    command: &[String],
-    timeout_seconds: u64,
-    workdir: &Path,
-    prompt: &Path,
-    stdout: &Path,
-    stderr: &Path,
-) -> i32 {
-    let confine = |path: &Path, intent: PathIntent| {
-        artifacts
-            .root
-            .confine(path, intent)
-            .map_err(|error| error.to_string())
-    };
-    let files = confine(prompt, PathIntent::Read).and_then(|stdin| {
-        Ok((
-            stdin,
-            confine(stdout, PathIntent::Write)?,
-            confine(stderr, PathIntent::Write)?,
-        ))
-    });
-    let (stdin_file, stdout_file, stderr_file) = match files {
-        Ok(files) => files,
-        Err(error) => {
-            artifacts.append(stderr, &format!("Failed to launch child: {error}\n"));
-            return 127;
-        }
-    };
-    match run_bare_vendor(&BareVendorRun {
-        program: VendorProgram::Claude,
-        argv: command,
-        working_directory: workdir,
-        environment: Vec::new(),
-        stdin: Some(stdin_file),
-        output: BareVendorOutput::Streams {
-            stdout: Some(stdout_file),
-            stderr: Some(stderr_file),
+    launch_claude_fix(&ClaudeFixLaunch {
+        prompt: &ci_prompt(CiTool::Claude, args),
+        timeout: &args.timeout,
+        site: CI_SITE,
+        lane: ClaudeFixLane {
+            artifacts: &artifacts,
+            model: &model,
+            timeout_seconds: args.timeout_seconds(),
+            timing_task_kind: &args.timing_kind("claude-ci"),
+            sentinel_prefix: "CLAUDE_CI",
+            malformed_label: "Malformed Claude CI JSON",
+            usage_raw: "claude_ci_fix",
+            publish_non_json_stdout: true,
         },
-        timeout_seconds,
-    }) {
-        Ok(exit_code) => exit_code,
-        Err((exit_code, message)) => {
-            artifacts.append(stderr, &format!("Failed to launch child: {message}\n"));
-            exit_code
-        }
-    }
+    })
 }
 
-/// Publish one Claude CI launch's token record and ledger row.
-fn record_claude_ci_usage(artifacts: &CiArtifacts, raw_envelope: &str, model: &str) {
-    let ledger_model = if model == CLAUDE_CI_RECOVERY_MODEL {
-        CLAUDE_SONNET_BASE
-    } else {
-        model
-    };
-    let Some(usage) = serde_json::from_str::<serde_json::Value>(raw_envelope)
-        .ok()
-        .as_ref()
-        .and_then(parse_claude_usage)
-    else {
-        return;
-    };
-    artifacts.write(
-        &artifacts.paths.path(LauncherArtifactKind::TokenRecord),
-        &usage.token_record(ledger_model, "claude_ci_fix"),
-    );
-    record_claude_sub_usage(usage, "claude_ci_fix", ledger_model);
+/// Mirror a Codex quota refusal from the events stream into the sidecar.
+fn mirror_codex_quota(artifacts: &LauncherArtifacts, events: &Path, sidecar: &Path) {
+    if !is_non_empty_file(events) {
+        artifacts.write(events, "{}\n");
+    }
+    if larch_core::is_quota_failure(Some(&LauncherArtifact::present(read_text(events)))) {
+        artifacts.append(
+            sidecar,
+            "codex-quota: usage limit / quota reported on the codex exec --json events stream\n",
+        );
+    }
 }
 
 #[cfg(test)]

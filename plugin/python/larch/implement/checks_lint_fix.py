@@ -1095,7 +1095,6 @@ def _run_codex(  # noqa: PLR0913,RUF100
 def _run_claude(
     runner: Runner,
     *,
-    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -1114,7 +1113,7 @@ def _run_claude(
     def execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
         _ = argv
         result = runner.run([
-            "python3", str(agent_cli), "agent", "launch-claude-lint-fix",
+            str(larch_entrypoint(plugin_root())), "agent", "launch-claude-lint-fix",
             "--prompt-body-file", str(prompt_file), "--output", str(output),
             "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC), "--model",
             config.CLAUDE_CI_FIX_MODEL,
@@ -1724,7 +1723,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         attempt_start: float = time.monotonic()
         if tier == "claude":
             launcher_rc: int = _run_claude(
-                runner, agent_cli=agent_cli, run_dir=run_dir, repo_root=repo_root,
+                runner, run_dir=run_dir, repo_root=repo_root,
                 prompt_body=prompt_body,
             )
             log_name: str = "claude-lint-fix.txt"

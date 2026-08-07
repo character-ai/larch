@@ -85,6 +85,18 @@ pub enum AgentCommand {
     /// Launch the Claude CI fixer with legacy-compatible artifacts.
     #[command(name = "launch-claude-ci", disable_help_flag = true)]
     LaunchClaudeCi(AgentRawArguments),
+    /// Launch the Codex implementer with legacy-compatible artifacts.
+    #[command(name = "launch-codex-implement", disable_help_flag = true)]
+    LaunchCodexImplement(AgentRawArguments),
+    /// Launch the Cursor implementer with legacy-compatible artifacts.
+    #[command(name = "launch-cursor-implement", disable_help_flag = true)]
+    LaunchCursorImplement(AgentRawArguments),
+    /// Launch the Claude lint fixer with legacy-compatible artifacts.
+    #[command(name = "launch-claude-lint-fix", disable_help_flag = true)]
+    LaunchClaudeLintFix(AgentRawArguments),
+    /// Launch the Claude review fixer with legacy-compatible artifacts.
+    #[command(name = "launch-claude-review-fix", disable_help_flag = true)]
+    LaunchClaudeReviewFix(AgentRawArguments),
     /// Sum Codex token usage from a `--json` events stream.
     ParseCodexUsage(ParseCodexUsageArguments),
     /// Read the active Claude session model id.
@@ -206,6 +218,18 @@ pub fn run(command: AgentCommand) -> ExitCode {
         }
         AgentCommand::LaunchClaudeCi(arguments) => {
             crate::ci_launcher_commands::launch_claude_ci(&arguments)
+        }
+        AgentCommand::LaunchCodexImplement(arguments) => {
+            crate::implement_launcher_commands::launch_codex_implement(&arguments)
+        }
+        AgentCommand::LaunchCursorImplement(arguments) => {
+            crate::implement_launcher_commands::launch_cursor_implement(&arguments)
+        }
+        AgentCommand::LaunchClaudeLintFix(arguments) => {
+            crate::implement_launcher_commands::launch_claude_lint_fix(&arguments)
+        }
+        AgentCommand::LaunchClaudeReviewFix(arguments) => {
+            crate::implement_launcher_commands::launch_claude_review_fix(&arguments)
         }
         AgentCommand::ParseCodexUsage(arguments) => parse_codex_usage(&arguments),
         AgentCommand::ReadClaudeModel => read_claude_model(),

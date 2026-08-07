@@ -82,14 +82,13 @@ _FORBIDDEN_MODULES = frozenset(
 _PRODUCTION_LAUNCHERS = (
     "agents.py",
     "_claude_runner.py",
-    "_ci_launcher.py",
     "agent_voters.py",
     "agent_waterfall.py",
     "collect_results.py",
 )
 
 # Launchers migrated to the shared vendor descriptor table and run_vendor_launch.
-_MIGRATED_LAUNCHERS = frozenset({"_ci_launcher.py"})
+_MIGRATED_LAUNCHERS: frozenset[str] = frozenset()
 
 
 def _agent_imports(path: Path) -> set[str]:

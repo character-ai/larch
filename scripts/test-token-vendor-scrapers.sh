@@ -185,17 +185,23 @@ STUB_EOF
     # Per-launcher invocation, with a unique session id so each ledger is
     # isolated and the dump-and-assert step reads the correct file.
     for variant in cursor codex; do
+        if [[ "$RUST_AVAILABLE" != 1 ]]; then
+            # Both implement launchers are Rust-owned; without a built binary
+            # there is nothing to scrape.
+            skip "agent launch-${variant}-implement record-vendor"
+            continue
+        fi
         LCI_SESSION="lci-${variant}-$$"
         case "$variant" in
             cursor)
                 AGENT_PROMPT="$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
-                LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-cursor-implement)
+                LAUNCHER_ARGS=("$REPO_ROOT/scripts/larch.sh" agent launch-cursor-implement)
                 EXPECTED_RAW="cursor_implement"
                 EXPECTED_TOTAL=10
                 ;;
             codex)
                 AGENT_PROMPT="$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
-                LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-codex-implement)
+                LAUNCHER_ARGS=("$REPO_ROOT/scripts/larch.sh" agent launch-codex-implement)
                 EXPECTED_RAW="codex_implement"
                 EXPECTED_TOTAL=7999
                 ;;

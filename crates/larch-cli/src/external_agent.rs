@@ -479,7 +479,7 @@ fn prepare_external_agent_files(
     let paths = LauncherArtifactPaths::new(output);
     let diag = paths.path(LauncherArtifactKind::Diag);
     let done = suffixed_launcher_path(paths.output(), launch.sentinel_suffix);
-    let mut stale_paths = vec![
+    let stale_paths = [
         paths.output().to_path_buf(),
         paths.path(LauncherArtifactKind::Done),
         paths.path(LauncherArtifactKind::InnerDone),
@@ -488,9 +488,15 @@ fn prepare_external_agent_files(
         paths.path(LauncherArtifactKind::StderrTail),
         paths.path(LauncherArtifactKind::FailureDiag),
     ];
-    stale_paths.extend(launch.routing.stream_paths());
     for stale in stale_paths {
         remove_external_agent_stale(&root, &stale)?;
+    }
+    // Explicit stream files may live outside the output's directory — the
+    // implement launchers keep their sidecar log beside the session root — so
+    // each one is confined to the directory that owns it.
+    for stale in launch.routing.stream_paths() {
+        let (stream_root, resolved) = resolve_stream_file(&stale)?;
+        remove_external_agent_stale(&stream_root, &resolved)?;
     }
     write_launch_meta(launch, &root, &paths)?;
     let output_file = root
@@ -499,7 +505,7 @@ fn prepare_external_agent_files(
     let diag_file = root
         .confine(&diag, PathIntent::Write)
         .map_err(|error| error.to_string())?;
-    let (stdout_file, stderr_file) = confine_stream_files(&launch.routing, &root)?;
+    let (stdout_file, stderr_file) = confine_stream_files(&launch.routing)?;
     Ok(PreparedExternalAgentFiles {
         root,
         paths,
@@ -514,7 +520,6 @@ fn prepare_external_agent_files(
 
 fn confine_stream_files(
     routing: &ExternalAgentRouting,
-    root: &TemporaryRoot,
 ) -> Result<(Option<ConfinedPath>, Option<ConfinedPath>), String> {
     let ExternalAgentRouting::Streams { stdout, stderr } = routing else {
         return Ok((None, None));
@@ -522,12 +527,19 @@ fn confine_stream_files(
     let confine = |path: &Option<PathBuf>| -> Result<Option<ConfinedPath>, String> {
         path.as_ref()
             .map(|path| {
-                root.confine(path, PathIntent::Write)
+                let (root, resolved) = resolve_stream_file(path)?;
+                root.confine(resolved, PathIntent::Write)
                     .map_err(|error| error.to_string())
             })
             .transpose()
     };
     Ok((confine(stdout)?, confine(stderr)?))
+}
+
+/// Resolve the confinement root and canonical path of one explicit stream file.
+fn resolve_stream_file(path: &Path) -> Result<(TemporaryRoot, PathBuf), String> {
+    crate::launcher_support::confined_target(path)
+        .ok_or_else(|| format!("{} is not a confinable stream file", path.display()))
 }
 
 fn write_launch_meta(

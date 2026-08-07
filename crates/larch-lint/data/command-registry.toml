@@ -224,11 +224,13 @@ verb = "launch-claude-lint-fix"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_lint_fix_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8112
+clean_install_test = "clean-install-agent-launch-claude-lint-fix"
 
 [[commands]]
 domain = "agent"
@@ -250,11 +252,13 @@ verb = "launch-claude-review-fix"
 python_module = "larch.agents.agents"
 python_function = "launch_claude_review_fix_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8112
+clean_install_test = "clean-install-agent-launch-claude-review-fix"
 
 [[commands]]
 domain = "agent"
@@ -318,11 +322,13 @@ verb = "launch-codex-implement"
 python_module = "larch.agents.agents"
 python_function = "launch_codex_implement_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8112
+clean_install_test = "clean-install-agent-launch-codex-implement"
 
 [[commands]]
 domain = "agent"
@@ -344,11 +350,13 @@ verb = "launch-cursor-implement"
 python_module = "larch.agents.agents"
 python_function = "launch_cursor_implement_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8112
+clean_install_test = "clean-install-agent-launch-cursor-implement"
 
 [[commands]]
 domain = "agent"
@@ -8242,12 +8250,6 @@ python = []
 rust = ["agent check-reviewers", "agent degraded-tools-gate", "agent resolve-model-pins"]
 
 [[callers]]
-path = "python/larch/agents/_ci_launcher.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log append-entry", "run-log append-failure"]
-
-[[callers]]
 path = "python/larch/agents/_claude_runner.py"
 kind = "python-runtime"
 python = []
@@ -8419,7 +8421,7 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = ["agent launch-codex-exec", "git commit", "git stage"]
+rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "git commit", "git stage"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
@@ -8496,7 +8498,7 @@ rust = []
 [[callers]]
 path = "python/larch/rendering/_rendering_generators.py"
 kind = "python-runtime"
-python = ["agent launch-codex-implement", "agent launch-cursor-implement", "generate check", "generate code-reviewer-agent", "generate codex-implementer", "generate cursor-implementer", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-correctness-agent", "generate reviewer-edge-cases-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-agent", "generate reviewer-security-structure-tests-agent", "generate reviewer-structure-agent", "generate reviewer-testing-agent", "generate topology-docs"]
+python = ["generate check", "generate code-reviewer-agent", "generate codex-implementer", "generate cursor-implementer", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-correctness-agent", "generate reviewer-edge-cases-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-agent", "generate reviewer-security-structure-tests-agent", "generate reviewer-structure-agent", "generate reviewer-testing-agent", "generate topology-docs"]
 rust = []
 
 [[callers]]
@@ -8557,7 +8559,7 @@ rust = ["run-log write", "run-log write-round"]
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-codex-exec", "agent run-external-agent", "git commit"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit"]
 
 [[callers]]
 path = "python/larch/review/plan_review.py"
@@ -9000,14 +9002,14 @@ rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
 kind = "skill"
-python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
-rust = []
+python = ["checks run-relevant", "generate codex-implementer", "redact secrets"]
+rust = ["agent launch-codex-implement"]
 
 [[callers]]
 path = "skills/implement/prompts/cursor-implementer.md"
 kind = "skill"
-python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
-rust = []
+python = ["checks run-relevant", "generate cursor-implementer", "redact secrets"]
+rust = ["agent launch-cursor-implement"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
@@ -9115,7 +9117,7 @@ rust = []
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
 python = ["implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "token check-budget"]
-rust = ["bgjob wait", "dirty-tree scope-check", "git commit", "run-log checkpoint"]
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "run-log checkpoint"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"

@@ -7,7 +7,6 @@ Implementation is split across sibling modules by responsibility:
 - _failure_diag: usage parsing, failure diagnostics
 - _run_external: external agent runner, shared launcher helpers
 - _auth: cursor auth, probe helpers, reviewer check, degraded tools
-- _ci_launcher: CI and implement launchers
 - _claude_runner: claude subprocess runner and waterfall
 """
 
@@ -19,7 +18,6 @@ from larch.agents._launch_failure import *  # noqa: F403
 from larch.agents._failure_diag import *  # noqa: F403
 from larch.agents._run_external import *  # noqa: F403
 from larch.agents._auth import *  # noqa: F403
-from larch.agents._ci_launcher import *  # noqa: F403
 from larch.agents._claude_runner import *  # noqa: F403
 
 # Private symbols not exported by __all__ (or no __all__) — explicit re-exports
@@ -155,26 +153,6 @@ from larch.agents._auth import (  # noqa: F401
     _current_codex_gate_detail,
     _read_plugin_version_best_effort,
     resolve_model_pins,
-)
-from larch.agents._ci_launcher import (  # noqa: F401
-    _implement_parser,
-    _validate_implement_common,
-    _path_under,
-    _canonical_existing_nonsymlink_dir,
-    _validate_codex_implement_paths,
-    _hydrate_implement_session_env,
-    _implement_resume_block,
-    _strip_frontmatter_body,
-    _implement_prompt,
-    _emit_implement_launcher_envelope,
-    _implement_token_budget_hit,
-    _append_implement_launch_failure,
-    _record_implement_timing,
-    _record_cursor_implement_usage,
-    _validate_lint_fix_args,
-    _emit_ci_launcher_result,
-    _append_implement_failure_if_nonzero,
-    _safe_codex_home_dir,
 )
 from larch.agents._claude_runner import (  # noqa: F401
     _canonical,

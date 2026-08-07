@@ -314,7 +314,7 @@ def _launcher_args(st: DispatchState) -> list[str]:
 
 
 def _run_launcher(st: DispatchState) -> tuple[int, dict[str, str], str]:
-    result = _invoke_cli(_launcher_args(st), cwd=st.repo_root)
+    result = _invoke_larch(_launcher_args(st), cwd=st.repo_root)
     stdout = result.stdout or ""
     return result.returncode, _parse_kv(stdout[:65536]), stdout + (result.stderr or "")
 

@@ -389,7 +389,7 @@ def test_run_coder_claude_uses_write_capable_review_fix_launcher(tmp_path: Path,
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
     assert coder_runner._run_coder_claude(round_dir=round_dir, prompt_body="prompt", tool_log=round_dir / "tool.log") is True
-    assert seen_argv[:4] == ["python3", str(review_and_fix._plugin_root() / "python" / "cli.py"), "agent", "launch-claude-review-fix"]
+    assert seen_argv[:3] == [_RUST_GIT, "agent", "launch-claude-review-fix"]
     assert "launch-claude-review" not in seen_argv
     assert seen_argv[seen_argv.index("--timing-task-kind") + 1] == "claude-review-fix"
     assert seen_env["LARCH_TIMING_LEDGER"] == str(tmp_path / "timing-ledger.tsv")

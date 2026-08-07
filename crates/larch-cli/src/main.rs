@@ -35,6 +35,7 @@ mod git_commands;
 mod github_repository_resolution;
 mod github_service;
 mod gitleaks;
+mod implement_launcher_commands;
 mod issue_commands;
 mod kill_background;
 mod launcher_support;

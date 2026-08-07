@@ -18,10 +18,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("agent", "dispatch-waterfall"): ("larch.agents.agent_waterfall", "dispatch_waterfall_main", False),
     ("agent", "dispatch-voters"): ("larch.agents.agent_voters", "dispatch_voters_main", False),
     ("status", "check"): ("larch.agents.agents", "status_check_main", False),
-    ("agent", "launch-codex-implement"): ("larch.agents.agents", "launch_codex_implement_main", False),
-    ("agent", "launch-cursor-implement"): ("larch.agents.agents", "launch_cursor_implement_main", False),
-    ("agent", "launch-claude-lint-fix"): ("larch.agents.agents", "launch_claude_lint_fix_main", False),
-    ("agent", "launch-claude-review-fix"): ("larch.agents.agents", "launch_claude_review_fix_main", False),
     ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
     ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
     ("calibration-replay", "validate-manifest"): (

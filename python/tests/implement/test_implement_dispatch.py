@@ -22,7 +22,6 @@ from larch.bgjob import model as bgjob_model
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
-from larch.agents import _ci_launcher
 from larch.agents import _run_external
 from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
@@ -558,8 +557,6 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
     assert _REGISTRY[("ship", "route-exit")][:2] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
     assert _REGISTRY[("execution-issues", "flush-safety-net")][:2] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
-    assert _REGISTRY[("agent", "launch-codex-implement")][:2] == ("larch.agents.agents", "launch_codex_implement_main")
-    assert _REGISTRY[("agent", "launch-cursor-implement")][:2] == ("larch.agents.agents", "launch_cursor_implement_main")
 
 
 @pytest.mark.parametrize("tool", ["codex", "cursor"])
@@ -5676,157 +5673,10 @@ def test_run_dispatch_skips_step2_token_mark_when_external_binary_present(
     assert len(timing_calls) == 1
 
 
-@pytest.mark.parametrize(
-    ("launcher", "tool"),
-    [
-        (agents.launch_codex_implement_main, "codex"),
-        (agents.launch_cursor_implement_main, "cursor"),
-    ],
-)
-def test_implement_launchers_emit_step2_token_mark_before_usage(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    launcher: Callable[[list[str]], int],
-    tool: str,
-) -> None:
-    _ = tool
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/usr/bin/{name}" if name in {"codex", "cursor"} else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: False)
-    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
-    order: list[str] = []
-    proc_calls: list[list[str]] = []
-
-    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        _ = kwargs
-        call = [str(arg) for arg in argv]
-        proc_calls.append(call)
-        if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]:
-            order.append("mark")
-        return CommandResult(tuple(call), 0, "", "", 0.0)
-
-    monkeypatch.setattr(agents.proc, "run", spy_proc_run)
-
-    def fake_record_usage(*_args: object, **_kwargs: object) -> None:
-        order.append("usage")
-
-    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", fake_record_usage)
-    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", fake_record_usage)
-
-    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
-        output = cast("Path", kwargs["output"])
-        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
-        if "stdout_path" in kwargs:
-            cast("Path", kwargs["stdout_path"]).write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-
-    rc = launcher(args)
-
-    assert rc == 0
-    token_calls = [call for call in proc_calls if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]]
-    assert token_calls == [[sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]]
-    assert order == ["mark", "usage"]
 
 
-@pytest.mark.parametrize(
-    ("launcher", "tool"),
-    [
-        (agents.launch_codex_implement_main, "codex"),
-        (agents.launch_cursor_implement_main, "cursor"),
-    ],
-)
-def test_implement_launchers_skip_step2_token_mark_on_cap_hit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    launcher: Callable[[list[str]], int],
-    tool: str,
-) -> None:
-    _ = tool
-    args = _launcher_args(tmp_path)
-    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: True)
-    proc_calls: list[list[str]] = []
-
-    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        _ = kwargs
-        call = [str(arg) for arg in argv]
-        proc_calls.append(call)
-        return CommandResult(tuple(call), 0, "", "", 0.0)
-
-    monkeypatch.setattr(agents.proc, "run", spy_proc_run)
-
-    assert launcher(args) == 0
-    assert [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL] not in proc_calls
 
 
-@pytest.mark.parametrize(
-    ("launcher", "tool"),
-    [
-        (agents.launch_codex_implement_main, "codex"),
-        (agents.launch_cursor_implement_main, "cursor"),
-    ],
-)
-def test_implement_launchers_step2_token_mark_failure_is_nonfatal(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    launcher: Callable[[list[str]], int],
-    tool: str,
-) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/usr/bin/{name}" if name in {"codex", "cursor"} else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: False)
-    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
-    issue_calls: list[list[str]] = []
-
-    def fake_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        _ = kwargs
-        call = [str(arg) for arg in argv]
-        if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]:
-            return CommandResult(tuple(call), 7, "mark stdout\n", "mark stderr\n", 0.0)
-        # Rust-owned run-log verbs enter through the bootstrap script, so the
-        # domain and verb sit right after the entrypoint.
-        if call[1:3] == ["run-log", "append-entry"]:
-            issue_calls.append(call)
-        return CommandResult(tuple(call), 0, "", "", 0.0)
-
-    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
-
-    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
-        output = cast("Path", kwargs["output"])
-        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
-        if "stdout_path" in kwargs:
-            cast("Path", kwargs["stdout_path"]).write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-
-    assert launcher(args) == 0
-    sidecar = tmp_path / "sidecar.log"
-    sidecar_text = sidecar.read_text(encoding="utf-8")
-    assert "token mark failed with exit 7" in sidecar_text
-    assert "mark stderr" in sidecar_text
-    assert "mark stdout" in sidecar_text
-    assert issue_calls, f"{tool} should append a warning execution issue"
 
 
 def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
@@ -6709,161 +6559,18 @@ def test_step5_resume_without_commit_flag_resumes_without_commit(
     assert "COMMIT_OUTCOME" not in capsys.readouterr().out
 
 
-def _launcher_args(tmp: Path) -> list[str]:
-    for name in ("out", "plan.txt", "feature.txt", "agent.md"):
-        path = tmp / name
-        if "." in name:
-            path.write_text("---\ndescription: x\n---\nbody\n", encoding="utf-8")
-    outdir = tmp / "out"
-    outdir.mkdir(exist_ok=True)
-    return [
-        "--transcript-path", str(outdir / "transcript.txt"),
-        "--sidecar-log", str(tmp / "sidecar.log"),
-        "--manifest-path", str(outdir / "manifest.json"),
-        "--qa-pending-path", str(outdir / "qa-pending.json"),
-        "--scout-manifest-path", str(outdir / "scout-coder-manifest.json"),
-        "--plan-file", str(tmp / "plan.txt"),
-        "--feature-file", str(tmp / "feature.txt"),
-        "--agent-prompt", str(tmp / "agent.md"),
-        "--timeout", "1",
-    ]
 
 
-def test_codex_launcher_missing_binary_emits_kv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents.shutil, "which", lambda name: None if name == "codex" else "/bin/true")
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "LAUNCHER_EXIT=127" in out
-    assert "MANIFEST_WRITTEN=false" in out
 
 
-@pytest.mark.parametrize(
-    ("launcher", "tool"),
-    [
-        (agents.launch_codex_implement_main, "codex"),
-        (agents.launch_cursor_implement_main, "cursor"),
-    ],
-)
-def test_implement_launchers_reject_bad_timeout(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    launcher: Callable[[list[str]], int],
-    tool: str,
-) -> None:
-    args = _launcher_args(tmp_path)
-    args[args.index("--timeout") + 1] = "0"
-
-    rc = launcher(args)
-
-    assert rc == 2
-    assert f"agent launch-{tool}-implement: --timeout must be a positive integer" in capsys.readouterr().err
 
 
-def test_codex_launcher_rejects_session_tmpdir_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    args = _launcher_args(tmp_path)
-    outdir = tmp_path / "out"
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(outdir))
-
-    rc = agents.launch_codex_implement_main(args)
-
-    assert rc == 2
-    assert "--manifest-path parent must not be the implement session tmpdir root" in capsys.readouterr().err
 
 
-def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    resolved = tmp_path / "resolved-repo"
-    resolved.mkdir()
-    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
-    captured: dict[str, object] = {}
-
-    def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
-        cmd = list(kwargs["cmd"])
-        output = kwargs["output"]
-        stdout_path = kwargs["stdout_path"]
-        captured["cmd"] = cmd
-        captured["cwd"] = kwargs["cwd"]
-        captured["config"] = (Path(agents.os.environ["CODEX_HOME"]) / "config.toml").read_text(encoding="utf-8")
-        output.write_text("codex transcript\n", encoding="utf-8")
-        stdout_path.write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-
-    rc = agents.launch_codex_implement_main(args)
-
-    cmd = captured["cmd"]
-    assert rc == 0
-    assert isinstance(cmd, list)
-    assert cmd[:5] == ["codex", "exec", "--sandbox", "workspace-write", "-C"]
-    assert cmd.count("--add-dir") == 2
-    assert str(tmp_path / "out") in cmd
-    assert cmd[5] == str(resolved)
-    add_dir_values = [cmd[index + 1] for index, value in enumerate(cmd) if value == "--add-dir"]
-    assert str(resolved) in add_dir_values
-    assert f'projects."{resolved}".trust_level="trusted"' in cmd
-    assert captured["cwd"] == str(resolved)
-    assert "--output-last-message" in cmd
-    assert cmd[-2] == "--"
-    assert "body" not in Path(str(tmp_path / "out" / "transcript.txt.prompt")).read_text(encoding="utf-8")
-    assert "instructions = '''" in str(captured["config"])
-    assert "body" in str(captured["config"])
 
 
-def test_cursor_launcher_missing_binary_emits_kv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setattr(agents.shutil, "which", lambda name: None if name == "cursor" else "/bin/true")
-    rc = agents.launch_cursor_implement_main(args)
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "LAUNCHER_EXIT=127" in out
-    assert "MANIFEST_WRITTEN=false" in out
 
 
-def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/cursor" if name == "cursor" else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    resolved = tmp_path / "resolved-repo"
-    resolved.mkdir()
-    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
-    captured: dict[str, object] = {}
-
-    def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
-        cmd = list(kwargs["cmd"])
-        output = kwargs["output"]
-        captured["cmd"] = cmd
-        captured["capture_stdout_only"] = kwargs["capture_stdout_only"]
-        captured["stderr_path"] = kwargs["stderr_path"]
-        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-
-    rc = agents.launch_cursor_implement_main(args)
-
-    cmd = captured["cmd"]
-    assert rc == 0
-    assert isinstance(cmd, list)
-    assert cmd[:7] == ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json"]
-    assert "--workspace" in cmd
-    assert cmd[cmd.index("--workspace") + 1] == str(resolved)
-    assert "--" not in cmd
-    assert captured["stderr_path"] == tmp_path / "sidecar.log"
 
 
 def _auth_lines(out: str) -> int:
@@ -8562,168 +8269,16 @@ def test_materialize_oos_count_result_is_bound_as_string(
     assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == ""
 
 
-def test_codex_launcher_rejects_control_char_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    bad = tmp_path / "bad\nparent"
-    bad.mkdir()
-    outdir = bad / "out"
-    outdir.mkdir()
-    for name in ("plan.txt", "feature.txt", "agent.md"):
-        (tmp_path / name).write_text("---\ndescription: x\n---\nbody\n", encoding="utf-8")
-    args = [
-        "--transcript-path", str(outdir / "transcript.txt"),
-        "--sidecar-log", str(tmp_path / "sidecar.log"),
-        "--manifest-path", str(outdir / "manifest.json"),
-        "--qa-pending-path", str(outdir / "qa-pending.json"),
-        "--scout-manifest-path", str(outdir / "scout-coder-manifest.json"),
-        "--plan-file", str(tmp_path / "plan.txt"),
-        "--feature-file", str(tmp_path / "feature.txt"),
-        "--agent-prompt", str(tmp_path / "agent.md"),
-        "--timeout", "1",
-    ]
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 2
-    assert "parent is not a directory" in capsys.readouterr().err
 
 
-def test_codex_launcher_rejects_symlink_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    real = tmp_path / "real-out"
-    real.mkdir()
-    symlink = tmp_path / "symlink-out"
-    symlink.symlink_to(real)
-    for name in ("plan.txt", "feature.txt", "agent.md"):
-        (tmp_path / name).write_text("---\ndescription: x\n---\nbody\n", encoding="utf-8")
-    args = [
-        "--transcript-path", str(symlink / "transcript.txt"),
-        "--sidecar-log", str(tmp_path / "sidecar.log"),
-        "--manifest-path", str(symlink / "manifest.json"),
-        "--qa-pending-path", str(symlink / "qa-pending.json"),
-        "--scout-manifest-path", str(symlink / "scout-coder-manifest.json"),
-        "--plan-file", str(tmp_path / "plan.txt"),
-        "--feature-file", str(tmp_path / "feature.txt"),
-        "--agent-prompt", str(tmp_path / "agent.md"),
-        "--timeout", "1",
-    ]
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 2
-    assert "parent is not a directory" in capsys.readouterr().err
 
 
-def test_codex_launcher_rejects_transcript_parent_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    outdir = tmp_path / "out"
-    outdir.mkdir()
-    other = tmp_path / "other"
-    other.mkdir()
-    for name in ("plan.txt", "feature.txt", "agent.md"):
-        (tmp_path / name).write_text("---\ndescription: x\n---\nbody\n", encoding="utf-8")
-    args = [
-        "--transcript-path", str(other / "transcript.txt"),
-        "--sidecar-log", str(tmp_path / "sidecar.log"),
-        "--manifest-path", str(outdir / "manifest.json"),
-        "--qa-pending-path", str(outdir / "qa-pending.json"),
-        "--scout-manifest-path", str(outdir / "scout-coder-manifest.json"),
-        "--plan-file", str(tmp_path / "plan.txt"),
-        "--feature-file", str(tmp_path / "feature.txt"),
-        "--agent-prompt", str(tmp_path / "agent.md"),
-        "--timeout", "1",
-    ]
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 2
-    assert "must share the parent directory" in capsys.readouterr().err
 
 
-def test_codex_launcher_codex_home_outside_implement_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    captured: dict[str, str] = {}
-
-    def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
-        captured["home"] = agents.os.environ["CODEX_HOME"]
-        output = kwargs["output"]
-        stdout_path = kwargs["stdout_path"]
-        output.write_text("codex transcript\n", encoding="utf-8")
-        stdout_path.write_text('{"type":"turn_completed"}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 0
-    home = Path(captured["home"]).resolve()
-    assert not str(home).startswith(str(tmp_path.resolve()))
 
 
-def test_codex_launcher_env_key_auth_argv_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    captured: dict[str, object] = {}
-
-    def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
-        cmd = list(kwargs["cmd"])
-        captured["cmd"] = cmd
-        captured["config"] = (Path(agents.os.environ["CODEX_HOME"]) / "config.toml").read_text(encoding="utf-8")
-        output = kwargs["output"]
-        stdout_path = kwargs["stdout_path"]
-        output.write_text("ok\n", encoding="utf-8")
-        stdout_path.write_text('{"type":"turn_completed"}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    rc = agents.launch_codex_implement_main(args)
-    assert rc == 0
-    cmd = captured["cmd"]
-    assert isinstance(cmd, list)
-    assert 'model_provider="openai-larch-env"' in cmd
-    config = str(captured["config"])
-    assert "api_key" not in config
-    assert "OPENAI_API_KEY" not in config
 
 
-def test_cursor_launcher_continues_when_config_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    args = _launcher_args(tmp_path)
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/cursor" if name == "cursor" else "/bin/true")
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
-
-    def boom_copy(*_args, **_kwargs):  # type: ignore[no-untyped-def]
-        raise OSError("permission denied")
-
-    real_is_file = Path.is_file
-
-    def selective_is_file(self: Path) -> bool:
-        if str(self).endswith(".cursor/cli-config.json"):
-            return True
-        return real_is_file(self)
-
-    monkeypatch.setattr(agents.shutil, "copyfile", boom_copy)
-    monkeypatch.setattr(Path, "is_file", selective_is_file)
-
-    def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
-        output = kwargs["output"]
-        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
-        return agents.RunExternalAgentResult(0, output)
-
-    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    rc = agents.launch_cursor_implement_main(args)
-    assert rc == 0
-    assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
 
 
 def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
