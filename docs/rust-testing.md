@@ -230,7 +230,8 @@ then runs `cargo llvm-cov nextest --no-report --no-clean` and a separate
 `cargo llvm-cov test --doc --no-report --no-clean` command. The report command
 retains the existing line threshold and filename exclusions. The separate
 doctest command stays required even when the workspace currently has no
-doctests.
+doctests. Nextest's slow-test status and final status output remain visible in
+the job log.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
 and writes the same command-phase data to its GitHub step summary. The named

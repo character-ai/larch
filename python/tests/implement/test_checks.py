@@ -3852,6 +3852,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
     assert "cargo llvm-cov test --no-report --no-clean \\" in rust_coverage
     assert "--doc --workspace --all-features --locked" in rust_coverage
+    assert "--status-level slow --final-status-level slow" in rust_coverage
     assert '--fail-under-lines "${RUST_COVERAGE_MIN_LINES}"' in rust_coverage
     assert "rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
     assert "## Rust coverage phase timings" in rust_coverage
