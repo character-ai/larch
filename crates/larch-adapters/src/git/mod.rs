@@ -1213,32 +1213,49 @@ mod tests {
     }
 
     #[test]
-    fn differential_success_and_failure_families() {
+    fn differential_config_and_remote_family() {
+        run_differential_family(differential_config_and_remote);
+    }
+
+    #[test]
+    fn differential_index_and_worktree_family() {
+        run_differential_family(differential_index_and_worktree);
+    }
+
+    #[test]
+    fn differential_commit_and_trailers_family() {
+        run_differential_family(differential_commit_and_trailers);
+    }
+
+    #[test]
+    fn differential_checkout_family() {
+        run_differential_family(differential_checkout);
+    }
+
+    #[test]
+    fn differential_rebase_merge_pull_and_stash_family() {
+        run_differential_family(differential_rebase_merge_pull_and_stash);
+    }
+
+    #[test]
+    fn differential_fetch_push_and_ls_remote_family() {
+        run_differential_family(differential_fetch_push_and_ls_remote);
+    }
+
+    #[test]
+    fn differential_tag_family() {
+        run_differential_family(differential_tag);
+    }
+
+    #[test]
+    fn differential_submodule_family() {
+        run_differential_family(differential_submodule);
+    }
+
+    fn run_differential_family(run: DifferentialFamily) {
         let runtime = LarchRuntime::current_thread().expect("runtime");
         let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-        let families: [(&str, DifferentialFamily); 8] = [
-            ("config/remote mutation", differential_config_and_remote),
-            ("index/worktree mutation", differential_index_and_worktree),
-            ("commit/trailers", differential_commit_and_trailers),
-            (
-                "checkout/worktree/init/clone/sparse-checkout",
-                differential_checkout,
-            ),
-            (
-                "rebase/merge/pull/stash",
-                differential_rebase_merge_pull_and_stash,
-            ),
-            (
-                "fetch/push/ls-remote",
-                differential_fetch_push_and_ls_remote,
-            ),
-            ("tag", differential_tag),
-            ("submodule", differential_submodule),
-        ];
-
-        for (_, run) in families {
-            run(&runtime, &runner);
-        }
+        run(&runtime, &runner);
     }
 
     fn differential_config_and_remote(runtime: &LarchRuntime, runner: &TokioProcessRunner) {

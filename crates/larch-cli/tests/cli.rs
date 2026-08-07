@@ -298,6 +298,52 @@ fn repository() -> tempfile::TempDir {
     directory
 }
 
+fn command_registry_repository() -> tempfile::TempDir {
+    let directory = repository();
+    let root = directory.path();
+    let ledger_directory =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../larch-lint/migration-ledger");
+    for entry in fs::read_dir(ledger_directory).expect("read migration-ledger fixtures") {
+        let entry = entry.expect("migration-ledger entry");
+        let source = entry.path();
+        if !source.is_file() {
+            continue;
+        }
+        let destination = root
+            .join("crates/larch-lint/migration-ledger")
+            .join(entry.file_name());
+        fs::create_dir_all(destination.parent().expect("migration-ledger parent"))
+            .expect("create migration-ledger parent");
+        fs::copy(&source, &destination).expect("copy migration-ledger fixture");
+    }
+    fs::create_dir_all(root.join("crates/larch-lint/data")).expect("create registry parent");
+    fs::write(
+        root.join("crates/larch-lint/data/command-registry.toml"),
+        "schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
+    )
+    .expect("write command registry");
+    fs::create_dir_all(root.join("python/larch")).expect("create Python registry parent");
+    fs::write(
+        root.join("python/larch/cli.py"),
+        "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
+    )
+    .expect("write Python registry");
+    fs::create_dir_all(root.join("hooks")).expect("create hooks parent");
+    fs::write(root.join("hooks/hooks.json"), "{\"hooks\": {}}\n").expect("write hooks");
+    fs::create_dir_all(root.join("crates/larch-cli/tests")).expect("create parity parent");
+    fs::write(
+        root.join("crates/larch-cli/tests/parity.rs"),
+        "const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[CleanInstallCase::new(\"clean-install-fixture-run\", \"fixture\", \"run\")];\n",
+    )
+    .expect("write clean-install fixture");
+    git(root, ["add", "--all"]);
+    git(
+        root,
+        ["commit", "--quiet", "-m", "command registry fixture"],
+    );
+    directory
+}
+
 fn command_at(root: &Path, arguments: &[&str]) -> Command {
     let mut command = larch();
     command.current_dir(root).args(arguments);
@@ -424,11 +470,11 @@ fn lint_help_lists_the_complete_domain() {
 
 #[test]
 fn lint_rule_accepts_an_explicit_repository_root() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = command_registry_repository();
     let mut command = larch();
     command
         .args(["lint", "--root"])
-        .arg(root)
+        .arg(root.path())
         .args(["rule", "command-registry"])
         .assert()
         .success()

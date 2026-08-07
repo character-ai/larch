@@ -227,7 +227,7 @@ instrumented artifacts.
 
 The production candidate sets `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
-nextest with `NEXTEST_TEST_THREADS=4`. It cleans prior coverage state, builds
+nextest with `NEXTEST_TEST_THREADS=16`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
 the environment exported by `cargo llvm-cov show-env`. The same environment
 then builds the `larch` CLI with Cargo's `--profile test`, which resolves to
@@ -362,6 +362,44 @@ request ref before it can merge. Do not treat them as the umbrella issue's
 final `main` evidence or declare a final winner from them. After merge, collect
 three comparable successful `main`-ref samples of the configured profile before
 making that final claim.
+
+### Post-policy nextest-tail candidate evidence
+
+[Benchmark run 31219903417](https://github.com/character-ai/larch/actions/runs/31219903417)
+ran the post-policy implementation at
+`c53d70c035b19ca9da4016fe9d7b6c14ccbe0394` on `ubuntu-24.04`. Each
+opt-level-0 path ran the complete repository-policy scan before its unchanged
+88.000% report. All three opt-level-0 jobs passed every policy and report path.
+The raw nextest phase timings were:
+
+| Nextest threads | Sample 1 | Sample 2 | Sample 3 | Median | Result |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 4 | 65 s | 72 s | 72 s | 72 s | eligible |
+| 6 | 56 s | 67 s | 67 s | 67 s | eligible |
+| 8 | 56 s | 65 s | 65 s | 65 s | eligible |
+| 10 | 54 s | 65 s | 63 s | 63 s | eligible |
+| 12 | 51 s | 64 s | 63 s | 63 s | eligible |
+| 14 | 51 s | 63 s | 63 s | 63 s | eligible |
+| 16 | 50 s | 63 s | 62 s | 62 s | fastest supported candidate |
+
+The 16-thread median is the best result in the existing sweep. It is still two
+seconds above the 60-second nextest acceptance target, so it is a production
+candidate, not final `main` evidence. The configured 16-thread profile must
+collect three comparable successful `main`-ref samples before that target can
+be claimed.
+
+An event-level profile from [run 31226975876](https://github.com/character-ai/larch/actions/runs/31226975876)
+identified two obsolete live-repository command-registry tests in the nextest
+tail: the CLI explicit-root test took 53.7 s and the command-registry report
+test took 33.0 s. Their contracts are command routing and report rendering, so
+they use isolated tracked fixtures. The coverage executable remains the only
+full-repository policy execution and still runs `larch lint all` before its
+coverage report.
+
+The remaining parallelization work keeps each independent Git differential
+family in its own test entrypoint without removing a success or failure case.
+The clean-install matrix uses four deterministic, isolated partitions;
+together they cover every route once.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
 a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.

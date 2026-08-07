@@ -3946,7 +3946,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage_profile_runner:" in workflow
     assert "large_ubuntu_4cpu" in workflow
     assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage
-    assert 'NEXTEST_TEST_THREADS: "4"' in rust_coverage
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage
+    assert "NEXTEST_TEST_THREADS=16" in rust_testing
+    assert "Post-policy nextest-tail candidate evidence" in rust_testing
     assert "&& '[\"0\", \"1\"]' || '[\"0\"]')" in rust_coverage
     assert "&& '[1, 2, 3]' || '[1]')" in rust_coverage
     assert 'CARGO_INCREMENTAL: "0"' in rust_coverage

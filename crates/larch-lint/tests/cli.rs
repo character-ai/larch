@@ -1,6 +1,6 @@
 mod support;
 
-use std::{fs, path::Path};
+use std::fs;
 
 use predicates::prelude::*;
 use support::TempRepo;
@@ -52,10 +52,11 @@ fn all_writes_sorted_per_rule_timing_evidence_for_fixture_repository() {
 }
 
 #[test]
-fn command_registry_report_validates_the_live_repository() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+fn command_registry_report_validates_a_fixture_repository() {
+    let repository = TempRepo::new();
+    repository.commit_all();
 
-    TempRepo::command_from(root)
+    TempRepo::command_from(repository.path())
         .args(["command-registry", "report"])
         .assert()
         .success()
