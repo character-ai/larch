@@ -430,7 +430,21 @@ jobs:
       NEXTEST_TEST_THREADS: "4"
       COVERAGE_PROFILE_BENCHMARK: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 'true' || 'false' }}
       COVERAGE_PROFILE_SAMPLE: ${{ matrix.sample }}
+      # A target cache is opt-in only after three comparable warm-cache main
+      # samples beat a no-target-cache control end to end. Zero is deliberately
+      # not a size bound: it makes an accidental enablement save nothing until
+      # a measured dependency-only size bound is reviewed in this workflow.
+      COVERAGE_TARGET_CACHE_ENABLED: "false"
+      COVERAGE_TARGET_CACHE_SCHEMA: "v1"
+      COVERAGE_TARGET_CACHE_MAX_BYTES: "0"
+      RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
+      RUST_COVERAGE_FEATURE_MODE: "all-features"
+      RUST_COVERAGE_LINKER: "runner-default"
     steps:
+      - name: Start Rust coverage job timing
+        run: |
+          set -euo pipefail
+          printf 'COVERAGE_JOB_TIMING_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -442,7 +456,22 @@ jobs:
           set -euo pipefail
           timing_file="$RUNNER_TEMP/rust-coverage-phases.tsv"
           printf 'phase\tseconds\toutcome\tdetail\n' > "$timing_file"
-          printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file" >> "$GITHUB_ENV"
+          target_inventory="$RUNNER_TEMP/coverage-target-cache-inventory.tsv"
+          printf 'kind\tvalue\npolicy\tdisabled-unmeasured\n' > "$target_inventory"
+          {
+            printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file"
+            printf 'COVERAGE_TARGET_CACHE_INVENTORY=%s\n' "$target_inventory"
+            printf 'COVERAGE_TARGET_CACHE_HIT=disabled\n'
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_OUTCOME=disabled-unmeasured\n'
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_SECONDS=0\n'
+            printf 'COVERAGE_TARGET_CACHE_RESTORED_BYTES=unavailable\n'
+            printf 'COVERAGE_TARGET_CACHE_PRUNE_OUTCOME=disabled-unmeasured\n'
+            printf 'COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES=unavailable\n'
+            printf 'COVERAGE_TARGET_CACHE_SAVE_ALLOWED=false\n'
+            printf 'COVERAGE_TARGET_CACHE_SAVE_OUTCOME=disabled-unmeasured\n'
+            printf 'COVERAGE_TARGET_CACHE_SAVE_SECONDS=0\n'
+            printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=three-comparable-warm-samples-required\n'
+          } >> "$GITHUB_ENV"
       - name: Start Rust coverage cache restore timing
         run: |
           set -euo pipefail
@@ -467,13 +496,32 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+      - name: Start coverage dependency cache restore timing
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
+          else
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_STARTED=0\n' >> "$GITHUB_ENV"
+          fi
+      # Keep coverage compiler dependencies separate from Cargo inputs and the
+      # two tool binaries. There is intentionally no restore-keys fallback:
+      # a related but incompatible target can cost more to transfer than it
+      # saves to compile.
+      - name: Restore coverage dependencies
+        id: coverage-target-cache
+        if: env.COVERAGE_TARGET_CACHE_ENABLED == 'true'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/llvm-cov-target
+          key: coverage-target-deps-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-${{ env.CARGO_LLVM_COV_VERSION }}-opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-incremental${{ env.CARGO_INCREMENTAL }}-features${{ env.RUST_COVERAGE_FEATURE_MODE }}-linker${{ env.RUST_COVERAGE_LINKER }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', '.cargo/**') }}
       - name: Record Rust coverage cache restore timing
         if: always()
         run: |
           set -euo pipefail
           started="${COVERAGE_CACHE_RESTORE_STARTED:?}"
           finished="$(date +%s)"
-          outcomes="cargo-inputs=${{ steps.cargo-inputs-cache.outcome }};cargo-nextest=${{ steps.nextest-cache.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outcome }}"
+          outcomes="cargo-inputs=${{ steps.cargo-inputs-cache.outcome }};cargo-nextest=${{ steps.nextest-cache.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outcome }};coverage-target=${{ steps.coverage-target-cache.outcome }}"
           case "$outcomes" in
             *failure*) outcome=failure ;;
             *) outcome=success ;;
@@ -481,6 +529,43 @@ jobs:
           printf 'cache-restore\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" \
             "${outcomes};hits=cargo-inputs:${{ steps.cargo-inputs-cache.outputs.cache-hit }},cargo-nextest:${{ steps.nextest-cache.outputs.cache-hit }},cargo-llvm-cov:${{ steps.llvm-cov-cache.outputs.cache-hit }}" \
             >> "$COVERAGE_TIMING_FILE"
+      - name: Record coverage dependency cache restore diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+            started="${COVERAGE_TARGET_CACHE_RESTORE_STARTED:?}"
+            finished="$(date +%s)"
+            restore_seconds="$((finished - started))"
+            restore_step_outcome="${{ steps.coverage-target-cache.outcome }}"
+            cache_hit="${{ steps.coverage-target-cache.outputs.cache-hit }}"
+            case "$restore_step_outcome" in
+              success)
+                case "$cache_hit" in
+                  true) restore_outcome=hit ;;
+                  false|'') restore_outcome=miss ;;
+                  *) printf 'unexpected coverage target cache-hit value: %s\n' "$cache_hit" >&2; exit 1 ;;
+                esac
+                ;;
+              failure) restore_outcome=failure ;;
+              *) printf 'unexpected coverage target restore outcome: %s\n' "$restore_step_outcome" >&2; exit 1 ;;
+            esac
+          else
+            cache_hit=disabled
+            restore_seconds=0
+            restore_outcome=disabled-unmeasured
+          fi
+          # actions/cache does not expose a restored-byte output. Keep that
+          # absence explicit rather than deriving bytes from a later directory.
+          restored_bytes=unavailable
+          {
+            printf 'COVERAGE_TARGET_CACHE_HIT=%s\n' "$cache_hit"
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_OUTCOME=%s\n' "$restore_outcome"
+            printf 'COVERAGE_TARGET_CACHE_RESTORE_SECONDS=%s\n' "$restore_seconds"
+            printf 'COVERAGE_TARGET_CACHE_RESTORED_BYTES=%s\n' "$restored_bytes"
+          } >> "$GITHUB_ENV"
+          printf 'coverage-target-cache-restore\t%s\t%s\thit=%s;restored_bytes=%s\n' \
+            "$restore_seconds" "$restore_outcome" "$cache_hit" "$restored_bytes" >> "$COVERAGE_TIMING_FILE"
       - name: Start Rust coverage tool setup timing
         if: always()
         run: |
@@ -669,6 +754,100 @@ jobs:
           name: larch-linux-test-binary
           path: target/llvm-cov-target/debug/larch
           if-no-files-found: error
+      # Artifacts and correctness checks above are intentionally complete
+      # before this cache-only cleanup path. cargo clean removes workspace
+      # products while preserving reusable third-party dependency artifacts.
+      - name: Prune coverage workspace products before target cache save
+        id: coverage-target-cache-prune
+        if: success() && env.COVERAGE_TARGET_CACHE_ENABLED == 'true'
+        run: |
+          set -euo pipefail
+          coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
+          test -d "$coverage_target_dir"
+          find "$coverage_target_dir" -type f \( \
+            -name '*.profraw' -o -name '*.profdata' -o -name '*.lcov' -o \
+            -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \
+          \) -delete
+          cargo clean --workspace --target-dir "$coverage_target_dir"
+
+          run_specific_file="$(find "$coverage_target_dir" -type f \( \
+            -name '*.profraw' -o -name '*.profdata' -o -name '*.lcov' -o \
+            -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \
+          \) -print -quit)"
+          test -z "$run_specific_file" || {
+            printf 'coverage target cache retained run-specific file: %s\n' "$run_specific_file" >&2
+            exit 1
+          }
+
+          workspace_targets="$RUNNER_TEMP/coverage-target-workspace-targets.txt"
+          cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[].targets[].name | gsub("-"; "_")' \
+            | LC_ALL=C sort -u > "$workspace_targets"
+          while IFS= read -r target_name; do
+            stale_workspace_product="$(find "$coverage_target_dir" -type f \( \
+              -name "$target_name" -o -name "${target_name}-*" -o \
+              -name "lib${target_name}-*" \
+            \) -print -quit)"
+            test -z "$stale_workspace_product" || {
+              printf 'coverage target cache retained workspace product: %s\n' "$stale_workspace_product" >&2
+              exit 1
+            }
+          done < "$workspace_targets"
+
+          cache_size_kib="$(du -sk "$coverage_target_dir" | awk '{print $1}')"
+          case "$cache_size_kib" in
+            ''|*[!0-9]*) printf 'invalid coverage target cache size: %s\n' "$cache_size_kib" >&2; exit 1 ;;
+          esac
+          case "$COVERAGE_TARGET_CACHE_MAX_BYTES" in
+            ''|*[!0-9]*) printf 'invalid coverage target cache bound: %s\n' "$COVERAGE_TARGET_CACHE_MAX_BYTES" >&2; exit 1 ;;
+          esac
+          cache_size_bytes="$((cache_size_kib * 1024))"
+          {
+            printf 'post-prune-bytes\t%s\n' "$cache_size_bytes"
+            printf 'workspace-targets\t%s\n' "$(tr '\n' ',' < "$workspace_targets")"
+            printf 'path\n'
+            find "$coverage_target_dir" -type f -print | LC_ALL=C sort
+          } >> "$COVERAGE_TARGET_CACHE_INVENTORY"
+          {
+            printf 'COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES=%s\n' "$cache_size_bytes"
+            if [ "$COVERAGE_TARGET_CACHE_MAX_BYTES" -eq 0 ]; then
+              printf 'COVERAGE_TARGET_CACHE_SAVE_ALLOWED=false\n'
+              printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=unmeasured-size-bound\n'
+            elif [ "$cache_size_bytes" -gt "$COVERAGE_TARGET_CACHE_MAX_BYTES" ]; then
+              printf 'COVERAGE_TARGET_CACHE_SAVE_ALLOWED=false\n'
+              printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=size-guard-%s-gt-%s\n' \
+                "$cache_size_bytes" "$COVERAGE_TARGET_CACHE_MAX_BYTES"
+            else
+              printf 'COVERAGE_TARGET_CACHE_SAVE_ALLOWED=true\n'
+              printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=within-size-guard\n'
+            fi
+          } >> "$GITHUB_ENV"
+      - name: Record coverage dependency cache prune diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+            prune_outcome="${{ steps.coverage-target-cache-prune.outcome }}"
+            case "$prune_outcome" in
+              success) ;;
+              failure) ;;
+              *) printf 'unexpected coverage target prune outcome: %s\n' "$prune_outcome" >&2; exit 1 ;;
+            esac
+          else
+            prune_outcome=disabled-unmeasured
+          fi
+          printf 'COVERAGE_TARGET_CACHE_PRUNE_OUTCOME=%s\n' "$prune_outcome" >> "$GITHUB_ENV"
+          printf 'coverage-target-cache-prune\t0\t%s\tpost_prune_bytes=%s;save_reason=%s\n' \
+            "$prune_outcome" "$COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES" \
+            "$COVERAGE_TARGET_CACHE_SAVE_REASON" >> "$COVERAGE_TIMING_FILE"
+          printf 'prune-outcome\t%s\n' "$prune_outcome" >> "$COVERAGE_TARGET_CACHE_INVENTORY"
+      - name: Upload coverage target cache inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-target-cache-inventory-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}
+          path: ${{ runner.temp }}/coverage-target-cache-inventory.tsv
+          if-no-files-found: error
       - name: Start Rust coverage cache save timing
         if: always()
         run: |
@@ -697,6 +876,48 @@ jobs:
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.llvm-cov-cache.outputs.cache-primary-key }}
+      - name: Start coverage dependency cache save timing
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+            printf 'COVERAGE_TARGET_CACHE_SAVE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
+          else
+            printf 'COVERAGE_TARGET_CACHE_SAVE_STARTED=0\n' >> "$GITHUB_ENV"
+          fi
+      - name: Save coverage dependencies
+        id: coverage-target-cache-save
+        if: success() && env.COVERAGE_TARGET_CACHE_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.coverage-target-cache.outputs.cache-hit != 'true' && steps.coverage-target-cache-prune.outcome == 'success' && env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/llvm-cov-target
+          key: ${{ steps.coverage-target-cache.outputs.cache-primary-key }}
+      - name: Record coverage dependency cache save diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+            started="${COVERAGE_TARGET_CACHE_SAVE_STARTED:?}"
+            finished="$(date +%s)"
+            save_seconds="$((finished - started))"
+            save_step_outcome="${{ steps.coverage-target-cache-save.outcome }}"
+            case "$save_step_outcome" in
+              success) save_outcome=success ;;
+              failure) save_outcome=failure ;;
+              skipped) save_outcome=skipped ;;
+              *) printf 'unexpected coverage target save outcome: %s\n' "$save_step_outcome" >&2; exit 1 ;;
+            esac
+          else
+            save_seconds=0
+            save_outcome=disabled-unmeasured
+          fi
+          {
+            printf 'COVERAGE_TARGET_CACHE_SAVE_SECONDS=%s\n' "$save_seconds"
+            printf 'COVERAGE_TARGET_CACHE_SAVE_OUTCOME=%s\n' "$save_outcome"
+          } >> "$GITHUB_ENV"
+          printf 'coverage-target-cache-save\t%s\t%s\tpost_prune_bytes=%s;reason=%s\n' \
+            "$save_seconds" "$save_outcome" "$COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES" \
+            "$COVERAGE_TARGET_CACHE_SAVE_REASON" >> "$COVERAGE_TIMING_FILE"
       - name: Record Rust coverage cache save timing
         if: always()
         run: |
@@ -707,7 +928,7 @@ jobs:
           ref_name="${{ github.ref }}"
           job_status="${{ job.status }}"
           cache_hits="cargo-inputs=${{ steps.cargo-inputs-cache.outputs.cache-hit }};cargo-nextest=${{ steps.nextest-cache.outputs.cache-hit }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outputs.cache-hit }}"
-          save_outcomes="cargo-inputs=${{ steps.cargo-inputs-save.outcome }};cargo-nextest=${{ steps.nextest-cache-save.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-save.outcome }}"
+          save_outcomes="cargo-inputs=${{ steps.cargo-inputs-save.outcome }};cargo-nextest=${{ steps.nextest-cache-save.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-save.outcome }};coverage-target=${{ steps.coverage-target-cache-save.outcome }}"
           if [ "$event_name" = workflow_dispatch ]; then
             outcome=skipped
             detail="workflow_dispatch-read-only;${cache_hits}"
@@ -729,6 +950,15 @@ jobs:
           fi
           printf 'cache-save\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" "$detail" \
             >> "$COVERAGE_TIMING_FILE"
+      - name: Record total Rust coverage job timing
+        if: always()
+        run: |
+          set -euo pipefail
+          started="${COVERAGE_JOB_TIMING_STARTED:?}"
+          finished="$(date +%s)"
+          job_outcome="${{ job.status }}"
+          printf 'job-total-after-runner-setup\t%s\t%s\tcoverage-cache-policy=%s\n' \
+            "$((finished - started))" "$job_outcome" "$COVERAGE_TARGET_CACHE_ENABLED" >> "$COVERAGE_TIMING_FILE"
       - name: Summarize Rust coverage phase timings
         if: always()
         run: |
@@ -743,6 +973,12 @@ jobs:
               "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
             printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, repository validation, and cache save.\n\n' \
               "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
+            printf 'Coverage dependency target cache: policy %s; exact hit %s; restore %s s (%s bytes, %s); post-prune %s bytes; save %s s (%s, %s).\n\n' \
+              "$COVERAGE_TARGET_CACHE_ENABLED" "$COVERAGE_TARGET_CACHE_HIT" \
+              "$COVERAGE_TARGET_CACHE_RESTORE_SECONDS" "$COVERAGE_TARGET_CACHE_RESTORED_BYTES" \
+              "$COVERAGE_TARGET_CACHE_RESTORE_OUTCOME" "$COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES" \
+              "$COVERAGE_TARGET_CACHE_SAVE_SECONDS" "$COVERAGE_TARGET_CACHE_SAVE_OUTCOME" \
+              "$COVERAGE_TARGET_CACHE_SAVE_REASON"
             printf '```tsv\n'
             cat "$COVERAGE_TIMING_FILE"
             printf '```\n'

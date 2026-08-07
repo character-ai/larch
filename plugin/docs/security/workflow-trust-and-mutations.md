@@ -274,6 +274,16 @@ timed-out or orphaned child only through validated process-group termination.
 
 ## Workflow Boundaries
 
+### CI cache trust
+
+The [CI Rust tool bootstrap and caches](supply-chain-credentials-and-services.md#ci-rust-tool-bootstrap-and-caches)
+section is the canonical cache-class and publication contract. Pull-request
+workflows may consume only the explicitly scoped default-branch cache classes;
+they do not gain authority to publish a compiler-output cache. A coverage target
+cache stays disabled unless independent end-to-end measurements prove it helps.
+Neither a cache restore nor its diagnostic metadata waives the coverage,
+artifact, executable, repository-policy, or plugin-validation gates.
+
 ### Design
 
 Issue text, feature text, plan text, findings, ballots, scout output,

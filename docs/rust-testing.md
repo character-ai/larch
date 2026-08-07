@@ -309,7 +309,34 @@ Cargo registry and Git inputs use a restore-only cache action in every Rust
 lane. Only a successful primary-key miss on a `main` push may invoke the
 explicit save action. Pull requests and manual benchmark dispatches therefore
 use the same restore cache class but cannot publish Cargo inputs; none of the
-coverage lanes caches `target/`.
+coverage lanes caches `target/` as a broad entry.
+
+The coverage dependency cache path is present but deliberately disabled:
+`COVERAGE_TARGET_CACHE_ENABLED=false` and a zero-byte bound prevent restore or
+publication until three comparable warm-cache `main` samples beat a
+no-target-cache control end to end. The zero value is an unmeasured sentinel,
+not an approved size limit. A later activation must set a measured
+dependency-only bound and retain the versioned exact key for the runner,
+architecture, target triple, toolchain, manifests and lockfile, coverage-tool
+version, selected compiler profile, feature mode, linker, Cargo configuration,
+and schema. It must not add a coverage-target `restore-keys` fallback. A bound
+above 2 GiB needs explicit transfer-cost evidence in that activating pull
+request.
+
+When that path is enabled, a pull request may restore only its exact default
+branch cache but can never save it. A save requires a successful `main` push,
+a primary-key miss, a completed artifact upload, a completed validation path,
+and a passing size guard. Before save, the workflow removes profile/report
+data and workspace products from `target/llvm-cov-target`, then publishes its
+directory inventory as a separate artifact. A cache hit never replaces the
+coverage report, executable smoke test, repository policy, plugin validation,
+or Python-artifact handoff.
+
+This workflow does not garbage-collect GitHub Actions caches. Add that behavior
+only after a repository cache inventory demonstrates quota pressure or useful
+cache eviction; constrain any future deletion to this repository's versioned
+Rust-cache prefixes, preserve current keys, run it only from a scheduled or
+manual trusted event, and test its selection without a network mutation.
 
 The optional `coverage_profile_runner` input permits the documented
 `large_ubuntu_4cpu` availability trial without changing a required PR lane.

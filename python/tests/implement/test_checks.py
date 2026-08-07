@@ -3770,6 +3770,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     supply_chain = (
         repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
     ).read_text(encoding="utf-8")
+    workflow_trust = (
+        repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
     rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage-profile:", 1)[0]
     rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
@@ -3823,7 +3826,16 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Restore Rust lint dependencies", 1
     )[0]
     coverage_input_cache = rust_coverage.split("Restore Cargo inputs", 1)[1].split(
+        "Restore coverage dependencies", 1
+    )[0]
+    coverage_target_restore = rust_coverage.split("Restore coverage dependencies", 1)[1].split(
         "Record Rust coverage cache restore timing", 1
+    )[0]
+    coverage_target_prune = rust_coverage.split(
+        "Prune coverage workspace products before target cache save", 1
+    )[1].split("Record coverage dependency cache prune diagnostics", 1)[0]
+    coverage_target_save = rust_coverage.split("Save coverage dependencies", 1)[1].split(
+        "Record coverage dependency cache save diagnostics", 1
     )[0]
     gitleaks_input_cache = gitleaks.split("Restore Cargo inputs", 1)[1].split(
         "Cache gitleaks binary", 1
@@ -3833,9 +3845,72 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         coverage_input_cache,
         gitleaks_input_cache,
     ):
-        assert "target" not in input_cache
+        assert "path: target" not in input_cache
         assert "actions/cache/restore@" + cache_sha in input_cache
         assert "actions/cache@" + cache_sha not in input_cache
+
+    coverage_target_key = (
+        "coverage-target-deps-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-"
+        "${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-"
+        "${{ env.CARGO_LLVM_COV_VERSION }}-"
+        "opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-"
+        "test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-"
+        "incremental${{ env.CARGO_INCREMENTAL }}-"
+        "features${{ env.RUST_COVERAGE_FEATURE_MODE }}-"
+        "linker${{ env.RUST_COVERAGE_LINKER }}-"
+        "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', "
+        "'crates/**/Cargo.toml', '.cargo/**') }}"
+    )
+    assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage
+    assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in rust_coverage
+    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage
+    assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in rust_coverage
+    assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in rust_coverage
+    assert 'RUST_COVERAGE_LINKER: "runner-default"' in rust_coverage
+    assert "path: target/llvm-cov-target" in coverage_target_restore
+    assert coverage_target_key in coverage_target_restore
+    assert "actions/cache/restore@" + cache_sha in coverage_target_restore
+    assert "restore-keys:" not in coverage_target_restore
+    assert "~/.cargo" not in coverage_target_restore
+    assert "cargo-nextest" not in coverage_target_restore
+    assert "cargo-llvm-cov" not in coverage_target_restore
+    assert "if: env.COVERAGE_TARGET_CACHE_ENABLED == 'true'" in coverage_target_restore
+    assert 'cargo clean --workspace --target-dir "$coverage_target_dir"' in coverage_target_prune
+    for run_specific_output in (
+        "*.profraw",
+        "*.profdata",
+        "*.lcov",
+        "lcov.info",
+        "rust-coverage-phases.tsv",
+        "cargo metadata --no-deps --format-version 1",
+        "coverage target cache retained workspace product",
+        "COVERAGE_TARGET_CACHE_MAX_BYTES",
+        "unmeasured-size-bound",
+        "COVERAGE_TARGET_CACHE_SAVE_ALLOWED",
+    ):
+        assert run_specific_output in coverage_target_prune
+    assert "actions/cache/save@" + cache_sha in coverage_target_save
+    assert "path: target/llvm-cov-target" in coverage_target_save
+    assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in coverage_target_save
+    assert "steps.coverage-target-cache.outputs.cache-hit != 'true'" in coverage_target_save
+    assert "steps.coverage-target-cache-prune.outcome == 'success'" in coverage_target_save
+    assert "env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'" in coverage_target_save
+    assert "coverage-target-cache-restore" in rust_coverage
+    assert "coverage-target-cache-prune" in rust_coverage
+    assert "coverage-target-cache-save" in rust_coverage
+    assert "Start Rust coverage job timing" in rust_coverage
+    assert "job-total-after-runner-setup" in rust_coverage
+    assert "restored_bytes=unavailable" in rust_coverage
+    assert "rust-coverage-target-cache-inventory" in rust_coverage
+    assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
+        "Prune coverage workspace products before target cache save"
+    )
+    assert rust_coverage.index(
+        "Upload coverage-built Rust executable for cross-language integration tests"
+    ) < rust_coverage.index("Prune coverage workspace products before target cache save")
+    assert rust_coverage.index("Prune coverage workspace products before target cache save") < rust_coverage.index(
+        "Save coverage dependencies"
+    )
 
     for rust_job in (rust_lint, rust_coverage, gitleaks):
         cargo_input_save = rust_job.split("Save Cargo inputs", 1)[1]
@@ -3946,6 +4021,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage-target executable" in rust_testing
     assert "workflow_dispatch" in supply_chain
     assert "cannot publish" in supply_chain
+    assert "coverage compiler-dependency cache" in supply_chain
+    assert "three comparable warm-cache" in supply_chain
+    assert "restore-keys" in supply_chain
+    assert "primary-key miss" in supply_chain
+    assert "2 GiB" in supply_chain
+    assert "repository quota pressure" in supply_chain
+    assert "CI cache trust" in workflow_trust
+    assert "compiler-output cache" in workflow_trust
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage
