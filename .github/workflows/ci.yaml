@@ -2,6 +2,20 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      coverage_profile_benchmark:
+        description: Run the opt-level and nextest-thread coverage profile sweep
+        required: false
+        default: false
+        type: boolean
+      coverage_profile_runner:
+        description: Runner to compare for the manually dispatched coverage profile sweep
+        required: false
+        default: ubuntu-24.04
+        type: choice
+        options:
+          - ubuntu-24.04
+          - large_ubuntu_4cpu
   pull_request:
     branches:
       - main
@@ -331,8 +345,12 @@ jobs:
           rustc --version
           cargo --version
           rustup component list --installed
-      - name: Cache Cargo inputs
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      # Cargo inputs are restored by every Rust lane, but only trusted main
+      # pushes may publish a primary-key miss. This keeps manual profiling and
+      # PRs read-only while retaining warm default-branch inputs.
+      - name: Restore Cargo inputs
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -350,6 +368,15 @@ jobs:
         run: make rust-clippy
       - name: Prune workspace artifacts from Rust lint cache
         run: cargo clean --workspace
+      - name: Save Cargo inputs
+        id: cargo-inputs-save
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
       - name: Save Rust lint dependencies
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -393,13 +420,20 @@ jobs:
           rustc --version
           cargo --version
           rustup component list --installed
-      - name: Cache Cargo inputs
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - name: Restore Cargo inputs
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+      - name: Initialize Rust build/test phase timing
+        run: |
+          set -euo pipefail
+          timing_file="$RUNNER_TEMP/rust-build-test-phases.tsv"
+          printf 'phase\tseconds\toutcome\tdetail\n' > "$timing_file"
+          printf 'RUST_BUILD_TEST_TIMING_FILE=%s\n' "$timing_file" >> "$GITHUB_ENV"
       - name: Build Rust workspace
         run: make rust-build
       - name: Test Rust workspace
@@ -407,7 +441,34 @@ jobs:
       # Keep repository policy required while this transitional lane owns the
       # build and test workflow. The coverage-owner leaf moves it later.
       - name: Run repository policy rules
-        run: make rust-lint
+        id: repository-validation
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          if make rust-lint; then
+            result=0
+          else
+            result=$?
+          fi
+          finished="$(date +%s)"
+          seconds="$((finished - started))"
+          if [ "$result" -eq 0 ]; then
+            outcome=success
+          else
+            outcome=failure
+          fi
+          printf 'repository-validation\t%s\t%s\texit=%s\n' \
+            "$seconds" "$outcome" "$result" \
+            >> "$RUST_BUILD_TEST_TIMING_FILE"
+          printf 'seconds=%s\n' "$seconds" >> "$GITHUB_OUTPUT"
+          printf 'outcome=%s\n' "$outcome" >> "$GITHUB_OUTPUT"
+          exit "$result"
+      - name: Record skipped repository policy validation
+        if: always() && steps.repository-validation.outcome == 'skipped'
+        run: |
+          set -euo pipefail
+          printf 'repository-validation\t0\tskipped\tprior-build-or-test-failure\n' \
+            >> "$RUST_BUILD_TEST_TIMING_FILE"
       - name: Upload Rust executable for cross-language integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -420,12 +481,46 @@ jobs:
           cargo run --quiet --locked --package larch-cli -- release plugin-runtime
           cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check
           git diff --exit-code -- plugin
+      - name: Save Cargo inputs
+        id: cargo-inputs-save
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
+      - name: Summarize Rust build/test phase timings
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$RUST_BUILD_TEST_TIMING_FILE"
+          {
+            printf '## Rust repository validation timing\n\n'
+            printf '```tsv\n'
+            cat "$RUST_BUILD_TEST_TIMING_FILE"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Rust build/test phase timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-build-test-timings
+          path: ${{ runner.temp }}/rust-build-test-phases.tsv
+          if-no-files-found: error
 
   # Whole-workspace coverage stays separate from test sharding so its measured
-  # baseline and exclusions remain stable.
-  rust-coverage:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+  # baseline and exclusions remain stable. Normal PR and main runs use exactly
+  # one configured profile. An explicit workflow_dispatch input enables the
+  # profile sweep without making a benchmark matrix a required PR check.
+  rust-coverage-profile:
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_runner || 'ubuntu-24.04' }}
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test_opt_level: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '["0", "1"]' || '["0"]') }}
+        sample: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '[1, 2, 3]' || '[1]') }}
     env:
       CARGO_NEXTEST_VERSION: "0.9.137"
       CARGO_NEXTEST_ARCHIVE_SHA256: "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311"
@@ -435,6 +530,12 @@ jobs:
       CARGO_LLVM_COV_BINARY_SHA256: "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042"
       RUST_COVERAGE_MIN_LINES: "88.000"
       RUST_COVERAGE_IGNORE_REGEX: '(^|/)(crates/larch-test-support|tests|fixtures)(/|$)|/build\.rs$'
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}
+      NEXTEST_TEST_THREADS: "4"
+      COVERAGE_PROFILE_BENCHMARK: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 'true' || 'false' }}
+      COVERAGE_PROFILE_SAMPLE: ${{ matrix.sample }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -442,6 +543,16 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
+      - name: Initialize Rust coverage phase timing
+        run: |
+          set -euo pipefail
+          timing_file="$RUNNER_TEMP/rust-coverage-phases.tsv"
+          printf 'phase\tseconds\toutcome\tdetail\n' > "$timing_file"
+          printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file" >> "$GITHUB_ENV"
+      - name: Start Rust coverage cache restore timing
+        run: |
+          set -euo pipefail
+          printf 'COVERAGE_CACHE_RESTORE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
       - name: Restore cargo-nextest binary
         id: nextest-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -454,14 +565,35 @@ jobs:
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}
-      - name: Cache Cargo inputs
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - name: Restore Cargo inputs
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+      - name: Record Rust coverage cache restore timing
+        if: always()
+        run: |
+          set -euo pipefail
+          started="${COVERAGE_CACHE_RESTORE_STARTED:?}"
+          finished="$(date +%s)"
+          outcomes="cargo-inputs=${{ steps.cargo-inputs-cache.outcome }};cargo-nextest=${{ steps.nextest-cache.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outcome }}"
+          case "$outcomes" in
+            *failure*) outcome=failure ;;
+            *) outcome=success ;;
+          esac
+          printf 'cache-restore\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" \
+            "${outcomes};hits=cargo-inputs:${{ steps.cargo-inputs-cache.outputs.cache-hit }},cargo-nextest:${{ steps.nextest-cache.outputs.cache-hit }},cargo-llvm-cov:${{ steps.llvm-cov-cache.outputs.cache-hit }}" \
+            >> "$COVERAGE_TIMING_FILE"
+      - name: Start Rust coverage tool setup timing
+        if: always()
+        run: |
+          set -euo pipefail
+          printf 'COVERAGE_TOOL_SETUP_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
       - name: Install cargo-nextest
+        id: install-nextest
         if: steps.nextest-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -479,6 +611,7 @@ jobs:
           test ! -L "$nextest_tmp/cargo-nextest"
           install -m 0755 "$nextest_tmp/cargo-nextest" "$HOME/.cargo/bin/cargo-nextest"
       - name: Install cargo-llvm-cov
+        id: install-llvm-cov
         if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -496,6 +629,7 @@ jobs:
           test ! -L "$llvm_cov_tmp/cargo-llvm-cov"
           install -m 0755 "$llvm_cov_tmp/cargo-llvm-cov" "$HOME/.cargo/bin/cargo-llvm-cov"
       - name: Verify pinned coverage tools
+        id: verify-coverage-tools
         run: |
           set -euo pipefail
           printf '%s  %s\n' "$CARGO_NEXTEST_BINARY_SHA256" "$HOME/.cargo/bin/cargo-nextest" | sha256sum --check --strict
@@ -507,34 +641,195 @@ jobs:
           esac
           test "$(cargo llvm-cov --version)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
       - name: Install llvm-tools component
+        id: install-llvm-tools
         run: rustup component add llvm-tools-preview
-      - name: Test Rust workspace with coverage
+      - name: Record Rust coverage tool setup timing
+        if: always()
         run: |
           set -euo pipefail
-          cargo llvm-cov --workspace --all-features --locked \
-            --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
-            --summary-only --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"
+          started="${COVERAGE_TOOL_SETUP_STARTED:?}"
+          finished="$(date +%s)"
+          outcomes="nextest-install=${{ steps.install-nextest.outcome }};llvm-cov-install=${{ steps.install-llvm-cov.outcome }};verify=${{ steps.verify-coverage-tools.outcome }};llvm-tools=${{ steps.install-llvm-tools.outcome }}"
+          case "$outcomes" in
+            *failure*) outcome=failure ;;
+            *"verify=skipped"*|*"llvm-tools=skipped"*) outcome=skipped ;;
+            *) outcome=success ;;
+          esac
+          printf 'tool-setup\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" "$outcomes" \
+            >> "$COVERAGE_TIMING_FILE"
+      - name: Run Rust coverage phases
+        run: |
+          set -euo pipefail
+
+          run_timed() {
+            phase="$1"
+            shift
+            started="$(date +%s)"
+            if "$@"; then
+              result=0
+              outcome=success
+            else
+              result=$?
+              outcome=failure
+            fi
+            finished="$(date +%s)"
+            printf '%s\t%s\t%s\texit=%s\n' "$phase" "$((finished - started))" "$outcome" "$result" \
+              >> "$COVERAGE_TIMING_FILE"
+            return "$result"
+          }
+
+          profile_started="$(date +%s)"
+          run_timed profile-cleanup cargo llvm-cov clean --workspace
+          coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
+          compile_coverage() (
+            eval "$(cargo llvm-cov show-env --sh)"
+            unset CARGO_LLVM_COV_SHOW_ENV
+            cargo nextest run --workspace --all-features --locked \
+              --target-dir "$coverage_target_dir" --no-run
+          )
+          run_timed compilation compile_coverage
+          run_timed doctests cargo test --doc --workspace --all-features --locked
+          prepared_finished="$(date +%s)"
+
+          thread_counts="$NEXTEST_TEST_THREADS"
+          if [ "$COVERAGE_PROFILE_BENCHMARK" = true ]; then
+            thread_counts="4 6 8 10 12 14 16"
+          fi
+
           mkdir -p target/llvm-cov
-          cargo llvm-cov report --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
-            --lcov --output-path target/llvm-cov/lcov.info
+          for test_threads in $thread_counts; do
+            thread_started="$(date +%s)"
+            run_timed "profile-cleanup-${test_threads}" cargo llvm-cov clean --profraw-only
+            run_timed "test-execution-${test_threads}" cargo llvm-cov nextest --no-report \
+              --workspace --all-features --locked --test-threads "$test_threads" \
+              --status-level slow --final-status-level slow
+            if run_timed "coverage-report-${test_threads}" cargo llvm-cov report \
+              --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
+              --lcov --output-path target/llvm-cov/lcov.info \
+              --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"; then
+              report_result=0
+              total_outcome=success
+            else
+              report_result=$?
+              total_outcome=failure
+            fi
+            thread_finished="$(date +%s)"
+            printf 'end-to-end-total-%s\t%s\t%s\tcoverage-phases-common-plus-thread;exit=%s\n' \
+              "$test_threads" "$((prepared_finished - profile_started + thread_finished - thread_started))" \
+              "$total_outcome" "$report_result" \
+              >> "$COVERAGE_TIMING_FILE"
+            if [ "$report_result" -ne 0 ]; then
+              exit "$report_result"
+            fi
+          done
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rust-coverage-lcov
+          name: rust-coverage-lcov${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) || '' }}
           path: target/llvm-cov/lcov.info
           if-no-files-found: error
+      - name: Start Rust coverage cache save timing
+        if: always()
+        run: |
+          set -euo pipefail
+          printf 'COVERAGE_CACHE_SAVE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
+      - name: Save Cargo inputs
+        id: cargo-inputs-save
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
       - name: Save cargo-nextest binary
+        id: nextest-cache-save
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nextest-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cargo/bin/cargo-nextest
           key: ${{ steps.nextest-cache.outputs.cache-primary-key }}
       - name: Save cargo-llvm-cov binary
+        id: llvm-cov-cache-save
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.llvm-cov-cache.outputs.cache-primary-key }}
+      - name: Record Rust coverage cache save timing
+        if: always()
+        run: |
+          set -euo pipefail
+          started="${COVERAGE_CACHE_SAVE_STARTED:?}"
+          finished="$(date +%s)"
+          event_name="${{ github.event_name }}"
+          ref_name="${{ github.ref }}"
+          job_status="${{ job.status }}"
+          cache_hits="cargo-inputs=${{ steps.cargo-inputs-cache.outputs.cache-hit }};cargo-nextest=${{ steps.nextest-cache.outputs.cache-hit }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outputs.cache-hit }}"
+          save_outcomes="cargo-inputs=${{ steps.cargo-inputs-save.outcome }};cargo-nextest=${{ steps.nextest-cache-save.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-save.outcome }}"
+          if [ "$event_name" = workflow_dispatch ]; then
+            outcome=skipped
+            detail="workflow_dispatch-read-only;${cache_hits}"
+          elif [ "$event_name" != push ] || [ "$ref_name" != refs/heads/main ]; then
+            outcome=skipped
+            detail="pull-request-or-other-read-only;${cache_hits}"
+          elif [ "$job_status" != success ]; then
+            outcome=skipped
+            detail="job-not-success;${cache_hits}"
+          elif [ "$cache_hits" = 'cargo-inputs=true;cargo-nextest=true;cargo-llvm-cov=true' ]; then
+            outcome=skipped
+            detail="all-primary-keys-hit;${cache_hits}"
+          elif [[ "$save_outcomes" == *failure* ]]; then
+            outcome=failure
+            detail="$save_outcomes"
+          else
+            outcome=success
+            detail="$save_outcomes"
+          fi
+          printf 'cache-save\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" "$detail" \
+            >> "$COVERAGE_TIMING_FILE"
+      - name: Summarize Rust coverage phase timings
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$COVERAGE_TIMING_FILE"
+          cache_cargo_inputs="${{ steps.cargo-inputs-cache.outputs.cache-hit }}"
+          cache_nextest="${{ steps.nextest-cache.outputs.cache-hit }}"
+          cache_llvm_cov="${{ steps.llvm-cov-cache.outputs.cache-hit }}"
+          {
+            printf '## Rust coverage phase timings\n\n'
+            printf 'Profile: test opt level %s; configured nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
+              "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
+            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, and cache save; repository validation is recorded by rust-build-test.\n\n' \
+              "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
+            printf '```tsv\n'
+            cat "$COVERAGE_TIMING_FILE"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Rust coverage phase timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}
+          path: ${{ runner.temp }}/rust-coverage-phases.tsv
+          if-no-files-found: error
+
+  # The profile matrix appends matrix values to its check name. Preserve the
+  # established, non-matrix `rust-coverage` status required by branch
+  # protection without changing which job owns coverage execution.
+  rust-coverage:
+    name: rust-coverage
+    needs: [rust-coverage-profile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require configured Rust coverage profile
+        run: |
+          coverage_profile_result="${{ needs.rust-coverage-profile.result }}"
+          [ "$coverage_profile_result" = success ] || {
+            echo "::error::rust-coverage-profile result=$coverage_profile_result"
+            exit 1
+          }
 
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.
@@ -590,8 +885,9 @@ jobs:
         run: |
           rustc --version
           cargo --version
-      - name: Cache Cargo inputs
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - name: Restore Cargo inputs
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -615,6 +911,15 @@ jobs:
           # historical test-fixture keys in the main branch.
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
           "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode history --log-opts "${BASE}..HEAD"
+      - name: Save Cargo inputs
+        id: cargo-inputs-save
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
 
 
   # Generator and local metadata drift checks. Uses a sparse checkout because
