@@ -3739,6 +3739,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "make rust-lint" not in rust_lint
     assert "cargo-deny-action" not in rust_lint
     assert "make rust-lint" in rust_build_test
+    assert "## Rust repository validation timing" in rust_build_test
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
     assert "cargo llvm-cov nextest --no-report" in workflow
@@ -3843,7 +3844,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage_profile_runner:" in workflow
     assert "large_ubuntu_4cpu" in workflow
     assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage
-    assert 'NEXTEST_TEST_THREADS: "10"' in rust_coverage
+    assert 'NEXTEST_TEST_THREADS: "4"' in rust_coverage
+    assert "&& '[\"0\", \"1\"]' || '[\"0\"]')" in rust_coverage
     assert 'CARGO_INCREMENTAL: "0"' in rust_coverage
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage
     assert "timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}" in rust_coverage

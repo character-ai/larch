@@ -223,8 +223,8 @@ checks use changed-path Clippy and do not install coverage tooling or create
 instrumented artifacts.
 
 The production profile sets `CARGO_INCREMENTAL=0`,
-`CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=1`, and runs
-nextest with `NEXTEST_TEST_THREADS=10`. It cleans prior coverage state, builds
+`CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
+nextest with `NEXTEST_TEST_THREADS=4`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
 the environment exported by `cargo llvm-cov show-env`, then runs
 `cargo llvm-cov nextest --no-report` and a separate `cargo test --doc` command.
@@ -235,14 +235,46 @@ and filename exclusions. The separate doctest command stays required even when
 the workspace currently has no doctests. Nextest's slow-test status and final
 status output remain visible in the job log.
 
+The selected profile was measured in [CI run 31145183164](https://github.com/character-ai/larch/actions/runs/31145183164)
+on `ubuntu-24.04`. Each total below sums profile cleanup, one compiled
+artifact set, doctests, and that thread count's profile cleanup, nextest, and
+report phases; it does not duplicate compilation for every thread count.
+
+| Test opt level | Nextest threads | Sample 1 | Sample 2 | Two-sample midpoint | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 0 | 4 | 475 s | 489 s | 482 s | selected |
+| 0 | 6 | 472 s | 488 s | 480 s | valid |
+| 0 | 8 | 473 s | 487 s | 480 s | valid |
+| 0 | 10 | 476 s | 489 s | 483 s | valid |
+| 0 | 12 | 475 s | 489 s | 482 s | valid |
+| 0 | 14 | 471 s | 489 s | 480 s | valid |
+| 0 | 16 | 475 s | 491 s | 483 s | valid |
+| 1 | 4 | 893 s | 874 s | — | rejected: below the 88% line baseline |
+
+Every valid thread count is within 5% of the fastest two-sample midpoint, so
+the selected profile uses the lowest-complexity tested count, 4. The valid
+samples vary by less than 5%, and the best candidates do not meet the 10% rerun
+trigger. Optimization level 1 is not a correct candidate because both reports
+failed the existing coverage gate; the threshold was not relaxed.
+
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
 and writes the same command-phase data to its GitHub step summary. The named
 GitHub cache-action steps provide the cache restore and save timings; the
-summary also records coverage-tool cache hit state. A manually dispatched CI
-run with `coverage_profile_benchmark=true` performs two samples of both test
+summary also records coverage-tool cache hit state. In the selection run, the
+Cargo input cache hit was 86 MB (89,791,441 B), cargo-nextest was 11 MB
+(11,054,119 B), and cargo-llvm-cov was 2 MB (1,708,048 B). Checkout took 3 s,
+the cache restores took 3 s, coverage-tool verification and setup took 12–13
+s, and repository policy validation took 172 s; cache save was skipped because
+manual dispatches do not publish caches. The `rust-build-test` job also writes
+its repository-validation duration to its GitHub job summary. A manually
+dispatched CI run with
+`coverage_profile_benchmark=true` performs two samples of both test
 optimization levels and every nextest thread count from 4 through 16. The
 optional `coverage_profile_runner` input permits the documented
 `large_ubuntu_4cpu` availability trial without changing a required PR lane.
+That runner remained unassigned for ten minutes in
+[trial run 31143192232](https://github.com/character-ai/larch/actions/runs/31143192232),
+so it was unavailable to this workflow and did not affect the selection.
 
 Cargo registry and Git inputs are cached separately from compiler output. The
 lint lane may restore a manifest-keyed dependency cache under `target/debug`,

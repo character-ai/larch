@@ -421,7 +421,20 @@ jobs:
       # Keep repository policy required while this transitional lane owns the
       # build and test workflow. The coverage-owner leaf moves it later.
       - name: Run repository policy rules
-        run: make rust-lint
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          if make rust-lint; then
+            result=0
+          else
+            result=$?
+          fi
+          finished="$(date +%s)"
+          {
+            printf '## Rust repository validation timing\n\n'
+            printf 'Repository policy rules: %s s (exit %s).\n' "$((finished - started))" "$result"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
       - name: Upload Rust executable for cross-language integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -445,7 +458,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_opt_level: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '["0", "1"]' || '["1"]') }}
+        test_opt_level: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '["0", "1"]' || '["0"]') }}
         sample: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && '[1, 2]' || '[1]') }}
     env:
       CARGO_NEXTEST_VERSION: "0.9.137"
@@ -459,7 +472,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}
-      NEXTEST_TEST_THREADS: "10"
+      NEXTEST_TEST_THREADS: "4"
       COVERAGE_PROFILE_BENCHMARK: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 'true' || 'false' }}
       COVERAGE_PROFILE_SAMPLE: ${{ matrix.sample }}
     steps:
