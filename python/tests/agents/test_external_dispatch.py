@@ -16,7 +16,6 @@ from larch.agents import agent_voters
 from larch.agents import _ci_launcher
 from larch.agents import agent_waterfall
 from larch.agents import agents
-from larch.agents import _review_launcher
 from larch.calibration import difficulty
 from larch.state import bootstrap
 from larch.implement import checks
@@ -969,6 +968,5 @@ def test_debate_roles_do_not_alter_existing_panels() -> None:
 
 
 def test_existing_external_dispatch_paths_do_not_request_session_capture() -> None:
-    for module in (_review_launcher, _ci_launcher):
-        source = inspect.getsource(module)
-        assert "capture_session_handle=True" not in source
+    source = inspect.getsource(_ci_launcher)
+    assert "capture_session_handle=True" not in source

@@ -18,12 +18,13 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_wri
 
 mod admission_commands;
 mod agent_commands;
+mod agent_review;
 mod argparse_compat;
 mod bgjob_adapt;
 mod bgjob_commands;
 mod blocker_commands;
 mod ci_timing;
-mod claude_commands;
+pub(crate) mod claude_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod external_agent;

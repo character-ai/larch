@@ -5,7 +5,7 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{PermissionsExt as _, symlink};
 
 use assert_cmd::Command as AssertCommand;
 use predicates::prelude::*;
@@ -44,6 +44,14 @@ fn larch_with_fixture_vendor(root: &Path) -> AssertCommand {
     command.env("PATH", path);
     command.current_dir(root);
     command
+}
+
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace root")
+        .to_path_buf()
 }
 
 fn classify(plugin: &Path, diff: &Path) -> AssertCommand {
@@ -285,6 +293,517 @@ fn run_external_agent_inner_sentinel_replaces_stale_artifacts() {
         fs::read_to_string(format!("{}.inner.done", output.display()))
             .expect("inner completion sentinel"),
         "0\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_codex_writes_review_artifacts_through_shared_runner() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nprintf '{\"type\":\"message\",\"usage\":{\"input_tokens\":4,\"cached_input_tokens\":1,\"output_tokens\":2}}\\n'\nprintf 'review result\\n' > \"$out\"\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(&output).expect("review output"),
+        "review result\n"
+    );
+    assert!(
+        fs::read_to_string(format!("{}.events.jsonl", output.display()))
+            .expect("events")
+            .contains("input_tokens")
+    );
+    assert_eq!(
+        fs::read_to_string(format!("{}.dirty-tree", output.display())).expect("dirty tree"),
+        "STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n"
+    );
+    assert_eq!(
+        fs::read_to_string(format!("{}.done", output.display())).expect("done"),
+        "0\n"
+    );
+    let meta = fs::read_to_string(format!("{}.meta", output.display())).expect("meta");
+    assert!(meta.contains("OUTER_LAUNCHER=agent launch-review"));
+    assert!(meta.contains("OUTER_LAUNCHER_MODEL_ROLE=default"));
+}
+
+#[test]
+fn launch_review_preserves_usage_and_early_error_exit_contracts() {
+    let fixture = TempDir::new().expect("fixture");
+    let output = fixture.path().join("review.txt");
+    larch()
+        .args(["agent", "launch-review", "--help"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "usage: cli.py agent launch-review",
+        ));
+    larch()
+        .args([
+            "agent",
+            "launch-review",
+            "--output",
+            "review.txt",
+            "--timeout",
+            "5",
+            "--prompt",
+            "review this",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("arguments are required: --tool"));
+    larch()
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "bad", "--prompt", "review this"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("got 'bad'"));
+    larch()
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(fixture.path().join("missing/review.txt"))
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "output parent directory does not exist",
+        ));
+    larch()
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt-file"])
+        .arg(fixture.path().join("missing-prompt.txt"))
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("failed to read --prompt-file"));
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_renders_a_specialist_agent_file_before_running_codex() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nprintf '{\"type\":\"message\",\"usage\":{\"input_tokens\":4,\"cached_input_tokens\":1,\"output_tokens\":2}}\\n'\nprintf 'review result\\n' > \"$out\"\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--agent-file"])
+        .arg(repository_root().join("agents/reviewer-correctness.md"))
+        .args([
+            "--mode",
+            "description",
+            "--description-text",
+            "Review the Rust launch-review migration.",
+            "--scope-files",
+            "crates/larch-cli/src/agent_review.rs",
+        ])
+        .assert()
+        .success();
+    let prompt =
+        fs::read_to_string(format!("{}.prompt", output.display())).expect("prompt sidecar");
+    assert!(prompt.contains("### In-Scope Findings"));
+    assert_eq!(
+        fs::read_to_string(&output).expect("review output"),
+        "review result\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_reconstructs_a_codex_prompt_sentinel_from_a_prompt_file() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nprintf 'review result\n' > \"$out\"\n",
+    );
+    let agent = repository_root().join("agents/reviewer-correctness.md");
+    let first_output = fixture.path().join("first-review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&first_output)
+        .args(["--timeout", "5", "--agent-file"])
+        .arg(&agent)
+        .args(["--mode", "diff"])
+        .assert()
+        .success();
+    let sentinel = PathBuf::from(format!("{}.prompt", first_output.display()));
+    assert!(
+        fs::read_to_string(&sentinel)
+            .expect("sentinel prompt")
+            .starts_with("LARCH_PROMPT_SENTINEL=1\n")
+    );
+
+    let second_output = fixture.path().join("second-review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&second_output)
+        .args(["--timeout", "5", "--prompt-file"])
+        .arg(&sentinel)
+        .assert()
+        .success();
+    let reconstructed =
+        fs::read_to_string(format!("{}.prompt", second_output.display())).expect("prompt sidecar");
+    assert!(reconstructed.contains("### In-Scope Findings"));
+    assert!(!reconstructed.starts_with("LARCH_PROMPT_SENTINEL=1\n"));
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_codex_auth_preflight_writes_terminal_artifacts() {
+    let fixture = TempDir::new().expect("fixture");
+    let home = fixture.path().join("home");
+    let config = home.join(".codex/config.toml");
+    write(&config, "model = \"test\"\n");
+    fs::set_permissions(&config, fs::Permissions::from_mode(0o000))
+        .expect("unreadable config permissions");
+    let output = fixture.path().join("review.txt");
+    let mut command = larch();
+    command
+        .current_dir(fixture.path())
+        .env("HOME", home)
+        .env_remove("OPENAI_API_KEY")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    let diagnostic = fs::read_to_string(format!("{}.diag", output.display())).expect("diagnostic");
+    assert!(diagnostic.contains("STATUS=FAILED"));
+    assert!(PathBuf::from(format!("{}.meta", output.display())).is_file());
+    assert!(PathBuf::from(format!("{}.dirty-tree", output.display())).is_file());
+    assert_eq!(
+        fs::read_to_string(format!("{}.done", output.display())).expect("done"),
+        "1\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_rejects_symlinked_session_bridge_files() {
+    let fixture = TempDir::new().expect("fixture");
+    let implementation = fixture.path().join("implementation");
+    fs::create_dir_all(&implementation).expect("implementation directory");
+    let target = fixture.path().join("outside-session-file");
+    write(&target, "secret\n");
+    symlink(&target, implementation.join("session-id")).expect("session-id symlink");
+    symlink(&target, implementation.join("claude-source.env")).expect("source symlink");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nprintf '%s|%s' \"$LARCH_TOKEN_SESSION_ID\" \"$LARCH_CLAUDE_SOURCE_FILE\" > \"$out\"\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("IMPLEMENT_TMPDIR", &implementation)
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    assert_eq!(fs::read_to_string(&output).expect("review output"), "|");
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_passes_confined_session_bridge_files_to_codex() {
+    let fixture = TempDir::new().expect("fixture");
+    let implementation = fixture.path().join("implementation");
+    let session_id = implementation.join("session-id");
+    let claude_source = implementation.join("claude-source.env");
+    write(&session_id, "session-123\n");
+    write(&claude_source, "CLAUDE_SOURCE=trusted\n");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nprintf '%s|%s' \"$LARCH_TOKEN_SESSION_ID\" \"$LARCH_CLAUDE_SOURCE_FILE\" > \"$out\"\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("IMPLEMENT_TMPDIR", &implementation)
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(&output).expect("review output"),
+        format!(
+            "session-123|{}",
+            fs::canonicalize(&claude_source)
+                .expect("canonical Claude source")
+                .display()
+        )
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_cursor_postprocesses_result_and_usage() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "cursor",
+        "#!/bin/sh\nprintf '{\"result\":\"review result\",\"usage\":{\"inputTokens\":4,\"outputTokens\":2,\"cacheReadTokens\":1,\"cacheWriteTokens\":0}}\\n'\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CURSOR_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "cursor", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(&output).expect("review output"),
+        "review result"
+    );
+    assert!(
+        fs::read_to_string(format!("{}.json", output.display()))
+            .expect("raw cursor output")
+            .contains("inputTokens")
+    );
+    let token_record =
+        fs::read_to_string(format!("{}.token-record", output.display())).expect("token record");
+    assert!(token_record.contains("TOOL=cursor"));
+    assert!(token_record.contains("TOTAL=7"));
+    assert!(
+        fs::read_to_string(format!("{}.sidecar", output.display()))
+            .expect("sidecar")
+            .contains("cursor-status: ok")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_writes_cap_artifacts_before_vendor_launch() {
+    let fixture = TempDir::new().expect("fixture");
+    let implementation = fixture.path().join("implement");
+    fs::create_dir_all(&implementation).expect("implementation directory");
+    let ledger = implementation.join("tokens.jsonl");
+    write(&ledger, "{\"type\":\"vendor\",\"total\":5}\n");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nprintf 'vendor should not launch' >&2\nexit 9\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("IMPLEMENT_TMPDIR", &implementation)
+        .env("LARCH_TOKEN_LEDGER", &ledger)
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args([
+            "--timeout",
+            "5",
+            "--prompt",
+            "review this",
+            "--token-budget-cap",
+            "5",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(&output).expect("cap output"),
+        "STATUS=cap_hit\n"
+    );
+    assert!(
+        fs::read_to_string(format!("{}.cap-hit", output.display()))
+            .expect("cap hit artifact")
+            .contains("TOTAL=5")
+    );
+    assert_eq!(
+        fs::read_to_string(format!("{}.done", output.display())).expect("done"),
+        "0\n"
+    );
+    assert!(implementation.join("step-budget-cap-hit.env").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_failure_writes_terminal_artifacts() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nprintf 'vendor failure\\n' >&2\nexit 2\n",
+    );
+    let output = fixture.path().join("review.txt");
+    let sink = fixture.path().join("launcher-context.log");
+    write(&sink, "captured launcher context\n");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this", "--stderr-sink"])
+        .arg(&sink)
+        .assert()
+        .code(2);
+    assert_eq!(
+        fs::read_to_string(format!("{}.done", output.display())).expect("done"),
+        "2\n"
+    );
+    let failure_diag = fs::read_to_string(format!("{}.failure-diag", output.display()))
+        .expect("failure diagnostic");
+    assert!(failure_diag.contains("vendor failure"));
+    assert!(
+        failure_diag.contains("captured launcher context"),
+        "failure diagnostic: {failure_diag}"
+    );
+    assert!(
+        fs::read_to_string(format!("{}.sidecar", output.display()))
+            .expect("sidecar")
+            .contains("vendor failure")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_does_not_read_a_symlinked_stderr_sink() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\nprintf 'vendor failure\n' >&2\nexit 2\n",
+    );
+    let target = fixture.path().join("outside-sink.log");
+    write(&target, "sensitive sink content\n");
+    let sink = fixture.path().join("launcher-context.log");
+    symlink(&target, &sink).expect("sink symlink");
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this", "--stderr-sink"])
+        .arg(&sink)
+        .assert()
+        .code(2);
+    let failure_diag = fs::read_to_string(format!("{}.failure-diag", output.display()))
+        .expect("failure diagnostic");
+    assert!(failure_diag.contains("vendor failure"));
+    assert!(!failure_diag.contains("sensitive sink content"));
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_panel_telemetry_uses_the_canonical_schema() {
+    let fixture = TempDir::new().expect("fixture");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "cursor",
+        "#!/bin/sh\nprintf '{\"result\":\"review result\",\"usage\":{\"inputTokens\":4,\"outputTokens\":2,\"cacheReadTokens\":1,\"cacheWriteTokens\":0}}\\n'\n",
+    );
+    let artifacts = fixture.path().join("round-7");
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("CURSOR_API_KEY", "test-key")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .env("LARCH_PANEL_ARTIFACT_DIR", &artifacts)
+        .env("LARCH_PANEL_SLOT", "correctness")
+        .env("LARCH_PANEL_PHASE", "review")
+        .env("LARCH_PANEL_SITE", "review Step 2")
+        .env("LARCH_PANEL_ROUND_NUM", "7")
+        .env("LARCH_PANEL_PAYLOAD_BYTES", "5")
+        .args(["agent", "launch-review", "--tool", "cursor", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    let telemetry =
+        fs::read_to_string(artifacts.join("panel-prompt-sizes.tsv")).expect("panel telemetry");
+    let rows = telemetry.lines().collect::<Vec<_>>();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0].split('\t').collect::<Vec<_>>(),
+        [
+            "site",
+            "phase",
+            "round_num",
+            "slot",
+            "slot_kind",
+            "tool",
+            "output",
+            "prompt_bytes",
+            "prompt_tokens",
+            "scaffold_bytes",
+            "scaffold_tokens",
+            "payload_bytes",
+            "payload_tokens",
+            "agent_file",
+            "agent_bytes",
+            "agent_tokens",
+        ]
+    );
+    let values = rows[1].split('\t').collect::<Vec<_>>();
+    assert_eq!(values.len(), 16);
+    assert_eq!(values[4], "specialist");
+    assert_eq!(values[5], "cursor");
+}
+
+#[cfg(unix)]
+#[test]
+fn launch_review_retries_without_leaving_stale_codex_events() {
+    let fixture = TempDir::new().expect("fixture");
+    let state = fixture.path().join("attempts");
+    write(&state, "0\n");
+    let _vendor = vendor_fixture(
+        fixture.path(),
+        "codex",
+        "#!/bin/sh\ncount=$(cat attempts)\nprintf '%s' $((count + 1)) > attempts\nout=''\nprevious=''\nfor argument in \"$@\"; do\n  if [ \"$previous\" = '--output-last-message' ]; then out=\"$argument\"; fi\n  previous=\"$argument\"\ndone\nif [ \"$count\" = 0 ]; then\n  printf 'stale event\\n'\n  exit 7\nfi\nprintf '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1}}\\n'\nprintf 'fresh result\\n' > \"$out\"\n",
+    );
+    let output = fixture.path().join("review.txt");
+    larch_with_fixture_vendor(fixture.path())
+        .env("OPENAI_API_KEY", "test-key")
+        .env("PYTEST_CURRENT_TEST", "rust")
+        .env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0")
+        .args(["agent", "launch-review", "--tool", "codex", "--output"])
+        .arg(&output)
+        .args(["--timeout", "5", "--prompt", "review this"])
+        .assert()
+        .success();
+    assert_eq!(fs::read_to_string(&state).expect("attempt count"), "2");
+    assert_eq!(
+        fs::read_to_string(&output).expect("fresh result"),
+        "fresh result\n"
+    );
+    let events = fs::read_to_string(format!("{}.events.jsonl", output.display())).expect("events");
+    assert!(!events.contains("stale event"));
+    assert!(
+        fs::read_to_string(format!("{}.sidecar.history", output.display()))
+            .expect("history")
+            .contains("stale event")
     );
 }
 

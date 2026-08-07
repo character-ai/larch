@@ -119,14 +119,21 @@ EOF
 chmod +x "$STUB_BIN/cursor"
 
 OUT_FILE="$TMP/cursor-review.txt"
-RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-PATH="$STUB_BIN:$PATH" \
-LARCH_CURSOR_MODEL=stub-model \
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    python3 "$REPO_ROOT/python/cli.py" agent launch-review --tool cursor --output "$OUT_FILE" --timeout 30 --prompt "review" >/dev/null
+# `agent launch-review` is Rust-owned (#8115), so retain this launcher smoke
+# only in harness lanes that have an explicitly built binary.
+if [[ "$RUST_AVAILABLE" == 1 ]]; then
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_MODEL=stub-model \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$REPO_ROOT/scripts/larch.sh" agent launch-review --tool cursor --output "$OUT_FILE" --timeout 30 --prompt "review" >/dev/null
 
-eq "cursor review prose output" "reviewer prose only" "$(cat "$OUT_FILE")"
-if jq -e '.usage.inputTokens == 5' "${OUT_FILE}.json" >/dev/null; then pass; else fail "cursor review raw JSON sidecar missing usage"; fi
+    eq "cursor review prose output" "reviewer prose only" "$(cat "$OUT_FILE")"
+    if jq -e '.usage.inputTokens == 5' "${OUT_FILE}.json" >/dev/null; then pass; else fail "cursor review raw JSON sidecar missing usage"; fi
+else
+    skip "cursor launch-review prose output"
+    skip "cursor launch-review raw JSON sidecar"
+fi
 
 # agent launch-cursor-implement + agent launch-codex-implement record-vendor smoke
 # (issue #1351 Gap 4 — overlaps Gap 1's per-launcher harness coverage). The

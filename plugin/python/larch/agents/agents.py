@@ -8,7 +8,6 @@ Implementation is split across sibling modules by responsibility:
 - _run_external: external agent runner, shared launcher helpers
 - _auth: cursor auth, probe helpers, reviewer check, degraded tools
 - _ci_launcher: CI and implement launchers
-- _review_launcher: review launcher (codex, cursor)
 - _claude_runner: claude subprocess runner and waterfall
 """
 
@@ -21,7 +20,6 @@ from larch.agents._failure_diag import *  # noqa: F403
 from larch.agents._run_external import *  # noqa: F403
 from larch.agents._auth import *  # noqa: F403
 from larch.agents._ci_launcher import *  # noqa: F403
-from larch.agents._review_launcher import *  # noqa: F403
 from larch.agents._claude_runner import *  # noqa: F403
 
 # Private symbols not exported by __all__ (or no __all__) — explicit re-exports
@@ -183,37 +181,6 @@ from larch.agents._ci_launcher import (  # noqa: F401
     _emit_ci_launcher_result,
     _append_implement_failure_if_nonzero,
     _safe_codex_home_dir,
-)
-from larch.agents._review_launcher import (  # noqa: F401
-    _review_parser,
-    _review_coerce_risk,
-    _review_validate_args,
-    _review_session_env_path,
-    _review_specialist_render_args,
-    _review_render_specialist_prompt,
-    _review_read_prompt_file,
-    _review_codex_compact_sentinel_offset,
-    _review_read_codex_prompt_sentinel,
-    _review_resolve_prompt,
-    _review_write_codex_prompt_sidecar,
-    _review_append_launch_failure,
-    _review_append_outer_meta,
-    _review_cursor_has_structured_findings,
-    _review_cursor_normalize_no_issues,
-    _review_cursor_postprocess,
-    _review_emit_launcher_result,
-    _review_failure_source,
-    _review_record_timing,
-    _review_run_with_retries,
-    _review_launch_codex,
-    _review_launch_cursor,
-    _review_run_wrapper_attempt,
-    _review_capture_cursor_dirty_baseline,
-    _review_write_cursor_dirty_tree_from_baseline,
-    _review_effective_token_cap,
-    _review_apply_session_token_env,
-    _review_write_clean_readonly_dirty_tree,
-    _review_run_test_trap_after_inner_done_if_enabled,
 )
 from larch.agents._claude_runner import (  # noqa: F401
     _canonical,

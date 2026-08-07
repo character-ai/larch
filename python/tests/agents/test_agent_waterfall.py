@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from larch.agents import agent_waterfall
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.core import proc as proc_module
 from test_support import ROOT
 
@@ -1492,15 +1492,23 @@ def test_parse_args_accepts_and_validates_site(tmp_path: Path) -> None:
 
 def test_launch_slot_threads_site_to_launch_review_not_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
+    captured_envs: list[dict[str, str] | None] = []
 
     class _FakePopen:
-        def __init__(self, argv: Sequence[str], **_kwargs: object) -> None:
+        def __init__(self, argv: Sequence[str], **kwargs: object) -> None:
             captured.append([str(a) for a in argv])
+            environment = kwargs.get("env")
+            captured_envs.append(
+                {str(key): str(value) for key, value in environment.items()}
+                if isinstance(environment, dict)
+                else None
+            )
             self.pid = 4321
 
     monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
     monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
     monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_ROOT, raising=False)
     opts = agent_waterfall.Options(
         slots_file=str(tmp_path / "slots.ndjson"),
         codex_present=True,
@@ -1517,10 +1525,14 @@ def test_launch_slot_threads_site_to_launch_review_not_claude(tmp_path: Path, mo
         if isinstance(handle, io.IOBase):
             handle.close()
     codex_argv, claude_argv = captured[0], captured[1]
+    assert codex_argv[0].endswith("/scripts/larch.sh")
     assert "launch-review" in codex_argv
     assert codex_argv[codex_argv.index("--site") + 1] == "design Step 3"
+    assert captured_envs[0] is not None
+    assert captured_envs[0][config.ENV_CLAUDE_PLUGIN_ROOT] == str(agent_waterfall.REPO_ROOT)
     assert "launch-claude-review" in claude_argv
     assert "--site" not in claude_argv
+    assert captured_envs[1] is None
 
 
 def test_bind_manifest_slot_outputs_uses_slot_identity_for_compressed_success(tmp_path: Path) -> None:

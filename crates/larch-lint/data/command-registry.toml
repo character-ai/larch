@@ -350,11 +350,13 @@ verb = "launch-review"
 python_module = "larch.agents.agents"
 python_function = "launch_review_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8115
+clean_install_test = "clean-install-agent-launch-review"
 
 [[commands]]
 domain = "agent"
@@ -8199,12 +8201,6 @@ python = []
 rust = ["run-log append-entry", "run-log append-failure"]
 
 [[callers]]
-path = "python/larch/agents/_review_launcher.py"
-kind = "python-runtime"
-python = []
-rust = ["git snapshot-untracked"]
-
-[[callers]]
 path = "python/larch/agents/_run_external.py"
 kind = "python-runtime"
 python = []
@@ -8220,13 +8216,13 @@ rust = []
 path = "python/larch/agents/agent_waterfall.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-review"]
+rust = ["agent launch-claude-review", "agent launch-review"]
 
 [[callers]]
 path = "python/larch/agents/collect_results.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-codex-exec", "agent run-external-agent", "agent wait-reviewers"]
+rust = ["agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "agent wait-reviewers"]
 
 [[callers]]
 path = "python/larch/core/redact.py"
@@ -8340,13 +8336,13 @@ rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery 
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation"]
 
 [[callers]]
 path = "python/larch/design/plan_scout.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-subprocess"]
+rust = ["agent launch-claude-subprocess", "agent launch-review"]
 
 [[callers]]
 path = "python/larch/git/pr_body.py"
@@ -8735,8 +8731,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/brainstorm.md"
 kind = "skill"
-python = ["agent collect-results", "agent launch-review"]
-rust = ["bgjob start", "bgjob wait", "dirty-tree checkpoint", "external-defaults role"]
+python = ["agent collect-results"]
+rust = ["agent launch-review", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "external-defaults role"]
 
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
@@ -9383,8 +9379,8 @@ rust = ["gh resolve-repo", "kv get"]
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"
 kind = "skill"
-python = ["agent launch-review", "run-log sync", "verify skill-called"]
-rust = []
+python = ["run-log sync", "verify skill-called"]
+rust = ["agent launch-review"]
 
 [[callers]]
 path = "skills/rejected-analysis/scripts/rejected-analysis.md"
@@ -9552,7 +9548,7 @@ rust = []
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
 python = ["agent dispatch-voters", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = ["agent launch-claude-review", "agent launch-codex-exec"]
+rust = ["agent launch-claude-review", "agent launch-codex-exec", "agent launch-review"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

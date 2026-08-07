@@ -561,8 +561,7 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             argv.extend(["--read-tools-add-dir", opts.claude_read_tools_add_dir])
     else:
         argv = [
-            sys.executable,
-            str(PY_CLI),
+            str(larch_entrypoint(REPO_ROOT)),
             "agent",
             "launch-review",
             "--tool",
@@ -605,6 +604,13 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             source_agent_file=slot.agent or os.environ.get("LARCH_PANEL_SOURCE_AGENT_FILE", ""),
             payload_bytes=_payload_bytes_for_tool(slot=slot, tool=tool),
         )
+    if tool != "claude":
+        # The Rust command enters through the verified bootstrap, whose root
+        # must be explicit even for callers that were not invoked by Claude.
+        if child_env is None:
+            child_env = dict(os.environ)
+        if not child_env.get(config.ENV_CLAUDE_PLUGIN_ROOT):
+            child_env[config.ENV_CLAUDE_PLUGIN_ROOT] = str(REPO_ROOT)
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:
         process = subprocess.Popen(  # pylint: disable=consider-using-with

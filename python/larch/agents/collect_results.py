@@ -605,8 +605,7 @@ def _launch_outer_retry(
             elif meta.tool == "cursor":
                 timing_kind = os.environ.get("LARCH_TIMING_TASK_KIND", "cursor-review")
         args = [
-            sys.executable,
-            str(PY_CLI),
+            str(larch_entrypoint(REPO_ROOT)),
             "agent",
             "launch-review",
             "--tool",

@@ -1981,7 +1981,7 @@ exit 0
     assert "--timing-task-kind cursor-plan-autofix" in cursor_argv.read_text(encoding="utf-8")
 
 
-def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_revise_waterfall_default_launchers_use_rust_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plan, findings, feature = _revise_base(tmp_path)
     recorded: list[list[str]] = []
     real_run = subprocess.run
@@ -2031,9 +2031,8 @@ def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monke
     assert all(cmd[cmd.index("--model-role") + 1] == "fix" for cmd in codex_cmds)
     assert all("--model-role" not in cmd for cmd in cursor_cmds)
     for cmd in codex_cmds + cursor_cmds:
-        assert cmd[0] == sys.executable
-        assert cmd[1].endswith("python/cli.py")
-        assert cmd[2:4] == ["agent", "launch-review"]
+        assert cmd[0].endswith("/scripts/larch.sh")
+        assert cmd[1:3] == ["agent", "launch-review"]
 
 
 def test_revise_waterfall_default_design_driver_is_split_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

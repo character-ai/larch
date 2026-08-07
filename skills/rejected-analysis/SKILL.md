@@ -106,7 +106,7 @@ Still run Step 6 `finalize` and Step 8 `record` so prepare-owned
 For each parsed `VERIFY_PROMPT_<candidate-id>` path, launch one external verifier:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent launch-review \
   --tool <cursor|codex per availability> \
   --output "<parsed WORK_DIR>/verdict-<candidate-id>.txt" \
   --stderr-sink "<parsed WORK_DIR>/verdict-<candidate-id>.failure.log" \

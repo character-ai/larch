@@ -81,7 +81,7 @@ Before every fresh external lane start, truncate or recreate that lane's merge i
   --budget-s 1260 \
   --merge-result-env "$DESIGN_TMPDIR/.design-brainstorm-framing-result.env" \
   -- \
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
 ```
 
 **Scope** (when the registry-selected tool is external and available):
@@ -93,7 +93,7 @@ Before every fresh external lane start, truncate or recreate that lane's merge i
   --budget-s 1260 \
   --merge-result-env "$DESIGN_TMPDIR/.design-brainstorm-scope-result.env" \
   -- \
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
 
 Fresh-launch stdout for each lane must be exactly `BGJOB_STATUS=STARTED STEP=<lane-step> PGID=<n>`. Wait on each launched lane with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step <lane-step> --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` and timeout `330000`. `BGJOB_STATUS=WAIT` means the next action for that lane is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. After `BGJOB_STATUS=DONE`, read `$DESIGN_TMPDIR/bgjob/<lane-step>.result.env`; continue to collection only when `BGJOB_RC=0`. `DEAD`, missing `BGJOB_RC`, non-zero `BGJOB_RC`, `BGJOB_RC=timeout`, or `BGJOB_RC=orphaned` uses the existing launch-failure and dirty-tree recovery path.

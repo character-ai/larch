@@ -60,8 +60,8 @@ After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but bel
 
 **For plan review** (`/design` Step 3):
 - **Voter 1**: Claude — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent launch-claude-review --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
-- **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh` (waterfalls Codex, then Cursor, then Claude)
-- **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh` (waterfalls Cursor, then Codex, then Claude)
+- **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Codex, then Cursor, then Claude)
+- **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Cursor, then Codex, then Claude)
 
 **For code review** (`/review` Step 3 and `/implement` Step 5): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches three fixed voter slots, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). All three voters use Codex-primary waterfall dispatch (Codex, then Cursor, then Claude) and may fall through to the configured external fallback labels:
 - **Voter 1** (`v1`): `codex-validity`: `render voter --archetype validity-correctness`

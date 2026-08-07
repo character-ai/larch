@@ -345,6 +345,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "agent",
         "external-tool-registry",
     ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-review",
+        "agent",
+        "launch-review",
+    ),
     CleanInstallCase::new("clean-install-agent-model-args", "agent", "model-args"),
     CleanInstallCase::new(
         "clean-install-agent-read-claude-model",

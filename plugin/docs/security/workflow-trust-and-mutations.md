@@ -103,15 +103,15 @@ the private home when environment-key auth is absent. It never places a
 symlink in the prepared home or points `CODEX_HOME` outside that root; the
 typed `CODEX_HOME` override reaches only the vendor child request.
 
-The Rust vendor lifecycle is inactive adapter parity and does not cut over a
-launcher command. Its hook port preserves cap, preflight, execution, retry, and
-postprocessing order while the shared process runner remains the only Rust
-product-spawn and live process-group owner. On cancellation or timeout, a final
-group kill follows a gracefully exited leader so a surviving descendant cannot
-escape cleanup. Darwin startup locking uses a caller-selected temporary root,
-a bounded retry budget, a confined lock directory, and an owned delayed-release
-handle. Stall writers reuse `LauncherArtifactPaths` for the `.stall.json` path,
-bound and redact captured transcript and Git status text, and publish through the shared
+Rust owns the `agent launch-review` lifecycle for Codex and Cursor reviewers.
+It preserves cap, preflight, execution, retry, and postprocessing order while
+the shared process runner remains the only Rust product-spawn and live
+process-group owner. On cancellation or timeout, a final group kill follows a
+gracefully exited leader so a surviving descendant cannot escape cleanup.
+Darwin startup locking uses a caller-selected temporary root, a bounded retry
+budget, a confined lock directory, and an owned delayed-release handle. Stall
+writers reuse `LauncherArtifactPaths` for the `.stall.json` path, bound and
+redact captured transcript and Git status text, and publish through the shared
 confined atomic writer. A detailed Cursor compatibility sidecar remains
 best-effort and cannot turn a successfully published primary artifact into a
 launch failure.

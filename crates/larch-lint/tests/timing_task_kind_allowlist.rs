@@ -16,15 +16,15 @@ fn timing_task_kind_rule_covers_skill_text_rust_commands_and_clap_defaults() {
     write_allowlist(&repository);
     repository.write(
         "skills/example/SKILL.md",
-        b"python3 python/cli.py agent launch-review --timing-task-kind missing-markdown\n",
+        b"scripts/larch.sh agent launch-review --timing-task-kind missing-markdown\n",
     );
     repository.write(
         "skills/example/scripts/launch.sh",
-        b"python3 python/cli.py agent launch-review --timing-task-kind missing-shell\n",
+        b"scripts/larch.sh agent launch-review --timing-task-kind missing-shell\n",
     );
     repository.write(
         "skills/example/scripts/test-launch.sh",
-        b"python3 python/cli.py agent launch-review --timing-task-kind ignored-test\n",
+        b"scripts/larch.sh agent launch-review --timing-task-kind ignored-test\n",
     );
     repository.write(
         "crates/example/src/timing.rs",

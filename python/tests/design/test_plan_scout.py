@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from larch.design import plan_scout
@@ -227,7 +226,7 @@ def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monk
     assert "cursor description-mode tier missed scout JSON" in stdout
 
 
-def test_dynamic_default_launch_review_uses_python_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_dynamic_default_launch_review_uses_rust_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     scope = tmp_path / "scope.txt"
     desc = tmp_path / "desc.txt"
     scope.write_text("python/foo.py\n", encoding="utf-8")
@@ -262,9 +261,8 @@ def test_dynamic_default_launch_review_uses_python_cli(tmp_path: Path, monkeypat
     launch_cmds = [cmd for cmd in recorded if "launch-review" in cmd]
     assert launch_cmds
     cmd = launch_cmds[0]
-    assert cmd[0] == sys.executable
-    assert cmd[1].endswith("/python/cli.py")
-    assert cmd[2:4] == ["agent", "launch-review"]
+    assert cmd[0].endswith("/scripts/larch.sh")
+    assert cmd[1:3] == ["agent", "launch-review"]
     assert "SCOUT_STATUS=ok" in capsys.readouterr().out
 
 

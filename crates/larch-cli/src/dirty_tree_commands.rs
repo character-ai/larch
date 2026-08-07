@@ -10,7 +10,7 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::git::GixRepository;
+use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_bytes, git::GixRepository};
 use larch_core::{RepositoryStatus, StatusOptions};
 
 use crate::valid_meta_path;
@@ -321,6 +321,143 @@ fn baseline_lines(baseline_path: &Path, sidecar: Option<&Path>, cwd: Option<&Pat
         return result_lines("dirty", "baseline", details);
     }
     result_lines("clean", "baseline", details)
+}
+
+/// Capture a current sorted untracked-path baseline below a confined artifact root.
+///
+/// This is the in-process counterpart of `git snapshot-untracked`, used by
+/// the Rust-owned review launcher so its cursor dirty-tree comparison stays in
+/// the existing dirty-tree owner rather than spawning a second larch process.
+pub fn capture_untracked_baseline_for_review(
+    root: &TemporaryRoot,
+    baseline: &Path,
+    cwd: &Path,
+) -> bool {
+    let Ok(status) = repository_status(Some(cwd)) else {
+        return false;
+    };
+    let mut data = Vec::new();
+    for path in untracked_paths(&status) {
+        data.extend(path);
+        data.push(0);
+    }
+    root.confine(baseline, PathIntent::Write)
+        .ok()
+        .is_some_and(|path| atomic_write_bytes(&path, &data, 0o600).is_ok())
+}
+
+/// Compute the cursor review dirty-tree comparison through a confined root.
+pub fn baseline_sidecar_lines_for_review(
+    root: &TemporaryRoot,
+    baseline: &Path,
+    sidecar: &Path,
+    cwd: &Path,
+) -> Vec<String> {
+    review_baseline_lines(root, baseline, sidecar, cwd)
+}
+
+fn review_baseline_lines(
+    root: &TemporaryRoot,
+    baseline: &Path,
+    sidecar: &Path,
+    cwd: &Path,
+) -> Vec<String> {
+    if !valid_meta_path(baseline.as_os_str()) || !valid_meta_path(sidecar.as_os_str()) {
+        return result_lines(
+            "unknown",
+            "baseline",
+            ResultDetails::baseline(Some("bad-sidecar-path"), "missing"),
+        );
+    }
+    let Ok(baseline) = root.confine(baseline, PathIntent::Write) else {
+        return result_lines(
+            "unknown",
+            "baseline",
+            ResultDetails::baseline(Some("bad-baseline-path"), "missing"),
+        );
+    };
+    let Ok(sidecar) = root.confine(sidecar, PathIntent::Write) else {
+        return result_lines(
+            "unknown",
+            "baseline",
+            ResultDetails::baseline(Some("bad-sidecar-path"), "missing"),
+        );
+    };
+    let Ok(status) = repository_status(Some(cwd)) else {
+        return result_lines(
+            "unknown",
+            "baseline",
+            ResultDetails::baseline(Some("git-status-failed"), "missing"),
+        );
+    };
+    let baseline_state = if baseline.path().is_file() && baseline.revalidate().is_ok() {
+        "present"
+    } else {
+        "missing"
+    };
+    let tracked = tracked_paths(&status);
+    let current_untracked = untracked_paths(&status);
+    let mut details = ResultDetails::baseline(None, baseline_state);
+    if !tracked.is_empty() {
+        let tracked_path = path_with_suffix(sidecar.path(), ".tracked-paths");
+        if !write_nul_paths_under(root, &tracked_path, &tracked) {
+            return result_lines(
+                "unknown",
+                "baseline",
+                ResultDetails::baseline(Some("tracked-paths-write-failed"), baseline_state),
+            );
+        }
+        details.tracked_paths_file = Some(tracked_path);
+    }
+    let new_untracked = if baseline_state == "missing" {
+        if current_untracked.is_empty() {
+            Ok(BTreeSet::new())
+        } else {
+            Err("baseline-missing-untracked-ambiguous")
+        }
+    } else if baseline.revalidate().is_ok() {
+        fs::read(baseline.path())
+            .map(|bytes| {
+                current_untracked
+                    .difference(&split_nul(&bytes))
+                    .cloned()
+                    .collect()
+            })
+            .map_err(|_error| "baseline-sort-failed")
+    } else {
+        Err("baseline-sort-failed")
+    };
+    let new_untracked = match new_untracked {
+        Ok(paths) => paths,
+        Err(reason) => {
+            details.reason = Some(reason);
+            return result_lines("unknown", "baseline", details);
+        }
+    };
+    if !new_untracked.is_empty() {
+        let untracked_path = path_with_suffix(sidecar.path(), ".new-untracked-paths");
+        if !write_nul_paths_under(root, &untracked_path, &new_untracked) {
+            details.reason = Some("new-untracked-paths-write-failed");
+            return result_lines("unknown", "baseline", details);
+        }
+        details.new_untracked_paths_file = Some(untracked_path);
+    }
+    if details.tracked_paths_file.is_some() || details.new_untracked_paths_file.is_some() {
+        details.reason = Some("working-tree-dirty");
+        return result_lines("dirty", "baseline", details);
+    }
+    result_lines("clean", "baseline", details)
+}
+
+fn write_nul_paths_under(root: &TemporaryRoot, path: &Path, paths: &BTreeSet<Vec<u8>>) -> bool {
+    let mut data = Vec::new();
+    for item in paths {
+        data.extend_from_slice(item);
+        data.push(b'\0');
+    }
+    root.confine(path, PathIntent::Write)
+        .ok()
+        .is_some_and(|path| atomic_write_bytes(&path, &data, 0o600).is_ok())
 }
 
 fn checkpoint_lines(cwd: Option<&Path>) -> Vec<String> {

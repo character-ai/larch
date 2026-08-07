@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import cast
 
 ARG_PAIR_SIZE = 2
+CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR = 1_000
+CURSOR_DEGRADED_RESULT_BYTES_CEILING = 500
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 GENERATORS_TSV_COLUMNS = 2
 GIT = shutil.which("git") or "git"
@@ -235,6 +237,180 @@ def _run_external_agent(arguments: list[str]) -> int:
         if stderr_handle is not None:
             stderr_handle.close()
     _ = target.with_suffix(target.suffix + ".done").write_text(
+        f"{result.returncode}\n", encoding="utf-8"
+    )
+    return result.returncode
+
+
+def _option_values(arguments: list[str]) -> tuple[dict[str, str], set[str]]:
+    """Parse the small launch-review surface needed by Python caller tests."""
+    values: dict[str, str] = {}
+    switches: set[str] = set()
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--competition-notice":
+            switches.add(argument)
+            index += 1
+            continue
+        if not argument.startswith("--") or index + 1 >= len(arguments):
+            return {}, set()
+        values[argument] = arguments[index + 1]
+        index += 2
+    return values, switches
+
+
+def _review_prompt(values: dict[str, str], switches: set[str]) -> str:
+    prompt_file = values.get("--prompt-file", "")
+    if prompt_file:
+        return Path(prompt_file).read_text(encoding="utf-8", errors="replace")
+    agent_file = values.get("--agent-file", "")
+    if not agent_file:
+        return ""
+    prompt = Path(agent_file).read_text(encoding="utf-8", errors="replace")
+    if values.get("--description-text"):
+        prompt += f"\n{values['--description-text']}\n"
+    if "--competition-notice" in switches:
+        prompt += "\nCompetition notice\n"
+    notice = values.get("--competition-notice-file", "")
+    if notice:
+        prompt += Path(notice).read_text(encoding="utf-8", errors="replace")
+    return prompt
+
+
+def _append_panel_row(*, tool: str, output: Path, prompt: str) -> None:
+    artifact_dir = os.environ.get("LARCH_PANEL_ARTIFACT_DIR", "")
+    slot = os.environ.get("LARCH_PANEL_SLOT", "")
+    if not artifact_dir or not slot:
+        return
+    phase = os.environ.get("LARCH_PANEL_PHASE", "")
+    slot_kind = "voter" if "voter" in slot.lower() else "specialist"
+    artifact = Path(artifact_dir) / "panel-prompt-sizes.tsv"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens"
+        "\tscaffold_bytes\tscaffold_tokens\tpayload_bytes\tpayload_tokens\tagent_file\tagent_bytes\tagent_tokens"
+    )
+    prompt_bytes = len(prompt.encode())
+    payload_bytes = int(os.environ.get("LARCH_PANEL_PAYLOAD_BYTES", "0") or "0")
+    row = [
+        os.environ.get("LARCH_PANEL_SITE", ""),
+        phase,
+        os.environ.get("LARCH_PANEL_ROUND_NUM", ""),
+        slot,
+        slot_kind,
+        tool,
+        output.name,
+        str(prompt_bytes),
+        str((prompt_bytes + 3) // 4),
+        str(max(prompt_bytes - payload_bytes, 0)),
+        str((max(prompt_bytes - payload_bytes, 0) + 3) // 4),
+        str(payload_bytes),
+        str((payload_bytes + 3) // 4),
+        "",
+        "0",
+        "0",
+    ]
+    with artifact.open("a+", encoding="utf-8") as handle:
+        _ = handle.seek(0)
+        if not handle.read():
+            _ = handle.write(f"{header}\n")
+        _ = handle.write("\t".join(row) + "\n")
+
+
+def _write_review_meta(*, tool: str, output: Path, timeout: str, values: dict[str, str]) -> None:
+    prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
+    lines = [
+        f"TOOL={tool}",
+        f"TIMEOUT={timeout}",
+        "CAPTURE_STDOUT=false",
+        f"CAPTURE_STDOUT_ONLY={'true' if tool == 'cursor' else 'false'}",
+        f"OUTPUT_FILE={output}",
+        "CMD_JSON=[]",
+        "OUTER_LAUNCHER=agent launch-review",
+        f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
+        f"OUTER_LAUNCHER_WORKDIR={Path.cwd()}",
+        f"OUTER_LAUNCHER_SITE={values.get('--site', 'review Step 2')}",
+        f"OUTER_LAUNCHER_MODEL_ROLE={values.get('--model-role', 'default') or 'default'}",
+    ]
+    timing = values.get("--timing-task-kind", "")
+    if timing:
+        lines.append(f"OUTER_LAUNCHER_TIMING_KIND={timing}")
+    cursor_model = values.get("--cursor-model", "")
+    if cursor_model:
+        lines.append(f"OUTER_LAUNCHER_CURSOR_MODEL={cursor_model}")
+    _ = output.with_suffix(output.suffix + ".meta").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+
+def _launch_review(arguments: list[str]) -> int:
+    """Test-double implementation of the Rust review launcher contract.
+
+    Caller integration tests run through the verified bootstrap and only need
+    fake-vendor artifacts. Native Rust tests cover the real command itself.
+    """
+    values, switches = _option_values(arguments)
+    tool = values.get("--tool", "")
+    output_text = values.get("--output", "")
+    timeout = values.get("--timeout", "")
+    if tool not in {"codex", "cursor"} or not output_text or not timeout:
+        return 2
+    try:
+        prompt = _review_prompt(values, switches)
+    except OSError:
+        return 1
+    output = Path(output_text)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    _ = output.with_suffix(output.suffix + ".prompt").write_text(prompt, encoding="utf-8")
+    _append_panel_row(tool=tool, output=output, prompt=prompt)
+    if tool == "codex":
+        command = [
+            "codex", "exec",  # lint-codex-exec-auth: ok test-only fake vendor invocation
+            "--sandbox",
+            "read-only",
+            "--output-last-message",
+            str(output),
+            prompt,
+        ]
+        result = subprocess.run(command, check=False, capture_output=True)
+        _ = output.with_suffix(output.suffix + ".events.jsonl").write_text("{}\n", encoding="utf-8")
+    else:
+        command = ["cursor", "--mode", "ask", prompt]
+        result = subprocess.run(command, check=False, capture_output=True)
+        _ = output.write_bytes(result.stdout)
+        if result.returncode == 0:
+            try:
+                payload: object = json.loads(result.stdout.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                payload = {}
+            if isinstance(payload, dict):
+                record = cast("dict[str, object]", payload)
+                result_text = record.get("result")
+                usage = record.get("usage")
+                usage_record = cast("dict[str, object]", usage) if isinstance(usage, dict) else {}
+                output_tokens = usage_record.get("outputTokens", 0)
+                if (
+                    isinstance(result_text, str)
+                    and isinstance(output_tokens, int)
+                    and output_tokens > CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
+                    and len(result_text.encode()) < CURSOR_DEGRADED_RESULT_BYTES_CEILING
+                ):
+                    _ = output.write_text("CURSOR_DEGRADED_RESPONSE\n", encoding="utf-8")
+                elif isinstance(result_text, str):
+                    _ = output.write_text(result_text, encoding="utf-8")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    if result.returncode == 0:
+        _ = sidecar.write_text(
+            f"{tool}-status: ok (no stderr emitted during agent run)\n", encoding="utf-8"
+        )
+    else:
+        _ = output.with_suffix(output.suffix + ".diag").write_bytes(result.stderr)
+        _ = sidecar.write_bytes(
+            result.stderr or f"STATUS=FAILED\nLAUNCHER_EXIT={result.returncode}\n".encode()
+        )
+    _write_review_meta(tool=tool, output=output, timeout=timeout, values=values)
+    _ = output.with_suffix(output.suffix + ".done").write_text(
         f"{result.returncode}\n", encoding="utf-8"
     )
     return result.returncode
@@ -623,6 +799,7 @@ def main(arguments: list[str]) -> int:
             ("agent", "gather-branch-context"): _gather,
             ("agent", "compose-collector-failure-log"): _compose,
             ("agent", "run-external-agent"): _run_external_agent,
+            ("agent", "launch-review"): _launch_review,
             ("run-log", "append-failure"): _append_failure,
             ("run-log", "append-entry"): _append_entry,
             ("run-log", "init"): _run_log_init,
