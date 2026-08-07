@@ -324,6 +324,45 @@ jobs:
       - name: Run lintlang
         run: lintlang scan agents .claude/agents skills .claude/skills --min-severity high --fail-on fail
 
+  # This observer is deliberately independent of the required Rust gate. It
+  # computes a fail-closed proposed mode from the PR's real base and head, but
+  # does not yet change any required lane. Enforce only after a documented
+  # observation window shows no false-safe classification.
+  rust-selection-observation:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          # The selector verifies both supplied commits and refuses a shallow
+          # or mismatched checkout. It selects full when the event base is not
+          # an ancestor, so head metadata always describes the diff's result.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Observe proposed Rust CI selection
+        env:
+          RUST_CI_EVENT_NAME: ${{ github.event_name }}
+          RUST_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RUST_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          selector_result="$RUNNER_TEMP/rust-ci-selection.json"
+          python3 python/cli.py ci rust-select \
+            --event-name "$RUST_CI_EVENT_NAME" \
+            --base-sha "$RUST_CI_BASE_SHA" \
+            --head-sha "$RUST_CI_HEAD_SHA" \
+            --repo-root "$GITHUB_WORKSPACE" > "$selector_result"
+          python3 python/cli.py ci rust-select-summary \
+            --result-file "$selector_result" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Rust CI selection observation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-ci-selection-observation
+          path: ${{ runner.temp }}/rust-ci-selection.json
+          if-no-files-found: error
+
   # Rust format and Clippy lane. Repository policy runs in the coverage
   # execution lane, while cargo-deny remains independent.
   rust-lint:

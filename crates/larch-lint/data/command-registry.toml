@@ -1334,6 +1334,30 @@ planning_issue = 7681
 
 [[commands]]
 domain = "ci"
+verb = "rust-select"
+python_module = "larch.implement.rust_ci_selection"
+python_function = "rust_select_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8216
+
+[[commands]]
+domain = "ci"
+verb = "rust-select-summary"
+python_module = "larch.implement.rust_ci_selection"
+python_function = "rust_select_summary_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8216
+
+[[commands]]
+domain = "ci"
 verb = "status"
 python_module = "larch.implement.ci"
 python_function = "status_main"
@@ -8096,7 +8120,7 @@ planning_issue = 7679
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "generate check", "residual-bash paths"]
+python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "generate check", "residual-bash paths"]
 rust = ["lint gitleaks"]
 
 [[callers]]

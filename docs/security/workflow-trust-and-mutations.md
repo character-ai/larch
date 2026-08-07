@@ -284,6 +284,40 @@ cache stays disabled unless independent end-to-end measurements prove it helps.
 Neither a cache restore nor its diagnostic metadata waives the coverage,
 artifact, executable, repository-policy, or plugin-validation gates.
 
+### CI Rust selection trust
+
+The pull-request `rust-selection-observation` job has read-only workflow
+permissions and only observes a proposed mode. It checks out the pull-request
+head with full history, supplies the event base and head SHA to the Python
+selector, and keeps every required Rust lane independent of its result. The
+selector validates commit identity and checked-out state before inspecting a
+diff. It accepts the GitHub base only when it is an ancestor; a non-ancestor
+base is `full` because metadata from the checked-out head cannot prove the
+dependency closure of a merge tree. Missing history, a malformed or empty diff,
+unknown path, metadata failure, or unsupported workspace shape is a `full`
+result.
+
+The only narrower proposal is a Rust-source-only package closure. It is derived
+from locked offline Cargo metadata and includes normal, build, and dev reverse
+dependency edges. Package names and commands are validated and sorted before
+rendering. Every dynamic JSON and summary string passes through the Python core
+redaction boundary and a residual-secret rescan; redaction failure emits a
+static `full` result without changed-path data. The step summary then
+HTML-escapes those redacted fields, and the structured result is an artifact
+for audit, not an authorization token. Current `skip` ownership is intentionally
+empty: no supplementary path is skipped while repository-wide policy lacks a
+separately proven required validation owner. Changes to `larch-cli` and its
+local normal, build, or dev dependency closure (including
+`larch-test-support`) are also `full` until a partial plan reproduces the
+verified executable, repository and plugin validation, artifact upload, and
+Python integration consumers.
+
+Observation never suppresses `rust-lint`, `rust-deny`, coverage, artifact,
+repository-policy, plugin-validation, or Python-artifact handoff. Enforcement
+requires a later reviewed change with recorded full-lane comparisons and no
+false-safe classification. Main, manual, scheduled, merge-queue, and unknown
+events continue to run the full lane, which is also the required backstop.
+
 ### Design
 
 Issue text, feature text, plan text, findings, ballots, scout output,

@@ -245,6 +245,69 @@ uploading it for Python integration tests. The separate doctest command stays
 required even when the workspace currently has no doctests. Nextest's slow-test
 status and final status output remain visible in the job log.
 
+### Pull-request Rust selection observation
+
+`rust-selection-observation` runs only for pull requests. It checks out the
+pull-request head with full history, then invokes the stdlib-only
+`python3 python/cli.py ci rust-select` command with the GitHub event base and
+head SHAs. The command verifies both commits and the checked-out head. It uses
+the event base only when it is an ancestor of the head; a non-ancestor base
+proposes `full` instead of diffing from a merge base whose resulting merge tree
+could have dependencies absent from head metadata. A missing commit, shallow
+history, empty or malformed diff, unsupported status, metadata parse failure,
+or internal selector error proposes `full`.
+
+The observer emits one deterministic JSON result, uploads it as the
+`rust-ci-selection-observation` artifact, and renders a step summary. Before
+either egress surface, the Python core redaction boundary scrubs every dynamic
+string and rescans it; a scrub failure emits a static `full` result with no
+changed-path data. The summary HTML-escapes the already-redacted fields. It
+records the proposed mode, comparison base and head, changed paths, affected
+packages, reverse dependents, and a full-run trigger or skip proof. Its output
+is evidence only: it has no `needs` edge into `rust-lint`,
+`rust-deny`, `rust-coverage-profile`, `rust-coverage`, or `rust-gate`. Those
+lanes still run in full on every pull request during the observation window.
+
+The selector has three modes:
+
+- `full` retains the complete current Rust surface, including coverage,
+  doctests, repository policy, plugin validation, Linux artifact production,
+  format, Clippy, and dependency policy.
+- `partial` is proposed only for a Rust-source-only diff whose changed packages
+  and every transitive reverse dependent are proven from `cargo metadata
+  --no-deps --locked --offline`. Normal, build, and dev path-dependency edges
+  all contribute to that closure. A `.rs` extension alone is insufficient: each
+  path must also fall under a Cargo-metadata target source root. Proposed
+  commands use sorted package names,
+  `--all-targets --all-features --locked` Clippy, locked all-feature tests, and
+  a separate locked all-feature doctest command for affected library packages.
+  A partial result neither runs nor claims the full-workspace coverage threshold.
+  Changes to `larch-cli`, or to any package in its local normal, build, or dev
+  dependency closure (including `larch-test-support`), instead propose `full`:
+  the current partial command plan does not reproduce the verified executable,
+  repository policy and plugin validation, artifact upload, or Python
+  integration consumers those packages affect.
+- `skip` is reserved for an audited supplementary-only allowlist whose every
+  path family has a named required validation owner. The allowlist is empty in
+  this rollout because `larch lint all` examines repository-wide content. Thus
+  every non-Rust or mixed change set currently proposes `full`, not `skip`.
+
+`Cargo.lock`, root or crate manifests, `rust-toolchain.toml`, `.cargo/`, build
+scripts, the Rust CI workflow, selector files, test-profile files, `deny.toml`,
+and Makefiles are global inputs and always propose `full`. Unknown paths do the
+same. `rust-deny` remains required for every actual workflow run; a future
+enforcement change may omit it only when the selector proves that no Cargo,
+license, advisory, source-policy, or deny input changed.
+
+Do not enable partial or skip enforcement from this observation data alone. A
+follow-up must record an observation window in which every proposed partial or
+skip result is compared with the successful full lane and no false-safe
+classification appears. `main`, manual dispatch, scheduled, merge-queue, and
+unknown-event runs remain unsharded full runs. The current pull-request escape
+hatch is therefore immediate: rerun the pull-request workflow and it still runs
+the full Rust surface. `main` is the periodic full-run backstop that any future
+enforcement must preserve.
+
 ### Coverage-profile measurement contract
 
 A profile comparison uses the same commit, `ubuntu-24.04` runner, pinned
