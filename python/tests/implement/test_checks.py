@@ -3695,9 +3695,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
-    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split(
-        "\n  rust-coverage-profile:", 1
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage-profile:", 1)[0]
+    rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
+        "\n  rust-coverage:", 1
     )[0]
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
@@ -3731,20 +3731,20 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "agent-lint:" in workflow
     assert "rust-lint:" in workflow
     assert "rust-deny:" in workflow
-    assert "rust-build-test:" in workflow
+    assert "rust-build-test:" not in workflow
     assert "\n  rust-clippy:" not in workflow
     assert "rust-coverage-profile:" in workflow
     assert "rust-coverage:" in workflow
     assert "rust-gate:" in workflow
-    assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in workflow
+    assert "needs: [rust-lint, rust-deny, rust-coverage]" in workflow
     assert "make rust-fmt" in rust_lint
     assert "make rust-clippy" in rust_lint
     assert "make rust-lint" not in rust_lint
     assert "cargo-deny-action" not in rust_lint
-    assert "make rust-lint" in rust_build_test
-    assert "## Rust repository validation timing" in rust_build_test
-    assert "make rust-build" in workflow
-    assert "make rust-test" in workflow
+    assert '"$coverage_larch" lint all' in rust_coverage
+    assert "make rust-lint" not in rust_coverage
+    assert "make rust-build" not in workflow
+    assert "make rust-test" not in workflow
     assert "cargo llvm-cov nextest --no-report" in workflow
     assert "cargo test --doc" in workflow
     assert "make rust-coverage" not in workflow
@@ -3771,10 +3771,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
     ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
-    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split(
-        "\n  rust-coverage-profile:", 1
-    )[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage-profile:", 1)[0]
     rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
         "\n  rust-coverage:", 1
     )[0]
@@ -3782,6 +3779,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  rust-gate:", 1
     )[0]
     rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
+    python_tests = workflow.split("\n  python-tests:", 1)[1].split(
+        "\n  python-tests-gate:", 1
+    )[0]
     gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
     cargo_input_key = (
@@ -3802,7 +3802,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ):
         assert env_value in rust_lint
     assert cargo_input_key in rust_lint
-    assert cargo_input_key in rust_build_test
     assert cargo_input_key in rust_coverage
     assert cargo_input_key in gitleaks
 
@@ -3823,9 +3822,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     lint_input_cache = rust_lint.split("Restore Cargo inputs", 1)[1].split(
         "Restore Rust lint dependencies", 1
     )[0]
-    build_input_cache = rust_build_test.split("Restore Cargo inputs", 1)[1].split(
-        "Initialize Rust build/test phase timing", 1
-    )[0]
     coverage_input_cache = rust_coverage.split("Restore Cargo inputs", 1)[1].split(
         "Record Rust coverage cache restore timing", 1
     )[0]
@@ -3834,7 +3830,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     )[0]
     for input_cache in (
         lint_input_cache,
-        build_input_cache,
         coverage_input_cache,
         gitleaks_input_cache,
     ):
@@ -3842,7 +3837,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert "actions/cache/restore@" + cache_sha in input_cache
         assert "actions/cache@" + cache_sha not in input_cache
 
-    for rust_job in (rust_lint, rust_build_test, rust_coverage, gitleaks):
+    for rust_job in (rust_lint, rust_coverage, gitleaks):
         cargo_input_save = rust_job.split("Save Cargo inputs", 1)[1]
         assert "actions/cache/save@" + cache_sha in cargo_input_save
         assert (
@@ -3885,6 +3880,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
+    assert "cargo build --package larch-cli --bin larch --all-features --locked \\" in rust_coverage
     assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
@@ -3903,26 +3899,53 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "doctests",
         "coverage-report",
         "end-to-end-total-",
+        "repository-validation",
         "cache-save",
     ):
         assert timing_phase in rust_coverage
     assert "workflow_dispatch-read-only" in rust_coverage
-    assert "repository-validation" in rust_build_test
-    assert "rust-build-test-timings" in rust_build_test
-    assert "## Rust repository validation timing" in rust_build_test
+    coverage_binary = "target/llvm-cov-target/debug/larch"
+    assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in rust_coverage
+    assert 'test -x "$coverage_larch"' in rust_coverage
+    assert '"$coverage_larch" --version' in rust_coverage
+    assert '"$coverage_larch" lint all' in rust_coverage
+    assert '"$coverage_larch" release plugin-runtime' in rust_coverage
+    assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
+    assert "git diff --exit-code -- plugin" in rust_coverage
+    coverage_binary_artifact = rust_coverage.split(
+        "Upload coverage-built Rust executable for cross-language integration tests", 1
+    )[1].split("Start Rust coverage cache save timing", 1)[0]
+    assert f"path: {coverage_binary}" in rust_coverage
+    assert "name: larch-linux-test-binary" in coverage_binary_artifact
+    assert f"path: {coverage_binary}" in coverage_binary_artifact
+    assert "if-no-files-found: error" in coverage_binary_artifact
+    assert "matrix.test_opt_level == '0' && matrix.sample == 1" in coverage_binary_artifact
+    assert rust_coverage.index("coverage-report-${test_threads}") < rust_coverage.index(
+        "Run repository and plugin validations with coverage executable"
+    )
+    assert rust_coverage.index("Run repository and plugin validations with coverage executable") < rust_coverage.index(
+        "Upload Rust coverage report"
+    )
     for cache_contract in (
         "restore-only cache action",
         "workflow_dispatch-read-only",
         "cannot publish Cargo inputs",
     ):
         assert cache_contract in rust_testing
-    assert "workflow_dispatch` runs" in supply_chain
+    assert "rust-build-test" not in rust_testing
+    assert "coverage-target executable" in rust_testing
+    assert "workflow_dispatch" in supply_chain
     assert "cannot publish" in supply_chain
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage
     assert "rust-coverage-lcov${{ github.event_name == 'workflow_dispatch'" in rust_coverage
-    assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index("Save cargo-nextest binary")
+    assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
+        "Upload coverage-built Rust executable for cross-language integration tests"
+    )
+    assert rust_coverage.index("Upload coverage-built Rust executable for cross-language integration tests") < rust_coverage.index(
+        "Save cargo-nextest binary"
+    )
 
     assert "name: rust-coverage" in rust_coverage_gate
     assert "needs: [rust-coverage-profile]" in rust_coverage_gate
@@ -3931,10 +3954,18 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'coverage_profile_result="${{ needs.rust-coverage-profile.result }}"' in rust_coverage_gate
     assert "rust-coverage-profile result=$coverage_profile_result" in rust_coverage_gate
 
-    assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in rust_gate
-    for result_name in ("lint_result", "deny_result", "build_test_result", "coverage_result"):
+    assert "needs: [rust-lint, rust-deny, rust-coverage]" in rust_gate
+    for result_name in ("lint_result", "deny_result", "coverage_result"):
         assert result_name in rust_gate
+    assert "build_test_result" not in rust_gate
     assert "if: always()" in rust_gate
+
+    assert "needs: [rust-coverage]" in python_tests
+    assert "needs: [rust-build-test]" not in python_tests
+    assert "LARCH_TEST_RUST_BINARY" in python_tests
+    assert "name: larch-linux-test-binary" in python_tests
+    assert "path: .ci-bin" in python_tests
+    assert "chmod 755 .ci-bin/larch" in python_tests
 
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:

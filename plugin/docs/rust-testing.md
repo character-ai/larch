@@ -211,12 +211,14 @@ follows:
 - `rust-lint` runs format and Clippy with incremental compilation and dev/test
   debug output disabled.
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
-- `rust-build-test` remains the transitional owner of the full build, tests,
-  repository policy, plugin projection, and Linux executable artifact.
-- `rust-coverage-profile` uses a selected `cargo llvm-cov nextest` profile,
-  runs workspace doctests separately, enforces the workspace line baseline,
-  and writes `target/llvm-cov/lcov.info`; its non-matrix `rust-coverage`
-  aggregator preserves the protected required-check identity.
+- `rust-coverage-profile` is the coverage execution lane. It uses the selected
+  `cargo llvm-cov nextest` profile for the full locked workspace build and
+  tests, runs workspace doctests separately, enforces the workspace line
+  baseline, writes `target/llvm-cov/lcov.info`, runs repository policy and
+  plugin projection validation, and uploads the Linux executable artifact.
+- Its non-matrix `rust-coverage` aggregator preserves the protected
+  required-check identity. `python-tests` waits for that status and downloads
+  the coverage-produced `larch-linux-test-binary`.
 
 The coverage job installs checksum-verified pinned `cargo-nextest` and
 `cargo-llvm-cov` binaries without a source-install fallback. Normal local
@@ -227,14 +229,20 @@ The production candidate sets `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
 nextest with `NEXTEST_TEST_THREADS=4`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
-the environment exported by `cargo llvm-cov show-env`, then runs
-`cargo llvm-cov nextest --no-report` and a separate `cargo test --doc` command.
-`--no-report` preserves the coverage artifact set between normal-test phases;
-the stable toolchain runs doctests without cargo-llvm-cov's nightly-only
-doctest instrumentation. The report command retains the existing line threshold
-and filename exclusions. The separate doctest command stays required even when
-the workspace currently has no doctests. Nextest's slow-test status and final
-status output remain visible in the job log.
+the environment exported by `cargo llvm-cov show-env`. The same environment
+then builds the `larch` CLI into
+`target/llvm-cov-target/debug/larch`; no uninstrumented `target/debug/larch`
+is built. The lane runs `cargo llvm-cov nextest --no-report` and a separate
+`cargo test --doc` command. `--no-report` preserves the coverage artifact
+set between normal-test phases; the stable toolchain runs doctests without
+cargo-llvm-cov's nightly-only doctest instrumentation. The report command
+retains the existing line threshold and filename exclusions. After the report,
+the lane fails closed unless the coverage-target executable is runnable and
+reports its version, then uses that executable for `larch lint all`, both
+plugin-runtime commands, and the generated-projection clean-diff check before
+uploading it for Python integration tests. The separate doctest command stays
+required even when the workspace currently has no doctests. Nextest's slow-test
+status and final status output remain visible in the job log.
 
 ### Coverage-profile measurement contract
 
@@ -289,12 +297,12 @@ making that final claim.
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
 and writes it to the GitHub step summary. The coverage TSV records cache
 restore, tool setup, profile cleanup, compilation, doctests, every test and
-report phase, each end-to-end total, and cache save. Cache save records an
-explicit `workflow_dispatch-read-only` skip for manual benchmarks. The
-`rust-build-test-timings` artifact and its summary record the separate
-`repository-validation` phase, keeping that existing job owner intact. In the
-documented run, cache restore took 3–8 s, tool setup took 8–12 s, repository
-validation took 172 s, and cache save took 0 s and was skipped as intended.
+report phase, each end-to-end total, repository validation, and cache save.
+Cache save records an explicit `workflow_dispatch-read-only` skip for manual
+benchmarks. The documented pre-consolidation run measured 3–8 s for cache
+restore, 8–12 s for tool setup, 172 s for repository validation, and 0 s for
+the intentionally skipped cache save. The consolidated lane records the same
+validation phase in its own TSV.
 
 Cargo registry and Git inputs use a restore-only cache action in every Rust
 lane. Only a successful primary-key miss on a `main` push may invoke the
@@ -311,7 +319,7 @@ so it was unavailable to this workflow and does not affect the comparison.
 The lint lane may restore a manifest-keyed dependency cache under `target/debug`,
 then removes workspace products with `cargo clean --workspace` before a
 successful `main` push can save it. Pull requests do not publish that target
-cache. The transitional build/test and coverage lanes do not cache `target/`.
+cache. The coverage execution lane does not cache `target/`.
 
 The current CI floor is 88.000% lines. It is a no-regression floor, not a
 chosen repository target. Raise it when coverage improves. Lower it only with

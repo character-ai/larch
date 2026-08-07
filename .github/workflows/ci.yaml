@@ -324,8 +324,8 @@ jobs:
       - name: Run lintlang
         run: lintlang scan agents .claude/agents skills .claude/skills --min-severity high --fail-on fail
 
-  # Rust format and Clippy lane. Repository policy remains in rust-build-test
-  # until the coverage-owner leaf moves it, while cargo-deny runs independently.
+  # Rust format and Clippy lane. Repository policy runs in the coverage
+  # execution lane, while cargo-deny remains independent.
   rust-lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -402,112 +402,6 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
         with:
           arguments: --locked --all-features
-
-  # Native Linux build and test lane, modeled on agent-lint's build-and-test
-  # job and kept separate so it runs in parallel with Rust linting.
-  rust-build-test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/
-          sparse-checkout-cone-mode: false
-      - name: Install pinned Rust toolchain
-        run: |
-          rustc --version
-          cargo --version
-          rustup component list --installed
-      - name: Restore Cargo inputs
-        id: cargo-inputs-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
-      - name: Initialize Rust build/test phase timing
-        run: |
-          set -euo pipefail
-          timing_file="$RUNNER_TEMP/rust-build-test-phases.tsv"
-          printf 'phase\tseconds\toutcome\tdetail\n' > "$timing_file"
-          printf 'RUST_BUILD_TEST_TIMING_FILE=%s\n' "$timing_file" >> "$GITHUB_ENV"
-      - name: Build Rust workspace
-        run: make rust-build
-      - name: Test Rust workspace
-        run: make rust-test
-      # Keep repository policy required while this transitional lane owns the
-      # build and test workflow. The coverage-owner leaf moves it later.
-      - name: Run repository policy rules
-        id: repository-validation
-        run: |
-          set -euo pipefail
-          started="$(date +%s)"
-          if make rust-lint; then
-            result=0
-          else
-            result=$?
-          fi
-          finished="$(date +%s)"
-          seconds="$((finished - started))"
-          if [ "$result" -eq 0 ]; then
-            outcome=success
-          else
-            outcome=failure
-          fi
-          printf 'repository-validation\t%s\t%s\texit=%s\n' \
-            "$seconds" "$outcome" "$result" \
-            >> "$RUST_BUILD_TEST_TIMING_FILE"
-          printf 'seconds=%s\n' "$seconds" >> "$GITHUB_OUTPUT"
-          printf 'outcome=%s\n' "$outcome" >> "$GITHUB_OUTPUT"
-          exit "$result"
-      - name: Record skipped repository policy validation
-        if: always() && steps.repository-validation.outcome == 'skipped'
-        run: |
-          set -euo pipefail
-          printf 'repository-validation\t0\tskipped\tprior-build-or-test-failure\n' \
-            >> "$RUST_BUILD_TEST_TIMING_FILE"
-      - name: Upload Rust executable for cross-language integration tests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: larch-linux-test-binary
-          path: target/debug/larch
-          if-no-files-found: error
-      - name: Generate and validate the runtime-only plugin projection
-        run: |
-          set -euo pipefail
-          cargo run --quiet --locked --package larch-cli -- release plugin-runtime
-          cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check
-          git diff --exit-code -- plugin
-      - name: Save Cargo inputs
-        id: cargo-inputs-save
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
-      - name: Summarize Rust build/test phase timings
-        if: always()
-        run: |
-          set -euo pipefail
-          test -f "$RUST_BUILD_TEST_TIMING_FILE"
-          {
-            printf '## Rust repository validation timing\n\n'
-            printf '```tsv\n'
-            cat "$RUST_BUILD_TEST_TIMING_FILE"
-            printf '```\n'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload Rust build/test phase timings
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: rust-build-test-timings
-          path: ${{ runner.temp }}/rust-build-test-phases.tsv
-          if-no-files-found: error
 
   # Whole-workspace coverage stays separate from test sharding so its measured
   # baseline and exclusions remain stable. Normal PR and main runs use exactly
@@ -686,6 +580,12 @@ jobs:
             unset CARGO_LLVM_COV_SHOW_ENV
             cargo nextest run --workspace --all-features --locked \
               --target-dir "$coverage_target_dir" --no-run
+            # nextest compiles test executables, but the top-level CLI is not
+            # guaranteed to be one of them. Build it under the same coverage
+            # environment and target directory for downstream validation and
+            # Python integration tests.
+            cargo build --package larch-cli --bin larch --all-features --locked \
+              --target-dir "$coverage_target_dir"
           )
           run_timed compilation compile_coverage
           run_timed doctests cargo test --doc --workspace --all-features --locked
@@ -722,11 +622,49 @@ jobs:
               exit "$report_result"
             fi
           done
+      - name: Run repository and plugin validations with coverage executable
+        id: repository-validation
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
+          if test -x "$coverage_larch" \
+            && "$coverage_larch" --version \
+            && "$coverage_larch" lint all \
+            && "$coverage_larch" release plugin-runtime \
+            && "$coverage_larch" release plugin-runtime --check \
+            && git diff --exit-code -- plugin; then
+            result=0
+            outcome=success
+          else
+            result=$?
+            outcome=failure
+          fi
+          finished="$(date +%s)"
+          printf 'repository-validation\t%s\t%s\texit=%s;binary=%s\n' \
+            "$((finished - started))" "$outcome" "$result" "$coverage_larch" \
+            >> "$COVERAGE_TIMING_FILE"
+          exit "$result"
+      - name: Record skipped repository policy validation
+        if: always() && steps.repository-validation.outcome == 'skipped'
+        run: |
+          set -euo pipefail
+          printf 'repository-validation\t0\tskipped\tprior-coverage-failure\n' \
+            >> "$COVERAGE_TIMING_FILE"
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-coverage-lcov${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) || '' }}
           path: target/llvm-cov/lcov.info
+          if-no-files-found: error
+      - name: Upload coverage-built Rust executable for cross-language integration tests
+        # The dispatch-only profile matrix needs exactly one artifact for the
+        # downstream Python matrix. The normal required run is always 0/1.
+        if: success() && matrix.test_opt_level == '0' && matrix.sample == 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: larch-linux-test-binary
+          path: target/llvm-cov-target/debug/larch
           if-no-files-found: error
       - name: Start Rust coverage cache save timing
         if: always()
@@ -800,7 +738,7 @@ jobs:
             printf '## Rust coverage phase timings\n\n'
             printf 'Profile: test opt level %s; configured nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
               "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
-            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, and cache save; repository validation is recorded by rust-build-test.\n\n' \
+            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, repository validation, and cache save.\n\n' \
               "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
             printf '```tsv\n'
             cat "$COVERAGE_TIMING_FILE"
@@ -835,7 +773,7 @@ jobs:
   # shape changes. `if: always()` prevents a skipped dependency from passing.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]
+    needs: [rust-lint, rust-deny, rust-coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -843,11 +781,9 @@ jobs:
         run: |
           lint_result="${{ needs.rust-lint.result }}"
           deny_result="${{ needs.rust-deny.result }}"
-          build_test_result="${{ needs.rust-build-test.result }}"
           coverage_result="${{ needs.rust-coverage.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
           [ "$deny_result" = success ] || { echo "::error::rust-deny result=$deny_result"; exit 1; }
-          [ "$build_test_result" = success ] || { echo "::error::rust-build-test result=$build_test_result"; exit 1; }
           [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
 
   contains-pins:
@@ -1100,7 +1036,7 @@ jobs:
   # below is the source of truth for shard count. `make py-test` runs pytest
   # with --durations=0 so shards can be rebalanced by wall time later.
   python-tests:
-    needs: [rust-build-test]
+    needs: [rust-coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
