@@ -199,10 +199,28 @@ with `ProcessErrorKind::Spawn` even when a real vendor executable is installed.
 
 ## Coverage and CI
 
-Coverage is CI-only. The `rust-coverage` job installs the pinned tool, enforces
-the workspace line baseline, and writes `target/llvm-cov/lcov.info`. Normal
-local checks use changed-path Clippy and do not install coverage tooling or
-create instrumented artifacts.
+Coverage is CI-only. The required Rust jobs currently divide ownership as
+follows:
+
+- `rust-lint` runs format and Clippy with incremental compilation and dev/test
+  debug output disabled.
+- `rust-deny` runs the locked all-feature dependency policy in parallel.
+- `rust-build-test` remains the transitional owner of the full build, tests,
+  repository policy, plugin projection, and Linux executable artifact.
+- `rust-coverage` enforces the workspace line baseline and writes
+  `target/llvm-cov/lcov.info`.
+
+The coverage job installs checksum-verified pinned `cargo-nextest` and
+`cargo-llvm-cov` binaries for later test-profile work. It does not change the
+current coverage test command or install a tool from source. Normal local
+checks use changed-path Clippy and do not install coverage tooling or create
+instrumented artifacts.
+
+Cargo registry and Git inputs are cached separately from compiler output. The
+lint lane may restore a manifest-keyed dependency cache under `target/debug`,
+then removes workspace products with `cargo clean --workspace` before a
+successful `main` push can save it. Pull requests do not publish that target
+cache. The transitional build/test and coverage lanes do not cache `target/`.
 
 The current CI floor is 88.000% lines. It is a no-regression floor, not a
 chosen repository target. Raise it when coverage improves. Lower it only with

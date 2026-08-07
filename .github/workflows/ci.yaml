@@ -16,6 +16,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('ref-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -306,12 +310,15 @@ jobs:
       - name: Run lintlang
         run: lintlang scan agents .claude/agents skills .claude/skills --min-severity high --fail-on fail
 
-  # Rust format, Clippy, repository-rule, and dependency-policy lane, modeled
-  # on agent-lint's dedicated lint job. The aggregate rust-gate below is the
-  # stable required check and gates every Rust lane.
+  # Rust format and Clippy lane. Repository policy remains in rust-build-test
+  # until the coverage-owner leaf moves it, while cargo-deny runs independently.
   rust-lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -324,25 +331,44 @@ jobs:
           rustc --version
           cargo --version
           rustup component list --installed
-      - name: Cache Cargo inputs and build outputs
-        uses: actions/cache@v5
+      - name: Cache Cargo inputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          # GitHub cache entries are immutable. Include Rust sources so a
-          # successful Rust change publishes its updated workspace binaries.
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
+          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+      - name: Restore Rust lint dependencies
+        id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/debug
+          key: rust-lint-deps-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
       - name: Check Rust formatting
         run: make rust-fmt
       - name: Run Clippy with warnings denied
         run: make rust-clippy
-      - name: Run repository policy rules
-        run: make rust-lint
+      - name: Prune workspace artifacts from Rust lint cache
+        run: cargo clean --workspace
+      - name: Save Rust lint dependencies
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/debug
+          key: ${{ steps.rust-lint-deps-cache.outputs.cache-primary-key }}
+
+  # Dependency policy is independent of compilation lint, so it runs in
+  # parallel instead of extending the rust-lint critical path.
+  rust-deny:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       # cargo-deny-action v2.1.1. Pin the full SHA so dependency policy cannot
       # change without a reviewed workflow edit.
       - name: Check Rust dependency policy
@@ -367,23 +393,21 @@ jobs:
           rustc --version
           cargo --version
           rustup component list --installed
-      - name: Cache Cargo inputs and build outputs
-        uses: actions/cache@v5
+      - name: Cache Cargo inputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          # GitHub cache entries are immutable. Include Rust sources so a
-          # successful Rust change publishes its updated workspace binaries.
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
+          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
       - name: Build Rust workspace
         run: make rust-build
       - name: Test Rust workspace
         run: make rust-test
+      # Keep repository policy required while this transitional lane owns the
+      # build and test workflow. The coverage-owner leaf moves it later.
+      - name: Run repository policy rules
+        run: make rust-lint
       - name: Upload Rust executable for cross-language integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -403,7 +427,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
+      CARGO_NEXTEST_VERSION: "0.9.137"
+      CARGO_NEXTEST_ARCHIVE_SHA256: "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311"
+      CARGO_NEXTEST_BINARY_SHA256: "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550"
       CARGO_LLVM_COV_VERSION: "0.8.7"
+      CARGO_LLVM_COV_ARCHIVE_SHA256: "9a75fe29538d3800b3da57f6f6efb64cba5c720a257bf0cb8b51f39d495a9168"
+      CARGO_LLVM_COV_BINARY_SHA256: "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042"
       RUST_COVERAGE_MIN_LINES: "88.000"
       RUST_COVERAGE_IGNORE_REGEX: '(^|/)(crates/larch-test-support|tests|fixtures)(/|$)|/build\.rs$'
     steps:
@@ -413,26 +442,72 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
-      - name: Cache Cargo inputs and coverage build outputs
-        uses: actions/cache@v5
+      - name: Restore cargo-nextest binary
+        id: nextest-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cargo/bin/cargo-nextest
+          key: cargo-nextest-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_NEXTEST_VERSION }}
+      - name: Restore cargo-llvm-cov binary
+        id: llvm-cov-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}
+      - name: Cache Cargo inputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
-            ~/.cargo/bin/cargo-llvm-cov
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          # Include Rust sources so immutable cache entries advance after a
-          # successful source change instead of freezing old coverage outputs.
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
-      - name: Install pinned coverage tools
+          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+      - name: Install cargo-nextest
+        if: steps.nextest-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          rustup component add llvm-tools-preview
-          test "$(cargo llvm-cov --version 2>/dev/null)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}" \
-            || cargo install cargo-llvm-cov --version "${CARGO_LLVM_COV_VERSION}" --locked --force
+          test "${RUNNER_OS}-${RUNNER_ARCH}" = "Linux-X64"
+          nextest_tmp="$(mktemp -d)"
+          trap 'rm -rf "$nextest_tmp"' EXIT
+          nextest_archive="$nextest_tmp/cargo-nextest.tar.gz"
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            -o "$nextest_archive" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${CARGO_NEXTEST_VERSION}/cargo-nextest-${CARGO_NEXTEST_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' "$CARGO_NEXTEST_ARCHIVE_SHA256" "$nextest_archive" | sha256sum --check --strict
+          test "$(tar -tzf "$nextest_archive")" = "cargo-nextest"
+          tar -xzf "$nextest_archive" -C "$nextest_tmp"
+          test -f "$nextest_tmp/cargo-nextest"
+          test ! -L "$nextest_tmp/cargo-nextest"
+          install -m 0755 "$nextest_tmp/cargo-nextest" "$HOME/.cargo/bin/cargo-nextest"
+      - name: Install cargo-llvm-cov
+        if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test "${RUNNER_OS}-${RUNNER_ARCH}" = "Linux-X64"
+          llvm_cov_tmp="$(mktemp -d)"
+          trap 'rm -rf "$llvm_cov_tmp"' EXIT
+          llvm_cov_archive="$llvm_cov_tmp/cargo-llvm-cov.tar.gz"
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            -o "$llvm_cov_archive" \
+            "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${CARGO_LLVM_COV_VERSION}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' "$CARGO_LLVM_COV_ARCHIVE_SHA256" "$llvm_cov_archive" | sha256sum --check --strict
+          test "$(tar -tzf "$llvm_cov_archive")" = "cargo-llvm-cov"
+          tar -xzf "$llvm_cov_archive" -C "$llvm_cov_tmp"
+          test -f "$llvm_cov_tmp/cargo-llvm-cov"
+          test ! -L "$llvm_cov_tmp/cargo-llvm-cov"
+          install -m 0755 "$llvm_cov_tmp/cargo-llvm-cov" "$HOME/.cargo/bin/cargo-llvm-cov"
+      - name: Verify pinned coverage tools
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$CARGO_NEXTEST_BINARY_SHA256" "$HOME/.cargo/bin/cargo-nextest" | sha256sum --check --strict
+          printf '%s  %s\n' "$CARGO_LLVM_COV_BINARY_SHA256" "$HOME/.cargo/bin/cargo-llvm-cov" | sha256sum --check --strict
+          nextest_version="$(cargo nextest --version)"
+          case "$nextest_version" in
+            "cargo-nextest ${CARGO_NEXTEST_VERSION}"*) ;;
+            *) printf 'unexpected cargo-nextest version: %s\n' "$nextest_version" >&2; exit 1 ;;
+          esac
+          test "$(cargo llvm-cov --version)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
+      - name: Install llvm-tools component
+        run: rustup component add llvm-tools-preview
       - name: Test Rust workspace with coverage
         run: |
           set -euo pipefail
@@ -448,21 +523,35 @@ jobs:
           name: rust-coverage-lcov
           path: target/llvm-cov/lcov.info
           if-no-files-found: error
+      - name: Save cargo-nextest binary
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nextest-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cargo/bin/cargo-nextest
+          key: ${{ steps.nextest-cache.outputs.cache-primary-key }}
+      - name: Save cargo-llvm-cov binary
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ steps.llvm-cov-cache.outputs.cache-primary-key }}
 
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-build-test, rust-coverage]
+    needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every Rust lane to pass
         run: |
           lint_result="${{ needs.rust-lint.result }}"
+          deny_result="${{ needs.rust-deny.result }}"
           build_test_result="${{ needs.rust-build-test.result }}"
           coverage_result="${{ needs.rust-coverage.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
+          [ "$deny_result" = success ] || { echo "::error::rust-deny result=$deny_result"; exit 1; }
           [ "$build_test_result" = success ] || { echo "::error::rust-build-test result=$build_test_result"; exit 1; }
           [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
 
@@ -501,17 +590,13 @@ jobs:
         run: |
           rustc --version
           cargo --version
-      - name: Cache Cargo inputs and build outputs
-        uses: actions/cache@v5
+      - name: Cache Cargo inputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}-${{ hashFiles('crates/**/*.rs') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}-
-            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
+          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
       - name: Cache gitleaks binary
         uses: actions/cache@v5
         with:
