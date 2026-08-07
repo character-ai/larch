@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -48,6 +48,9 @@ def test_consumer_reaches_rust_through_its_bootstrap(tmp_path: Path) -> None:
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
         "XDG_STATE_HOME": str(tmp_path / "state"),
     }
+    profile_file = os.environ.get("LLVM_PROFILE_FILE")
+    if profile_file:
+        environment["LLVM_PROFILE_FILE"] = profile_file
 
     started = run_lifecycle.start_run(
         repo_root=repo,
@@ -88,6 +91,34 @@ def test_consumer_uses_its_own_bootstrap_when_ambient_root_differs(
 
     plugin_root = Path(run_lifecycle.__file__).resolve().parents[3]
     assert observed[0] == str(plugin_root / "scripts" / "larch.sh")
+
+
+def test_explicit_bootstrap_environment_preserves_coverage_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_profile = "/runner-temp/larch-python-%p.profraw"
+    observed_environment: dict[str, str] = {}
+
+    def fake_run(
+        command: Sequence[str],
+        *,
+        capture_output: bool,
+        check: bool,
+        env: Mapping[str, str],
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        _ = (capture_output, check, text)
+        observed_environment.update(env)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setenv("LLVM_PROFILE_FILE", expected_profile)
+    monkeypatch.setattr(run_lifecycle.subprocess, "run", fake_run)
+
+    _ = run_lifecycle._invoke(
+        ["run-log", "lifecycle-start"], environ={"PATH": "/usr/bin"}
+    )
+
+    assert observed_environment["LLVM_PROFILE_FILE"] == expected_profile
 
 
 def test_start_consumer_parses_rust_context(

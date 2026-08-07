@@ -113,6 +113,12 @@ def _invoke(
     plugin_root = Path(__file__).resolve().parents[3]
     command = [str(larch_entrypoint(plugin_root, use_env=False)), *arguments]
     environment = dict(os.environ if environ is None else environ)
+    if environ is not None:
+        # Explicit lifecycle environments isolate caller state, but the
+        # coverage-built CI binary needs its inherited profile redirect.
+        profile_file = os.environ.get("LLVM_PROFILE_FILE")
+        if profile_file:
+            _ = environment.setdefault("LLVM_PROFILE_FILE", profile_file)
     environment["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     return subprocess.run(
         command,
