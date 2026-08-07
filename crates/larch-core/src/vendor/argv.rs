@@ -423,6 +423,23 @@ pub fn build_claude_argv(
                 "Read,Edit,Write".to_owned(),
             ]
         }
+        "workflow-write" => {
+            vec![
+                "--print".to_owned(),
+                "--output-format".to_owned(),
+                "json".to_owned(),
+                "--model".to_owned(),
+                model,
+                "--add-dir".to_owned(),
+                request.workdir.clone(),
+                "--allowedTools".to_owned(),
+                "Bash,Read,Edit,Write,Glob,Grep".to_owned(),
+                "--permission-mode".to_owned(),
+                "dontAsk".to_owned(),
+                "--disable-slash-commands".to_owned(),
+                "--no-session-persistence".to_owned(),
+            ]
+        }
         _ => {
             return Err(VendorArgvError::new(
                 VendorArgvErrorKind::UnknownProfile,

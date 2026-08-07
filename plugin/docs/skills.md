@@ -38,6 +38,7 @@ permissions or hooks only to silence the compatibility warning.
 - [`/bug`](#bug)
 - [`/cleanup`](#cleanup)
 - [`/combine-issues`](#combine-issues)
+- [`/complete-umbrella`](#complete-umbrella)
 - [`/debate`](#debate)
 - [`/deps`](#deps)
 - [`/design`](#design)
@@ -104,6 +105,16 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/`, `/t
 **Source**: [`skills/combine-issues/SKILL.md`](../skills/combine-issues/SKILL.md)
 
 Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination scheme.
+
+### `/complete-umbrella`
+
+**Arguments**: `<umbrella-issue-N>`
+
+**Source**: [`skills/complete-umbrella/SKILL.md`](../skills/complete-umbrella/SKILL.md)
+
+Serially implement and merge every direct leaf of one existing managed umbrella. Before each turn, the Rust owner fetches the direct sub-issue graph and fresh native blocked-by edges, then selects the smallest-numbered unblocked open leaf. One durable bgjob launches the current Claude model with a fixed issue-number-only prompt, explicit write tools, `dontAsk`, and slash commands disabled. A non-zero child, malformed completion envelope, failed remote lifecycle check, dirty tree, non-main checkout, stale main, or graph deadlock stops the entire run.
+
+After all direct leaves close with exact `[DONE] [LEAF OF N]` titles, the invoking agent audits their combined implementation against the umbrella and every leaf on current `origin/main`. A concrete gap becomes one new exact leaf through `/issue`; a read-only preflight validates its confined caller-owned files before filing, and the attachment owner compares the live title and body with those files before adding and reading back both native graph relations. Selection and audit then repeat. Only a passing audit permits the freshness-checked parent title transition to `[DONE]` and a completed close.
 
 ### `/debate`
 

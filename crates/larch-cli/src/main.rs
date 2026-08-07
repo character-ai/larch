@@ -25,6 +25,7 @@ mod bgjob_commands;
 mod blocker_commands;
 mod ci_timing;
 pub(crate) mod claude_commands;
+mod complete_umbrella_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod external_agent;
@@ -62,6 +63,7 @@ mod test_shards;
 
 use agent_commands::AgentCommand;
 use ci_timing::CiTimingCommand;
+use complete_umbrella_commands::CompleteUmbrellaCommand;
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
 use slack_commands::SlackCommand;
@@ -99,6 +101,9 @@ enum Domain {
     /// Collect GitHub Actions timing inputs for test rebalancing.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
+    /// Serially complete and audit every direct leaf of one umbrella issue.
+    #[command(subcommand)]
+    CompleteUmbrella(CompleteUmbrellaCommand),
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
@@ -886,6 +891,7 @@ fn run(
             Ok(bgjob_commands::reap(&arguments.arguments))
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
+        Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
         Domain::DirtyTree(command) => Ok(match command {
             DirtyTreeCommand::Baseline(arguments) => {
                 let raw = dirty_tree_raw_arguments("baseline");

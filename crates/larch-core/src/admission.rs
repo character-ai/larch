@@ -10,6 +10,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::{DONE_PREFIX, IMPLEMENTING_PREFIX};
+
 /// Resolved entry-gate decision for one `/implement` or `/design` entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GateDecision {
@@ -86,8 +88,8 @@ pub fn normal_issue(value: &str) -> Option<u64> {
 /// gains a state.
 pub const MANAGED_PREFIXES: [&str; 8] = [
     "[DESIGNING] ",
-    "[IMPLEMENTING] ",
-    "[DONE] ",
+    IMPLEMENTING_PREFIX,
+    DONE_PREFIX,
     "[STALLED] ",
     "[DEBATING] ",
     "[DEBATED] ",

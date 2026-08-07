@@ -5,6 +5,7 @@ mod attestation;
 mod bgjob;
 mod bgjob_daemon;
 mod ci_timing;
+mod complete_umbrella;
 mod config;
 mod context;
 mod env_file;
@@ -84,6 +85,12 @@ pub use ci_timing::{
     PytestTimingRow, ShardTiming, TargetTiming, collect_harness_timing, collect_job_timing,
     collect_pytest_timing,
 };
+pub use complete_umbrella::{
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
+    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
+    has_umbrella_proposal, select_complete_umbrella_leaf, umbrella_leaf_opening,
+    umbrella_leaf_prefix, validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+};
 pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
@@ -124,15 +131,16 @@ pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workfl
 pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};
 pub use issue::{
     ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
-    DESIGN_PAUSE_MARKER, LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK, MULTIPLE_PLAN_BLOCKS,
-    NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite, NamedBlockWriteMode,
-    OpenIssueRow, PLAN_MARKER, bug_title_match, classify_named_block, compose_named_block,
-    detect_lifecycle_prefix, insert_signal_marker, insert_tag_after_bug_prefix,
-    is_valid_named_block_marker, issue_plan_marker_defect, leading_square_bracket_prefix,
-    named_block_marker_allowed, neutralize_named_block_markers, open_issue_rows, parse_named_block,
-    parse_open_issue_row, plan_named_block_write, redact_untrusted_stream, strip_lifecycle_prefix,
-    strip_named_block, title_has_archival_report_prefix, title_lifecycle_reject_marker,
-    title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
+    DESIGN_PAUSE_MARKER, DONE_PREFIX, IMPLEMENTING_PREFIX, LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK,
+    MULTIPLE_PLAN_BLOCKS, NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite,
+    NamedBlockWriteMode, OpenIssueRow, PLAN_MARKER, UMBRELLA_PREFIX, bug_title_match,
+    classify_named_block, compose_named_block, detect_lifecycle_prefix, insert_signal_marker,
+    insert_tag_after_bug_prefix, is_valid_named_block_marker, issue_plan_marker_defect,
+    leading_square_bracket_prefix, named_block_marker_allowed, neutralize_named_block_markers,
+    open_issue_rows, parse_named_block, parse_open_issue_row, plan_named_block_write,
+    redact_untrusted_stream, strip_lifecycle_prefix, strip_named_block,
+    title_has_archival_report_prefix, title_lifecycle_reject_marker, title_starts_with_brainstorm,
+    untrusted_content_block, xml_escape_attr,
 };
 pub use issue::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, ClassificationSource,
@@ -151,9 +159,9 @@ pub use issue::{
 };
 pub use issue_mutation::{
     IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
-    IssueMutationSnapshot, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
-    redact_issue_mutation_request, same_mutation_identity, snapshot_is_strictly_newer,
-    validate_issue_mutation_request, verify_authorized_body_change,
+    IssueMutationSnapshot, UMBRELLA_PROPOSAL_MARKER, VerifiedIssueMutation, mutation_postcondition,
+    mutation_would_change, redact_issue_mutation_request, same_mutation_identity,
+    snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
 };
 pub use logging_util::emit_kv;
 pub use object_store::{

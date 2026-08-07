@@ -315,6 +315,26 @@ fn claude_profiles_are_byte_exact() {
                 "Read,Edit,Write",
             ],
         ),
+        (
+            "workflow-write",
+            &base,
+            &[
+                "claude",
+                "--print",
+                "--output-format",
+                "json",
+                "--model",
+                "claude-sonnet-4-6",
+                "--add-dir",
+                "/repo",
+                "--allowedTools",
+                "Bash,Read,Edit,Write,Glob,Grep",
+                "--permission-mode",
+                "dontAsk",
+                "--disable-slash-commands",
+                "--no-session-persistence",
+            ],
+        ),
     ];
     for (profile, request, expected) in cases {
         let argv = build_claude_argv(profile, request)

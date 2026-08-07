@@ -3047,6 +3047,7 @@ dependencies = [
  "larch-lint",
  "larch-test-support",
  "nix",
+ "octocrab",
  "predicates",
  "regex",
  "serde",

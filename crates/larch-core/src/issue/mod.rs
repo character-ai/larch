@@ -46,9 +46,10 @@ pub use report_core::{
 };
 pub use rows::{OpenIssueRow, open_issue_rows, parse_open_issue_row};
 pub use title::{
-    ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES, LIFECYCLE_PREFIXES,
-    bug_title_match, detect_lifecycle_prefix, insert_signal_marker, insert_tag_after_bug_prefix,
-    leading_square_bracket_prefix, strip_lifecycle_prefix, title_has_archival_report_prefix,
-    title_lifecycle_reject_marker, title_starts_with_brainstorm,
+    ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES, DONE_PREFIX, IMPLEMENTING_PREFIX,
+    LIFECYCLE_PREFIXES, UMBRELLA_PREFIX, bug_title_match, detect_lifecycle_prefix,
+    insert_signal_marker, insert_tag_after_bug_prefix, leading_square_bracket_prefix,
+    strip_lifecycle_prefix, title_has_archival_report_prefix, title_lifecycle_reject_marker,
+    title_starts_with_brainstorm,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

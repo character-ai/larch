@@ -289,6 +289,16 @@ reset_activation
 stale_activation umbrella
 assert_allow "T12m stale umbrella sentinel stays inactive" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 
+# T12m1 - complete-umbrella confines the inline audit's Write surface.
+reset_activation
+activate complete-umbrella
+assert_deny "T12m1 complete-umbrella token denies repo path" complete-umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_allow "T12m2 complete-umbrella token allows canonical /tmp" complete-umbrella "{\"tool_input\":{\"file_path\":\"$TMP_FILE\"}}"
+assert_allow "T12m3 complete-umbrella sentinel does not activate umbrella token" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+reset_activation
+stale_activation complete-umbrella
+assert_allow "T12m4 stale complete-umbrella sentinel stays inactive" complete-umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+
 # T12n - debate has the same isolated scratch-only token contract.
 reset_activation
 activate debate
