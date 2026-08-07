@@ -31,6 +31,7 @@ Commands:
   external-defaults  External tool default readers
   example            Non-production commands that exercise dispatcher wiring
   git                Local Git repository commands
+  issue              GitHub issue reads
   kv                 Exact `KEY=value` stream readers
   lint               Repository policy lint commands
   plugin             Plugin metadata commands

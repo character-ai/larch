@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from larch.core.proc import CommandResult
-from larch.core.rust_runtime import dirty_tree_baseline, dirty_tree_checkpoint, phantom_probe
+from larch.core.rust_runtime import (
+    dirty_tree_baseline,
+    dirty_tree_checkpoint,
+    issue_info,
+    issue_state,
+    phantom_probe,
+)
 from test_support import RecordingRunner
 
 
@@ -79,3 +85,94 @@ def test_dirty_tree_commands_relay_validated_rust_envelopes() -> None:
         "--sidecar",
         "result.dirty-tree",
     ]
+
+
+def test_issue_state_relays_the_validated_rust_envelope() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch", "issue", "state"),
+                0,
+                "STATE=OPEN\nURL=https://github.com/o/r/issues/7\nIS_PR=false\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("larch", "issue", "state"),
+                0,
+                "STATE=CLOSED\nURL=https://github.com/o/r/pull/8\nIS_PR=true\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    issue = issue_state(runner, issue="7")
+    pull_request = issue_state(runner, issue="8", repo="o/r")
+
+    assert not issue.failed
+    assert (issue.state, issue.url, issue.is_pr) == (
+        "OPEN",
+        "https://github.com/o/r/issues/7",
+        False,
+    )
+    assert pull_request.is_pr is True
+    assert runner.calls[0][-4:] == ["issue", "state", "--issue", "7"]
+    assert runner.calls[1][-6:] == ["issue", "state", "--issue", "8", "--repo", "o/r"]
+
+
+def test_issue_state_fails_closed_for_every_unusable_read() -> None:
+    # A refusal envelope, a non-zero exit, and a truncated envelope must all read
+    # as failed: an adopted issue is only entered when the state row is present.
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch", "issue", "state"),
+                1,
+                "FAILED=true\nERROR=gh issue view failed: could not resolve repo\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch", "issue", "state"), 127, "", "missing", 0.01),
+            CommandResult(("larch", "issue", "state"), 0, "URL=u\nIS_PR=false\n", "", 0.01),
+        ],
+    )
+
+    for _ in range(3):
+        result = issue_state(runner, issue="7")
+        assert result.failed
+        assert (result.state, result.url, result.is_pr) == ("", "", False)
+
+
+def test_issue_info_relays_the_value_row_and_absent_refusals() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch", "issue", "info"),
+                0,
+                "VALUE=https://github.com/o/r/issues/7\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch", "issue", "info"), 0, "VALUE=\n", "", 0.01),
+            CommandResult(("larch", "issue", "info"), 1, "", "", 0.01),
+        ],
+    )
+
+    assert (
+        issue_info(runner, issue="7", field="url", repo="o/r")
+        == "https://github.com/o/r/issues/7"
+    )
+    assert issue_info(runner, issue="7", field="url") == ""
+    assert issue_info(runner, issue="7", field="url") == ""
+    assert runner.calls[0][-8:] == [
+        "issue",
+        "info",
+        "--issue",
+        "7",
+        "--field",
+        "url",
+        "--repo",
+        "o/r",
+    ]
+    assert runner.calls[1][-6:] == ["issue", "info", "--issue", "7", "--field", "url"]

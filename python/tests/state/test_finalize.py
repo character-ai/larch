@@ -369,7 +369,7 @@ def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
     )
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
 
-    def fake_issue_info(runner: object, issue: str, field: str, *, repo: str | None) -> str:
+    def fake_issue_info(runner: object, *, issue: str, field: str, repo: str | None) -> str:
         _ = (runner, issue, field, repo)
         return "https://github.com/o/r/issues/12"
 
@@ -377,7 +377,7 @@ def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
         _ = (runner, ctx)
         return False
 
-    monkeypatch.setattr(finalize.issue_query, "issue_info", fake_issue_info)
+    monkeypatch.setattr(finalize.rust_runtime, "issue_info", fake_issue_info)
     monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill_session_background_processes)
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
@@ -853,7 +853,7 @@ def _stub_teardown_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
-    monkeypatch.setattr(finalize.issue_query, "issue_info", lambda *_a, **_k: "")
+    monkeypatch.setattr(finalize.rust_runtime, "issue_info", lambda *_a, **_k: "")
     monkeypatch.setattr(progress_file, "deactivate_run", lambda *_a, **_k: True)
     return crumbs
 

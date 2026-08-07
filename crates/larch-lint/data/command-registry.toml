@@ -3779,11 +3779,12 @@ verb = "context"
 python_module = "larch.issue.issue_query"
 python_function = "issue_context_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8167
 
 [[commands]]
 domain = "issue"
@@ -3815,11 +3816,13 @@ verb = "info"
 python_module = "larch.issue.issue_query"
 python_function = "issue_info_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8167
+clean_install_test = "clean-install-issue-info"
 
 [[commands]]
 domain = "issue"
@@ -3875,11 +3878,13 @@ verb = "state"
 python_module = "larch.issue.issue_query"
 python_function = "issue_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8167
+clean_install_test = "clean-install-issue-state"
 
 [[commands]]
 domain = "issue"
@@ -8234,7 +8239,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "stall-recovery normalize-outcome"]
+rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"

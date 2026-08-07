@@ -21,10 +21,10 @@ from larch.bgjob import registry as bgjob_registry
 from larch.report import progress_file
 from larch.git import gh
 from larch.git import git
-from larch.issue import issue_query
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_manifest
 from larch.state import session_env
@@ -668,7 +668,12 @@ def teardown(*, runner: Runner, ctx: RunContext, cwd: str | None = None) -> Fina
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:
-        url = issue_query.issue_info(runner, str(issue_number), "url", repo=ctx.repo or None)
+        url = rust_runtime.issue_info(
+            runner,
+            issue=str(issue_number),
+            field="url",
+            repo=ctx.repo or None,
+        )
         if url:
             issue_url = url
 

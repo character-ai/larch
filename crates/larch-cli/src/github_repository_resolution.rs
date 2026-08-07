@@ -10,10 +10,8 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::{
-    GixRepository, TokioProcessRunner, github::OctocrabGitHubService, runtime::Cancellation,
-    runtime::LarchRuntime,
-};
+use crate::github_service::{ServiceFailure, with_github_service};
+use larch_adapters::GixRepository;
 use larch_core::{GitHubRepositoryRef, GitHubService, Remote, RepositoryRead};
 
 const REMOTE_USAGE: &str = "Usage: github-remote-repo.sh <remote-name-or-url>";
@@ -278,54 +276,34 @@ where
     }
 }
 
-fn query_github_repository(reference: &GitHubRepositoryRef) -> Result<String, PrimaryFailure> {
-    let working_directory = env::current_dir().map_err(|error| PrimaryFailure {
-        kind: PrimaryFailureKind::Setup,
-        detail: format!("cannot resolve current directory: {error}"),
-    })?;
-    let runtime = LarchRuntime::new().map_err(|error| PrimaryFailure {
-        kind: PrimaryFailureKind::Setup,
-        detail: format!("cannot initialize larch runtime: {error}"),
-    })?;
-    runtime.block_on(async {
-        let runner = TokioProcessRunner::default();
-        let cancellation = Cancellation::new();
-        let service = OctocrabGitHubService::from_gh(&runner, &working_directory, &cancellation)
-            .await
-            .map_err(|error| PrimaryFailure {
-                kind: PrimaryFailureKind::Setup,
-                detail: error.to_string(),
-            })?;
-        match service.repository(reference, &cancellation).await {
-            Ok(repository) => Ok(repository.name_with_owner),
-            Err(error) => Err(PrimaryFailure {
-                kind: PrimaryFailureKind::NonZero,
-                detail: error.to_string(),
-            }),
+impl From<ServiceFailure> for PrimaryFailure {
+    /// A client that could not be built is a setup failure; anything the built
+    /// client refused is the service's own non-zero answer.
+    fn from(failure: ServiceFailure) -> Self {
+        let kind = match failure {
+            ServiceFailure::Setup(_) => PrimaryFailureKind::Setup,
+            ServiceFailure::Operation(_) => PrimaryFailureKind::NonZero,
+        };
+        Self {
+            kind,
+            detail: failure.into_detail(),
         }
+    }
+}
+
+fn query_github_repository(reference: &GitHubRepositoryRef) -> Result<String, PrimaryFailure> {
+    with_github_service(async |service, cancellation| {
+        service
+            .repository(reference, cancellation)
+            .await
+            .map(|repository| repository.name_with_owner)
+            .map_err(|error| error.to_string())
     })
+    .map_err(PrimaryFailure::from)
 }
 
 fn probe_service_setup() -> Result<(), PrimaryFailure> {
-    let working_directory = env::current_dir().map_err(|error| PrimaryFailure {
-        kind: PrimaryFailureKind::Setup,
-        detail: format!("cannot resolve current directory: {error}"),
-    })?;
-    let runtime = LarchRuntime::new().map_err(|error| PrimaryFailure {
-        kind: PrimaryFailureKind::Setup,
-        detail: format!("cannot initialize larch runtime: {error}"),
-    })?;
-    runtime.block_on(async {
-        let runner = TokioProcessRunner::default();
-        let cancellation = Cancellation::new();
-        OctocrabGitHubService::from_gh(&runner, &working_directory, &cancellation)
-            .await
-            .map(|_| ())
-            .map_err(|error| PrimaryFailure {
-                kind: PrimaryFailureKind::Setup,
-                detail: error.to_string(),
-            })
-    })
+    with_github_service(async |_service, _cancellation| Ok(())).map_err(PrimaryFailure::from)
 }
 
 fn origin_repo_candidate(repository: Option<&GixRepository>) -> (String, bool) {

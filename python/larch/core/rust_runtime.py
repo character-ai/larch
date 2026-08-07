@@ -43,6 +43,21 @@ class PushOutput:
 
 
 @dataclass(frozen=True)
+class IssueStateOutput:
+    """Validated result from the Rust-owned ``issue state`` command.
+
+    ``failed`` is the caller's only success test: a refused read emits the
+    ``FAILED=true`` envelope with no state rows, and a missing envelope is
+    treated the same way, so an unusable read never reads as an open issue.
+    """
+
+    failed: bool
+    state: str = ""
+    url: str = ""
+    is_pr: bool = False
+
+
+@dataclass(frozen=True)
 class CheckpointProbeOutput:
     """Parsed result from the Rust-owned ``push checkpoint-probe`` command.
 
@@ -240,6 +255,66 @@ def push_branch(runner: Runner, *, cwd: str | None = None) -> PushOutput:
     if not branch:
         return PushOutput(status="failed")
     return PushOutput(status="pushed", branch=branch)
+
+
+def issue_state(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> IssueStateOutput:
+    """Invoke the Rust owner and fail closed without its state envelope."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "issue",
+        "state",
+        "--issue",
+        issue,
+    ]
+    if repo:
+        argv.extend(["--repo", repo])
+    result = runner.run(argv, cwd=cwd)
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    if result.returncode != 0 or values.get("FAILED") == "true" or "STATE" not in values:
+        return IssueStateOutput(failed=True)
+    return IssueStateOutput(
+        failed=False,
+        state=values.get("STATE", ""),
+        url=values.get("URL", ""),
+        is_pr=values.get("IS_PR", "") == "true",
+    )
+
+
+def issue_info(
+    runner: Runner,
+    *,
+    issue: str,
+    field: str,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> str:
+    """Read one issue field (``state`` or ``url``) through the Rust owner.
+
+    The command reports every refusal as an empty value, so an unreadable
+    field, an unresolvable repository, and an unreachable API are one outcome.
+    """
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "issue",
+        "info",
+        "--issue",
+        issue,
+        "--field",
+        field,
+    ]
+    if repo:
+        argv.extend(["--repo", repo])
+    result = runner.run(argv, cwd=cwd)
+    if result.returncode != 0:
+        return ""
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    return values.get("VALUE", "")
 
 
 def install_statusline(

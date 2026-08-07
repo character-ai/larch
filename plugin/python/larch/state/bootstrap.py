@@ -27,7 +27,7 @@ from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body
-from larch.issue import issue_query, tracking_issue
+from larch.issue import tracking_issue
 from larch.report import progress_file, run_log_batch, run_logs, timing, tokens
 from larch.agents import agents
 
@@ -637,9 +637,8 @@ def _phase_tracking(st: BootstrapState) -> None:
 
 
 def _adopt_tracking_issue(st: BootstrapState) -> None:
-    try:
-        state = issue_query.issue_state(proc, st.opts.issue_number, repo=None)
-    except Exception:
+    state = rust_runtime.issue_state(proc, issue=st.opts.issue_number)
+    if state.failed:
         st.emit_step_failed("get-issue-state")
         return
     if state.is_pr:
