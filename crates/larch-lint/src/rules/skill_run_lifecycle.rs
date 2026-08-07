@@ -143,7 +143,7 @@ fn collect_prompts(repository: &Repository) -> Result<Vec<Prompt>, LintError> {
             prompts.push(Prompt {
                 path,
                 skill: skill.to_owned(),
-                text,
+                text: text.to_string(),
             });
         }
     }

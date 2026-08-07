@@ -62,7 +62,7 @@ impl Rule for ResultEnvKeyParityRule {
         for path in selector.select(repository) {
             let source = repository.read_utf8(path)?;
             writers.extend(collect_writers(path, &source)?);
-            sources.insert(path.as_str().to_owned(), source);
+            sources.insert(path.as_str().to_owned(), source.to_string());
         }
         for writer in &mut writers {
             writer.line = resolve_writer_line(

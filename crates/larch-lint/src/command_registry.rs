@@ -7,7 +7,7 @@ use std::{
     io::Write as _,
     path::Path,
     process,
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
 use regex::Regex;
@@ -460,7 +460,7 @@ fn required_utf8(repository: &Repository, path: &str) -> Result<String, LintErro
     if repository.paths().binary_search(&path).is_err() {
         return Err(LintError::new(format!("{path}: required file is missing")));
     }
-    repository.read_utf8(&path)
+    repository.read_utf8(&path).map(|source| source.to_string())
 }
 
 fn validate_ledger(
@@ -972,8 +972,8 @@ struct PythonSource {
     path: String,
     module: String,
     package: String,
-    source: String,
-    tree: Tree,
+    source: Arc<str>,
+    tree: Arc<Tree>,
 }
 
 #[derive(Default)]
@@ -1035,7 +1035,12 @@ fn read_python_sources(
         if !runtime_candidate && !retirement_candidate {
             continue;
         }
-        let tree = parse_python(path_text, &source)?;
+        let tree = repository.python_syntax(path)?;
+        if tree.root_node().has_error() {
+            return Err(LintError::new(format!(
+                "{path_text}: invalid Python syntax"
+            )));
+        }
         sources.push(PythonSource {
             path: path_text.to_owned(),
             module,

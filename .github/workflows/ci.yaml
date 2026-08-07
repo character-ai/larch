@@ -700,10 +700,10 @@ jobs:
           run_timed profile-cleanup cargo llvm-cov clean --workspace
           coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
           compile_coverage() (
-            eval "$(cargo llvm-cov show-env --sh)"
-            unset CARGO_LLVM_COV_SHOW_ENV
+            eval "$(cargo llvm-cov show-env --sh)" &&
+            unset CARGO_LLVM_COV_SHOW_ENV &&
             cargo nextest run --workspace --all-features --locked \
-              --target-dir "$coverage_target_dir" --no-run
+              --target-dir "$coverage_target_dir" --no-run &&
             # nextest compiles test executables, but the top-level CLI is not
             # guaranteed to be one of them. Build it with Cargo's test profile
             # under the same coverage environment and target directory for
@@ -715,6 +715,21 @@ jobs:
           run_timed compilation compile_coverage
           run_timed doctests cargo test --doc --workspace --all-features --locked
           prepared_finished="$(date +%s)"
+
+          run_repository_policy() (
+            test_threads="$1"
+            coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
+            # The executable is built under the coverage profile, but direct
+            # execution needs the same profile destination that llvm-cov
+            # reports below. Keep this in a subshell so it cannot affect the
+            # next profile-cleanup or report path.
+            test -x "$coverage_larch" &&
+            eval "$(CARGO_TARGET_DIR="$coverage_target_dir" cargo llvm-cov show-env --sh)" &&
+            unset CARGO_LLVM_COV_SHOW_ENV &&
+            "$coverage_larch" --version &&
+            "$coverage_larch" lint all \
+              --timing-file "$RUNNER_TEMP/rust-repository-policy-rules-${test_threads}.tsv"
+          )
 
           thread_counts="$NEXTEST_TEST_THREADS"
           if [ "$COVERAGE_PROFILE_BENCHMARK" = true ]; then
@@ -728,6 +743,10 @@ jobs:
             run_timed "test-execution-${test_threads}" cargo llvm-cov nextest --no-report \
               --workspace --all-features --locked --test-threads "$test_threads" \
               --status-level slow --final-status-level slow
+            # Keep exactly one full policy scan in every coverage path, before
+            # its report, so the unchanged 88% line gate includes it.
+            run_timed "repository-policy-${test_threads}" \
+              run_repository_policy "$test_threads"
             if run_timed "coverage-report-${test_threads}" cargo llvm-cov report \
               --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
               --lcov --output-path target/llvm-cov/lcov.info \
@@ -747,8 +766,8 @@ jobs:
               exit "$report_result"
             fi
           done
-      - name: Run repository and plugin validations with coverage executable
-        id: repository-validation
+      - name: Run plugin validations with coverage executable
+        id: plugin-validation
         env:
           LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-coverage-validation-%p.profraw
         run: |
@@ -757,7 +776,6 @@ jobs:
           coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
           if test -x "$coverage_larch" \
             && "$coverage_larch" --version \
-            && "$coverage_larch" lint all \
             && "$coverage_larch" release plugin-runtime \
             && "$coverage_larch" release plugin-runtime --check \
             && git diff --exit-code -- plugin; then
@@ -768,21 +786,22 @@ jobs:
             outcome=failure
           fi
           finished="$(date +%s)"
-          printf 'repository-validation\t%s\t%s\texit=%s;binary=%s\n' \
+          printf 'plugin-validation\t%s\t%s\texit=%s;binary=%s\n' \
             "$((finished - started))" "$outcome" "$result" "$coverage_larch" \
             >> "$COVERAGE_TIMING_FILE"
           exit "$result"
-      - name: Record skipped repository policy validation
-        if: always() && steps.repository-validation.outcome == 'skipped'
-        run: |
-          set -euo pipefail
-          printf 'repository-validation\t0\tskipped\tprior-coverage-failure\n' \
-            >> "$COVERAGE_TIMING_FILE"
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-coverage-lcov${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) || '' }}
           path: target/llvm-cov/lcov.info
+          if-no-files-found: error
+      - name: Upload Rust repository policy rule timings
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-repository-policy-rule-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}
+          path: ${{ runner.temp }}/rust-repository-policy-rules-*.tsv
           if-no-files-found: error
       - name: Upload coverage-built Rust executable for cross-language integration tests
         # The dispatch-only profile matrix needs exactly one artifact for the
@@ -1010,7 +1029,7 @@ jobs:
             printf '## Rust coverage phase timings\n\n'
             printf 'Profile: test opt level %s; configured nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
               "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
-            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, repository validation, and cache save.\n\n' \
+            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, repository policy, plugin validation, and cache save.\n\n' \
               "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
             printf 'Coverage dependency target cache: policy %s; exact hit %s; restore %s s (%s bytes, %s); post-prune %s bytes; save %s s (%s, %s).\n\n' \
               "$COVERAGE_TARGET_CACHE_ENABLED" "$COVERAGE_TARGET_CACHE_HIT" \
@@ -1021,6 +1040,17 @@ jobs:
             printf '```tsv\n'
             cat "$COVERAGE_TIMING_FILE"
             printf '```\n'
+            shopt -s nullglob
+            policy_timing_files=("$RUNNER_TEMP"/rust-repository-policy-rules-*.tsv)
+            if [ "${#policy_timing_files[@]}" -gt 0 ]; then
+              printf '\n## Rust repository policy rule timings\n\n'
+              for policy_timing_file in "${policy_timing_files[@]}"; do
+                printf '### %s\n\n' "$(basename "$policy_timing_file" .tsv)"
+                printf '```tsv\n'
+                cat "$policy_timing_file"
+                printf '```\n'
+              done
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Rust coverage phase timings
         if: always()

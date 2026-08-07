@@ -3975,7 +3975,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "doctests",
         "coverage-report",
         "end-to-end-total-",
-        "repository-validation",
+        "repository-policy",
+        "plugin-validation",
         "cache-save",
     ):
         assert timing_phase in rust_coverage
@@ -3985,18 +3986,25 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'test -x "$coverage_larch"' in rust_coverage
     assert '"$coverage_larch" --version' in rust_coverage
     assert '"$coverage_larch" lint all' in rust_coverage
+    assert rust_coverage.count('"$coverage_larch" lint all') == 1
     assert '"$coverage_larch" release plugin-runtime' in rust_coverage
     assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
     assert "git diff --exit-code -- plugin" in rust_coverage
-    coverage_validation = rust_coverage.split(
-        "Run repository and plugin validations with coverage executable", 1
-    )[1].split("Record skipped repository policy validation", 1)[0]
+    repository_policy = rust_coverage.split("run_repository_policy() (", 1)[1].split(
+        'thread_counts="$NEXTEST_TEST_THREADS"', 1
+    )[0]
+    assert 'CARGO_TARGET_DIR="$coverage_target_dir" cargo llvm-cov show-env --sh' in repository_policy
+    assert '"$coverage_larch" lint all \\' in repository_policy
+    assert "rust-repository-policy-rules-${test_threads}.tsv" in repository_policy
+    plugin_validation = rust_coverage.split(
+        "Run plugin validations with coverage executable", 1
+    )[1].split("Upload Rust coverage report", 1)[0]
     validation_profile = (
         "LLVM_PROFILE_FILE: ${{ runner.temp }}/"
         "larch-coverage-validation-%p.profraw"
     )
-    assert validation_profile in coverage_validation
-    assert coverage_validation.index(validation_profile) < coverage_validation.index("run: |")
+    assert validation_profile in plugin_validation
+    assert plugin_validation.index(validation_profile) < plugin_validation.index("run: |")
     coverage_binary_artifact = rust_coverage.split(
         "Upload coverage-built Rust executable for cross-language integration tests", 1
     )[1].split("Start Rust coverage cache save timing", 1)[0]
@@ -4005,12 +4013,20 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert f"path: {coverage_binary}" in coverage_binary_artifact
     assert "if-no-files-found: error" in coverage_binary_artifact
     assert "matrix.test_opt_level == '0' && matrix.sample == 1" in coverage_binary_artifact
-    assert rust_coverage.index("coverage-report-${test_threads}") < rust_coverage.index(
-        "Run repository and plugin validations with coverage executable"
+    assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
+        "coverage-report-${test_threads}"
     )
-    assert rust_coverage.index("Run repository and plugin validations with coverage executable") < rust_coverage.index(
+    assert rust_coverage.index("coverage-report-${test_threads}") < rust_coverage.index(
+        "Run plugin validations with coverage executable"
+    )
+    assert rust_coverage.index("Run plugin validations with coverage executable") < rust_coverage.index(
         "Upload Rust coverage report"
     )
+    assert "Upload Rust repository policy rule timings" in rust_coverage
+    assert "rust-repository-policy-rule-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
+    assert "## Rust repository policy rule timings" in rust_coverage
+    assert "rust-repository-policy-rule-timings-*" in rust_testing
+    assert "repository-policy scan" in rust_testing
     for cache_contract in (
         "restore-only cache action",
         "workflow_dispatch-read-only",

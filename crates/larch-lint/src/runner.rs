@@ -1,4 +1,12 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Instant,
+};
 
 use crate::repository::Repository;
 
@@ -98,6 +106,7 @@ pub struct LintReport {
     findings: Vec<Finding>,
     warnings: Vec<String>,
     contract_lines: Vec<String>,
+    rule_timings: Vec<RuleTiming>,
 }
 
 impl LintReport {
@@ -117,6 +126,40 @@ impl LintReport {
     #[must_use]
     pub fn contract_lines(&self) -> &[String] {
         &self.contract_lines
+    }
+
+    /// Return per-rule elapsed times in deterministic rule-name order.
+    #[must_use]
+    pub fn rule_timings(&self) -> &[RuleTiming] {
+        &self.rule_timings
+    }
+}
+
+/// One completed rule's elapsed time.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuleTiming {
+    name: String,
+    milliseconds: u128,
+}
+
+impl RuleTiming {
+    fn new(name: impl Into<String>, milliseconds: u128) -> Self {
+        Self {
+            name: name.into(),
+            milliseconds,
+        }
+    }
+
+    /// Return the registered rule name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return elapsed wall-clock time in milliseconds.
+    #[must_use]
+    pub const fn milliseconds(&self) -> u128 {
+        self.milliseconds
     }
 }
 
@@ -232,6 +275,15 @@ impl RuleRegistry<'static> {
     }
 }
 
+const MAX_PARALLEL_RULES: usize = 4;
+
+struct CompletedRule {
+    index: usize,
+    name: &'static str,
+    elapsed_milliseconds: u128,
+    result: Result<RuleOutput, LintError>,
+}
+
 /// Run rules against a discovered repository and return sorted findings.
 ///
 /// # Errors
@@ -241,18 +293,65 @@ pub fn run<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn Rule>,
 ) -> Result<LintReport, LintError> {
+    let rules: Vec<&dyn Rule> = rules.into_iter().collect();
+    let completed = run_rules(repository, &rules);
     let mut report = LintReport::default();
-    for rule in rules {
-        let output = rule.check(repository)?;
+    for completed_rule in completed {
+        let output = completed_rule.result?;
         report.findings.extend(output.findings);
         report.warnings.extend(output.warnings);
         report.contract_lines.extend(output.contract_lines);
+        report.rule_timings.push(RuleTiming::new(
+            completed_rule.name,
+            completed_rule.elapsed_milliseconds,
+        ));
     }
     report.findings.sort();
     report.findings.dedup();
     report.warnings.sort();
     report.warnings.dedup();
+    report
+        .rule_timings
+        .sort_by(|left, right| left.name.cmp(&right.name));
     Ok(report)
+}
+
+fn run_rules(repository: &Repository, rules: &[&dyn Rule]) -> Vec<CompletedRule> {
+    let worker_count = rules.len().min(MAX_PARALLEL_RULES);
+    if worker_count == 0 {
+        return Vec::new();
+    }
+    let next = AtomicUsize::new(0);
+    let completed = Mutex::new(Vec::with_capacity(rules.len()));
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(rule) = rules.get(index).copied() else {
+                        break;
+                    };
+                    let started = Instant::now();
+                    let result = rule.check(repository);
+                    let elapsed_milliseconds = started.elapsed().as_millis();
+                    completed
+                        .lock()
+                        .expect("rule completion lock is not poisoned")
+                        .push(CompletedRule {
+                            index,
+                            name: rule.name(),
+                            elapsed_milliseconds,
+                            result,
+                        });
+                }
+            });
+        }
+    });
+    let mut completed = completed
+        .into_inner()
+        .expect("rule completion lock is not poisoned");
+    completed.sort_by_key(|completed_rule| completed_rule.index);
+    completed
 }
 
 /// Return the process outcome associated with a completed rule run.
@@ -325,8 +424,10 @@ pub fn render_error(error: &LintError, output: &mut impl std::io::Write) -> Exit
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     use super::{Finding, LintError, Rule, RuleOutput, RuleRegistry};
-    use crate::repository::Repository;
+    use crate::repository::{Git, Repository};
 
     #[derive(Debug)]
     struct FixtureRule;
@@ -348,6 +449,56 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct NamedFixtureRule {
+        name: &'static str,
+    }
+
+    impl Rule for NamedFixtureRule {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn description(&self) -> &'static str {
+            "named fixture rule"
+        }
+
+        fn check(&self, _repository: &Repository) -> Result<RuleOutput, LintError> {
+            Ok(RuleOutput::from_findings(vec![Finding::new(
+                format!("{}.md", self.name),
+                1,
+                self.name,
+            )]))
+        }
+    }
+
+    #[derive(Debug)]
+    struct FakeGit {
+        root: PathBuf,
+    }
+
+    impl Git for FakeGit {
+        fn repository_root(&self, _cwd: &Path) -> Result<PathBuf, LintError> {
+            Ok(self.root.clone())
+        }
+
+        fn tracked_paths(&self, _root: &Path) -> Result<Vec<u8>, LintError> {
+            Ok(b"fixture.md\0".to_vec())
+        }
+    }
+
+    fn fixture_repository() -> Repository {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        std::fs::write(temporary.path().join("fixture.md"), "fixture\n").expect("write fixture");
+        Repository::discover(
+            &FakeGit {
+                root: temporary.path().to_path_buf(),
+            },
+            temporary.path(),
+        )
+        .expect("discover fixture repository")
+    }
+
     #[test]
     fn registry_rejects_duplicate_names() {
         let rule = FixtureRule;
@@ -360,5 +511,31 @@ mod tests {
             super::finding_exit_code(&[Finding::new("a.md", 1, "fixture")]),
             super::ExitCode::Findings
         );
+    }
+
+    #[test]
+    fn parallel_rule_completion_keeps_report_order_deterministic() {
+        let repository = fixture_repository();
+        let zulu = NamedFixtureRule { name: "zulu" };
+        let alpha = NamedFixtureRule { name: "alpha" };
+        let middle = NamedFixtureRule { name: "middle" };
+
+        let report = super::run(&repository, [&zulu as &dyn Rule, &alpha, &middle])
+            .expect("run fixture rules");
+        let findings: Vec<String> = report.findings().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            findings,
+            [
+                "alpha.md:1: alpha",
+                "middle.md:1: middle",
+                "zulu.md:1: zulu"
+            ]
+        );
+        let timing_names: Vec<&str> = report
+            .rule_timings()
+            .iter()
+            .map(super::RuleTiming::name)
+            .collect();
+        assert_eq!(timing_names, ["alpha", "middle", "zulu"]);
     }
 }

@@ -17,7 +17,7 @@ use syn::{ExprMethodCall, visit::Visit};
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason,
-    syntax::{FenceState, MarkdownDocument, leaf_bash_commands, parse_bash},
+    syntax::{FenceState, MarkdownDocument, leaf_bash_commands},
 };
 
 use super::command_arguments::{Argument, Constants};
@@ -75,7 +75,8 @@ impl Rule for CodexExecAuthRule {
         for path in repository.paths() {
             let source = repository.read_utf8(path)?;
             if is_shell_path(path.as_str()) {
-                findings.extend(check_shell(path.as_str(), &source)?);
+                let syntax = repository.bash_syntax(path)?;
+                findings.extend(check_shell(path.as_str(), &source, &syntax)?);
             } else if is_markdown_path(path.as_str()) {
                 findings.extend(check_markdown(path.as_str(), &source)?);
             } else if has_lowercase_extension(path.as_str(), "rs") {
@@ -114,10 +115,13 @@ fn is_python_path(path: &str) -> bool {
             .is_some_and(|name| name.starts_with("test_"))
 }
 
-fn check_shell(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_bash(source)?;
+fn check_shell(
+    path: &str,
+    source: &str,
+    syntax: &tree_sitter::Tree,
+) -> Result<Vec<Finding>, LintError> {
     let mut lines = BTreeSet::new();
-    for command in leaf_bash_commands(&tree) {
+    for command in leaf_bash_commands(syntax) {
         let text = source.get(command.byte_range()).unwrap_or("");
         if CODEX_EXEC.is_match(text) && !range_suppressed(source, command, SUPPRESSION_TOKEN)? {
             lines.insert(line_number(command.start_position().row));

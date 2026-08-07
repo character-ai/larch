@@ -15,8 +15,8 @@ use tree_sitter::Node;
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
     syntax::{
-        RustSyntax, ShellCommand, json_shell_commands, markdown_shell_commands, parse_python,
-        shell_commands,
+        RustSyntax, ShellCommand, json_shell_commands, markdown_shell_commands,
+        shell_commands_from_tree,
     },
 };
 
@@ -77,9 +77,15 @@ impl Rule for IssueMutationOwnerRule {
             };
             let source = repository.read_utf8(path)?;
             findings.extend(match surface {
-                Surface::Python => check_python(path_text, &source)?,
+                Surface::Python => {
+                    let syntax = repository.python_syntax(path)?;
+                    check_python(path_text, &source, &syntax)?
+                }
                 Surface::Rust => check_rust(path_text, &source)?,
-                Surface::Shell => check_shell(path_text, &source, 0)?,
+                Surface::Shell => {
+                    let syntax = repository.bash_syntax(path)?;
+                    check_commands(path_text, shell_commands_from_tree(&syntax, &source, 0))?
+                }
                 Surface::Markdown => check_markdown(path_text, &source)?,
                 Surface::Json => check_json(path_text, &source)?,
             });
@@ -176,12 +182,15 @@ struct PythonImports {
     command_calls: BTreeSet<String>,
 }
 
-fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_python(source)?;
+fn check_python(
+    path: &str,
+    source: &str,
+    syntax: &tree_sitter::Tree,
+) -> Result<Vec<Finding>, LintError> {
     let mut imports = PythonImports::default();
-    collect_python_imports(tree.root_node(), source, &mut imports);
+    collect_python_imports(syntax.root_node(), source, &mut imports);
     let mut matches = BTreeSet::new();
-    collect_python_calls(tree.root_node(), source, &imports, &mut matches);
+    collect_python_calls(syntax.root_node(), source, &imports, &mut matches);
     matches
         .into_iter()
         .map(|(line, kind)| Ok(Finding::new(path, line_number(path, line)?, kind.message())))
@@ -522,10 +531,6 @@ fn is_issue_endpoint(word: &str) -> bool {
         ["repos", owner, repo, "issues", issue]
             if !owner.is_empty() && !repo.is_empty() && !issue.is_empty()
     )
-}
-
-fn check_shell(path: &str, source: &str, line_offset: usize) -> Result<Vec<Finding>, LintError> {
-    check_commands(path, shell_commands(source, line_offset)?)
 }
 
 fn check_commands(path: &str, commands: Vec<ShellCommand>) -> Result<Vec<Finding>, LintError> {

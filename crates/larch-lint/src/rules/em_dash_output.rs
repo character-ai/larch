@@ -15,7 +15,7 @@ use tree_sitter::Node;
 use crate::{
     Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression,
-    syntax::{FenceState, MarkdownDocument, is_production_python_path, parse_python},
+    syntax::{FenceState, MarkdownDocument, is_production_python_path},
 };
 
 use super::rust_scan;
@@ -76,7 +76,9 @@ impl Rule for EmDashOutputRule {
         }
         for path in repository.paths() {
             if is_production_python_path(path.as_str()) {
-                findings.extend(check_python(path.as_str(), &repository.read_utf8(path)?)?);
+                let source = repository.read_utf8(path)?;
+                let syntax = repository.python_syntax(path)?;
+                findings.extend(check_python(path.as_str(), &source, &syntax)?);
             }
         }
         findings.sort();
@@ -123,20 +125,23 @@ fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
     })
 }
 
-fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
+fn check_python(
+    path: &str,
+    source: &str,
+    syntax: &tree_sitter::Tree,
+) -> Result<Vec<Finding>, LintError> {
     // The retired Python rule validated every in-scope suppression marker,
     // including a malformed marker that happens not to share a line with an
     // em dash. Preserve that fail-closed contract before collecting calls.
     for line in source.lines() {
         let _ = suppression::reason(line, SUPPRESSION_TOKEN)?;
     }
-    let tree = parse_python(source)?;
     let mut symbols = PythonSymbols::default();
-    collect_python_imports(tree.root_node(), source, &mut symbols);
-    propagate_python_assignments(tree.root_node(), source, &mut symbols);
+    collect_python_imports(syntax.root_node(), source, &mut symbols);
+    propagate_python_assignments(syntax.root_node(), source, &mut symbols);
 
     let mut lines = BTreeSet::new();
-    collect_python_output_calls(tree.root_node(), source, &symbols, &mut lines);
+    collect_python_output_calls(syntax.root_node(), source, &symbols, &mut lines);
     lines
         .into_iter()
         .map(|line| {

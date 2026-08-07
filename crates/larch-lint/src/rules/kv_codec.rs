@@ -22,7 +22,6 @@ use syn::{
 
 use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
-    syntax::parse_python,
 };
 
 use super::path_discovery;
@@ -170,10 +169,10 @@ fn check_shell_file(repository: &Repository, path: &RepoPath) -> Result<Vec<Find
 
 fn check_python_file(repository: &Repository, path: &RepoPath) -> Result<Vec<Finding>, LintError> {
     let source = repository.read_utf8(path)?;
-    let tree = parse_python(&source)?;
+    let syntax = repository.python_syntax(path)?;
     let mut pending = BTreeSet::new();
     collect_python_findings(
-        tree.root_node(),
+        syntax.root_node(),
         &source,
         !PYTHON_READER_OWNERS.contains(&path.as_str()),
         path.as_str() != PYTHON_EMITTER_OWNER,

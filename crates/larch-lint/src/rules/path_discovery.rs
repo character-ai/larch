@@ -51,7 +51,7 @@ pub(super) fn read_rust_syntax(
 ) -> Result<(String, crate::syntax::RustSyntax), LintError> {
     let source = repository.read_utf8(path)?;
     let syntax = crate::syntax::RustSyntax::parse(path.as_str(), &source)?;
-    Ok((source, syntax))
+    Ok((source.to_string(), syntax))
 }
 
 fn workspace_package_prefixes(root: &Path) -> Result<Option<BTreeSet<String>>, LintError> {

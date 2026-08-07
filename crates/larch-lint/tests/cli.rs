@@ -22,15 +22,33 @@ fn all_resolves_root_from_a_nested_working_directory() {
 }
 
 #[test]
-fn all_validates_the_live_repository() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+fn all_writes_sorted_per_rule_timing_evidence_for_fixture_repository() {
+    let repository = TempRepo::new();
+    repository.commit_all();
+    let timing_file = repository.path().join("rule-timings.tsv");
 
-    TempRepo::command_from(root)
-        .arg("all")
+    TempRepo::command_from(repository.path())
+        .args([
+            "all",
+            "--timing-file",
+            timing_file.to_str().expect("UTF-8 path"),
+        ])
         .assert()
         .success()
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::is_empty());
+
+    let timing_source = fs::read_to_string(timing_file).expect("read timing evidence");
+    let timing_lines: Vec<&str> = timing_source.lines().collect();
+    assert_eq!(timing_lines.first(), Some(&"rule\tmilliseconds"));
+    assert!(timing_lines.len() > 1);
+    let rule_names: Vec<&str> = timing_lines[1..]
+        .iter()
+        .map(|line| line.split_once('\t').expect("timing row").0)
+        .collect();
+    let mut sorted_rule_names = rule_names.clone();
+    sorted_rule_names.sort_unstable();
+    assert_eq!(rule_names, sorted_rule_names);
 }
 
 #[test]

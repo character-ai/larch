@@ -907,9 +907,7 @@ fn check_retired_push_rebase_symbols(
         {
             continue;
         }
-        let tree = syntax::parse_python(&source).map_err(|error| {
-            LintError::new(format!("{path_text}: invalid Python syntax: {error}"))
-        })?;
+        let tree = repository.python_syntax(path)?;
         collect_retired_python_identifiers(tree.root_node(), &source, path_text, findings);
     }
     Ok(())
@@ -1239,5 +1237,7 @@ fn join_operations(operations: &BTreeSet<String>) -> String {
 
 fn required_utf8(repository: &Repository, path: &str) -> Result<String, LintError> {
     let path = RepoPath::from_trusted(path);
-    repository.read_required_utf8(&path, format!("{path}: required file is missing"))
+    repository
+        .read_required_utf8(&path, format!("{path}: required file is missing"))
+        .map(|source| source.to_string())
 }

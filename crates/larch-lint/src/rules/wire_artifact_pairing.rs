@@ -167,7 +167,7 @@ impl Rule for WireArtifactPairingRule {
 fn read_optional(repository: &Repository, path: &str) -> Result<Option<String>, LintError> {
     let selector = PathSelector::new(&[path], &[])?;
     match selector.select(repository).first() {
-        Some(repo_path) => Ok(Some(repository.read_utf8(repo_path)?)),
+        Some(repo_path) => Ok(Some(repository.read_utf8(repo_path)?.to_string())),
         None => Ok(None),
     }
 }

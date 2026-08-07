@@ -120,7 +120,11 @@ enum Command {
     /// Verify or run the checksum-pinned Gitleaks scanner.
     Gitleaks(GitleaksArguments),
     /// Run every registered rule.
-    All,
+    All {
+        /// Write deterministic per-rule timing evidence to this TSV file.
+        #[arg(long, value_name = "PATH")]
+        timing_file: Option<PathBuf>,
+    },
     /// Run one registered rule.
     Rule {
         /// Registered rule name.
@@ -183,7 +187,13 @@ pub fn run_cli_with_io(
             },
             Err(error) => render_error(&error, stderr),
         },
-        Command::All => execute_all(arguments.root.as_deref(), current_dir, stdout, stderr),
+        Command::All { timing_file } => execute_all(
+            arguments.root.as_deref(),
+            current_dir,
+            timing_file.as_deref(),
+            stdout,
+            stderr,
+        ),
         Command::Rule { name } => execute_named(
             &name,
             arguments.root.as_deref(),
@@ -246,6 +256,7 @@ fn write_command_output(output: &mut impl Write, value: &str) -> Result<(), Lint
 fn execute_all(
     root: Option<&Path>,
     current_dir: Option<&Path>,
+    timing_file: Option<&Path>,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> ExitCode {
@@ -260,7 +271,14 @@ fn execute_all(
     if let Err(error) = crate::validate_migration_ledger(&repository, &registry) {
         return render_error(&error, stderr);
     }
-    execute(&repository, registry.iter(), false, stdout, stderr)
+    execute(
+        &repository,
+        registry.iter(),
+        false,
+        timing_file,
+        stdout,
+        stderr,
+    )
 }
 
 fn execute_named(
@@ -288,6 +306,7 @@ fn execute_named(
         &repository,
         std::iter::once(rule),
         name == "retired-scripts",
+        None,
         stdout,
         stderr,
     )
@@ -319,6 +338,7 @@ fn execute<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn crate::Rule>,
     render_contract: bool,
+    timing_file: Option<&Path>,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> ExitCode {
@@ -326,6 +346,11 @@ fn execute<'rule>(
         Ok(report) => report,
         Err(error) => return render_error(&error, stderr),
     };
+    if let Some(timing_file) = timing_file
+        && let Err(error) = write_rule_timings(&report, timing_file)
+    {
+        return render_error(&error, stderr);
+    }
     if let Err(error) = render_warnings(report.warnings(), stderr) {
         return render_error(&error, stderr);
     }
@@ -341,4 +366,20 @@ fn execute<'rule>(
         return render_error(&error, stderr);
     }
     exit
+}
+
+fn write_rule_timings(report: &crate::LintReport, path: &Path) -> Result<(), LintError> {
+    let mut output = String::from("rule\tmilliseconds\n");
+    for timing in report.rule_timings() {
+        use std::fmt::Write as _;
+
+        writeln!(output, "{}\t{}", timing.name(), timing.milliseconds())
+            .map_err(|error| LintError::new(format!("cannot render rule timings: {error}")))?;
+    }
+    std::fs::write(path, output).map_err(|error| {
+        LintError::new(format!(
+            "cannot write rule timings {}: {error}",
+            path.display()
+        ))
+    })
 }
