@@ -14,7 +14,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from larch.core.proc import CommandResult, ProcRunner, Runner
 
@@ -559,7 +559,7 @@ def _parse_package(value: object, *, repo_root: Path) -> _Package:
 def _metadata_directory(value: str, *, repo_root: Path) -> Path:
     path = Path(value).resolve(strict=False)
     try:
-        path.relative_to(repo_root)
+        _ = path.relative_to(repo_root)
     except ValueError as exc:
         raise _SelectionError("cargo-metadata-path-outside-repository") from exc
     return path
@@ -596,8 +596,9 @@ def _parts_start_with(value: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
 def _object(value: object, *, reason: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise _SelectionError(reason)
+    raw_value = cast("dict[object, object]", value)
     result: dict[str, object] = {}
-    for key, item in value.items():
+    for key, item in raw_value.items():
         if not isinstance(key, str):
             raise _SelectionError(reason)
         result[key] = item
@@ -607,11 +608,11 @@ def _object(value: object, *, reason: str) -> dict[str, object]:
 def _list(value: object, *, reason: str) -> list[object]:
     if not isinstance(value, list):
         raise _SelectionError(reason)
-    return value
+    return cast("list[object]", value)
 
 
-def _required_string(value: object | dict[str, object], key: str | None, *, reason: str) -> str:
-    candidate = value.get(key) if isinstance(value, dict) and key is not None else value
+def _required_string(value: object, key: str | None, *, reason: str) -> str:
+    candidate: object = _object(value, reason=reason).get(key) if key is not None else value
     if not isinstance(candidate, str) or not candidate:
         raise _SelectionError(reason)
     return candidate
@@ -816,10 +817,10 @@ def _html_code(value: str) -> str:
 
 def rust_select_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Propose a fail-closed Rust CI selection.")
-    parser.add_argument("--event-name", default="unrecognized")
-    parser.add_argument("--base-sha", default="")
-    parser.add_argument("--head-sha", default="")
-    parser.add_argument("--repo-root", default=".")
+    _ = parser.add_argument("--event-name", default="unrecognized")
+    _ = parser.add_argument("--base-sha", default="")
+    _ = parser.add_argument("--head-sha", default="")
+    _ = parser.add_argument("--repo-root", default=".")
     args = parser.parse_args(argv)
     selection = select(
         event_name=str(args.event_name),
@@ -834,7 +835,7 @@ def rust_select_main(argv: list[str]) -> int:
 
 def rust_select_summary_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Render a Rust CI selector observation summary.")
-    parser.add_argument("--result-file", required=True)
+    _ = parser.add_argument("--result-file", required=True)
     args = parser.parse_args(argv)
     try:
         payload: object = json.loads(Path(str(args.result_file)).read_text(encoding="utf-8"))

@@ -27,10 +27,14 @@ def _result(argv: Sequence[str], *, stdout: str = "", returncode: int = 0) -> Co
     )
 
 
+def _empty_calls() -> list[tuple[str, ...]]:
+    return []
+
+
 @dataclass
 class FakeRunner:
     responses: dict[tuple[str, ...], CommandResult]
-    calls: list[tuple[str, ...]] = field(default_factory=list)
+    calls: list[tuple[str, ...]] = field(default_factory=_empty_calls)
 
     def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:
         key = tuple(argv)
@@ -599,7 +603,7 @@ def test_summary_escapes_untrusted_paths_and_declares_observation_only() -> None
 
 def test_invalid_summary_result_falls_back_to_a_full_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     result_file = tmp_path / "invalid.json"
-    result_file.write_text("{}", encoding="utf-8")
+    _ = result_file.write_text("{}", encoding="utf-8")
 
     assert selection.rust_select_summary_main(["--result-file", str(result_file)]) == 0
 
