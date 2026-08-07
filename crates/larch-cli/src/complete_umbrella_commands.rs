@@ -207,36 +207,45 @@ fn start(arguments: &ParentMutationArguments) -> Result<(), String> {
     require_issue(arguments.issue, "--issue")?;
     let repository = parse_repository(&arguments.repository)?;
     with_github_service(async |service, cancellation| {
-        let parent = service
-            .issue(&repository, arguments.issue, cancellation)
-            .await
-            .map_err(|error| error.to_string())?;
-        validate_complete_umbrella_parent(&parent, true)?;
-        require_top_level_umbrella(service, cancellation, &repository, arguments.issue).await?;
-        let owner = IssueMutationOwner::new(service);
-        let before = owner
-            .read_snapshot(&repository, arguments.issue, cancellation)
-            .await
-            .map_err(|error| error.to_string())?;
-        if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
-            return Err("parent changed before the active-title mutation".to_owned());
-        }
-        let title = complete_umbrella_start_title(&before.title).map_err(str::to_owned)?;
-        let request = exact_title_request(&before, title)?;
-        let verified = owner
-            .apply(cancellation, &operator_authorization(), &request)
-            .await
-            .map_err(|error| error.to_string())?;
-        if verified.after.state != GitHubIssueState::Open
-            || !verified.after.title.starts_with(IMPLEMENTING_PREFIX)
-        {
-            return Err("active parent title read-back failed".to_owned());
-        }
-        Ok(())
+        start_remote(service, cancellation, &repository, arguments.issue).await
     })
     .map_err(ServiceFailure::into_detail)?;
     emit_kv("UMBRELLA_STARTED", "true");
     emit_kv("UMBRELLA_ISSUE", &arguments.issue.to_string());
+    Ok(())
+}
+
+async fn start_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+) -> Result<(), String> {
+    let parent = service
+        .issue(repository, issue, cancellation)
+        .await
+        .map_err(|error| error.to_string())?;
+    validate_complete_umbrella_parent(&parent, true)?;
+    require_top_level_umbrella(service, cancellation, repository, issue).await?;
+    let owner = IssueMutationOwner::new(service);
+    let before = owner
+        .read_snapshot(repository, issue, cancellation)
+        .await
+        .map_err(|error| error.to_string())?;
+    if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
+        return Err("parent changed before the active-title mutation".to_owned());
+    }
+    let title = complete_umbrella_start_title(&before.title).map_err(str::to_owned)?;
+    let request = exact_title_request(&before, title)?;
+    let verified = owner
+        .apply(cancellation, &operator_authorization(), &request)
+        .await
+        .map_err(|error| error.to_string())?;
+    if verified.after.state != GitHubIssueState::Open
+        || !verified.after.title.starts_with(IMPLEMENTING_PREFIX)
+    {
+        return Err("active parent title read-back failed".to_owned());
+    }
     Ok(())
 }
 
@@ -247,6 +256,10 @@ fn next(arguments: &NextArguments) -> Result<(), String> {
         read_graph(service, cancellation, &repository, arguments.issue).await
     })
     .map_err(ServiceFailure::into_detail)?;
+    emit_next(arguments, &graph)
+}
+
+fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String> {
     if graph.parent.state != GitHubIssueState::Open
         || !graph.parent.title.starts_with(IMPLEMENTING_PREFIX)
     {
@@ -262,7 +275,7 @@ fn next(arguments: &NextArguments) -> Result<(), String> {
         })
         .collect::<Vec<_>>();
     let selection = select_complete_umbrella_leaf(&selection_input);
-    write_audit_snapshot(arguments, &graph)?;
+    write_audit_snapshot(arguments, graph)?;
     match &selection {
         CompleteUmbrellaNext::Launch(issue) => {
             emit_kv("NEXT_ACTION", "launch");
@@ -377,25 +390,32 @@ fn verify_child(arguments: &LeafArguments) -> Result<(), String> {
     require_issue(arguments.leaf, "--leaf")?;
     let repository = parse_repository(&arguments.repository)?;
     with_github_service(async |service, cancellation| {
-        let graph = read_graph(service, cancellation, &repository, arguments.umbrella).await?;
-        let Some(leaf) = graph
-            .leaves
-            .iter()
-            .find(|leaf| leaf.issue.number == arguments.leaf)
-        else {
-            return Err("child is not a direct leaf of the umbrella".to_owned());
-        };
-        let done_prefix = format!("{DONE_PREFIX}{}", umbrella_leaf_prefix(arguments.umbrella));
-        if leaf.issue.state != GitHubIssueState::Closed
-            || !leaf.issue.title.starts_with(&done_prefix)
-        {
-            return Err("child must be closed with the exact [DONE] leaf prefix".to_owned());
-        }
-        Ok(())
+        verify_child_remote(service, cancellation, &repository, arguments).await
     })
     .map_err(ServiceFailure::into_detail)?;
     emit_kv("CHILD_VERIFIED", "true");
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
+    Ok(())
+}
+
+async fn verify_child_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    arguments: &LeafArguments,
+) -> Result<(), String> {
+    let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
+    let Some(leaf) = graph
+        .leaves
+        .iter()
+        .find(|leaf| leaf.issue.number == arguments.leaf)
+    else {
+        return Err("child is not a direct leaf of the umbrella".to_owned());
+    };
+    let done_prefix = format!("{DONE_PREFIX}{}", umbrella_leaf_prefix(arguments.umbrella));
+    if leaf.issue.state != GitHubIssueState::Closed || !leaf.issue.title.starts_with(&done_prefix) {
+        return Err("child must be closed with the exact [DONE] leaf prefix".to_owned());
+    }
     Ok(())
 }
 
@@ -574,6 +594,9 @@ async fn apply_attachment(
         .await
         .map_err(|error| error.to_string())?;
     validate_complete_umbrella_parent(&parent, true)?;
+    if !parent.title.starts_with(IMPLEMENTING_PREFIX) {
+        return Err("parent changed before dependency attachment".to_owned());
+    }
     service
         .add_blocked_by(
             cancellation,
@@ -583,7 +606,7 @@ async fn apply_attachment(
                 repo: repository.name(),
                 client_issue: arguments.umbrella,
                 blocker_id: leaf.id,
-                expected_updated_at: Some(&parent.updated_at),
+                expected_updated_at: None,
             },
         )
         .await
@@ -625,80 +648,88 @@ fn finish(arguments: &ParentMutationArguments) -> Result<(), String> {
     require_issue(arguments.issue, "--issue")?;
     let repository = parse_repository(&arguments.repository)?;
     with_github_service(async |service, cancellation| {
-        let graph = read_graph(service, cancellation, &repository, arguments.issue).await?;
-        if graph
-            .leaves
-            .iter()
-            .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
-        {
-            return Err("cannot finish while a direct leaf remains open".to_owned());
-        }
-        let done_title =
-            complete_umbrella_done_title(&graph.parent.title).map_err(str::to_owned)?;
-        if graph.parent.state == GitHubIssueState::Closed {
-            if graph.parent.title != done_title {
-                return Err("closed parent does not have the exact [DONE] title".to_owned());
-            }
-            return Ok(());
-        }
-        if graph.parent.state != GitHubIssueState::Open {
-            return Err("parent lifecycle state is not concrete".to_owned());
-        }
-        let authorization = operator_authorization();
-        if !check_live_mutation_auth(&authorization).is_authorized() {
-            return Err("live mutation authorization was refused".to_owned());
-        }
-        let owner = IssueMutationOwner::new(service);
-        let before = owner
-            .read_snapshot(&repository, arguments.issue, cancellation)
-            .await
-            .map_err(|error| error.to_string())?;
-        if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
-            return Err("parent changed before completion".to_owned());
-        }
-        let title = complete_umbrella_done_title(&before.title).map_err(str::to_owned)?;
-        let request = exact_title_request(&before, title)?;
-        owner
-            .apply(cancellation, &authorization, &request)
-            .await
-            .map_err(|error| error.to_string())?;
-        let before_close = read_graph(service, cancellation, &repository, arguments.issue).await?;
-        if before_close
-            .leaves
-            .iter()
-            .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
-            || before_close.parent.state != GitHubIssueState::Open
-            || !before_close.parent.title.starts_with(DONE_PREFIX)
-        {
-            return Err("completion precondition changed before close".to_owned());
-        }
-        let closed = service
-            .close_issue(
-                &repository,
-                arguments.issue,
-                GitHubCloseReason::Completed,
-                cancellation,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-        if closed.state != GitHubIssueState::Closed || !closed.title.starts_with(DONE_PREFIX) {
-            return Err("parent close read-back failed".to_owned());
-        }
-        let final_graph = read_graph(service, cancellation, &repository, arguments.issue).await?;
-        if final_graph.parent.state != GitHubIssueState::Closed
-            || !final_graph.parent.title.starts_with(DONE_PREFIX)
-            || final_graph
-                .leaves
-                .iter()
-                .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
-        {
-            return Err("final umbrella graph verification failed".to_owned());
-        }
-        Ok(())
+        finish_remote(service, cancellation, &repository, arguments.issue).await
     })
     .map_err(ServiceFailure::into_detail)?;
     emit_kv("UMBRELLA_FINISHED", "true");
     emit_kv("UMBRELLA_ISSUE", &arguments.issue.to_string());
+    Ok(())
+}
+
+async fn finish_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+) -> Result<(), String> {
+    let graph = read_graph(service, cancellation, repository, issue).await?;
+    if graph
+        .leaves
+        .iter()
+        .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
+    {
+        return Err("cannot finish while a direct leaf remains open".to_owned());
+    }
+    let done_title = complete_umbrella_done_title(&graph.parent.title).map_err(str::to_owned)?;
+    if graph.parent.state == GitHubIssueState::Closed {
+        if graph.parent.title != done_title {
+            return Err("closed parent does not have the exact [DONE] title".to_owned());
+        }
+        return Ok(());
+    }
+    if graph.parent.state != GitHubIssueState::Open {
+        return Err("parent lifecycle state is not concrete".to_owned());
+    }
+    let authorization = operator_authorization();
+    if !check_live_mutation_auth(&authorization).is_authorized() {
+        return Err("live mutation authorization was refused".to_owned());
+    }
+    let owner = IssueMutationOwner::new(service);
+    let before = owner
+        .read_snapshot(repository, issue, cancellation)
+        .await
+        .map_err(|error| error.to_string())?;
+    if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
+        return Err("parent changed before completion".to_owned());
+    }
+    let title = complete_umbrella_done_title(&before.title).map_err(str::to_owned)?;
+    let request = exact_title_request(&before, title)?;
+    owner
+        .apply(cancellation, &authorization, &request)
+        .await
+        .map_err(|error| error.to_string())?;
+    let before_close = read_graph(service, cancellation, repository, issue).await?;
+    if before_close
+        .leaves
+        .iter()
+        .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
+        || before_close.parent.state != GitHubIssueState::Open
+        || !before_close.parent.title.starts_with(DONE_PREFIX)
+    {
+        return Err("completion precondition changed before close".to_owned());
+    }
+    let closed = service
+        .close_issue(
+            repository,
+            issue,
+            GitHubCloseReason::Completed,
+            cancellation,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    if closed.state != GitHubIssueState::Closed || !closed.title.starts_with(DONE_PREFIX) {
+        return Err("parent close read-back failed".to_owned());
+    }
+    let final_graph = read_graph(service, cancellation, repository, issue).await?;
+    if final_graph.parent.state != GitHubIssueState::Closed
+        || !final_graph.parent.title.starts_with(DONE_PREFIX)
+        || final_graph
+            .leaves
+            .iter()
+            .any(|leaf| leaf.issue.state == GitHubIssueState::Open)
+    {
+        return Err("final umbrella graph verification failed".to_owned());
+    }
     Ok(())
 }
 
@@ -1028,45 +1059,5 @@ fn join_numbers(numbers: &[u64]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn repository_and_positive_issue_inputs_fail_closed() {
-        assert!(parse_repository("owner/repo").is_ok());
-        assert!(parse_repository("../repo").is_err());
-        assert!(require_issue(1, "--issue").is_ok());
-        assert!(require_issue(0, "--issue").is_err());
-        assert!(require_operator(false).is_err());
-        assert!(temporary_root(Path::new("/"), "root").is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn expected_files_reject_symlinks_and_oversize_content() {
-        use std::os::unix::fs::symlink;
-
-        let directory = tempfile::tempdir().expect("temporary root");
-        let root = temporary_root(directory.path(), "root").expect("trusted root");
-        let real = directory.path().join("real.txt");
-        fs::write(&real, "four").expect("fixture");
-        let link = directory.path().join("link.txt");
-        symlink(&real, &link).expect("symlink fixture");
-        let real_directory = directory.path().join("real-directory");
-        fs::create_dir(&real_directory).expect("directory fixture");
-        fs::write(real_directory.join("nested.txt"), "four").expect("nested fixture");
-        let linked_directory = directory.path().join("linked-directory");
-        symlink(&real_directory, &linked_directory).expect("directory symlink fixture");
-        let nested_link = linked_directory.join("nested.txt");
-
-        assert!(read_expected_file(&link, directory.path(), &root, "file", 8).is_err());
-        assert!(read_expected_file(&nested_link, directory.path(), &root, "file", 8).is_err());
-        assert!(write_private_file(&link, "changed", directory.path(), &root).is_err());
-        assert!(read_expected_file(&real, directory.path(), &root, "file", 3).is_err());
-        assert_eq!(
-            read_expected_file(&real, directory.path(), &root, "file", 4)
-                .expect("bounded regular file"),
-            "four"
-        );
-    }
-}
+#[path = "../tests/support/complete_umbrella_commands.rs"]
+mod tests;

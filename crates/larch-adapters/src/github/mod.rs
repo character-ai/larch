@@ -151,16 +151,19 @@ pub struct OctocrabGitHubService {
 }
 
 impl OctocrabGitHubService {
-    #[cfg(test)]
-    pub(crate) fn with_test_client(client: Octocrab) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn with_test_client(client: Octocrab) -> Self {
         Self {
             download_client: client.clone(),
             client,
             policy: GitHubTransportPolicy::github_com(),
             api_base: Url::parse(API_BASE).expect("fixed API base must be valid"),
+            #[cfg(test)]
             test_log_redirect_origin: None,
             redactor: RuntimeRedactor::default(),
             mutation_lock: Mutex::new(()),
+            #[cfg(test)]
             test_continuation_base: None,
         }
     }
