@@ -41,6 +41,34 @@ them. The lint dependency cache is a separate `target/debug` entry. Before it
 can be saved, the workflow removes workspace products with `cargo clean
 --workspace`; it follows the same successful-`main`-push rule.
 
+The coverage compiler-dependency cache is a separate, versioned
+`target/llvm-cov-target` class. It is disabled until three comparable warm-cache
+`main` samples beat a no-target-cache control end to end; a missing comparison
+or an inconclusive result leaves it disabled. Its explicit key binds runner OS
+and architecture, target triple, toolchain and manifests, coverage-tool
+version, compiler-profile values, feature mode, linker choice, Cargo
+configuration, and a schema version. It has no broad `restore-keys` fallback.
+If evidence later activates it, pull requests may restore but cannot publish
+it: only a successful `refs/heads/main` push on a primary-key miss may save
+after the size guard passes. The initial size limit must come from a measured
+dependency-only inventory; the current zero value is a fail-closed unmeasured
+sentinel, not a permitted cache size. Any later bound above 2 GiB needs
+explicit PR evidence that transfer cost remains net-positive.
+
+Before an enabled target cache can save, the coverage report and verified Linux
+executable artifacts have already uploaded, and the coverage executable has
+already completed repository policy and plugin validation. The workflow then
+removes profile data, reports, timing output, and workspace products, verifies
+that no workspace binary or test executable remains, and uploads the resulting
+directory inventory. Cache data is never an artifact-provenance substitute and
+a cache hit never skips correctness checks or artifact handoff.
+
+CI does not delete Actions caches as part of this policy. A future collector
+must first establish repository quota pressure or eviction of useful immutable
+entries, limit deletion to this repository's versioned Rust-cache prefixes,
+protect current keys, run only from a scheduled or manual trusted event, and
+exercise selection offline before a network mutation.
+
 `cargo-nextest` and `cargo-llvm-cov` are independent, versioned Linux tool
 caches. On a miss, CI downloads the exact pinned release archive with bounded
 retries and timeouts, verifies its SHA-256 before extraction, accepts only the
