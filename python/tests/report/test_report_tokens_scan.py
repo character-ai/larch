@@ -18,7 +18,7 @@ import pytest
 
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
-from larch.report import run_log_archive, run_log_corpus
+from larch.report import run_log_archive, run_log_corpus, run_log_legacy_archive
 from larch.report.report_tokens_scan import scan, scan_prepared_corpus
 
 
@@ -131,7 +131,7 @@ def test_report_tokens_matches_legacy_git_tree_and_compatibility_cache(tmp_path:
     _write_run(legacy, skill="implement")
     source_run = legacy / "larch-logs/implement/run1"
     archive_path = tmp_path / "legacy.tar.gz"
-    members: list[run_log_archive.LegacyArchiveMember] = []
+    members: list[run_log_legacy_archive.LegacyArchiveMember] = []
     with tarfile.open(archive_path, mode="w:gz", format=tarfile.PAX_FORMAT) as archive:
         for source in sorted(source_run.iterdir()):
             content = source.read_bytes()
@@ -139,15 +139,15 @@ def test_report_tokens_matches_legacy_git_tree_and_compatibility_cache(tmp_path:
             info.type, info.size, info.mode, info.mtime = tarfile.REGTYPE, len(content), 0o644, 0
             info.uid, info.gid, info.uname, info.gname = 0, 0, "", ""
             archive.addfile(info, io.BytesIO(content))
-            members.append(run_log_archive.LegacyArchiveMember(
+            members.append(run_log_legacy_archive.LegacyArchiveMember(
                 source.name, len(content), hashlib.sha256(content).hexdigest(), 0o644,
             ))
     cache_root = tmp_path / "cache"
     run_dir = cache_root / "implement/run1"
     run_dir.parent.mkdir(parents=True)
-    _ = run_log_archive.materialize_legacy_run_archive(
+    _ = run_log_legacy_archive.materialize_legacy_run_archive(
         archive_path=archive_path, run_dir=run_dir, expected_skill="implement", expected_run_id="run1",
-        legacy=run_log_archive.LegacyRunArchive(
+        legacy=run_log_legacy_archive.LegacyRunArchive(
             archive_size=archive_path.stat().st_size, archive_sha256=run_log_archive.sha256_file(archive_path),
             member_count=len(members), expanded_size=sum(member.size for member in members), members=tuple(members),
         ),

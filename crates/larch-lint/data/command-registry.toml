@@ -5949,11 +5949,13 @@ verb = "archive"
 python_module = "larch.report.run_log_archive"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8079
+clean_install_test = "clean-install-run-log-archive"
 
 [[commands]]
 domain = "run-log"
@@ -6126,11 +6128,13 @@ verb = "materialize"
 python_module = "larch.report.run_log_archive"
 python_function = "materialize_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8079
+clean_install_test = "clean-install-run-log-materialize"
 
 [[commands]]
 domain = "run-log"
@@ -8512,6 +8516,12 @@ path = "python/larch/report/object_store.py"
 kind = "python-runtime"
 python = []
 rust = ["object-store gcs"]
+
+[[callers]]
+path = "python/larch/report/run_log_archive.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log archive", "run-log materialize"]
 
 [[callers]]
 path = "python/larch/report/run_log_commit.py"

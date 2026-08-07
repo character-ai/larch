@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol, cast
 
 from larch.core import config
-from larch.report import run_log_archive
+from larch.report import run_log_legacy_archive
 from larch.report.run_log_batch import validate_run_id_slug
 from larch.report.storage_config import (
     LegacyMigrationDescriptor,
@@ -83,9 +83,11 @@ class _ArchiveRow:
 class LegacyMigrationInventory:
     """Validated legacy run records keyed by remote run-archive path."""
 
-    run_archives: tuple[tuple[str, run_log_archive.LegacyRunArchive], ...]
+    run_archives: tuple[tuple[str, run_log_legacy_archive.LegacyRunArchive], ...]
 
-    def archive_for(self, remote_key: str) -> run_log_archive.LegacyRunArchive | None:
+    def archive_for(
+        self, remote_key: str
+    ) -> run_log_legacy_archive.LegacyRunArchive | None:
         return next(
             (record for key, record in self.run_archives if key == remote_key),
             None,
@@ -218,7 +220,7 @@ def _validated_source_member(
     raw: object,
     *,
     archives: dict[str, _ArchiveRow],
-) -> tuple[str, run_log_archive.LegacyArchiveMember, str]:
+) -> tuple[str, run_log_legacy_archive.LegacyArchiveMember, str]:
     if not isinstance(raw, dict):
         raise TypeError("migration inventory source-file row must be an object")
     row = cast("dict[str, object]", raw)
@@ -235,7 +237,7 @@ def _validated_source_member(
     member_path: str = _canonical_path(
         row["archive_member_path"], label="archive member path"
     )
-    if member_path == run_log_archive.ARCHIVE_MANIFEST_NAME:
+    if member_path == run_log_legacy_archive.ARCHIVE_MANIFEST_NAME:
         raise ValueError("migration inventory source file uses a reserved member path")
     source_path: str = _canonical_path(row["path"], label="source path")
     expected_source: str = (
@@ -260,7 +262,7 @@ def _validated_source_member(
     mode: int = 0o644 if raw_mode == "100644" else 0o755
     return (
         archive_key,
-        run_log_archive.LegacyArchiveMember(member_path, size, digest, mode),
+        run_log_legacy_archive.LegacyArchiveMember(member_path, size, digest, mode),
         source_path,
     )
 
@@ -329,7 +331,7 @@ def parse_inventory(  # noqa: C901,PLR0912,PLR0915 - strict schema cross-checks 
             )
         archive_casefold[row.object_key.casefold()] = row.object_key
         archives[row.object_key] = row
-    members_by_archive: dict[str, list[run_log_archive.LegacyArchiveMember]] = {
+    members_by_archive: dict[str, list[run_log_legacy_archive.LegacyArchiveMember]] = {
         key: [] for key in archives
     }
     member_names: dict[tuple[str, str], str] = {}
@@ -380,14 +382,14 @@ def parse_inventory(  # noqa: C901,PLR0912,PLR0915 - strict schema cross-checks 
     }
     if actual_totals != expected_totals:
         raise ValueError("migration inventory global totals are inconsistent")
-    run_archives: list[tuple[str, run_log_archive.LegacyRunArchive]] = []
+    run_archives: list[tuple[str, run_log_legacy_archive.LegacyRunArchive]] = []
     for row in archive_rows:
         if row.kind != "run":
             continue
         run_archives.append(
             (
                 row.relative_key,
-                run_log_archive.LegacyRunArchive(
+                run_log_legacy_archive.LegacyRunArchive(
                     archive_size=row.archive_bytes,
                     archive_sha256=row.sha256,
                     member_count=row.member_count,

@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import Final, Protocol, cast
 
 from larch.core import config
-from larch.report import run_log_archive, run_log_migration, run_log_sync
+from larch.report import (
+    run_log_archive,
+    run_log_legacy_archive,
+    run_log_migration,
+    run_log_sync,
+)
 from larch.report.object_store import (
     ObjectStoreError,
     ObjectStoreErrorKind,
@@ -285,11 +290,11 @@ def _materialize_legacy(
     archive: Path,
     skill: str,
     run_id: str,
-    legacy: run_log_archive.LegacyRunArchive,
+    legacy: run_log_legacy_archive.LegacyRunArchive,
     parent: Path,
 ) -> run_log_archive.RunArchiveMaterializationResult:
     run_dir = parent / run_id
-    return run_log_archive.materialize_legacy_run_archive(
+    return run_log_legacy_archive.materialize_legacy_run_archive(
         archive_path=archive,
         run_dir=run_dir,
         expected_skill=skill,
@@ -909,7 +914,7 @@ def apply_layout_migration(  # noqa: C901,PLR0912,PLR0913,PLR0915 - one auditabl
 def _verify_legacy_equivalence(
     *,
     run_dir: Path,
-    legacy: run_log_archive.LegacyRunArchive,
+    legacy: run_log_legacy_archive.LegacyRunArchive,
 ) -> None:
     expected = {member.path: member for member in legacy.members}
     actual_files: dict[str, Path] = {}

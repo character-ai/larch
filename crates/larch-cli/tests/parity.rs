@@ -637,6 +637,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "release",
         "validate-assets",
     ),
+    CleanInstallCase::new("clean-install-run-log-archive", "run-log", "archive"),
     CleanInstallCase::new("clean-install-run-log-manifest", "run-log", "manifest"),
     CleanInstallCase::new(
         "clean-install-run-log-lifecycle-cancel",
@@ -662,6 +663,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-run-log-lifecycle-start",
         "run-log",
         "lifecycle-start",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-materialize",
+        "run-log",
+        "materialize",
     ),
     CleanInstallCase::new(
         "clean-install-run-log-validate-run-id",

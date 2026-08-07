@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # pyright: reportPrivateUsage=false, reportArgumentType=false
-# The run-log verbs deliberately reuse the shared private helpers in
+# The entry-write run-log verbs deliberately reuse the shared private helpers in
 # `larch.report.run_log_batch` / `run_log_manifest` rather than restating their
 # behavior, and the manifest record crosses this module as an opaque value.
 """Verified-bootstrap test double for Rust-owned agent and run-log commands.
@@ -11,24 +11,32 @@ build. This executable supplies the narrow command behavior those caller tests
 need; the real command contracts live in Rust integration tests
 (``crates/larch-cli/tests/``).
 
-The ``run-log`` verbs delegate to the surviving `larch.report.run_log_batch`
-and `larch.report.run_log_manifest` helpers, which the still-Python flush,
-archive, and publication verbs also use, so the double stays short and cannot
-drift into a second implementation.
+The entry-write ``run-log`` verbs delegate to the surviving
+`larch.report.run_log_batch` and `larch.report.run_log_manifest` helpers. The
+archive fixture below is test-only plumbing for Python callers; the production
+archive contract and hostile-input coverage live in Rust integration tests.
 """
 
 from __future__ import annotations
 
+import gzip
+import hashlib
+import io
 import json
 import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from pathlib import PurePosixPath
+from typing import Literal, cast
 
 ARG_PAIR_SIZE = 2
 CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR = 1_000
@@ -36,6 +44,22 @@ CURSOR_DEGRADED_RESULT_BYTES_CEILING = 500
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 GENERATORS_TSV_COLUMNS = 2
 GIT = shutil.which("git") or "git"
+ARCHIVE_FORMAT = "larch-run-archive"
+ARCHIVE_MANIFEST_NAME = "archive-manifest.json"
+ARCHIVE_SCHEMA_VERSION = 1
+ARCHIVE_SHA256_HEX_LENGTH = 64
+
+
+@dataclass(frozen=True)
+class _ArchiveRecord:
+    """One tiny in-memory record used only by the Python bootstrap double."""
+
+    path: str
+    kind: Literal["directory", "file"]
+    size: int
+    sha256: str | None
+    mode: int
+    content: bytes | None
 
 
 def _plugin_root() -> Path:
@@ -426,6 +450,461 @@ def _flag(arguments: list[str], name: str, default: str = "") -> str:
     return default
 
 
+def _safe_archive_path(raw: str, *, allow_manifest: bool = False) -> str:
+    if not raw or raw.startswith("/") or "\\" in raw or "\x00" in raw:
+        raise ValueError(f"unsafe archive member path: {raw!r}")
+    path = PurePosixPath(raw)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError(f"unsafe archive member path: {raw!r}")
+    canonical = str(path)
+    if canonical != raw:
+        raise ValueError(f"unsafe archive member path: {raw!r}")
+    if canonical == ARCHIVE_MANIFEST_NAME and not allow_manifest:
+        raise ValueError(f"archive member path is reserved: {canonical}")
+    return canonical
+
+
+def _tree_records(root: Path, *, allow_manifest: bool = False) -> tuple[_ArchiveRecord, ...]:
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError(f"archive staging root is not a directory: {root}")
+    records: list[_ArchiveRecord] = []
+
+    def visit(directory: Path, relative: PurePosixPath) -> None:
+        for child in sorted(directory.iterdir(), key=lambda candidate: candidate.name):
+            child_relative = relative / child.name
+            path = _safe_archive_path(str(child_relative), allow_manifest=allow_manifest)
+            entry = child.lstat()
+            if stat.S_ISLNK(entry.st_mode):
+                raise ValueError(f"unsupported archive member type: {path}")
+            if path == ARCHIVE_MANIFEST_NAME:
+                if not stat.S_ISREG(entry.st_mode):
+                    raise ValueError(f"unsupported archive member type: {path}")
+                continue
+            if stat.S_ISDIR(entry.st_mode):
+                records.append(_ArchiveRecord(path, "directory", 0, None, 0o755, None))
+                visit(child, child_relative)
+                continue
+            if not stat.S_ISREG(entry.st_mode):
+                raise ValueError(f"unsupported archive member type: {path}")
+            content = child.read_bytes()
+            records.append(
+                _ArchiveRecord(
+                    path,
+                    "file",
+                    len(content),
+                    hashlib.sha256(content).hexdigest(),
+                    0o755 if entry.st_mode & 0o111 else 0o644,
+                    content,
+                )
+            )
+
+    visit(root, PurePosixPath())
+    return tuple(records)
+
+
+def _manifest_bytes(
+    records: tuple[_ArchiveRecord, ...], *, skill: str, run_id: str
+) -> bytes:
+    members: list[dict[str, int | str | None]] = [
+        {
+            "kind": record.kind,
+            "path": record.path,
+            "sha256": record.sha256,
+            "size": record.size,
+        }
+        for record in records
+    ]
+    payload: dict[str, object] = {
+        "archive_format": ARCHIVE_FORMAT,
+        "member_count": len(records),
+        "members": members,
+        "run_id": run_id,
+        "schema_version": ARCHIVE_SCHEMA_VERSION,
+        "skill": skill,
+    }
+    return (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+
+
+def _manifest_payload(encoded: bytes) -> dict[str, object]:
+    try:
+        raw_payload: object = json.loads(encoded.decode("utf-8", "strict"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("archive manifest is not valid canonical UTF-8 JSON") from error
+    if not isinstance(raw_payload, dict):
+        raise TypeError("archive manifest has invalid fields")
+    payload = cast("dict[str, object]", raw_payload)
+    if frozenset(payload) != frozenset({
+        "archive_format",
+        "member_count",
+        "members",
+        "run_id",
+        "schema_version",
+        "skill",
+    }):
+        raise ValueError("archive manifest has invalid fields")
+    return payload
+
+
+def _manifest_record(member: object) -> _ArchiveRecord:
+    if not isinstance(member, dict):
+        raise TypeError("archive manifest member has invalid fields")
+    record = cast("dict[str, object]", member)
+    if frozenset(record) != frozenset({"kind", "path", "sha256", "size"}):
+        raise ValueError("archive manifest member has invalid fields")
+    raw_path = record["path"]
+    raw_kind = record["kind"]
+    raw_size = record["size"]
+    raw_digest = record["sha256"]
+    if not isinstance(raw_path, str) or raw_kind not in {"directory", "file"}:
+        raise ValueError("archive manifest member has invalid fields")
+    path = _safe_archive_path(raw_path)
+    if not isinstance(raw_size, int) or isinstance(raw_size, bool) or raw_size < 0:
+        raise ValueError(f"archive manifest member has invalid size: {path}")
+    if raw_kind == "directory":
+        if raw_size != 0 or raw_digest is not None:
+            raise ValueError(f"archive directory manifest record is invalid: {path}")
+        return _ArchiveRecord(path, "directory", 0, None, 0o755, None)
+    if not isinstance(raw_digest, str) or len(raw_digest) != ARCHIVE_SHA256_HEX_LENGTH:
+        raise ValueError(f"archive file manifest digest is invalid: {path}")
+    if any(character not in "0123456789abcdef" for character in raw_digest):
+        raise ValueError(f"archive file manifest digest is invalid: {path}")
+    return _ArchiveRecord(path, "file", raw_size, raw_digest, 0o644, None)
+
+
+def _validate_manifest_records(records: tuple[_ArchiveRecord, ...]) -> None:
+    if [record.path for record in records] != sorted(record.path for record in records):
+        raise ValueError("archive manifest members are not in canonical order")
+    kinds: dict[str, Literal["directory", "file"]] = {
+        record.path: record.kind for record in records
+    }
+    if len(kinds) != len(records):
+        raise ValueError("archive manifest members are not unique")
+    for record in records:
+        parent = PurePosixPath(record.path).parent
+        while str(parent) != ".":
+            if kinds.get(str(parent)) != "directory":
+                raise ValueError(
+                    f"archive member path collision or missing directory: {record.path}"
+                )
+            parent = parent.parent
+
+
+def _parsed_manifest(
+    encoded: bytes, *, expected_skill: str, expected_run_id: str
+) -> tuple[_ArchiveRecord, ...]:
+    payload = _manifest_payload(encoded)
+    if (
+        payload["archive_format"] != ARCHIVE_FORMAT
+        or payload["schema_version"] != ARCHIVE_SCHEMA_VERSION
+    ):
+        raise ValueError("unsupported archive manifest format or schema version")
+    if payload["skill"] != expected_skill or payload["run_id"] != expected_run_id:
+        raise ValueError("archive manifest identity does not match the requested run")
+    members = payload["members"]
+    if not isinstance(members, list):
+        raise TypeError("archive manifest member count is invalid")
+    member_values = cast("list[object]", members)
+    if payload["member_count"] != len(member_values):
+        raise ValueError("archive manifest member count is invalid")
+    records = tuple(_manifest_record(member) for member in member_values)
+    _validate_manifest_records(records)
+    canonical = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    if encoded != canonical:
+        raise ValueError("archive manifest is not canonical JSON")
+    return records
+
+
+def _read_archive_manifest(
+    archive: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
+    *,
+    expected_skill: str,
+    expected_run_id: str,
+) -> tuple[bytes, tuple[_ArchiveRecord, ...]]:
+    manifests = [member for member in members if member.name == ARCHIVE_MANIFEST_NAME]
+    if len(manifests) != 1 or not manifests[0].isreg():
+        raise ValueError("archive must contain exactly one root archive manifest")
+    source = archive.extractfile(manifests[0])
+    if source is None:
+        raise ValueError("archive manifest cannot be read")
+    with source:
+        manifest = source.read()
+    return manifest, _parsed_manifest(
+        manifest,
+        expected_skill=expected_skill,
+        expected_run_id=expected_run_id,
+    )
+
+
+def _archive_member_records(
+    archive: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
+    expected: tuple[_ArchiveRecord, ...],
+) -> tuple[_ArchiveRecord, ...]:
+    expected_by_path = {record.path: record for record in expected}
+    actual: list[_ArchiveRecord] = []
+    for member in members:
+        name = _safe_archive_path(
+            member.name, allow_manifest=member.name == ARCHIVE_MANIFEST_NAME
+        )
+        if name == ARCHIVE_MANIFEST_NAME:
+            continue
+        expected_record = expected_by_path.get(name)
+        if expected_record is None:
+            raise ValueError("archive members do not match archive manifest")
+        if member.isdir():
+            if expected_record.kind != "directory" or member.size != 0:
+                raise ValueError("archive members do not match archive manifest")
+            actual.append(_ArchiveRecord(name, "directory", 0, None, 0o755, None))
+            continue
+        if not member.isreg() or expected_record.kind != "file":
+            raise ValueError(f"unsupported archive member type: {name}")
+        source = archive.extractfile(member)
+        if source is None:
+            raise ValueError(f"archive regular member cannot be read: {name}")
+        with source:
+            content = source.read()
+        if (
+            len(content) != expected_record.size
+            or hashlib.sha256(content).hexdigest() != expected_record.sha256
+        ):
+            raise ValueError(f"archive member digest mismatch: {name}")
+        actual.append(
+            _ArchiveRecord(
+                name,
+                "file",
+                len(content),
+                expected_record.sha256,
+                member.mode & 0o777,
+                content,
+            )
+        )
+    return tuple(actual)
+
+
+def _read_archive(
+    archive_path: Path, *, expected_skill: str, expected_run_id: str
+) -> tuple[bytes, tuple[_ArchiveRecord, ...]]:
+    entry = archive_path.lstat()
+    if not stat.S_ISREG(entry.st_mode):
+        raise ValueError(f"run archive is not a regular file: {archive_path}")
+    with archive_path.open("rb") as probe:
+        if probe.read(2) != b"\x1f\x8b":
+            raise ValueError("invalid gzip header")
+    try:
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            members = archive.getmembers()
+            manifest, expected = _read_archive_manifest(
+                archive,
+                members,
+                expected_skill=expected_skill,
+                expected_run_id=expected_run_id,
+            )
+            actual = _archive_member_records(archive, members, expected)
+    except (EOFError, gzip.BadGzipFile, tarfile.ReadError) as error:
+        raise ValueError("invalid gzip header") from error
+    if [record.path for record in actual] != [record.path for record in expected]:
+        raise ValueError("archive members do not match archive manifest")
+    return manifest, tuple(actual)
+
+
+def _verify_materialized_tree(
+    run_dir: Path, *, expected_skill: str, expected_run_id: str
+) -> tuple[str, int, int]:
+    if run_dir.is_symlink() or not run_dir.is_dir():
+        raise ValueError(f"materialized run directory is not a directory: {run_dir}")
+    manifest_path = run_dir / ARCHIVE_MANIFEST_NAME
+    manifest_entry = manifest_path.lstat()
+    if not stat.S_ISREG(manifest_entry.st_mode):
+        raise ValueError("archive manifest is not a regular file")
+    manifest = manifest_path.read_bytes()
+    expected = _parsed_manifest(
+        manifest,
+        expected_skill=expected_skill,
+        expected_run_id=expected_run_id,
+    )
+    actual = _tree_records(run_dir, allow_manifest=True)
+    actual_shape = [
+        (record.path, record.kind, record.size, record.sha256) for record in actual
+    ]
+    expected_shape = [
+        (record.path, record.kind, record.size, record.sha256) for record in expected
+    ]
+    if actual_shape != expected_shape:
+        raise ValueError("materialized run directory does not match archive manifest")
+    expanded_size = len(manifest) + sum(record.size for record in actual)
+    return hashlib.sha256(manifest).hexdigest(), len(actual), expanded_size
+
+
+def _materialize_records(
+    *,
+    records: tuple[_ArchiveRecord, ...],
+    manifest: bytes,
+    run_dir: Path,
+    expected_skill: str,
+    expected_run_id: str,
+) -> tuple[str, int, int]:
+    if run_dir.exists() or run_dir.is_symlink():
+        raise FileExistsError(
+            f"refusing to merge archive into existing run directory: {run_dir}"
+        )
+    run_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=".materialize-", dir=run_dir.parent))
+    try:
+        for record in records:
+            if record.kind == "directory":
+                destination = temporary.joinpath(*PurePosixPath(record.path).parts)
+                destination.mkdir(mode=0o755)
+                destination.chmod(0o755)
+        manifest_path = temporary / ARCHIVE_MANIFEST_NAME
+        _ = manifest_path.write_bytes(manifest)
+        _ = manifest_path.chmod(0o644)
+        for record in records:
+            if record.kind != "file" or record.content is None:
+                continue
+            destination = temporary.joinpath(*PurePosixPath(record.path).parts)
+            _ = destination.write_bytes(record.content)
+            _ = destination.chmod(record.mode)
+        _ = _verify_materialized_tree(
+            temporary,
+            expected_skill=expected_skill,
+            expected_run_id=expected_run_id,
+        )
+        _ = temporary.replace(run_dir)
+        try:
+            return _verify_materialized_tree(
+                run_dir,
+                expected_skill=expected_skill,
+                expected_run_id=expected_run_id,
+            )
+        except (OSError, ValueError):
+            shutil.rmtree(run_dir)
+            raise
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
+def _archive_error(error: Exception) -> int:
+    print(f"ERROR={error}")
+    return 1
+
+
+def _append_archive_manifest(archive: tarfile.TarFile, manifest: bytes) -> None:
+    manifest_info = tarfile.TarInfo(ARCHIVE_MANIFEST_NAME)
+    manifest_info.mode = 0o644
+    manifest_info.size = len(manifest)
+    manifest_info.mtime = manifest_info.uid = manifest_info.gid = 0
+    manifest_info.uname = manifest_info.gname = ""
+    archive.addfile(manifest_info, io.BytesIO(manifest))
+
+
+def _run_log_archive(arguments: list[str]) -> int:
+    staging_root = Path(_flag(arguments, "--staging-root"))
+    output_dir = Path(_flag(arguments, "--output-dir"))
+    skill = _flag(arguments, "--skill")
+    run_id = _flag(arguments, "--run-id")
+    if not staging_root.name or not output_dir.name or not skill or not run_id:
+        return 2
+    archive_path = output_dir / f"{run_id}.tar.gz"
+    temporary = archive_path.with_name(f".{archive_path.name}.tmp-{os.getpid()}")
+    try:
+        records = _tree_records(staging_root)
+        manifest = _manifest_bytes(records, skill=skill, run_id=run_id)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if archive_path.is_symlink():
+            raise OSError(f"refusing symlinked archive destination: {archive_path}")
+        if archive_path.exists() and not archive_path.is_file():
+            raise OSError(f"archive destination is not a regular file: {archive_path}")
+        with temporary.open("xb") as raw:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+                with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
+                    manifest_written = False
+                    for record in records:
+                        if not manifest_written and record.path > ARCHIVE_MANIFEST_NAME:
+                            _append_archive_manifest(archive, manifest)
+                            manifest_written = True
+                        info = tarfile.TarInfo(record.path)
+                        info.mode = record.mode
+                        info.mtime = info.uid = info.gid = 0
+                        info.uname = info.gname = ""
+                        if record.kind == "directory":
+                            info.type = tarfile.DIRTYPE
+                            archive.addfile(info)
+                        else:
+                            info.type = tarfile.REGTYPE
+                            info.size = record.size
+                            archive.addfile(info, io.BytesIO(record.content or b""))
+                    if not manifest_written:
+                        _append_archive_manifest(archive, manifest)
+        _ = temporary.replace(archive_path)
+    except (OSError, ValueError) as error:
+        temporary.unlink(missing_ok=True)
+        return _archive_error(error)
+    print(f"ARCHIVE_PATH={archive_path}")
+    print(f"ARCHIVE_SHA256={hashlib.sha256(archive_path.read_bytes()).hexdigest()}")
+    print(f"MANIFEST_SHA256={hashlib.sha256(manifest).hexdigest()}")
+    print(f"MEMBER_COUNT={len(records)}")
+    return 0
+
+
+def _run_log_materialize(arguments: list[str]) -> int:
+    run_dir = Path(_flag(arguments, "--run-dir"))
+    skill = _flag(arguments, "--skill")
+    run_id = _flag(arguments, "--run-id")
+    if not run_dir.name or not skill or not run_id:
+        return 2
+    try:
+        if "--verify-existing" in arguments:
+            manifest_sha256, member_count, expanded_size = _verify_materialized_tree(
+                run_dir,
+                expected_skill=skill,
+                expected_run_id=run_id,
+            )
+        elif staging_root := _flag(arguments, "--staging-root"):
+            records = _tree_records(Path(staging_root))
+            manifest = _manifest_bytes(records, skill=skill, run_id=run_id)
+            expected_manifest = _flag(arguments, "--expected-manifest-sha256")
+            if expected_manifest != hashlib.sha256(manifest).hexdigest():
+                raise ValueError("staging tree no longer matches the pending archive manifest")
+            manifest_sha256, member_count, expanded_size = _materialize_records(
+                records=records,
+                manifest=manifest,
+                run_dir=run_dir,
+                expected_skill=skill,
+                expected_run_id=run_id,
+            )
+        else:
+            archive_path = _flag(arguments, "--archive-path")
+            if not archive_path:
+                return 2
+            manifest, records = _read_archive(
+                Path(archive_path),
+                expected_skill=skill,
+                expected_run_id=run_id,
+            )
+            manifest_sha256, member_count, expanded_size = _materialize_records(
+                records=records,
+                manifest=manifest,
+                run_dir=run_dir,
+                expected_skill=skill,
+                expected_run_id=run_id,
+            )
+    except (OSError, ValueError) as error:
+        return _archive_error(error)
+    print(f"RUN_DIR={run_dir}")
+    print(f"MANIFEST_SHA256={manifest_sha256}")
+    print(f"MEMBER_COUNT={member_count}")
+    print(f"EXPANDED_SIZE={expanded_size}")
+    return 0
+
+
 def _append_execution_issue(*, log: Path, category: str, entry: str) -> None:
     """Append `entry` under `### category`, matching the Rust composer."""
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -802,7 +1281,9 @@ def main(arguments: list[str]) -> int:
             ("agent", "launch-review"): _launch_review,
             ("run-log", "append-failure"): _append_failure,
             ("run-log", "append-entry"): _append_entry,
+            ("run-log", "archive"): _run_log_archive,
             ("run-log", "init"): _run_log_init,
+            ("run-log", "materialize"): _run_log_materialize,
             ("run-log", "write"): _run_log_write,
             ("run-log", "append"): _run_log_append,
             ("run-log", "exists"): _run_log_exists,

@@ -158,7 +158,7 @@ contract.
 
 ## Archive, publication, and synchronization
 
-`python3 python/cli.py run-log archive` packages one completed, sanitized
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh run-log archive` packages one completed, sanitized
 staging tree as `<run-id>.tar.gz`. The source tree is not changed.
 
 The archive is a POSIX PAX tar stream inside gzip. Every member has a
@@ -178,7 +178,7 @@ avoiding a recursive digest. The command emits SHA-256 digests for both the
 complete archive and its manifest so later publication can use the archive
 digest for idempotence.
 
-`python3 python/cli.py run-log materialize` validates an archive before it
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh run-log materialize` validates an archive before it
 writes run files. It rejects unsafe paths, collisions, links, special files,
 malformed contents, and integrity mismatches. Defaults limit archives to
 10,000 members, 256 MiB per member, 1 GiB expanded, and a 1,000:1 ratio.
@@ -240,13 +240,16 @@ Pause rejects disabled storage before writing a GitHub pause marker.
 
 ## Rust handoff
 
-Rust owns `run-log storage-preflight` and the five shared lifecycle verbs,
-including terminal archive publication and cache promotion. Configuration
-resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
-R2 use the official AWS SDK through `S3Storage`. Python retains the standalone
-archive, `publish`, and `sync` commands until their named migration leaves.
-Both runtimes preserve the same credential-free error classes. That split does
-not authorize another archive, layout, error, or provider contract.
+Rust owns `run-log archive`, `run-log materialize`, `run-log storage-preflight`,
+and the five shared lifecycle verbs, including terminal archive publication and
+cache promotion. Configuration resolution lives in `larch-core`; GCS uses
+`GoogleCloudStorage`, while S3 and R2 use the official AWS SDK through
+`S3Storage`. Python retains `publish`, `sync`, and layout-migration command
+orchestration until their named migration leaves. Its publication and sync
+helpers call the Rust archive commands through the verified bootstrap; they do
+not retain a normal archive writer, materializer, or fallback. Both runtimes
+preserve the same credential-free error classes. That split does not authorize
+another archive, layout, error, or provider contract.
 
 When remaining run-log commands migrate, follow `docs/python-migration.md` and
 I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
