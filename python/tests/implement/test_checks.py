@@ -3763,6 +3763,10 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
 def test_rust_ci_cache_tool_and_gate_contract() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    rust_testing = (repo_root / "docs" / "rust-testing.md").read_text(encoding="utf-8")
+    supply_chain = (
+        repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
     rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
     rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split("\n  rust-coverage:", 1)[0]
@@ -3896,6 +3900,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "repository-validation" in rust_build_test
     assert "rust-build-test-timings" in rust_build_test
     assert "## Rust repository validation timing" in rust_build_test
+    for cache_contract in (
+        "restore-only cache action",
+        "workflow_dispatch-read-only",
+        "cannot publish Cargo inputs",
+    ):
+        assert cache_contract in rust_testing
+    assert "workflow_dispatch` runs" in supply_chain
+    assert "cannot publish" in supply_chain
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage

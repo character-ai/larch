@@ -222,7 +222,7 @@ The coverage job installs checksum-verified pinned `cargo-nextest` and
 checks use changed-path Clippy and do not install coverage tooling or create
 instrumented artifacts.
 
-The production profile sets `CARGO_INCREMENTAL=0`,
+The production candidate sets `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
 nextest with `NEXTEST_TEST_THREADS=4`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
@@ -235,49 +235,79 @@ and filename exclusions. The separate doctest command stays required even when
 the workspace currently has no doctests. Nextest's slow-test status and final
 status output remain visible in the job log.
 
-The selected profile was measured in [CI run 31145183164](https://github.com/character-ai/larch/actions/runs/31145183164)
-on `ubuntu-24.04`. Each total below sums profile cleanup, one compiled
-artifact set, doctests, and that thread count's profile cleanup, nextest, and
-report phases; it does not duplicate compilation for every thread count.
+### Coverage-profile measurement contract
 
-| Test opt level | Nextest threads | Sample 1 | Sample 2 | Two-sample midpoint | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 0 | 4 | 475 s | 489 s | 482 s | selected |
-| 0 | 6 | 472 s | 488 s | 480 s | valid |
-| 0 | 8 | 473 s | 487 s | 480 s | valid |
-| 0 | 10 | 476 s | 489 s | 483 s | valid |
-| 0 | 12 | 475 s | 489 s | 482 s | valid |
-| 0 | 14 | 471 s | 489 s | 480 s | valid |
-| 0 | 16 | 475 s | 491 s | 483 s | valid |
-| 1 | 4 | 893 s | 874 s | — | rejected: below the 88% line baseline |
+A profile comparison uses the same commit, `ubuntu-24.04` runner, pinned
+toolchain, runner-provided linker, `CARGO_INCREMENTAL=0`,
+`CARGO_PROFILE_TEST_DEBUG=0`, and the same cache class. A manual dispatch with
+`coverage_profile_benchmark=true` runs three samples of both test optimization
+levels and every nextest thread count from 4 through 16. It compiles one
+coverage-instrumented artifact set per profile, clears only `profraw` data
+between thread counts, and reports the raw end-to-end coverage-phase totals
+(common profile cleanup, compilation, doctests, plus that thread count's
+cleanup, nextest, and report) and their median. A candidate that varies by more
+than 10% across its first two samples is rerun before comparison. The coverage
+line gate is unchanged; a profile whose report fails it is not eligible.
 
-Every valid thread count is within 5% of the fastest two-sample midpoint, so
-the selected profile uses the lowest-complexity tested count, 4. The valid
-samples vary by less than 5%, and the best candidates do not meet the 10% rerun
-trigger. Optimization level 1 is not a correct candidate because both reports
-failed the existing coverage gate; the threshold was not relaxed.
+### Current-main-derived candidate evidence
+
+[Benchmark run 31151194045](https://github.com/character-ai/larch/actions/runs/31151194045)
+ran the exact coverage implementation at `9eba6b09204e76e9e2bf6f4cd30ee6b2a34891c2`,
+rebased on `main` at dispatch
+(`9fd7e6c794b488663cc061ebfbde9192960758b2`). All three opt-level-0 jobs
+succeeded on `ubuntu-24.04` with the same warm Cargo-input and coverage-tool
+cache class; every cache-save row was the explicit
+`workflow_dispatch-read-only` skip. The raw end-to-end coverage-phase totals
+and medians are:
+
+| Test opt level | Nextest threads | Sample 1 | Sample 2 | Sample 3 | Median | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 0 | 4 | 481 s | 384 s | 505 s | 481 s | candidate |
+| 0 | 6 | 478 s | 381 s | 501 s | 478 s | eligible |
+| 0 | 8 | 479 s | 381 s | 502 s | 479 s | eligible |
+| 0 | 10 | 480 s | 379 s | 497 s | 480 s | eligible |
+| 0 | 12 | 475 s | 381 s | 498 s | 475 s | fastest eligible median |
+| 0 | 14 | 479 s | 381 s | 503 s | 479 s | eligible |
+| 0 | 16 | 481 s | 382 s | 505 s | 481 s | eligible |
+| 1 | 4 | 590 s | 921 s | 866 s | 866 s | rejected: all reports failed the 88.000% line gate |
+
+The third sample was collected for every candidate, including the candidates
+whose first two values varied by more than 10%. The fastest eligible median is
+475 s at 12 threads. Every eligible opt-level-0 thread count is within 1.3% of
+it, so the lower-complexity tie-breaker selects 4 threads as the production
+candidate (481 s median). Optimization level 1 is not eligible: its three
+nextest runs completed, but each coverage report failed the unchanged baseline.
+
+These are intentionally described as current-main-derived candidate samples,
+not `main`-ref samples: GitHub dispatch executes the workflow from the pull
+request ref before it can merge. Do not treat them as the umbrella issue's
+final `main` evidence or declare a final winner from them. After merge, collect
+three comparable successful `main`-ref samples of the configured profile before
+making that final claim.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
-and writes the same command-phase data to its GitHub step summary. The named
-GitHub cache-action steps provide the cache restore and save timings; the
-summary also records coverage-tool cache hit state. In the selection run, the
-Cargo input cache hit was 86 MB (89,791,441 B), cargo-nextest was 11 MB
-(11,054,119 B), and cargo-llvm-cov was 2 MB (1,708,048 B). Checkout took 3 s,
-the cache restores took 3 s, coverage-tool verification and setup took 12–13
-s, and repository policy validation took 172 s; cache save was skipped because
-manual dispatches do not publish caches. The `rust-build-test` job also writes
-its repository-validation duration to its GitHub job summary. A manually
-dispatched CI run with
-`coverage_profile_benchmark=true` performs two samples of both test
-optimization levels and every nextest thread count from 4 through 16. The
-optional `coverage_profile_runner` input permits the documented
+and writes it to the GitHub step summary. The coverage TSV records cache
+restore, tool setup, profile cleanup, compilation, doctests, every test and
+report phase, each end-to-end total, and cache save. Cache save records an
+explicit `workflow_dispatch-read-only` skip for manual benchmarks. The
+`rust-build-test-timings` artifact and its summary record the separate
+`repository-validation` phase, keeping that existing job owner intact. In the
+documented run, cache restore took 3–8 s, tool setup took 8–12 s, repository
+validation took 172 s, and cache save took 0 s and was skipped as intended.
+
+Cargo registry and Git inputs use a restore-only cache action in every Rust
+lane. Only a successful primary-key miss on a `main` push may invoke the
+explicit save action. Pull requests and manual benchmark dispatches therefore
+use the same restore cache class but cannot publish Cargo inputs; none of the
+coverage lanes caches `target/`.
+
+The optional `coverage_profile_runner` input permits the documented
 `large_ubuntu_4cpu` availability trial without changing a required PR lane.
 That runner remained unassigned for ten minutes in
 [trial run 31143192232](https://github.com/character-ai/larch/actions/runs/31143192232),
-so it was unavailable to this workflow and did not affect the selection.
+so it was unavailable to this workflow and does not affect the comparison.
 
-Cargo registry and Git inputs are cached separately from compiler output. The
-lint lane may restore a manifest-keyed dependency cache under `target/debug`,
+The lint lane may restore a manifest-keyed dependency cache under `target/debug`,
 then removes workspace products with `cargo clean --workspace` before a
 successful `main` push can save it. Pull requests do not publish that target
 cache. The transitional build/test and coverage lanes do not cache `target/`.

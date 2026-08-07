@@ -511,7 +511,7 @@ jobs:
 
   # Whole-workspace coverage stays separate from test sharding so its measured
   # baseline and exclusions remain stable. Normal PR and main runs use exactly
-  # one selected profile. An explicit workflow_dispatch input enables the
+  # one configured profile. An explicit workflow_dispatch input enables the
   # profile sweep without making a benchmark matrix a required PR check.
   rust-coverage:
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_runner || 'ubuntu-24.04' }}
@@ -798,7 +798,7 @@ jobs:
           cache_llvm_cov="${{ steps.llvm-cov-cache.outputs.cache-hit }}"
           {
             printf '## Rust coverage phase timings\n\n'
-            printf 'Profile: test opt level %s; selected nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
+            printf 'Profile: test opt level %s; configured nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
               "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
             printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, and cache save; repository validation is recorded by rust-build-test.\n\n' \
               "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
