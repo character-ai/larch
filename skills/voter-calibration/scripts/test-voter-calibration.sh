@@ -416,10 +416,34 @@ mkdir -p "$worktree"
 cp -R "$FIX/larch-logs" "$worktree/larch-logs"
 git -C "$worktree" init -q
 git -C "$worktree" remote add origin git@github.com:example/larch.git
+plugin_version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$ROOT/.claude-plugin/plugin.json")
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64|Darwin:aarch64) larch_target=aarch64-apple-darwin ;;
+  Darwin:x86_64|Darwin:amd64) larch_target=x86_64-apple-darwin ;;
+  Linux:arm64|Linux:aarch64) larch_target=aarch64-unknown-linux-gnu ;;
+  Linux:x86_64|Linux:amd64) larch_target=x86_64-unknown-linux-gnu ;;
+  *) exit 1 ;;
+esac
+fake_larch="$FIX/larch"
+cat > "$fake_larch" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = --version ]; then printf 'larch %s\\n' '$plugin_version'; exit 0; fi
+if [ "\${1:-}" = bootstrap ] && [ "\${2:-}" = self-check ]; then
+  printf '%s\\n' '{"schema_version":1,"version":"$plugin_version","target":"$larch_target"}'
+  exit 0
+fi
+if [ "\${1:-}" = run-log ] && [ "\${2:-}" = sync ]; then
+  printf '%s\\n' 'RUN_LOG_STORAGE=disabled' 'RUN_LOG_STORAGE_REASON=config-file-missing' 'STORAGE_PREFLIGHT=skipped-disabled' 'CORPUS_ROOT=' 'LISTED_ARCHIVES=0' 'PRESENT_RUNS=0' 'DOWNLOADED_RUNS=0' 'REPAIRED_RUNS=0' 'SYNC_OK=true'
+  exit 0
+fi
+exit 2
+EOF
+chmod +x "$fake_larch"
+fake_larch="$(cd "$(dirname "$fake_larch")" && pwd -P)/$(basename "$fake_larch")"
 default_status=0
 (
   cd "$worktree"
-  env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --min-votes 3 > "$FIX/default-root.md"
+  env -u CLAUDE_PLUGIN_ROOT LARCH_BINARY="$fake_larch" python3 "$ANALYZER" --min-votes 3 > "$FIX/default-root.md"
 ) 2> "$FIX/default-root.err" || default_status=$?
 [[ "$default_status" -eq 2 ]]
 grep -Fq 'run-log storage is disabled; configure [larch].storage_base_uri or set LARCH_STORAGE_BASE_URI' "$FIX/default-root.err"

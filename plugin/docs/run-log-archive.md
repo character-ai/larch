@@ -116,15 +116,14 @@ Every provider implements the same operations:
 When storage is disabled, startup skips provider construction and provider
 commands, emits `STORAGE_PREFLIGHT=skipped-disabled`, and admits the workflow.
 When storage is enabled, startup fails closed on every configuration,
-credential, CLI, network, bucket, or prefix-access error. For the checked-in
+credential, transport, network, bucket, or prefix-access error. For the checked-in
 base and repository, startup preflight lists only
 `larch/larch/` in bucket `zhupanov`.
 
-The Rust-owned lifecycle and preflight paths use the official AWS SDK for S3
-and R2. They use the SDK's non-process credential chain; `credential_process`
-is disabled so profile configuration cannot introduce a child process. The
-residual Python `publish` and `sync` commands still use the
-AWS CLI until #8080 completes their atomic cutover. R2
+The Rust-owned lifecycle, standalone publication, synchronization, and
+preflight paths use the official AWS SDK for S3 and R2. They use the SDK's
+non-process credential chain; `credential_process` is disabled so profile
+configuration cannot introduce a child process. R2
 also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
 be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
 match the host. GCS uses the narrow Rust transport through
@@ -187,7 +186,7 @@ Materialization writes into a private temporary sibling, verifies the complete
 tree, renames it into place, and verifies it again. Failures remove the staged
 tree. It never merges with or replaces a destination. Cache entries contain ordinary files and the manifest.
 
-`python3 python/cli.py run-log publish --repo-root <root> --skill <skill>
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh run-log publish --repo-root <root> --skill <skill>
 --run-id <run-id> --staging-root <tree>` persists the archive before attempting
 the create-only upload to `run-logs/<skill>/<run-id>.tar.gz`. Failed attempts
 remain under the storage-origin-specific `run-log-pending/v2` path
@@ -206,13 +205,22 @@ collision verification, cache promotion, and atomic retirement of pending
 state. Any failure returns nonzero, retains pending state, and prevents clean
 workflow success.
 
-`run-log publish`, `run-log sync`, migration commands, and analyzer-state
-operations require enabled storage. They never treat disabled storage as an
-empty remote corpus. Analysis commands with an explicit `--log-root` continue
-to read that local corpus without storage or network access. Without a local
-corpus, analysis fails with actionable storage guidance.
+Both `--log-root` and direct `--staging-root` publication redact the source
+tree before archive construction. Redaction is verified idempotently; a
+surviving secret or unsafe source tree fails before any archive byte reaches a
+provider.
 
-`python3 python/cli.py run-log sync --repo-root <root>` lists the complete
+When storage is disabled, standalone `run-log publish` and `run-log sync`
+perform no archive, provider, pending-state, or cache operation and exit zero
+with `RUN_LOG_STORAGE=disabled`, `RUN_LOG_STORAGE_REASON=<token>`, and their
+normal `PUBLISH_OK=true` or `SYNC_OK=true` terminal field. Publish also emits
+`RUN_LOG_PUBLICATION=skipped-disabled`; sync emits zero archive counters and an
+empty `CORPUS_ROOT`. Python analyzer consumers reject that skipped sync as an
+empty corpus and return actionable storage guidance. Analysis commands with an
+explicit `--log-root` continue to read that local corpus without storage or
+network access.
+
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh run-log sync --repo-root <root>` lists the complete
 `run-logs/` remote prefix once, including every provider pagination page. It
 downloads and safely materializes only runs without a valid local directory.
 Valid cached runs remain untouched. Invalid entries are quarantined under the
@@ -240,16 +248,14 @@ Pause rejects disabled storage before writing a GitHub pause marker.
 
 ## Rust handoff
 
-Rust owns `run-log archive`, `run-log materialize`, `run-log storage-preflight`,
-and the five shared lifecycle verbs, including terminal archive publication and
-cache promotion. Configuration resolution lives in `larch-core`; GCS uses
-`GoogleCloudStorage`, while S3 and R2 use the official AWS SDK through
-`S3Storage`. Python retains `publish`, `sync`, and layout-migration command
-orchestration until their named migration leaves. Its publication and sync
-helpers call the Rust archive commands through the verified bootstrap; they do
-not retain a normal archive writer, materializer, or fallback. Both runtimes
-preserve the same credential-free error classes. That split does not authorize
-another archive, layout, error, or provider contract.
+Rust owns `run-log archive`, `run-log materialize`, `run-log publish`,
+`run-log sync`, `run-log storage-preflight`, and the shared lifecycle verbs,
+including terminal archive publication and cache promotion. Configuration
+resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
+R2 use the official AWS SDK through `S3Storage`. Python keeps only typed local
+cache consumers and the separate historical layout-migration owner; it has no
+publication, synchronization, archive, or provider fallback. Both runtimes
+preserve the same credential-free error classes.
 
 When remaining run-log commands migrate, follow `docs/python-migration.md` and
 I-Cutover-1. In one change, prove Rust parity against the shared fixtures,

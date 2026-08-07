@@ -141,13 +141,10 @@ def test_run_log_storage_preflight_entrypoint_is_retired() -> None:
     assert cli.main(["run-log", "storage-preflight", "--repo-root", "/tmp"]) == 2
 
 
-def test_run_log_sync_entrypoint_is_machine_stdout() -> None:
-    assert cli._REGISTRY[("run-log", "sync")] == (  # pyright: ignore[reportPrivateUsage]
-        "larch.report.run_log_sync",
-        "main",
-        True,
-    )
-    assert ("run-log", "sync") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+@pytest.mark.parametrize("verb", ["publish", "sync"])
+def test_run_log_publication_entrypoints_are_retired(verb: str) -> None:
+    assert ("run-log", verb) not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("run-log", verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize(

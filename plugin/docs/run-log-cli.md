@@ -2,9 +2,9 @@
 
 `scripts/larch.sh run-log ...` owns Rust run-log initialization, entry writes,
 mutable flushes, transcript capture, durable manifest updates, archive creation,
-materialization, storage preflight, and the five shared lifecycle verbs.
-`python3 python/cli.py run-log ...` owns the remaining Python publication, sync,
-and layout-migration verbs.
+materialization, publication, synchronization, storage preflight, and the five
+shared lifecycle verbs. `python3 python/cli.py run-log ...` retains only the
+historical layout-migration verb.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -33,11 +33,20 @@ secret-survival failure blocks publication, but a clean pattern scan does not
 make a log public-safe. See the canonical
 [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#redaction-invariants).
 
-## Remaining Python-owned verbs
+## Remaining Python-owned verb
 
-- `run-log publish`
-- `run-log sync`
 - `run-log migrate-layout plan|apply|verify`
+
+## Rust-owned publication and synchronization
+
+`run-log publish` and `run-log sync` enter through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Publication creates or verifies one
+immutable remote archive, retains a content-pinned pending archive on failure,
+then exposes only a verified cache directory. Sync lists the configured
+`run-logs/` prefix once, validates every key and size, and atomically repairs
+only invalid local entries. Both commands skip cleanly when storage is disabled
+using the documented storage keys; analyzer consumers do not treat that skip as
+an empty corpus.
 
 ## Rust-owned archive and materialization
 
@@ -45,8 +54,8 @@ make a log public-safe. See the canonical
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Archive success emits `ARCHIVE_PATH`,
 `ARCHIVE_SHA256`, `MANIFEST_SHA256`, and `MEMBER_COUNT`; materialization success
 emits `RUN_DIR`, `MANIFEST_SHA256`, `MEMBER_COUNT`, and `EXPANDED_SIZE`.
-Remaining Python publication and sync callers invoke those commands through the
-same verified bootstrap and do not retain an archive implementation or fallback.
+Python consumers invoke those commands through the same verified bootstrap and
+do not retain an archive, publication, sync, or provider fallback.
 
 ## Rust-owned initialization and entry writes
 

@@ -8,7 +8,9 @@ use std::{
 
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use larch_adapters::run_lifecycle::{
-    FinishRequest, LifecycleHomes, StartRequest, finish, has_persisted_context, load, start,
+    FinishRequest, LifecycleHomes, PublishRunRequest, RepositorySyncResult, StartRequest, finish,
+    has_persisted_context, load, prepare_run_for_publication, publish_run, start,
+    sync_repository_run_logs,
 };
 use larch_core::{
     LifecycleContext, LifecycleOutcome, ObjectPage, ObjectStore, ObjectStoreError,
@@ -22,7 +24,9 @@ use tempfile::TempDir;
 struct MemoryStore {
     objects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     fail_uploads: Arc<Mutex<usize>>,
+    fail_downloads: Arc<Mutex<usize>>,
     mismatched_upload_metadata: bool,
+    page_size: Option<usize>,
 }
 
 impl MemoryStore {
@@ -40,6 +44,13 @@ impl MemoryStore {
         }
     }
 
+    fn paged(page_size: usize) -> Self {
+        Self {
+            page_size: Some(page_size),
+            ..Self::default()
+        }
+    }
+
     fn keys(&self) -> Vec<String> {
         let mut keys: Vec<_> = self.objects.lock().unwrap().keys().cloned().collect();
         keys.sort();
@@ -48,6 +59,17 @@ impl MemoryStore {
 
     fn object(&self, key: &str) -> Vec<u8> {
         self.objects.lock().unwrap()[key].clone()
+    }
+
+    fn insert(&self, key: impl Into<String>, bytes: impl Into<Vec<u8>>) {
+        self.objects
+            .lock()
+            .unwrap()
+            .insert(key.into(), bytes.into());
+    }
+
+    fn fail_next_download(&self) {
+        *self.fail_downloads.lock().unwrap() = 1;
     }
 }
 
@@ -64,22 +86,43 @@ impl ObjectStore for MemoryStore {
         &'a self,
         _bucket: &'a str,
         prefix: &'a str,
-        _page_token: Option<&'a str>,
+        page_token: Option<&'a str>,
     ) -> ObjectStoreFuture<'a, ObjectPage> {
         Box::pin(async move {
-            let objects = self.objects.lock().unwrap().clone();
+            let mut objects: Vec<_> = self
+                .objects
+                .lock()
+                .unwrap()
+                .clone()
+                .into_iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .collect();
+            objects.sort_by(|left, right| left.0.cmp(&right.0));
+            let start = page_token
+                .map(|token| {
+                    token
+                        .parse::<usize>()
+                        .map_err(|_| ObjectStoreError::InvalidResponse)
+                })
+                .transpose()?;
+            let start = start.unwrap_or(0);
+            if start > objects.len() {
+                return Err(ObjectStoreError::InvalidResponse);
+            }
+            let end = self.page_size.map_or(objects.len(), |size| {
+                start.saturating_add(size).min(objects.len())
+            });
             Ok(ObjectPage {
-                objects: objects
-                    .into_iter()
-                    .filter(|(key, _)| key.starts_with(prefix))
+                objects: objects[start..end]
+                    .iter()
                     .map(|(key, bytes)| RemoteObject {
                         size: bytes.len() as u64,
-                        key,
+                        key: key.clone(),
                         etag: None,
                         version: None,
                     })
                     .collect(),
-                next_page_token: None,
+                next_page_token: (end < objects.len()).then(|| end.to_string()),
             })
         })
     }
@@ -125,6 +168,12 @@ impl ObjectStore for MemoryStore {
         destination: &'a Path,
     ) -> ObjectStoreFuture<'a, ()> {
         Box::pin(async move {
+            let mut failures = self.fail_downloads.lock().unwrap();
+            if *failures != 0 {
+                *failures -= 1;
+                return Err(ObjectStoreError::Transport);
+            }
+            drop(failures);
             let bytes = self
                 .objects
                 .lock()
@@ -314,6 +363,59 @@ fn replace_pending_archive(harness: &Harness, run_id: &str, bytes: &[u8]) {
     retry["archive_sha256"] = serde_json::json!(format!("{:x}", Sha256::digest(bytes)));
     retry["archive_size"] = serde_json::json!(bytes.len());
     fs::write(retry_path, serde_json::to_vec(&retry).unwrap()).unwrap();
+}
+
+fn standalone_source(harness: &Harness, name: &str, contents: &str) -> PathBuf {
+    let source = harness.repo.join("standalone-sources").join(name);
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("payload.txt"), contents).unwrap();
+    source
+}
+
+async fn publish_standalone(
+    harness: &Harness,
+    store: &MemoryStore,
+    skill: &str,
+    run_id: &str,
+    source: Option<&Path>,
+) -> larch_adapters::run_lifecycle::PublicationResult {
+    publish_run(
+        &PublishRunRequest {
+            homes: &harness.homes,
+            storage: harness.enabled.storage().unwrap(),
+            skill,
+            run_id,
+            staging_root: source,
+        },
+        store,
+    )
+    .await
+    .unwrap()
+}
+
+async fn synchronize(
+    harness: &Harness,
+    homes: &LifecycleHomes,
+    store: &MemoryStore,
+) -> Result<RepositorySyncResult, larch_core::LifecycleError> {
+    sync_repository_run_logs(homes, harness.enabled.storage().unwrap(), store).await
+}
+
+fn sync_homes(harness: &Harness, name: &str) -> LifecycleHomes {
+    LifecycleHomes {
+        state: harness
+            .homes
+            .state
+            .parent()
+            .unwrap()
+            .join(format!("{name}-state")),
+        cache: harness
+            .homes
+            .cache
+            .parent()
+            .unwrap()
+            .join(format!("{name}-cache")),
+    }
 }
 
 #[test]
@@ -626,6 +728,300 @@ async fn failed_upload_retains_pending_state_and_retries_without_shell_state() {
         "published snapshot\n"
     );
     assert_eq!(store.keys().len(), 1);
+}
+
+#[tokio::test]
+async fn standalone_publication_retries_redacts_and_syncs_with_an_offline_store_double() {
+    let harness = Harness::new();
+    let store = MemoryStore::fail_once();
+    let started = harness.start(&harness.enabled, "review", "standalone", None);
+    let secret = format!("ghp_{}", "A".repeat(24));
+    fs::write(
+        started.context.run_dir.join("final-report.md"),
+        b"# final\n",
+    )
+    .unwrap();
+    fs::write(
+        started.context.run_dir.join("session-transcript.jsonl"),
+        format!("{{\"token\":\"{secret}\"}}\n"),
+    )
+    .unwrap();
+    let prepared = prepare_run_for_publication(
+        &started.context.log_root,
+        &harness.repo,
+        "review",
+        "standalone",
+        &harness.environment,
+        0,
+    )
+    .unwrap();
+    assert_eq!(prepared.secret_scrub_violations, 1);
+
+    let request = PublishRunRequest {
+        homes: &harness.homes,
+        storage: harness.enabled.storage().unwrap(),
+        skill: "review",
+        run_id: "standalone",
+        staging_root: Some(&prepared.run_dir),
+    };
+    assert!(publish_run(&request, &store).await.is_err());
+    assert!(harness.pending_dir("review", "standalone").is_dir());
+    fs::write(
+        prepared.run_dir.join("session-transcript.jsonl"),
+        b"later mutable staging\n",
+    )
+    .unwrap();
+    let published = publish_run(
+        &PublishRunRequest {
+            staging_root: None,
+            ..request
+        },
+        &store,
+    )
+    .await
+    .unwrap();
+    assert_eq!(published.remote_status.as_str(), "created");
+    assert_eq!(published.cache_status.as_str(), "materialized");
+    let cached = fs::read_to_string(published.cache_dir.join("session-transcript.jsonl")).unwrap();
+    assert!(cached.contains("<REDACTED-TOKEN>"));
+    assert!(!cached.contains(&secret));
+    let object_key = format!(
+        "{}/{}",
+        harness.enabled.storage().unwrap().prefix(),
+        published.remote_key
+    );
+    let archive = store.object(&object_key);
+    let mut expanded = Vec::new();
+    GzDecoder::new(archive.as_slice())
+        .read_to_end(&mut expanded)
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&expanded).contains(&secret));
+
+    let destination_homes = sync_homes(&harness, "sync");
+    let cold = synchronize(&harness, &destination_homes, &store)
+        .await
+        .unwrap();
+    assert_eq!(cold.listed_count(), 1);
+    assert_eq!(cold.downloaded_count(), 1);
+    assert_eq!(cold.repaired_count(), 0);
+    let warm = synchronize(&harness, &destination_homes, &store)
+        .await
+        .unwrap();
+    assert_eq!(warm.present_count(), 1);
+}
+
+#[tokio::test]
+async fn standalone_publication_matches_existing_remote_and_preserves_verified_cache() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let source = standalone_source(&harness, "match", "immutable payload\n");
+    let first = publish_standalone(&harness, &store, "review", "match", Some(&source)).await;
+    assert_eq!(first.remote_status.as_str(), "created");
+    assert_eq!(first.cache_status.as_str(), "promoted");
+    fs::remove_dir_all(&first.cache_dir).unwrap();
+
+    let second = publish_standalone(&harness, &store, "review", "match", Some(&source)).await;
+    assert_eq!(second.remote_status.as_str(), "matched");
+    assert_eq!(second.cache_status.as_str(), "promoted");
+    assert_eq!(
+        fs::read_to_string(second.cache_dir.join("payload.txt")).unwrap(),
+        "immutable payload\n"
+    );
+
+    let cached = publish_standalone(&harness, &store, "review", "match", Some(&source)).await;
+    assert_eq!(cached.remote_status.as_str(), "matched");
+    assert_eq!(cached.cache_status.as_str(), "present");
+    assert_eq!(store.keys().len(), 1);
+}
+
+#[tokio::test]
+async fn direct_staging_publication_scrubs_before_creating_the_pending_archive() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let secret = format!("ghp_{}", "B".repeat(24));
+    let source = standalone_source(&harness, "direct-redaction", &format!("token={secret}\n"));
+
+    let published = publish_standalone(
+        &harness,
+        &store,
+        "review",
+        "direct-redaction",
+        Some(&source),
+    )
+    .await;
+    let local = fs::read_to_string(published.cache_dir.join("payload.txt")).unwrap();
+    assert!(local.contains("<REDACTED-TOKEN>"));
+    assert!(!local.contains(&secret));
+    assert_eq!(
+        fs::read_to_string(source.join("payload.txt")).unwrap(),
+        local,
+        "the source is redacted before archive construction"
+    );
+    let object_key = format!(
+        "{}/{}",
+        harness.enabled.storage().unwrap().prefix(),
+        published.remote_key
+    );
+    let archive = store.object(&object_key);
+    let mut expanded = Vec::new();
+    GzDecoder::new(archive.as_slice())
+        .read_to_end(&mut expanded)
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&expanded).contains(&secret));
+}
+
+#[tokio::test]
+async fn standalone_publication_refuses_a_different_existing_remote_object() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let original = standalone_source(&harness, "original", "first immutable payload\n");
+    let published = publish_standalone(
+        &harness,
+        &store,
+        "review",
+        "remote-collision",
+        Some(&original),
+    )
+    .await;
+    let changed = standalone_source(&harness, "changed", "different immutable payload\n");
+    let result = publish_run(
+        &PublishRunRequest {
+            homes: &harness.homes,
+            storage: harness.enabled.storage().unwrap(),
+            skill: "review",
+            run_id: "remote-collision",
+            staging_root: Some(&changed),
+        },
+        &store,
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(harness.pending_dir("review", "remote-collision").is_dir());
+    assert_eq!(
+        fs::read_to_string(published.cache_dir.join("payload.txt")).unwrap(),
+        "first immutable payload\n"
+    );
+    assert_eq!(store.keys().len(), 1);
+}
+
+#[tokio::test]
+async fn synchronization_follows_pagination_and_repairs_invalid_cache_atomically() {
+    let harness = Harness::new();
+    let store = MemoryStore::paged(1);
+    let first = standalone_source(&harness, "paged-first", "first\n");
+    let second = standalone_source(&harness, "paged-second", "second\n");
+    let _ = publish_standalone(&harness, &store, "review", "paged-one", Some(&first)).await;
+    let _ = publish_standalone(&harness, &store, "design", "paged-two", Some(&second)).await;
+    let destination_homes = sync_homes(&harness, "paged");
+
+    let cold = synchronize(&harness, &destination_homes, &store)
+        .await
+        .unwrap();
+    assert_eq!(cold.listed_count(), 2);
+    assert_eq!(cold.downloaded_count(), 2);
+    assert_eq!(cold.runs[0].remote_key, "run-logs/design/paged-two.tar.gz");
+    assert_eq!(cold.runs[1].remote_key, "run-logs/review/paged-one.tar.gz");
+
+    let repaired_dir = cold
+        .runs
+        .iter()
+        .find(|run| run.remote_key == "run-logs/review/paged-one.tar.gz")
+        .unwrap()
+        .cache_dir
+        .clone();
+    fs::write(repaired_dir.join("payload.txt"), "corrupted\n").unwrap();
+    let repaired = synchronize(&harness, &destination_homes, &store)
+        .await
+        .unwrap();
+    assert_eq!(repaired.present_count(), 1);
+    assert_eq!(repaired.repaired_count(), 1);
+    assert_eq!(
+        fs::read_to_string(repaired_dir.join("payload.txt")).unwrap(),
+        "first\n"
+    );
+    let parent = repaired_dir.parent().unwrap();
+    assert!(fs::read_dir(parent).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".paged-one.")
+    }));
+}
+
+#[tokio::test]
+async fn failed_sync_repair_restores_the_previous_invalid_cache_for_diagnostics() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let source = standalone_source(&harness, "restore", "immutable\n");
+    let _ = publish_standalone(&harness, &store, "review", "restore", Some(&source)).await;
+    let destination_homes = sync_homes(&harness, "restore");
+    let cold = synchronize(&harness, &destination_homes, &store)
+        .await
+        .unwrap();
+    let cache = cold.runs[0].cache_dir.clone();
+    fs::write(cache.join("payload.txt"), "diagnostic corruption\n").unwrap();
+    store.fail_next_download();
+
+    let failed = synchronize(&harness, &destination_homes, &store).await;
+    assert!(failed.is_err());
+    assert_eq!(
+        fs::read_to_string(cache.join("payload.txt")).unwrap(),
+        "diagnostic corruption\n"
+    );
+}
+
+#[tokio::test]
+async fn synchronization_rejects_colliding_and_unsafe_remote_names_before_download() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let prefix = format!("{}/run-logs", harness.enabled.storage().unwrap().prefix());
+    store.insert(format!("{prefix}/review/collision.tar.gz"), b"one".to_vec());
+    store.insert(format!("{prefix}/Review/COLLISION.tar.gz"), b"two".to_vec());
+    let homes = sync_homes(&harness, "collision");
+
+    let result = synchronize(&harness, &homes, &store).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("collide"));
+    assert!(!homes.cache.exists());
+
+    let unsafe_store = MemoryStore::default();
+    unsafe_store.insert(format!("{prefix}/./dot.tar.gz"), b"one".to_vec());
+    let result = synchronize(&harness, &homes, &unsafe_store).await;
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid run archive key")
+    );
+    assert!(!homes.cache.exists());
+}
+
+#[tokio::test]
+async fn standalone_publication_without_staging_requires_a_prior_durable_pending_archive() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let result = publish_run(
+        &PublishRunRequest {
+            homes: &harness.homes,
+            storage: harness.enabled.storage().unwrap(),
+            skill: "review",
+            run_id: "no-pending",
+            staging_root: None,
+        },
+        &store,
+    )
+    .await;
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("no durable pending archive")
+    );
+    assert!(store.keys().is_empty());
 }
 
 #[tokio::test]

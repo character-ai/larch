@@ -1,7 +1,7 @@
 //! Filesystem and object-store adapter for the shared run lifecycle.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     env,
     fmt::Write as _,
     fs::{self, File, OpenOptions},
@@ -31,7 +31,7 @@ use regex::Regex;
 
 use crate::{
     PathIntent, TemporaryRoot, atomic_write_bytes, ensure_directory_chain,
-    run_log_manifest::ManifestStore,
+    run_log_manifest::{ManifestStore, utc_now},
 };
 
 const ARCHIVE_MANIFEST_NAME: &str = "archive-manifest.json";
@@ -137,6 +137,62 @@ pub struct PublicationResult {
     pub remote_key: String,
     pub archive_sha256: String,
     pub cache_dir: PathBuf,
+    pub remote_status: RemotePublicationStatus,
+    pub cache_status: CachePublicationStatus,
+}
+
+/// Whether immutable remote publication created or verified an object.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RemotePublicationStatus {
+    Created,
+    Matched,
+}
+
+impl RemotePublicationStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Matched => "matched",
+        }
+    }
+}
+
+/// How the verified local cache reached its postcondition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CachePublicationStatus {
+    Promoted,
+    Materialized,
+    Present,
+}
+
+impl CachePublicationStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Promoted => "promoted",
+            Self::Materialized => "materialized",
+            Self::Present => "present",
+        }
+    }
+}
+
+/// Inputs for standalone immutable run-log publication.
+pub struct PublishRunRequest<'a> {
+    pub homes: &'a LifecycleHomes,
+    pub storage: &'a ToolRepositoryStorage,
+    pub skill: &'a str,
+    pub run_id: &'a str,
+    pub staging_root: Option<&'a Path>,
+}
+
+/// Finalized staging information for standalone publication from a log root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedPublication {
+    pub run_dir: PathBuf,
+    pub secret_scrub_violations: u64,
+    pub files_scrubbed: u64,
+    pub breadcrumb_warning: Option<String>,
 }
 
 /// Completed terminal transition and its pinned storage state.
@@ -717,6 +773,70 @@ pub async fn finish(
     })
 }
 
+/// Finalize, verify, and redact a staged run before standalone publication.
+///
+/// This is the Rust replacement for the retired Python `--log-root` path. It
+/// deliberately mutates only the supplied staging tree; callers publish the
+/// returned directory through [`publish_run`] after this succeeds.
+///
+/// # Errors
+/// Returns a lifecycle error if the log root, manifest, required artifacts, or
+/// redaction postcondition is unsafe or incomplete.
+pub fn prepare_run_for_publication<S: BuildHasher>(
+    log_root: &Path,
+    repo_root: &Path,
+    skill: &str,
+    run_id: &str,
+    environment: &HashMap<String, String, S>,
+    pre_scrub_violations: u64,
+) -> Result<PreparedPublication, LifecycleError> {
+    validate_publication_identity(skill, run_id)?;
+    let root = invocation_path(log_root)?;
+    ensure_existing_safe_directory(&root)?;
+    let skill_slug =
+        RunLogSlug::parse(skill).map_err(|error| LifecycleError::new(error.to_string()))?;
+    let run_id_slug =
+        RunLogSlug::parse(run_id).map_err(|error| LifecycleError::new(error.to_string()))?;
+    let layout = RunLogLayout::new(&root, skill_slug, run_id_slug);
+    let run_dir = layout.run_dir();
+    ensure_existing_safe_directory(&run_dir)?;
+    let store =
+        ManifestStore::open(&root).map_err(|error| LifecycleError::new(error.to_string()))?;
+    store
+        .update(&layout, &[], &utc_now())
+        .map_err(|error| LifecycleError::new(error.to_string()))?;
+    verify_run_completeness(&run_dir, skill, repo_root)?;
+    let breadcrumb_warning = publish_run_breadcrumbs(&root, &run_dir, environment)
+        .err()
+        .map(|error| error.to_string());
+    let (scrubbed, files_scrubbed) = scrub_tree(&run_dir)?;
+    let secret_scrub_violations = pre_scrub_violations
+        .checked_add(scrubbed)
+        .ok_or_else(|| LifecycleError::new("secret scrub violation count overflowed"))?;
+    Ok(PreparedPublication {
+        run_dir,
+        secret_scrub_violations,
+        files_scrubbed,
+        breadcrumb_warning,
+    })
+}
+
+/// Redact a standalone staging tree before its bytes may enter an archive.
+///
+/// This narrow helper is for the public `--staging-root` route, whose caller
+/// supplies an already-complete tree rather than a lifecycle log root. It is
+/// deliberately idempotent so the lifecycle's richer preparation route can
+/// call the same publication owner without a second observable mutation.
+///
+/// # Errors
+/// Returns a lifecycle error when the supplied tree is unsafe or a detected
+/// secret/path value survives its redaction verification.
+pub fn scrub_run_for_publication(staging_root: &Path) -> Result<(u64, u64), LifecycleError> {
+    let staging = invocation_path(staging_root)?;
+    ensure_existing_safe_directory(&staging)?;
+    scrub_tree(&staging)
+}
+
 fn context_json(context: &LifecycleContext) -> Result<Vec<u8>, LifecycleError> {
     let mut values = BTreeMap::new();
     values.insert("client_repo", json!(context.client_repo));
@@ -763,6 +883,16 @@ fn validate_identity(skill: &str, run_id: &str) -> Result<(), LifecycleError> {
     }
     if run_id != "generated" && !validate_run_log_slug(run_id) {
         return Err(LifecycleError::new(format!("invalid run-id: {run_id:?}")));
+    }
+    Ok(())
+}
+
+fn validate_publication_identity(skill: &str, run_id: &str) -> Result<(), LifecycleError> {
+    validate_identity(skill, run_id)?;
+    if matches!(skill, "." | "..") || matches!(run_id, "." | "..") {
+        return Err(LifecycleError::new(
+            "run-log publication identity must name a concrete path component",
+        ));
     }
     Ok(())
 }
@@ -1330,10 +1460,10 @@ fn artifact_present_or_waived(
     })
 }
 
-fn publish_run_breadcrumbs(
+fn publish_run_breadcrumbs<S: BuildHasher>(
     log_root: &Path,
     run_dir: &Path,
-    environment: &HashMap<String, String>,
+    environment: &HashMap<String, String, S>,
 ) -> Result<(), LifecycleError> {
     if log_root.file_name().and_then(|value| value.to_str()) != Some("larch-logs") {
         return Ok(());
@@ -1524,19 +1654,42 @@ fn scrub_tree(root: &Path) -> Result<(u64, u64), LifecycleError> {
     Ok((violations, files_scrubbed))
 }
 
-async fn publish(
-    homes: &LifecycleHomes,
-    storage: &ToolRepositoryStorage,
-    context: &LifecycleContext,
+/// Publish one immutable archive and atomically make its verified cache visible.
+///
+/// A failed invocation retains the content-pinned pending archive for a later
+/// retry.  No remote object becomes visible until the provider's create-only
+/// operation succeeds, and no cache directory becomes visible until it has
+/// passed archive-manifest verification.
+///
+/// # Errors
+/// Returns a lifecycle error while retaining pending state on a failed upload,
+/// remote collision, or local cache transition.
+pub async fn publish_run(
+    request: &PublishRunRequest<'_>,
     store: &dyn ObjectStore,
 ) -> Result<PublicationResult, LifecycleError> {
-    let paths = PublicationPaths::new(homes, storage, &context.skill, &context.run_id);
+    validate_publication_identity(request.skill, request.run_id)?;
+    let paths = PublicationPaths::new(
+        request.homes,
+        request.storage,
+        request.skill,
+        request.run_id,
+    );
     let _lock = PublicationLock::acquire(&paths.lock_file)?;
     let retrying_pending = existing_safe_directory(&paths.pending_dir)?;
     let mut pending = if retrying_pending {
-        load_pending(&paths, storage, context)?
+        load_pending(&paths, request.storage, request.skill, request.run_id)?
     } else {
-        create_pending(&paths, storage, context)?
+        let staging = request.staging_root.ok_or_else(|| {
+            LifecycleError::new("no durable pending archive exists and --staging-root is required")
+        })?;
+        create_pending(
+            &paths,
+            request.storage,
+            request.skill,
+            request.run_id,
+            staging,
+        )?
     };
     pending.attempts = pending
         .attempts
@@ -1544,39 +1697,21 @@ async fn publish(
         .ok_or_else(|| LifecycleError::new("publication attempt count overflowed"))?;
     pending.last_error.clear();
     write_pending(&paths, &pending)?;
-    let object_key = format!("{}/{}", storage.prefix(), pending.remote_key);
-    let upload = store
-        .upload_create(storage.bucket(), &object_key, &paths.pending_archive)
-        .await;
-    let remote_verified = match upload {
-        Ok(remote) if remote.key == object_key && remote.size == pending.archive_size => store
-            .metadata(storage.bucket(), &object_key)
-            .await
-            .is_ok_and(|metadata| {
-                metadata.key == object_key && metadata.size == pending.archive_size
-            }),
-        Ok(_) => false,
-        Err(ObjectStoreError::AlreadyExists) => {
-            remote_matches(store, storage.bucket(), &object_key, &paths, &pending)
-                .await
-                .unwrap_or(false)
-        }
-        Err(_) => return publication_failure(&paths, &mut pending, "object-transport"),
+    let remote_status = match publish_remote(store, request.storage, &paths, &pending).await {
+        Ok(status) => status,
+        Err(token) => return publication_failure(&paths, &mut pending, token),
     };
-    if !remote_verified {
-        return publication_failure(&paths, &mut pending, "publication-invariant");
-    }
-    if publish_cache(
+    let Ok(cache_status) = publish_cache(
         &paths,
-        (!retrying_pending).then_some(context.run_dir.as_path()),
-        &context.skill,
-        &context.run_id,
+        (!retrying_pending)
+            .then_some(request.staging_root)
+            .flatten(),
+        request.skill,
+        request.run_id,
         &pending.manifest_sha256,
-    )
-    .is_err()
-    {
+    ) else {
         return publication_failure(&paths, &mut pending, "local-integrity");
-    }
+    };
     let completed = paths.pending_dir.with_file_name(format!(
         ".{}.complete-{}-{}",
         paths
@@ -1596,14 +1731,351 @@ async fn publish(
         return Err(LifecycleError::new("run-log archive publication failed"));
     }
     let _ = fs::remove_dir_all(completed);
-    if ensure_existing_safe_directory(&context.run_dir).is_ok() {
-        let _ = fs::remove_dir_all(&context.run_dir);
-    }
     Ok(PublicationResult {
         remote_key: pending.remote_key,
         archive_sha256: pending.archive_sha256,
         cache_dir: paths.cache_dir,
+        remote_status,
+        cache_status,
     })
+}
+
+async fn publish_remote(
+    store: &dyn ObjectStore,
+    storage: &ToolRepositoryStorage,
+    paths: &PublicationPaths,
+    pending: &PendingPublication,
+) -> Result<RemotePublicationStatus, &'static str> {
+    let object_key = format!("{}/{}", storage.prefix(), pending.remote_key);
+    match store
+        .upload_create(storage.bucket(), &object_key, &paths.pending_archive)
+        .await
+    {
+        Ok(remote) if remote.key == object_key && remote.size == pending.archive_size => store
+            .metadata(storage.bucket(), &object_key)
+            .await
+            .is_ok_and(|metadata| {
+                metadata.key == object_key && metadata.size == pending.archive_size
+            })
+            .then_some(RemotePublicationStatus::Created)
+            .ok_or("publication-invariant"),
+        Ok(_) => Err("publication-invariant"),
+        Err(ObjectStoreError::AlreadyExists) => {
+            remote_matches(store, storage.bucket(), &object_key, paths, pending)
+                .await
+                .ok()
+                .filter(|matched| *matched)
+                .map(|_| RemotePublicationStatus::Matched)
+                .ok_or("publication-invariant")
+        }
+        Err(_) => Err("object-transport"),
+    }
+}
+
+async fn publish(
+    homes: &LifecycleHomes,
+    storage: &ToolRepositoryStorage,
+    context: &LifecycleContext,
+    store: &dyn ObjectStore,
+) -> Result<PublicationResult, LifecycleError> {
+    let result = publish_run(
+        &PublishRunRequest {
+            homes,
+            storage,
+            skill: &context.skill,
+            run_id: &context.run_id,
+            staging_root: Some(&context.run_dir),
+        },
+        store,
+    )
+    .await?;
+    if ensure_existing_safe_directory(&context.run_dir).is_ok() {
+        let _ = fs::remove_dir_all(&context.run_dir);
+    }
+    Ok(result)
+}
+
+/// How one remote archive reached its verified local cache postcondition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CacheSyncStatus {
+    Present,
+    Downloaded,
+    Repaired,
+}
+
+impl CacheSyncStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Present => "present",
+            Self::Downloaded => "downloaded",
+            Self::Repaired => "repaired",
+        }
+    }
+}
+
+/// One validated immutable archive returned by a remote listing.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemoteRunArchive {
+    pub remote_key: String,
+    pub object_key: String,
+    pub skill: String,
+    pub run_id: String,
+    pub size: u64,
+}
+
+/// One locally materialized archive from a repository synchronization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SyncedRun {
+    pub remote_key: String,
+    pub cache_dir: PathBuf,
+    pub status: CacheSyncStatus,
+}
+
+/// Complete result of one remote listing and cache synchronization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositorySyncResult {
+    pub corpus_root: PathBuf,
+    pub runs: Vec<SyncedRun>,
+}
+
+impl RepositorySyncResult {
+    #[must_use]
+    pub const fn listed_count(&self) -> usize {
+        self.runs.len()
+    }
+
+    #[must_use]
+    pub fn present_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| run.status == CacheSyncStatus::Present)
+            .count()
+    }
+
+    #[must_use]
+    pub fn downloaded_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| run.status != CacheSyncStatus::Present)
+            .count()
+    }
+
+    #[must_use]
+    pub fn repaired_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| run.status == CacheSyncStatus::Repaired)
+            .count()
+    }
+}
+
+/// List a repository's immutable archives once and materialize a safe local corpus.
+///
+/// # Errors
+/// Returns a lifecycle error if listing, remote naming, download integrity, or
+/// cache promotion violates the publication contract. A pre-existing invalid
+/// cache is restored if its repair fails.
+pub async fn sync_repository_run_logs(
+    homes: &LifecycleHomes,
+    storage: &ToolRepositoryStorage,
+    store: &dyn ObjectStore,
+) -> Result<RepositorySyncResult, LifecycleError> {
+    let object_prefix = format!("{}/run-logs/", storage.prefix());
+    let mut page_token = None;
+    let mut seen_tokens = BTreeSet::new();
+    let mut objects = Vec::new();
+    loop {
+        let page = store
+            .list_page(storage.bucket(), &object_prefix, page_token.as_deref())
+            .await
+            .map_err(|_| LifecycleError::new("run-log remote listing failed"))?;
+        objects.extend(page.objects);
+        match page.next_page_token {
+            Some(next) if !next.is_empty() => {
+                if !seen_tokens.insert(next.clone()) {
+                    return Err(LifecycleError::new(
+                        "run-log remote listing repeated a page token",
+                    ));
+                }
+                page_token = Some(next);
+            }
+            _ => break,
+        }
+    }
+    let inventory = validated_remote_inventory(objects, &object_prefix)?;
+    let corpus_root = repository_cache_root(homes, storage);
+    ensure_safe_directory(&corpus_root)?;
+    let mut runs = Vec::with_capacity(inventory.len());
+    for archive in &inventory {
+        runs.push(sync_remote_archive(homes, storage, store, archive).await?);
+    }
+    Ok(RepositorySyncResult { corpus_root, runs })
+}
+
+fn repository_cache_root(homes: &LifecycleHomes, storage: &ToolRepositoryStorage) -> PathBuf {
+    homes
+        .cache
+        .join("larch/run-logs/v2")
+        .join(&storage.client_repo)
+        .join(storage.storage_origin_id())
+}
+
+fn validated_remote_inventory(
+    objects: Vec<larch_core::RemoteObject>,
+    object_prefix: &str,
+) -> Result<Vec<RemoteRunArchive>, LifecycleError> {
+    let mut remote_keys = BTreeSet::new();
+    let mut local_names = BTreeMap::new();
+    let mut inventory = Vec::with_capacity(objects.len());
+    for object in objects {
+        let relative = object.key.strip_prefix(object_prefix).ok_or_else(|| {
+            LifecycleError::new("listed object is outside the configured run-log prefix")
+        })?;
+        let parts: Vec<&str> = relative.split('/').collect();
+        let Some(filename) = parts.get(1) else {
+            return Err(LifecycleError::new("invalid run archive key"));
+        };
+        if parts.len() != 2 || !filename.ends_with(".tar.gz") || object.size == 0 {
+            return Err(LifecycleError::new("invalid run archive key"));
+        }
+        let skill = parts[0];
+        let run_id = filename
+            .strip_suffix(".tar.gz")
+            .ok_or_else(|| LifecycleError::new("invalid run archive key"))?;
+        validate_publication_identity(skill, run_id)
+            .map_err(|_| LifecycleError::new("invalid run archive key"))?;
+        let remote_key = format!("run-logs/{skill}/{run_id}.tar.gz");
+        if !remote_keys.insert(object.key.clone()) {
+            return Err(LifecycleError::new("duplicate run archive listing"));
+        }
+        let local_key = (skill.to_ascii_lowercase(), run_id.to_ascii_lowercase());
+        if let Some(previous) = local_names.insert(local_key, object.key.clone()) {
+            return Err(LifecycleError::new(format!(
+                "run archive names collide in the local cache: {previous:?} and {:?}",
+                object.key
+            )));
+        }
+        inventory.push(RemoteRunArchive {
+            remote_key,
+            object_key: object.key.clone(),
+            skill: skill.to_owned(),
+            run_id: run_id.to_owned(),
+            size: object.size,
+        });
+    }
+    inventory.sort_by(|left, right| left.remote_key.cmp(&right.remote_key));
+    Ok(inventory)
+}
+
+async fn sync_remote_archive(
+    homes: &LifecycleHomes,
+    storage: &ToolRepositoryStorage,
+    store: &dyn ObjectStore,
+    archive: &RemoteRunArchive,
+) -> Result<SyncedRun, LifecycleError> {
+    let paths = PublicationPaths::new(homes, storage, &archive.skill, &archive.run_id);
+    let _lock = PublicationLock::acquire(&paths.lock_file)?;
+    let parent = paths
+        .cache_dir
+        .parent()
+        .ok_or_else(|| LifecycleError::new("cache directory parent is missing"))?;
+    ensure_safe_directory(parent)?;
+    remove_interrupted_cache_entries(parent, &archive.run_id)?;
+    if verify_materialized_run_directory(&paths.cache_dir, &archive.skill, &archive.run_id).is_ok()
+    {
+        return Ok(SyncedRun {
+            remote_key: archive.remote_key.clone(),
+            cache_dir: paths.cache_dir,
+            status: CacheSyncStatus::Present,
+        });
+    }
+    let had_invalid_entry = paths.cache_dir.exists() || paths.cache_dir.is_symlink();
+    let quarantine = parent.join(format!(
+        ".{}.invalid-{}-{}",
+        archive.run_id,
+        std::process::id(),
+        Uuid::new_v4()
+    ));
+    if had_invalid_entry {
+        fs::rename(&paths.cache_dir, &quarantine).map_err(io_error)?;
+        sync_directory(parent)?;
+    }
+    let downloaded = parent.join(format!(
+        ".{}.download-{}-{}.tar.gz",
+        archive.run_id,
+        std::process::id(),
+        Uuid::new_v4()
+    ));
+    let result = async {
+        store
+            .download(storage.bucket(), &archive.object_key, &downloaded)
+            .await
+            .map_err(|_| LifecycleError::new("run-log archive download failed"))?;
+        let metadata = fs::symlink_metadata(&downloaded).map_err(io_error)?;
+        if metadata.file_type().is_symlink()
+            || !metadata.is_file()
+            || metadata.len() != archive.size
+        {
+            return Err(LifecycleError::new(
+                "downloaded archive does not match listed size",
+            ));
+        }
+        materialize_run_archive(
+            &downloaded,
+            &paths.cache_dir,
+            &archive.skill,
+            &archive.run_id,
+        )
+        .map(|_| ())
+    }
+    .await;
+    let _ = fs::remove_file(&downloaded);
+    if let Err(error) = result {
+        let _ = remove_cache_entry(&paths.cache_dir);
+        if had_invalid_entry && !paths.cache_dir.exists() && !paths.cache_dir.is_symlink() {
+            let _ = fs::rename(&quarantine, &paths.cache_dir);
+            let _ = sync_directory(parent);
+        }
+        return Err(error);
+    }
+    if had_invalid_entry {
+        remove_cache_entry(&quarantine)?;
+    }
+    Ok(SyncedRun {
+        remote_key: archive.remote_key.clone(),
+        cache_dir: paths.cache_dir,
+        status: if had_invalid_entry {
+            CacheSyncStatus::Repaired
+        } else {
+            CacheSyncStatus::Downloaded
+        },
+    })
+}
+
+fn remove_interrupted_cache_entries(parent: &Path, run_id: &str) -> Result<(), LifecycleError> {
+    for entry in sorted_entries(parent)? {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if ["download-", "invalid-", "materialize-", "promote-"]
+            .iter()
+            .any(|suffix| name.starts_with(&format!(".{run_id}.{suffix}")))
+        {
+            remove_cache_entry(&entry.path())?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_cache_entry(path: &Path) -> Result<(), LifecycleError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+            remove_tree_strict(path)
+        }
+        Ok(_) => fs::remove_file(path).map_err(io_error),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(error)),
+    }
 }
 
 fn publication_failure<T>(
@@ -1719,7 +2191,9 @@ impl PublicationPaths {
 fn create_pending(
     paths: &PublicationPaths,
     storage: &ToolRepositoryStorage,
-    context: &LifecycleContext,
+    skill: &str,
+    run_id: &str,
+    staging_root: &Path,
 ) -> Result<PendingPublication, LifecycleError> {
     let parent = paths
         .pending_dir
@@ -1728,19 +2202,15 @@ fn create_pending(
     ensure_safe_directory(parent)?;
     let temporary_dir = parent.join(format!(
         ".{}.pending-{}-{}",
-        context.run_id,
+        run_id,
         std::process::id(),
         Uuid::new_v4()
     ));
     let temporary = paths.with_pending_dir(temporary_dir.clone());
     let created = (|| {
         ensure_safe_directory(&temporary.pending_dir)?;
-        let archive = create_archive(
-            &context.run_dir,
-            &temporary.pending_archive,
-            &context.skill,
-            &context.run_id,
-        )?;
+        let _ = scrub_run_for_publication(staging_root)?;
+        let archive = create_archive(staging_root, &temporary.pending_archive, skill, run_id)?;
         let pending = PendingPublication {
             archive_sha256: archive.archive_sha256,
             archive_size: archive.archive_size,
@@ -1748,17 +2218,17 @@ fn create_pending(
             client_repo: storage.client_repo.clone(),
             last_error: String::new(),
             manifest_sha256: archive.manifest_sha256,
-            remote_key: format!("run-logs/{}/{}.tar.gz", context.skill, context.run_id),
-            run_id: context.run_id.clone(),
+            remote_key: format!("run-logs/{skill}/{run_id}.tar.gz"),
+            run_id: run_id.to_owned(),
             schema_version: 2,
-            skill: context.skill.clone(),
+            skill: skill.to_owned(),
             storage_origin_id: storage.storage_origin_id(),
             tool_repo_uri: storage.uri(),
         };
         write_pending(&temporary, &pending)?;
         fs::rename(&temporary.pending_dir, &paths.pending_dir).map_err(io_error)?;
         sync_directory(parent)?;
-        load_pending(paths, storage, context)
+        load_pending(paths, storage, skill, run_id)
     })();
     if temporary_dir.exists() {
         let _ = fs::remove_dir_all(temporary_dir);
@@ -1769,7 +2239,8 @@ fn create_pending(
 fn load_pending(
     paths: &PublicationPaths,
     storage: &ToolRepositoryStorage,
-    context: &LifecycleContext,
+    skill: &str,
+    run_id: &str,
 ) -> Result<PendingPublication, LifecycleError> {
     if !safe_regular_file(&paths.pending_metadata)? || !safe_regular_file(&paths.pending_archive)? {
         return Err(LifecycleError::new(
@@ -1783,9 +2254,9 @@ fn load_pending(
         || pending.tool_repo_uri != storage.uri()
         || pending.client_repo != storage.client_repo
         || pending.storage_origin_id != storage.storage_origin_id()
-        || pending.skill != context.skill
-        || pending.run_id != context.run_id
-        || pending.remote_key != format!("run-logs/{}/{}.tar.gz", context.skill, context.run_id)
+        || pending.skill != skill
+        || pending.run_id != run_id
+        || pending.remote_key != format!("run-logs/{skill}/{run_id}.tar.gz")
         || pending.archive_size == 0
         || !valid_sha256(&pending.archive_sha256)
         || !valid_sha256(&pending.manifest_sha256)
@@ -1815,29 +2286,27 @@ fn publish_cache(
     skill: &str,
     run_id: &str,
     expected_manifest_sha256: &str,
-) -> Result<(), LifecycleError> {
+) -> Result<CachePublicationStatus, LifecycleError> {
     if existing_safe_directory(&paths.cache_dir)? {
-        return verify_materialized_cache(
-            &paths.cache_dir,
-            skill,
-            run_id,
-            expected_manifest_sha256,
-        );
+        verify_materialized_cache(&paths.cache_dir, skill, run_id, expected_manifest_sha256)?;
+        return Ok(CachePublicationStatus::Present);
     }
     if let Some(staging) = staging {
         let (manifest, manifest_sha256) = archive_manifest(staging, skill, run_id)?;
         if manifest_sha256 == expected_manifest_sha256 {
-            return promote_staging_cache(
+            promote_staging_cache(
                 paths,
                 staging,
                 skill,
                 run_id,
                 expected_manifest_sha256,
                 &manifest,
-            );
+            )?;
+            return Ok(CachePublicationStatus::Promoted);
         }
     }
-    materialize_pending_archive(paths, skill, run_id, expected_manifest_sha256)
+    materialize_pending_archive(paths, skill, run_id, expected_manifest_sha256)?;
+    Ok(CachePublicationStatus::Materialized)
 }
 
 fn promote_staging_cache(
@@ -3011,6 +3480,8 @@ mod tests {
 
         assert!(validate_identity("bad/skill", "run").is_err());
         assert!(validate_identity("review", "bad/run").is_err());
+        assert!(validate_publication_identity(".", "run").is_err());
+        assert!(validate_publication_identity("review", ".").is_err());
         assert_eq!(
             explicit_parent("", "").expect("empty parent is valid"),
             None

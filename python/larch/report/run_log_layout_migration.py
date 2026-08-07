@@ -20,7 +20,7 @@ from larch.report import (
     run_log_archive,
     run_log_legacy_archive,
     run_log_migration,
-    run_log_sync,
+    run_log_publish,
 )
 from larch.report.object_store import (
     ObjectStoreError,
@@ -39,6 +39,7 @@ PLAN_SCHEMA: Final = "larch-run-log-layout-plan-v1"
 REPORT_SCHEMA: Final = "larch-run-log-layout-report-v1"
 FINAL_REPORT_SCHEMA: Final = "larch-run-log-layout-final-report-v1"
 _RUN_LOG_PREFIX: Final = "run-logs/"
+_ARCHIVE_KEY_PARTS: Final = 2
 _MANIFEST_NAME: Final = run_log_archive.ARCHIVE_MANIFEST_NAME
 _LIVE_MAPPINGS: Final = {
     "larch": (
@@ -67,6 +68,16 @@ _GIT_COMMIT_HEX_LENGTH: Final = 40
 
 class LayoutMigrationError(RuntimeError):
     """A migration invariant failed without mutating source objects."""
+
+
+@dataclass(frozen=True)
+class RemoteRunArchive:
+    """Migration-only validated identity for one listed immutable archive."""
+
+    remote_key: str
+    skill: str
+    run_id: str
+    size: int
 
 
 class MigrationStore(Protocol):
@@ -216,20 +227,44 @@ def _verified_plan(path: Path) -> dict[str, object]:
     return payload
 
 
-def _validated_remote_inventory(
+def validated_remote_inventory(
     objects: tuple[RemoteObject, ...],
-) -> tuple[run_log_sync.RemoteRunArchive, ...]:
-    try:
-        return run_log_sync.validated_remote_inventory(objects)
-    except (TypeError, ValueError, run_log_sync.RunLogSyncError) as exc:
-        raise LayoutMigrationError("remote run-log inventory is invalid") from exc
+) -> tuple[RemoteRunArchive, ...]:
+    archives: list[RemoteRunArchive] = []
+    seen_keys: set[str] = set()
+    local_names: dict[tuple[str, str], str] = {}
+    for remote in objects:
+        if not remote.key.startswith(_RUN_LOG_PREFIX):
+            raise LayoutMigrationError("remote run-log inventory is invalid")
+        relative = remote.key.removeprefix(_RUN_LOG_PREFIX)
+        parts = relative.split("/")
+        if len(parts) != _ARCHIVE_KEY_PARTS or not parts[1].endswith(".tar.gz"):
+            raise LayoutMigrationError("remote run-log inventory is invalid")
+        try:
+            skill = run_log_publish.validated_component(
+                parts[0], label="remote skill", slug=True
+            )
+            run_id = run_log_publish.validated_component(
+                parts[1].removesuffix(".tar.gz"), label="remote run-id", slug=True
+            )
+        except ValueError as exc:
+            raise LayoutMigrationError("remote run-log inventory is invalid") from exc
+        if isinstance(remote.size, bool) or remote.size <= 0 or remote.key in seen_keys:
+            raise LayoutMigrationError("remote run-log inventory is invalid")
+        local_key = (skill.casefold(), run_id.casefold())
+        if local_key in local_names:
+            raise LayoutMigrationError("remote run-log inventory is invalid")
+        seen_keys.add(remote.key)
+        local_names[local_key] = remote.key
+        archives.append(RemoteRunArchive(remote.key, skill, run_id, remote.size))
+    return tuple(sorted(archives, key=lambda archive: archive.remote_key))
 
 
 def _remote_map(
     store: MigrationStore,
-) -> dict[str, tuple[run_log_sync.RemoteRunArchive, RemoteObject]]:
+) -> dict[str, tuple[RemoteRunArchive, RemoteObject]]:
     listed = store.list_objects(_RUN_LOG_PREFIX)
-    archives = _validated_remote_inventory(listed)
+    archives = validated_remote_inventory(listed)
     raw_by_key = {item.key: item for item in listed}
     return {
         archive.remote_key: (archive, raw_by_key[archive.remote_key])
@@ -254,7 +289,7 @@ def _safe_snapshot_path(root: Path, *, client_repo: str, key: str) -> Path:
 def _ensure_snapshot(
     *,
     store: MigrationStore,
-    remote: run_log_sync.RemoteRunArchive,
+    remote: RemoteRunArchive,
     destination: Path,
 ) -> Path:
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -568,7 +603,7 @@ def _validate_frozen_source(
     *,
     store: MigrationStore,
     rows: Sequence[Mapping[str, object]],
-) -> dict[str, tuple[run_log_sync.RemoteRunArchive, RemoteObject]]:
+) -> dict[str, tuple[RemoteRunArchive, RemoteObject]]:
     source = _remote_map(store)
     planned = {_row_string(row, "source_key"): row for row in rows}
     if set(source) != set(planned):
