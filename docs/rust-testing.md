@@ -213,9 +213,10 @@ follows:
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
 - `rust-build-test` remains the transitional owner of the full build, tests,
   repository policy, plugin projection, and Linux executable artifact.
-- `rust-coverage` uses a selected `cargo llvm-cov nextest` profile, runs
-  workspace doctests separately, enforces the workspace line baseline, and
-  writes `target/llvm-cov/lcov.info`.
+- `rust-coverage-profile` uses a selected `cargo llvm-cov nextest` profile,
+  runs workspace doctests separately, enforces the workspace line baseline,
+  and writes `target/llvm-cov/lcov.info`; its non-matrix `rust-coverage`
+  aggregator preserves the protected required-check identity.
 
 The coverage job installs checksum-verified pinned `cargo-nextest` and
 `cargo-llvm-cov` binaries without a source-install fallback. Normal local

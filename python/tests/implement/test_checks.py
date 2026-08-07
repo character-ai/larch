@@ -3696,7 +3696,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
     rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
-    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split(
+        "\n  rust-coverage-profile:", 1
+    )[0]
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
     lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
@@ -3731,6 +3733,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "rust-deny:" in workflow
     assert "rust-build-test:" in workflow
     assert "\n  rust-clippy:" not in workflow
+    assert "rust-coverage-profile:" in workflow
     assert "rust-coverage:" in workflow
     assert "rust-gate:" in workflow
     assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in workflow
@@ -3769,8 +3772,15 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
     rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-build-test:", 1)[0]
-    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split("\n  rust-coverage:", 1)[0]
-    rust_coverage = workflow.split("\n  rust-coverage:", 1)[1].split("\n  rust-gate:", 1)[0]
+    rust_build_test = workflow.split("\n  rust-build-test:", 1)[1].split(
+        "\n  rust-coverage-profile:", 1
+    )[0]
+    rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
+        "\n  rust-coverage:", 1
+    )[0]
+    rust_coverage_gate = workflow.split("\n  rust-coverage:", 1)[1].split(
+        "\n  rust-gate:", 1
+    )[0]
     rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
     gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
@@ -3913,6 +3923,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "id: cargo-inputs-cache" in rust_coverage
     assert "rust-coverage-lcov${{ github.event_name == 'workflow_dispatch'" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index("Save cargo-nextest binary")
+
+    assert "name: rust-coverage" in rust_coverage_gate
+    assert "needs: [rust-coverage-profile]" in rust_coverage_gate
+    assert "if: always()" in rust_coverage_gate
+    assert "strategy:" not in rust_coverage_gate
+    assert 'coverage_profile_result="${{ needs.rust-coverage-profile.result }}"' in rust_coverage_gate
+    assert "rust-coverage-profile result=$coverage_profile_result" in rust_coverage_gate
 
     assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in rust_gate
     for result_name in ("lint_result", "deny_result", "build_test_result", "coverage_result"):

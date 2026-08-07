@@ -513,7 +513,7 @@ jobs:
   # baseline and exclusions remain stable. Normal PR and main runs use exactly
   # one configured profile. An explicit workflow_dispatch input enables the
   # profile sweep without making a benchmark matrix a required PR check.
-  rust-coverage:
+  rust-coverage-profile:
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_runner || 'ubuntu-24.04' }}
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}
     strategy:
@@ -813,6 +813,23 @@ jobs:
           name: rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}
           path: ${{ runner.temp }}/rust-coverage-phases.tsv
           if-no-files-found: error
+
+  # The profile matrix appends matrix values to its check name. Preserve the
+  # established, non-matrix `rust-coverage` status required by branch
+  # protection without changing which job owns coverage execution.
+  rust-coverage:
+    name: rust-coverage
+    needs: [rust-coverage-profile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require configured Rust coverage profile
+        run: |
+          coverage_profile_result="${{ needs.rust-coverage-profile.result }}"
+          [ "$coverage_profile_result" = success ] || {
+            echo "::error::rust-coverage-profile result=$coverage_profile_result"
+            exit 1
+          }
 
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.
