@@ -488,6 +488,7 @@ jobs:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}
       - name: Cache Cargo inputs
+        id: cargo-inputs-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
@@ -583,7 +584,7 @@ jobs:
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rust-coverage-lcov
+          name: rust-coverage-lcov${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) || '' }}
           path: target/llvm-cov/lcov.info
           if-no-files-found: error
       - name: Save cargo-nextest binary
@@ -603,14 +604,15 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$COVERAGE_TIMING_FILE"
+          cache_cargo_inputs="${{ steps.cargo-inputs-cache.outputs.cache-hit }}"
           cache_nextest="${{ steps.nextest-cache.outputs.cache-hit }}"
           cache_llvm_cov="${{ steps.llvm-cov-cache.outputs.cache-hit }}"
           {
             printf '## Rust coverage phase timings\n\n'
             printf 'Profile: test opt level %s; selected nextest threads %s; sample %s; benchmark sweep %s.\n\n' \
               "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
-            printf 'Cache hits: cargo-nextest %s; cargo-llvm-cov %s. GitHub job-step timestamps record checkout, Cargo-input restore, tool restore, and cache-save durations.\n\n' \
-              "$cache_nextest" "$cache_llvm_cov"
+            printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. GitHub job-step timestamps record checkout, cache restore and save, and tool setup durations.\n\n' \
+              "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
             printf '```tsv\n'
             cat "$COVERAGE_TIMING_FILE"
             printf '```\n'

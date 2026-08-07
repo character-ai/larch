@@ -3857,6 +3857,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "## Rust coverage phase timings" in rust_coverage
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
+    assert "id: cargo-inputs-cache" in rust_coverage
+    assert "rust-coverage-lcov${{ github.event_name == 'workflow_dispatch'" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index("Save cargo-nextest binary")
 
     assert "needs: [rust-lint, rust-deny, rust-build-test, rust-coverage]" in rust_gate
