@@ -13,6 +13,12 @@ use crate::text::is_python_whitespace;
 
 /// The normalized bug prefix.
 pub const BUG_PREFIX: &str = "[BUG]";
+/// The active implementation lifecycle prefix.
+pub const IMPLEMENTING_PREFIX: &str = "[IMPLEMENTING] ";
+/// The completed implementation lifecycle prefix.
+pub const DONE_PREFIX: &str = "[DONE] ";
+/// The managed umbrella identity prefix.
+pub const UMBRELLA_PREFIX: &str = "[UMBRELLA] ";
 
 /// Every managed or legacy tracking lifecycle prefix, in match order.
 ///
@@ -21,8 +27,8 @@ pub const BUG_PREFIX: &str = "[BUG]";
 pub const LIFECYCLE_PREFIXES: [&str; 9] = [
     "[DESIGNING] ",
     "[DESIGNED] ",
-    "[IMPLEMENTING] ",
-    "[DONE] ",
+    IMPLEMENTING_PREFIX,
+    DONE_PREFIX,
     "[STALLED] ",
     "[DEBATING] ",
     "[DEBATED] ",
@@ -32,9 +38,9 @@ pub const LIFECYCLE_PREFIXES: [&str; 9] = [
 
 /// The lifecycle prefixes a `[BUG]` title may carry ahead of its bug tag.
 pub const BUG_TITLE_LIFECYCLE_PREFIXES: [&str; 6] = [
-    "[DONE] ",
+    DONE_PREFIX,
     "[DESIGNED] ",
-    "[IMPLEMENTING] ",
+    IMPLEMENTING_PREFIX,
     "[STALLED] ",
     "[DEBATING] ",
     "[DEBATED] ",

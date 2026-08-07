@@ -11,12 +11,12 @@ use chrono::DateTime;
 use regex::Regex;
 
 use crate::{
-    GitHubIssueState, GitHubRepositoryRef, MANAGED_PREFIXES, has_managed_prefix, redact,
-    redact_secrets,
+    GitHubIssueState, GitHubRepositoryRef, MANAGED_PREFIXES, UMBRELLA_PREFIX, has_managed_prefix,
+    redact, redact_secrets,
 };
 
-const UMBRELLA_PREFIX: &str = "[UMBRELLA] ";
-const UMBRELLA_PROPOSAL_MARKER: &str = "<!-- larch:umbrella-proposal";
+/// Marker proving that `/umbrella` persisted its proposal in the parent body.
+pub const UMBRELLA_PROPOSAL_MARKER: &str = "<!-- larch:umbrella-proposal";
 const IMPLEMENTATION_LEASE_MARKER: &str = "implementation-lease";
 const PLAN_MARKER: &str = "plan";
 

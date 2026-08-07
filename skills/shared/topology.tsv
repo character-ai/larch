@@ -10,6 +10,8 @@ design.decompose.split_path	AskUserQuestion	main-agent inline proposal + single 
 design.decompose.umbrella_handoff	/umbrella	exact approved batch + dependencies + in-place original conversion	skills/design/references/decompose-panel.md
 implement.partition.umbrella_handoff	/umbrella	multi-issue target replacement owner	skills/implement/SKILL.md
 umbrella.leaf_filing	/issue	deduplication + prepared dependency wiring + identity-bound verified sentinel	skills/umbrella/SKILL.md
+complete_umbrella.audit_gap_filing	/issue	exact no-dedup leaf filing + caller-bound graph attachment	skills/complete-umbrella/SKILL.md
+complete_umbrella.leaf_execution	bgjob	serial current-model Claude child with larch skills disabled	skills/complete-umbrella/SKILL.md
 design.decompose.harness_panel	cli.py	offline panel regression coverage	python/cli.py
 design.decompose.harness_agg	cli.py	offline aggregator merge coverage	python/cli.py
 design.decompose.harness_file	cli.py	offline prepare annotate close-original coverage	python/cli.py

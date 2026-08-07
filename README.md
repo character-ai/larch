@@ -14,7 +14,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/umbrella`, `/complete-umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
@@ -108,6 +108,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><code>[--oos]</code></td>
     </tr>
     <tr><td colspan="2">Combine related open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#complete-umbrella"><code>/complete-umbrella</code></a></td>
+      <td><code>&lt;umbrella-issue-N&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Implement every direct leaf of one managed umbrella serially. Each turn fetches the live graph, selects the smallest-numbered unblocked open leaf, and launches the same Claude model with larch skills disabled. A failed child hard-stops the run. After all leaves close, the invoking agent audits the combined result, files and attaches exact new leaves for concrete gaps, and repeats until it can mark the parent <code>[DONE]</code> and close it.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>

@@ -31,6 +31,7 @@ named domain issue cuts them over atomically.
 "Skill(block-issue)",
 "Skill(bug)",
 "Skill(cleanup)",
+"Skill(complete-umbrella)",
 "Skill(debate)",
 "Skill(design)",
 "Skill(difficulty-calibration)",
@@ -41,6 +42,7 @@ named domain issue cuts them over atomically.
 "Skill(larch:block-issue)",
 "Skill(larch:bug)",
 "Skill(larch:cleanup)",
+"Skill(larch:complete-umbrella)",
 "Skill(larch:debate)",
 "Skill(larch:design)",
 "Skill(larch:difficulty-calibration)",
@@ -65,11 +67,13 @@ Strict-permissions consumers invoking `/rejected-analysis` also need `Skill(issu
 
 Strict-permissions consumers invoking `/debate` need `Skill(issue)` and `Skill(larch:issue)` for free-form source creation and proposal filing. They must also expose the Agent and `SendMessage` tool surfaces for the persistent Claude seat. Missing `SendMessage` is a pre-title hard failure, not a fresh-agent fallback.
 
+Strict-permissions consumers invoking `/complete-umbrella` also need `Skill(issue)` and `Skill(larch:issue)` for audit-gap filing. Its leaf subprocess uses the fixed Claude CLI tool list `Bash,Read,Edit,Write,Glob,Grep`; slash commands are disabled, so no child Skill permission is used.
+
 Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, all `larch:`-prefixed entries sort **before** `Skill(research)` and `Skill(review)` (whose first letters are `r` and `r`). Sort the whole block with `sort -u` to verify if you extend it. This section reflects currently-documented Claude Code behavior; consult the upstream docs above if matching semantics change in a future release.
 
 ## `claude -p` permission propagation
 
-Larch's loop drivers spawn `claude -p --plugin-dir "$CLAUDE_PLUGIN_ROOT"` subprocesses (after `cd "$REPO_ROOT"`). **Direct `claude -p` callers**: `python/cli.py eval research`. This section documents how the project-level `.claude/settings.json` propagates to all `claude -p` children regardless of which layer launched them. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
+Larch's loop drivers spawn `claude -p` subprocesses after selecting an explicit repository working directory. **Direct legacy caller**: `python/cli.py eval research`. The Rust-owned `/complete-umbrella` child instead supplies an exact allowed-tool list, `--permission-mode dontAsk`, `--disable-slash-commands`, and `--no-session-persistence` through the shared process runner. This section documents how project-level `.claude/settings.json` propagates to children that do not override those surfaces. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
 
 ### Empirical findings
 

@@ -39,6 +39,7 @@ ORCHESTRATORS=(
   "skills/bug/SKILL.md"  # invokes /issue via the Skill tool and continues to verify/cleanup/report
   "skills/triage/SKILL.md"  # invokes /block-issue and /issue, then verifies and cleans up
   "skills/umbrella/SKILL.md"  # invokes /issue and verifies its sentinel before graph wiring
+  "skills/complete-umbrella/SKILL.md"  # invokes /issue for audit gaps, then verifies and attaches
 )
 
 # Orchestrators that have the banner but no child Skill calls (use external
