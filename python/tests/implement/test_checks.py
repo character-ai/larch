@@ -3818,6 +3818,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "target" not in gitleaks_input_cache
 
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
+    assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in rust_deny
     assert "arguments: --locked --all-features" in rust_deny
     assert "path: ~/.cargo/bin/cargo-nextest" in rust_coverage
     assert "path: ~/.cargo/bin/cargo-llvm-cov" in rust_coverage
