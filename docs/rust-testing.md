@@ -388,10 +388,17 @@ candidate, not final `main` evidence. The configured 16-thread profile must
 collect three comparable successful `main`-ref samples before that target can
 be claimed.
 
-The remaining tail includes independent Git differential families and
-clean-install selector routes. Keep each Git family in its own test entrypoint
-so nextest can schedule the full set without removing a success or failure
-case. The clean-install matrix uses four deterministic, isolated partitions;
+An event-level profile from [run 31226975876](https://github.com/character-ai/larch/actions/runs/31226975876)
+identified two obsolete live-repository command-registry tests in the nextest
+tail: the CLI explicit-root test took 53.7 s and the command-registry report
+test took 33.0 s. Their contracts are command routing and report rendering, so
+they use isolated tracked fixtures. The coverage executable remains the only
+full-repository policy execution and still runs `larch lint all` before its
+coverage report.
+
+The remaining parallelization work keeps each independent Git differential
+family in its own test entrypoint without removing a success or failure case.
+The clean-install matrix uses four deterministic, isolated partitions;
 together they cover every route once.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
