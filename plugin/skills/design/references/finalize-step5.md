@@ -16,7 +16,7 @@ Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches; Step 5b.5 writes
 
 **Privacy guardrail.** OOS Descriptions and reviewer `path:line` hints become **public** GitHub issues through `/larch:issue`. Reviewers must follow `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` and avoid high-risk paths or secret-adjacent material. `python/larch/core/redact.py` inside `issue create-one` is only a mechanical backstop.
 
-**Session-backed authorization.** Step 5b `/larch:issue` OOS filing is session-backed. When constructing nested `issue create-one` args for session-backed filing, pass `--context-file "$DESIGN_TMPDIR/source-env.sh"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` set by the real `/design` Step 0 driver. Manual OOS recovery via direct `issue create-one` must pass `--operator-invoked` instead of a context file. Dry-run paths are authorization-free and require neither flag.
+**Session-backed authorization.** Step 5b `/larch:issue` OOS filing is session-backed. When constructing nested `issue create-one` args for session-backed filing, pass `--context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` and `LARCH_RUN_ID` set by the real `/design` Step 0 driver. Manual OOS recovery via direct `issue create-one` must pass `--operator-invoked` instead of a context file. Dry-run paths are authorization-free and require neither flag.
 
 Stages conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: Makefile `test-file-design-oos` (`test-file-design-oos.md`).
 
@@ -62,7 +62,7 @@ On non-zero `_oos_ann_rc` without the retry, label, or partial-failure contract,
 
 1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
 2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
-3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
+3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO> --context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`.
 4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
 
 ### `NEXT_ACTION=label-only`

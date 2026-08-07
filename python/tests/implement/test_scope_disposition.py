@@ -852,6 +852,11 @@ def test_record_proceed_partial_is_durable_after_all_side_effects(
         todos_file=str(tmp_path / "todos.txt"),
     )
     scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+    session_env = tmp_path / "session-env.sh"
+    _ = session_env.write_text(
+        "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run-session\n",
+        encoding="utf-8",
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_run_cli(argv: Sequence[str]) -> CommandResult:
@@ -899,6 +904,9 @@ def test_record_proceed_partial_is_durable_after_all_side_effects(
     assert blocked
     assert blocked[0][blocked[0].index("--client-issue") + 1] == "12"
     assert blocked[0][blocked[0].index("--blocker-issue") + 1] == "77"
+    assert blocked[0][blocked[0].index("--context-file") + 1] == str(session_env)
+    assert blocked[0][blocked[0].index("--run-id") + 1] == "run-session"
+    assert blocked[0][blocked[0].index("--trusted-root") + 1] == str(tmp_path)
     assert calls[-1][:2] == ("run-log", "write")
 
 

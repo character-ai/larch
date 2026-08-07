@@ -198,8 +198,21 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
             duplicate=bool(fields.get("ISSUE_DUPLICATE_OF_URL")),
         )
 
-    def add_blocked_by(*, client: str, blocker: str, repo: str = "", **_kwargs: object) -> issue_create.BlockedByResult:
-        completed = fake(["issue", "add-blocked-by", "--client-issue", client, "--blocker-issue", blocker, *([] if not repo else ["--repo", repo])])
+    def add_blocked_by(*, client: str, blocker: str, repo: str = "", **kwargs: object) -> issue_create.BlockedByResult:
+        args = ["issue", "add-blocked-by", "--client-issue", client, "--blocker-issue", blocker, *([] if not repo else ["--repo", repo])]
+        context_file = kwargs.get("context_file")
+        if isinstance(context_file, Path):
+            args.extend(
+                [
+                    "--context-file",
+                    str(context_file),
+                    "--run-id",
+                    str(kwargs.get("run_id", "")),
+                    "--trusted-root",
+                    str(kwargs.get("trusted_root", "")),
+                ]
+            )
+        completed = fake(args)
         fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
         return issue_create.BlockedByResult(client=client, blocker=blocker, added=not completed.returncode and fields.get("BLOCKED_BY_FAILED") != "true", error=fields.get("ERROR", ""), exit_code=completed.returncode)
 
@@ -273,6 +286,27 @@ def test_single_item_files_issue_and_writes_sentinel(tmp_path: Path, monkeypatch
     assert any(call[:2] == ["issue", "create-one"] for call in fake.calls)
     assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
     assert any("steps_ran.step9a1=true" in call for call in fake.calls for call in call)
+
+
+def test_oos_filer_forwards_session_authorization_to_blocked_by(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup(tmp_path)
+    state_path = tmp_path / "ship-pr-state.sh"
+    state_path.write_text(
+        state_path.read_text(encoding="utf-8") + "ISSUE_NUMBER=100\n",
+        encoding="utf-8",
+    )
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: Fix later.\n")
+    fake = FakeCli(tmp_path)
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    blocked = next(call for call in fake.calls if call[:2] == ["issue", "add-blocked-by"])
+    assert blocked[blocked.index("--context-file") + 1] == str(tmp_path / "session-env.sh")
+    assert blocked[blocked.index("--run-id") + 1] == "run-1"
+    assert blocked[blocked.index("--trusted-root") + 1] == str(tmp_path)
 
 
 def test_malformed_item_skipped_not_filed_as_empty_issue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -787,6 +787,8 @@ def _apply_intra_batch_edges(
     filed: list[FiledIssue],
     *,
     repo: str,
+    context_file: Path | None,
+    run_id: str,
 ) -> bool:
     """File intra-batch blocker edges; clean up and return False on failure."""
     for blocker_index, blocked_index in item_edges:
@@ -794,7 +796,14 @@ def _apply_intra_batch_edges(
         blocked_number = issue_numbers.get(blocked_index, "")
         if not blocker_number.isdigit() or not blocked_number.isdigit():
             continue
-        intra = issue_create.add_blocked_by(client=blocked_number, blocker=blocker_number, repo=repo)
+        intra = issue_create.add_blocked_by(
+            client=blocked_number,
+            blocker=blocker_number,
+            repo=repo,
+            context_file=context_file,
+            run_id=run_id,
+            trusted_root=tmpdir,
+        )
         if intra.exit_code != 0 or not intra.added:
             detail = intra.error or "intra-batch add-blocked-by failed"
             _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=intra.exit_code or 1, output=detail)
@@ -914,14 +923,29 @@ def _run_issue_batch(
             if part_index == 1 and number.isdigit():
                 issue_numbers[item_index] = number
             if issue_number and number.isdigit():
-                blocked = issue_create.add_blocked_by(client=number, blocker=issue_number, repo=repo)
+                blocked = issue_create.add_blocked_by(
+                    client=number,
+                    blocker=issue_number,
+                    repo=repo,
+                    context_file=context_file,
+                    run_id=run_id,
+                    trusted_root=tmpdir,
+                )
                 if blocked.exit_code != 0 or not blocked.added:
                     detail = blocked.error or "add-blocked-by failed"
                     _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=blocked.exit_code or 1, output=detail)
                     _cleanup_created_issues(tmpdir, filed, repo=repo)
                     return BatchResult(filed, 1, "hard_create")
         item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
-        if not _apply_intra_batch_edges(tmpdir, item_edges, issue_numbers, filed, repo=repo):
+        if not _apply_intra_batch_edges(
+            tmpdir,
+            item_edges,
+            issue_numbers,
+            filed,
+            repo=repo,
+            context_file=context_file,
+            run_id=run_id,
+        ):
             return BatchResult(filed, 1, "hard_create")
     return BatchResult(filed, failures, failure_mode)
 

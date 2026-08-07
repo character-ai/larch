@@ -697,7 +697,7 @@ def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     rc = issue_create.add_blocked_by_main(
-        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r", "--operator-invoked"],
         sleep_fn=record_sleep,
     )
     out = capsys.readouterr().out
@@ -722,7 +722,7 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
         sleeps.append(seconds)
 
     rc = issue_create.add_blocked_by_main(
-        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r", "--operator-invoked"],
         sleep_fn=record_sleep,
     )
     out = capsys.readouterr().out
@@ -757,7 +757,7 @@ def _blocked_by_fixture(
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     rc = issue_create.add_blocked_by_main(
-        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r", "--operator-invoked"],
         sleep_fn=record_sleep,
     )
     return rc, calls, sleeps
@@ -1007,7 +1007,7 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
         return _result(argv, returncode=1, stderr="HTTP 404: Not Found")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
+    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r", "--operator-invoked"])
     out = capsys.readouterr().out
     assert rc == 2
     assert "BLOCKED_BY_FAILED=true" in out
@@ -1025,7 +1025,7 @@ def test_add_blocked_by_redaction_failure_exits_three(monkeypatch: Any, capsys: 
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     monkeypatch.setattr(issue_create, "redact_secrets_outbound", boom)
-    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
+    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r", "--operator-invoked"])
     out = capsys.readouterr().out
     assert rc == 3
     assert "BLOCKED_BY_FAILED=true" in out
@@ -1250,6 +1250,69 @@ def test_blocked_by_result_sanitizes_hostile_diagnostic(capsys: Any) -> None:
     assert capsys.readouterr().out == (
         "BLOCKED_BY_FAILED=true\nCLIENT=1\nBLOCKER=2\nERROR=dependency failedFORGED=value\n"
     )
+
+
+def test_add_blocked_by_refuses_without_authorization_before_request(
+    monkeypatch: Any, capsys: Any
+) -> None:
+    """The gate rejects unauthenticated writes before even the blocker lookup."""
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        return _result(argv)
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.add_blocked_by_main(
+        ["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == _issue_create_config.EXIT_MUTATION_REFUSED
+    assert _issue_create_config.LIVE_MUTATION_REFUSAL_STATUS in captured.out
+    assert "BLOCKED_BY_FAILED=true" in captured.out
+    assert not calls
+
+
+def test_add_blocked_by_accepts_valid_session_authorization(
+    monkeypatch: Any, tmp_path: Path, capsys: Any
+) -> None:
+    session_root = tmp_path / "claude-implement-run-1"
+    session_root.mkdir()
+    context = session_root / "session-env.sh"
+    _ = context.write_text(
+        "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8"
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
+            return _result(argv, stdout="200\n")
+        return _result(argv)
+
+    monkeypatch.delenv(_issue_create_config.LIVE_MUTATION_TEST_DENY_KEY)
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.add_blocked_by_main(
+        [
+            "--client-issue",
+            "1",
+            "--blocker-issue",
+            "2",
+            "--repo",
+            "o/r",
+            "--context-file",
+            str(context),
+            "--run-id",
+            "run-1",
+            "--trusted-root",
+            str(session_root),
+        ]
+    )
+
+    assert rc == 0
+    assert "BLOCKED_BY_ADDED=true" in capsys.readouterr().out
+    assert len(calls) == 2
 
 
 def test_create_one_refuses_without_authorization(capsys: Any) -> None:
