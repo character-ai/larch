@@ -512,13 +512,13 @@ fn panel_payload_bytes_from_env() -> u64 {
         .unwrap_or(0)
 }
 
-pub(crate) fn parse_uint(value: &str) -> Option<u64> {
+pub fn parse_uint(value: &str) -> Option<u64> {
     (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
         .then(|| value.parse::<u64>().ok())
         .flatten()
 }
 
-pub(crate) fn panel_slot_kind() -> Option<&'static str> {
+pub fn panel_slot_kind() -> Option<&'static str> {
     let slot = env::var("LARCH_PANEL_SLOT").unwrap_or_default();
     if slot.trim().is_empty() {
         return None;
@@ -559,7 +559,7 @@ pub(crate) fn panel_slot_kind() -> Option<&'static str> {
     }
 }
 
-pub(crate) fn panel_artifact_path(output: &Path) -> PathBuf {
+pub fn panel_artifact_path(output: &Path) -> PathBuf {
     if let Some(path) = env::var_os("LARCH_PANEL_ARTIFACT_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
