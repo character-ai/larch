@@ -4065,6 +4065,51 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in python_test_execution
 
 
+def test_rust_ci_change_selection_observation_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    rust_testing = (repo_root / "docs" / "rust-testing.md").read_text(encoding="utf-8")
+    workflow_trust = (
+        repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
+    observer = workflow.split("\n  rust-selection-observation:", 1)[1].split("\n  rust-lint:", 1)[0]
+
+    assert "if: github.event_name == 'pull_request'" in observer
+    assert "runs-on: ubuntu-24.04" in observer
+    assert "timeout-minutes: 5" in observer
+    assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in observer
+    assert "fetch-depth: 0" in observer
+    assert "ref: ${{ github.event.pull_request.head.sha }}" in observer
+    assert "RUST_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in observer
+    assert "RUST_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in observer
+    assert "python3 python/cli.py ci rust-select" in observer
+    assert "python3 python/cli.py ci rust-select-summary" in observer
+    assert '--repo-root "$GITHUB_WORKSPACE"' in observer
+    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in observer
+    assert "name: rust-ci-selection-observation" in observer
+    assert "if-no-files-found: error" in observer
+    assert "needs:" not in observer
+    assert "does not yet change any required lane" in workflow
+    for required_detail in (
+        "Pull-request Rust selection observation",
+        "stdlib-only",
+        "Normal, build, and dev path-dependency edges",
+        "The allowlist is empty",
+        "full-workspace coverage threshold",
+        "Do not enable partial or skip enforcement",
+        "periodic full-run backstop",
+    ):
+        assert required_detail in rust_testing
+    for required_detail in (
+        "CI Rust selection trust",
+        "read-only workflow",
+        "artifact for audit",
+        "no supplementary path",
+        "false-safe classification",
+    ):
+        assert required_detail in workflow_trust
+
+
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
