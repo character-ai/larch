@@ -287,3 +287,237 @@ fn the_prompt_carries_the_untrusted_plan_and_failure_context() {
     );
     assert!(prompt.contains("Conflict files: src/a.rs,src/b.rs\n"));
 }
+
+/// A Codex fixture that publishes an events stream and a transcript.
+const CODEX_FIXTURE: &str = concat!(
+    "#!/bin/sh\n",
+    "printf '%s\\n' '{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":4,\"output_tokens\":6}}'\n",
+    "exit 0\n",
+);
+
+#[test]
+fn the_codex_launcher_publishes_timing_usage_and_the_outer_meta_record() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "codex", CODEX_FIXTURE);
+    let assert = fixture.command("launch-codex-ci").assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=0"), "stdout: {stdout}");
+    assert!(stdout.contains("TOKEN_RECORD="), "stdout: {stdout}");
+    let token_record = fixture.artifact(".token-record");
+    assert!(
+        token_record.contains("TOOL=codex\n") && token_record.contains("RAW=codex_ci_fix\n"),
+        "token record: {token_record}"
+    );
+    let meta = fixture.artifact(".meta");
+    assert!(
+        meta.contains("OUTER_LAUNCHER=agent launch-codex-ci\n"),
+        "meta: {meta}"
+    );
+    assert!(meta.contains("OUTER_LAUNCHER_PROMPT_FILE="));
+    assert!(meta.contains("OUTER_LAUNCHER_WORKDIR="));
+    assert_eq!(fixture.artifact(".done"), "0\n");
+    assert!(fixture.artifact(".prompt").contains("You are using Codex"));
+}
+
+#[test]
+fn a_failing_codex_launch_records_the_ci_failure_and_its_diagnostic_part() {
+    let fixture = CiFixture::create();
+    vendor_fixture(
+        &fixture.path,
+        "codex",
+        "#!/bin/sh\necho 'codex blew up' >&2\nexit 3\n",
+    );
+    let tmpdir = fixture.path.join("implement");
+    fs::create_dir_all(&tmpdir).expect("implement tmpdir");
+    let mut command = fixture.command("launch-codex-ci");
+    command.env("IMPLEMENT_TMPDIR", &tmpdir);
+    let assert = command.assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=3"), "stdout: {stdout}");
+    let parts = tmpdir.join("vendor-failure-diagnostics.parts");
+    let entries: Vec<PathBuf> = fs::read_dir(&parts)
+        .expect("diagnostics parts directory")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .collect();
+    assert_eq!(
+        entries.len(),
+        1,
+        "expected one diagnostic part: {entries:?}"
+    );
+    let part = fs::read_to_string(&entries[0]).expect("read diagnostic part");
+    assert!(
+        part.contains("===== ci fixer codex-ci ====="),
+        "part: {part}"
+    );
+    assert!(part.contains("exit-code: 3"), "part: {part}");
+}
+
+/// A Cursor fixture that publishes a result envelope with usage buckets.
+const CURSOR_FIXTURE: &str = concat!(
+    "#!/bin/sh\n",
+    "printf '%s' '{\"result\":\"ok\",\"usage\":{\"inputTokens\":5,\"outputTokens\":4,\"cacheReadTokens\":3}}'\n",
+    "exit 0\n",
+);
+
+fn cursor_command(fixture: &CiFixture, role: &str) -> AssertCommand {
+    let mut command = fixture.command("launch-cursor-ci");
+    command.env("CURSOR_API_KEY", "key_ci_launcher_fixture");
+    command.args(["--role", role]);
+    command
+}
+
+#[test]
+fn the_cursor_launcher_publishes_usage_and_the_outer_meta_record() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "cursor", CURSOR_FIXTURE);
+    let assert = cursor_command(&fixture, "fix").assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=0"), "stdout: {stdout}");
+    assert!(stdout.contains("TOKEN_RECORD="), "stdout: {stdout}");
+    let token_record = fixture.artifact(".token-record");
+    assert!(
+        token_record.contains(
+            "TOOL=cursor\nINPUT=5\nOUTPUT=4\nCACHE_READ=3\nCACHE_CREATE=0\nTOTAL=12\nRAW=cursor_ci_fix\n"
+        ),
+        "token record: {token_record}"
+    );
+    assert!(
+        fixture
+            .artifact(".meta")
+            .contains("OUTER_LAUNCHER=agent launch-cursor-ci\n")
+    );
+    assert!(
+        fixture
+            .artifact(".prompt")
+            .starts_with(" /max-mode on. Prompt: You are using Cursor")
+    );
+    assert_eq!(fixture.artifact(".done"), "0\n");
+}
+
+#[test]
+fn a_cursor_conflict_launch_wraps_the_conflict_role_prompt() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "cursor", CURSOR_FIXTURE);
+    let mut command = cursor_command(&fixture, "resolve-conflict");
+    command.args(["--conflict-files", "src/a.rs"]);
+    command.assert().success();
+    let prompt = fixture.artifact(".prompt");
+    assert!(
+        prompt.contains("resolve merge/rebase conflicts"),
+        "{prompt}"
+    );
+    assert!(prompt.contains("Conflict files: src/a.rs\n"), "{prompt}");
+}
+
+#[test]
+fn a_failing_cursor_launch_publishes_the_failure_envelope() {
+    let fixture = CiFixture::create();
+    vendor_fixture(
+        &fixture.path,
+        "cursor",
+        "#!/bin/sh\necho 'cursor blew up' >&2\nexit 4\n",
+    );
+    let assert = cursor_command(&fixture, "fix").assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=4"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("LAUNCHER_FAILURE_CLASS="),
+        "stdout: {stdout}"
+    );
+    assert_eq!(fixture.artifact(".done"), "4\n");
+}
+
+#[test]
+fn an_unresolvable_cursor_model_refuses_before_the_vendor_runs() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "cursor", CURSOR_FIXTURE);
+    let mut command = cursor_command(&fixture, "fix");
+    command.env("LARCH_CURSOR_MODEL", "   ");
+    let assert = command.assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=1"), "stdout: {stdout}");
+    assert!(
+        fixture.artifact(".diag").contains("model args failed"),
+        "diag: {}",
+        fixture.artifact(".diag")
+    );
+    assert_eq!(fixture.artifact(".done"), "1\n");
+}
+
+#[test]
+fn an_explicit_model_overrides_the_resolved_cursor_model() {
+    let fixture = CiFixture::create();
+    vendor_fixture(
+        &fixture.path,
+        "cursor",
+        "#!/bin/sh\nprintf '%s' \"$*\"\nexit 0\n",
+    );
+    let mut command = cursor_command(&fixture, "fix");
+    command.args(["--model", "fixture-model"]);
+    command.assert().success();
+    assert!(
+        fixture.artifact("").contains("--model fixture-model"),
+        "argv: {}",
+        fixture.artifact("")
+    );
+}
+
+#[test]
+fn a_timed_out_claude_launch_publishes_the_timeout_exit() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "claude", "#!/bin/sh\nsleep 30\n");
+    let mut command = fixture.command("launch-claude-ci");
+    command.args(["--timeout", "1"]);
+    let assert = command.assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=124"), "stdout: {stdout}");
+    assert_eq!(fixture.artifact(".done"), "124\n");
+}
+
+#[test]
+fn a_timed_out_codex_launch_publishes_the_stall_record() {
+    let fixture = CiFixture::create();
+    vendor_fixture(&fixture.path, "codex", "#!/bin/sh\nsleep 30\n");
+    let mut command = fixture.command("launch-codex-ci");
+    command.args(["--timeout", "1"]);
+    let assert = command.assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(stdout.contains("LAUNCHER_EXIT=124"), "stdout: {stdout}");
+    assert_eq!(
+        fixture.artifact(".stall.json"),
+        "{\"tool\":\"codex\",\"exit_code\":124,\"timeout\":1}\n"
+    );
+}
+
+#[test]
+fn help_prints_the_usage_line_for_every_launcher() {
+    let fixture = CiFixture::create();
+    for verb in ["launch-codex-ci", "launch-cursor-ci", "launch-claude-ci"] {
+        let mut command = launcher(&fixture.path);
+        command.args(["agent", verb, "--help"]);
+        let assert = command.assert().success();
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+        assert!(stderr.contains(verb), "usage for {verb}: {stderr}");
+    }
+}
+
+#[test]
+fn an_unknown_flag_and_a_missing_required_flag_are_rejected() {
+    let fixture = CiFixture::create();
+    let mut unknown = fixture.command("launch-codex-ci");
+    unknown.args(["--nonsense"]);
+    unknown.assert().code(2);
+
+    let mut missing = launcher(&fixture.path);
+    missing.args(["agent", "launch-codex-ci", "--role", "fix"]);
+    let assert = missing.assert().code(2);
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("the following arguments are required"),
+        "stderr: {stderr}"
+    );
+
+    let mut dangling = launcher(&fixture.path);
+    dangling.args(["agent", "launch-codex-ci", "--role"]);
+    dangling.assert().code(2);
+}
