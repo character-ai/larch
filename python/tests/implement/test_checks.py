@@ -3741,8 +3741,8 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "make rust-lint" in rust_build_test
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
-    assert "cargo llvm-cov nextest --no-report --no-clean" in workflow
-    assert "cargo llvm-cov test --no-report --no-clean" in workflow
+    assert "cargo llvm-cov nextest --no-report" in workflow
+    assert "cargo llvm-cov test --no-report" in workflow
     assert "make rust-coverage" not in workflow
     assert "rust-coverage" not in makefile
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
@@ -3846,11 +3846,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'NEXTEST_TEST_THREADS: "10"' in rust_coverage
     assert 'CARGO_INCREMENTAL: "0"' in rust_coverage
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage
-    assert "cargo llvm-cov nextest --no-report --no-clean \\" in rust_coverage
-    assert "--workspace --all-features --locked --no-run" in rust_coverage
+    assert "timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}" in rust_coverage
+    assert "cargo llvm-cov show-env --sh" in rust_coverage
+    assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
+    assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
+    assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
-    assert "cargo llvm-cov test --no-report --no-clean \\" in rust_coverage
+    assert "cargo llvm-cov test --no-report \\" in rust_coverage
     assert "--doc --workspace --all-features --locked" in rust_coverage
     assert "--status-level slow --final-status-level slow" in rust_coverage
     assert '--fail-under-lines "${RUST_COVERAGE_MIN_LINES}"' in rust_coverage
