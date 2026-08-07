@@ -219,6 +219,15 @@ between the receipt base and the current base target (`origin/main`, or
 Plan, owner, and blocker hashes remain live checks, and in-scope base-target
 drift fails closed. Unavailable or stale evidence fails closed.
 
+`crates/larch-adapters/src/github/issue_mutation.rs` is the single Rust owner
+for issue title, body, and label writes. Later Rust callers use
+`larch_adapters::github::IssueMutationOwner`, which applies the shared
+live-mutation gate before its first read, serializes through the shared GitHub
+runtime lock, redacts outbound titles and bodies, and proves a fresh exact
+read-back without a blind retry. This library leaf adds no command surface; the
+Python owner remains responsible for its existing command callers until an
+explicit cutover.
+
 ### Local mutation safety
 
 Wire files use closed key sets, single-line values, explicit size limits,

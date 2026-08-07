@@ -14,6 +14,7 @@ mod git;
 mod github;
 mod github_actions;
 mod github_auth;
+mod issue_mutation;
 mod logging_util;
 mod message_error;
 mod object_store;
@@ -120,6 +121,12 @@ pub use github::{
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};
+pub use issue_mutation::{
+    IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
+    IssueMutationSnapshot, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
+    redact_issue_mutation_request, same_mutation_identity, snapshot_is_strictly_newer,
+    validate_issue_mutation_request, verify_authorized_body_change,
+};
 pub use logging_util::emit_kv;
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
