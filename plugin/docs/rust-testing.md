@@ -227,12 +227,13 @@ The production profile sets `CARGO_INCREMENTAL=0`,
 nextest with `NEXTEST_TEST_THREADS=10`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
 the environment exported by `cargo llvm-cov show-env`, then runs
-`cargo llvm-cov nextest --no-report` and a separate
-`cargo llvm-cov test --doc --no-report` command. `--no-report` preserves that
-artifact set between phases. The report command retains the existing line
-threshold and filename exclusions. The separate doctest command stays required
-even when the workspace currently has no doctests. Nextest's slow-test status
-and final status output remain visible in the job log.
+`cargo llvm-cov nextest --no-report` and a separate `cargo test --doc` command.
+`--no-report` preserves the coverage artifact set between normal-test phases;
+the stable toolchain runs doctests without cargo-llvm-cov's nightly-only
+doctest instrumentation. The report command retains the existing line threshold
+and filename exclusions. The separate doctest command stays required even when
+the workspace currently has no doctests. Nextest's slow-test status and final
+status output remain visible in the job log.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
 and writes the same command-phase data to its GitHub step summary. The named
