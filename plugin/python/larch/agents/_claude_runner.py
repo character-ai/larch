@@ -20,6 +20,7 @@ from larch import io as larch_io
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 
 from larch.agents._types import (
     _CLAUDE_AUTH_FAST_FAIL_WINDOW,
@@ -305,22 +306,22 @@ def build_launch_argv(
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
     scripts_dir: str | Path | None = None,
 ) -> list[str]:
-    """Build per-tool launcher argv for Python agent CLI entrypoints."""
+    """Build per-tool launcher argv for the Rust CI-fix launchers."""
     _ = scripts_dir
-    verb_map = {
-        "cursor": "launch-cursor-ci",
-        "codex": "launch-codex-ci",
-        "claude": "launch-claude-ci",
+    entrypoint = str(larch_entrypoint(Path(__file__).resolve().parents[3]))
+    # Each tier names its verb literally so the command ledger can see exactly
+    # which Rust commands this caller reaches.
+    argv_by_tier = {
+        "cursor": [entrypoint, "agent", "launch-cursor-ci"],
+        "codex": [entrypoint, "agent", "launch-codex-ci"],
+        "claude": [entrypoint, "agent", "launch-claude-ci"],
     }
-    verb = verb_map.get(tier)
-    if verb is None:
+    launcher = argv_by_tier.get(tier)
+    if launcher is None:
         msg = f"unknown tier: {tier}"
         raise ValueError(msg)
     argv = [
-        sys.executable,
-        str(_PY_CLI),
-        "agent",
-        verb,
+        *launcher,
         "--role",
         role,
         "--output",
@@ -366,7 +367,12 @@ def launch_tier(
         conflict_files=conflict_files,
         timeout_sec=timeout_sec,
     )
-    return runner.run(argv, timeout=float(timeout_sec), cwd=cwd)
+    return runner.run(
+        argv,
+        timeout=float(timeout_sec),
+        cwd=cwd,
+        env=larch_entrypoint_env(Path(__file__).resolve().parents[3]),
+    )
 
 
 LaunchFn = Callable[[str], TierAttempt]

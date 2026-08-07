@@ -16,6 +16,9 @@ from larch.git import rebase
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
 from larch.core.proc import CommandResult
+from larch.core.repo_roots import larch_entrypoint
+
+_RUST_ENTRYPOINT = str(larch_entrypoint(Path(rebase.__file__).resolve().parents[3]))
 
 
 def _empty_argv_log() -> list[tuple[str, ...]]:
@@ -141,7 +144,7 @@ def test_attempt_cap_stalls() -> None:
 def test_conflict_launch_missing_metadata_uses_wrapper_rc(tmp_path: Path) -> None:
     runner = ScriptRunner(
         [
-            ((rebase.agents.sys.executable,), _fail((rebase.agents.sys.executable,), code=7)),
+            ((_RUST_ENTRYPOINT, "agent"), _fail((_RUST_ENTRYPOINT, "agent"), code=7)),
         ],
     )
     launch_fn = rebase.make_conflict_launch_fn(
@@ -161,9 +164,9 @@ def test_conflict_launch_captured_launcher_exit_wins_over_wrapper_rc(
     runner = ScriptRunner(
         [
             (
-                (rebase.agents.sys.executable,),
+                (_RUST_ENTRYPOINT, "agent"),
                 _fail(
-                    (rebase.agents.sys.executable,),
+                    (_RUST_ENTRYPOINT, "agent"),
                     stderr="LAUNCHER_EXIT=1\n",
                     code=5,
                 ),

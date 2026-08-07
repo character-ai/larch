@@ -5,9 +5,7 @@ use crate::external_agent::{
     read_external_agent_text, read_external_agent_text_tail, remove_external_agent_stale,
     spawn_error_exit_code,
 };
-use crate::python_verb::{
-    plugin_root_directory, record_vendor_timing, run_python_verb, run_python_verb_best_effort,
-};
+use crate::python_verb::{plugin_root_directory, record_vendor_timing, run_python_verb};
 use larch_adapters::{
     NoopProcessObserver, PathIntent, ProcessFileRouting, ProcessStdinRouting, SecureTempFile,
     TemporaryRoot, TokioProcessRunner, atomic_write_utf8_in, ensure_directory_chain,
@@ -1402,18 +1400,11 @@ fn record_usage(raw: &str, model: &str, token_raw: &str) {
     let Some(usage) = parse_claude_usage(&value) else {
         return;
     };
-    run_python_verb_best_effort([
-        OsString::from("token"),
-        OsString::from("record-vendor"),
-        OsString::from("claude_sub"),
-        OsString::from(format!("input={}", usage.input_tokens())),
-        OsString::from(format!("output={}", usage.output_tokens())),
-        OsString::from(format!("cache_read={}", usage.cache_read_tokens())),
-        OsString::from(format!("cache_create={}", usage.cache_create_tokens())),
-        OsString::from(format!("total={}", usage.total_tokens())),
-        OsString::from(format!("raw={token_raw}")),
-        OsString::from(format!("model={}", normalize_ledger_model(model))),
-    ]);
+    crate::launcher_support::record_claude_sub_usage(
+        usage,
+        token_raw,
+        normalize_ledger_model(model),
+    );
 }
 
 fn token_kind(timing_task_kind: &str) -> &'static str {

@@ -31,14 +31,13 @@ use larch_core::{
     AuthVerdict, CLAUDE_DESCRIPTOR, CODEX_DESCRIPTOR, CODEX_DRAFTER_TRUSTED_INSTRUCTIONS,
     CURSOR_DESCRIPTOR, ChildEnvironment, CodexEnvAuth, CodexModelRole, DIALECTIC_RAW_PENDING_FILE,
     DrafterDialectic, DrafterDirtyTree, DrafterParse, DrafterScout, DrafterStatus,
-    DrafterTimeoutError, LaunchFailureInputs, LauncherArtifact, LauncherArtifactKind,
-    LauncherArtifactPaths, MAX_DRAFTER_TIMEOUT_SECONDS, ModelTool, RepositoryRead,
-    SyncLauncherHooks, VendorLaunchRequest, VendorLaunchStatus, VendorProcessResult, VendorProgram,
-    classify_launch_failure, codex_env_auth_from_key, drafter_model_allowed,
-    drafter_path_text_allowed, drafter_token_raw_label, emit_kv, env as env_names,
-    is_quota_failure, outcome_exit_code, parse_claude_envelope, parse_drafter_output,
-    render_drafter_dirty_tree, render_drafter_status, render_preflight_bundle, resolve_model_args,
-    run_ready_launch, validate_drafter_timeout,
+    DrafterTimeoutError, LauncherArtifact, LauncherArtifactKind, LauncherArtifactPaths,
+    MAX_DRAFTER_TIMEOUT_SECONDS, ModelTool, RepositoryRead, SyncLauncherHooks, VendorLaunchRequest,
+    VendorLaunchStatus, VendorProcessResult, VendorProgram, codex_env_auth_from_key,
+    drafter_model_allowed, drafter_path_text_allowed, drafter_token_raw_label, emit_kv,
+    env as env_names, is_quota_failure, outcome_exit_code, parse_claude_envelope,
+    parse_drafter_output, render_drafter_dirty_tree, render_drafter_status,
+    render_preflight_bundle, resolve_model_args, run_ready_launch, validate_drafter_timeout,
 };
 
 use crate::external_agent::{
@@ -1192,27 +1191,18 @@ fn write_preflight_refusal(
         let _written = atomic_write_utf8_in(root, &path, text, true, 0o600);
     }
     emit_kv("LAUNCHER_EXIT", &launcher_exit.to_string());
-    let sidecar = LauncherArtifact::present(bundle.diag.clone());
-    let published = LauncherArtifact::present(bundle.output.clone());
-    let failure = classify_launch_failure(&LaunchFailureInputs {
-        launcher_exit,
-        tool: VendorProgram::Codex,
-        auth_verdict: AuthVerdict::Unclassified,
-        binary_present: true,
-        sidecar: Some(&sidecar),
-        output: Some(&published),
-    });
-    emit_kv("LAUNCHER_FAILURE_CLASS", failure.class().as_str());
-    let reason = failure.reason().as_str();
-    emit_kv(
-        "LAUNCHER_FAILURE_REASON",
-        if reason.is_empty() {
-            failure_reason
-        } else {
-            reason
+    crate::launcher_support::emit_launcher_failure_envelope(
+        &crate::launcher_support::LauncherFailureEnvelope {
+            launcher_exit,
+            tool: VendorProgram::Codex,
+            auth_verdict: AuthVerdict::Unclassified,
+            binary_present: true,
+            sidecar: bundle.diag.clone(),
+            output: bundle.output.clone(),
+            fallback_reason: failure_reason,
+            output_label: &output.display().to_string(),
         },
     );
-    emit_kv("OUTPUT", &output.display().to_string());
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,6 +1241,7 @@ fn run_codex_vendor(launch: &CodexVendorLaunch<'_>) -> i32 {
         sentinel_suffix: LauncherArtifactKind::InnerDone.suffix(),
         poll_interval: POLL_INTERVAL,
         stdin: None,
+        stall_watch: None,
     };
     match run_external_agent_with_auth_retries(&request) {
         Ok(outcome) => outcome.exit_code,

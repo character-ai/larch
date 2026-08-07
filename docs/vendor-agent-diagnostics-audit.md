@@ -60,9 +60,9 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `python/cli.py agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
-| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher uses the shared external-agent carrier. |
-| `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
-| `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved). |
+| `scripts/larch.sh agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher uses the shared external-agent carrier. |
+| `scripts/larch.sh agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
+| `scripts/larch.sh agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
 | `python/cli.py plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `python/cli.py agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
@@ -84,7 +84,7 @@ is on disk but the launcher's own give-up has not yet been updated to (a) resolv
 the carrier into its `run-log append-failure` source and (b) call
 `append_vendor_failure_diagnostics`:
 
-1. `python3 python/cli.py agent launch-codex-ci` / `python3 python/cli.py agent launch-cursor-ci` / `python3 python/cli.py agent launch-claude-ci` give-up:
+1. `scripts/larch.sh agent launch-codex-ci` / `scripts/larch.sh agent launch-cursor-ci` / `scripts/larch.sh agent launch-claude-ci` give-up:
    source the carrier lib and append the diagnostic source to the durable batch
    (the implement-side `agent launch-codex-implement` / `agent launch-cursor-implement`
    give-up already do this).
