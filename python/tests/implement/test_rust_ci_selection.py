@@ -6,12 +6,15 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from larch.core import redact
 from larch.core.proc import CommandResult
 from larch.implement import rust_ci_selection as selection
+
+if TYPE_CHECKING:
+    from larch.core import redact
 
 
 BASE_SHA = "a" * 40
