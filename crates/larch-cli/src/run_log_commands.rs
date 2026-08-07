@@ -1,6 +1,6 @@
 //! `run-log` command boundary.
 
-use crate::argparse_compat::parse;
+use crate::argparse_compat::{ParsedCommandLine, parse, parse_with_flags};
 use larch_adapters::git::GixRepository;
 use larch_adapters::run_lifecycle;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
@@ -23,6 +23,234 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
+
+const ARCHIVE_OPTIONS: &[&str] = &["--staging-root", "--output-dir", "--skill", "--run-id"];
+const MATERIALIZE_OPTIONS: &[&str] = &[
+    "--archive-path",
+    "--expected-manifest-sha256",
+    "--run-dir",
+    "--skill",
+    "--run-id",
+    "--staging-root",
+];
+const MATERIALIZE_PUBLIC_OPTIONS: &[&str] = &["--archive-path", "--run-dir", "--skill", "--run-id"];
+
+/// Run the Rust-owned `run-log archive` command.
+#[must_use]
+pub fn archive(arguments: &[OsString]) -> ExitCode {
+    if has_help(arguments) {
+        archive_help();
+        return ExitCode::SUCCESS;
+    }
+    let parsed = parse(arguments, ARCHIVE_OPTIONS, 0);
+    if let Some(error) = parsed.error() {
+        return archive_argument_failure("archive", &error);
+    }
+    if let Some(missing) = missing_options(
+        &parsed,
+        &["--staging-root", "--output-dir", "--skill", "--run-id"],
+    ) {
+        return archive_argument_failure("archive", &missing);
+    }
+    let Some(staging_root) = parsed.value("--staging-root") else {
+        unreachable!("required archive option was checked above");
+    };
+    let Some(output_dir) = parsed.value("--output-dir") else {
+        unreachable!("required archive option was checked above");
+    };
+    let Some(skill) = parsed.value("--skill").and_then(|value| value.to_str()) else {
+        return archive_argument_failure("archive", "argument --skill must be valid UTF-8");
+    };
+    let Some(run_id) = parsed.value("--run-id").and_then(|value| value.to_str()) else {
+        return archive_argument_failure("archive", "argument --run-id must be valid UTF-8");
+    };
+    match run_lifecycle::archive_run_directory(
+        Path::new(staging_root),
+        Path::new(output_dir),
+        skill,
+        run_id,
+    ) {
+        Ok(result) => {
+            println!("ARCHIVE_PATH={}", result.archive_path.display());
+            println!("ARCHIVE_SHA256={}", result.archive_sha256);
+            println!("MANIFEST_SHA256={}", result.manifest_sha256);
+            println!("MEMBER_COUNT={}", result.member_count);
+            ExitCode::SUCCESS
+        }
+        Err(error) => archive_failure(&error.to_string()),
+    }
+}
+
+/// Run the Rust-owned `run-log materialize` command.
+///
+/// The two hidden modes are typed internal consumer routes for verifying an
+/// existing cache and promoting a staging tree pinned by an archive manifest.
+#[must_use]
+pub fn materialize(arguments: &[OsString]) -> ExitCode {
+    if has_help(arguments) {
+        materialize_help();
+        return ExitCode::SUCCESS;
+    }
+    let parsed = match parse_materialize_arguments(arguments) {
+        Ok(parsed) => parsed,
+        Err(exit_code) => return exit_code,
+    };
+    let Some(run_dir) = parsed.value("--run-dir") else {
+        unreachable!("required materialize option was checked above");
+    };
+    let Some(skill) = parsed.value("--skill").and_then(|value| value.to_str()) else {
+        return archive_argument_failure("materialize", "argument --skill must be valid UTF-8");
+    };
+    let Some(run_id) = parsed.value("--run-id").and_then(|value| value.to_str()) else {
+        return archive_argument_failure("materialize", "argument --run-id must be valid UTF-8");
+    };
+    let archive_path = parsed.value("--archive-path");
+    let staging_root = parsed.value("--staging-root");
+    let expected_manifest_sha256 = parsed
+        .value("--expected-manifest-sha256")
+        .and_then(|value| value.to_str());
+    let result = if parsed.flag("--verify-existing") {
+        if archive_path.is_some() || staging_root.is_some() || expected_manifest_sha256.is_some() {
+            return archive_argument_failure(
+                "materialize",
+                "--verify-existing cannot be combined with archive or staging inputs",
+            );
+        }
+        run_lifecycle::verify_materialized_run_directory(Path::new(run_dir), skill, run_id)
+    } else if let Some(staging_root) = staging_root {
+        if archive_path.is_some() {
+            return archive_argument_failure(
+                "materialize",
+                "--archive-path and --staging-root are mutually exclusive",
+            );
+        }
+        let Some(expected_manifest_sha256) = expected_manifest_sha256 else {
+            return archive_argument_failure(
+                "materialize",
+                "the following arguments are required: --expected-manifest-sha256",
+            );
+        };
+        run_lifecycle::promote_staging_run_directory(
+            Path::new(staging_root),
+            Path::new(run_dir),
+            skill,
+            run_id,
+            expected_manifest_sha256,
+        )
+    } else {
+        if expected_manifest_sha256.is_some() {
+            return archive_argument_failure(
+                "materialize",
+                "--expected-manifest-sha256 requires --staging-root",
+            );
+        }
+        let Some(archive_path) = archive_path else {
+            return archive_argument_failure(
+                "materialize",
+                "the following arguments are required: --archive-path",
+            );
+        };
+        run_lifecycle::materialize_run_archive(
+            Path::new(archive_path),
+            Path::new(run_dir),
+            skill,
+            run_id,
+        )
+    };
+    match result {
+        Ok(result) => {
+            println!("RUN_DIR={}", result.run_dir.display());
+            println!("MANIFEST_SHA256={}", result.manifest_sha256);
+            println!("MEMBER_COUNT={}", result.member_count);
+            println!("EXPANDED_SIZE={}", result.expanded_size);
+            ExitCode::SUCCESS
+        }
+        Err(error) => archive_failure(&error.to_string()),
+    }
+}
+
+fn parse_materialize_arguments(arguments: &[OsString]) -> Result<ParsedCommandLine, ExitCode> {
+    let internal_mode = arguments.iter().any(|argument| {
+        matches!(
+            argument.to_str(),
+            Some("--verify-existing" | "--staging-root" | "--expected-manifest-sha256")
+        ) || argument.to_str().is_some_and(|value| {
+            value.starts_with("--verify-existing=")
+                || value.starts_with("--staging-root=")
+                || value.starts_with("--expected-manifest-sha256=")
+        })
+    });
+    let parsed = if internal_mode {
+        parse_with_flags(arguments, MATERIALIZE_OPTIONS, &["--verify-existing"], 0)
+    } else {
+        parse(arguments, MATERIALIZE_PUBLIC_OPTIONS, 0)
+    };
+    if let Some(error) = parsed.error() {
+        return Err(archive_argument_failure("materialize", &error));
+    }
+    let required = if internal_mode {
+        &["--run-dir", "--skill", "--run-id"][..]
+    } else {
+        MATERIALIZE_PUBLIC_OPTIONS
+    };
+    if let Some(missing) = missing_options(&parsed, required) {
+        return Err(archive_argument_failure("materialize", &missing));
+    }
+    Ok(parsed)
+}
+
+fn has_help(arguments: &[OsString]) -> bool {
+    arguments
+        .iter()
+        .any(|argument| matches!(argument.to_str(), Some("-h" | "--help")))
+}
+
+fn missing_options(parsed: &ParsedCommandLine, options: &[&str]) -> Option<String> {
+    let missing: Vec<&str> = options
+        .iter()
+        .copied()
+        .filter(|option| parsed.value(option).is_none())
+        .collect();
+    (!missing.is_empty()).then(|| {
+        format!(
+            "the following arguments are required: {}",
+            missing.join(", ")
+        )
+    })
+}
+
+fn archive_help() {
+    println!(
+        "usage: cli.py run-log archive [-h] --staging-root STAGING_ROOT --output-dir\n                              OUTPUT_DIR --skill SKILL --run-id RUN_ID\n\noptions:\n  -h, --help            show this help message and exit\n  --staging-root STAGING_ROOT\n  --output-dir OUTPUT_DIR\n  --skill SKILL\n  --run-id RUN_ID"
+    );
+}
+
+fn materialize_help() {
+    println!(
+        "usage: cli.py run-log materialize [-h] --archive-path ARCHIVE_PATH --run-dir\n                                  RUN_DIR --skill SKILL --run-id RUN_ID\n\noptions:\n  -h, --help            show this help message and exit\n  --archive-path ARCHIVE_PATH\n  --run-dir RUN_DIR\n  --skill SKILL\n  --run-id RUN_ID"
+    );
+}
+
+fn archive_argument_failure(command: &str, message: &str) -> ExitCode {
+    let usage = match command {
+        "archive" => {
+            "usage: cli.py run-log archive [-h] --staging-root STAGING_ROOT --output-dir\n                              OUTPUT_DIR --skill SKILL --run-id RUN_ID"
+        }
+        "materialize" => {
+            "usage: cli.py run-log materialize [-h] --archive-path ARCHIVE_PATH --run-dir\n                                  RUN_DIR --skill SKILL --run-id RUN_ID"
+        }
+        _ => unreachable!("only the archive commands use this parser"),
+    };
+    eprintln!("{usage}");
+    eprintln!("cli.py run-log {command}: error: {message}");
+    ExitCode::from(2)
+}
+
+fn archive_failure(error: &str) -> ExitCode {
+    let one_line = error.replace(['\n', '\r'], " ");
+    println!("ERROR={one_line}");
+    ExitCode::FAILURE
+}
 
 /// Run the Rust-owned `run-log validate-run-id` command.
 pub fn validate_run_id(arguments: &[OsString]) -> ExitCode {

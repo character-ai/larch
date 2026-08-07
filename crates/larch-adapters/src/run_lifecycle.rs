@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    env,
     fmt::Write as _,
     fs::{self, File, OpenOptions},
     hash::BuildHasher,
@@ -147,6 +148,235 @@ pub struct TerminalResult {
     pub secret_scrub_violations: u64,
     pub files_scrubbed: u64,
     pub breadcrumb_warning: Option<String>,
+}
+
+/// Deterministic archive emitted for one completed run-log staging tree.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunArchiveResult {
+    pub archive_path: PathBuf,
+    pub archive_sha256: String,
+    pub manifest_sha256: String,
+    pub member_count: usize,
+}
+
+/// Verified cache directory produced from one run archive.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunArchiveMaterializationResult {
+    pub run_dir: PathBuf,
+    pub manifest_sha256: String,
+    pub member_count: usize,
+    pub expanded_size: u64,
+}
+
+/// Archive one final run-log staging tree with durable atomic publication.
+///
+/// # Errors
+/// Returns a lifecycle error when an input is unsafe, the source changes while
+/// it is read, or the archive cannot be durably published.
+pub fn archive_run_directory(
+    staging_root: &Path,
+    output_dir: &Path,
+    skill: &str,
+    run_id: &str,
+) -> Result<RunArchiveResult, LifecycleError> {
+    validate_archive_identity(skill, run_id)?;
+    let staging = invocation_path(staging_root)?;
+    let output = invocation_path(output_dir)?;
+    ensure_existing_safe_directory(&staging)?;
+    if output.starts_with(&staging) {
+        return Err(LifecycleError::new(
+            "archive output directory must not be inside the staging tree",
+        ));
+    }
+    ensure_safe_directory(&output)?;
+    let archive_path = output.join(format!("{run_id}.tar.gz"));
+    reject_archive_destination(&archive_path)?;
+    let temporary = output.join(format!(
+        ".{run_id}.archive-{}-{}",
+        std::process::id(),
+        Uuid::new_v4()
+    ));
+    let result = (|| {
+        let archive = create_archive(&staging, &temporary, skill, run_id)?;
+        fs::rename(&temporary, &archive_path).map_err(io_error)?;
+        sync_directory(&output)?;
+        Ok(RunArchiveResult {
+            archive_path,
+            archive_sha256: archive.archive_sha256,
+            manifest_sha256: archive.manifest_sha256,
+            member_count: archive.member_count,
+        })
+    })();
+    if temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+/// Materialize one versioned run archive into a new, verified cache directory.
+///
+/// # Errors
+/// Returns a lifecycle error when the archive or target is unsafe, the archive
+/// violates the deterministic format, or a complete verified target cannot be
+/// atomically published.
+pub fn materialize_run_archive(
+    archive_path: &Path,
+    run_dir: &Path,
+    expected_skill: &str,
+    expected_run_id: &str,
+) -> Result<RunArchiveMaterializationResult, LifecycleError> {
+    validate_expected_archive_identity(expected_skill, expected_run_id)?;
+    let archive = invocation_path(archive_path)?;
+    let destination = invocation_path(run_dir)?;
+    validate_materialization_destination(&destination, expected_run_id)?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| LifecycleError::new("materialized run directory parent is missing"))?;
+    ensure_safe_directory(parent)?;
+    if destination.exists() || destination.is_symlink() {
+        return Err(LifecycleError::new(format!(
+            "refusing to merge archive into existing run directory: {}",
+            destination.display()
+        )));
+    }
+    let compressed_size = archive_compressed_size(&archive)?;
+    let temporary = materialization_temporary_path(parent, &destination, "materialize");
+    let result = (|| {
+        create_private_directory(&temporary)?;
+        extract_pending_archive(&archive, compressed_size, &temporary)?;
+        let _ = verify_materialized_run_directory(&temporary, expected_skill, expected_run_id)?;
+        fs::rename(&temporary, &destination).map_err(io_error)?;
+        sync_directory(parent)?;
+        match verify_materialized_run_directory(&destination, expected_skill, expected_run_id) {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                let _ = remove_tree_strict(&destination);
+                let _ = sync_directory(parent);
+                Err(error)
+            }
+        }
+    })();
+    if temporary.exists() {
+        let _ = remove_tree_strict(&temporary);
+    }
+    result
+}
+
+/// Verify one already-materialized run directory against its embedded manifest.
+///
+/// # Errors
+/// Returns a lifecycle error when the tree, manifest, or requested identity is
+/// invalid.
+pub fn verify_materialized_run_directory(
+    run_dir: &Path,
+    expected_skill: &str,
+    expected_run_id: &str,
+) -> Result<RunArchiveMaterializationResult, LifecycleError> {
+    validate_expected_archive_identity(expected_skill, expected_run_id)?;
+    let root = invocation_path(run_dir)?;
+    ensure_existing_safe_directory(&root)?;
+    let manifest_path = root.join(ARCHIVE_MANIFEST_NAME);
+    if !safe_regular_file(&manifest_path)? {
+        return Err(LifecycleError::new(
+            "published cache is missing its archive manifest",
+        ));
+    }
+    let (manifest, _) = read_stable_regular_file(&manifest_path)?;
+    if manifest.len() as u64 > ARCHIVE_MAX_MEMBER_BYTES {
+        return Err(LifecycleError::new(
+            "archive manifest exceeds individual size limit",
+        ));
+    }
+    let members = collect_materialized_members(&root)?;
+    let (actual, manifest_sha256) =
+        archive_manifest_from_members(&members, expected_skill, expected_run_id)?;
+    if actual != manifest {
+        return Err(LifecycleError::new(
+            "materialized run directory does not match archive manifest",
+        ));
+    }
+    let expanded_size = members
+        .iter()
+        .try_fold(manifest.len() as u64, |total, member| {
+            total
+                .checked_add(member.size)
+                .ok_or_else(|| LifecycleError::new("materialized run directory size overflowed"))
+        })?;
+    if expanded_size > ARCHIVE_MAX_EXPANDED_BYTES {
+        return Err(LifecycleError::new(
+            "materialized run directory exceeds expanded-size limit",
+        ));
+    }
+    Ok(RunArchiveMaterializationResult {
+        run_dir: root,
+        manifest_sha256,
+        member_count: members.len(),
+        expanded_size,
+    })
+}
+
+/// Promote a staging tree when it still matches a pinned archive manifest.
+///
+/// # Errors
+/// Returns a lifecycle error without merging into an existing target when the
+/// staging tree drifts or cache publication cannot be verified.
+pub fn promote_staging_run_directory(
+    staging_root: &Path,
+    run_dir: &Path,
+    expected_skill: &str,
+    expected_run_id: &str,
+    expected_manifest_sha256: &str,
+) -> Result<RunArchiveMaterializationResult, LifecycleError> {
+    validate_expected_archive_identity(expected_skill, expected_run_id)?;
+    if !valid_sha256(expected_manifest_sha256) {
+        return Err(LifecycleError::new("expected manifest digest is invalid"));
+    }
+    let staging = invocation_path(staging_root)?;
+    let destination = invocation_path(run_dir)?;
+    ensure_existing_safe_directory(&staging)?;
+    validate_materialization_destination(&destination, expected_run_id)?;
+    if destination.starts_with(&staging) {
+        return Err(LifecycleError::new(
+            "promoted run directory must not be inside the staging tree",
+        ));
+    }
+    let parent = destination
+        .parent()
+        .ok_or_else(|| LifecycleError::new("promoted run directory parent is missing"))?;
+    ensure_safe_directory(parent)?;
+    if destination.exists() || destination.is_symlink() {
+        return Err(LifecycleError::new(format!(
+            "refusing to merge staging tree into existing run directory: {}",
+            destination.display()
+        )));
+    }
+    let (manifest, manifest_sha256) = archive_manifest(&staging, expected_skill, expected_run_id)?;
+    if manifest_sha256 != expected_manifest_sha256 {
+        return Err(LifecycleError::new(
+            "staging tree no longer matches the pending archive manifest",
+        ));
+    }
+    let temporary = materialization_temporary_path(parent, &destination, "promote");
+    let result = (|| {
+        create_private_directory(&temporary)?;
+        copy_tree(&staging, &temporary)?;
+        atomic_write(&temporary.join(ARCHIVE_MANIFEST_NAME), &manifest, 0o644)?;
+        let _ = verify_materialized_run_directory(&temporary, expected_skill, expected_run_id)?;
+        fs::rename(&temporary, &destination).map_err(io_error)?;
+        sync_directory(parent)?;
+        match verify_materialized_run_directory(&destination, expected_skill, expected_run_id) {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                let _ = remove_tree_strict(&destination);
+                let _ = sync_directory(parent);
+                Err(error)
+            }
+        }
+    })();
+    if temporary.exists() {
+        let _ = remove_tree_strict(&temporary);
+    }
+    result
 }
 
 /// Start or idempotently adopt one lifecycle run.
@@ -1713,7 +1943,13 @@ fn extract_pending_archive(
     compressed_size: u64,
     destination: &Path,
 ) -> Result<(), LifecycleError> {
-    let file = File::open(archive_path).map_err(io_error)?;
+    let (file, metadata) = open_stable_regular_file(archive_path)?;
+    if metadata.len() != compressed_size {
+        return Err(LifecycleError::new(format!(
+            "run archive changed while opening: {}",
+            archive_path.display()
+        )));
+    }
     let mut archive = tar::Archive::new(GzDecoder::new(file));
     let mut names: HashMap<UniCase<String>, String> = HashMap::new();
     let mut previous = None;
@@ -1937,6 +2173,7 @@ struct ArchiveResult {
     archive_sha256: String,
     archive_size: u64,
     manifest_sha256: String,
+    member_count: usize,
 }
 
 #[derive(Clone)]
@@ -1957,7 +2194,11 @@ fn create_archive(
 ) -> Result<ArchiveResult, LifecycleError> {
     let members = collect_members(staging)?;
     let (manifest, manifest_sha256) = archive_manifest_from_members(&members, skill, run_id)?;
-    let file = File::create(destination).map_err(io_error)?;
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(io_error)?;
     let gzip = GzBuilder::new().mtime(0).write(file, Compression::best());
     let mut archive = tar::Builder::new(gzip);
     let mut manifest_written = false;
@@ -2000,6 +2241,7 @@ fn create_archive(
         archive_sha256,
         archive_size,
         manifest_sha256,
+        member_count: members.len(),
     })
 }
 
@@ -2321,6 +2563,108 @@ fn reject_existing_symlinks(path: &Path) -> Result<(), LifecycleError> {
         }
         current = candidate.parent();
     }
+    Ok(())
+}
+
+fn validate_archive_identity(skill: &str, run_id: &str) -> Result<(), LifecycleError> {
+    validate_archive_identity_labels(skill, run_id, "skill", "run-id")
+}
+
+fn validate_expected_archive_identity(skill: &str, run_id: &str) -> Result<(), LifecycleError> {
+    validate_archive_identity_labels(skill, run_id, "expected skill", "expected run-id")
+}
+
+fn validate_archive_identity_labels(
+    skill: &str,
+    run_id: &str,
+    skill_label: &str,
+    run_id_label: &str,
+) -> Result<(), LifecycleError> {
+    if !validate_run_log_slug(skill) {
+        return Err(LifecycleError::new(format!(
+            "invalid {skill_label}: {skill}"
+        )));
+    }
+    if !validate_run_log_slug(run_id) {
+        return Err(LifecycleError::new(format!(
+            "invalid {run_id_label}: {run_id}"
+        )));
+    }
+    Ok(())
+}
+
+fn invocation_path(path: &Path) -> Result<PathBuf, LifecycleError> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir().map_err(io_error)?.join(path)
+    };
+    normalize_absolute(&absolute)
+}
+
+fn reject_archive_destination(path: &Path) -> Result<(), LifecycleError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(LifecycleError::new(format!(
+            "refusing symlinked archive destination: {}",
+            path.display()
+        ))),
+        Ok(metadata) if !metadata.is_file() => Err(LifecycleError::new(format!(
+            "archive destination is not a regular file: {}",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(error)),
+    }
+}
+
+fn validate_materialization_destination(
+    destination: &Path,
+    expected_run_id: &str,
+) -> Result<(), LifecycleError> {
+    if destination
+        .file_name()
+        .is_none_or(|name| name != expected_run_id)
+    {
+        return Err(LifecycleError::new(
+            "materialized run directory name must match the expected run-id",
+        ));
+    }
+    Ok(())
+}
+
+fn archive_compressed_size(path: &Path) -> Result<u64, LifecycleError> {
+    let entry = fs::symlink_metadata(path).map_err(io_error)?;
+    if entry.file_type().is_symlink() || !entry.is_file() {
+        return Err(LifecycleError::new(format!(
+            "run archive is not a regular file: {}",
+            path.display()
+        )));
+    }
+    let (_file, metadata) = open_stable_regular_file(path)?;
+    if metadata.len() == 0 {
+        return Err(LifecycleError::new("run archive is empty"));
+    }
+    Ok(metadata.len())
+}
+
+fn materialization_temporary_path(parent: &Path, destination: &Path, operation: &str) -> PathBuf {
+    parent.join(format!(
+        ".{}.{}-{}-{}",
+        destination
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy(),
+        operation,
+        std::process::id(),
+        Uuid::new_v4()
+    ))
+}
+
+fn create_private_directory(path: &Path) -> Result<(), LifecycleError> {
+    fs::create_dir(path).map_err(io_error)?;
+    ensure_existing_safe_directory(path)?;
+    set_path_mode(path, 0o700)?;
     Ok(())
 }
 

@@ -268,7 +268,7 @@ def test_failed_repair_restores_invalid_entry_and_removes_download_temporary(
     run_dir.mkdir(parents=True)
     _ = (run_dir / "partial.txt").write_text("preserve for retry\n", encoding="utf-8")
 
-    with pytest.raises((tarfile.ReadError, run_log_sync.RunLogSyncError)):
+    with pytest.raises(run_log_archive.RunLogArchiveError, match="invalid gzip header"):
         _ = run_log_sync.sync_repository_run_logs(request=request, store=store)
 
     assert (run_dir / "partial.txt").read_text(
@@ -378,7 +378,7 @@ def test_manifestless_archive_fails_without_legacy_config_or_inventory_download(
     key = "run-logs/implement/unknown-run.tar.gz"
     store = MemoryObjectStore({key: _manifestless_archive()})
 
-    with pytest.raises(run_log_archive.MissingArchiveManifestError):
+    with pytest.raises(run_log_archive.RunLogArchiveError, match="archive manifest"):
         _ = run_log_sync.sync_repository_run_logs(
             request=_request(
                 repo=repo,

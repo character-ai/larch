@@ -164,6 +164,9 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum RunLogCommand {
+    /// Package one completed run-log staging tree as a deterministic archive.
+    #[command(name = "archive", disable_help_flag = true)]
+    Archive(RawCompatibilityArguments),
     /// Refresh recoverable artifacts after one implementation checkpoint.
     #[command(name = "checkpoint", disable_help_flag = true)]
     Checkpoint(RawCompatibilityArguments),
@@ -197,6 +200,9 @@ enum RunLogCommand {
     /// Update one versioned run-log manifest with durable atomic publication.
     #[command(name = "manifest", disable_help_flag = true)]
     Manifest(RawCompatibilityArguments),
+    /// Verify and atomically materialize one archived run-log tree.
+    #[command(name = "materialize", disable_help_flag = true)]
+    Materialize(RawCompatibilityArguments),
     /// Publish the session's redacted quiet logs as a run's breadcrumbs.
     #[command(name = "publish-breadcrumbs", disable_help_flag = true)]
     PublishBreadcrumbs(RawCompatibilityArguments),
@@ -999,8 +1005,14 @@ fn run(
         Domain::RunLog(RunLogCommand::StoragePreflight(arguments)) => {
             Ok(run_log_commands::storage_preflight(&arguments.arguments))
         }
+        Domain::RunLog(RunLogCommand::Archive(arguments)) => {
+            Ok(run_log_commands::archive(&arguments.arguments))
+        }
         Domain::RunLog(RunLogCommand::Manifest(arguments)) => {
             Ok(run_log_commands::manifest(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Materialize(arguments)) => {
+            Ok(run_log_commands::materialize(&arguments.arguments))
         }
         Domain::RunLog(RunLogCommand::LifecycleStart(arguments)) => {
             Ok(run_lifecycle_commands::start(&arguments))

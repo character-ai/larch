@@ -2,8 +2,8 @@
 
 Run-log batches are registered in `crates/larch-core/src/run_log/batch.rs`, the
 owner the Rust `run-log write` and `run-log append` commands read. The Python
-mirror in `python/larch/report/run_log_batch.py` remains for the still-Python
-flush, archive, and publication verbs; the two tables must stay in step.
+mirror in `python/larch/report/run_log_batch.py` remains for Python publication
+and the retained historical migration reader; the two tables must stay in step.
 
 Each batch declares:
 

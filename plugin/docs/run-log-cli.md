@@ -1,10 +1,10 @@
 # Run-log CLI contract
 
 `scripts/larch.sh run-log ...` owns Rust run-log initialization, entry writes,
-mutable flushes, transcript capture, durable manifest updates, storage
-preflight, and the five shared lifecycle verbs. `python3 python/cli.py run-log
-...` owns the remaining Python archive, materialization, publication, sync, and
-layout-migration verbs.
+mutable flushes, transcript capture, durable manifest updates, archive creation,
+materialization, storage preflight, and the five shared lifecycle verbs.
+`python3 python/cli.py run-log ...` owns the remaining Python publication, sync,
+and layout-migration verbs.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -35,11 +35,18 @@ make a log public-safe. See the canonical
 
 ## Remaining Python-owned verbs
 
-- `run-log archive`
-- `run-log materialize`
 - `run-log publish`
 - `run-log sync`
 - `run-log migrate-layout plan|apply|verify`
+
+## Rust-owned archive and materialization
+
+`run-log archive` and `run-log materialize` enter through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Archive success emits `ARCHIVE_PATH`,
+`ARCHIVE_SHA256`, `MANIFEST_SHA256`, and `MEMBER_COUNT`; materialization success
+emits `RUN_DIR`, `MANIFEST_SHA256`, `MEMBER_COUNT`, and `EXPANDED_SIZE`.
+Remaining Python publication and sync callers invoke those commands through the
+same verified bootstrap and do not retain an archive implementation or fallback.
 
 ## Rust-owned initialization and entry writes
 

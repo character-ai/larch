@@ -1,0 +1,386 @@
+//! End-to-end contracts for Rust-owned run-log archive materialization.
+
+use std::{
+    fs::{self, File},
+    io::Write as _,
+    path::{Path, PathBuf},
+    process::Output,
+};
+
+use assert_cmd::Command as AssertCommand;
+use flate2::{Compression, GzBuilder};
+
+const PYTHON_ARCHIVE_HEX: &str = concat!(
+    "1f8b08000000000002ffedd35d4f8330140660aefd15a6d7c314285ffb2bc690d20fa983b2d0b2a8cbfebb856",
+    "996ecc61b5d627c9f9bc2cb293d091c3e89ce1c543c706bb472fee1c58d36fa593428185bd7e07aa55979b95e",
+    "f324a5451eddd3e80666e7f9148e8ffea723e1e73fa0d1e334704fb6a45f92789a6dfcf9886cc8a086564d8d18",
+    "671b4a92afc091ede391ec8c95619f36fd52bae7be0b77937273ef1ffcab0f99eb789a172165acd25525b54a5b",
+    "5927692d3226559b882ce1154f655ad3baa0952c2b9a67452973c985a65468ae5b2672c696779977155a484f4f",
+    "1b129a6ccc72f6fecd77a35d9a5e2a44a706de1c427f66b46bbb6e67fa3ed449e5ccb325a7bb085697cff47b677",
+    "c37ff346157f31fa212f37f0b7a1a87f83c3d9809000000000000000000000000000000803fe8039e7ba1ee0028",
+    "0000"
+);
+const ARCHIVE_MAX_MEMBER_BYTES: u64 = 256 * 1024 * 1024;
+
+fn larch(arguments: &[&str]) -> Output {
+    AssertCommand::cargo_bin("larch")
+        .expect("larch binary")
+        .args(arguments)
+        .output()
+        .expect("run larch")
+}
+
+fn value(stdout: &[u8], key: &str) -> String {
+    let output = String::from_utf8_lossy(stdout);
+    output
+        .lines()
+        .find_map(|line| line.strip_prefix(&format!("{key}=")))
+        .unwrap_or_else(|| panic!("missing {key} in {output:?}"))
+        .to_owned()
+}
+
+fn write_python_fixture(path: &Path) {
+    let bytes = (0..PYTHON_ARCHIVE_HEX.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&PYTHON_ARCHIVE_HEX[index..index + 2], 16))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("fixture hex is valid");
+    fs::write(path, bytes).expect("write Python archive fixture");
+}
+
+fn write_hostile_archive(path: &Path, name: &str, entry_type: tar::EntryType) {
+    let file = File::create(path).expect("archive file");
+    let gzip = GzBuilder::new().mtime(0).write(file, Compression::best());
+    let mut archive = tar::Builder::new(gzip);
+    let mut header = tar::Header::new_ustar();
+    if name.starts_with("../") || name.starts_with('/') {
+        archive
+            .append_pax_extensions([("path", name.as_bytes())])
+            .expect("hostile PAX path");
+        header.set_path("PaxEntry").expect("placeholder path");
+    } else {
+        header.set_path(name).expect("hostile member path");
+    }
+    header.set_size(0);
+    header.set_mode(0o644);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_mtime(0);
+    header.set_username("").expect("empty owner");
+    header.set_groupname("").expect("empty group");
+    header.set_entry_type(entry_type);
+    if entry_type.is_symlink() {
+        header.set_link_name("target").expect("link target");
+    }
+    header.set_cksum();
+    archive
+        .append(&header, std::io::empty())
+        .expect("hostile archive member");
+    let gzip = archive.into_inner().expect("finish tar");
+    gzip.finish().expect("finish gzip");
+}
+
+fn write_oversized_archive(path: &Path) {
+    let file = File::create(path).expect("archive file");
+    let mut gzip = GzBuilder::new().mtime(0).write(file, Compression::best());
+    let mut header = tar::Header::new_ustar();
+    header
+        .set_path("oversized.txt")
+        .expect("oversized member path");
+    header.set_size(ARCHIVE_MAX_MEMBER_BYTES + 1);
+    header.set_mode(0o644);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_mtime(0);
+    header.set_username("").expect("empty owner");
+    header.set_groupname("").expect("empty group");
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_cksum();
+    gzip.write_all(header.as_bytes()).expect("oversized header");
+    gzip.write_all(&[0; 1024]).expect("tar end blocks");
+    gzip.finish().expect("finish gzip");
+}
+
+fn archive_command(staging: &Path, output: &Path, run_id: &str) -> Output {
+    larch(&[
+        "run-log",
+        "archive",
+        "--staging-root",
+        staging.to_str().expect("UTF-8 staging path"),
+        "--output-dir",
+        output.to_str().expect("UTF-8 output path"),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+    ])
+}
+
+#[test]
+fn public_archive_argument_parsing_keeps_the_python_contract() {
+    let archive_missing = larch(&["run-log", "archive"]);
+    assert_eq!(archive_missing.status.code(), Some(2));
+    assert!(archive_missing.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(archive_missing.stderr).expect("UTF-8 archive error"),
+        "usage: cli.py run-log archive [-h] --staging-root STAGING_ROOT --output-dir\n                              OUTPUT_DIR --skill SKILL --run-id RUN_ID\ncli.py run-log archive: error: the following arguments are required: --staging-root, --output-dir, --skill, --run-id\n"
+    );
+
+    let archive_help = larch(&["run-log", "archive", "--help"]);
+    assert!(archive_help.status.success());
+    assert!(archive_help.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(archive_help.stdout).expect("UTF-8 archive help"),
+        "usage: cli.py run-log archive [-h] --staging-root STAGING_ROOT --output-dir\n                              OUTPUT_DIR --skill SKILL --run-id RUN_ID\n\noptions:\n  -h, --help            show this help message and exit\n  --staging-root STAGING_ROOT\n  --output-dir OUTPUT_DIR\n  --skill SKILL\n  --run-id RUN_ID\n"
+    );
+
+    let materialize_missing = larch(&["run-log", "materialize"]);
+    assert_eq!(materialize_missing.status.code(), Some(2));
+    assert!(materialize_missing.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(materialize_missing.stderr).expect("UTF-8 materialize error"),
+        "usage: cli.py run-log materialize [-h] --archive-path ARCHIVE_PATH --run-dir\n                                  RUN_DIR --skill SKILL --run-id RUN_ID\ncli.py run-log materialize: error: the following arguments are required: --archive-path, --run-dir, --skill, --run-id\n"
+    );
+
+    let abbreviated_skill = larch(&["run-log", "materialize", "--s", "review"]);
+    assert_eq!(abbreviated_skill.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8(abbreviated_skill.stderr).expect("UTF-8 abbreviated error"),
+        "usage: cli.py run-log materialize [-h] --archive-path ARCHIVE_PATH --run-dir\n                                  RUN_DIR --skill SKILL --run-id RUN_ID\ncli.py run-log materialize: error: the following arguments are required: --archive-path, --run-dir, --run-id\n"
+    );
+}
+
+#[test]
+fn archive_and_materialize_preserve_a_deterministic_run_snapshot() {
+    let root = tempfile::tempdir().expect("temporary root");
+    let staging = root.path().join("staging");
+    let nested = staging.join("nested");
+    fs::create_dir_all(&nested).expect("staging tree");
+    fs::write(staging.join("run.sh"), b"#!/bin/sh\necho archived\n").expect("script");
+    fs::write(nested.join("result.txt"), b"completed\n").expect("result");
+    fs::create_dir(staging.join("empty")).expect("empty directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        fs::set_permissions(staging.join("run.sh"), fs::Permissions::from_mode(0o700))
+            .expect("executable mode");
+    }
+
+    let first_output = root.path().join("first");
+    let second_output = root.path().join("second");
+    let first = archive_command(&staging, &first_output, "snapshot-run");
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = archive_command(&staging, &second_output, "snapshot-run");
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let first_archive = PathBuf::from(value(&first.stdout, "ARCHIVE_PATH"));
+    let second_archive = PathBuf::from(value(&second.stdout, "ARCHIVE_PATH"));
+    assert_eq!(
+        fs::read(&first_archive).expect("first archive"),
+        fs::read(&second_archive).expect("second archive")
+    );
+    assert_eq!(value(&first.stdout, "MEMBER_COUNT"), "4");
+
+    let cache = root.path().join("cache/snapshot-run");
+    let materialized = larch(&[
+        "run-log",
+        "materialize",
+        "--archive-path",
+        first_archive.to_str().expect("UTF-8 archive path"),
+        "--run-dir",
+        cache.to_str().expect("UTF-8 cache path"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "snapshot-run",
+    ]);
+    assert!(
+        materialized.status.success(),
+        "{}",
+        String::from_utf8_lossy(&materialized.stderr)
+    );
+    assert_eq!(
+        PathBuf::from(value(&materialized.stdout, "RUN_DIR")),
+        fs::canonicalize(&cache).expect("canonical cache path")
+    );
+    assert_eq!(
+        fs::read(cache.join("nested/result.txt")).expect("materialized result"),
+        b"completed\n"
+    );
+    assert_eq!(
+        fs::read(cache.join("run.sh")).expect("materialized script"),
+        b"#!/bin/sh\necho archived\n"
+    );
+    assert!(cache.join("empty").is_dir());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        assert_eq!(
+            fs::metadata(cache.join("run.sh"))
+                .expect("script metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+    }
+}
+
+#[test]
+fn materialize_accepts_a_python_pax_archive_fixture() {
+    let root = tempfile::tempdir().expect("temporary root");
+    let archive = root.path().join("python.tar.gz");
+    write_python_fixture(&archive);
+    let cache = root.path().join("cache/python-run");
+
+    let output = larch(&[
+        "run-log",
+        "materialize",
+        "--archive-path",
+        archive.to_str().expect("UTF-8 archive path"),
+        "--run-dir",
+        cache.to_str().expect("UTF-8 cache path"),
+        "--skill",
+        "design",
+        "--run-id",
+        "python-run",
+    ]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read(cache.join("result.txt")).expect("Python fixture result"),
+        b"from-python\n"
+    );
+    assert_eq!(value(&output.stdout, "MEMBER_COUNT"), "1");
+}
+
+#[test]
+fn hostile_archives_leave_no_destination_or_temporary_tree() {
+    let root = tempfile::tempdir().expect("temporary root");
+    for (label, name, entry_type, expected) in [
+        (
+            "traversal",
+            "../escape.txt",
+            tar::EntryType::Regular,
+            "archive member path is unsafe",
+        ),
+        (
+            "absolute",
+            "/escape.txt",
+            tar::EntryType::Regular,
+            "archive member path is unsafe",
+        ),
+        (
+            "symlink",
+            "linked.txt",
+            tar::EntryType::Symlink,
+            "archive contains an unsafe member type",
+        ),
+    ] {
+        let archive = root.path().join(format!("{label}.tar.gz"));
+        write_hostile_archive(&archive, name, entry_type);
+        let destination = root.path().join(format!("cache/{label}-run"));
+        let output = larch(&[
+            "run-log",
+            "materialize",
+            "--archive-path",
+            archive.to_str().expect("UTF-8 archive path"),
+            "--run-dir",
+            destination.to_str().expect("UTF-8 destination path"),
+            "--skill",
+            "review",
+            "--run-id",
+            &format!("{label}-run"),
+        ]);
+        assert!(!output.status.success());
+        assert_eq!(value(&output.stdout, "ERROR"), expected);
+        assert!(!destination.exists());
+        let parent = destination.parent().expect("cache parent");
+        assert!(fs::read_dir(parent).expect("cache parent").all(|entry| {
+            !entry
+                .expect("cache entry")
+                .file_name()
+                .to_string_lossy()
+                .starts_with('.')
+        }));
+    }
+}
+
+#[test]
+fn oversized_archives_leave_no_destination_or_temporary_tree() {
+    let root = tempfile::tempdir().expect("temporary root");
+    let archive = root.path().join("oversized.tar.gz");
+    write_oversized_archive(&archive);
+    let destination = root.path().join("cache/oversized-run");
+    let output = larch(&[
+        "run-log",
+        "materialize",
+        "--archive-path",
+        archive.to_str().expect("UTF-8 archive path"),
+        "--run-dir",
+        destination.to_str().expect("UTF-8 destination path"),
+        "--skill",
+        "review",
+        "--run-id",
+        "oversized-run",
+    ]);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        value(&output.stdout, "ERROR"),
+        "archive member exceeds its size limit"
+    );
+    assert!(!destination.exists());
+    let parent = destination.parent().expect("cache parent");
+    assert!(fs::read_dir(parent).expect("cache parent").all(|entry| {
+        !entry
+            .expect("cache entry")
+            .file_name()
+            .to_string_lossy()
+            .starts_with('.')
+    }));
+}
+
+#[test]
+fn corrupt_archive_cleans_its_private_materialization_tree() {
+    let root = tempfile::tempdir().expect("temporary root");
+    let archive = root.path().join("truncated.tar.gz");
+    fs::write(&archive, b"not a gzip archive").expect("corrupt archive");
+    let destination = root.path().join("cache/interrupted-run");
+    let output = larch(&[
+        "run-log",
+        "materialize",
+        "--archive-path",
+        archive.to_str().expect("UTF-8 archive path"),
+        "--run-dir",
+        destination.to_str().expect("UTF-8 destination path"),
+        "--skill",
+        "review",
+        "--run-id",
+        "interrupted-run",
+    ]);
+
+    assert!(!output.status.success());
+    assert!(!destination.exists());
+    let parent = destination.parent().expect("cache parent");
+    assert!(fs::read_dir(parent).expect("cache parent").all(|entry| {
+        !entry
+            .expect("cache entry")
+            .file_name()
+            .to_string_lossy()
+            .starts_with('.')
+    }));
+}
