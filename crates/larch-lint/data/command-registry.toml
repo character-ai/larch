@@ -6174,11 +6174,13 @@ verb = "publish"
 python_module = "larch.report.run_log_publish"
 python_function = "main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8080
+clean_install_test = "clean-install-run-log-publish"
 
 [[commands]]
 domain = "run-log"
@@ -6264,11 +6266,13 @@ verb = "sync"
 python_module = "larch.report.run_log_sync"
 python_function = "main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8080
+clean_install_test = "clean-install-run-log-sync"
 
 [[commands]]
 domain = "run-log"
@@ -8542,6 +8546,12 @@ python = []
 rust = ["run-log publish-breadcrumbs"]
 
 [[callers]]
+path = "python/larch/report/run_log_corpus.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log sync"]
+
+[[callers]]
 path = "python/larch/report/run_logs.py"
 kind = "python-runtime"
 python = []
@@ -9438,8 +9448,8 @@ rust = ["gh resolve-repo", "kv get"]
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"
 kind = "skill"
-python = ["run-log sync", "verify skill-called"]
-rust = ["agent launch-review"]
+python = ["verify skill-called"]
+rust = ["agent launch-review", "run-log sync"]
 
 [[callers]]
 path = "skills/rejected-analysis/scripts/rejected-analysis.md"

@@ -83,7 +83,7 @@ Parse `$ARGUMENTS` mentally.
 Synchronize immutable inputs once, parse one whole-line `CORPUS_ROOT`, then run:
 
 ```bash
-SYNC_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log sync)
+SYNC_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log sync)
 "${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh" prepare \
   --n "$DAYS" --log-root "<parsed CORPUS_ROOT>"
 ```

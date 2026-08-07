@@ -6,15 +6,11 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
 from larch.report import run_log_corpus
-from larch.report.storage_config import StorageBase, ToolRepositoryStorage
-
-if TYPE_CHECKING:
-    from larch.report.object_store import RemoteObject
 
 # pytest.MonkeyPatch is used by enumeration-error coverage below.
 
@@ -23,73 +19,91 @@ def _write_manifest(run_dir: Path, payload: object, *, name: str = "manifest.jso
     _ = (run_dir / name).write_text(json.dumps(payload), encoding="utf-8")
 
 
-class _EmptyStore:
-    def __init__(self) -> None:
-        self.list_calls = 0
-
-    def list_objects(self, prefix: str = "") -> tuple[RemoteObject, ...]:
-        assert prefix == "run-logs/"
-        self.list_calls += 1
-        return ()
-
-    def download(self, key: str, destination: Path) -> None:
-        raise AssertionError(f"unexpected download: {key} to {destination}")
-
-
-def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir(parents=True)
-    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    _ = subprocess.run(
-        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
-        cwd=repo, check=True,
-    )
-    _ = (repo / "tools-config.toml").write_text(
-        '[larch]\nstorage_base_uri = "s3://fixture-bucket"\n',
-        encoding="utf-8",
-    )
-    store = _EmptyStore()
-
-    log_root = run_log_corpus.synchronized_repository_log_root(
-        repo_root=repo,
-        store=store,
-        cache_home=tmp_path / "cache",
-        state_home=tmp_path / "state",
-    )
-
-    storage = ToolRepositoryStorage(StorageBase("s3", "fixture-bucket"), "repo")
-    assert log_root == (
-        tmp_path / "cache" / "larch" / "run-logs" / "v2"
-        / "repo" / storage.storage_origin_id
-    )
-    assert store.list_calls == 1
-
-
-def test_synchronized_repository_log_root_requires_enabled_storage(
-    tmp_path: Path,
+def test_synchronized_repository_log_root_is_a_typed_rust_consumer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    _ = subprocess.run(
-        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
-        cwd=repo,
-        check=True,
-    )
-    store = _EmptyStore()
+    corpus = tmp_path / "cache" / "larch" / "run-logs" / "v2" / "repo" / "origin"
+    observed: dict[str, object] = {}
 
-    with pytest.raises(
-        run_log_corpus.RunLogCorpusError,
-        match="run-log storage is disabled; configure",
-    ):
-        _ = run_log_corpus.synchronized_repository_log_root(
-            repo_root=repo,
-            store=store,
-            cache_home=tmp_path / "cache",
-            state_home=tmp_path / "state",
+    def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["environment"] = kwargs["env"]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "RUN_LOG_STORAGE=enabled\n"
+            f"CORPUS_ROOT={corpus}\n"
+            "LISTED_ARCHIVES=2\n"
+            "PRESENT_RUNS=1\n"
+            "DOWNLOADED_RUNS=1\n"
+            "REPAIRED_RUNS=0\n"
+            "SYNC_OK=true\n",
+            "",
         )
 
-    assert store.list_calls == 0
+    monkeypatch.setattr(run_log_corpus.subprocess, "run", _run)
+    result = run_log_corpus.synchronize_run_log_corpus(
+        request=run_log_corpus.RunLogSyncRequest(repo_root=repo)
+    )
+
+    assert result.corpus_root == corpus
+    assert result.listed_count == 2
+    assert result.present_count == 1
+    assert result.downloaded_count == 1
+    assert result.repaired_count == 0
+    command = cast("list[str]", observed["command"])
+    assert command[-4:] == ["run-log", "sync", "--repo-root", str(repo)]
+    environment = cast("dict[str, str]", observed["environment"])
+    assert environment["CLAUDE_PLUGIN_ROOT"] == str(
+        Path(run_log_corpus.__file__).resolve().parents[3]
+    )
+
+
+def test_synchronized_repository_log_root_rejects_a_disabled_rust_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "RUN_LOG_STORAGE=disabled\n"
+            "RUN_LOG_STORAGE_REASON=config-file-missing\n"
+            "CORPUS_ROOT=\n"
+            "LISTED_ARCHIVES=0\n"
+            "PRESENT_RUNS=0\n"
+            "DOWNLOADED_RUNS=0\n"
+            "REPAIRED_RUNS=0\n"
+            "SYNC_OK=true\n",
+            "",
+        )
+
+    monkeypatch.setattr(run_log_corpus.subprocess, "run", _run)
+    with pytest.raises(run_log_corpus.RunLogCorpusError, match="storage is disabled"):
+        _ = run_log_corpus.synchronized_repository_log_root(repo_root=tmp_path)
+
+
+def test_synchronized_repository_log_root_rejects_an_inconsistent_rust_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "RUN_LOG_STORAGE=enabled\n"
+            f"CORPUS_ROOT={tmp_path}\n"
+            "LISTED_ARCHIVES=1\n"
+            "PRESENT_RUNS=1\n"
+            "DOWNLOADED_RUNS=1\n"
+            "REPAIRED_RUNS=0\n"
+            "SYNC_OK=true\n",
+            "",
+        )
+
+    monkeypatch.setattr(run_log_corpus.subprocess, "run", _run)
+    with pytest.raises(run_log_corpus.RunLogCorpusError, match="invalid machine envelope"):
+        _ = run_log_corpus.synchronized_repository_log_root(repo_root=tmp_path)
 
 
 def test_load_run_manifest_rejects_bool_issue_number(tmp_path: Path) -> None:

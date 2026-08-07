@@ -52,6 +52,7 @@ mod release_version;
 mod run_lifecycle_commands;
 mod run_log_commands;
 mod run_log_entry_commands;
+mod run_log_publication_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod session_env_commands;
@@ -205,9 +206,15 @@ enum RunLogCommand {
     /// Verify and atomically materialize one archived run-log tree.
     #[command(name = "materialize", disable_help_flag = true)]
     Materialize(RawCompatibilityArguments),
+    /// Publish one immutable completed run archive and verified local cache.
+    #[command(name = "publish", disable_help_flag = true)]
+    Publish(RawCompatibilityArguments),
     /// Publish the session's redacted quiet logs as a run's breadcrumbs.
     #[command(name = "publish-breadcrumbs", disable_help_flag = true)]
     PublishBreadcrumbs(RawCompatibilityArguments),
+    /// Synchronize the immutable remote run-log corpus into the local cache.
+    #[command(name = "sync", disable_help_flag = true)]
+    Sync(RawCompatibilityArguments),
     /// Prepare the complete mutable snapshot immediately before publication.
     #[command(name = "prepare-terminal-snapshot", disable_help_flag = true)]
     PrepareTerminalSnapshot(RawCompatibilityArguments),
@@ -1016,6 +1023,9 @@ fn run(
         Domain::RunLog(RunLogCommand::Materialize(arguments)) => {
             Ok(run_log_commands::materialize(&arguments.arguments))
         }
+        Domain::RunLog(RunLogCommand::Publish(arguments)) => {
+            Ok(run_log_publication_commands::publish(&arguments.arguments))
+        }
         Domain::RunLog(RunLogCommand::LifecycleStart(arguments)) => {
             Ok(run_lifecycle_commands::start(&arguments))
         }
@@ -1076,6 +1086,9 @@ fn run(
         }
         Domain::RunLog(RunLogCommand::PublishBreadcrumbs(arguments)) => {
             Ok(run_log_commands::publish_breadcrumbs(&arguments.arguments))
+        }
+        Domain::RunLog(RunLogCommand::Sync(arguments)) => {
+            Ok(run_log_publication_commands::sync(&arguments.arguments))
         }
         Domain::RunLog(RunLogCommand::Checkpoint(arguments)) => {
             Ok(run_log_flush_commands::checkpoint(&arguments.arguments))

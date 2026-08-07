@@ -21,10 +21,11 @@ this recipe.
 The run-log domain is mixed-runtime. Rust owns initialization, entry writes,
 mutable checkpoint and terminal flushes, transcript capture, manifest updates,
 breadcrumb publication, archive creation, materialization, cache promotion,
-storage preflight, and shared lifecycle operations. Python retains publication
-orchestration, sync, layout migration, and content renderers until their named
-leaves cut over. A renderer invoked by Rust produces a payload only. It is not
-a fallback command owner.
+storage preflight, shared lifecycle operations, standalone publication, and
+synchronization. Python retains only the historical layout migration, bounded
+compatibility consumers, and content renderers until their named leaves cut
+over. A renderer invoked by Rust produces a payload only. It is not a fallback
+command owner.
 
 Before a Rust cutover, pass the shared
 `tests/fixtures/run-log-object-store-contract-v1.json` fixture plus archive,
@@ -72,14 +73,27 @@ existing callers already handle. `log_manifest_update` is unrelated to this
 leaf and still writes the manifest in Python.
 
 Two parts of `larch.report.run_log_batch` outlive their production callers on
-purpose. The batch registry still backs Python publication and the retained
-historical migration reader, and
+purpose. The batch registry still backs bounded Python compatibility consumers
+and the retained historical migration reader, and
 `python/tests/report/test_run_log_batch_registry_parity.py` fails if it drifts
 from the authoritative Rust table. The round-artifact tables and
 `_stage_round_artifact` have no Python production caller left; they are retained
 only as the shared source for the `run-log write-round` test double in
 `python/tests/support/rust_agent_stub.py`, so the double cannot become a second
 implementation. Delete both when the remaining run-log verbs cut over.
+
+**Publication and synchronization cut over in #8080.** `run-log publish` and
+`run-log sync` are Rust-owned through
+`crates/larch-adapters/src/run_lifecycle.rs` and
+`crates/larch-cli/src/run_log_publication_commands.rs`. The leaf moved durable
+pending state, create-only remote verification, cache promotion, paginated
+inventory validation, interrupted-transfer cleanup, quarantine/restore, and
+archive materialization behind the shared Rust object-store port. It removed
+the Python command registrations and the superseded Python publication and
+synchronization implementations. `python/larch/report/run_log_corpus.py` is a
+typed Rust consumer for analyzer callers; `run_log_publish.py` retains only
+local path and lock types used by unrelated state owners. The offline adapter
+double covers retry/resume, redaction before egress, and cold/warm sync.
 
 **Breadcrumb publication cut over in #8074.** `run-log publish-breadcrumbs` is
 Rust-owned. `larch_adapters::run_lifecycle::publish_breadcrumbs` is the single
@@ -90,8 +104,8 @@ The same leaf deleted the superseded Python Git-commit implementation in
 `commit_larch_logs`, `_larch_log_commit`, `prepare_run_tree_for_publication`,
 the repo-copy and volatile-cleanup helpers, and the pre-commit retry ladder had
 no production caller after the flush retirement in #7995. The module keeps only
-`prepare_run_for_archive` and its scrub helpers, which `run-log publish` still
-consumes, plus `_publish_breadcrumbs_with_warning`, now a Rust consumer that
+`prepare_run_for_archive` and its scrub helpers for compatibility callers, plus
+`_publish_breadcrumbs_with_warning`, now a Rust consumer that
 builds an argv and executes `scripts/larch.sh`.
 
 **Mutable flush cut over in #8078.** `run-log checkpoint`, `refresh`,
@@ -109,9 +123,9 @@ and `run-log materialize` are Rust-owned through
 `crates/larch-cli/src/run_log_commands.rs`; every public caller enters through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The Python registrations and command
 entrypoints are removed. `larch.report.run_log_archive` is only a typed Rust
-consumer for the remaining Python publication and sync owners. The historical
-migration-only reader remains isolated in `run_log_legacy_archive.py`; it is
-not a normal archive command or fallback implementation.
+consumer for bounded compatibility callers. The historical migration-only
+reader remains isolated in `run_log_legacy_archive.py`; it is not a normal
+archive command or fallback implementation.
 
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 

@@ -49,17 +49,21 @@ impl Harness {
         }
     }
 
-    fn run(&self, arguments: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_larch"))
+    fn command(&self, arguments: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_larch"));
+        command
             .args(arguments)
             .env("HOME", self.root.join("home"))
             .env("XDG_STATE_HOME", self.root.join("state"))
             .env("XDG_CACHE_HOME", self.root.join("cache"))
             .env_remove("LARCH_LOGS_URI")
             .env_remove("LARCH_STORAGE_BASE_URI")
-            .current_dir(&self.repo)
-            .output()
-            .expect("larch should run")
+            .current_dir(&self.repo);
+        command
+    }
+
+    fn run(&self, arguments: &[&str]) -> Output {
+        self.command(arguments).output().expect("larch should run")
     }
 }
 
@@ -122,6 +126,163 @@ fn disabled_run_terminalizes_after_configuration_becomes_malformed() {
     assert!(!run_dir.exists());
 }
 
+#[test]
+fn standalone_publication_and_sync_preserve_disabled_and_parser_contracts() {
+    let harness = Harness::new();
+    let repo = harness.repo.to_str().expect("UTF-8 repo path");
+    let staging = harness.root.join("staging");
+    fs::create_dir_all(&staging).expect("staging should create");
+    fs::write(staging.join("private.txt"), "unchanged\n").expect("staging should write");
+    let publish = harness.run(&[
+        "run-log",
+        "publish",
+        "--repo-root",
+        repo,
+        "--skill",
+        "review",
+        "--run-id",
+        "disabled-standalone",
+        "--staging-root",
+        staging.to_str().expect("UTF-8 staging path"),
+    ]);
+    assert!(publish.status.success());
+    for (key, expected) in [
+        ("RUN_LOG_STORAGE", "disabled"),
+        ("STORAGE_PREFLIGHT", "skipped-disabled"),
+        ("RUN_LOG_PUBLICATION", "skipped-disabled"),
+        ("SECRET_SCRUB_VIOLATIONS", "0"),
+        ("PUBLISH_OK", "true"),
+    ] {
+        assert_eq!(output_value(&publish, key), expected);
+    }
+    assert_eq!(
+        fs::read_to_string(staging.join("private.txt")).unwrap(),
+        "unchanged\n"
+    );
+    assert!(!harness.root.join("state/larch/run-log-pending").exists());
+    assert!(!harness.root.join("cache/larch/run-logs").exists());
+    let sync = harness.run(&["run-log", "sync", "--repo-root", repo]);
+    assert!(sync.status.success());
+    for (key, expected) in [
+        ("RUN_LOG_STORAGE", "disabled"),
+        ("CORPUS_ROOT", ""),
+        ("LISTED_ARCHIVES", "0"),
+        ("PRESENT_RUNS", "0"),
+        ("DOWNLOADED_RUNS", "0"),
+        ("REPAIRED_RUNS", "0"),
+        ("SYNC_OK", "true"),
+    ] {
+        assert_eq!(output_value(&sync, key), expected);
+    }
+    assert!(!harness.root.join("cache/larch/run-logs").exists());
+    for count in ["-1", "+1"] {
+        let invalid = harness.run(&[
+            "run-log",
+            "publish",
+            "--repo-root",
+            repo,
+            "--skill",
+            "review",
+            "--run-id",
+            "invalid-count",
+            "--pre-scrub-violations",
+            count,
+        ]);
+        assert_eq!(invalid.status.code(), Some(2));
+        assert!(
+            String::from_utf8_lossy(&invalid.stderr)
+                .contains("--pre-scrub-violations must be a non-negative integer")
+        );
+        assert!(invalid.stdout.is_empty());
+    }
+    let help = harness.run(&["run-log", "publish", "--help"]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("[--pre-scrub-violations PRE_SCRUB_VIOLATIONS]"));
+    assert!(help.contains("options:\n  -h, --help            show this help message and exit"));
+    let missing = harness.run(&["run-log", "publish", "--repo-root", repo]);
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&missing.stderr)
+            .contains("the following arguments are required: --skill, --run-id")
+    );
+}
+#[test]
+fn disabled_standalone_commands_skip_relative_xdg_homes() {
+    let harness = Harness::new();
+    let repo = harness.repo.to_str().expect("UTF-8 repo path");
+    for arguments in [
+        vec![
+            "run-log",
+            "publish",
+            "--repo-root",
+            repo,
+            "--skill",
+            "review",
+            "--run-id",
+            "disabled-relative-home",
+        ],
+        vec!["run-log", "sync", "--repo-root", repo],
+    ] {
+        let output = harness
+            .command(&arguments)
+            .env("XDG_STATE_HOME", "relative-state")
+            .env("XDG_CACHE_HOME", "relative-cache")
+            .output()
+            .expect("disabled command should run");
+        assert!(output.status.success());
+        assert_eq!(output_value(&output, "RUN_LOG_STORAGE"), "disabled");
+    }
+}
+#[test]
+fn standalone_commands_fail_closed_before_provider_or_repository_mutation() {
+    let harness = Harness::new();
+    let repo = harness.repo.to_str().expect("UTF-8 repo path");
+    for arguments in [
+        vec![
+            "run-log",
+            "publish",
+            "--repo-root",
+            repo,
+            "--skill",
+            "review",
+            "--run-id",
+            "configured-provider",
+        ],
+        vec!["run-log", "sync", "--repo-root", repo],
+    ] {
+        let output = harness
+            .command(&arguments)
+            .env("LARCH_STORAGE_BASE_URI", "r2://bucket/testing")
+            .env("LARCH_R2_ACCOUNT_ID", "")
+            .env("LARCH_R2_ENDPOINT", "")
+            .output()
+            .expect("configured command should run");
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("r2"));
+    }
+    let missing = harness.root.join("missing-repository");
+    let missing = missing.to_str().expect("UTF-8 missing repository path");
+    for arguments in [
+        vec![
+            "run-log",
+            "publish",
+            "--repo-root",
+            missing,
+            "--skill",
+            "review",
+            "--run-id",
+            "missing-repository",
+        ],
+        vec!["run-log", "sync", "--repo-root", missing],
+        vec!["run-log", "sync", "--unexpected"],
+    ] {
+        let output = harness.run(&arguments);
+        assert_eq!(output.status.code(), Some(2));
+    }
+    assert!(harness.run(&["run-log", "sync", "--help"]).status.success());
+    assert!(harness.run(&["run-log", "sync"]).status.success());
+}
 #[test]
 fn persisted_context_rehydrates_in_a_later_process_without_shell_state() {
     let harness = Harness::new();

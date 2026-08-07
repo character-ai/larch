@@ -382,7 +382,10 @@ const fn terminal_failure_stdout() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{render_start, render_terminal, terminal_failure_stdout};
-    use larch_adapters::run_lifecycle::{PublicationResult, StartedRun, TerminalResult};
+    use larch_adapters::run_lifecycle::{
+        CachePublicationStatus, PublicationResult, RemotePublicationStatus, StartedRun,
+        TerminalResult,
+    };
     use larch_core::{
         LifecycleContext, LifecycleOutcome, RunLogStorageMode, RunLogStorageReason,
         RunLogStorageResolution, StorageBase, ToolRepositoryStorage, injected_storage_resolution,
@@ -457,6 +460,8 @@ mod tests {
                 remote_key: "run-logs/review/run-1.tar.gz".to_owned(),
                 archive_sha256: "a".repeat(64),
                 cache_dir: PathBuf::from("/cache/run-1"),
+                remote_status: RemotePublicationStatus::Created,
+                cache_status: CachePublicationStatus::Promoted,
             }),
             secret_scrub_violations: 2,
             files_scrubbed: 1,

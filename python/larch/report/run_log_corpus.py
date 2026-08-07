@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import tarfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -14,7 +15,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from larch.report import run_log_sync, storage_config
+from larch import io as larch_io
+from larch.core.repo_roots import larch_entrypoint
+from larch.report import storage_config
 from larch.report.report_tokens_models import safe_int
 
 DEFAULT_MANIFEST_CANDIDATES: tuple[str, ...] = ("manifest.json", "run-manifest.json")
@@ -238,61 +241,118 @@ def run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[
     return [path for path in safe_child_run_dirs(log_base, warn=warn) if is_valid_run_dir(path, warn=warn)]
 
 
-def synchronize_run_log_corpus(
-    *,
-    request: run_log_sync.RunLogSyncRequest,
-    store: run_log_sync.SyncObjectStore | None = None,
-    environ: Mapping[str, str] | None = None,
-) -> run_log_sync.RepositorySyncResult:
-    """Synchronize once and return the repository's ordinary local-file corpus."""
-    return run_log_sync.sync_repository_run_logs(
-        request=request,
-        store=store,
-        environ=environ,
+@dataclass(frozen=True)
+class RunLogSyncRequest:
+    """Inputs for the Rust-owned repository synchronization boundary."""
+
+    repo_root: Path
+
+
+@dataclass(frozen=True)
+class RepositorySyncResult:
+    """Rust machine-envelope result used by Python analyzer consumers."""
+
+    corpus_root: Path
+    listed_count: int
+    present_count: int
+    downloaded_count: int
+    repaired_count: int
+
+
+def _sync_with_rust(
+    *, repo_root: Path, environ: Mapping[str, str] | None
+) -> RepositorySyncResult:
+    plugin_root = Path(__file__).resolve().parents[3]
+    environment = dict(os.environ if environ is None else environ)
+    environment["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    result = subprocess.run(
+        [
+            str(larch_entrypoint(plugin_root, use_env=False)),
+            "run-log",
+            "sync",
+            "--repo-root",
+            str(repo_root),
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
     )
+    values: dict[str, str] = larch_io.parse_kv(
+        result.stdout,
+        skip_empty_key=True,
+        cr_strip="suffix",
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "missing Rust run-log sync machine envelope"
+        raise RunLogCorpusError(f"run-log corpus sync failed: {detail}")
+    if values.get("RUN_LOG_STORAGE") == "disabled":
+        reason = values.get("RUN_LOG_STORAGE_REASON", "unknown")
+        raise RunLogCorpusError(
+            "run-log storage is disabled; configure [larch].storage_base_uri or set "
+            f"LARCH_STORAGE_BASE_URI ({reason})"
+        )
+    if values.get("RUN_LOG_STORAGE") != "enabled":
+        raise RunLogCorpusError("Rust run-log sync returned an invalid machine envelope")
+    try:
+        corpus_root = Path(values["CORPUS_ROOT"])
+        counts = tuple(
+            int(values[key])
+            for key in (
+                "LISTED_ARCHIVES",
+                "PRESENT_RUNS",
+                "DOWNLOADED_RUNS",
+                "REPAIRED_RUNS",
+            )
+        )
+    except (KeyError, ValueError) as exc:
+        raise RunLogCorpusError(
+            "Rust run-log sync returned an invalid machine envelope"
+        ) from exc
+    listed, present, downloaded, repaired = counts
+    if (
+        values.get("SYNC_OK") != "true"
+        or not corpus_root.is_absolute()
+        or min(counts) < 0
+        or present + downloaded != listed
+        or repaired > downloaded
+    ):
+        raise RunLogCorpusError("Rust run-log sync returned an invalid machine envelope")
+    return RepositorySyncResult(corpus_root, *counts)
+
+
+def synchronize_run_log_corpus(
+    *, request: RunLogSyncRequest, environ: Mapping[str, str] | None = None
+) -> RepositorySyncResult:
+    """Synchronize once through Rust and return an ordinary local-file corpus."""
+    return _sync_with_rust(repo_root=request.repo_root, environ=environ)
 
 
 def synchronized_run_log_root(
-    *,
-    request: run_log_sync.RunLogSyncRequest,
-    store: run_log_sync.SyncObjectStore | None = None,
-    environ: Mapping[str, str] | None = None,
+    *, request: RunLogSyncRequest, environ: Mapping[str, str] | None = None
 ) -> Path:
     """Synchronize once and expose the unpacked root for all later read waves."""
-    return synchronize_run_log_corpus(
-        request=request,
-        store=store,
-        environ=environ,
-    ).corpus_root
+    return synchronize_run_log_corpus(request=request, environ=environ).corpus_root
 
 
-def synchronized_repository_log_root(  # noqa: PLR0913 - sync dependencies and pinned storage are injectable.
+def synchronized_repository_log_root(  # noqa: PLR0913 - compatibility arguments fail closed at the Rust boundary.
     *,
     repo_root: Path,
     storage: storage_config.ToolRepositoryStorage | None = None,
-    store: run_log_sync.SyncObjectStore | None = None,
+    store: object | None = None,
     environ: Mapping[str, str] | None = None,
     cache_home: Path | None = None,
     state_home: Path | None = None,
 ) -> Path:
-    """Load repository config, synchronize once, and return the cache log root."""
+    """Synchronize through Rust once and return the cache log root."""
     try:
-        active_storage: storage_config.ToolRepositoryStorage = (
-            storage
-            if storage is not None
-            else storage_config.load_tool_repository_storage(
-                repo_root=repo_root,
-                environ=environ,
+        if store is not None or cache_home is not None or state_home is not None:
+            raise RunLogCorpusError(
+                "Rust run-log sync does not accept injected stores or local cache homes"
             )
-        )
+        _ = storage
         return synchronized_run_log_root(
-            request=run_log_sync.RunLogSyncRequest(
-                repo_root=repo_root,
-                storage_root=active_storage,
-                cache_home=cache_home,
-                state_home=state_home,
-            ),
-            store=store,
+            request=RunLogSyncRequest(repo_root=repo_root),
             environ=environ,
         )
     except (

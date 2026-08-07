@@ -354,18 +354,15 @@ classes. The [Google service inventory](../google-service-inventory.md) records
 the Cloud Storage client, scope, permissions, operations, and mixed-runtime
 consumer path.
 
-Rust owns the shared run lifecycle, including terminal archive publication and
-cache promotion. The standalone `run-log publish` and `run-log sync` commands
-remain Python-owned until #8080. Rust uses the official Cloud Storage client;
-S3/R2 lifecycle publication and startup preflight use the official AWS SDK with
-the credential-process feature disabled. R2 suppresses the unsupported optional
-AWS checksum headers; lifecycle publication still downloads the object and
-verifies its complete SHA-256 digest when a create-only key already exists;
-new objects are verified through returned and fetched remote metadata. The residual Python standalone
-commands continue to use the AWS CLI until #8080. Both runtimes use the same
-provider-neutral port, immutable-write rule, and machine error mapping. The
-complete mixed-runtime and future hard cutover boundary lives in
-[Run-log storage contracts](../run-log-archive.md#rust-handoff).
+Rust owns the shared run lifecycle and standalone `run-log publish` and
+`run-log sync` commands, including terminal archive publication, cache
+promotion, retry/resume, and synchronization. It uses the official Cloud
+Storage client and the official AWS SDK with the credential-process feature
+disabled for S3/R2. R2 suppresses unsupported optional AWS checksum headers;
+publication downloads and hashes an existing create-only object before matching
+it, while new objects are verified through returned and fetched metadata. No
+run-log production route uses the AWS CLI. The complete hard-cutover boundary
+lives in [Run-log storage contracts](../run-log-archive.md#rust-handoff).
 
 The one-time `character-ai/larch#7966` layout migration uses the same
 normalized S3 transport. Live plan, apply, and verify operations accept only

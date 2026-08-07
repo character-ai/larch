@@ -296,6 +296,16 @@ def test_plan_rejects_target_only_archive(tmp_path: Path) -> None:
         )
 
 
+def test_remote_inventory_rejects_dot_path_components() -> None:
+    with pytest.raises(
+        run_log_layout_migration.LayoutMigrationError,
+        match="remote run-log inventory is invalid",
+    ):
+        _ = run_log_layout_migration.validated_remote_inventory(
+            (RemoteObject("run-logs/./unsafe.tar.gz", 1, None, None),)
+        )
+
+
 def test_apply_requires_authorization(tmp_path: Path) -> None:
     mappings, stores = _fixture(tmp_path)
     plan_path = tmp_path / "plan.json"
