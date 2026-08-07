@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from larch.core import config, rust_runtime
+from larch.core import rust_runtime as run_log_flush
 from larch.report import final_report
-from larch.report import run_log_flush
 from larch.report import run_log_batch
 from larch.report import run_log_manifest
 from larch.implement import ship
@@ -32,9 +32,6 @@ from test_support import RecordingRunner, make_run_context, ok
 if TYPE_CHECKING:
     from larch.core.proc import CommandResult
     from larch.core.run_context import RunContext
-
-_REAL_FLUSH_LOGS_PRE = run_log_flush.refresh_logs_checkpoint
-
 
 @pytest.fixture(autouse=True)
 def _default_try_rev_parse(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1369,7 +1366,7 @@ def test_happy_path_stage_order(
         lambda *_a, **_k: order.append("flush-post") or run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
     monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: order.append("comment"))
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: order.append("comment"))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: order.append("state"))
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
 
@@ -1407,73 +1404,11 @@ def test_happy_path_stage_order(
     assert "ship.py: post-merge" in captured.err
 
 
-def test_straight_merge_post_ensure_committed_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _init_git_repo(tmp_path)
-    monkeypatch.setattr(ship, "_guidelines_gate_before_pr", lambda **_k: ship_guidelines.GuidelinesGateResult())
-    monkeypatch.setattr(run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
-    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
-    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _stub_rust_manifest_command(monkeypatch)
-
-    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-        _ = (implement_tmpdir, run_id)
-        return {"cost_unavailable": True}
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    monkeypatch.setattr(
-        ship.ci_monitor,
-        "monitor",
-        lambda *_a, **_k: type(
-            "M",
-            (),
-            {
-                "result": StepResult(Outcome.NEEDS_USER_INPUT, "ci-fix-exhausted: lint"),
-                "action": "wait",
-                "goto_rebase": False,
-                "failed_run_id": None,
-                "transient_rerun_attempted": False,
-            },
-            )(),
-        )
-
-    result = ship.run_ship(
-        _ctx(tmp_path, state_file=str(tmp_path / "ship-pr-state.sh")),
-        runner=RecordingRunner(),
-        cwd=str(tmp_path),
-    )
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    final_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading = final_summary.split(":", 1)[-1].split("\n", 1)[0].strip()
-    assert heading in {"stalled", "bailed", "bailed-needs-user-input"}
-    assert "pr-created" not in heading
-    assert manifest["steps_ran"].get("step8") is True
-    assert manifest.get("pr_number") == 12
 
 
 def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _init_git_repo(tmp_path)
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_k: ship_guidelines.GuidelinesGateResult(guidelines_status="absent"))
-    monkeypatch.setattr(run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
@@ -1483,25 +1418,13 @@ def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyP
     _stub_rust_manifest_command(monkeypatch)
     flush_calls: list[bool] = []
 
-    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-        _ = (implement_tmpdir, run_id)
-        return {"cost_unavailable": True}
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
-
-    real_flush = _REAL_FLUSH_LOGS_PRE
-
     def capturing_flush(
         *,
-        runner: RecordingRunner,
-        ctx: RunContext,
-        cwd: str | None = None,
         strict_final_report: bool = False,
-    ) -> run_log_manifest.RefreshSkip:
+        **_kwargs: object,
+    ) -> run_log_flush.RunLogRefreshOutput:
         flush_calls.append(strict_final_report)
-        return real_flush(runner=runner, ctx=ctx, cwd=cwd, strict_final_report=strict_final_report)
+        return run_log_flush.RunLogRefreshOutput(skipped=False, reason="")
 
     monkeypatch.setattr(run_log_flush, "refresh_logs_checkpoint", capturing_flush)
     monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", capturing_flush)
@@ -1512,7 +1435,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyP
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1580,7 +1503,7 @@ def test_merge_review_required_exits_as_needs_user_input(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1608,8 +1531,6 @@ def test_merge_review_required_exits_as_needs_user_input(
 
 def _prepare_recovered_stalled_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, draft: bool = False) -> Path:
     _init_git_repo(tmp_path)
-    monkeypatch.setattr(run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
@@ -1631,20 +1552,24 @@ def _prepare_recovered_stalled_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         encoding="utf-8",
     )
 
-    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-        _ = implement_tmpdir, run_id
-        return {"cost_unavailable": True}
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     recovered = "pr-created-draft" if draft else "pr-created"
+
+    def render_recovered_summary(*_args: object, **kwargs: object) -> run_log_flush.RunLogRefreshOutput:
+        active = cast("RunContext", kwargs["ctx"])
+        rc, _url, error = final_report.write_final_report(
+            Path(active.tmpdir),
+            skip_tracking_upsert=True,
+            normalized_outcome_override=recovered,
+        )
+        assert rc == 0, error
+        return run_log_flush.RunLogRefreshOutput(skipped=False, reason="")
+
+    monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", render_recovered_summary)
     monkeypatch.setattr(
         rust_runtime,
         "normalized_stall_outcome_values",
         lambda *_args, **_kwargs: {"IMPLEMENT_NORMALIZED_OUTCOME": recovered},
     )
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     monkeypatch.setattr(
@@ -1872,7 +1797,7 @@ def test_post_ensure_fresh_run_is_push_only_no_reflush(monkeypatch: pytest.Monke
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
     monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})())
@@ -1931,7 +1856,7 @@ def test_post_ensure_push_failure_stalls_before_monitor(monkeypatch: pytest.Monk
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.run_log_flush,
@@ -1970,7 +1895,7 @@ def test_merge_loop_iteration_cap_stalls(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -2015,7 +1940,7 @@ DRAFT=false
         raise AssertionError("fresh-only phase must not run on open-pr resume")
 
     monkeypatch.setattr(ship.finalize, "postbump", forbidden)
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", forbidden)
+    monkeypatch.setattr(ship, "_write_final_report_comment", forbidden)
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
@@ -2658,7 +2583,7 @@ def test_stale_merged_flags_with_open_pr_resume_open_path(
             },
         )(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("fresh report forbidden")))
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("fresh report forbidden")))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -4786,7 +4711,7 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(monkeypatch: pytest.Monkey
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "u", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(
         ship.run_log_flush,
         "refresh_logs_checkpoint",
@@ -6492,7 +6417,7 @@ def test_pre_rebase_flush_commit_failed_fails_closed(monkeypatch: pytest.MonkeyP
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fail_rebase)
@@ -7567,7 +7492,7 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
     monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
@@ -7680,7 +7605,7 @@ def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
         "refresh_logs_checkpoint",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship, "reconcile_staged_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -7829,7 +7754,7 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(monkeypatch: pytes
         "refresh_logs_checkpoint",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship, "reconcile_staged_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -8068,7 +7993,7 @@ def _prepare_open_pr_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     return state_file
 
@@ -8388,7 +8313,7 @@ def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
         "refresh_logs_checkpoint",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     assert ship.architectural_guidelines.note_fingerprint_stale(tmp_path, base_ref="origin/main", repo_root=repo)
     stale_gate = ship.GuidelinesGateResult(

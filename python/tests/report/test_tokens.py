@@ -773,6 +773,24 @@ def test_token_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "Step 2 - implement: claude=100 tokens" in out.out
 
 
+def test_token_report_scrape_mode_confines_outputs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    outside = tmp_path / "outside.ndjson"
+
+    rc = tokens.token_report_main([
+        "--scrape-run-output", str(outside),
+        "--implement-tmpdir", str(session),
+    ])
+
+    assert rc == 0
+    assert not outside.exists()
+    assert "scrape output must stay" in capsys.readouterr().err
+
+
 def test_token_cli_rejects_invalid_ledger(capsys: pytest.CaptureFixture[str]) -> None:
     rc = tokens.token_dump_main(["--ledger", "/etc/passwd"])
     assert rc == 1

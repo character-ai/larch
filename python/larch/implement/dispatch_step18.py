@@ -370,7 +370,7 @@ def _prepare_terminal_snapshot(*, implement_tmpdir: Path, run_id: str, suppresse
     ]
     if repo_root is not None:
         prepare_args.extend(["--repo-root", str(repo_root)])
-    prepare = _run_cli_capture(prepare_args, cwd=repo_root)
+    prepare = _run_larch_capture(prepare_args, cwd=repo_root)
     if prepare.stderr:
         sys.stderr.write(prepare.stderr)
         sys.stderr.flush()

@@ -269,7 +269,10 @@ def test_codex_review_model_role_for_archetype_always_review() -> None:
     assert difficulty.codex_review_model_role(difficulty.HARD) == "review"
 
 
-def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
+def test_write_record_merge_preserves_resolution_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     out = tmp_path / "difficulty-rating.json"
     existing = {
         "schema_version": 1,
@@ -309,6 +312,57 @@ def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
     assert data["panel_tier"] == "HARD"
     assert data["round_cap"] == 2
     assert data["escalations"] == existing["escalations"]
+
+    monkeypatch.setattr(
+        difficulty.proc,
+        "run",
+        lambda *_args, **_kwargs: CommandResult(
+            ("git",), 0, "hooks/pre-tool-use.sh\n", "", 0.01
+        ),
+    )
+    assert difficulty.write_record_main([
+        "--output", str(out),
+        "--refresh-existing",
+        "--refresh-repo-root", str(tmp_path),
+    ]) == 0
+    refreshed = json.loads(out.read_text(encoding="utf-8"))
+    assert refreshed["floors_applied"][0]["path"] == "hooks/pre-tool-use.sh"
+    assert refreshed["floors_applied"][0]["floor"] == "MODERATE"
+    assert refreshed["panel_tier"] == "HARD"
+    assert refreshed["round_cap"] == 2
+    assert refreshed["escalations"] == existing["escalations"]
+
+
+def test_refresh_existing_record_preserves_bytes_when_git_diff_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "difficulty-rating.json"
+    record = difficulty.build_record(
+        rater="implement",
+        implement_rating=difficulty.validate_rating_object({
+            "predicted_tier": "MODERATE",
+            "confidence": "medium",
+            "rationale": "existing scope",
+        }),
+        changed_paths=("old.py",),
+    )
+    difficulty.write_record(out, record)
+    before = out.read_bytes()
+    monkeypatch.setattr(
+        difficulty.proc,
+        "run",
+        lambda *_args, **_kwargs: CommandResult(("git",), 1, "", "failed", 0.01),
+    )
+
+    rc = difficulty.write_record_main([
+        "--output", str(out),
+        "--refresh-existing",
+        "--refresh-repo-root", str(tmp_path),
+    ])
+
+    assert rc == 1
+    assert out.read_bytes() == before
 
 
 def test_resolve_panel_tier_clamps_stale_hard_round_cap(tmp_path: Path) -> None:

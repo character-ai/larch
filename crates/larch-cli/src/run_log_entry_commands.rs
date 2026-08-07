@@ -5,6 +5,8 @@
 //! manifest field update: `init`, `write`, `write-round`, `append`,
 //! `append-entry`, `append-failure`, `exists`, and `verify-completeness`.
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
     collections::BTreeMap,
     env,
@@ -13,13 +15,11 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    sync::atomic::{AtomicU64, Ordering},
     thread,
     time::Duration,
 };
 
-use larch_adapters::assert_no_symlink_path_or_ancestors;
-use larch_adapters::run_log_manifest::utc_now;
+use larch_adapters::{assert_no_symlink_path_or_ancestors, run_log_manifest::utc_now};
 use larch_core::{
     BatchInfo, BatchMode, CompletenessOutcome, EXECUTION_ISSUE_CATEGORIES, FAILURE_CATEGORIES,
     FailureEntry, ManifestDocument, ManifestRecord, ManifestV2Seed, ReachabilityContext,
@@ -45,9 +45,6 @@ const DYNAMIC_ARCHETYPE_SUFFIX: &str = ".md";
 const RC_REFUSED: u8 = 1;
 /// Exit code for a refusal the Python owner raised as `OSError`.
 const RC_IO: u8 = 2;
-
-/// Per-process counter that keeps concurrent temp names distinct.
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Identity options every batch-scoped command declares.
 const IDENTITY_OPTIONS: [&str; 3] = ["--log-root", "--skill", "--run-id"];
@@ -146,7 +143,7 @@ fn rebase_under_tmpdir(raw: &str) -> PathBuf {
 }
 
 /// Read a file the way Python reads run-log inputs: UTF-8 with replacement.
-fn read_lossy(path: &Path) -> Result<String, String> {
+pub fn read_lossy(path: &Path) -> Result<String, String> {
     fs::read(path)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
         .map_err(|error| format!("{}: {error}", path.display()))
@@ -286,7 +283,8 @@ pub fn write(arguments: &[OsString]) -> ExitCode {
         Err(failure) => return failure.into_envelope(),
     };
     let path = identity.batch_path(batch);
-    if path.is_file()
+    if !path.is_symlink()
+        && path.is_file()
         && fs::read(&path).is_ok_and(|bytes| String::from_utf8_lossy(&bytes) == payload)
     {
         emit_log_envelope(Some(&path), false, true, "");
@@ -442,45 +440,41 @@ fn json_carries_session_pointer(value: &Value) -> bool {
 }
 
 /// Publish `text` through a same-directory temp file, fsync, and rename.
-fn write_run_log_file(path: &Path, text: &str) -> Result<(), String> {
+pub fn write_run_log_file(path: &Path, text: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .ok_or_else(|| format!("refusing to write a rootless path: {}", path.display()))?;
+    // Refuse an existing linked ancestor before `create_dir_all` can create
+    // directories through it, then re-check after creation for a swap.
+    assert_no_symlink_path_or_ancestors(path)?;
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    // Shared owner: a swapped directory link must not redirect this write.
     assert_no_symlink_path_or_ancestors(path)?;
     let file_name = path
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-    // The temp name must be unique per writer: two processes publishing the
-    // same batch concurrently would otherwise share one temp and interleave.
-    let temporary = parent.join(format!(
-        ".manifest-{file_name}.{}.{}.tmp",
-        std::process::id(),
-        TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    ));
     let publish = || -> std::io::Result<()> {
-        let mut handle = fs::File::create(&temporary)?;
-        handle.write_all(text.as_bytes())?;
-        handle.sync_all()?;
-        drop(handle);
-        fs::rename(&temporary, path)?;
+        let mut temporary = tempfile::Builder::new()
+            .prefix(&format!(".manifest-{file_name}."))
+            .suffix(".tmp")
+            .tempfile_in(parent)?;
+        temporary.write_all(text.as_bytes())?;
+        temporary.as_file().sync_all()?;
+        temporary.persist(path).map_err(|error| error.error)?;
         fs::File::open(parent).and_then(|directory| directory.sync_all())
     };
-    publish().map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!("{}: {error}", path.display())
-    })
+    publish().map_err(|error| format!("{}: {error}", path.display()))
 }
 
 fn append_run_log_file(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     }
-    let mut handle = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
+    let mut options = fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut handle = options
         .open(path)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     handle
@@ -885,12 +879,14 @@ fn failure_body(output_file: &str, exit_code: &str) -> Result<String, String> {
 /// The lock is a `mkdir`-based mutex on `<log>.lock.d`. `mkdir` is atomic on
 /// every supported filesystem, so two processes appending concurrently never
 /// interleave a record.
-fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> Result<(), String> {
+pub fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> Result<(), String> {
+    assert_no_symlink_path_or_ancestors(log_file)?;
     if let Some(parent) = log_file.parent()
         && !parent.as_os_str().is_empty()
     {
         fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     }
+    assert_no_symlink_path_or_ancestors(log_file)?;
     let lock = log_file.with_file_name(format!("{}.lock.d", base_name(log_file)));
     acquire_append_lock(&lock)?;
     // Initialization belongs to the same critical section as read-modify-write.
@@ -909,6 +905,85 @@ fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> Resul
     })();
     let _ = fs::remove_dir(&lock);
     result
+}
+
+/// Stage one replace-mode batch without emitting a nested command envelope.
+///
+/// Flush orchestration is another Rust-owned `run-log` boundary. Reusing this
+/// helper keeps payload redaction, validation, path confinement, and atomic
+/// publication under the same owner as the public `write` command.
+pub fn stage_replace_batch(
+    log_root: &Path,
+    skill: &str,
+    run_id: &str,
+    batch_name: &str,
+    source: &Path,
+) -> Result<PathBuf, String> {
+    let skill = RunLogSlug::parse(skill).map_err(|error| error.to_string())?;
+    let run_id = RunLogSlug::parse(run_id).map_err(|error| error.to_string())?;
+    let batch = lookup_batch(batch_name).ok_or_else(|| format!("unknown batch: {batch_name}"))?;
+    if batch.mode() != BatchMode::Replace {
+        return Err(format!("batch {} is append-only; use append", batch.name()));
+    }
+    let source = source
+        .to_str()
+        .ok_or_else(|| format!("input path must be UTF-8: {}", source.display()))?;
+    let payload = staged_payload(batch, source).map_err(|failure| failure.message)?;
+    let layout = RunLogLayout::new(log_root, skill, run_id);
+    let path = layout
+        .run_dir()
+        .join(format!("{}{}", batch.name(), batch.extension()));
+    if !path.is_symlink()
+        && path.is_file()
+        && fs::read(&path).is_ok_and(|bytes| String::from_utf8_lossy(&bytes) == payload)
+    {
+        return Ok(path);
+    }
+    write_run_log_file(&path, &payload)?;
+    Ok(path)
+}
+
+/// Stage one append-mode payload without emitting a nested command envelope.
+pub fn stage_append_batch(
+    log_root: &Path,
+    skill: &str,
+    run_id: &str,
+    batch_name: &str,
+    source: &Path,
+) -> Result<PathBuf, String> {
+    let skill = RunLogSlug::parse(skill).map_err(|error| error.to_string())?;
+    let run_id = RunLogSlug::parse(run_id).map_err(|error| error.to_string())?;
+    let batch = lookup_batch(batch_name).ok_or_else(|| format!("unknown batch: {batch_name}"))?;
+    if batch.mode() != BatchMode::Append {
+        return Err(format!("batch {} is replace-only; use write", batch.name()));
+    }
+    let source = source
+        .to_str()
+        .ok_or_else(|| format!("input path must be UTF-8: {}", source.display()))?;
+    let payload = staged_payload(batch, source).map_err(|failure| failure.message)?;
+    let layout = RunLogLayout::new(log_root, skill, run_id);
+    let path = layout
+        .run_dir()
+        .join(format!("{}{}", batch.name(), batch.extension()));
+    assert_no_symlink_path_or_ancestors(&path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    }
+    assert_no_symlink_path_or_ancestors(&path)?;
+    let lock = path.with_file_name(format!("{}.lock.d", base_name(&path)));
+    acquire_append_lock(&lock)?;
+    let result = (|| {
+        let mut combined = if path.is_file() {
+            read_lossy(&path)?
+        } else {
+            String::new()
+        };
+        combined.push_str(&payload);
+        write_run_log_file(&path, &combined)
+    })();
+    let _ = fs::remove_dir(&lock);
+    result?;
+    Ok(path)
 }
 
 fn acquire_append_lock(lock: &Path) -> Result<(), String> {
@@ -1053,7 +1128,7 @@ fn resolve_required_files_manifest() -> Result<PathBuf, String> {
     }
 }
 
-fn plugin_version() -> String {
+pub fn plugin_version() -> String {
     let path = plugin_root().join(".claude-plugin").join("plugin.json");
     let Ok(text) = fs::read_to_string(path) else {
         return "unknown".to_owned();
@@ -1073,7 +1148,7 @@ fn plugin_version() -> String {
     }
 }
 
-fn effort_level() -> String {
+pub fn effort_level() -> String {
     // Python reads `CLAUDE_CODE_EFFORT_LEVEL or environ.get("CLAUDE_EFFORT", "unknown")`,
     // so a set-but-empty `CLAUDE_EFFORT` records an empty effort rather than `unknown`.
     non_empty_env("CLAUDE_CODE_EFFORT_LEVEL")
@@ -1081,9 +1156,16 @@ fn effort_level() -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn main_model() -> String {
+pub fn main_model() -> String {
+    main_model_for_source(None)
+}
+
+pub fn main_model_for_source(source_file: Option<&Path>) -> String {
     non_empty_env("CLAUDE_CODE_MODEL")
         .or_else(|| non_empty_env("CLAUDE_MODEL"))
+        .or_else(|| {
+            source_file.and_then(crate::agent_commands::resolve_claude_model_from_source_file)
+        })
         // Reuse the established Claude-transcript model resolver rather than
         // standing up a second owner for session discovery (I-Owner-1).
         .unwrap_or_else(crate::agent_commands::resolve_claude_model_from_environment)
@@ -1095,7 +1177,10 @@ fn non_empty_env(key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_object_field, glob_hit, rebase_under_tmpdir, write_run_log_file};
+    use super::{
+        append_execution_issue, append_object_field, glob_hit, rebase_under_tmpdir,
+        stage_append_batch, write_run_log_file,
+    };
     use std::{fs, path::PathBuf};
 
     #[test]
@@ -1158,5 +1243,32 @@ mod tests {
             error.contains("refusing symlinked path or ancestor"),
             "{error}"
         );
+
+        let outside = root.join("outside");
+        fs::create_dir(&outside).expect("outside dir");
+        let linked_missing = root.join("linked-missing");
+        std::os::unix::fs::symlink(&outside, &linked_missing).expect("missing-parent link");
+        let escaped = linked_missing.join("new/entry.md");
+        write_run_log_file(&escaped, "other\n").expect_err("pre-create ancestor refusal");
+        assert!(!outside.join("new").exists());
+
+        let record = root.join("record.ndjson");
+        fs::write(&record, "{\"warning\":true}\n").expect("append record");
+        stage_append_batch(
+            &linked_missing,
+            "implement",
+            "run-abc",
+            "execution-issues",
+            &record,
+        )
+        .expect_err("append staging ancestor refusal");
+        append_execution_issue(
+            &linked_missing.join("new/execution-issues.md"),
+            "Warnings",
+            "- warning",
+        )
+        .expect_err("execution issue ancestor refusal");
+        assert!(!outside.join("implement").exists());
+        assert!(!outside.join("new").exists());
     }
 }

@@ -800,6 +800,54 @@ def _record_from_args(args: argparse.Namespace) -> DifficultyRecord:
     )
 
 
+def _refreshed_existing_record(args: argparse.Namespace) -> DifficultyRecord:
+    existing: dict[str, object] = _load_record_data(Path(args.output))
+    rating: DifficultyRating = validate_rating_object({
+        "predicted_tier": str(existing.get("predicted_tier") or "").upper(),
+        "confidence": str(existing.get("confidence") or "").lower(),
+        "rationale": str(existing.get("rationale") or ""),
+    })
+    rater: str = str(existing.get("rater") or "unknown")
+    changed_paths: tuple[str, ...] = _read_changed_paths(Path(args.changed_paths_file))
+    if not changed_paths and args.refresh_repo_root:
+        changed: proc.CommandResult = proc.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            cwd=args.refresh_repo_root,
+        )
+        if changed.returncode != 0:
+            raise ValueError("difficulty refresh could not read changed paths")
+        changed_paths = tuple(
+            line.strip()
+            for line in (changed.stdout or "").splitlines()
+            if line.strip()
+        )
+    raw_escalations: object | None = existing.get("escalations")
+    escalations: tuple[object, ...] = (
+        tuple(cast("list[object] | tuple[object, ...]", raw_escalations))
+        if isinstance(raw_escalations, list | tuple)
+        else ()
+    )
+    kwargs: dict[str, object] = {
+        "rater": rater,
+        "rater_tool": str(existing.get("rater_tool") or "unknown"),
+        "rater_model": str(existing.get("rater_model") or "unknown"),
+        "changed_paths": changed_paths,
+        "panel_skipped": str(existing.get("panel_skipped") or ""),
+        "audit_upgrade": str(existing.get("audit_upgrade") or ""),
+        "escalations": escalations,
+    }
+    if rater == "implement":
+        kwargs["implement_rating"] = rating
+    elif rater == "fallback":
+        kwargs["fallback_rating"] = rating
+    else:
+        kwargs["design_rating"] = rating
+    refreshed: DifficultyRecord = build_record(
+        **kwargs,  # type: ignore[arg-type]  # The rater branch supplies one valid rating key.
+    )
+    return _merge_existing_record_fields(refreshed, existing, blank_merge_args())
+
+
 def _merge_existing_record_fields(record: DifficultyRecord, existing: dict[str, object], explicit_args: argparse.Namespace) -> DifficultyRecord:
     if not existing:
         return record
@@ -915,10 +963,15 @@ def write_record_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--escalated-round", choices=("", "true", "false"), default="")
     parser.add_argument("--fallback-tier", default="MODERATE")
     parser.add_argument("--fallback-rationale", default="fallback rating synthesized for recovery path")
+    parser.add_argument("--refresh-existing", action="store_true")
+    parser.add_argument("--refresh-repo-root", default="")
     args = parser.parse_args(argv)
     try:
-        record = _record_from_args(args)
-        record = _merge_existing_record_fields(record, _load_record_data(Path(args.output)), args)
+        if args.refresh_existing:
+            record = _refreshed_existing_record(args)
+        else:
+            record = _record_from_args(args)
+            record = _merge_existing_record_fields(record, _load_record_data(Path(args.output)), args)
         write_record(Path(args.output), record)
     except (OSError, ValueError) as exc:
         print(f"STATUS=error\nERROR={exc}")

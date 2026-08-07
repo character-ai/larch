@@ -9,11 +9,12 @@ use larch_core::{
     Classification, ClassifyTextInput, CommentPolicy, CrStrip, DuplicatePolicy, FileFailureReport,
     IssueNormalization, KvDocument, NormalizeOutcomeInput, ParseOptions, RepositoryRead,
     artifact_prefix_valid, classification_signature, classify_text, daemon_liveness,
-    failure_detail_sidecar_name, first_nonempty, kv_text, normalize_file_failure_report,
-    normalize_issue_output, normalize_outcome_values, public_text_is_sensitive, read_for,
-    resume_hint_for, safe_bail_value, safe_dispatcher_value, safe_pattern_value, safe_phase,
-    safe_phase_value, safe_step, safe_step_value, select_kv_bytes, state_value,
-    terminal_state_valid, token_valid, truthy, unlink_entry, validate_process_identity,
+    failure_detail_sidecar_name, first_nonempty, is_terminal_merge_result, kv_text,
+    normalize_file_failure_report, normalize_issue_output, normalize_outcome_values,
+    public_text_is_sensitive, read_for, resume_hint_for, safe_bail_value, safe_dispatcher_value,
+    safe_pattern_value, safe_phase, safe_phase_value, safe_step, safe_step_value, select_kv_bytes,
+    state_value, terminal_state_valid, token_valid, truthy, unlink_entry,
+    validate_process_identity,
 };
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
@@ -174,7 +175,7 @@ pub fn classify(request: &ClassificationRequest) -> Result<ClassificationOutput,
     let state_exit = state.get("EXIT_CODE").map_or("unknown", String::as_str);
     let raw_exit = first_nonempty(&[&request.exit_code, state_exit]);
     let lower = format!("{bail}\n{evidence}").to_ascii_lowercase();
-    let terminal_merge = matches!(state_value(&state, "MERGE_RESULT").trim(), "merged" | "admin_merged" | "already_merged");
+    let terminal_merge = is_terminal_merge_result(state_value(&state, "MERGE_RESULT"));
     let postmerge = any_stall && phase == "postmerge" && step == "postmerge-flush" && terminal_merge;
     let postmerge_failure = postmerge && "redaction-failed post-merge-refresh-failed manifest-recovery-failed commit-failed".split_ascii_whitespace().any(|marker| lower.contains(marker));
     let expected_postmerge = postmerge && lower.contains("preterminal-outcome") && !postmerge_failure;

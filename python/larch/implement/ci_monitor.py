@@ -22,8 +22,9 @@ from larch.git import git
 from larch.core import logging_util
 from larch.core import redact
 from larch.core import retry
+from larch.core import rust_runtime as run_log_flush
 from larch.core.repo_roots import larch_entrypoint
-from larch.report import run_log_flush, run_log_manifest
+from larch.report import run_log_manifest
 from larch.report import progress_file
 from larch.agents.agents import TierAttempt
 from larch.errors import ShipError
@@ -1138,7 +1139,7 @@ def _run_pre_push_log_refresh(callback: PrePushLogRefreshFn | None) -> bool:
         return False
 
 
-def _warn_refresh_skip_before_ci_push(*, skip: run_log_manifest.RefreshSkip, warning_logged: bool) -> bool:
+def _warn_refresh_skip_before_ci_push(*, skip: run_log_flush.RunLogRefreshOutput, warning_logged: bool) -> bool:
     if skip.skipped and warning_logged:
         reason = skip.reason or "unknown"
         if skip.error:

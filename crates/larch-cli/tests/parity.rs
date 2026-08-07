@@ -37,6 +37,7 @@ impl CleanInstallCase {
             "clean-install-issue-state" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
+            "clean-install-run-log-prepare-terminal-snapshot" => 2,
             _ => 0,
         }
     }
@@ -200,26 +201,17 @@ fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static s
 /// clean install proves each whole route rather than only the argument
 /// rejection in front of it. Split out of `CleanInstallCase::arguments` so that
 /// matcher stays readable.
+#[rustfmt::skip]
 fn run_log_arguments(id: &str) -> &'static [&'static str] {
     match id {
         "clean-install-run-log-manifest" => &[
-            "--log-root",
-            "manifest-logs",
-            "--skill",
-            "clean",
-            "--run-id",
-            "clean-install",
-            "--field",
-            "steps_ran.install=true",
+            "--log-root", "manifest-logs", "--skill", "clean",
+            "--run-id", "clean-install", "--field", "steps_ran.install=true",
         ],
         "clean-install-run-log-validate-run-id" => &["--run-id", "clean-install"],
         "clean-install-run-log-init" => &[
-            "--log-root",
-            "%SESSION%/larch-logs",
-            "--skill",
-            "clean",
-            "--run-id",
-            "clean-install",
+            "--log-root", "%SESSION%/larch-logs", "--skill", "clean",
+            "--run-id", "clean-install",
         ],
         "clean-install-run-log-write" => &[
             "--log-root",
@@ -295,6 +287,16 @@ fn run_log_arguments(id: &str) -> &'static [&'static str] {
             "%SESSION%/breadcrumbs",
             "--dest-dir",
             "%SESSION%/larch-logs/clean/clean-install/breadcrumbs",
+        ],
+        "clean-install-run-log-checkpoint" => &[],
+        "clean-install-run-log-capture-transcript" => &[
+            "--log-root", "%SESSION%/larch-logs", "--skill", "implement",
+            "--run-id", "clean-install", "--source-file", "%SESSION%/missing-source.env",
+        ],
+        "clean-install-run-log-refresh" => &["--implement-tmpdir", "%SESSION%"],
+        "clean-install-run-log-prepare-terminal-snapshot" => &[
+            "--implement-tmpdir", "/larch-clean-install-session-missing",
+            "--run-id", "clean-install",
         ],
         _ => &["--help"],
     }
@@ -753,6 +755,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "run-log",
         "publish-breadcrumbs",
     ),
+    CleanInstallCase::new(
+        "clean-install-run-log-capture-transcript",
+        "run-log",
+        "capture-transcript",
+    ),
+    CleanInstallCase::new("clean-install-run-log-checkpoint", "run-log", "checkpoint"),
+    CleanInstallCase::new(
+        "clean-install-run-log-prepare-terminal-snapshot",
+        "run-log",
+        "prepare-terminal-snapshot",
+    ),
+    CleanInstallCase::new("clean-install-run-log-refresh", "run-log", "refresh"),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
     CleanInstallCase::new(
@@ -2562,16 +2576,23 @@ struct SessionEnvFixture {
 
 impl SessionEnvFixture {
     fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
-        let mut python_program = Program::new(python).args(
-            std::iter::once(path_text(fixture))
-                .chain(std::iter::once(self.command))
-                .chain(self.arguments.iter().copied()),
-        );
-        let mut rust_program = Program::new(rust).args(
-            ["session", self.command]
-                .into_iter()
-                .chain(self.arguments.iter().copied()),
-        );
+        // Session writer targets seeded directly under the fixture root are
+        // valid temporary-session paths. Pin TMPDIR to that root so macOS and
+        // Linux exercise the same allowlist boundary.
+        let mut python_program = Program::new(python)
+            .args(
+                std::iter::once(path_text(fixture))
+                    .chain(std::iter::once(self.command))
+                    .chain(self.arguments.iter().copied()),
+            )
+            .env("TMPDIR", "{sandbox}");
+        let mut rust_program = Program::new(rust)
+            .args(
+                ["session", self.command]
+                    .into_iter()
+                    .chain(self.arguments.iter().copied()),
+            )
+            .env("TMPDIR", "{sandbox}");
         for (key, value) in self.environment {
             python_program = python_program.env(key, value);
             rust_program = rust_program.env(key, value);

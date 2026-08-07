@@ -45,6 +45,62 @@ _STALLED_OUTCOME_LINE_RE = re.compile(
 _LEGACY_DONE_OUTCOME_LINE_RE = re.compile(
     r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*DONE[ \t]*$",
 )
+_NORMALIZED_OUTCOMES = frozenset({
+    "bailed",
+    "bailed-needs-user-input",
+    "design-only",
+    "force-merged-externally",
+    "forked-dry-run",
+    "merged",
+    "pr-created",
+    "pr-created-draft",
+    "shipping",
+    "stalled",
+})
+_COST_OVERRIDE_ENV_NAMES = frozenset({
+    "LARCH_CLAUDE_INPUT_RATE_PER_M",
+    "LARCH_CLAUDE_CACHE_READ_RATE_PER_M",
+    "LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M",
+    "LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M",
+    "LARCH_CLAUDE_OUTPUT_RATE_PER_M",
+    "LARCH_CODEX_INPUT_RATE_PER_M",
+    "LARCH_CODEX_CACHED_INPUT_RATE_PER_M",
+    "LARCH_CODEX_OUTPUT_RATE_PER_M",
+    "LARCH_CODEX_MINI_INPUT_RATE_PER_M",
+    "LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M",
+    "LARCH_CODEX_MINI_OUTPUT_RATE_PER_M",
+    "LARCH_CURSOR_INPUT_RATE_PER_M",
+    "LARCH_CURSOR_CACHE_READ_RATE_PER_M",
+    "LARCH_CURSOR_OUTPUT_RATE_PER_M",
+    "LARCH_CLAUDE_RATE_PER_M",
+    "LARCH_CODEX_RATE_PER_M",
+    "LARCH_CURSOR_RATE_PER_M",
+    "LARCH_CURSOR_GROK_INPUT_RATE_PER_M",
+    "LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M",
+    "LARCH_CURSOR_GROK_OUTPUT_RATE_PER_M",
+    "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M",
+    "LARCH_TOKEN_RATE_PER_M",
+    "LARCH_RATE_CLAUDE_INPUT",
+    "LARCH_RATE_CLAUDE_CACHE_READ",
+    "LARCH_RATE_CLAUDE_CACHE_CREATE",
+    "LARCH_RATE_CLAUDE_CACHE_CREATE_5M",
+    "LARCH_RATE_CLAUDE_CACHE_CREATE_1H",
+    "LARCH_RATE_CLAUDE_OUTPUT",
+    "LARCH_RATE_CLAUDE_AGGREGATE",
+    "LARCH_RATE_CODEX_INPUT",
+    "LARCH_RATE_CODEX_CACHE_READ",
+    "LARCH_RATE_CODEX_CACHED_INPUT",
+    "LARCH_RATE_CODEX_OUTPUT",
+    "LARCH_RATE_CODEX_AGGREGATE",
+    "LARCH_RATE_CODEX_MINI_INPUT",
+    "LARCH_RATE_CODEX_MINI_CACHE_READ",
+    "LARCH_RATE_CODEX_MINI_CACHED_INPUT",
+    "LARCH_RATE_CODEX_MINI_OUTPUT",
+    "LARCH_RATE_CURSOR_INPUT",
+    "LARCH_RATE_CURSOR_CACHE_READ",
+    "LARCH_RATE_CURSOR_OUTPUT",
+    "LARCH_RATE_CURSOR_AGGREGATE",
+})
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
@@ -326,7 +382,12 @@ def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     return argv
 
 
-def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+def _final_report_token_fields(
+    *,
+    implement_tmpdir: Path,
+    run_id: str,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     token_json: Path | None = None
     for cand in (run_dir / "token-report.json", implement_tmpdir / "token-report-rendered.json"):
@@ -335,7 +396,7 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
             break
     if token_json is None:
         tr_json = implement_tmpdir / "token-report-truth.json"
-        env = {**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)}
+        env = {**(os.environ if environ is None else environ), "IMPLEMENT_TMPDIR": str(implement_tmpdir)}
         completed = subprocess.run(
             [
                 sys.executable,
@@ -370,7 +431,7 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
     if not token_argv:
         return {"cost_unavailable": True}
     try:
-        cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
+        cost_kv = report_tokens_cost.token_cost_from_args(token_argv, env=environ)
     except Exception:
         return {"cost_unavailable": True}
 
@@ -916,8 +977,8 @@ def _resolve_needs_user_execution_issue(
                     record_path = Path(handle.name)
                     _ = handle.write(record + "\n")
                 try:
-                    # Function-scoped import avoids the run-log flush import cycle.
-                    from larch.report import run_logs  # noqa: PLC0415 - local import avoids the run-log flush import cycle.
+                    # Function scope avoids the final-report/run-log writer import cycle.
+                    from larch.report import run_logs  # noqa: PLC0415 - local import avoids the final-report/run-log writer cycle.
 
                     append_result = run_logs.log_append(
                         log_root=implement_tmpdir / "larch-logs",
@@ -1013,6 +1074,9 @@ def write_final_report(
     comment_only: bool = False,
     print_stdout: bool = False,
     skip_tracking_upsert: bool = False,
+    normalized_outcome_override: str = "",
+    normalized_merge_downgraded_override: str = "false",
+    cost_overrides: Mapping[str, str] | None = None,
 ) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
@@ -1035,10 +1099,25 @@ def write_final_report(
         pr_number=pr_number,
         ship=ship,
     )
-    cost_fields = _final_report_token_fields(implement_tmpdir=implement_tmpdir, run_id=run_id)
-    outcome_values = rust_runtime.normalized_stall_outcome_values(
-        proc.ProcRunner(),
-        implement_tmpdir=str(implement_tmpdir),
+    cost_fields = (
+        _final_report_token_fields(
+            implement_tmpdir=implement_tmpdir,
+            run_id=run_id,
+            environ={**os.environ, **cost_overrides},
+        )
+        if cost_overrides
+        else _final_report_token_fields(implement_tmpdir=implement_tmpdir, run_id=run_id)
+    )
+    outcome_values: dict[str, str] = (
+        {
+            "IMPLEMENT_NORMALIZED_OUTCOME": normalized_outcome_override,
+            "IMPLEMENT_MERGE_DOWNGRADED": normalized_merge_downgraded_override,
+        }
+        if normalized_outcome_override
+        else rust_runtime.normalized_stall_outcome_values(
+            proc.ProcRunner(),
+            implement_tmpdir=str(implement_tmpdir),
+        )
     )
     outcome = _outcome_with_manifest_only_backstop(
         implement_tmpdir=implement_tmpdir,
@@ -1109,7 +1188,7 @@ def write_final_report(
     )
     summary = implement_tmpdir / "summary-final.md"
     try:
-        summary.write_text(body, encoding="utf-8")
+        larch_io.atomic_write(summary, body, prefix=".summary-final-", nofollow=True)
     except OSError as exc:
         if print_stdout:
             sys.stdout.write(body)
@@ -1117,7 +1196,12 @@ def write_final_report(
     if not comment_only:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
+            larch_io.atomic_write(
+                run_dir / "final-summary.md",
+                body,
+                prefix=".final-summary-",
+                nofollow=True,
+            )
         except OSError as exc:
             if print_stdout:
                 sys.stdout.write(body)
@@ -1172,6 +1256,16 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--implement-tmpdir", required=True)
     parser.add_argument("--comment-only", action="store_true")
     parser.add_argument("--print-stdout", action="store_true")
+    parser.add_argument("--skip-tracking-upsert", action="store_true")
+    parser.add_argument("--reconcile-stalled-summary", action="store_true")
+    parser.add_argument("--strict-stalled-summary", action="store_true")
+    parser.add_argument("--normalized-outcome", default="")
+    parser.add_argument(
+        "--normalized-merge-downgraded",
+        choices=("true", "false"),
+        default="false",
+    )
+    parser.add_argument("--cost-overrides-json", default="{}")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -1183,10 +1277,58 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     # exception previously escaped as a traceback (rc!=0, no ERROR=) and left the
     # Step 17 caller unable to name the cause. Surface it as STATUS=failed + ERROR=.
     try:
-        rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
+        raw_cost_overrides: object = json.loads(args.cost_overrides_json)
+        if not isinstance(raw_cost_overrides, dict):
+            raise TypeError("cost overrides must be a JSON string map")
+        raw_cost_map = cast("dict[object, object]", raw_cost_overrides)
+        if not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in raw_cost_map.items()
+        ):
+            raise TypeError("cost overrides must be a JSON string map")
+        cost_overrides = cast("dict[str, str]", raw_cost_map)
+        unknown_cost_keys = cost_overrides.keys() - _COST_OVERRIDE_ENV_NAMES
+        if unknown_cost_keys:
+            raise ValueError(
+                f"unknown cost override key: {sorted(unknown_cost_keys)[0]}"
+            )
+        if args.normalized_outcome and args.normalized_outcome not in _NORMALIZED_OUTCOMES:
+            raise ValueError("normalized outcome was invalid")
+        rc, url, err = write_final_report(
+            Path(args.implement_tmpdir),
+            comment_only=args.comment_only,
+            print_stdout=args.print_stdout,
+            skip_tracking_upsert=args.skip_tracking_upsert,
+            normalized_outcome_override=args.normalized_outcome,
+            normalized_merge_downgraded_override=args.normalized_merge_downgraded,
+            cost_overrides=cost_overrides,
+        )
     except Exception as exc:
         rc, url, err = 1, "", f"final report render failed: {exc}"
         logging_util.BreadcrumbWriter().emit(f"final report: {err}", quiet=False)
+    if rc == 0 and args.reconcile_stalled_summary:
+        tmpdir: Path = Path(args.implement_tmpdir)
+        run_id: str
+        run_dir: Path
+        needed: bool
+        changed: bool
+        still_needed: bool
+        try:
+            run_id = _read_kv(path=tmpdir / "parent-issue.md", key="RUN_ID")
+            if not run_id and (tmpdir / "session-id").is_file():
+                run_id = (tmpdir / "session-id").read_text(
+                    encoding="utf-8", errors="replace"
+                ).strip()
+            run_dir = tmpdir / "larch-logs" / "implement" / run_id
+            needed = stalled_summary_manifest_reconciliation_needed(run_dir)
+            changed = reconcile_stalled_summary_from_manifest(run_dir)
+            still_needed = stalled_summary_manifest_reconciliation_needed(run_dir)
+        except OSError as exc:
+            needed, changed, still_needed = True, False, True
+            err = f"stalled summary reconciliation failed: {exc}"
+        if args.strict_stalled_summary and needed and (not changed or still_needed):
+            rc = 1
+            err = err or "stalled summary reconciliation failed"
     logging_util.emit_kv(key="COMMENT_URL", value=url)
     logging_util.emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
     if err:

@@ -45,7 +45,6 @@ const DIRECT_FILES: &[&str] = &[
     "scripts/deny-edit-write.sh",
     "scripts/dry-runnable-scripts.tsv",
     "scripts/file-failure-report-cross-repo.sh",
-    "scripts/flush-vendor-failure-diagnostics.sh",
     "scripts/generators.tsv",
     "scripts/hook-anti-read-poll.sh",
     "scripts/hook-deny-run-in-background.sh",

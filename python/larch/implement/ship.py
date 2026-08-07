@@ -69,15 +69,23 @@ from larch.git import merge
 from larch.git import pr
 from larch.git import pr_body
 from larch.core import proc
+from larch.core import rust_runtime as run_log_flush
 from larch.git import push
 from larch.core import redact
 from larch.git import rebase
-from larch.report import run_log_flush, run_log_manifest
+from larch.report import run_log_manifest
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.issue import migration_governance
+
+
+def _write_final_report_comment(ctx: RunContext) -> None:
+    result = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
+    if result.exit_code != 0:
+        raise ShipError(result.error or "final report comment write failed")
+
 
 # Re-exports from sibling modules — preserves `ship.X` access for callers and tests.
 from larch.implement.ship_state import (
@@ -357,7 +365,7 @@ def _flush_guideline_outcome_before_pr(
         refresh = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
     except (OSError, ShipError) as exc:
         detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
-        refresh = run_log_manifest.RefreshSkip(
+        refresh = run_log_flush.RunLogRefreshOutput(
             skipped=True,
             reason=config.REFRESH_SKIP_COMMIT_FAILED,
             error=detail,
@@ -1465,7 +1473,7 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
-                refresh: run_log_manifest.RefreshSkip = run_log_flush.refresh_logs_checkpoint(
+                refresh: run_log_flush.RunLogRefreshOutput = run_log_flush.refresh_logs_checkpoint(
                     runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root
                 )
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
@@ -1605,7 +1613,7 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
             _progress_note(step="8", text=f"CI running for PR #{working.pr_number}")
         if resume.start == "fresh":
             try:
-                run_log_flush.write_final_report_comment(runner=runner, ctx=working)
+                _write_final_report_comment(working)
             except ShipError as exc:
                 _breadcrumb(step="warning", detail=str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:

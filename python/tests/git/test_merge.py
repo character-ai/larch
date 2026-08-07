@@ -12,7 +12,8 @@ from larch.core import config
 from larch.git import gh
 from larch.git import git as git_module
 from larch.git import merge as merge_module
-from larch.report import run_log_manifest, run_log_flush
+from larch.core import rust_runtime as run_log_flush
+from larch.report import run_log_manifest
 from larch.core.proc import CommandResult
 
 if TYPE_CHECKING:
@@ -103,7 +104,8 @@ def test_merge_continues_when_flush_skips_missing_state(monkeypatch: pytest.Monk
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
 
 
-def test_merge_noop_when_pr_already_merged(tmp_path: Path) -> None:
+def test_merge_noop_when_pr_already_merged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     state = tmp_path / "state.env"
     _ = state.write_text("MERGE_RESULT=merged\nRUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner(
@@ -560,7 +562,11 @@ def test_merge_pr_runs_version_race_gate_before_admin_merge(monkeypatch: pytest.
     assert ["git", "fetch", "origin", "main", "--quiet"] in runner.calls
 
 
-def test_merge_noop_preserves_admin_merged_from_state(tmp_path: Path) -> None:
+def test_merge_noop_preserves_admin_merged_from_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     state = tmp_path / "state.env"
     _ = state.write_text(
         "MERGE_RESULT=admin_merged\nRUN_ID=run-abc\n",

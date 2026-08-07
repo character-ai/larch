@@ -5937,11 +5937,13 @@ verb = "capture-transcript"
 python_module = "larch.report.run_log_flush"
 python_function = "capture_transcript_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8078
+clean_install_test = "clean-install-run-log-capture-transcript"
 
 [[commands]]
 domain = "run-log"
@@ -5949,11 +5951,13 @@ verb = "checkpoint"
 python_module = "larch.report.run_log_flush"
 python_function = "run_log_checkpoint_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7995
+migration_issue = 8078
+clean_install_test = "clean-install-run-log-checkpoint"
 
 [[commands]]
 domain = "run-log"
@@ -6122,11 +6126,13 @@ verb = "prepare-terminal-snapshot"
 python_module = "larch.report.run_log_flush"
 python_function = "terminal_snapshot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7995
+migration_issue = 8078
+clean_install_test = "clean-install-run-log-prepare-terminal-snapshot"
 
 [[commands]]
 domain = "run-log"
@@ -6160,11 +6166,13 @@ verb = "refresh"
 python_module = "larch.report.run_log_flush"
 python_function = "refresh_run_logs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8078
+clean_install_test = "clean-install-run-log-refresh"
 
 [[commands]]
 domain = "run-log"
@@ -8239,7 +8247,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "stall-recovery normalize-outcome"]
+rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8486,12 +8494,6 @@ path = "python/larch/report/run_log_commit.py"
 kind = "python-runtime"
 python = []
 rust = ["run-log publish-breadcrumbs"]
-
-[[callers]]
-path = "python/larch/report/run_log_flush.py"
-kind = "python-runtime"
-python = ["run-log checkpoint"]
-rust = []
 
 [[callers]]
 path = "python/larch/report/run_logs.py"
@@ -9036,7 +9038,7 @@ rust = ["bgjob wait"]
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["execution-issues flush", "final-report write", "pr checks", "run-log checkpoint", "run-log refresh", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
+python = ["execution-issues flush", "final-report write", "pr checks", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
 rust = []
 
 [[callers]]
@@ -9060,8 +9062,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
-python = ["implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "run-log checkpoint", "token check-budget"]
-rust = ["bgjob wait", "dirty-tree scope-check", "git commit"]
+python = ["implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "token check-budget"]
+rust = ["bgjob wait", "dirty-tree scope-check", "git commit", "run-log checkpoint"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
@@ -9198,8 +9200,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-18.md"
 kind = "skill"
-python = ["implement step-18-gate-logs-flush", "run-log prepare-terminal-snapshot"]
-rust = []
+python = ["implement step-18-gate-logs-flush"]
+rust = ["run-log prepare-terminal-snapshot"]
 
 [[callers]]
 path = "skills/implement/scripts/step-18.sh"
@@ -9354,7 +9356,7 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/write-final-report.md"
 kind = "skill"
-python = ["audit-runs scan-run", "final-report write", "render run-summary", "run-log refresh"]
+python = ["audit-runs scan-run", "final-report write", "render run-summary"]
 rust = ["run-log verify-completeness", "stall-recovery normalize-outcome"]
 
 [[callers]]
@@ -9450,8 +9452,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent dispatch-voters", "agent dispatch-waterfall", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent launch-claude-subprocess", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
+python = ["agent dispatch-voters", "agent dispatch-waterfall", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent launch-claude-subprocess", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

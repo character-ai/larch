@@ -1368,3 +1368,7 @@ skills/design/scripts/design-step35-settle.sh	#7484
 skills/design/scripts/design-step35-settle.md	#7484
 skills/design/scripts/design-step3b-entry.sh	#7485
 skills/design/scripts/design-step3b-entry.md	#7485
+scripts/flush-vendor-failure-diagnostics.sh	#8078
+scripts/flush-vendor-failure-diagnostics.md	#8078
+scripts/test-flush-vendor-failure-diagnostics.sh	#8078
+scripts/test-flush-vendor-failure-diagnostics.md	#8078

@@ -15,6 +15,7 @@ Rust agent-command aliases `test-compose-collector-failure-log`, `test-wait-for-
 `test-classify-diff-mode`, `test-gather-branch-context`,
 `test-run-external-agent-args`, `test-check-reviewers`,
 `test-degraded-tools-gate`, and the Rust run-log alias
-`test-verify-run-log-completeness`, must be listed in `CARVE_OUTS` and documented
-beside their Makefile targets. Keep this sibling doc in sync with the harness
-whenever shard parsing or Makefile target contracts change.
+`test-refresh-run-logs`, `test-capture-session-transcript`, and
+`test-verify-run-log-completeness`, must be listed in `CARVE_OUTS` and
+documented beside their Makefile targets. Keep this sibling doc in sync with
+the harness whenever shard parsing or Makefile target contracts change.

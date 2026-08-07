@@ -663,9 +663,9 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 ### vendor-failure-diagnostics.txt
 
-**Mode**: replace. **Written**: Step 18 terminal snapshot via `scripts/flush-vendor-failure-diagnostics.sh`, when at least one vendor-agent slot logged a failure diagnostic during the run.
+**Mode**: replace. **Written**: Step 18 by the Rust-owned `scripts/larch.sh run-log prepare-terminal-snapshot`, when at least one vendor-agent slot logged a failure diagnostic during the run.
 
-Concatenation of per-slot `*.failure-diag` carriers. Each slot entry is redacted before being staged under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`. The terminal snapshot helper concatenates the full parts set and writes `vendor-failure-diagnostics.txt`. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`scripts/larch.sh agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. Early bail, failure, cancel, and stall paths that reach Step 18 use the same aggregation owner.
+Concatenation of per-slot `*.failure-diag` carriers. Each slot entry is redacted before being staged under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`. The Rust terminal snapshot owner sorts the complete parts set, composes it, and atomically replaces `vendor-failure-diagnostics.txt`. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`scripts/larch.sh agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. Early bail, failure, cancel, and stall paths that reach Step 18 use the same aggregation owner.
 
 ### token-report.json
 

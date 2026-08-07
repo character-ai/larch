@@ -51,10 +51,14 @@ pub fn run_python_verb(
         NonZeroUsize::new(VERB_OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN),
     )
     .map_err(|error| error.to_string())?;
+    // Legacy report verbs may invoke the operator-authenticated `gh` CLI.
+    // Preserve only its non-secret configuration selectors; credential
+    // environment variables remain excluded by the shared process policy.
     for key in [
         ChildEnvironment::ClaudePluginRoot,
         ChildEnvironment::ClaudePluginData,
         ChildEnvironment::DesignTmpdir,
+        ChildEnvironment::GhConfigDir,
         ChildEnvironment::ImplementTmpdir,
         ChildEnvironment::LarchRenderCacheDir,
         ChildEnvironment::LarchTokenLedger,
@@ -64,6 +68,7 @@ pub fn run_python_verb(
         ChildEnvironment::ResearchTmpdir,
         ChildEnvironment::ReviewTmpdir,
         ChildEnvironment::SessionEnvPath,
+        ChildEnvironment::XdgConfigHome,
     ] {
         if let Some(value) = env::var_os(key.name()) {
             request = request.with_environment(key, value);

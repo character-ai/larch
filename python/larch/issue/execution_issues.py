@@ -228,7 +228,13 @@ def write_execution_issues_records( *,input_file: str | Path, record_file: str |
         source_label=source_label,
         file_sha=sha,
     )
-    Path(record_file).write_text("\n".join(records) + ("\n" if records else ""), encoding="utf-8")
+    destination = Path(record_file)
+    larch_io.atomic_write(
+        destination,
+        "\n".join(records) + ("\n" if records else ""),
+        prefix=f".{destination.name}.",
+        nofollow=True,
+    )
     return len(records)
 
 
@@ -332,6 +338,7 @@ def flush_execution_issues_safety_net_main(argv: list[str] | None = None) -> int
     parser.add_argument("--batch", default="execution-issues")
     parser.add_argument("--step-label", default="18")
     parser.add_argument("--source-label", default="execution-issues.md safety-net")
+    parser.add_argument("--record-file", default="")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -340,6 +347,53 @@ def flush_execution_issues_safety_net_main(argv: list[str] | None = None) -> int
         logging_util.emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
+    if args.record_file:
+        log_root: Path = Path(args.log_root)
+        record_file: Path = Path(args.record_file)
+        batch_path: Path = log_root / "implement" / args.run_id / "execution-issues.ndjson"
+        try:
+            record_parent: Path = record_file.parent.resolve(strict=True)
+            staging_parent: Path = log_root.parent.resolve(strict=True)
+            larch_io.assert_no_symlink_path_or_ancestors(log_root)
+        except OSError:
+            record_parent = Path()
+            staging_parent = Path("__invalid__")
+        if (
+            not log_root.is_absolute()
+            or log_root.name != "larch-logs"
+            or not log_root.is_dir()
+            or not record_file.is_absolute()
+            or record_file.is_symlink()
+            or record_parent != staging_parent
+            or (record_file.exists() and not record_file.is_file())
+            or issue_log.is_symlink()
+            or batch_path.is_symlink()
+            or not re.fullmatch(r"[A-Za-z0-9-]+", args.run_id or "")
+        ):
+            logging_util.emit_kv(key="FLUSH_STATUS", value="failed")
+            logging_util.emit_kv(key="RECORDS", value=0)
+            logging_util.emit_kv(key="ERROR", value="validation failed")
+            return VALIDATION_FAILED_RC
+        records = 0
+        if issue_log.is_file() and issue_log.stat().st_size > 0:
+            records = write_execution_issues_records(
+                input_file=issue_log,
+                record_file=record_file,
+                sha=sha256_file(issue_log),
+                batch_path=batch_path,
+                step_label=args.step_label,
+                source_label=args.source_label,
+            )
+        else:
+            larch_io.atomic_write(
+                record_file,
+                "",
+                prefix=f".{record_file.name}.",
+                nofollow=True,
+            )
+        logging_util.emit_kv(key="FLUSH_STATUS", value="rendered")
+        logging_util.emit_kv(key="RECORDS", value=records)
+        return 0
     rc, status, records, append_log = flush_execution_issues_safety_net(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
     logging_util.emit_kv(key="FLUSH_STATUS", value=status)
     logging_util.emit_kv(key="RECORDS", value=records)

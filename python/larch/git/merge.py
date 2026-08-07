@@ -13,11 +13,12 @@ from typing import Any, cast
 import argparse
 import tempfile
 from larch.core import config
+from larch.core import rust_runtime as run_log_flush
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
 from larch.core import redact
-from larch.report import run_log_flush, run_log_manifest
+from larch.report import run_log_manifest
 from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.core.retry import with_transient_retry

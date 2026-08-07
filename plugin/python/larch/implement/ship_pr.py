@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
-from larch.core import rust_runtime
+from larch.core import rust_runtime as run_log_flush
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.git import git
 from larch.report import final_report
 from larch.outcomes import Outcome
-from larch.report import run_log_flush, run_log_manifest
+from larch.report import run_log_manifest
 from larch.state import finalize
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
@@ -92,7 +92,7 @@ def _staged_summary_heading_is_stalled(*, ctx: RunContext) -> bool:
 def _live_recovered_outcome(runner: Runner, ctx: RunContext) -> str:
     if _ship_has_active_failure_signal(Path(ctx.tmpdir)):
         return ""
-    values = rust_runtime.normalized_stall_outcome_values(
+    values = run_log_flush.normalized_stall_outcome_values(
         runner,
         implement_tmpdir=ctx.tmpdir,
     )

@@ -18,11 +18,12 @@ this recipe.
 
 ### Run-log Python-to-Rust handoff
 
-The run-log domain remains Python-owned while flushing, archive publication,
-cache promotion, and sync remain registered in `python/cli.py`. The Rust GCS
-adapter is a narrow authentication transport behind the same provider contract.
-It does not make the run-log command Rust-owned and does not authorize a Python
-fallback for a future Rust command.
+The run-log domain is mixed-runtime. Rust owns initialization, entry writes,
+mutable checkpoint and terminal flushes, transcript capture, manifest updates,
+breadcrumb publication, storage preflight, and shared lifecycle operations.
+Python retains archive publication, cache promotion, sync, layout migration,
+and content renderers until their named leaves cut over. A renderer invoked by
+Rust produces a payload only. It is not a fallback command owner.
 
 Before a Rust cutover, pass the shared
 `tests/fixtures/run-log-object-store-contract-v1.json` fixture plus archive,
@@ -91,6 +92,15 @@ no production caller after the flush retirement in #7995. The module keeps only
 `prepare_run_for_archive` and its scrub helpers, which `run-log publish` still
 consumes, plus `_publish_breadcrumbs_with_warning`, now a Rust consumer that
 builds an argv and executes `scripts/larch.sh`.
+
+**Mutable flush cut over in #8078.** `run-log checkpoint`, `refresh`,
+`prepare-terminal-snapshot`, and `capture-transcript` are Rust-owned.
+`crates/larch-cli/src/run_log_flush_commands.rs` owns the command boundaries,
+batch staging, manifest reconciliation, and vendor-diagnostic aggregation.
+All production callers use `scripts/larch.sh`; the Python registrations and
+`python/larch/report/run_log_flush.py` are removed. Remaining Python report
+helpers retain their bounded report and tracker side effects under Rust
+orchestration and never delegate these commands.
 
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 

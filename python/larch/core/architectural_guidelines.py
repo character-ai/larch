@@ -1,6 +1,6 @@
 """ARCHITECTURAL_GUIDELINES.md reader and implement note helpers."""
 # pyright: reportUnusedCallResult=false, reportPrivateUsage=false
-# pylint: disable=cyclic-import  # accepted: function-level imports of ship_guidelines (validator needs outcome constants) and run_log_flush (chunker) create mutual deps with modules that import this module at top level; documented via lint-layering ok comments.
+# pylint: disable=cyclic-import  # accepted: function-level imports of ship_guidelines and run-log batch helpers create mutual dependencies with top-level consumers; documented via lint-layering ok comments.
 
 from __future__ import annotations
 
