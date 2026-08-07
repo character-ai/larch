@@ -117,7 +117,7 @@ def test_default_launch_fn_uses_python_agent_launcher(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     runner = RecordingRunner()
     runner.prefix_responses.append(
-        ((sys.executable,), ok((sys.executable,), "LAUNCHER_EXIT=0\n")),
+        ((_RUST_GIT, "agent"), ok((_RUST_GIT, "agent"), "LAUNCHER_EXIT=0\n")),
     )
     logs = ci_monitor.LogCollectResult(text="", state="ready")
     launch_fn = ci_monitor._make_default_launch_fn(
@@ -133,8 +133,9 @@ def test_default_launch_fn_uses_python_agent_launcher(
     attempt = launch_fn(tier)
     assert attempt.launcher_exit == 0
     argv = runner.calls[-1]
-    assert argv[2] == "agent"
-    assert argv[3] == f"launch-{tier}-ci"
+    assert argv[0] == _RUST_GIT
+    assert argv[1] == "agent"
+    assert argv[2] == f"launch-{tier}-ci"
     assert str(tmp_path / f"ci-fix-{tier}.out") in argv
 
 
@@ -205,7 +206,7 @@ def test_default_launch_fn_missing_metadata_uses_wrapper_rc(
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     runner = RecordingRunner()
-    runner.prefix_responses.append(((sys.executable,), _cr((sys.executable,), rc=7)))
+    runner.prefix_responses.append(((_RUST_GIT, "agent"), _cr((_RUST_GIT, "agent"), rc=7)))
     logs = ci_monitor.LogCollectResult(text="", state="ready")
     launch_fn = ci_monitor._make_default_launch_fn(
         runner,
