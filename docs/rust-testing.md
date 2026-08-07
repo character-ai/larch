@@ -388,6 +388,10 @@ candidate, not final `main` evidence. The configured 16-thread profile must
 collect three comparable successful `main`-ref samples before that target can
 be claimed.
 
+The remaining tail includes independent Git differential families. Keep each
+family in its own test entrypoint so nextest can schedule the full set without
+removing a success or failure case.
+
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
 a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.
 The coverage TSV records cache restore, tool setup, profile cleanup,
