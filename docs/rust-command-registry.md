@@ -145,8 +145,19 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.report.final_report`, `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #8090 (`final-report`), #7682 (issue surfaces), later run-log leaves |
 | `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_flush`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
+| `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_wire`, `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.issue_create`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8171 (`plan-block`, `named-block`, `untrusted`), #8169 (`issue create`), #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
 `assess_issue_details` remains until those consumers move.
+
+Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
+eligibility and matching, the open-issue row model, and the untrusted content
+envelope. Four surfaces in `larch.issue.issue_wire` stay Python-owned: the
+canonical owner block, the implementation-lease marker, `validate_issue_plan`,
+and `extract_scope_paths`. The last two consume `larch.design.plan_grammar`,
+which the design umbrella owns. `larch_core::report::markdown_block` remains the
+Markdown block owner, and `larch_core::balanced_fence_line_indices` plus
+`larch_core::split_lines_keep_ends` are the shared owners the `plan_grammar` port
+reuses instead of creating a second fence scanner.

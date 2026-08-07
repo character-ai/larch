@@ -1,6 +1,6 @@
 //! Text framing shared by the ported Python line readers.
 
-use std::fmt::Write as _;
+use std::{collections::BTreeSet, fmt::Write as _};
 
 /// Escape non-ASCII scalars in already-serialized JSON text.
 ///
@@ -72,6 +72,107 @@ pub fn split_text_lines(text: &str) -> Vec<&str> {
         lines.push(&text[start..]);
     }
     lines
+}
+
+/// Split text into lines that keep their terminators.
+///
+/// Ports Python `str.splitlines(keepends=True)`: boundaries match
+/// [`split_text_lines`], and each slice carries the terminator that closed it,
+/// so concatenating the result reproduces `text` byte for byte. Both Markdown
+/// block engines rebuild bodies by splicing these slices, so the round trip has
+/// to be lossless.
+#[must_use]
+pub fn split_lines_keep_ends(text: &str) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut index = 0;
+    let bytes = text.as_bytes();
+    while index < text.len() {
+        let Some(character) = text[index..].chars().next() else {
+            break;
+        };
+        let width = character.len_utf8();
+        if !is_line_boundary(character) {
+            index += width;
+            continue;
+        }
+        // A CRLF pair terminates one line, so the LF never opens an empty line.
+        index += if character == '\r' && bytes.get(index + 1) == Some(&b'\n') {
+            2
+        } else {
+            width
+        };
+        lines.push(&text[start..index]);
+        start = index;
+    }
+    if start < text.len() {
+        lines.push(&text[start..]);
+    }
+    lines
+}
+
+/// Return the indices of lines strictly inside balanced Markdown code fences.
+///
+/// Ports Python `larch.design.plan_grammar.balanced_fence_line_indices` as the
+/// one owner every fence-aware reader shares. An unmatched opener fences
+/// nothing, so content after a truncated fence stays visible. A closer repeats
+/// the opener's marker character, is at least as long, and carries only
+/// whitespace after it.
+#[must_use]
+pub fn balanced_fence_line_indices<S: AsRef<str>>(lines: &[S]) -> BTreeSet<usize> {
+    let mut fenced = BTreeSet::new();
+    let mut stack: Vec<(usize, char, usize)> = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        let Some((marker, length, suffix)) = fence_marker(trim_python_whitespace(line.as_ref()))
+        else {
+            continue;
+        };
+        let Some(&(open_index, open_marker, open_length)) = stack.last() else {
+            stack.push((index, marker, length));
+            continue;
+        };
+        if marker == open_marker
+            && length >= open_length
+            && trim_python_whitespace(suffix).is_empty()
+        {
+            let _ = stack.pop();
+            fenced.extend((open_index + 1)..index);
+        }
+    }
+    fenced
+}
+
+/// Match the Python fence-marker pattern against an already-stripped line: at
+/// least three backticks or tildes, then an arbitrary suffix.
+fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
+    let marker = line.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let length = line
+        .chars()
+        .take_while(|character| *character == marker)
+        .count();
+    if length < FENCE_MIN_LENGTH {
+        return None;
+    }
+    Some((marker, length, &line[length..]))
+}
+
+const FENCE_MIN_LENGTH: usize = 3;
+
+/// Return whether Python's `str.strip()` would remove this character.
+///
+/// Python treats the four information separators as whitespace; Rust's
+/// `char::is_whitespace` does not, so they are added back here. The ported
+/// readers that mirror a Python `strip` or `lstrip` share this one predicate.
+#[must_use]
+pub const fn is_python_whitespace(character: char) -> bool {
+    character.is_whitespace() || matches!(character, '\u{1c}'..='\u{1f}')
+}
+
+fn trim_python_whitespace(text: &str) -> &str {
+    text.trim_matches(is_python_whitespace)
 }
 
 const fn is_line_boundary(character: char) -> bool {

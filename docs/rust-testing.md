@@ -164,6 +164,12 @@ outcomes while recording redacted requests. It is an offline adapter fixture,
 not a production GitHub client or a permission to make network calls. Always
 finish the stub so unconsumed exchanges fail the test.
 
+`larch-core` reaches these fixtures through a dev-dependency on
+`larch-test-support`, which itself depends on `larch-core`. Cargo permits that
+cycle because it exists only in the dev graph, and no release build links the
+fixture crate. Add issue-domain golden bytes to the graph fixtures rather than
+re-declaring wire bodies in each crate's tests.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private
