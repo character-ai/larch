@@ -644,11 +644,9 @@ def _package_for_path(path: str, *, packages: tuple[_Package, ...]) -> _Package:
     ]
     if not matches:
         raise _SelectionError("rust-path-not-owned-by-workspace-target")
-    most_specific_depth = max(len(package.root_parts) for package in matches)
-    most_specific = [package for package in matches if len(package.root_parts) == most_specific_depth]
-    if len(most_specific) != 1:
+    if len(matches) != 1:
         raise _SelectionError("ambiguous-workspace-package-ownership")
-    return most_specific[0]
+    return matches[0]
 
 
 def _reverse_dependency_closure(

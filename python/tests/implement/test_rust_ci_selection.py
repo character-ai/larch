@@ -321,6 +321,32 @@ def test_root_package_rust_source_can_select_partial(tmp_path: Path) -> None:
     assert result.affected_packages == ("root-package",)
 
 
+def test_overlapping_root_and_member_target_sources_select_full(tmp_path: Path) -> None:
+    root_package = _package(tmp_path, identifier="root", name="root-package", relative_root="")
+    root_package["targets"] = [
+        {
+            "kind": ["lib"],
+            "src_path": str(tmp_path / "crates" / "foo" / "src" / "lib.rs"),
+        }
+    ]
+    member_package = _package(
+        tmp_path,
+        identifier="foo",
+        name="foo-package",
+        relative_root="crates/foo",
+    )
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/foo/src/lib.rs")),
+        metadata=_metadata(tmp_path, [root_package, member_package]),
+    )
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "ambiguous-workspace-package-ownership"
+
+
 def test_rust_path_outside_a_metadata_target_source_selects_full(tmp_path: Path) -> None:
     runner = _runner_for_pull_request(
         tmp_path,
