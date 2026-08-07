@@ -3806,18 +3806,36 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         " && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'"
     ) in rust_lint
 
-    build_input_cache = rust_build_test.split("Cache Cargo inputs", 1)[1].split(
-        "Build Rust workspace", 1
+    lint_input_cache = rust_lint.split("Restore Cargo inputs", 1)[1].split(
+        "Restore Rust lint dependencies", 1
     )[0]
-    coverage_input_cache = rust_coverage.split("Cache Cargo inputs", 1)[1].split(
-        "Install cargo-nextest", 1
+    build_input_cache = rust_build_test.split("Restore Cargo inputs", 1)[1].split(
+        "Initialize Rust build/test phase timing", 1
     )[0]
-    gitleaks_input_cache = gitleaks.split("Cache Cargo inputs", 1)[1].split(
+    coverage_input_cache = rust_coverage.split("Restore Cargo inputs", 1)[1].split(
+        "Record Rust coverage cache restore timing", 1
+    )[0]
+    gitleaks_input_cache = gitleaks.split("Restore Cargo inputs", 1)[1].split(
         "Cache gitleaks binary", 1
     )[0]
-    assert "target" not in build_input_cache
-    assert "target" not in coverage_input_cache
-    assert "target" not in gitleaks_input_cache
+    for input_cache in (
+        lint_input_cache,
+        build_input_cache,
+        coverage_input_cache,
+        gitleaks_input_cache,
+    ):
+        assert "target" not in input_cache
+        assert "actions/cache/restore@" + cache_sha in input_cache
+        assert "actions/cache@" + cache_sha not in input_cache
+
+    for rust_job in (rust_lint, rust_build_test, rust_coverage, gitleaks):
+        cargo_input_save = rust_job.split("Save Cargo inputs", 1)[1]
+        assert "actions/cache/save@" + cache_sha in cargo_input_save
+        assert (
+            "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+            " && steps.cargo-inputs-cache.outputs.cache-hit != 'true'"
+        ) in cargo_input_save
+        assert "key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}" in cargo_input_save
 
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
     assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in rust_deny
@@ -3846,6 +3864,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage
     assert 'NEXTEST_TEST_THREADS: "4"' in rust_coverage
     assert "&& '[\"0\", \"1\"]' || '[\"0\"]')" in rust_coverage
+    assert "&& '[1, 2, 3]' || '[1]')" in rust_coverage
     assert 'CARGO_INCREMENTAL: "0"' in rust_coverage
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage
     assert "timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}" in rust_coverage
@@ -3860,6 +3879,23 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert '--fail-under-lines "${RUST_COVERAGE_MIN_LINES}"' in rust_coverage
     assert "rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
     assert "## Rust coverage phase timings" in rust_coverage
+    assert "phase\\tseconds\\toutcome\\tdetail" in rust_coverage
+    for timing_phase in (
+        "cache-restore",
+        "tool-setup",
+        "profile-cleanup",
+        "compilation",
+        "test-execution",
+        "doctests",
+        "coverage-report",
+        "end-to-end-total-",
+        "cache-save",
+    ):
+        assert timing_phase in rust_coverage
+    assert "workflow_dispatch-read-only" in rust_coverage
+    assert "repository-validation" in rust_build_test
+    assert "rust-build-test-timings" in rust_build_test
+    assert "## Rust repository validation timing" in rust_build_test
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage

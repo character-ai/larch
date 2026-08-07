@@ -33,10 +33,13 @@ owns contributor instructions for dependency changes.
 Rust CI caches Cargo registry and Git inputs separately from compiler output.
 Its versioned keys bind the runner operating system and architecture, lockfile,
 root and crate manifests, and pinned toolchain. They do not include Rust source
-hashes. The lint dependency cache is a separate `target/debug` entry. Before it
+hashes. Every Rust lane restores those Cargo inputs through the restore-only
+cache action. An explicit save can publish them only after a successful `main`
+push on a primary-key miss, so pull requests and `workflow_dispatch` runs,
+including manual coverage benchmarks, may restore inputs but cannot publish
+them. The lint dependency cache is a separate `target/debug` entry. Before it
 can be saved, the workflow removes workspace products with `cargo clean
---workspace`; only a successful `main` push on a primary-key miss can publish
-that entry. Pull requests may restore it but cannot publish it.
+--workspace`; it follows the same successful-`main`-push rule.
 
 `cargo-nextest` and `cargo-llvm-cov` are independent, versioned Linux tool
 caches. On a miss, CI downloads the exact pinned release archive with bounded
@@ -44,7 +47,10 @@ retries and timeouts, verifies its SHA-256 before extraction, accepts only the
 expected regular archive member, and installs it with an explicit mode. Before
 use, including after a cache restore, CI verifies the installed binary SHA-256
 and reported version. Tool-cache publication is restricted to successful
-`main` pushes. CI has no `cargo install` fallback for either tool.
+`main` pushes. Coverage timing artifacts explicitly record cache restore and
+whether cache save succeeded or was skipped; a manual dispatch is marked
+`workflow_dispatch-read-only`. CI has no `cargo install` fallback for either
+tool.
 
 ### Release provenance and attestations
 
