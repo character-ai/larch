@@ -134,6 +134,21 @@ pub use issue::{
     strip_named_block, title_has_archival_report_prefix, title_lifecycle_reject_marker,
     title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
 };
+pub use issue::{
+    BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, ClassificationSource,
+    CorpusFilter, CorpusScanStats, CoverageStats, EvidenceIndex, EvidenceOrdering, EvidenceSource,
+    GateFailure, GroundTruthAnalysis, GroundTruthCorpusScan, GroundTruthEvidence, GroundTruthMode,
+    GroundTruthOutcome, GroundTruthRow, GroundTruthStats, GroundTruthVoter, IncentiveEra,
+    IssueCategory, IssueLifecycle, IssueSummary, LARGE_CORPUS_ROW_LIMIT, MatchProfile,
+    NotLaterReason, OutcomeBucket, OutcomeDirection, PanelKind, PanelVerdict,
+    STRIPPED_TITLE_PREFIXES, VerdictGateInputs, VoterBallot, VoterMetric, VoterSeverityMetric,
+    accepted_finding_evidence, analyze_ground_truth, apply_verdict_gate, candidate_evidence,
+    categorize, category_breakdown, category_pattern, classify_in_scope, coverage_stats,
+    diagnostic_paths, distinctive_tokens, evidence_ordering, issue_evidence,
+    normalize_diagnostic_path, parse_timestamp, percentile, realized_alignment_rate, run_dir_key,
+    scan_ground_truth_corpus, strip_prefixes, strong_match, title_tokens, version_components,
+    version_meets_floor,
+};
 pub use issue_mutation::{
     IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
     IssueMutationSnapshot, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
