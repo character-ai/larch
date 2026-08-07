@@ -180,7 +180,7 @@ There are four pre-commit-driven paths:
 - **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs, Ruff runs in `lint-local`, and Pyright runs in `python-pyright`. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the coverage execution lane owns the full workspace build and tests, doctests, coverage, repository policy, plugin projection validation, and Linux executable artifact. `rust-gate` requires `rust-lint`, `rust-deny`, and the protected `rust-coverage` status. CI runs regression harnesses through the `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-5`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit; it does **not** run `py-lint` or `py-test`. CI also runs `contains-pins`, `python-pyright`, and `python-tests`, with Pytest and harnesses parallelized.
 
   Pull requests also run `rust-selection-observation`, a full-history,
-  fail-closed Python selector that publishes a proposed mode and JSON artifact.
+  fail-closed Python selector that publishes a redacted proposed mode and JSON artifact.
   It has no gate dependency or enforcement effect: the full Rust lanes remain
   required until a separately documented observation window proves selection
   safe.

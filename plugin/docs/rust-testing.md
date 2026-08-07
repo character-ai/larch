@@ -258,10 +258,13 @@ history, empty or malformed diff, unsupported status, metadata parse failure,
 or internal selector error proposes `full`.
 
 The observer emits one deterministic JSON result, uploads it as the
-`rust-ci-selection-observation` artifact, and renders an HTML-escaped step
-summary. It records the proposed mode, comparison base and head, changed paths,
-affected packages, reverse dependents, and a full-run trigger or skip proof.
-Its output is evidence only: it has no `needs` edge into `rust-lint`,
+`rust-ci-selection-observation` artifact, and renders a step summary. Before
+either egress surface, the Python core redaction boundary scrubs every dynamic
+string and rescans it; a scrub failure emits a static `full` result with no
+changed-path data. The summary HTML-escapes the already-redacted fields. It
+records the proposed mode, comparison base and head, changed paths, affected
+packages, reverse dependents, and a full-run trigger or skip proof. Its output
+is evidence only: it has no `needs` edge into `rust-lint`,
 `rust-deny`, `rust-coverage-profile`, `rust-coverage`, or `rust-gate`. Those
 lanes still run in full on every pull request during the observation window.
 
@@ -279,10 +282,11 @@ The selector has three modes:
   `--all-targets --all-features --locked` Clippy, locked all-feature tests, and
   a separate locked all-feature doctest command for affected library packages.
   A partial result neither runs nor claims the full-workspace coverage threshold.
-  Changes to `larch-cli`, or to any package in its local normal/build upstream
-  closure, instead propose `full`: the current partial command plan does not
-  reproduce the verified executable, repository policy and plugin validation,
-  artifact upload, or Python integration consumers those packages affect.
+  Changes to `larch-cli`, or to any package in its local normal, build, or dev
+  dependency closure (including `larch-test-support`), instead propose `full`:
+  the current partial command plan does not reproduce the verified executable,
+  repository policy and plugin validation, artifact upload, or Python
+  integration consumers those packages affect.
 - `skip` is reserved for an audited supplementary-only allowlist whose every
   path family has a named required validation owner. The allowlist is empty in
   this rollout because `larch lint all` examines repository-wide content. Thus

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
+from larch.core import redact
 from larch.core.proc import CommandResult, ProcRunner, Runner
 
 
@@ -30,7 +31,9 @@ _PACKAGE_NAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _CHANGE_STATUS_RE: Final = re.compile(r"^(?:A|M|D|R[0-9]+|C[0-9]+)$")
 _LIBRARY_TARGET_KINDS: Final = frozenset({"lib", "proc-macro"})
 _REQUIRED_CONSUMER_PACKAGE_NAME: Final = "larch-cli"
-_NORMAL_OR_BUILD_DEPENDENCY_KINDS: Final = frozenset({"normal", "build"})
+_REQUIRED_CONSUMER_POLICY_DEPENDENCY_KINDS: Final = frozenset({"normal", "build", "dev"})
+_PUBLIC_REDACTION_FAILURE_TRIGGER: Final = "public-output-redaction-failed"
+_REDACTION_TRUNCATION_MARKER: Final = "[content truncated"
 
 
 class _SelectionError(Exception):
@@ -41,6 +44,10 @@ class _SelectionError(Exception):
         self.reason = reason
 
 
+class _PublicRedactionError(Exception):
+    """The public artifact cannot safely carry the selector result."""
+
+
 @dataclass(frozen=True)
 class ChangedPath:
     """One normalized Git name-status record."""
@@ -49,7 +56,8 @@ class ChangedPath:
     paths: tuple[str, ...]
 
     def as_json(self) -> dict[str, object]:
-        return {"paths": list(self.paths), "status": self.status}
+        public = _redact_public_changed_path(self)
+        return {"paths": list(public.paths), "status": public.status}
 
 
 @dataclass(frozen=True)
@@ -60,7 +68,8 @@ class CommandPlan:
     argv: tuple[str, ...]
 
     def as_json(self) -> dict[str, object]:
-        return {"argv": list(self.argv), "name": self.name}
+        public = _redact_public_command_plan(self)
+        return {"argv": list(public.argv), "name": public.name}
 
 
 @dataclass(frozen=True)
@@ -99,26 +108,7 @@ class Selection:
     format_required: bool
 
     def as_json(self) -> dict[str, object]:
-        return {
-            "affected_packages": list(self.affected_packages),
-            "base_sha": self.base_sha,
-            "base_source": self.base_source,
-            "changed_paths": [change.as_json() for change in self.changed_paths],
-            "dependency_policy": {
-                "reason": self.dependency_policy_reason,
-                "required": self.dependency_policy_required,
-            },
-            "event_name": self.event_name,
-            "format_required": self.format_required,
-            "full_run_trigger": self.full_run_trigger,
-            "head_sha": self.head_sha,
-            "mode": self.mode,
-            "observation_only": True,
-            "partial_commands": [command.as_json() for command in self.partial_commands],
-            "reverse_dependents": list(self.reverse_dependents),
-            "schema_version": _SCHEMA_VERSION,
-            "skip_proof": self.skip_proof,
-        }
+        return _selection_as_json(_public_selection(self))
 
     def to_json(self) -> str:
         return json.dumps(self.as_json(), ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -137,56 +127,68 @@ def select(
     display_base = _valid_sha_or_none(base_sha)
     display_head = _valid_sha_or_none(head_sha)
     if safe_event != "pull_request":
-        return _full_selection(
-            event_name=safe_event,
-            base_sha=display_base,
-            head_sha=display_head,
-            base_source="not-applicable",
-            reason=f"non-pull-request-event:{safe_event}",
+        return _public_selection(
+            _full_selection(
+                event_name=safe_event,
+                base_sha=display_base,
+                head_sha=display_head,
+                base_source="not-applicable",
+                reason=f"non-pull-request-event:{safe_event}",
+            )
         )
     if display_base is None:
-        return _full_selection(
-            event_name=safe_event,
-            base_sha=None,
-            head_sha=display_head,
-            base_source="unavailable",
-            reason="missing-or-invalid-pr-base-sha",
+        return _public_selection(
+            _full_selection(
+                event_name=safe_event,
+                base_sha=None,
+                head_sha=display_head,
+                base_source="unavailable",
+                reason="missing-or-invalid-pr-base-sha",
+            )
         )
     if display_head is None:
-        return _full_selection(
-            event_name=safe_event,
-            base_sha=display_base,
-            head_sha=None,
-            base_source="unavailable",
-            reason="missing-or-invalid-pr-head-sha",
+        return _public_selection(
+            _full_selection(
+                event_name=safe_event,
+                base_sha=display_base,
+                head_sha=None,
+                base_source="unavailable",
+                reason="missing-or-invalid-pr-head-sha",
+            )
         )
 
     try:
         root = repo_root.resolve(strict=True)
         if not root.is_dir():
             raise _SelectionError("invalid-repository-root")
-        return _select_pull_request(
-            event_name=safe_event,
-            base_sha=display_base,
-            head_sha=display_head,
-            repo_root=root,
-            runner=runner,
+        return _public_selection(
+            _select_pull_request(
+                event_name=safe_event,
+                base_sha=display_base,
+                head_sha=display_head,
+                repo_root=root,
+                runner=runner,
+            )
         )
     except _SelectionError as exc:
-        return _full_selection(
-            event_name=safe_event,
-            base_sha=display_base,
-            head_sha=display_head,
-            base_source="unavailable",
-            reason=exc.reason,
+        return _public_selection(
+            _full_selection(
+                event_name=safe_event,
+                base_sha=display_base,
+                head_sha=display_head,
+                base_source="unavailable",
+                reason=exc.reason,
+            )
         )
     except Exception:  # Defensive boundary: no implementation error may select a narrower lane.
-        return _full_selection(
-            event_name=safe_event,
-            base_sha=display_base,
-            head_sha=display_head,
-            base_source="unavailable",
-            reason="selector-internal-error",
+        return _public_selection(
+            _full_selection(
+                event_name=safe_event,
+                base_sha=display_base,
+                head_sha=display_head,
+                base_source="unavailable",
+                reason="selector-internal-error",
+            )
         )
 
 
@@ -292,6 +294,111 @@ def _full_selection(  # noqa: PLR0913 - each field is a required, independently 
         dependency_policy_reason="full-mode-requires-the-existing-rust-deny-lane",
         format_required=True,
     )
+
+
+def _public_selection(selection: Selection) -> Selection:
+    """Return the secret-scrubbed public form, or a static full fallback."""
+    try:
+        return _redact_public_selection(selection)
+    except _PublicRedactionError:
+        return _redaction_failure_selection()
+
+
+def _redact_public_selection(selection: Selection) -> Selection:
+    return Selection(
+        mode=_redact_public_text(selection.mode),
+        event_name=_redact_public_text(selection.event_name),
+        base_sha=_redact_optional_public_text(selection.base_sha),
+        head_sha=_redact_optional_public_text(selection.head_sha),
+        base_source=_redact_public_text(selection.base_source),
+        changed_paths=tuple(_redact_public_changed_path(change) for change in selection.changed_paths),
+        affected_packages=tuple(_redact_public_text(package) for package in selection.affected_packages),
+        reverse_dependents=tuple(_redact_public_text(package) for package in selection.reverse_dependents),
+        full_run_trigger=_redact_optional_public_text(selection.full_run_trigger),
+        skip_proof=_redact_optional_public_text(selection.skip_proof),
+        partial_commands=tuple(_redact_public_command_plan(command) for command in selection.partial_commands),
+        dependency_policy_required=selection.dependency_policy_required,
+        dependency_policy_reason=_redact_public_text(selection.dependency_policy_reason),
+        format_required=selection.format_required,
+    )
+
+
+def _redact_optional_public_text(value: str | None) -> str | None:
+    return None if value is None else _redact_public_text(value)
+
+
+def _redact_public_changed_path(change: ChangedPath) -> ChangedPath:
+    return ChangedPath(
+        status=_redact_public_text(change.status),
+        paths=tuple(_redact_public_text(path) for path in change.paths),
+    )
+
+
+def _redact_public_command_plan(command: CommandPlan) -> CommandPlan:
+    return CommandPlan(
+        name=_redact_public_text(command.name),
+        argv=tuple(_redact_public_text(argument) for argument in command.argv),
+    )
+
+
+def _redact_public_text(value: str) -> str:
+    """Use the canonical redactor and prove no recognized secret survives."""
+    try:
+        path_scrubbed = redact.redact_tmpdir_paths(value)
+        scrubbed = redact.scrub_log_secrets(path_scrubbed).scrubbed
+        residual = redact.scrub_log_secrets(scrubbed).findings
+        tmpdir_residual = redact.redact_tmpdir_paths(scrubbed) != scrubbed
+    except _PublicRedactionError:
+        raise
+    except Exception as exc:  # Public egress must fail closed if the shared redactor fails.
+        raise _PublicRedactionError from exc
+    if (
+        residual
+        or tmpdir_residual
+        or "\r" in scrubbed
+        or "\n" in scrubbed
+        or _REDACTION_TRUNCATION_MARKER in scrubbed
+    ):
+        raise _PublicRedactionError
+    return scrubbed
+
+
+def _redaction_failure_selection() -> Selection:
+    return _full_selection(
+        event_name="unrecognized",
+        base_sha=None,
+        head_sha=None,
+        base_source="unavailable",
+        reason=_PUBLIC_REDACTION_FAILURE_TRIGGER,
+    )
+
+
+def _selection_as_json(selection: Selection) -> dict[str, object]:
+    """Serialize the already-redacted selection without a second egress pass."""
+    return {
+        "affected_packages": list(selection.affected_packages),
+        "base_sha": selection.base_sha,
+        "base_source": selection.base_source,
+        "changed_paths": [
+            {"paths": list(change.paths), "status": change.status} for change in selection.changed_paths
+        ],
+        "dependency_policy": {
+            "reason": selection.dependency_policy_reason,
+            "required": selection.dependency_policy_required,
+        },
+        "event_name": selection.event_name,
+        "format_required": selection.format_required,
+        "full_run_trigger": selection.full_run_trigger,
+        "head_sha": selection.head_sha,
+        "mode": selection.mode,
+        "observation_only": True,
+        "partial_commands": [
+            {"argv": list(command.argv), "name": command.name} for command in selection.partial_commands
+        ],
+        "reverse_dependents": list(selection.reverse_dependents),
+        "schema_version": _SCHEMA_VERSION,
+        "skip_proof": selection.skip_proof,
+    }
 
 
 def _safe_event_name(value: object) -> str:
@@ -674,7 +781,7 @@ def _reverse_dependency_closure(
 
 
 def _required_consumer_upstream_closure(packages: tuple[_Package, ...]) -> frozenset[str]:
-    """Return larch-cli and local normal/build dependencies needed by CI consumers."""
+    """Return larch-cli and every local dependency needed by CI policy."""
     by_name = {package.name: package for package in packages}
     consumer = by_name.get(_REQUIRED_CONSUMER_PACKAGE_NAME)
     if consumer is None:
@@ -686,7 +793,7 @@ def _required_consumer_upstream_closure(packages: tuple[_Package, ...]) -> froze
     while pending:
         current = by_id[pending.pop()]
         for dependency in current.dependencies:
-            if dependency.kind not in _NORMAL_OR_BUILD_DEPENDENCY_KINDS:
+            if dependency.kind not in _REQUIRED_CONSUMER_POLICY_DEPENDENCY_KINDS:
                 continue
             dependency_id = by_root.get(dependency.root_parts)
             if dependency_id is None:
@@ -766,7 +873,8 @@ def _single_sha(output: str, *, reason: str) -> str:
 
 
 def render_summary(selection: Selection) -> str:
-    """Render a bounded, HTML-escaped GitHub step summary."""
+    """Render a bounded, redacted, HTML-escaped GitHub step summary."""
+    selection = _public_selection(selection)
     mode = _html_code(selection.mode)
     base = _html_code(selection.base_sha or "unavailable")
     head = _html_code(selection.head_sha or "unavailable")

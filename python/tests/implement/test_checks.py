@@ -4097,7 +4097,10 @@ def test_rust_ci_change_selection_observation_contract() -> None:
         "The allowlist is empty",
         "full-workspace coverage threshold",
         "non-ancestor base",
-        "normal/build upstream",
+        "local normal, build, or dev",
+        "larch-test-support",
+        "redaction boundary",
+        "static `full` result",
         "Do not enable partial or skip enforcement",
         "periodic full-run backstop",
     ):
@@ -4105,9 +4108,12 @@ def test_rust_ci_change_selection_observation_contract() -> None:
     for required_detail in (
         "CI Rust selection trust",
         "read-only workflow",
-        "artifact for audit",
+        "structured result is an artifact",
         "no supplementary path",
-        "normal/build upstream closure",
+        "local normal, build, or dev dependency closure",
+        "larch-test-support",
+        "residual-secret rescan",
+        "static `full` result",
         "false-safe classification",
     ):
         assert required_detail in workflow_trust

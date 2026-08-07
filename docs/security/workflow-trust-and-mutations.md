@@ -300,13 +300,17 @@ result.
 The only narrower proposal is a Rust-source-only package closure. It is derived
 from locked offline Cargo metadata and includes normal, build, and dev reverse
 dependency edges. Package names and commands are validated and sorted before
-rendering. The step summary HTML-escapes changed path data, and the structured
-result is an artifact for audit, not an authorization token. Current `skip`
-ownership is intentionally empty: no supplementary path is skipped while
-repository-wide policy lacks a separately proven required validation owner.
-Changes to `larch-cli` and its local normal/build upstream closure are also
-`full` until a partial plan reproduces the verified executable, repository and
-plugin validation, artifact upload, and Python integration consumers.
+rendering. Every dynamic JSON and summary string passes through the Python core
+redaction boundary and a residual-secret rescan; redaction failure emits a
+static `full` result without changed-path data. The step summary then
+HTML-escapes those redacted fields, and the structured result is an artifact
+for audit, not an authorization token. Current `skip` ownership is intentionally
+empty: no supplementary path is skipped while repository-wide policy lacks a
+separately proven required validation owner. Changes to `larch-cli` and its
+local normal, build, or dev dependency closure (including
+`larch-test-support`) are also `full` until a partial plan reproduces the
+verified executable, repository and plugin validation, artifact upload, and
+Python integration consumers.
 
 Observation never suppresses `rust-lint`, `rust-deny`, coverage, artifact,
 repository-policy, plugin-validation, or Python-artifact handoff. Enforcement

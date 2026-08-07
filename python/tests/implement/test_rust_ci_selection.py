@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import redact
 from larch.core.proc import CommandResult
 from larch.implement import rust_ci_selection as selection
 
@@ -140,6 +141,11 @@ def _select(root: Path, runner: FakeRunner, *, event_name: str = "pull_request")
     )
 
 
+def _assert_no_diff_or_metadata_calls(runner: FakeRunner) -> None:
+    assert not any(call[:2] == ("git", "diff") for call in runner.calls)
+    assert not any(call[:2] == ("cargo", "metadata") for call in runner.calls)
+
+
 def _workspace(root: Path) -> str:
     packages = [
         _package(root, identifier="core", name="larch-core", relative_root="crates/core"),
@@ -153,7 +159,7 @@ def _workspace(root: Path) -> str:
         _package(
             root,
             identifier="cli",
-            name="larch-cli",
+            name="workspace-cli",
             relative_root="crates/cli",
             dependencies=(("crates/adapters", "dev"),),
         ),
@@ -251,6 +257,70 @@ def test_missing_or_shallow_base_commit_selects_full(tmp_path: Path) -> None:
     assert not any(call[0] == "cargo" for call in runner.calls)
 
 
+def test_checked_out_head_mismatch_selects_full_before_diff_or_metadata(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/core/src/lib.rs")),
+        metadata=_workspace(tmp_path),
+    )
+    checked_out_head_argv = ("git", "rev-parse", "--verify", "HEAD^{commit}")
+    runner.responses[checked_out_head_argv] = _result(checked_out_head_argv, stdout=f"{BASE_SHA}\n")
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "checked-out-head-does-not-match-pr-head"
+    _assert_no_diff_or_metadata_calls(runner)
+
+
+def test_missing_checked_out_head_selects_full_before_diff_or_metadata(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/core/src/lib.rs")),
+        metadata=_workspace(tmp_path),
+    )
+    checked_out_head_argv = ("git", "rev-parse", "--verify", "HEAD^{commit}")
+    runner.responses[checked_out_head_argv] = _result(checked_out_head_argv, returncode=1)
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "checked-out-head-failed"
+    _assert_no_diff_or_metadata_calls(runner)
+
+
+def test_unresolvable_checked_out_head_selects_full_before_diff_or_metadata(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/core/src/lib.rs")),
+        metadata=_workspace(tmp_path),
+    )
+    checked_out_head_argv = ("git", "rev-parse", "--verify", "HEAD^{commit}")
+    runner.responses[checked_out_head_argv] = _result(checked_out_head_argv, stdout="not-a-commit\n")
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "invalid-checked-out-head-output"
+    _assert_no_diff_or_metadata_calls(runner)
+
+
+def test_unexpected_merge_base_error_selects_full_before_diff_or_metadata(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/core/src/lib.rs")),
+        metadata=_workspace(tmp_path),
+    )
+    merge_base_argv = ("git", "merge-base", "--is-ancestor", BASE_SHA, HEAD_SHA)
+    runner.responses[merge_base_argv] = _result(merge_base_argv, returncode=2)
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "merge-base-ancestry-verification-failed"
+    _assert_no_diff_or_metadata_calls(runner)
+
+
 def test_advanced_base_with_a_dependent_absent_from_head_metadata_selects_full(tmp_path: Path) -> None:
     # A normal PR workflow would test a merge candidate that includes the base's
     # new dependent. Metadata from the checked-out head cannot prove that
@@ -269,8 +339,7 @@ def test_advanced_base_with_a_dependent_absent_from_head_metadata_selects_full(t
 
     assert result.mode == "full"
     assert result.full_run_trigger == "pr-base-is-not-an-ancestor-of-pr-head"
-    assert not any(call[:2] == ("git", "diff") for call in runner.calls)
-    assert not any(call[:2] == ("cargo", "metadata") for call in runner.calls)
+    _assert_no_diff_or_metadata_calls(runner)
 
 
 @pytest.mark.parametrize(
@@ -398,6 +467,41 @@ def test_required_ci_consumer_or_normal_build_upstream_change_selects_full(tmp_p
     assert not result.partial_commands
 
 
+def test_larch_test_support_dev_dependency_of_cli_selects_full(tmp_path: Path) -> None:
+    metadata = _metadata(
+        tmp_path,
+        [
+            _package(tmp_path, identifier="core", name="larch-core", relative_root="crates/larch-core"),
+            _package(
+                tmp_path,
+                identifier="test-support",
+                name="larch-test-support",
+                relative_root="crates/larch-test-support",
+                dependencies=(("crates/larch-core", None),),
+            ),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("crates/larch-test-support", "dev"),),
+                has_library=False,
+            ),
+        ],
+    )
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/larch-test-support/src/lib.rs")),
+        metadata=metadata,
+    )
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "required-ci-consumer-closure"
+    assert not result.partial_commands
+
+
 def test_reverse_dependency_closure_is_transitive_and_deterministic(tmp_path: Path) -> None:
     runner = _runner_for_pull_request(
         tmp_path,
@@ -408,8 +512,8 @@ def test_reverse_dependency_closure_is_transitive_and_deterministic(tmp_path: Pa
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("larch-adapters", "larch-cli", "larch-core")
-    assert result.reverse_dependents == ("larch-adapters", "larch-cli")
+    assert result.affected_packages == ("larch-adapters", "larch-core", "workspace-cli")
+    assert result.reverse_dependents == ("larch-adapters", "workspace-cli")
 
 
 def test_build_and_dev_edges_are_included_in_reverse_dependency_closure(tmp_path: Path) -> None:
@@ -460,7 +564,7 @@ def test_additions_deletions_and_renames_are_classified(tmp_path: Path, record: 
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("larch-adapters", "larch-cli", "larch-core")
+    assert result.affected_packages == ("larch-adapters", "larch-core", "workspace-cli")
     assert result.changed_paths[0].status == record[0]
 
 
@@ -603,13 +707,18 @@ def test_output_order_is_deterministic_across_diff_and_metadata_order(tmp_path: 
 
 
 def test_summary_escapes_untrusted_paths_and_declares_observation_only() -> None:
+    secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+    secret_path = f"src/{secret}.rs"
     result = selection.Selection(
         mode="full",
         event_name="pull_request",
         base_sha=BASE_SHA,
         head_sha=HEAD_SHA,
         base_source="github-pr-base",
-        changed_paths=(selection.ChangedPath(status="M", paths=("src/<untrusted>.rs",)),),
+        changed_paths=(
+            selection.ChangedPath(status="M", paths=("src/<untrusted>.rs",)),
+            selection.ChangedPath(status="M", paths=(secret_path,)),
+        ),
         affected_packages=(),
         reverse_dependents=(),
         full_run_trigger="unknown-path-has-no-named-validation-owner",
@@ -625,6 +734,67 @@ def test_summary_escapes_untrusted_paths_and_declares_observation_only() -> None
     assert "Full Rust CI remains required during the observation window." in summary
     assert "src/&lt;untrusted&gt;.rs" in summary
     assert "src/<untrusted>.rs" not in summary
+    assert secret not in summary
+    assert secret_path not in summary
+    assert "src/&lt;REDACTED-TOKEN&gt;.rs" in summary
+
+
+def test_secret_shaped_selector_fields_are_redacted_from_artifact_and_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+    source_path = f"crates/secret/src/{secret}.rs"
+    metadata = _metadata(
+        tmp_path,
+        [_package(tmp_path, identifier="secret", name=secret, relative_root="crates/secret")],
+    )
+    result = _select(
+        tmp_path,
+        _runner_for_pull_request(tmp_path, diff=_diff(("M", source_path)), metadata=metadata),
+    )
+
+    artifact = result.to_json()
+    assert result.mode == "partial"
+    assert secret not in artifact
+    assert source_path not in artifact
+    assert "<REDACTED-TOKEN>" in artifact
+    assert json.loads(artifact)["changed_paths"]
+    assert secret not in json.dumps(selection.ChangedPath(status="M", paths=(source_path,)).as_json())
+    assert secret not in json.dumps(selection.CommandPlan(name=secret, argv=("cargo", secret)).as_json())
+
+    result_file = tmp_path / "selector.json"
+    _ = result_file.write_text(artifact, encoding="utf-8")
+    assert selection.rust_select_summary_main(["--result-file", str(result_file)]) == 0
+
+    summary = capsys.readouterr().out
+    assert secret not in summary
+    assert source_path not in summary
+    assert "&lt;REDACTED-TOKEN&gt;" in summary
+
+
+def test_public_redaction_failure_selects_static_full_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_redaction(_text: str) -> redact.ScrubLogSecretsResult:
+        raise RuntimeError("redactor unavailable")
+
+    monkeypatch.setattr(selection.redact, "scrub_log_secrets", fail_redaction)
+    result = _select(
+        tmp_path,
+        _runner_for_pull_request(
+            tmp_path,
+            diff=_diff(("M", "crates/core/src/lib.rs")),
+            metadata=_workspace(tmp_path),
+        ),
+    )
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "public-output-redaction-failed"
+    assert not result.changed_paths
+    assert "crates/core/src/lib.rs" not in result.to_json()
+    assert "crates/core/src/lib.rs" not in selection.render_summary(result)
 
 
 def test_invalid_summary_result_falls_back_to_a_full_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
