@@ -270,6 +270,42 @@ pub fn failure_diag_source_order(
     ordered
 }
 
+/// Return the ordered candidates for the diagnostic carrier that best
+/// describes one launcher failure.
+///
+/// The caller selects the first candidate that is a non-empty regular file. The
+/// two retry stems come from the Codex retry launchers, which publish their own
+/// carriers beside the primary output. Order is most-specific first, so a
+/// caller can also ask whether an already-published excerpt came from a
+/// less-specific carrier than the one it now has.
+#[must_use]
+pub fn failure_diagnostic_source_candidates(
+    paths: &LauncherArtifactPaths,
+    sink: Option<&Path>,
+) -> Vec<PathBuf> {
+    let output = paths.output().as_os_str().to_string_lossy().into_owned();
+    let stem = output.strip_suffix(".txt").unwrap_or(&output);
+    let mut candidates = vec![
+        paths.path(LauncherArtifactKind::FailureDiag),
+        PathBuf::from(format!("{stem}-retry.txt.failure-diag")),
+        PathBuf::from(format!("{stem}-ns-retry.txt.failure-diag")),
+    ];
+    if let Some(sink) = sink {
+        candidates.push(sink.to_path_buf());
+    }
+    candidates.extend([
+        paths.path(LauncherArtifactKind::SidecarHistory),
+        paths.path(LauncherArtifactKind::Sidecar),
+        paths.path(LauncherArtifactKind::Diag),
+        paths.path(LauncherArtifactKind::Events),
+        paths.path(LauncherArtifactKind::Stderr),
+        paths.path(LauncherArtifactKind::LaunchStderr),
+        paths.path(LauncherArtifactKind::LauncherStderr),
+        paths.output().to_path_buf(),
+    ]);
+    candidates
+}
+
 /// Render one failure-diagnostic section body under its line budget.
 #[must_use]
 pub fn failure_diag_section_body(source: &FailureDiagSource<'_>, section_lines: usize) -> String {

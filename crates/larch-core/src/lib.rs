@@ -1,6 +1,7 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
 mod admission;
+mod architectural_guidelines;
 mod attestation;
 mod bgjob;
 mod bgjob_daemon;
@@ -50,6 +51,11 @@ mod vendor_usage;
 pub use admission::{
     DESIGNED_PREFIX, GateDecision, MANAGED_PREFIXES, entry_gate, has_designed_prefix,
     has_managed_prefix, has_report_prefix, normal_issue, parse_prose_blockers, single_line,
+};
+pub use architectural_guidelines::{
+    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, GUIDELINE_HEADING_RE,
+    GUIDELINES_FILENAME, INVARIANT_HEADING_RE, INVARIANTS_FILENAME, entry_text, knowledge_block,
+    parse_entries,
 };
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
@@ -372,7 +378,8 @@ pub use vendor_diagnostics::{
     FailureDiagWrite, LauncherArtifactKind, LauncherArtifactPaths, StderrCaptureMode,
     VENDOR_FAILURE_DIAG_BYTE_CAP, VENDOR_FAILURE_DIAG_SECTION_LINES, compose_failure_diag,
     failed_agent_stderr_candidates, failure_diag_section_body, failure_diag_source_order,
-    plan_failure_diag_write, render_failed_agent_stderr_tail, stream_reset_history_entry,
+    failure_diagnostic_source_candidates, plan_failure_diag_write, render_failed_agent_stderr_tail,
+    stream_reset_history_entry,
 };
 pub use vendor_failure::{
     AuthVerdict, CodexGateDetail, CodexGateSignal, FailureClass, FailureReason, LaunchFailure,

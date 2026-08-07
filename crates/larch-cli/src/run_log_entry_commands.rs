@@ -815,26 +815,103 @@ pub fn append_failure(arguments: &[OsString]) -> ExitCode {
         emit_kv("FAILED", "true");
         return ExitCode::from(RC_REFUSED);
     }
-    if !FAILURE_CATEGORIES.contains(&category.as_str()) {
-        return append_kv_failure(RC_REFUSED, &format!("unsupported category: {category}"));
+    let status_label = text(&parsed, "--status-label");
+    match record_execution_failure(&FailureRecordRequest {
+        log: Path::new(&log),
+        site: &site,
+        tool: &tool,
+        exit_code: &exit_code,
+        category: &category,
+        output_file: &output_file,
+        verdict: &text(&parsed, "--verdict"),
+        retry_count: &text(&parsed, "--retry-count"),
+        transient_retry_count: &text(&parsed, "--transient-retry-count"),
+        status_label: &status_label,
+        redact: parsed.flag("--redact"),
+    }) {
+        Ok(()) => {
+            emit_kv("APPENDED", "true");
+            emit_kv("LOG", &log);
+            ExitCode::SUCCESS
+        }
+        Err(failure) => append_kv_failure(failure.code, &failure.message),
     }
-    let retry_count = text(&parsed, "--retry-count");
-    let transient_retry_count = text(&parsed, "--transient-retry-count");
-    if let Err(message) = validate_failure_counts(&exit_code, &retry_count, &transient_retry_count)
-    {
-        return append_kv_failure(RC_REFUSED, &message);
+}
+
+/// One execution-issues failure record, already validated by its caller's parser.
+pub struct FailureRecordRequest<'a> {
+    /// Execution-issues log the record is appended to.
+    pub log: &'a Path,
+    /// Site label, for example `implement Step 2`.
+    pub site: &'a str,
+    /// Tool label, for example `codex-implement`.
+    pub tool: &'a str,
+    /// Launcher exit code as its decimal string.
+    pub exit_code: &'a str,
+    /// Execution-issues category.
+    pub category: &'a str,
+    /// Diagnostic carrier whose body the record quotes.
+    pub output_file: &'a str,
+    /// Failure verdict, empty when the caller has none.
+    pub verdict: &'a str,
+    /// Authentication retry count, empty when the caller has none.
+    pub retry_count: &'a str,
+    /// Transient retry count, empty when the caller has none.
+    pub transient_retry_count: &'a str,
+    /// Status word, empty for the default `failed`.
+    pub status_label: &'a str,
+    /// Whether the quoted body is scrubbed before it is written.
+    pub redact: bool,
+}
+
+/// One rejected or failed record, carrying the caller's exit code.
+pub struct FailureRecordError {
+    /// Process exit code the CLI command reports.
+    pub code: u8,
+    /// Operator-facing reason.
+    pub message: String,
+}
+
+/// Compose and append one launcher failure record without emitting KV rows.
+///
+/// This is the quiet owner the `run-log append-failure` command and the
+/// in-process launchers share, so a launcher never re-derives the entry format,
+/// the redaction routing, or the append lock.
+///
+/// # Errors
+///
+/// Returns the refusal or IO failure the CLI command would have reported.
+pub fn record_execution_failure(
+    request: &FailureRecordRequest<'_>,
+) -> Result<(), FailureRecordError> {
+    if !FAILURE_CATEGORIES.contains(&request.category) {
+        return Err(FailureRecordError {
+            code: RC_REFUSED,
+            message: format!("unsupported category: {}", request.category),
+        });
     }
-    let body = match failure_body(&output_file, &exit_code) {
-        Ok(body) => body,
-        Err(message) => return append_kv_failure(RC_IO, &message),
-    };
-    let body = if parsed.flag("--redact") {
+    validate_failure_counts(
+        request.exit_code,
+        request.retry_count,
+        request.transient_retry_count,
+    )
+    .map_err(|message| FailureRecordError {
+        code: RC_REFUSED,
+        message,
+    })?;
+    let body = failure_body(request.output_file, request.exit_code).map_err(|message| {
+        FailureRecordError {
+            code: RC_IO,
+            message,
+        }
+    })?;
+    let body = if request.redact {
         redact_run_log_payload(&body)
     } else {
         body
     };
-    let body = if category == "Warnings"
-        && format!("{site} {output_file}")
+    let body = if request.category == "Warnings"
+        && format!("{} {}", request.site, request.output_file)
             .to_lowercase()
             .contains("diagram")
     {
@@ -842,27 +919,26 @@ pub fn append_failure(arguments: &[OsString]) -> ExitCode {
     } else {
         body
     };
-    let status_label = text(&parsed, "--status-label");
     let entry = compose_failure_entry(&FailureEntry {
-        site: &site,
-        tool: &tool,
-        exit_code: &exit_code,
-        verdict: &text(&parsed, "--verdict"),
-        retry_count: &retry_count,
-        transient_retry_count: &transient_retry_count,
-        status_label: if status_label.is_empty() {
+        site: request.site,
+        tool: request.tool,
+        exit_code: request.exit_code,
+        verdict: request.verdict,
+        retry_count: request.retry_count,
+        transient_retry_count: request.transient_retry_count,
+        status_label: if request.status_label.is_empty() {
             "failed"
         } else {
-            &status_label
+            request.status_label
         },
         body: &body,
     });
-    if let Err(message) = append_execution_issue(Path::new(&log), &category, &entry) {
-        return append_kv_failure(RC_IO, &message);
-    }
-    emit_kv("APPENDED", "true");
-    emit_kv("LOG", &log);
-    ExitCode::SUCCESS
+    append_execution_issue(request.log, request.category, &entry).map_err(|message| {
+        FailureRecordError {
+            code: RC_IO,
+            message,
+        }
+    })
 }
 
 /// Read captured diagnostics, or synthesize the no-diagnostics placeholder.

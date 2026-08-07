@@ -1382,7 +1382,7 @@ def _promote_inner_done(output: Path) -> None:
         paths.inner_done.replace(paths.done)
 
 
-# Review preamble constants shared by the Rust launch-review command and _ci_launcher.
+# Review preamble constants shared with the Rust launch-review command.
 _CODEX_REVIEW_STRICT_PREAMBLE = (
     "STRICT CONSTRAINTS — your role is read-only review. Do not create, edit, "
     "delete, or overwrite files, and do not run mutating shell or git commands. "

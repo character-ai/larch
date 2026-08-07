@@ -375,6 +375,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "agent",
         "launch-claude-ci",
     ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-codex-implement",
+        "agent",
+        "launch-codex-implement",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-cursor-implement",
+        "agent",
+        "launch-cursor-implement",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-claude-lint-fix",
+        "agent",
+        "launch-claude-lint-fix",
+    ),
+    CleanInstallCase::new(
+        "clean-install-agent-launch-claude-review-fix",
+        "agent",
+        "launch-claude-review-fix",
+    ),
     CleanInstallCase::new("clean-install-agent-model-args", "agent", "model-args"),
     CleanInstallCase::new(
         "clean-install-agent-read-claude-model",

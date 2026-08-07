@@ -58,8 +58,8 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh run-log checkpoint` | — | — | ✅ | **D** | Rust-owned mutable recovery checkpoint. |
 | `scripts/larch.sh run-log refresh` | — | — | ✅ | **D** | Rust-owned CI-retry / rebase pre-push flush. |
 | `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
-| `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
-| `python/cli.py agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
+| `scripts/larch.sh agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the approved external-process layer (carrier saved); the launch-failure record appends the diagnostic source to the durable batch. |
+| `scripts/larch.sh agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
 | `scripts/larch.sh agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher uses the shared external-agent carrier. |
 | `scripts/larch.sh agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
 | `scripts/larch.sh agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved). |
@@ -86,7 +86,7 @@ the carrier into its `run-log append-failure` source and (b) call
 
 1. `scripts/larch.sh agent launch-codex-ci` / `scripts/larch.sh agent launch-cursor-ci` / `scripts/larch.sh agent launch-claude-ci` give-up:
    source the carrier lib and append the diagnostic source to the durable batch
-   (the implement-side `agent launch-codex-implement` / `agent launch-cursor-implement`
+   (the implement-side `scripts/larch.sh agent launch-codex-implement` / `scripts/larch.sh agent launch-cursor-implement`
    give-up already do this).
 3. `python3 python/cli.py agent launch-codex-exec` preflight / no-wrapper branches: ordering-A carrier
    compose before exit.

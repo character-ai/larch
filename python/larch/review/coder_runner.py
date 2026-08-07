@@ -288,12 +288,11 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
 def _run_coder_claude(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     if shutil.which("claude") is None:
         return False
-    cli = _plugin_root() / "python" / "cli.py"
     prompt_file = round_dir / "coder-claude-prompt.md"
     _write_text(path=prompt_file, text=prompt_body)
     output = round_dir / "coder-claude.log"
     result = _run([
-        "python3", str(cli), "agent", "launch-claude-review-fix",
+        str(larch_entrypoint(_plugin_root())), "agent", "launch-claude-review-fix",
         "--output", str(output),
         "--prompt-body-file", str(prompt_file),
         "--timeout", "1800",

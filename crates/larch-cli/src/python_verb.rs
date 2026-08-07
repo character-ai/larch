@@ -10,7 +10,7 @@ use std::{
     ffi::OsString,
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex, PoisonError},
     time::Duration,
 };
 
@@ -25,6 +25,31 @@ use larch_core::{
 
 /// Bounded capture for a delegated verb's standard streams.
 const VERB_OUTPUT_LIMIT: usize = 256 * 1024;
+
+/// Session-derived child-environment rows every later delegated verb inherits.
+///
+/// A launcher can learn a session identity from files rather than from its own
+/// environment. Publishing those rows here reaches the delegated verbs without
+/// mutating this process's environment, which the workspace forbids.
+static SESSION_ENVIRONMENT: Mutex<Vec<(ChildEnvironment, OsString)>> = Mutex::new(Vec::new());
+
+/// Publish session-derived rows for every later delegated verb in this process.
+///
+/// Rows replace the same key from the ambient environment, matching the
+/// hydration order the retired Python launchers used.
+pub fn publish_session_environment(rows: Vec<(ChildEnvironment, OsString)>) {
+    *SESSION_ENVIRONMENT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = rows;
+}
+
+fn session_environment() -> Vec<(ChildEnvironment, OsString)> {
+    SESSION_ENVIRONMENT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
 /// Grace period before a delegated verb's process group is killed.
 const VERB_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
@@ -73,6 +98,9 @@ pub fn run_python_verb(
         if let Some(value) = env::var_os(key.name()) {
             request = request.with_environment(key, value);
         }
+    }
+    for (key, value) in session_environment() {
+        request = request.with_environment(key, value);
     }
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
     runtime

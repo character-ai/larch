@@ -319,7 +319,7 @@ def _implementer_text(kind: str) -> str:
     if kind == "codex":
         header = f"""---
 name: codex-implementer
-description: Codex implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-codex-implement; not invoked as a Claude subagent.
+description: Codex implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by scripts/larch.sh agent launch-codex-implement; not invoked as a Claude subagent.
 ---
 
 <!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: {AUTO_HEADER_BY_VERB['codex-implementer']} -->
@@ -344,7 +344,7 @@ You edit the working tree, write the manifest, and exit. The dispatcher reads `m
     else:
         header = f"""---
 name: cursor-implementer
-description: Cursor implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-cursor-implement; not invoked as a Claude subagent.
+description: Cursor implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by scripts/larch.sh agent launch-cursor-implement; not invoked as a Claude subagent.
 ---
 
 <!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: {AUTO_HEADER_BY_VERB['cursor-implementer']} -->
