@@ -52,14 +52,17 @@ deterministic selector and workflow tests.
 
 ## Required live observation window
 
-The live window is open. Both `RUST_CI_PARTIAL_ENFORCEMENT` and
-`RUST_CI_SKIP_ENFORCEMENT` remain `false`, so a pull request with a proposed
-`partial` or `skip` mode records an observation effective `full` mode and runs
-the full backstop. This topology-changing pull request is itself a global
-`full` input and cannot be counted.
+The `partial` live window remains open: `RUST_CI_PARTIAL_ENFORCEMENT` is
+`false`, so a proposed `partial` mode records an observation effective `full`
+mode and runs the full backstop. `RUST_CI_SKIP_ENFORCEMENT` is `true` after the
+completed skip window below. A proposed `skip` mode now executes only after the
+trusted-main policy artifact validates; a cache or verification failure remains
+`full`. The topology-changing pull request that enables a class is itself a
+global `full` input and cannot be counted as that class's selected-path result.
 
-Before a reviewed workflow change enables either class, append at least three
-independent live pull-request rows to this document. Each row must include:
+Before a reviewed workflow change enables an unproven class, append at least
+three independent live pull-request rows to this document. Each row must
+include:
 
 - a distinct pull-request number and tested merge candidate;
 - the uploaded `rust-ci-selection` artifact's proposed mode and
@@ -68,6 +71,32 @@ independent live pull-request rows to this document. Each row must include:
 - an explicit false-safe or false-full comparison result; and
 - the full-backstop duration plus, when the class is later enabled, the
   selected-path duration on a comparable runner and cache class.
+
+### Completed skip observation window
+
+These are three distinct, ordinary docs-only pull requests. The linked
+selection job uploaded the listed effective-decision record; every full
+backstop in the same run passed.
+
+| PR | Tested merge candidate | Proposed/effective decision | Full backstop | Comparison |
+|---|---|---|---|---|
+| [#8247](https://github.com/character-ai/larch/pull/8247) | `4d8d98e0a583f00e14aa8064124390289f873cab` | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/31248043914/job/93079779676): `skip` → `full`; `skip-observation-window-open`; `observation_only=true` | [`rust-full`, 345 s](https://github.com/character-ai/larch/actions/runs/31248043914/job/93079841037); [`rust-coverage` success](https://github.com/character-ai/larch/actions/runs/31248043914/job/93080391569); [`rust-gate` success](https://github.com/character-ai/larch/actions/runs/31248043914/job/93080402605) | false-safe: none observed; false-full: not assessed while `full` was effective |
+| [#8248](https://github.com/character-ai/larch/pull/8248) | `b9f8cad8070535181dc8e369b1f792c8090a1f86` | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/31248368102/job/93080605950): `skip` → `full`; `skip-observation-window-open`; `observation_only=true` | [`rust-full`, 352 s](https://github.com/character-ai/larch/actions/runs/31248368102/job/93080650942); [`rust-coverage` success](https://github.com/character-ai/larch/actions/runs/31248368102/job/93081184191); [`rust-gate` success](https://github.com/character-ai/larch/actions/runs/31248368102/job/93081194121) | false-safe: none observed; false-full: not assessed while `full` was effective |
+| [#8249](https://github.com/character-ai/larch/pull/8249) | `f3f4e63dd4a9b4ee79fde0abd490f3a2ea760d26` | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/31248773154/job/93081635452): `skip` → `full`; `skip-observation-window-open`; `observation_only=true` | [`rust-full`, 346 s](https://github.com/character-ai/larch/actions/runs/31248773154/job/93081688015); [`rust-coverage` success](https://github.com/character-ai/larch/actions/runs/31248773154/job/93082214841); [`rust-gate` success](https://github.com/character-ai/larch/actions/runs/31248773154/job/93082225084) | false-safe: none observed; false-full: not assessed while `full` was effective |
+
+All three runs used `ubuntu-24.04` with the same Rust-input identity. The
+Cargo-inputs, cargo-nextest, and cargo-llvm-cov caches were hits in every run;
+the coverage-target cache was deliberately disabled. The comparable full-job
+durations were 345 seconds, 352 seconds, and 346 seconds (median 346 seconds).
+Each full backstop passed, so this window has zero observed false-safe results
+for `skip`. A green full backstop is not false-full evidence while the full lane
+is intentionally effective.
+
+The reviewed skip promotion that records this window is a global `full` input,
+so it does not pretend to supply a selected skip duration. The next ordinary
+eligible skip pull request must record that duration against this control; the
+partial class remains in observation until it independently meets the same
+rule.
 
 ### Live-row collection
 
@@ -107,11 +136,12 @@ change starts a fresh live window for the affected class.
 
 ## Timing interpretation and rollback
 
-The historical full `rust-coverage` samples above are a contextual baseline:
-the partial rows have a median of 140 seconds and the skip rows a median of 205
-seconds. They are not timings for non-full jobs. Only after a class is enabled
-can its `rust-partial` or `rust-skip` duration demonstrate a critical-path
-reduction against comparable full-backstop samples.
+The historical full `rust-coverage` samples above are contextual baselines: the
+partial rows have a median of 140 seconds and the skip rows a median of 205
+seconds. They are not timings for non-full jobs. The completed live skip window
+adds a comparable pre-enforcement full-job control with a median of 346 seconds.
+Only after a class is enabled can its `rust-partial` or `rust-skip` duration
+demonstrate a critical-path reduction against comparable full-backstop samples.
 
 To roll back selection immediately, apply the `full-rust-ci` label to a pull
 request. To roll back a decision class permanently, keep its enforcement value

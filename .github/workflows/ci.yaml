@@ -47,11 +47,11 @@ env:
   # Per GitHub release notes 2025-09-19, Node 20 is removed from runners on
   # 2026-09-16; this env var becomes the default on 2026-06-02.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  # Non-full lanes stay in observation until independent pull-request evidence
-  # records zero false-safe decisions for that decision class. Promote either
-  # class only in a reviewed workflow change that records that evidence.
+  # Partial stays in observation until independent pull-request evidence
+  # records zero false-safe decisions for that decision class. Skip completed
+  # its recorded window and still falls back to full on any trust failure.
   RUST_CI_PARTIAL_ENFORCEMENT: "false"
-  RUST_CI_SKIP_ENFORCEMENT: "false"
+  RUST_CI_SKIP_ENFORCEMENT: "true"
 
 jobs:
   # External-tool linters only: markdownlint, jsonlint, and actionlint.
@@ -808,6 +808,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_TEST_OPT_LEVEL: "0"
       PARTIAL_DOCTEST_PACKAGES_JSON: ${{ needs.rust-selection.outputs.partial_doctest_packages }}
       PARTIAL_PACKAGES_JSON: ${{ needs.rust-selection.outputs.partial_packages }}
     steps:

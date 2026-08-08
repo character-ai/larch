@@ -181,15 +181,16 @@ There are four pre-commit-driven paths:
 
   Pull requests run the `rust-selection` observation job before the Rust
   lanes. It runs the selector from the trusted pull-request base and publishes
-  a redacted proposed/effective decision artifact. Both non-full enforcement
-  values start `false`, so proposed `partial` or `skip` results still run the
-  full Rust backstop while the independent-PR observation window is collected.
-  After a reviewed class-specific promotion, `partial` retains selected package
-  tests, Clippy, doctests, candidate-built repository policy, plugin
-  validation, and the Python artifact; `skip` keeps non-Rust owners and uses a
+  a redacted proposed/effective decision artifact. Partial enforcement remains
+  `false`, so proposed `partial` results still run the full Rust backstop while
+  its independent-PR observation window is collected. The recorded skip window
+  promotes skip enforcement to `true`: `skip` keeps non-Rust owners and uses a
   checksum-verified, input-keyed trusted-main policy executable. Missing trust
-  evidence falls back to `full`. The stable `rust-coverage` status aggregates
-  the one effective execution path, while `main` remains the full backstop.
+  evidence falls back to `full`. After its own reviewed promotion, `partial`
+  retains selected package tests, Clippy, doctests, candidate-built repository
+  policy, plugin validation, and the Python artifact. The stable
+  `rust-coverage` status aggregates the one effective execution path, while
+  `main` remains the full backstop.
   See [Rust testing](rust-testing.md) for ownership, cache identity, the
   `full-rust-ci` escape hatch, and the recorded observation window.
 - **Relevant checks CLI (`python/cli.py checks run-relevant`)** — The Python dispatcher finds branch, staged, unstaged, and untracked changes; filters existing regular files for `pre-commit run --files`; and runs the contains-pin scanner. The scoped pre-commit phase carries ruff autofix (`ruff check --fix`) for changed Python files. Pyright and agent/config scans are manual or dedicated-CI work. For Rust paths, the filename-aware hook selects and logs the exact Cargo packages and targets, then runs one bounded Clippy configuration. A deleted or otherwise non-regular Rust path skips that hook and uses the same bounded entry point once as a compatibility fallback. A missing proof marker fails closed. The CLI never follows pre-commit with `make rust-check`, `cargo check`, a full-repository `agent-lint`, tests, or coverage. A no-change run is a fast freshness check. `/implement` and `/review` use the CLI to capture verbose output under the session tmpdir and emit a one-line `RELEVANT_CHECKS_OK=true ...` green-path envelope when checks succeed. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. On failure, orchestrators read `DIGEST_FILE` first when the helper envelope includes it, then fall back to `REDACTED_LOG_FILE`; folded composite stdout may place those keys after leading file or git KVs, so consumers must scan the full composite stdout for both keys. `REDACTED_LOG_FILE` remains the full-log fallback and repair-loop input.

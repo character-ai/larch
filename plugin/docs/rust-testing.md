@@ -281,12 +281,13 @@ records the lane's `effective_mode`, reason, `rollout_state`, and
 `full-rust-ci` override; the summary shows both proposed and effective
 execution decisions.
 
-`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are deliberately
-`false` in the initial rollout. A proposed `partial` or `skip` decision then
-records `partial-observation-window-open` or `skip-observation-window-open` as
-its effective full-mode reason. The full lane therefore remains the backstop
-while live evidence is collected; neither non-full job executes merely because
-the selector proposed it.
+`RUST_CI_PARTIAL_ENFORCEMENT` remains `false` while the partial class collects
+its independent live evidence. `RUST_CI_SKIP_ENFORCEMENT` is `true` after the
+recorded three-pull-request skip window had successful full backstops and zero
+false-safe results. A proposed `partial` still records
+`partial-observation-window-open` as its effective full-mode reason. A
+proposed `skip` executes only when trusted-main policy verification succeeds;
+a cache miss or verification failure remains `full`.
 
 After the live observation criteria below are met, the workflow supports these
 enforced modes:
@@ -336,15 +337,15 @@ path while debugging a pull request, apply the `full-rust-ci` label; label and
 unlabel events rerun CI, and that label can only narrow toward the safer
 `full` mode.
 
-Promotion is intentionally manual and class-specific. Keep both enforcement
-values `false` until the live record has at least three independent pull
-requests with proposed non-full decisions, every retained full backstop is
-successful, and the class being promoted has no false-safe result. A reviewed
-workflow change may then set only that proven class to `true`; a selector
-result, cache result, label, or pull-request-controlled input can never flip
-the value. The promoting change must add the selected-path timing evidence and
-must leave the other class in observation until its evidence meets the same
-rule.
+Promotion is intentionally manual and class-specific. Keep an unproven class's
+enforcement value `false` until the live record has at least three independent
+pull requests with proposed non-full decisions, every retained full backstop is
+successful, and that class has no false-safe result. A reviewed workflow change
+may then set only that proven class to `true`; a selector result, cache result,
+label, or pull-request-controlled input can never flip the value. The promoting
+change is global and therefore cannot supply its own selected-path timing; the
+next eligible pull request must record it against the comparable full control.
+The other class remains in observation until its evidence meets the same rule.
 
 The independent historical classifier replays are recorded in
 [`rust-ci-selection-observation.md`](rust-ci-selection-observation.md). They
