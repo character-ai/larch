@@ -66,7 +66,7 @@ const COLLECTOR_TIMEOUT_MARGIN: Duration = Duration::from_secs(300);
 /// Longest wait for slot teardown after an operating-system shutdown signal.
 const SHUTDOWN_DRAIN: Duration = Duration::from_secs(5);
 /// Exit code a terminated dispatch reports, matching the retired signal handler.
-const SHUTDOWN_EXIT_CODE: i32 = 143;
+const SHUTDOWN_EXIT_CODE: u8 = 143;
 /// Exit code recorded for a slot child the dispatcher terminated.
 const TERMINATED_EXIT_CODE: i32 = -15;
 /// Bounded capture for one collector invocation's standard streams.
@@ -247,6 +247,11 @@ fn run_dispatch(options: &Options) -> ExitCode {
     let registry = LaunchRegistry::create();
     let outcome = dispatch(options, &registry);
     registry.terminate_all();
+    if registry.is_cancelled() {
+        // A shutdown signal reached this dispatch. Report the terminated exit
+        // here rather than racing the watchdog's own drain-then-exit.
+        return ExitCode::from(SHUTDOWN_EXIT_CODE);
+    }
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
@@ -807,6 +812,10 @@ impl LaunchRegistry {
             launch.terminate();
         }
     }
+
+    fn is_cancelled(&self) -> bool {
+        self.root.is_cancelled()
+    }
 }
 
 /// Cancel every live slot child when the operating system asks us to stop.
@@ -830,7 +839,7 @@ fn spawn_shutdown_watchdog(registry: Arc<LaunchRegistry>) {
         while Instant::now() < deadline && launches.iter().any(|launch| launch.poll().is_none()) {
             thread::sleep(REAP_POLL_INTERVAL);
         }
-        std::process::exit(SHUTDOWN_EXIT_CODE);
+        std::process::exit(i32::from(SHUTDOWN_EXIT_CODE));
     });
 }
 
@@ -1936,6 +1945,11 @@ fn dispatch(options: &Options, registry: &LaunchRegistry) -> Result<(), String> 
         &mut phase_outputs,
         &mut status,
     )?;
+    if registry.is_cancelled() {
+        // A terminated dispatch publishes no envelope: its slots were cut, so a
+        // success-shaped key-value block would misreport the round.
+        return Ok(());
+    }
     write_counter(&options.fallback_counter_file, fallback_count);
     let report = DispatchReport {
         slots: &slots,
