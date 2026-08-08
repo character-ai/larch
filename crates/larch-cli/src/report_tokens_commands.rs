@@ -2,8 +2,8 @@
 //!
 //! One invocation synchronizes the run-log corpus once, scans the selected
 //! skill's runs, prices each one, renders the report, writes the durable NDJSON
-//! cache snapshot and the plot child's input, prints the analysis, and
-//! optionally files the analysis issue.
+//! cache snapshot and the trend charts, prints the analysis, and optionally
+//! files the analysis issue.
 //!
 //! Two boundaries are worth naming. Every advertised artifact lives under one
 //! temporary root that is removed unless something durable was written into it,
@@ -25,9 +25,9 @@ use std::{
 use larch_core::{
     GitHubRepositoryRef, IssueCreateRequest, RunLogSlug, redact, redact_secrets,
     report::{
-        PricedRun, RunLogSelection, TokenCorpusScan, TokenObservation, TokenObservations,
-        TokenScanEvent, assemble_issue_body, cache_ndjson, display_rates, plot_input_json,
-        price_run, render_report, title_for_skill,
+        ALL_RUNS, PricedRun, RunLogSelection, TokenCorpusScan, TokenObservation, TokenObservations,
+        TokenScanEvent, assemble_issue_body, cache_ndjson, cost_plot::render_cost_plot,
+        daily_costs, display_rates, price_run, render_report, title_for_skill,
     },
 };
 
@@ -45,8 +45,6 @@ const BODY_LIMIT: usize = 65_536;
 const EXIT_BAIL: u8 = 4;
 /// Basename of the durable NDJSON snapshot the report advertises.
 const CACHE_BASENAME: &str = "report-cache.ndjson";
-/// Basename of the plot child's JSON input contract.
-const PLOT_INPUT_BASENAME: &str = "plot-input.json";
 
 const OPTIONS: &[&str] = &[
     "--skill",
@@ -292,20 +290,24 @@ fn priced_runs(
 }
 
 /// Print the report body, splitting the advertised cache pointer back out.
-fn print_analysis(analysis: &str, plot_input: Option<&Path>, no_plot: bool) {
+fn print_analysis(analysis: &str, plots: &[PathBuf], no_plot: bool) {
     if let Some((body, suffix)) = analysis.split_once("\n\nCache JSON:") {
         print_redacted(body);
         print_artifact(&format!("Cache JSON:{suffix}"));
     } else {
         print_redacted(analysis);
     }
-    match plot_input {
-        Some(path) if !no_plot => {
-            print_redacted("\nPlot input written to:");
-            print_artifact(&format!("- {}", path.display()));
-        }
-        _absent if no_plot => print_redacted("\nPlot generation disabled."),
-        _absent => print_redacted("\nNo plot input generated."),
+    if no_plot {
+        print_redacted("\nPlot generation disabled.");
+        return;
+    }
+    if plots.is_empty() {
+        print_redacted("\nNo plots generated.");
+        return;
+    }
+    print_redacted("\nPlots written to:");
+    for path in plots {
+        print_artifact(&format!("- {}", path.display()));
     }
 }
 
@@ -450,12 +452,14 @@ fn report(
     } else {
         durable = true;
     }
-    let plot_input = (!request.no_plot)
-        .then(|| write_plot_input(&temp.path, &request.skill, runs))
-        .flatten();
-    durable = durable || plot_input.is_some();
+    let plots = if request.no_plot {
+        Vec::new()
+    } else {
+        write_plots(&temp.path, &request.skill, runs)
+    };
+    durable = durable || !plots.is_empty();
     temp.preserve = durable;
-    print_analysis(&rendered.body, plot_input.as_deref(), request.no_plot);
+    print_analysis(&rendered.body, &plots, request.no_plot);
     if request.no_issue {
         return ExitCode::SUCCESS;
     }
@@ -496,16 +500,18 @@ fn timestamp() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string()
 }
 
-/// Write the plot child's input, reporting a failure without failing the run.
-fn write_plot_input(root: &Path, skill: &str, runs: &[PricedRun]) -> Option<PathBuf> {
-    let path = root.join(PLOT_INPUT_BASENAME);
-    match fs::write(&path, plot_input_json(skill, runs)) {
-        Ok(()) => Some(path),
-        Err(error) => {
-            eprintln!("Warning: could not write the plot input: {error}");
-            None
-        }
+/// Render and write the trend charts, reporting a failure without failing.
+///
+/// A chart is an extra, not the analysis: an unwritable PNG leaves the text
+/// report intact, exactly as the retired matplotlib child's non-zero exit did.
+fn write_plots(root: &Path, skill: &str, runs: &[PricedRun]) -> Vec<PathBuf> {
+    let plot = render_cost_plot(skill, ALL_RUNS, &daily_costs(runs));
+    let path = root.join(&plot.file_name);
+    if let Err(error) = fs::write(&path, &plot.png) {
+        eprintln!("Warning: could not write the trend plot: {error}");
+        return Vec::new();
     }
+    vec![path]
 }
 
 /// Emit the report a corpus with no parseable token report produces.
@@ -519,4 +525,28 @@ fn empty_report(temp: &mut TempRoot) -> ExitCode {
     }
     print_artifact(&format!("Cache JSON: {}", cache_path.display()));
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_plots;
+
+    #[test]
+    fn one_chart_lands_in_the_advertised_root() {
+        let root = tempfile::tempdir().expect("temp root");
+        let written = write_plots(root.path(), "design", &[]);
+        assert_eq!(written.len(), 1);
+        assert_eq!(
+            written[0].file_name().and_then(|name| name.to_str()),
+            Some("larch-report-tokens-all-runs.png")
+        );
+        let bytes = std::fs::read(&written[0]).expect("read the chart");
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn an_unwritable_root_reports_no_chart() {
+        let root = tempfile::tempdir().expect("temp root");
+        assert!(write_plots(&root.path().join("absent"), "design", &[]).is_empty());
+    }
 }

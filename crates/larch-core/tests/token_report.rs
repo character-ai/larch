@@ -1,16 +1,16 @@
 //! Differential parity tests for the `/report-tokens` analyzer and renderer.
 //!
 //! Every expectation under `tests/data/token_report` was recorded from the
-//! Python owner (`larch.report.report_tokens_render`,
-//! `larch.report.report_tokens_issue`, and `larch.report.report_tokens_plot`)
-//! over the same three records before that code was deleted, so a drift in the
-//! Rust renderer shows up as a byte diff rather than a judgement call.
+//! Python owner (`larch.report.report_tokens_render` and
+//! `larch.report.report_tokens_issue`) over the same three records before that
+//! code was deleted, so a drift in the Rust renderer shows up as a byte diff
+//! rather than a judgement call.
 
 use std::{fs, path::PathBuf};
 
 use larch_core::report::{
     PricedRun, ReportSection, RunCost, SectionPriority, TokenPhaseRow, TokenRates, TokenRunRecord,
-    TokenVendor, VendorTotals, assemble_issue_body, cache_ndjson, display_rates, plot_input_json,
+    TokenVendor, VendorTotals, assemble_issue_body, cache_ndjson, daily_costs, display_rates,
     render_report, title_for_skill,
 };
 
@@ -242,14 +242,22 @@ fn cache_rows_match_the_python_owner() {
 }
 
 #[test]
-fn plot_input_matches_the_python_owner() {
-    let runs = runs();
-    for skill in ["design", "implement"] {
-        assert_eq!(
-            plot_input_json(skill, &runs),
-            fixture(&format!("plot-input-{skill}.json"))
-        );
-    }
+fn daily_costs_match_the_python_owner() {
+    // These are the points the retired `plot-input-{design,implement}.json`
+    // fixtures carried for both skills; the chart is rendered in process now,
+    // so the recorded numbers live with the aggregation they came from.
+    assert_eq!(
+        daily_costs(&runs()),
+        vec![
+            ("2026-05-01".to_owned(), 1.86),
+            ("2026-05-02".to_owned(), 0.32),
+        ]
+    );
+}
+
+#[test]
+fn daily_costs_of_no_runs_are_empty() {
+    assert!(daily_costs(&[]).is_empty());
 }
 
 #[test]

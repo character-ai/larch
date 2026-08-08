@@ -128,12 +128,12 @@ umbrella that owns their remaining consumers:
 | `token cost`, `token render-cost-line` | 2 | #7682 | The pricing consumers #8087 and #8088 already deferred there. |
 | The remaining 15 `token` verbs | 15 | #7684 | Research lane capture, ledger dumps, and the `measure-*` analytics, which is #7684's "deterministic models, aggregation, and report inputs" scope. |
 
-One surface this umbrella touched is recorded rather than closed. It does not
-block #7683 and names its own issue. `/report-tokens` still renders its trend
-plots through a matplotlib child that step 2 of `skills/report-tokens/SKILL.md`
-runs, because #8088 declined to add an arbitrary-script process class for a
-chart renderer; #8268 owns that decision. #8267 deleted the two modules the
-audit found orphaned, `python/larch/report/run_log_commit.py` and
+Both surfaces this umbrella touched are now closed. #8268 settled the plot
+question #8088 deferred: `report-tokens analyze` renders its trend chart in
+process, so no arbitrary-script process class was added and
+`skills/report-tokens/SKILL.md` no longer runs a step 2 child. #8267 deleted the
+two modules the audit found orphaned,
+`python/larch/report/run_log_commit.py` and
 `python/larch/report/run_log_legacy_archive.py`.
 
 Direct `bin/larch` execution stays outside this umbrella's surfaces. The
@@ -241,11 +241,28 @@ Two boundaries moved deliberately. The issue post now runs through
 outbound redaction every other larch issue write uses; the retired Python owner
 shelled out to `gh issue create` with no gate at all, and `/report-tokens`
 authorizes its own post with `--operator-invoked` because it is a direct
-operator-requested command. And the matplotlib plot child now runs from step 2
-of `skills/report-tokens/SKILL.md` against the `plot-input.json` the CLI writes,
-rather than from the CLI: larch's process policy has no arbitrary-script class,
-and adding one for a chart renderer is a security-relevant change that belongs
-to its own reviewed leaf, not to a renderer port.
+operator-requested command. And the matplotlib plot child moved from the CLI to
+step 2 of `skills/report-tokens/SKILL.md`, because larch's process policy has no
+arbitrary-script class and adding one for a chart renderer belonged to its own
+reviewed leaf rather than to a renderer port.
+
+Issue 8268 settled that deferred decision the other way and deleted the child.
+`larch_core::report::cost_plot` renders the trend chart, over the small RGB
+canvas and PNG encoder in `larch_core::report::raster`, and
+`report-tokens analyze` writes the PNG beside its NDJSON cache. No
+arbitrary-script process class was added: the program principle is to spawn only
+true external products, a chart renderer is not one, and the alternative would
+have widened the process policy permanently for one image. The deleted
+`skills/report-tokens/scripts/plot-cost-over-time.py`, its contract file, and the
+`plot-input.json` handoff go with it, so `/report-tokens` is a single command
+again and the plugin's last matplotlib requirement is gone.
+
+Three contract points changed with the renderer. Stdout advertises
+`Plots written to:` with the PNG paths where it advertised
+`Plot input written to:` with the JSON path. The chart title separates its series
+label with a colon rather than matplotlib's em dash, which larch's readability
+style bans from user-facing output. And date labels stay horizontal, thinned to
+whatever fits the axis, rather than rotating every label 45 degrees.
 
 `report_tokens_cost`, `report_tokens_models`, `report_tokens_scan`, and
 `analysis_state` stay Python-owned. Issue 8090 removed `larch.report.final_report`
