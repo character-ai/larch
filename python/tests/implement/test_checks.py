@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -3797,9 +3798,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  python-rust-integration:", 1
     )[0]
     python_rust_integration = workflow.split("\n  python-rust-integration:", 1)[1].split(
-        "\n  python-tests-gate:", 1
-    )[0]
-    python_tests_gate = workflow.split("\n  python-tests-gate:", 1)[1].split(
         "\n  gitleaks:", 1
     )[0]
     gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
@@ -4122,7 +4120,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     )[1]
     assert "LLVM_PROFILE_FILE" not in python_test_execution
 
-    assert "needs: [rust-coverage]" in python_rust_integration
+    assert "name: python-tests-gate" in python_rust_integration
+    assert "needs: [rust-coverage, python-tests]" in python_rust_integration
+    assert "if: always()" in python_rust_integration
+    assert "unit_result" in python_rust_integration
+    assert "coverage_result" in python_rust_integration
     assert "LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch" in python_rust_integration
     assert "name: larch-linux-test-binary" in python_rust_integration
     assert "path: .ci-bin" in python_rust_integration
@@ -4134,15 +4136,33 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     integration_execution = python_rust_integration.split(
         "Run Rust-backed Python integration tests", 1
     )[1]
-    assert 'PYTEST_ADDOPTS: "-m rust_integration"' in integration_execution
+    assert "python3 -m pytest --durations=0 -m rust_integration" in integration_execution
+    assert (
+        "tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap"
+        in integration_execution
+    )
+    assert (
+        "tests/git/test_pr_body.py::test_write_final_report_renders_panel_failed_merge_downgrade"
+        in integration_execution
+    )
     assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in integration_execution
 
-    assert "needs: [python-tests, python-rust-integration]" in python_tests_gate
-    assert "unit_result" in python_tests_gate
-    assert "integration_result" in python_tests_gate
     assert "rust_integration: requires the coverage-built Rust larch executable" in python_pyproject
     assert "@pytest.mark.rust_integration\ndef test_consumer_reaches_rust_through_its_bootstrap" in lifecycle_consumer
     assert "@pytest.mark.rust_integration\ndef test_write_final_report_renders_panel_failed_merge_downgrade" in pr_body_tests
+    marker_paths = sorted(
+        path.relative_to(repo_root).as_posix()
+        for path in (repo_root / "python" / "tests").rglob("test_*.py")
+        if re.search(
+            r"^\s*@pytest\.mark\.rust_integration\s*$",
+            path.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+    )
+    assert marker_paths == [
+        "python/tests/git/test_pr_body.py",
+        "python/tests/report/test_run_lifecycle_consumer.py",
+    ]
 
 
 def test_rust_ci_change_selection_observation_contract() -> None:

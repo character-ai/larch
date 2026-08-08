@@ -869,16 +869,28 @@ jobs:
           PYTEST_SHARD_COUNT: "20"
         run: make py-test
 
-  # This is the only Python test that executes the coverage-built Rust binary.
-  # It validates the same-run artifact before exercising the bootstrap, so a
+  # These are the only Python tests that execute the coverage-built Rust
+  # binary. Preserve python-tests-gate as the stable required check while
+  # combining the focused consumer with the gate to avoid another runner tail.
+  # The same-run artifact is validated before either consumer executes, so a
   # missing, stale, or altered binary is a hard failure rather than a skip.
   python-rust-integration:
-    needs: [rust-coverage]
+    name: python-tests-gate
+    needs: [rust-coverage, python-tests]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch
     steps:
+      - name: Require Python unit tests and Rust coverage to pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          unit_result="${{ needs.python-tests.result }}"
+          coverage_result="${{ needs.rust-coverage.result }}"
+          [ "$unit_result" = success ] || { echo "::error::python-tests result=$unit_result"; exit 1; }
+          [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
       - uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -936,23 +948,11 @@ jobs:
         run: pip install -r python/requirements-test.txt
       - name: Run Rust-backed Python integration tests
         env:
-          PYTEST_ADDOPTS: "-m rust_integration"
           # The coverage-instrumented executable must not leave profraw files
-          # in the temporary repository owned by this integration test.
+          # in the temporary repositories owned by these integration tests.
           LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw
-        run: make py-test
-
-  # Aggregate gate for the python-tests matrix (see test-harnesses-gate for the
-  # rationale: one stable required check independent of shard count).
-  python-tests-gate:
-    name: python-tests-gate
-    needs: [python-tests, python-rust-integration]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require Python unit and Rust integration tests to pass
         run: |
-          unit_result="${{ needs.python-tests.result }}"
-          integration_result="${{ needs.python-rust-integration.result }}"
-          [ "$unit_result" = success ] || { echo "::error::python-tests result=$unit_result"; exit 1; }
-          [ "$integration_result" = success ] || { echo "::error::python-rust-integration result=$integration_result"; exit 1; }
+          cd python
+          python3 -m pytest --durations=0 -m rust_integration \
+            tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap \
+            tests/git/test_pr_body.py::test_write_final_report_renders_panel_failed_merge_downgrade
