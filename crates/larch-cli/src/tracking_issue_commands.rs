@@ -29,7 +29,10 @@ use crate::{
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::authorization_request,
 };
-use larch_adapters::github::IssueMutationOwner;
+use larch_adapters::{
+    github::{IssueMutationOwner, OctocrabGitHubService},
+    runtime::Cancellation,
+};
 use larch_core::{
     GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
     IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
@@ -99,6 +102,24 @@ fn refuse(refusal: &Refusal, stderr: bool) -> ExitCode {
         emit_kv("ERROR", &safe);
     }
     ExitCode::from(code)
+}
+
+/// Publish one verb's outcome on the stream its callers parse.
+fn report(outcome: Result<Vec<(&'static str, String)>, Refusal>, stderr: bool) -> ExitCode {
+    match outcome {
+        Ok(rows) => {
+            for (key, value) in &rows {
+                emit_kv(key, &kv_safe(value));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(refusal) => refuse(&refusal, stderr),
+    }
+}
+
+/// Render one boolean the way every contract row spells it.
+fn flag(value: bool) -> String {
+    if value { "true" } else { "false" }.to_owned()
 }
 
 /// Collapse one value into a row a `KEY=value` parser can read.
@@ -271,10 +292,6 @@ pub struct TrackingComment {
 trait TrackingEffects {
     /// Resolve the ambient repository slug, or report that none is known.
     fn resolve_repo(&self) -> Option<String>;
-    /// Read one issue's current title.
-    fn issue_title(&self, repository: &str, issue: &str) -> Result<String, String>;
-    /// Read one issue's current body.
-    fn issue_body(&self, repository: &str, issue: &str) -> Result<String, String>;
     /// Read every comment on one issue.
     fn list_comments(&self, repository: &str, issue: &str) -> Result<Vec<TrackingComment>, String>;
     /// File one issue, reporting its number and URL.
@@ -300,7 +317,7 @@ trait TrackingEffects {
     ) -> Result<TrackingComment, String>;
     /// Apply one title through the shared compare-and-swap owner.
     fn update_title(&self, repository: &str, issue: &str, title: &str) -> Result<(), String>;
-    /// Read the snapshot a lease mutation is proved against.
+    /// Read one issue's current title and body.
     fn read_snapshot(&self, repository: &str, issue: &str) -> Result<(String, String), String>;
     /// Refresh this run's lease, optionally with a new title; report the body.
     fn update_lease(&self, request: &LeaseRequest<'_>) -> Result<String, String>;
@@ -336,54 +353,70 @@ fn service_detail(failure: ServiceFailure) -> String {
     failure.into_detail()
 }
 
+/// Run one operation against the typed identity a verb named.
+///
+/// Every live effect resolves the same identity and enters the same runtime;
+/// only the request differs, so that is the only thing a caller supplies.
+fn with_issue<T>(
+    repository: &str,
+    issue: &str,
+    operation: impl AsyncFnOnce(
+        &OctocrabGitHubService,
+        &Cancellation,
+        &larch_core::GitHubRepositoryRef,
+        u64,
+    ) -> Result<T, String>,
+) -> Result<T, String> {
+    let (reference, number) = identity(repository, issue)?;
+    with_github_service(async |service, cancellation| {
+        operation(service, cancellation, &reference, number).await
+    })
+    .map_err(service_detail)
+}
+
+/// Republish one typed comment as the shape these verbs report.
+fn tracking_comment(comment: larch_core::GitHubComment) -> TrackingComment {
+    TrackingComment {
+        id: comment.id,
+        body: comment.body,
+        url: comment.url,
+    }
+}
+
+/// Apply one already-built mutation request through the shared owner.
+async fn apply_mutation(
+    owner: &IssueMutationOwner<'_>,
+    cancellation: &Cancellation,
+    request: &IssueMutationRequest,
+) -> Result<String, String> {
+    owner
+        .apply(
+            cancellation,
+            &authorization_request("", "", "", true),
+            request,
+        )
+        .await
+        .map(|verified| verified.after.body)
+        .map_err(|error| error.reason().to_owned())
+}
+
 impl TrackingEffects for LiveEffects {
     fn resolve_repo(&self) -> Option<String> {
         ambient_repo()
     }
 
-    fn issue_title(&self, repository: &str, issue: &str) -> Result<String, String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            service
-                .issue(&reference, number, cancellation)
-                .await
-                .map(|issue| issue.title)
-                .map_err(|error| error.to_string())
-        })
-        .map_err(service_detail)
-    }
-
-    fn issue_body(&self, repository: &str, issue: &str) -> Result<String, String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            service
-                .issue(&reference, number, cancellation)
-                .await
-                .map(|issue| issue.body)
-                .map_err(|error| error.to_string())
-        })
-        .map_err(service_detail)
-    }
-
     fn list_comments(&self, repository: &str, issue: &str) -> Result<Vec<TrackingComment>, String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            service
-                .list_comments(&reference, number, cancellation)
-                .await
-                .map(|comments| {
-                    comments
-                        .into_iter()
-                        .map(|comment| TrackingComment {
-                            id: comment.id,
-                            body: comment.body,
-                            url: comment.url,
-                        })
-                        .collect()
-                })
-                .map_err(|error| error.to_string())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            issue,
+            async |service, cancel, reference, number| {
+                service
+                    .list_comments(reference, number, cancel)
+                    .await
+                    .map(|comments| comments.into_iter().map(tracking_comment).collect())
+                    .map_err(|error| error.to_string())
+            },
+        )
     }
 
     fn create_issue(
@@ -392,25 +425,23 @@ impl TrackingEffects for LiveEffects {
         title: &str,
         body: &str,
     ) -> Result<(String, String), String> {
-        let (reference, _) = identity(repository, "1")?;
-        let request = IssueCreateRequest {
-            repository: reference,
-            title: title.to_owned(),
-            body: body.to_owned(),
-            labels: Vec::new(),
-        };
-        with_github_service(async |service, cancellation| {
-            IssueMutationOwner::new(service)
-                .create(
-                    cancellation,
-                    &authorization_request("", "", "", true),
-                    &request,
-                )
-                .await
-                .map(|created| (created.number.to_string(), created.url))
-                .map_err(|failure| failure.message())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            "1",
+            async |service, cancel, reference, _number| {
+                let request = IssueCreateRequest {
+                    repository: reference.clone(),
+                    title: title.to_owned(),
+                    body: body.to_owned(),
+                    labels: Vec::new(),
+                };
+                IssueMutationOwner::new(service)
+                    .create(cancel, &authorization_request("", "", "", true), &request)
+                    .await
+                    .map(|created| (created.number.to_string(), created.url))
+                    .map_err(|failure| failure.message())
+            },
+        )
     }
 
     fn create_comment(
@@ -419,19 +450,17 @@ impl TrackingEffects for LiveEffects {
         issue: &str,
         body: &str,
     ) -> Result<TrackingComment, String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            service
-                .create_comment(&reference, number, body, cancellation)
-                .await
-                .map(|comment| TrackingComment {
-                    id: comment.id,
-                    body: comment.body,
-                    url: comment.url,
-                })
-                .map_err(|error| error.to_string())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            issue,
+            async |service, cancel, reference, number| {
+                service
+                    .create_comment(reference, number, body, cancel)
+                    .await
+                    .map(tracking_comment)
+                    .map_err(|error| error.to_string())
+            },
+        )
     }
 
     fn edit_comment(
@@ -440,75 +469,65 @@ impl TrackingEffects for LiveEffects {
         comment_id: u64,
         body: &str,
     ) -> Result<TrackingComment, String> {
-        let (reference, _) = identity(repository, "1")?;
-        with_github_service(async |service, cancellation| {
-            service
-                .edit_comment(&reference, comment_id, body, cancellation)
-                .await
-                .map(|comment| TrackingComment {
-                    id: comment.id,
-                    body: comment.body,
-                    url: comment.url,
-                })
-                .map_err(|error| error.to_string())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            "1",
+            async |service, cancel, reference, _number| {
+                service
+                    .edit_comment(reference, comment_id, body, cancel)
+                    .await
+                    .map(tracking_comment)
+                    .map_err(|error| error.to_string())
+            },
+        )
     }
 
     fn update_title(&self, repository: &str, issue: &str, title: &str) -> Result<(), String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            let owner = IssueMutationOwner::new(service);
-            let before = owner
-                .read_snapshot(&reference, number, cancellation)
-                .await
-                .map_err(|error| error.reason().to_owned())?;
-            let request = title_request(&before, &reference, number, title);
-            owner
-                .apply(
-                    cancellation,
-                    &authorization_request("", "", "", true),
-                    &request,
-                )
-                .await
-                .map(|_verified| ())
-                .map_err(|error| error.reason().to_owned())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            issue,
+            async |service, cancel, reference, number| {
+                let owner = IssueMutationOwner::new(service);
+                let before = owner
+                    .read_snapshot(reference, number, cancel)
+                    .await
+                    .map_err(|error| error.reason().to_owned())?;
+                let request = title_request(&before, reference, number, title);
+                apply_mutation(&owner, cancel, &request)
+                    .await
+                    .map(|_body| ())
+            },
+        )
     }
 
     fn read_snapshot(&self, repository: &str, issue: &str) -> Result<(String, String), String> {
-        let (reference, number) = identity(repository, issue)?;
-        with_github_service(async |service, cancellation| {
-            IssueMutationOwner::new(service)
-                .read_snapshot(&reference, number, cancellation)
-                .await
-                .map(|snapshot| (snapshot.title, snapshot.body))
-                .map_err(|error| error.reason().to_owned())
-        })
-        .map_err(service_detail)
+        with_issue(
+            repository,
+            issue,
+            async |service, cancel, reference, number| {
+                IssueMutationOwner::new(service)
+                    .read_snapshot(reference, number, cancel)
+                    .await
+                    .map(|snapshot| (snapshot.title, snapshot.body))
+                    .map_err(|error| error.reason().to_owned())
+            },
+        )
     }
 
     fn update_lease(&self, request: &LeaseRequest<'_>) -> Result<String, String> {
-        let (reference, number) = identity(request.repository, request.issue)?;
-        with_github_service(async |service, cancellation| {
-            let owner = IssueMutationOwner::new(service);
-            let before = owner
-                .read_snapshot(&reference, number, cancellation)
-                .await
-                .map_err(|error| error.reason().to_owned())?;
-            let mutation = lease_request(&before, &reference, number, request);
-            owner
-                .apply(
-                    cancellation,
-                    &authorization_request("", "", "", true),
-                    &mutation,
-                )
-                .await
-                .map(|verified| verified.after.body)
-                .map_err(|error| error.reason().to_owned())
-        })
-        .map_err(service_detail)
+        with_issue(
+            request.repository,
+            request.issue,
+            async |service, cancel, reference, number| {
+                let owner = IssueMutationOwner::new(service);
+                let before = owner
+                    .read_snapshot(reference, number, cancel)
+                    .await
+                    .map_err(|error| error.reason().to_owned())?;
+                let mutation = lease_request(&before, reference, number, request);
+                apply_mutation(&owner, cancel, &mutation).await
+            },
+        )
     }
 }
 
@@ -593,19 +612,16 @@ pub fn create_issue(arguments: &[OsString]) -> ExitCode {
     ) else {
         return ExitCode::from(1);
     };
-    match create_issue_with(
-        &LiveEffects,
-        &text(&parsed, "--title"),
-        &text(&parsed, "--body-file"),
-        optional(&parsed, "--repo").as_deref(),
-    ) {
-        Ok((number, url)) => {
-            emit_kv("ISSUE_NUMBER", &kv_safe(&number));
-            emit_kv("ISSUE_URL", &kv_safe(&url));
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, false),
-    }
+    report(
+        create_issue_with(
+            &LiveEffects,
+            &text(&parsed, "--title"),
+            &text(&parsed, "--body-file"),
+            optional(&parsed, "--repo").as_deref(),
+        )
+        .map(|(number, url)| vec![("ISSUE_NUMBER", number), ("ISSUE_URL", url)]),
+        false,
+    )
 }
 
 /// Read the body, redact both fields, then perform the one create.
@@ -643,20 +659,17 @@ pub fn append_comment(arguments: &[OsString]) -> ExitCode {
     ) else {
         return ExitCode::from(1);
     };
-    match append_comment_with(
-        &LiveEffects,
-        &text(&parsed, "--issue"),
-        &text(&parsed, "--body-file"),
-        optional(&parsed, "--lifecycle-marker").as_deref(),
-        optional(&parsed, "--repo").as_deref(),
-    ) {
-        Ok((id, url)) => {
-            emit_kv("COMMENT_ID", &kv_safe(&id));
-            emit_kv("COMMENT_URL", &kv_safe(&url));
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, false),
-    }
+    report(
+        append_comment_with(
+            &LiveEffects,
+            &text(&parsed, "--issue"),
+            &text(&parsed, "--body-file"),
+            optional(&parsed, "--lifecycle-marker").as_deref(),
+            optional(&parsed, "--repo").as_deref(),
+        )
+        .map(|(id, url)| vec![("COMMENT_ID", id), ("COMMENT_URL", url)]),
+        false,
+    )
 }
 
 /// Validate the identity and marker, then publish one redacted comment.
@@ -719,20 +732,17 @@ pub fn rename(arguments: &[OsString]) -> ExitCode {
     ) else {
         return ExitCode::from(1);
     };
-    match rename_with(
-        &LiveEffects,
-        &text(&parsed, "--issue"),
-        &text(&parsed, "--state"),
-        optional(&parsed, "--repo").as_deref(),
-        &optional(&parsed, "--run-id").unwrap_or_default(),
-    ) {
-        Ok((renamed, title)) => {
-            emit_kv("RENAMED", if renamed { "true" } else { "false" });
-            emit_kv("NEW_TITLE", &kv_safe(&title));
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, false),
-    }
+    report(
+        rename_with(
+            &LiveEffects,
+            &text(&parsed, "--issue"),
+            &text(&parsed, "--state"),
+            optional(&parsed, "--repo").as_deref(),
+            &optional(&parsed, "--run-id").unwrap_or_default(),
+        )
+        .map(|(renamed, title)| vec![("RENAMED", flag(renamed)), ("NEW_TITLE", title)]),
+        false,
+    )
 }
 
 /// Decide the new title, then apply it as a plain or lease-bound write.
@@ -747,7 +757,7 @@ fn rename_with(
     let prefix = prefix_for_state(state)?;
     let resolved = resolve_repo(effects, repository)?;
     if run_id.is_empty() {
-        let current = effects.issue_title(&resolved, issue).map_err(|error| {
+        let (current, _) = effects.read_snapshot(&resolved, issue).map_err(|error| {
             Refusal::failed(format!("gh issue view failed: {}", redact_gh_error(&error)))
         })?;
         return rename_plain(effects, issue, prefix, &resolved, &current);
@@ -846,18 +856,15 @@ pub fn mark_false_positive(arguments: &[OsString]) -> ExitCode {
     ) else {
         return ExitCode::from(1);
     };
-    match mark_false_positive_with(
-        &LiveEffects,
-        &text(&parsed, "--issue"),
-        optional(&parsed, "--repo").as_deref(),
-    ) {
-        Ok((marked, title)) => {
-            emit_kv("MARKED", if marked { "true" } else { "false" });
-            emit_kv("NEW_TITLE", &kv_safe(&title));
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, false),
-    }
+    report(
+        mark_false_positive_with(
+            &LiveEffects,
+            &text(&parsed, "--issue"),
+            optional(&parsed, "--repo").as_deref(),
+        )
+        .map(|(marked, title)| vec![("MARKED", flag(marked)), ("NEW_TITLE", title)]),
+        false,
+    )
 }
 
 /// Insert the signal marker, writing only when the title actually changes.
@@ -868,7 +875,7 @@ fn mark_false_positive_with(
 ) -> Result<(bool, String), Refusal> {
     require_numeric_issue(issue)?;
     let resolved = resolve_repo(effects, repository)?;
-    let current = effects.issue_title(&resolved, issue).map_err(|error| {
+    let (current, _) = effects.read_snapshot(&resolved, issue).map_err(|error| {
         Refusal::failed(format!("gh issue view failed: {}", redact_gh_error(&error)))
     })?;
     let redacted = redact_compose(&current, "tracking-issue title")?;
@@ -905,30 +912,18 @@ pub fn upsert_summary(arguments: &[OsString]) -> ExitCode {
     ) else {
         return ExitCode::from(1);
     };
-    let marker = text(&parsed, "--marker");
-    let issue = text(&parsed, "--issue");
-    let repository = optional(&parsed, "--repo");
-    match upsert_summary_with(
-        &LiveEffects,
-        &issue,
-        &marker,
-        &text(&parsed, "--content-file"),
-        repository.as_deref(),
-        optional(&parsed, "--comment-id").as_deref(),
-    ) {
-        Ok((comment_id, comment_url, updated)) => {
-            if let Err(refusal) =
-                refresh_run_lease(&LiveEffects, &issue, &marker, repository.as_deref())
-            {
-                return refuse(&refusal, true);
-            }
-            emit_kv("COMMENT_ID", &kv_safe(&comment_id));
-            emit_kv("COMMENT_URL", &kv_safe(&comment_url));
-            emit_kv("UPDATED", if updated { "true" } else { "false" });
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, true),
-    }
+    report(
+        upsert_summary_with(
+            &LiveEffects,
+            &text(&parsed, "--issue"),
+            &text(&parsed, "--marker"),
+            &text(&parsed, "--content-file"),
+            optional(&parsed, "--repo").as_deref(),
+            optional(&parsed, "--comment-id").as_deref(),
+            &env::var("RUN_ID").unwrap_or_default(),
+        ),
+        true,
+    )
 }
 
 /// Accept only a single-line `<!-- larch:… -->` marker.
@@ -979,7 +974,8 @@ fn upsert_summary_with(
     content_file: &str,
     repository: Option<&str>,
     comment_id: Option<&str>,
-) -> Result<(String, String, bool), Refusal> {
+    current_run: &str,
+) -> Result<Vec<(&'static str, String)>, Refusal> {
     require_numeric_issue(issue)?;
     validate_marker_shape(marker)?;
     let declared = match comment_id {
@@ -1013,7 +1009,8 @@ fn upsert_summary_with(
             })?;
         let (id, url) =
             comment_anchor(&comment.url).unwrap_or_else(|| (String::new(), comment.url.clone()));
-        return Ok((id, url, false));
+        refresh_run_lease(effects, issue, marker, Some(&resolved), current_run)?;
+        return Ok(summary_rows(&id, &url, false));
     };
     if ids.len() > 1 {
         let flat = ids
@@ -1033,7 +1030,17 @@ fn upsert_summary_with(
                 redact_gh_error(&error)
             ))
         })?;
-    Ok((first.to_string(), comment.url, true))
+    refresh_run_lease(effects, issue, marker, Some(&resolved), current_run)?;
+    Ok(summary_rows(&first.to_string(), &comment.url, true))
+}
+
+/// Render the three rows one summary upsert publishes.
+fn summary_rows(comment_id: &str, comment_url: &str, updated: bool) -> Vec<(&'static str, String)> {
+    vec![
+        ("COMMENT_ID", comment_id.to_owned()),
+        ("COMMENT_URL", comment_url.to_owned()),
+        ("UPDATED", flag(updated)),
+    ]
 }
 
 /// Refresh this run's lease when the marker names the run the caller is in.
@@ -1047,11 +1054,12 @@ fn refresh_run_lease(
     issue: &str,
     marker: &str,
     repository: Option<&str>,
+    current_run: &str,
 ) -> Result<(), Refusal> {
     let Some(run_id) = marker_run_id(marker) else {
         return Ok(());
     };
-    if env::var("RUN_ID").unwrap_or_default() != run_id {
+    if current_run.is_empty() || current_run != run_id {
         return Ok(());
     }
     let resolved = resolve_repo(effects, repository)?;
@@ -1128,15 +1136,7 @@ pub fn read(arguments: &[OsString]) -> ExitCode {
         Err(None) => return ExitCode::from(1),
         Err(Some(refusal)) => return refuse(&refusal, false),
     };
-    match read_with(&LiveEffects, &scanned) {
-        Ok(rows) => {
-            for (key, value) in rows {
-                emit_kv(key, &kv_safe(&value));
-            }
-            ExitCode::SUCCESS
-        }
-        Err(refusal) => refuse(&refusal, false),
-    }
+    report(read_with(&LiveEffects, &scanned), false)
 }
 
 /// Scan the strict `--flag value` line, refusing anything else.
@@ -1305,7 +1305,7 @@ fn render_task(
     issue: &str,
     repository: &str,
 ) -> Result<String, Refusal> {
-    let body = effects.issue_body(repository, issue).map_err(|error| {
+    let (_, body) = effects.read_snapshot(repository, issue).map_err(|error| {
         Refusal::failed(format!(
             "gh api issue fetch failed: {}",
             redact_gh_error(&error)
@@ -1502,7 +1502,7 @@ mod tests {
         DONE_PREFIX, IMPLEMENTING_PREFIX, ImplementationLease, LIFECYCLE_PREFIXES,
         render_implementation_lease,
     };
-    use std::{cell::RefCell, fs, path::Path};
+    use std::{cell::RefCell, ffi::OsString, fs, path::Path, process::ExitCode};
     use tempfile::TempDir;
 
     /// One replaceable effects double recording every write it performed.
@@ -1528,16 +1528,6 @@ mod tests {
     impl TrackingEffects for FakeEffects {
         fn resolve_repo(&self) -> Option<String> {
             self.repo.clone()
-        }
-
-        fn issue_title(&self, _repository: &str, _issue: &str) -> Result<String, String> {
-            self.fail
-                .clone()
-                .map_or_else(|| Ok(self.title.clone()), Err)
-        }
-
-        fn issue_body(&self, _repository: &str, _issue: &str) -> Result<String, String> {
-            self.fail.clone().map_or_else(|| Ok(self.body.clone()), Err)
         }
 
         fn list_comments(
@@ -1815,10 +1805,10 @@ mod tests {
         let marker = "<!-- larch:metadata v1 -->";
         let effects = FakeEffects::with_repo();
         assert_eq!(
-            upsert_summary_with(&effects, "7", marker, &content, None, None),
-            Ok((
-                "11".to_owned(),
-                "https://example.test/issues/7#issuecomment-11".to_owned(),
+            upsert_summary_with(&effects, "7", marker, &content, None, None, ""),
+            Ok(super::summary_rows(
+                "11",
+                "https://example.test/issues/7#issuecomment-11",
                 false
             ))
         );
@@ -1828,10 +1818,13 @@ mod tests {
             body: format!("{marker}\n\nold"),
             url: "https://example.test/issues/7#issuecomment-42".to_owned(),
         }];
-        let updated = upsert_summary_with(&existing, "7", marker, &content, None, None)
+        let updated = upsert_summary_with(&existing, "7", marker, &content, None, None, "")
             .expect("replacement succeeds");
-        assert_eq!(updated.0, "42");
-        assert!(updated.2, "a replacement reports UPDATED=true");
+        assert_eq!(
+            updated,
+            super::summary_rows("42", "https://example.test/issues/7#issuecomment-42", true),
+            "a replacement reports the same comment and UPDATED=true"
+        );
         let mut duplicated = FakeEffects::with_repo();
         duplicated.comments = vec![
             TrackingComment {
@@ -1846,17 +1839,17 @@ mod tests {
             },
         ];
         assert_eq!(
-            upsert_summary_with(&duplicated, "7", marker, &content, None, None),
+            upsert_summary_with(&duplicated, "7", marker, &content, None, None, ""),
             Err(Refusal::failed(
                 "multiple summary comments found for marker (ids: 42,43)"
             ))
         );
         assert_eq!(
-            upsert_summary_with(&effects, "7", "bare", &content, None, None),
+            upsert_summary_with(&effects, "7", "bare", &content, None, None, ""),
             Err(Refusal::usage("invalid marker: bare"))
         );
         assert_eq!(
-            upsert_summary_with(&effects, "7", marker, &content, None, Some("x1")),
+            upsert_summary_with(&effects, "7", marker, &content, None, Some("x1"), ""),
             Err(Refusal::usage("invalid comment id: x1"))
         );
     }
@@ -1926,5 +1919,516 @@ mod tests {
                 "sentinel file not found: /nonexistent-sentinel"
             ))
         );
+    }
+
+    #[test]
+    fn every_verb_refuses_its_own_line_before_it_reaches_github() {
+        // Each of these refuses inside its own validation, so the assertions
+        // prove the public entry points without a client, a credential, or a
+        // resolved repository.
+        let directory = TempDir::new().expect("sandbox");
+        let missing = directory.path().join("absent.md");
+        let missing = OsString::from(missing);
+        for (verb, arguments) in [
+            (
+                "create-issue",
+                vec![
+                    OsString::from("--title"),
+                    OsString::from("Title"),
+                    OsString::from("--body-file"),
+                    missing.clone(),
+                ],
+            ),
+            (
+                "append-comment",
+                vec![
+                    OsString::from("--issue"),
+                    OsString::from("abc"),
+                    OsString::from("--body-file"),
+                    missing.clone(),
+                ],
+            ),
+            (
+                "rename",
+                vec![
+                    OsString::from("--issue"),
+                    OsString::from("7"),
+                    OsString::from("--state"),
+                    OsString::from("shipped"),
+                ],
+            ),
+            (
+                "mark-false-positive",
+                vec![OsString::from("--issue"), OsString::from("abc")],
+            ),
+            (
+                "upsert-summary",
+                vec![
+                    OsString::from("--issue"),
+                    OsString::from("7"),
+                    OsString::from("--marker"),
+                    OsString::from("bare"),
+                    OsString::from("--content-file"),
+                    missing,
+                ],
+            ),
+        ] {
+            let code = match verb {
+                "create-issue" => super::create_issue(&arguments),
+                "append-comment" => super::append_comment(&arguments),
+                "rename" => super::rename(&arguments),
+                "mark-false-positive" => super::mark_false_positive(&arguments),
+                _ => super::upsert_summary(&arguments),
+            };
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::from(1)),
+                "{verb}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_verb_publishes_its_argparse_usage_when_a_required_option_is_absent() {
+        for verb in [
+            "create-issue",
+            "append-comment",
+            "rename",
+            "mark-false-positive",
+            "upsert-summary",
+        ] {
+            let code = match verb {
+                "create-issue" => super::create_issue(&[]),
+                "append-comment" => super::append_comment(&[]),
+                "rename" => super::rename(&[]),
+                "mark-false-positive" => super::mark_false_positive(&[]),
+                _ => super::upsert_summary(&[]),
+            };
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::from(1)),
+                "{verb}"
+            );
+            let unknown = [OsString::from("--nope"), OsString::from("x")];
+            let refused = match verb {
+                "create-issue" => super::create_issue(&unknown),
+                "append-comment" => super::append_comment(&unknown),
+                "rename" => super::rename(&unknown),
+                "mark-false-positive" => super::mark_false_positive(&unknown),
+                _ => super::upsert_summary(&unknown),
+            };
+            assert_eq!(
+                format!("{refused:?}"),
+                format!("{:?}", ExitCode::from(1)),
+                "{verb}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_read_scanner_refuses_every_combination_the_renderer_cannot_serve() {
+        let directory = TempDir::new().expect("sandbox");
+        let sandbox = OsString::from(directory.path());
+        for arguments in [
+            vec![OsString::from("--nope"), OsString::from("x")],
+            vec![OsString::from("--issue")],
+            vec![
+                OsString::from("--max-comments"),
+                OsString::from("x"),
+                OsString::from("--out-dir"),
+                sandbox.clone(),
+            ],
+            vec![
+                OsString::from("--sentinel"),
+                OsString::from("/absent"),
+                OsString::from("--issue"),
+                OsString::from("7"),
+            ],
+            vec![
+                OsString::from("--issue"),
+                OsString::from("7"),
+                OsString::from("--prompt"),
+                OsString::from("p"),
+            ],
+            vec![OsString::from("--issue"), OsString::from("7")],
+            vec![OsString::from("--prompt"), OsString::from("p")],
+            vec![],
+            vec![
+                OsString::from("--issue"),
+                OsString::from("abc"),
+                OsString::from("--out-dir"),
+                sandbox,
+            ],
+            vec![
+                OsString::from("--out-dir"),
+                OsString::from("/absent-out-dir"),
+                OsString::from("--prompt"),
+                OsString::from("p"),
+            ],
+        ] {
+            assert_eq!(
+                format!("{:?}", super::read(&arguments)),
+                format!("{:?}", ExitCode::from(1)),
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_serves_the_sentinel_and_prompt_branches_without_a_client() {
+        let directory = TempDir::new().expect("sandbox");
+        let sentinel = write(
+            directory.path(),
+            "parent-issue.md",
+            "ISSUE_NUMBER=7\nRUN_ID=run-1\nADOPTED=true\n",
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                super::read(&[OsString::from("--sentinel"), OsString::from(sentinel)])
+            ),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        let sandbox = OsString::from(directory.path());
+        assert_eq!(
+            format!(
+                "{:?}",
+                super::read(&[
+                    OsString::from("--prompt"),
+                    OsString::from("do the thing"),
+                    OsString::from("--out-dir"),
+                    sandbox,
+                ])
+            ),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        let rendered = fs::read_to_string(directory.path().join("task.md")).expect("task file");
+        assert_eq!(rendered, "do the thing");
+    }
+
+    #[test]
+    fn a_transport_diagnostic_is_redacted_bounded_and_never_empty() {
+        assert_eq!(super::redact_gh_error("  \n  "), "gh failure");
+        assert_eq!(
+            super::redact_gh_error("token ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
+            "token <REDACTED-TOKEN>"
+        );
+        assert_eq!(super::redact_gh_error(&"x".repeat(900)).len(), 500);
+        assert_eq!(super::redact_gh_error("one\ntwo"), "one two");
+        assert_eq!(
+            Refusal::Redaction("tracking-issue title").envelope(),
+            (
+                "redaction: redaction failed for tracking-issue title".to_owned(),
+                3
+            )
+        );
+        assert_eq!(super::kv_safe(" a\r\nb "), "a  b");
+        assert_eq!(
+            super::service_detail(crate::github_service::ServiceFailure::Setup(
+                "no runtime".to_owned()
+            )),
+            "no runtime"
+        );
+        assert_eq!(
+            super::identity("owner", "7"),
+            Err("invalid-identity".to_owned())
+        );
+        assert_eq!(
+            super::identity("owner/repo", "x"),
+            Err("invalid-identity".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_lease_heartbeat_stays_silent_unless_the_marker_names_this_run() {
+        let effects = FakeEffects::with_repo();
+        // No `runid=` field at all.
+        assert_eq!(
+            super::refresh_run_lease(&effects, "7", "<!-- larch:metadata v1 -->", None, "run-1"),
+            Ok(())
+        );
+        // A `runid=` the environment does not name.
+        assert_eq!(
+            super::refresh_run_lease(
+                &effects,
+                "7",
+                "<!-- larch:metadata v1 runid=other-run -->",
+                None,
+                "run-1"
+            ),
+            Ok(())
+        );
+        assert!(effects.writes.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_mutation_request_carries_only_the_fields_its_verb_declared() {
+        let reference =
+            larch_core::GitHubRepositoryRef::new("owner", "repo").expect("valid reference");
+        let before = larch_core::IssueMutationSnapshot {
+            repository: reference.clone(),
+            issue: 7,
+            title: "old".to_owned(),
+            body: "body".to_owned(),
+            labels: std::collections::BTreeSet::new(),
+            state: larch_core::GitHubIssueState::Open,
+            updated_at: "2026-08-08T00:00:00Z".to_owned(),
+        };
+        let title = super::title_request(&before, &reference, 7, "new");
+        assert_eq!(
+            title.fields,
+            std::collections::BTreeSet::from([larch_core::IssueMutationField::Title])
+        );
+        assert!(title.lease.is_none());
+        let without_title = super::lease_request(
+            &before,
+            &reference,
+            7,
+            &LeaseRequest {
+                repository: "owner/repo",
+                issue: "7",
+                body: "next",
+                run_id: "run-1",
+                title: None,
+            },
+        );
+        assert_eq!(
+            without_title.fields,
+            std::collections::BTreeSet::from([larch_core::IssueMutationField::ImplementationLease])
+        );
+        let with_title = super::lease_request(
+            &before,
+            &reference,
+            7,
+            &LeaseRequest {
+                repository: "owner/repo",
+                issue: "7",
+                body: "next",
+                run_id: "run-1",
+                title: Some("new"),
+            },
+        );
+        assert!(
+            with_title
+                .fields
+                .contains(&larch_core::IssueMutationField::Title)
+        );
+        assert_eq!(
+            with_title.lease.map(|lease| lease.run_id),
+            Some("run-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_transport_failure_reaches_every_verb_as_a_refusal_at_exit_two() {
+        let directory = TempDir::new().expect("sandbox");
+        let body = write(directory.path(), "body.md", "content\n");
+        let failing = FakeEffects {
+            repo: Some("owner/repo".to_owned()),
+            fail: Some("token ghp_abcdefghijklmnopqrstuvwxyz0123456789 refused".to_owned()),
+            ..FakeEffects::default()
+        };
+        let refusals = vec![
+            create_issue_with(&failing, "Title", &body, None).map(|_| ()),
+            append_comment_with(&failing, "7", &body, None, None).map(|_| ()),
+            rename_with(&failing, "7", "done", None, "").map(|_| ()),
+            mark_false_positive_with(&failing, "7", None).map(|_| ()),
+            upsert_summary_with(
+                &failing,
+                "7",
+                "<!-- larch:metadata v1 -->",
+                &body,
+                None,
+                None,
+                "",
+            )
+            .map(|_| ()),
+        ];
+        for refusal in refusals {
+            let error = refusal.expect_err("a transport failure refuses");
+            let (message, code) = error.envelope();
+            assert_eq!(code, 2, "{message}");
+            assert!(
+                !message.contains("ghp_"),
+                "a transport diagnostic must be redacted before it is published: {message}"
+            );
+        }
+        // The lease branches report the same code through their own arm.
+        let lease_failure = rename_with(&failing, "7", "done", None, "run-1")
+            .expect_err("a snapshot failure refuses");
+        assert_eq!(lease_failure.envelope().1, 2);
+        // A summary upsert whose comment listing fails names its own step.
+        let listed = upsert_summary_with(
+            &failing,
+            "7",
+            "<!-- larch:metadata v1 -->",
+            &body,
+            None,
+            Some("42"),
+            "",
+        )
+        .expect_err("a patch failure refuses");
+        assert!(
+            listed
+                .envelope()
+                .0
+                .starts_with("gh api comment patch failed:"),
+            "{:?}",
+            listed.envelope()
+        );
+    }
+
+    #[test]
+    fn a_body_that_cannot_be_redacted_refuses_before_anything_is_published() {
+        let directory = TempDir::new().expect("sandbox");
+        // An unterminated PEM block is the one shape redaction cannot complete.
+        let unterminated = write(
+            directory.path(),
+            "leaky.md",
+            "-----BEGIN PRIVATE KEY-----\nabcdef\n",
+        );
+        let effects = FakeEffects::with_repo();
+        let refusal = create_issue_with(&effects, "Title", &unterminated, None)
+            .expect_err("a failed redaction refuses");
+        assert_eq!(
+            refusal,
+            Refusal::Redaction("tracking-issue body"),
+            "the refusal names the field it could not redact"
+        );
+        assert_eq!(refusal.envelope().1, 3);
+        assert!(
+            effects.writes.borrow().is_empty(),
+            "nothing may be published when redaction failed closed"
+        );
+    }
+
+    #[test]
+    fn a_summary_upsert_from_the_owning_run_refreshes_that_run_s_lease() {
+        let directory = TempDir::new().expect("sandbox");
+        let content = write(directory.path(), "summary.md", "Summary\n");
+        let lease = ImplementationLease {
+            run_id: "run-1".to_owned(),
+            branch: "work".to_owned(),
+            base: "a".repeat(40),
+            plan: "b".repeat(64),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let rendered = render_implementation_lease(&lease).expect("lease renders");
+        let mut effects = FakeEffects::with_repo();
+        effects.title = format!("{IMPLEMENTING_PREFIX}Work");
+        effects.body = format!("Body\n\n{rendered}\n");
+        let marker = "<!-- larch:metadata v1 runid=run-1 -->";
+        let rows = upsert_summary_with(&effects, "7", marker, &content, None, None, "run-1")
+            .expect("upsert succeeds");
+        assert_eq!(rows[2], ("UPDATED", "false".to_owned()));
+        assert!(
+            effects
+                .writes
+                .borrow()
+                .iter()
+                .any(|write| write == "lease:run-1"),
+            "the owning run's heartbeat must reach the mutation owner: {:?}",
+            effects.writes.borrow()
+        );
+
+        // A title that no longer says implementation is active is not a run to
+        // heartbeat for, so the same call performs no lease write at all.
+        let mut finished = FakeEffects::with_repo();
+        finished.title = format!("{DONE_PREFIX}Work");
+        finished.body = format!("Body\n\n{rendered}\n");
+        let _rows = upsert_summary_with(&finished, "7", marker, &content, None, None, "run-1")
+            .expect("upsert succeeds");
+        assert!(
+            !finished
+                .writes
+                .borrow()
+                .iter()
+                .any(|write| write == "lease:run-1"),
+            "a finished title carries no heartbeat"
+        );
+
+        // A body whose lease belongs to another run refuses rather than steals.
+        let mut foreign = FakeEffects::with_repo();
+        foreign.title = format!("{IMPLEMENTING_PREFIX}Work");
+        foreign.body = "Body\n".to_owned();
+        let refusal = upsert_summary_with(&foreign, "7", marker, &content, None, None, "run-1")
+            .expect_err("a missing lease refuses");
+        assert!(
+            refusal
+                .envelope()
+                .0
+                .contains("implementation-lease-run-mismatch"),
+            "{:?}",
+            refusal.envelope()
+        );
+    }
+
+    #[test]
+    fn read_accepts_cap_overrides_and_appends_the_prompt_it_renders() {
+        let directory = TempDir::new().expect("sandbox");
+        let mut effects = FakeEffects::with_repo();
+        effects.body = "Issue body".to_owned();
+        effects.comments = vec![
+            TrackingComment {
+                id: 1,
+                body: "first".to_owned(),
+                url: String::new(),
+            },
+            TrackingComment {
+                id: 2,
+                body: "second".to_owned(),
+                url: String::new(),
+            },
+        ];
+        let scanned = ReadArguments {
+            issue: Some("7".to_owned()),
+            prompt: Some("extra instruction".to_owned()),
+            out_dir: Some(directory.path().to_string_lossy().into_owned()),
+            max_body_chars: 8000,
+            // One comment fits; the second announces the count cut.
+            max_comments: 1,
+            max_total_chars: 100_000,
+            cap_overrides: true,
+            ..ReadArguments::default()
+        };
+        let rows = read_with(&effects, &scanned).expect("render succeeds");
+        assert_eq!(rows[1].1, "issue-plus-prompt");
+        let rendered = fs::read_to_string(directory.path().join("task.md")).expect("task file");
+        assert!(rendered.contains("[TRUNCATED — comment-count exceeded 1 comments]"));
+        assert!(rendered.trim_end().ends_with("extra instruction"));
+        assert!(
+            effects
+                .writes
+                .borrow()
+                .iter()
+                .any(|write| write.starts_with("comment:extra instruction")),
+            "a prompt supplied with an issue is also appended as a comment"
+        );
+    }
+
+    #[test]
+    fn the_read_scanner_accepts_every_cap_override_it_declares() {
+        let directory = TempDir::new().expect("sandbox");
+        let sandbox = OsString::from(directory.path());
+        assert_eq!(
+            format!(
+                "{:?}",
+                super::read(&[
+                    OsString::from("--max-body-chars"),
+                    OsString::from("10"),
+                    OsString::from("--max-comments"),
+                    OsString::from("2"),
+                    OsString::from("--max-total-chars"),
+                    OsString::from("40"),
+                    OsString::from("--prompt"),
+                    OsString::from("a long prompt that the total cap will cut"),
+                    OsString::from("--out-dir"),
+                    sandbox,
+                ])
+            ),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        let rendered = fs::read_to_string(directory.path().join("task.md")).expect("task file");
+        assert!(rendered.contains("[TRUNCATED — task-file-total exceeded 40 chars]"));
     }
 }
