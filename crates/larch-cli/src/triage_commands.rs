@@ -1097,14 +1097,18 @@ impl TriageSnapshot {
 /// Run the whole verdict against one GitHub client, then publish its rows.
 fn apply_verified(request: &ApplyRequest) -> Result<ExitCode, TriageError> {
     let outcome = with_github_service(async |service, cancellation| {
-        let owner = IssueMutationOwner::new(service);
-        let session = TriageSession {
+        let effects = LiveIssueEffects {
             service,
-            owner,
+            owner: IssueMutationOwner::new(service),
             cancellation,
-            request,
+            repository: request.repository.clone(),
         };
-        Ok(session.run().await)
+        Ok(TriageSession {
+            effects: &effects,
+            request,
+        }
+        .run()
+        .await)
     });
     let updated = match outcome {
         Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => {
@@ -1120,22 +1124,114 @@ fn apply_verified(request: &ApplyRequest) -> Result<ExitCode, TriageError> {
 }
 
 /// What one completed verdict reports about the issue it verified.
+#[derive(Debug)]
 struct AppliedVerdict {
     changed: bool,
     updated_at: String,
 }
 
-/// One authenticated verdict application, bound to one client and one issue.
-struct TriageSession<'a> {
+/// The four GitHub effects one verdict performs, behind one seam.
+///
+/// The verdict logic below is the part that must be provable: it decides when
+/// to refuse, in what order to re-verify, and what proof each write needs. That
+/// reasoning is only reachable by a test if the transport is replaceable, so
+/// every request the session makes goes through this trait and the live
+/// implementation carries no decisions of its own.
+trait IssueEffects: Sync {
+    /// Read one canonical snapshot, with its comment bodies.
+    fn read(&self, issue: u64) -> impl Future<Output = Result<TriageSnapshot, TriageError>> + Send;
+    /// Apply one compare-and-swap through the shared issue-mutation owner.
+    fn mutate(
+        &self,
+        request: &IssueMutationRequest,
+    ) -> impl Future<Output = Result<(), TriageError>> + Send;
+    /// Publish one comment body verbatim.
+    fn comment(
+        &self,
+        issue: u64,
+        body: &str,
+    ) -> impl Future<Output = Result<(), TriageError>> + Send;
+    /// Close one issue as not planned.
+    fn close(&self, issue: u64) -> impl Future<Output = Result<(), TriageError>> + Send;
+}
+
+/// The live effects, bound to one authenticated client and one repository.
+struct LiveIssueEffects<'a> {
     service: &'a OctocrabGitHubService,
     owner: IssueMutationOwner<'a>,
     cancellation: &'a dyn ProcessCancellation,
+    repository: GitHubRepositoryRef,
+}
+
+impl IssueEffects for LiveIssueEffects<'_> {
+    async fn read(&self, issue: u64) -> Result<TriageSnapshot, TriageError> {
+        let subject = self
+            .service
+            .issue(&self.repository, issue, self.cancellation)
+            .await
+            .map_err(|error| {
+                TriageError::new(format!("issue snapshot failed: {error}"), EXIT_MUTATION)
+            })?;
+        let comments = self
+            .service
+            .list_comments(&self.repository, issue, self.cancellation)
+            .await
+            .map_err(|_| TriageError::new("issue comments could not be read", EXIT_PROTECTED))?;
+        compose_snapshot(
+            &self.repository,
+            issue,
+            subject,
+            comments.into_iter().map(|comment| comment.body).collect(),
+        )
+    }
+
+    /// The command line already passed the live-mutation gate, so the owner's
+    /// own check is satisfied here in operator mode rather than re-deriving a
+    /// session context this verb never receives.
+    async fn mutate(&self, request: &IssueMutationRequest) -> Result<(), TriageError> {
+        let authorization = authorization_request("", "", "", true);
+        self.owner
+            .apply(self.cancellation, &authorization, request)
+            .await
+            .map(|_| ())
+            .map_err(|error| TriageError::new(error.to_string(), EXIT_MUTATION))
+    }
+
+    async fn comment(&self, issue: u64, body: &str) -> Result<(), TriageError> {
+        self.service
+            .create_comment(&self.repository, issue, body, self.cancellation)
+            .await
+            .map(|_| ())
+            .map_err(|error| {
+                TriageError::new(
+                    format!("triage verification comment failed: {error}"),
+                    EXIT_MUTATION,
+                )
+            })
+    }
+
+    async fn close(&self, issue: u64) -> Result<(), TriageError> {
+        self.owner
+            .close_not_planned(self.cancellation, &self.repository, issue)
+            .await
+            .map_err(|detail| {
+                TriageError::new(
+                    format!("triage issue close failed: {detail}"),
+                    EXIT_MUTATION,
+                )
+            })
+    }
+}
+
+/// One verdict application, bound to one effects seam and one issue.
+struct TriageSession<'a, E: IssueEffects> {
+    effects: &'a E,
     request: &'a ApplyRequest,
 }
 
-impl TriageSession<'_> {
+impl<E: IssueEffects> TriageSession<'_, E> {
     async fn run(&self) -> Result<AppliedVerdict, TriageError> {
-        let snapshot = self.read_snapshot(self.request.issue).await?;
+        let snapshot = self.effects.read(self.request.issue).await?;
         self.check_snapshot(&snapshot)?;
         let final_state = if self.request.verdict == "valid" {
             self.apply_valid(snapshot.clone()).await?
@@ -1146,29 +1242,6 @@ impl TriageSession<'_> {
             changed: final_state != snapshot,
             updated_at: final_state.updated_at().to_owned(),
         })
-    }
-
-    /// Read one canonical snapshot and prove it names the requested issue.
-    async fn read_snapshot(&self, issue: u64) -> Result<TriageSnapshot, TriageError> {
-        let repository = &self.request.repository;
-        let subject = self
-            .service
-            .issue(repository, issue, self.cancellation)
-            .await
-            .map_err(|error| {
-                TriageError::new(format!("issue snapshot failed: {error}"), EXIT_MUTATION)
-            })?;
-        let comments = self
-            .service
-            .list_comments(repository, issue, self.cancellation)
-            .await
-            .map_err(|_| TriageError::new("issue comments could not be read", EXIT_PROTECTED))?;
-        compose_snapshot(
-            repository,
-            issue,
-            subject,
-            comments.into_iter().map(|comment| comment.body).collect(),
-        )
     }
 
     /// Refuse the whole verdict when the first snapshot is not mutable.
@@ -1203,7 +1276,7 @@ impl TriageSession<'_> {
         snapshot: &TriageSnapshot,
         allow_stale_title: bool,
     ) -> Result<TriageSnapshot, TriageError> {
-        let current = self.read_snapshot(self.request.issue).await?;
+        let current = self.effects.read(self.request.issue).await?;
         recheck_verdict(&current, snapshot, allow_stale_title)?;
         Ok(current)
     }
@@ -1213,7 +1286,7 @@ impl TriageSession<'_> {
         &self,
         previous: &TriageSnapshot,
     ) -> Result<TriageSnapshot, TriageError> {
-        let current = self.read_snapshot(self.request.issue).await?;
+        let current = self.effects.read(self.request.issue).await?;
         advanced(&current, previous)?;
         Ok(current)
     }
@@ -1224,7 +1297,9 @@ impl TriageSession<'_> {
             return Ok(snapshot);
         };
         let snapshot = self.recheck(&snapshot, false).await?;
-        self.mutate(&valid_mutation(&snapshot, &plan)).await?;
+        self.effects
+            .mutate(&valid_mutation(&snapshot, &plan))
+            .await?;
         let current = self.read_after_mutation(&snapshot).await?;
         valid_read_back(&current, &plan)?;
         Ok(current)
@@ -1251,19 +1326,7 @@ impl TriageSession<'_> {
             .await?;
         snapshot = self.restore_title(snapshot).await?;
         snapshot = self.recheck(&snapshot, true).await?;
-        self.owner
-            .close_not_planned(
-                self.cancellation,
-                &self.request.repository,
-                self.request.issue,
-            )
-            .await
-            .map_err(|detail| {
-                TriageError::new(
-                    format!("triage issue close failed: {detail}"),
-                    EXIT_MUTATION,
-                )
-            })?;
+        self.effects.close(self.request.issue).await?;
         let current = self.read_after_mutation(&snapshot).await?;
         close_read_back(&current)?;
         Ok(current)
@@ -1277,7 +1340,7 @@ impl TriageSession<'_> {
                 EXIT_USAGE,
             ));
         }
-        let duplicate = self.read_snapshot(canonical).await?;
+        let duplicate = self.effects.read(canonical).await?;
         canonical_is_open(&duplicate, canonical)
     }
 
@@ -1292,20 +1355,7 @@ impl TriageSession<'_> {
             return Ok(snapshot);
         }
         let snapshot = self.recheck(&snapshot, true).await?;
-        self.service
-            .create_comment(
-                &self.request.repository,
-                self.request.issue,
-                published,
-                self.cancellation,
-            )
-            .await
-            .map_err(|error| {
-                TriageError::new(
-                    format!("triage verification comment failed: {error}"),
-                    EXIT_MUTATION,
-                )
-            })?;
+        self.effects.comment(self.request.issue, published).await?;
         let current = self.read_after_mutation(&snapshot).await?;
         comment_read_back(&current, published)?;
         Ok(current)
@@ -1317,7 +1367,9 @@ impl TriageSession<'_> {
             return Ok(snapshot);
         };
         let snapshot = self.recheck(&snapshot, true).await?;
-        self.mutate(&title_mutation(&snapshot, &restored)).await?;
+        self.effects
+            .mutate(&title_mutation(&snapshot, &restored))
+            .await?;
         let current = self.read_after_mutation(&snapshot).await?;
         if current.title() != restored {
             return Err(TriageError::new(
@@ -1326,20 +1378,6 @@ impl TriageSession<'_> {
             ));
         }
         Ok(current)
-    }
-
-    /// Drive one compare-and-swap through the shared issue-mutation owner.
-    ///
-    /// The command line already passed the live-mutation gate, so the owner's
-    /// own check is satisfied here in operator mode rather than re-deriving a
-    /// session context this verb never receives.
-    async fn mutate(&self, request: &IssueMutationRequest) -> Result<(), TriageError> {
-        let authorization = authorization_request("", "", "", true);
-        self.owner
-            .apply(self.cancellation, &authorization, request)
-            .await
-            .map(|_| ())
-            .map_err(|error| TriageError::new(error.to_string(), EXIT_MUTATION))
     }
 }
 
@@ -1662,20 +1700,22 @@ fn url_path(url: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyRequest, CommentAction, EXIT_POSTCONDITION, EXIT_PROTECTED, EXIT_REDACTION,
-        EXIT_STALE, TriageSnapshot, advanced, canonical_duplicate, canonical_is_open,
-        classify_comment, close_read_back, comment_read_back, compose_snapshot, flat, github_slug,
+        AppliedVerdict, ApplyRequest, CommentAction, EXIT_MUTATION, EXIT_POSTCONDITION,
+        EXIT_PROTECTED, EXIT_REDACTION, EXIT_STALE, IssueEffects, TriageError, TriageSession,
+        TriageSnapshot, advanced, canonical_duplicate, canonical_is_open, classify_comment,
+        close_read_back, comment_read_back, compose_snapshot, flat, github_slug,
         has_protected_state, is_security_sensitive, is_utc_timestamp, plan_close_comment,
         plan_valid_update, pull_request_head, recheck_verdict, restored_title, title_mutation,
         url_path, valid_mutation, valid_read_back,
     };
     use crate::argparse_compat::parse_with_flags;
+    use larch_adapters::runtime::LarchRuntime;
     use larch_core::{
         BUG_PREFIX, DONE_PREFIX, GitHubIssue, GitHubIssueState, GitHubLabel, GitHubRepositoryRef,
-        IssueMutationField, IssueMutationSnapshot, TRIAGE_MARKER_END, TRIAGE_MARKER_START,
-        TRIAGED_TAG,
+        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, TRIAGE_MARKER_END,
+        TRIAGE_MARKER_START, TRIAGED_TAG,
     };
-    use std::{collections::BTreeSet, ffi::OsString};
+    use std::{collections::BTreeSet, ffi::OsString, sync::Mutex};
 
     fn snapshot(title: &str, body: &str, labels: &[&str], comments: &[&str]) -> TriageSnapshot {
         TriageSnapshot {
@@ -2013,6 +2053,264 @@ mod tests {
             Some("Bug report")
         );
         assert_eq!(restored_title("Bug report"), None);
+    }
+
+    /// One scripted GitHub, replaying reads and recording every write.
+    ///
+    /// Reads are a queue rather than a fixed answer, because the whole point of
+    /// the verdict flow is that it re-reads between mutations and must react to
+    /// what changed; a test that could not move the issue mid-flight could not
+    /// prove the fail-closed half at all.
+    struct FakeEffects {
+        reads: Mutex<Vec<TriageSnapshot>>,
+        writes: Mutex<Vec<String>>,
+    }
+
+    impl FakeEffects {
+        fn new(reads: Vec<TriageSnapshot>) -> Self {
+            Self {
+                reads: Mutex::new(reads),
+                writes: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn writes(&self) -> Vec<String> {
+            self.writes.lock().expect("writes lock").clone()
+        }
+
+        fn record(&self, entry: String) {
+            self.writes.lock().expect("writes lock").push(entry);
+        }
+    }
+
+    impl IssueEffects for FakeEffects {
+        async fn read(&self, issue: u64) -> Result<TriageSnapshot, TriageError> {
+            let mut reads = self.reads.lock().expect("reads lock");
+            if reads.is_empty() {
+                return Err(TriageError::new(
+                    format!("fixture ran out of reads for issue {issue}"),
+                    EXIT_MUTATION,
+                ));
+            }
+            Ok(reads.remove(0))
+        }
+
+        async fn mutate(&self, request: &IssueMutationRequest) -> Result<(), TriageError> {
+            self.record(format!("mutate:{:?}", request.fields));
+            Ok(())
+        }
+
+        async fn comment(&self, _issue: u64, body: &str) -> Result<(), TriageError> {
+            self.record(format!("comment:{body}"));
+            Ok(())
+        }
+
+        async fn close(&self, _issue: u64) -> Result<(), TriageError> {
+            self.record("close".to_owned());
+            Ok(())
+        }
+    }
+
+    fn run_verdict(
+        effects: &FakeEffects,
+        request: &ApplyRequest,
+    ) -> Result<AppliedVerdict, TriageError> {
+        LarchRuntime::current_thread()
+            .expect("a test runtime")
+            .block_on(TriageSession { effects, request }.run())
+    }
+
+    #[test]
+    fn a_valid_verdict_publishes_the_block_and_proves_the_read_back() {
+        let before = snapshot("Bug report", "Original report", &[], &[]);
+        let plan = plan_valid_update(&before, "Corrected.")
+            .unwrap_or_else(|_| panic!("a usable artifact"))
+            .unwrap_or_else(|| panic!("a change"));
+        let mut after = snapshot(&plan.title, &plan.body, &[], &[]);
+        after.snapshot.updated_at = "2026-07-12T11:00:00Z".to_owned();
+        // First read, the pre-mutation recheck, then the read-back.
+        let effects = FakeEffects::new(vec![before.clone(), before, after]);
+        let request = request("valid", "Corrected.", None);
+
+        let applied = run_verdict(&effects, &request).unwrap_or_else(|error| panic!("{error:?}"));
+
+        assert!(applied.changed);
+        assert_eq!(applied.updated_at, "2026-07-12T11:00:00Z");
+        assert_eq!(
+            effects.writes(),
+            vec!["mutate:{Title, Body}".to_owned()],
+            "exactly one swap, carrying both changed fields"
+        );
+    }
+
+    #[test]
+    fn an_already_triaged_issue_is_left_untouched() {
+        let before = snapshot("Bug report", "Original report", &[], &[]);
+        let plan = plan_valid_update(&before, "Corrected.")
+            .unwrap_or_else(|_| panic!("a usable artifact"))
+            .unwrap_or_else(|| panic!("a change"));
+        let published = snapshot(&plan.title, &plan.body, &[], &[]);
+        let effects = FakeEffects::new(vec![published]);
+
+        let applied = run_verdict(&effects, &request("valid", "Corrected.", None))
+            .unwrap_or_else(|error| panic!("{error:?}"));
+
+        assert!(!applied.changed);
+        assert!(effects.writes().is_empty(), "a re-run writes nothing");
+    }
+
+    #[test]
+    fn a_close_verdict_comments_restores_the_title_and_closes() {
+        let stale = snapshot(&format!("{DONE_PREFIX}Bug report"), "report", &[], &[]);
+        let plan = plan_close_comment(&request("already-fixed", "verified fixed", None))
+            .unwrap_or_else(|_| panic!("a usable artifact"));
+        let commented = {
+            let mut moved = stale.clone();
+            moved.snapshot.updated_at = "2026-07-12T11:00:00Z".to_owned();
+            moved.comments = vec![plan.published.clone()];
+            moved
+        };
+        let restored = {
+            let mut moved = commented.clone();
+            moved.snapshot.title = "Bug report".to_owned();
+            moved.snapshot.updated_at = "2026-07-12T12:00:00Z".to_owned();
+            moved
+        };
+        let closed = {
+            let mut moved = restored.clone();
+            moved.snapshot.state = GitHubIssueState::Closed;
+            moved.snapshot.updated_at = "2026-07-12T13:00:00Z".to_owned();
+            moved
+        };
+        let effects = FakeEffects::new(vec![
+            stale.clone(),     // first read
+            stale,             // recheck before the comment
+            commented.clone(), // comment read-back
+            commented,         // recheck before the title restoration
+            restored.clone(),  // title read-back
+            restored,          // recheck before the close
+            closed,            // close read-back
+        ]);
+
+        let applied = run_verdict(&effects, &request("already-fixed", "verified fixed", None))
+            .unwrap_or_else(|error| panic!("{error:?}"));
+
+        assert!(applied.changed);
+        assert_eq!(
+            effects.writes(),
+            vec![
+                format!("comment:{}", plan.published),
+                "mutate:{Title}".to_owned(),
+                "close".to_owned(),
+            ],
+            "comment, then the title restoration, then the close"
+        );
+    }
+
+    #[test]
+    fn a_duplicate_verdict_verifies_the_canonical_issue_first() {
+        let base = snapshot("Bug report", "report", &[], &[]);
+        let canonical = {
+            let mut other = base.clone();
+            other.snapshot.issue = 42;
+            other.url = "https://github.com/owner/repo/issues/42".to_owned();
+            other
+        };
+        // The canonical read is refused, so nothing is ever published.
+        let closed_canonical = {
+            let mut other = canonical;
+            other.snapshot.state = GitHubIssueState::Closed;
+            other
+        };
+        let effects = FakeEffects::new(vec![base, closed_canonical]);
+
+        let error =
+            run_verdict(&effects, &request("duplicate", "same as #42", Some(42))).unwrap_err();
+
+        assert_eq!(error.code, EXIT_PROTECTED);
+        assert!(
+            effects.writes().is_empty(),
+            "a refused duplicate writes nothing"
+        );
+    }
+
+    #[test]
+    fn a_verdict_refuses_when_the_issue_moves_before_the_mutation() {
+        let before = snapshot("Bug report", "Original report", &[], &[]);
+        let moved_on = moved(&before, "2026-07-12T11:00:00Z");
+        let effects = FakeEffects::new(vec![before, moved_on]);
+
+        let error = run_verdict(&effects, &request("valid", "Corrected.", None)).unwrap_err();
+
+        assert_eq!(error.code, EXIT_STALE);
+        assert!(
+            effects.writes().is_empty(),
+            "a stale issue is never written"
+        );
+    }
+
+    #[test]
+    fn a_verdict_refuses_a_security_report_before_its_first_write() {
+        let sensitive = snapshot("Bug report", "an RCE in the parser", &[], &[]);
+        let effects = FakeEffects::new(vec![sensitive]);
+
+        let error = run_verdict(&effects, &request("valid", "Corrected.", None)).unwrap_err();
+
+        assert_eq!(error.code, EXIT_PROTECTED);
+        assert!(effects.writes().is_empty());
+    }
+
+    #[test]
+    fn a_verdict_refuses_a_read_back_that_does_not_carry_the_write() {
+        let before = snapshot("Bug report", "Original report", &[], &[]);
+        // The read-back moved but published something else entirely.
+        let wrong = moved(
+            &snapshot("Bug report", "someone else's body", &[], &[]),
+            "2026-07-12T11:00:00Z",
+        );
+        let effects = FakeEffects::new(vec![before.clone(), before, wrong]);
+
+        let error = run_verdict(&effects, &request("valid", "Corrected.", None)).unwrap_err();
+
+        assert_eq!(error.code, EXIT_POSTCONDITION);
+    }
+
+    #[test]
+    fn a_verdict_refuses_a_mutation_that_did_not_advance_the_issue() {
+        let before = snapshot("Bug report", "Original report", &[], &[]);
+        let effects = FakeEffects::new(vec![before.clone(), before.clone(), before]);
+
+        let error = run_verdict(&effects, &request("valid", "Corrected.", None)).unwrap_err();
+
+        assert_eq!(error.code, EXIT_POSTCONDITION);
+    }
+
+    #[test]
+    fn an_already_published_verdict_comment_is_not_published_twice() {
+        let plan = plan_close_comment(&request("invalid", "not a defect", None))
+            .unwrap_or_else(|_| panic!("a usable artifact"));
+        let commented = snapshot("Bug report", "report", &[], &[&plan.published]);
+        let closed = {
+            let mut moved = commented.clone();
+            moved.snapshot.state = GitHubIssueState::Closed;
+            moved.snapshot.updated_at = "2026-07-12T11:00:00Z".to_owned();
+            moved
+        };
+        let effects = FakeEffects::new(vec![
+            commented.clone(),
+            commented, // recheck before the close
+            closed,    // close read-back
+        ]);
+
+        let applied = run_verdict(&effects, &request("invalid", "not a defect", None))
+            .unwrap_or_else(|error| panic!("{error:?}"));
+
+        assert!(applied.changed);
+        assert_eq!(
+            effects.writes(),
+            vec!["close".to_owned()],
+            "the comment step is a no-op and the title needs no restoration"
+        );
     }
 
     #[test]
