@@ -69,6 +69,9 @@ impl CleanInstallCase {
             | "clean-install-plan-block-write"
             | "clean-install-run-log-prepare-terminal-snapshot"
             | "clean-install-untrusted-file-block"
+            | "clean-install-triage-apply"
+            | "clean-install-triage-inspect"
+            | "clean-install-triage-probe"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr" => 2,
             _ => 0,
@@ -437,6 +440,9 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "strip-body",
     ),
     CleanInstallCase::new("clean-install-plan-block-write", "plan-block", "write"),
+    CleanInstallCase::new("clean-install-triage-apply", "triage", "apply"),
+    CleanInstallCase::new("clean-install-triage-inspect", "triage", "inspect"),
+    CleanInstallCase::new("clean-install-triage-probe", "triage", "probe"),
     CleanInstallCase::new(
         "clean-install-untrusted-content-block",
         "untrusted",
@@ -4841,6 +4847,336 @@ const ISSUE_DEPENDENCY_CASES: &[IssueCreateFixture] = &[
     },
 ];
 
+/// One `/triage` parity case.
+///
+/// Every verb here is a scanner in front of an effect the sandbox cannot
+/// perform, so a case carries only its argument line and the seed tree it runs
+/// against.
+struct TriageFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl TriageFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.reference))
+                .chain(self.arguments.iter().copied()),
+        );
+        let rust_program = Program::new(rust).args(
+            self.selector
+                .iter()
+                .copied()
+                .chain(self.arguments.iter().copied()),
+        );
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+/// The sandbox has no `git`, no `gh`, no network, and a working directory that
+/// is not a repository, so every case here stops at its scanner or at the first
+/// effect it cannot perform.
+#[rustfmt::skip]
+const TRIAGE_CASES: &[TriageFixture] = &[
+    TriageFixture {
+        name: "triage-inspect-no-origin-remote",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &[],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-escaping-evidence-path",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--path", "../secrets.env"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-option-shaped-evidence-path",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--path=-rf"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-backslash-evidence-path",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--path", "a\\b"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-empty-evidence-path",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--path", ""],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-zero-max-bytes",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--max-bytes", "0"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-max-bytes-above-cap",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--max-bytes", "65537"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-non-integer-max-bytes",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--max-bytes", "many"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-missing-repo-root",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--repo-root", "no-such-directory"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-help",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--help"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-inspect-unrecognized",
+        reference: "triage-inspect",
+        selector: &["triage", "inspect"],
+        arguments: &["--bogus"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-absent-git",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "git-version"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-absent-codex",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "codex-model-readonly", "--arg", "gpt-5.1"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-unknown-name",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "curl"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-shell-syntax-argument",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "codex-model-readonly", "--arg", "gpt;id"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-repeated-argument",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "codex-model-readonly", "--arg", "a", "--arg", "b"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-argument-on-versionless-probe",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "git-version", "--arg", "x"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-zero-max-bytes",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "git-version", "--max-bytes", "0"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-max-bytes-above-cap",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--name", "git-version", "--max-bytes", "16385"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-missing-name",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &[],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-probe-help",
+        reference: "triage-probe",
+        selector: &["triage", "probe"],
+        arguments: &["--help"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-inconclusive-short-circuit",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "inconclusive",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-unauthorized-makes-no-request",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+            "--body-file", "body.md",
+        ],
+        seeds: &[("body.md", "diagnosis\n")],
+    },
+    TriageFixture {
+        name: "triage-apply-non-utc-timestamp",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12 10:00:00", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-non-positive-issue",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "0", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-malformed-repository",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-uncanonical-session-root",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        // The sandbox is created directly inside the canonical temporary root,
+        // so it proves the name half of the confinement without depending on
+        // whether the platform's `/tmp` is itself a symlink.
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "{sandbox}",
+            "--body-file", "{sandbox}/body.md", "--operator-invoked",
+        ],
+        seeds: &[("body.md", "diagnosis\n")],
+    },
+    TriageFixture {
+        name: "triage-apply-relative-session-root",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "workdir",
+            "--body-file", "body.md", "--operator-invoked",
+        ],
+        seeds: &[("body.md", "diagnosis\n")],
+    },
+    TriageFixture {
+        name: "triage-apply-close-session-root-confinement",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        // A close verdict takes the same confinement as a `valid` one, ahead of
+        // the artifact it would otherwise select.
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "already-fixed",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "{sandbox}",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-absent-session-root",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z",
+            "--triage-root", "/larch-triage-root-missing",
+            "--body-file", "{sandbox}/body.md", "--operator-invoked",
+        ],
+        seeds: &[("body.md", "diagnosis\n")],
+    },
+    TriageFixture {
+        name: "triage-apply-invalid-verdict-choice",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "maybe",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-missing-required-arguments",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &["--repo", "owner/repo"],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-non-integer-issue",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "seven", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+        ],
+        seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-help",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &["--help"],
+        seeds: &[],
+    },
+];
+
 /// One `issue_wire` parity case.
 ///
 /// The wire verbs read stdin as often as they read a file, and several publish
@@ -5290,6 +5626,21 @@ const ISSUE_WIRE_CASES: &[IssueWireFixture] = &[
         seeds: &[],
     },
 ];
+
+#[test]
+fn triage_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("triage_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in TRIAGE_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
 
 #[test]
 fn issue_wire_commands_have_reviewed_parity() {

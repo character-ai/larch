@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: triage inspect [-h] [--repo-root REPO_ROOT] [--ref REF] [--path PATH]\n                      [--max-bytes MAX_BYTES]\ntriage inspect: error: argument --max-bytes: invalid int value: 'many'\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

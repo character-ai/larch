@@ -488,6 +488,7 @@ fn run_git(working_directory: &Path, operation: &PreflightGit) -> GitOutcome {
                             remote,
                             refspec: Some(refspec),
                             quiet: true,
+                            no_tags: false,
                         },
                         &cancellation,
                     )

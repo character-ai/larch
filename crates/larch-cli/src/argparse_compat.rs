@@ -34,6 +34,19 @@ impl ParsedCommandLine {
             .map(|(_name, value)| value.as_os_str())
     }
 
+    /// Return every value supplied for `option`, in command-line order.
+    ///
+    /// This is `argparse`'s `action="append"`, where a repeated option collects
+    /// rather than overwrites.
+    #[must_use]
+    pub fn values(&self, option: &str) -> Vec<&OsStr> {
+        self.values
+            .iter()
+            .filter(|(name, _value)| *name == option)
+            .map(|(_name, value)| value.as_os_str())
+            .collect()
+    }
+
     /// Return whether a valueless `store_true` flag was supplied.
     #[must_use]
     pub fn flag(&self, name: &str) -> bool {

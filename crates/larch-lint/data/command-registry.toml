@@ -7619,11 +7619,13 @@ verb = "apply"
 python_module = "larch.issue.triage"
 python_function = "apply_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8172
+clean_install_test = "clean-install-triage-apply"
 
 [[commands]]
 domain = "triage"
@@ -7631,11 +7633,13 @@ verb = "inspect"
 python_module = "larch.issue.triage"
 python_function = "inspect_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8172
+clean_install_test = "clean-install-triage-inspect"
 
 [[commands]]
 domain = "triage"
@@ -7643,11 +7647,13 @@ verb = "probe"
 python_module = "larch.issue.triage"
 python_function = "probe_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8172
+clean_install_test = "clean-install-triage-probe"
 
 [[commands]]
 domain = "umbrella"
@@ -9730,8 +9736,8 @@ rust = []
 [[callers]]
 path = "skills/triage/SKILL.md"
 kind = "skill"
-python = ["triage apply", "triage inspect", "triage probe", "verify skill-called"]
-rust = ["issue title-eligibility", "untrusted file-block"]
+python = ["verify skill-called"]
+rust = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block"]
 
 [[callers]]
 path = "skills/umbrella/SKILL.md"

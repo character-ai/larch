@@ -1,0 +1,11 @@
+{
+  "exit_code": 8,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "EVIDENCE_STATUS=gap\nEVIDENCE_GAP=fixed origin remote is unavailable\n"
+  }
+}

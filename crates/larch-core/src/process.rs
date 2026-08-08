@@ -40,6 +40,8 @@ pub enum HostUtilityProgram {
     Pgrep,
     /// Read one named macOS keychain item for a vendor credential preflight.
     Security,
+    /// Report the host Python interpreter version for a `/triage` probe.
+    Python3,
 }
 
 /// Approved GitHub CLI operations used to acquire the active `gh` credential.
@@ -82,6 +84,7 @@ impl HostUtilityProgram {
             Self::Ps => "ps",
             Self::Pgrep => "pgrep",
             Self::Security => "security",
+            Self::Python3 => "python3",
         }
     }
 
@@ -93,6 +96,7 @@ impl HostUtilityProgram {
             Self::Ps => "host.process-identity-probe",
             Self::Pgrep => "host.process-group-probe",
             Self::Security => "host.keychain-credential-read",
+            Self::Python3 => "host.python-version-probe",
         }
     }
 
@@ -111,6 +115,9 @@ impl HostUtilityProgram {
             }
             Self::Security => {
                 "macOS keychain read required to prove a Cursor service token is present and readable before launch"
+            }
+            Self::Python3 => {
+                "host interpreter version report required by the fixed read-only /triage probe allowlist"
             }
         }
     }

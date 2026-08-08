@@ -67,13 +67,3 @@ def leading_square_bracket_prefix(title: str) -> str:
         return ""
     tokens = re.findall(r"\[[A-Za-z0-9 _.-]+\]", match.group(1))
     return "".join(tokens)
-
-
-def insert_tag_after_bug_prefix(title: str, tag: str) -> str:
-    """Insert ``tag`` after a leading bug prefix, or prepend it."""
-    if re.search(re.escape(tag), title, re.IGNORECASE):
-        return title
-    match = re.match(r"^" + re.escape(BUG_PREFIX) + r"\s*", title, re.IGNORECASE)
-    if match:
-        return f"{BUG_PREFIX} {tag} {title[match.end():]}"
-    return f"{tag} {title}"

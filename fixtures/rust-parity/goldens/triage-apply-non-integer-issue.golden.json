@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: triage apply [-h] --repo REPO --verdict\n                    {valid,already-fixed,duplicate,invalid,inconclusive}\n                    --expected-updated-at EXPECTED_UPDATED_AT --triage-root\n                    TRIAGE_ROOT [--body-file BODY_FILE]\n                    [--comment-file COMMENT_FILE]\n                    [--canonical-duplicate CANONICAL_DUPLICATE]\n                    [--operator-invoked]\n                    issue\ntriage apply: error: argument issue: invalid int value: 'seven'\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

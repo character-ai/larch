@@ -457,7 +457,8 @@ Before every public mutation, triage rechecks security classification and
 freshness. Uncertain security classification routes to private disclosure and
 no public issue mutation. Allowed edits and closes pass the expected
 `updated_at`, current state, redaction, operator authorization, and exact
-read-back contracts in `python/larch/issue/triage.py`. The typed Rust
+read-back contracts in `crates/larch-cli/src/triage_commands.rs`, over the
+grammar in `crates/larch-core/src/issue/triage.rs`. The typed Rust
 issue-dependency adapter applies the same security terms and exact security
 labels across the target title, body, and every bounded comment page before a
 triage-controlled public dependency mutation. The service transport and

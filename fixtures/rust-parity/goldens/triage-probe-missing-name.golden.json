@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: triage probe [-h] --name NAME [--arg ARG] [--max-bytes MAX_BYTES]\ntriage probe: error: the following arguments are required: --name\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

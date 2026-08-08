@@ -168,6 +168,15 @@ pub use issue::{
     CANDIDATE_CAP, CandidateAllocation, CandidateRowDefect, CandidateRowDrop, InputMode,
     ParsedInput, ParsedItem, allocate_candidates, parse_issue_input,
 };
+pub use issue::{
+    MAX_TRIAGE_EVIDENCE_BYTES, MAX_TRIAGE_PROBE_BYTES, TRIAGE_MARKER_END, TRIAGE_MARKER_START,
+    TRIAGE_PROBE_TIMEOUT_SECONDS, TRIAGE_TMP_PREFIX, TRIAGE_VERDICT_COMMENT_PREFIX, TRIAGED_TAG,
+    TriageBlockDefect, TriageProbe, TriageProbeError, TriageSanitizeError,
+    body_has_foreign_larch_marker, replace_triage_block, sanitize_triage_outbound,
+    strip_triage_lifecycle_prefixes, triage_label_is_security, triage_probe_command,
+    triage_text_is_security_sensitive, triage_title_has_lifecycle_prefix, triaged_title,
+    validate_triage_evidence_path,
+};
 pub use issue_mutation::{
     CreatedIssue, IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationLease,
     IssueMutationRequest, IssueMutationSnapshot, UMBRELLA_PROPOSAL_MARKER, VerifiedIssueMutation,
