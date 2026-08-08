@@ -8645,7 +8645,7 @@ rust = ["block-issue add-blocked-by"]
 path = "python/larch/issue/oos_filer.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-codex-exec", "oos disposition-checkpoint", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
+rust = ["agent launch-codex-exec", "oos disposition-checkpoint", "oos file-conflict-deps"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"
@@ -9154,8 +9154,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9208,8 +9208,8 @@ rust = ["git rebase-abort", "push rebase"]
 [[callers]]
 path = "skills/implement/references/execution-issues-tracking.md"
 kind = "skill"
-python = ["oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
-rust = ["issue parse-input", "run-log append-failure"]
+python = []
+rust = ["issue parse-input", "oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest", "run-log append-failure"]
 
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
@@ -9220,8 +9220,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/oos-pipeline.md"
 kind = "skill"
-python = ["oos disposition-checkpoint", "oos file", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
-rust = []
+python = ["oos file"]
+rust = ["oos disposition-checkpoint", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
 
 [[callers]]
 path = "skills/implement/references/phantom-probe.md"
@@ -9580,8 +9580,8 @@ rust = ["final-report write"]
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["oos file-conflict-deps", "session setup", "verify skill-called"]
-rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel"]
+python = ["session setup", "verify skill-called"]
+rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"

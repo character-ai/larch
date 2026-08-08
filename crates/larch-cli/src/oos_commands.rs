@@ -31,13 +31,14 @@ use std::{
 
 use larch_adapters::git::GixRepository;
 use larch_core::{
-    ACCEPTED_OOS_FILENAMES, DispositionCounters, DispositionState,
-    FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP, IssueCapError,
-    ManifestObservation, RepositoryRead as _, Revision, apply_issue_cap,
+    ACCEPTED_OOS_FILENAMES, DispositionCounters, DispositionState, DuplicatePolicy,
+    FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP, IssueCapError, KvDocument,
+    ManifestObservation, ParseOptions, RepositoryRead as _, Revision, apply_issue_cap,
     count_filed_urls_strict_files, count_filed_urls_union_files, count_inline_triage_occurrences,
     count_non_security_oos_blocks, count_rejected_oos_markers_from_ndjson, existing_oos_titles,
     next_oos_number, normalize_title, observation_is_security, parse_conflict_cap,
-    parse_issue_input, plan_file_conflict_deps, python_str, render_deps_tsv, universal_newlines,
+    parse_issue_input, plan_file_conflict_deps, python_str, read_universal_newlines,
+    render_deps_tsv, universal_newlines,
 };
 use serde_json::Value;
 
@@ -81,20 +82,6 @@ const GATE_USAGE: &str = concat!(
     "                                   [--commit-range COMMIT_RANGE]",
 );
 
-/// Read one regular file the way Python's `Path.read_text` did.
-///
-/// Undecodable bytes are replaced rather than failing the read, and line
-/// endings are translated, because every reader here ports one that opened in
-/// universal-newline mode.
-fn read_lossy(path: &Path) -> Option<String> {
-    if !path.is_file() {
-        return None;
-    }
-    fs::read(path)
-        .ok()
-        .map(|bytes| universal_newlines(&String::from_utf8_lossy(&bytes)).into_owned())
-}
-
 /// Write `text` to `target` through a sibling temporary file.
 ///
 /// The temporary carries the target's own `.tmp` suffix and is removed on every
@@ -126,7 +113,7 @@ fn append_failure_log(log: &Path, site: &str, tool: &str, rc: i32, output: &str)
         entry.push_str(output.trim_end());
         entry.push('\n');
     }
-    let existing = read_lossy(log).unwrap_or_default();
+    let existing = read_universal_newlines(log).unwrap_or_default();
     let _written = fs::write(log, existing + &entry);
 }
 
@@ -226,7 +213,7 @@ fn materialize(manifest: &Path, tmpdir: &Path, count_only: bool) -> Result<usize
     if !public.exists() {
         fs::write(&public, "").map_err(|error| error.to_string())?;
     }
-    let existing = read_lossy(&public).unwrap_or_default();
+    let existing = read_universal_newlines(&public).unwrap_or_default();
     let mut titles = existing_oos_titles(&existing);
     let mut next = next_oos_number(&existing);
     let sidecar = tmpdir.join(SECURITY_SIDECAR_FILE);
@@ -267,7 +254,7 @@ fn route_to_sidecar(
     tmpdir: &Path,
     observation: &ManifestObservation,
 ) -> Result<(), String> {
-    let existing = read_lossy(sidecar).unwrap_or_default();
+    let existing = read_universal_newlines(sidecar).unwrap_or_default();
     let heading = observation.security_heading();
     if existing.lines().any(|line| line == heading) {
         return Ok(());
@@ -768,14 +755,19 @@ pub fn disposition_gate(arguments: &[OsString]) -> ExitCode {
 // oos disposition-checkpoint
 // ---------------------------------------------------------------------------
 
-/// Read one `KEY=value` state file, keeping the last value for each key.
+/// Read one `KEY=value` state file through the shared codec.
+///
+/// The legacy grammar is deliberate: these files are written by shell and by
+/// Python across several steps, so a malformed line is skipped rather than
+/// failing the whole read.
 fn read_state(path: &Path) -> Vec<(String, String)> {
-    read_lossy(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.trim().to_owned(), value.trim_matches('\r').to_owned()))
-        .collect()
+    let Some(text) = read_universal_newlines(path) else {
+        return Vec::new();
+    };
+    let Ok(document) = KvDocument::parse(&text, ParseOptions::legacy()) else {
+        return Vec::new();
+    };
+    document.select(DuplicatePolicy::Last).into_iter().collect()
 }
 
 /// Return the value of `key` across the run's two state files.
@@ -811,7 +803,7 @@ fn resolve_run_id(tmpdir: &Path, state: &[(String, String)]) -> String {
     if !recorded.is_empty() {
         return recorded;
     }
-    if let Some(session) = read_lossy(&tmpdir.join("session-id")) {
+    if let Some(session) = read_universal_newlines(&tmpdir.join("session-id")) {
         let trimmed = session.trim().to_owned();
         if !trimmed.is_empty() {
             return trimmed;

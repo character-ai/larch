@@ -201,8 +201,11 @@ pub fn issue_url_pattern(gh_host: &str) -> Regex {
 ///
 /// Undecodable bytes are replaced rather than failing the read, and line
 /// endings are translated, because every counter here ports a reader that
-/// opened in universal-newline mode.
-fn read_lossy(path: &Path) -> Option<String> {
+/// opened in universal-newline mode. Public because the OOS verbs read the same
+/// artifacts and must not define a second reader that could drift from this
+/// one.
+#[must_use]
+pub fn read_universal_newlines(path: &Path) -> Option<String> {
     if !path.is_file() {
         return None;
     }
@@ -217,7 +220,7 @@ pub fn count_filed_urls_union_files(paths: &[&Path], gh_host: &str) -> usize {
     let pattern = issue_url_pattern(gh_host);
     let mut urls: BTreeSet<String> = BTreeSet::new();
     for path in paths {
-        let Some(text) = read_lossy(path) else {
+        let Some(text) = read_universal_newlines(path) else {
             continue;
         };
         urls.extend(
@@ -238,7 +241,7 @@ pub fn count_filed_urls_union_files(paths: &[&Path], gh_host: &str) -> usize {
 pub fn count_filed_urls_strict_files(paths: &[&Path]) -> usize {
     let mut urls: BTreeSet<String> = BTreeSet::new();
     for path in paths {
-        let Some(text) = read_lossy(path) else {
+        let Some(text) = read_universal_newlines(path) else {
             continue;
         };
         urls.extend(
@@ -262,7 +265,7 @@ pub fn count_inline_triage_occurrences(commit_messages: &str) -> usize {
 /// Count non-security accepted OOS records in one Markdown file.
 #[must_use]
 pub fn count_non_security_oos_blocks(path: &Path) -> usize {
-    read_lossy(path)
+    read_universal_newlines(path)
         .as_deref()
         .map_or(0, count_non_security_blocks)
 }
@@ -309,7 +312,7 @@ fn rejected_markers_in_body(body: &str, markers: &mut BTreeSet<String>) {
 /// undisposed run look disposed.
 #[must_use]
 pub fn count_rejected_oos_markers_from_ndjson(path: &Path) -> (usize, bool) {
-    let Some(text) = read_lossy(path).filter(|text| !text.is_empty()) else {
+    let Some(text) = read_universal_newlines(path).filter(|text| !text.is_empty()) else {
         return (0, false);
     };
     let mut markers: BTreeSet<String> = BTreeSet::new();
@@ -333,7 +336,7 @@ pub fn count_rejected_oos_markers_from_ndjson(path: &Path) -> (usize, bool) {
 pub fn count_inline_triage_hits(run_dir: &Path) -> usize {
     let mut lines: BTreeSet<String> = BTreeSet::new();
     for name in INLINE_TRIAGE_SOURCES {
-        let Some(text) = read_lossy(&run_dir.join(name)) else {
+        let Some(text) = read_universal_newlines(&run_dir.join(name)) else {
             continue;
         };
         lines.extend(

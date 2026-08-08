@@ -85,7 +85,8 @@ def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pyte
     )
     seen: list[tuple[str, ...]] = []
 
-    def fake_run_larch(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run_larch(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = tuple(argv[1:])
         seen.append(args)
         if args[:2] == ("oos", "issue-cap"):
             output = Path(args[args.index("--output") + 1])
@@ -133,7 +134,7 @@ def test_prepare_all_security_skips_without_filing_artifacts(
         encoding="utf-8",
     )
 
-    def unexpected_run_cli(*_args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def unexpected_run_cli(_argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("_run_larch should not run for all-security design OOS")
 
     monkeypatch.setattr(design_oos, "_run_larch", unexpected_run_cli)
@@ -206,7 +207,8 @@ def test_prepare_ignores_stale_cross_session_cache_when_block_identity_changes(
 
     monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache)
 
-    def stub_run_larch(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def stub_run_larch(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = tuple(argv[1:])
         if "--output" in args:
             _ = Path(args[args.index("--output") + 1]).write_text("### OOS_1: capped\n", encoding="utf-8")
         return subprocess.CompletedProcess(list(args), 0, "", "")
@@ -249,7 +251,8 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
 
     monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache2)
 
-    def stub_run_larch(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def stub_run_larch(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = tuple(argv[1:])
         if "--output" in args:
             _ = Path(args[args.index("--output") + 1]).write_text("### OOS_1: capped\n", encoding="utf-8")
         return subprocess.CompletedProcess(list(args), 0, "", "")
@@ -327,7 +330,7 @@ def test_annotate_cap1_rollup_maps_single_url_to_every_original_even_with_failur
     assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in sentinel_text
     assert "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/101" in sentinel_text
 
-    def unexpected_run_cli(*_args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def unexpected_run_cli(_argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("prepare rerun should skip refiling via sentinel")
 
     monkeypatch.setattr(design_oos, "_run_larch", unexpected_run_cli)
@@ -1352,7 +1355,8 @@ def test_label_only_mapping_uses_oos_file_map_without_stdout(tmp_path: Path) -> 
 
 
 def _stub_design_oos_prepare_commands(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run_larch(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run_larch(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = tuple(argv[1:])
         if args[:2] == ("oos", "issue-cap"):
             input_file = Path(args[args.index("--input-file") + 1])
             output = Path(args[args.index("--output") + 1])

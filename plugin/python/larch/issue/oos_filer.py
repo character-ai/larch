@@ -246,16 +246,6 @@ def _render_blocks(blocks: list[AcceptedBlock]) -> str:
     return "\n\n".join(rendered).rstrip() + ("\n" if rendered else "")
 
 
-def _invoke_larch(args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Invoke one Rust-owned command through the verified bootstrap script."""
-    return subprocess.run(
-        [str(larch_entrypoint()), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
 def _append_tool_failure(*, tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
     file_oos.append_failure_log(log=tmpdir / "execution-issues.md", site=site, tool=tool, rc=rc, output=output)
 
@@ -405,8 +395,15 @@ def _materialize_sentinel_recovery_evidence(*, tmpdir: Path, filed: list[FiledIs
 
 
 def _run_disposition_checkpoint(tmpdir: Path) -> int:
-    return _invoke_larch(
-        ["oos", "disposition-checkpoint", "--implement-tmpdir", str(tmpdir)]
+    return subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "oos", "disposition-checkpoint",
+            "--implement-tmpdir", str(tmpdir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     ).returncode
 
 
@@ -1119,8 +1116,16 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
 
 def _file_conflict_deps(*, input_file: Path, output_file: Path) -> tuple[int, str]:
     """Ask the Rust owner for the dependency plan, keeping its failure data."""
-    result = _invoke_larch(
-        ["oos", "file-conflict-deps", "--input-file", str(input_file), "--output", str(output_file)]
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "oos", "file-conflict-deps",
+            "--input-file", str(input_file),
+            "--output", str(output_file),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         return result.returncode, result.stderr.strip()

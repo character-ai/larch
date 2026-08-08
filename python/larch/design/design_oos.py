@@ -37,15 +37,14 @@ _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
 
 
-def _run_larch(*args: str) -> subprocess.CompletedProcess[str]:
-    """Invoke one Rust-owned command through the verified bootstrap script."""
-    root = plugin_root(Path(__file__).resolve().parents[3])
+def _run_larch(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run one already-composed Rust-owned argv, publishing the plugin root."""
     return subprocess.run(
-        [str(larch_entrypoint(root)), *args],
+        argv,
         capture_output=True,
         text=True,
         check=False,
-        env=larch_entrypoint_env(root),
+        env=larch_entrypoint_env(plugin_root(Path(__file__).resolve().parents[3])),
     )
 
 
@@ -565,14 +564,16 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         return 0
     _ = order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
     capped = combined.with_suffix(".md.capped.tmp")
-    cap_result = _run_larch(
+    root = plugin_root(Path(__file__).resolve().parents[3])
+    cap_result = _run_larch([
+        str(larch_entrypoint(root)),
         "oos",
         "issue-cap",
         "--input-file",
         str(combined),
         "--output",
         str(capped),
-    )
+    ])
     if cap_result.returncode != 0:
         print("file-design-oos: larch oos issue-cap failed", file=sys.stderr)
         if cap_result.stderr:
@@ -580,14 +581,15 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         capped.unlink(missing_ok=True)
         return 2
     _ = capped.replace(combined)
-    deps_result = _run_larch(
+    deps_result = _run_larch([
+        str(larch_entrypoint(root)),
         "oos",
         "file-conflict-deps",
         "--input-file",
         str(combined),
         "--output",
         str(deps_tsv),
-    )
+    ])
     deps_available = deps_result.returncode == 0 and deps_tsv.is_file() and deps_tsv.stat().st_size > 0
     if not deps_available:
         deps_tsv.unlink(missing_ok=True)

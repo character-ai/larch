@@ -71,6 +71,7 @@ pub use oos_disposition::{
     INLINE_TRIAGE_SOURCES, OosDispositionCounts, analyze_run_dir, count_filed_urls_strict_files,
     count_filed_urls_union_files, count_inline_triage_hits, count_inline_triage_occurrences,
     count_non_security_oos_blocks, count_rejected_oos_markers_from_ndjson, issue_url_pattern,
+    read_universal_newlines,
 };
 pub use oos_priority::{
     HIGH_RISK_FOCUS_VALUES, OOS_CORRECTNESS_LABEL, OOS_CORRECTNESS_LABEL_COLOR,

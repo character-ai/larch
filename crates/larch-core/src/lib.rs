@@ -150,8 +150,8 @@ pub use issue::{
     issue_number_from_url, issue_url_pattern, item_file_records, label_create_argv,
     next_oos_number, normalize_oos_block_header, normalize_title, observation_is_security,
     parse_canonical_heading, parse_conflict_cap, parse_intra_batch_deps, parse_oos_blocks,
-    plan_file_conflict_deps, render_deps_tsv, sanitize_public_text, serialize_accepted_oos,
-    topological_create_order, validate_issue_cap_input,
+    plan_file_conflict_deps, read_universal_newlines, render_deps_tsv, sanitize_public_text,
+    serialize_accepted_oos, topological_create_order, validate_issue_cap_input,
 };
 pub use issue::{
     ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
