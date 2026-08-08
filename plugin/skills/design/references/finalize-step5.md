@@ -62,7 +62,7 @@ On non-zero `_oos_ann_rc` without the retry, label, or partial-failure contract,
 
 1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
 2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
-3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO> --context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`.
+3. Apply the blocker edge: `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO> --context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`.
 4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
 
 ### `NEXT_ACTION=label-only`

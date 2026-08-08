@@ -1092,11 +1092,13 @@ verb = "add-blocked-by"
 python_module = "larch.issue.issue_block"
 python_function = "add_blocked_by_main"
 machine_stdout = false
-owner = "python"
+owner = "rust"
 implementation_parity = "complete"
-consumer_cutover = "pending"
-python_removal = "pending"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8170
+clean_install_test = "clean-install-block-issue-add-blocked-by"
 
 [[commands]]
 domain = "block-issue"
@@ -1104,11 +1106,13 @@ verb = "remove-blocked-by"
 python_module = "larch.issue.issue_block"
 python_function = "remove_blocked_by_main"
 machine_stdout = false
-owner = "python"
+owner = "rust"
 implementation_parity = "complete"
-consumer_cutover = "pending"
-python_removal = "pending"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8170
+clean_install_test = "clean-install-block-issue-remove-blocked-by"
 
 [[commands]]
 domain = "blocker"
@@ -3775,11 +3779,13 @@ verb = "add-blocked-by"
 python_module = "larch.issue.issue_create"
 python_function = "add_blocked_by_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8170
+clean_install_test = "clean-install-issue-add-blocked-by"
 
 [[commands]]
 domain = "issue"
@@ -3787,11 +3793,13 @@ verb = "add-sub-issue"
 python_module = "larch.issue.issue_create"
 python_function = "add_sub_issue_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8170
+clean_install_test = "clean-install-issue-add-sub-issue"
 
 [[commands]]
 domain = "issue"
@@ -8309,7 +8317,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["block-issue *", "dirty-tree *", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8508,6 +8516,12 @@ path = "python/larch/issue/migration_governance.py"
 kind = "python-runtime"
 python = ["tracking-issue rename"]
 rust = []
+
+[[callers]]
+path = "python/larch/issue/deps_audit.py"
+kind = "python-runtime"
+python = []
+rust = ["block-issue add-blocked-by"]
 
 [[callers]]
 path = "python/larch/issue/oos_filer.py"
@@ -8740,8 +8754,8 @@ rust = []
 [[callers]]
 path = "skills/block-issue/SKILL.md"
 kind = "skill"
-python = ["block-issue add-blocked-by"]
-rust = []
+python = []
+rust = ["block-issue add-blocked-by"]
 
 [[callers]]
 path = "skills/bug/SKILL.md"
@@ -8758,8 +8772,8 @@ rust = []
 [[callers]]
 path = "skills/combine-issues/SKILL.md"
 kind = "skill"
-python = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "issue add-blocked-by"]
-rust = ["gh resolve-repo"]
+python = ["combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit"]
+rust = ["block-issue add-blocked-by", "gh resolve-repo", "issue add-blocked-by"]
 
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
@@ -8776,8 +8790,8 @@ rust = ["run-log lifecycle-start"]
 [[callers]]
 path = "skills/deps/SKILL.md"
 kind = "skill"
-python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "session setup", "untrusted file-block"]
-rust = ["kv get"]
+python = ["deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "session setup", "untrusted file-block"]
+rust = ["block-issue add-blocked-by", "kv get"]
 
 [[callers]]
 path = "skills/design/SKILL.md"
@@ -8854,8 +8868,8 @@ rust = ["stall-recovery validate-terminal-state", "stall-recovery validate-token
 [[callers]]
 path = "skills/design/references/finalize-step5.md"
 kind = "skill"
-python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "mermaid sanitize"]
-rust = ["run-log append-failure"]
+python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "mermaid sanitize"]
+rust = ["issue add-blocked-by", "run-log append-failure"]
 
 [[callers]]
 path = "skills/design/references/flags.md"
@@ -9448,8 +9462,8 @@ rust = []
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["issue add-blocked-by", "oos file-conflict-deps", "session setup", "verify skill-called"]
-rust = ["issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel"]
+python = ["oos file-conflict-deps", "session setup", "verify skill-called"]
+rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"

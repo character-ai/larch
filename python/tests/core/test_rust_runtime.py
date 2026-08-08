@@ -5,8 +5,10 @@ from __future__ import annotations
 from larch.core import rust_runtime
 from larch.core.proc import CommandResult
 from larch.core.rust_runtime import (
+    block_issue_dependency,
     dirty_tree_baseline,
     dirty_tree_checkpoint,
+    issue_add_blocked_by,
     issue_info,
     issue_state,
     phantom_probe,
@@ -231,3 +233,107 @@ def test_state_backed_refresh_omits_stale_context_merge_result() -> None:
     assert "--merge-result" not in persisted_args
     index = explicit_args.index("--merge-result")
     assert explicit_args[index + 1] == "admin_merged"
+
+
+def test_issue_add_blocked_by_relays_the_added_row_and_its_session_options() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch", "issue", "add-blocked-by"),
+                0,
+                "BLOCKED_BY_ADDED=true\nCLIENT=12\nBLOCKER=7\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    result = issue_add_blocked_by(
+        runner,
+        client="12",
+        blocker="7",
+        blocker_id="9001",
+        repo="o/r",
+        context_file="/tmp/session/source-env.sh",
+        run_id="run-1",
+        trusted_root="/tmp/session",
+    )
+
+    assert result.added
+    assert result.exit_code == 0
+    assert result.error == ""
+    assert runner.calls[0][1:] == [
+        "issue",
+        "add-blocked-by",
+        "--client-issue",
+        "12",
+        "--blocker-issue",
+        "7",
+        "--blocker-id",
+        "9001",
+        "--repo",
+        "o/r",
+        "--context-file",
+        "/tmp/session/source-env.sh",
+        "--run-id",
+        "run-1",
+        "--trusted-root",
+        "/tmp/session",
+    ]
+
+
+def test_issue_add_blocked_by_fails_closed_without_its_added_row() -> None:
+    """A refusal and a zero exit with no added row are both unapplied edges."""
+    refused = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                2,
+                "BLOCKED_BY_FAILED=true\nCLIENT=12\nBLOCKER=7\nERROR=could not determine repo\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = issue_add_blocked_by(refused, client="12", blocker="7")
+    assert not result.added
+    assert result.exit_code == 2
+    assert result.error == "could not determine repo"
+
+    silent = RecordingRunner(responses=[CommandResult(("larch",), 0, "", "boom", 0.01)])
+    result = issue_add_blocked_by(silent, client="12", blocker="7")
+    assert not result.added
+    assert result.exit_code == 1
+    assert result.error == "boom"
+
+
+def test_block_issue_dependency_requires_both_receipt_rows() -> None:
+    verified = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "SUCCESS=true\nRELATION_VERIFIED=true\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    assert block_issue_dependency(verified, remove=True, issue="12", blocker="7", repo="o/r")
+    assert verified.calls[0][1:] == [
+        "block-issue",
+        "remove-blocked-by",
+        "12",
+        "7",
+        "--repo",
+        "o/r",
+        "--operator-invoked",
+    ]
+
+    unproven = RecordingRunner(
+        responses=[CommandResult(("larch",), 0, "SUCCESS=true\n", "", 0.01)],
+    )
+    assert not block_issue_dependency(
+        unproven, remove=False, issue="12", blocker="7", repo="o/r"
+    )
+    assert unproven.calls[0][2] == "add-blocked-by"

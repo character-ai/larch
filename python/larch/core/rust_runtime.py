@@ -104,6 +104,21 @@ class IssueCreateOutput:
 
 
 @dataclass(frozen=True)
+class IssueEdgeOutput:
+    """Validated result from a Rust-owned issue-graph write.
+
+    ``added`` is the caller's only success test: every refusal publishes its
+    ``*_FAILED=true`` row with a non-zero code, and a zero exit that carries no
+    added row is treated as a failure too, so an unproven edge never reads as
+    an applied one.
+    """
+
+    added: bool = False
+    exit_code: int = 0
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class CheckpointProbeOutput:
     """Parsed result from the Rust-owned ``push checkpoint-probe`` command.
 
@@ -622,6 +637,85 @@ def issue_cleanup_failed(
     result: CommandResult = runner.run(argv, cwd=cwd)
     values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
     return result.returncode == 0 and values.get("CLOSED") == "true"
+
+
+def issue_add_blocked_by(  # noqa: PLR0913 - mirrors the add-blocked-by CLI option surface plus the injected runner
+    runner: Runner,
+    *,
+    client: str,
+    blocker: str,
+    blocker_id: str = "",
+    repo: str = "",
+    context_file: str = "",
+    run_id: str = "",
+    trusted_root: str = "",
+    cwd: str | None = None,
+) -> IssueEdgeOutput:
+    """Wire one native blocked-by edge through the Rust owner.
+
+    The command owns the live-mutation gate, the idempotent pre-read, the retry
+    contract, and the exact read-back, so this consumer only validates the
+    envelope it publishes. ``BLOCKED_BY_ADDED=true`` is the only success, and a
+    zero exit without it is reported as a failure rather than an applied edge.
+    """
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "issue",
+        "add-blocked-by",
+        "--client-issue",
+        client,
+        "--blocker-issue",
+        blocker,
+    ]
+    if blocker_id:
+        argv.extend(["--blocker-id", blocker_id])
+    if repo:
+        argv.extend(["--repo", repo])
+    if context_file:
+        argv.extend(["--context-file", context_file, "--run-id", run_id, "--trusted-root", trusted_root])
+    return _issue_edge_output(runner.run(argv, cwd=cwd), added_key="BLOCKED_BY_ADDED")
+
+
+def _issue_edge_output(result: CommandResult, *, added_key: str) -> IssueEdgeOutput:
+    """Type one issue-graph envelope, failing closed without its added row."""
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    if result.returncode == 0 and values.get(added_key) == "true":
+        return IssueEdgeOutput(added=True)
+    error = values.get("ERROR", "") or " ".join((result.stderr or result.stdout).split())[:500]
+    return IssueEdgeOutput(exit_code=result.returncode or 1, error=error)
+
+
+def block_issue_dependency(  # noqa: PLR0913 - mirrors the /block-issue CLI surface plus the injected runner
+    runner: Runner,
+    *,
+    remove: bool,
+    issue: str,
+    blocker: str,
+    repo: str,
+    cwd: str | None = None,
+) -> bool:
+    """Apply one operator-invoked `/block-issue` dependency mutation.
+
+    The command proves the final relation by read-back before it reports
+    ``SUCCESS``, so a zero exit without both receipt rows reads as a failure.
+    """
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "block-issue",
+        "remove-blocked-by" if remove else "add-blocked-by",
+        issue,
+        blocker,
+        "--repo",
+        repo,
+        "--operator-invoked",
+    ]
+    result: CommandResult = runner.run(argv, cwd=cwd)
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    return (
+        result.returncode == 0
+        and values.get("SUCCESS") == "true"
+        and values.get("RELATION_VERIFIED") == "true"
+    )
 
 
 def install_statusline(

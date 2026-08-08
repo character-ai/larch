@@ -43,14 +43,22 @@ impl CleanInstallCase {
             // `issue state` refuses its own missing-value line, and neither
             // `create-one` nor `write-sentinel` has a `--help` action, so the
             // clean-install token reads as an unknown option there too.
-            "clean-install-issue-create-one"
+            "clean-install-issue-add-blocked-by"
+            | "clean-install-issue-add-sub-issue"
+            | "clean-install-issue-create-one"
             | "clean-install-issue-fetch-issue-details"
             | "clean-install-issue-parse-input"
             | "clean-install-issue-state"
             | "clean-install-issue-write-sentinel" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
-            "clean-install-run-log-prepare-terminal-snapshot" => 2,
+            // Neither `/block-issue` verb has a `--help` action either, so the
+            // clean-install token reads as an unknown flag and each refuses
+            // with its own usage exit code, which is the same `2` the terminal
+            // snapshot reports for its missing session directory.
+            "clean-install-block-issue-add-blocked-by"
+            | "clean-install-block-issue-remove-blocked-by"
+            | "clean-install-run-log-prepare-terminal-snapshot" => 2,
             _ => 0,
         }
     }
@@ -325,6 +333,22 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new(
+        "clean-install-block-issue-add-blocked-by",
+        "block-issue",
+        "add-blocked-by",
+    ),
+    CleanInstallCase::new(
+        "clean-install-block-issue-remove-blocked-by",
+        "block-issue",
+        "remove-blocked-by",
+    ),
+    CleanInstallCase::new(
+        "clean-install-issue-add-blocked-by",
+        "issue",
+        "add-blocked-by",
+    ),
+    CleanInstallCase::new("clean-install-issue-add-sub-issue", "issue", "add-sub-issue"),
     CleanInstallCase::new(
         "clean-install-issue-allocate-candidates",
         "issue",
@@ -4436,6 +4460,290 @@ const ISSUE_CREATE_CASES: &[IssueCreateFixture] = &[
         environment: &[],
     },
 ];
+
+/// Every case stops before a GitHub client is built: the two `issue` verbs at
+/// their scanner, their numeric validation, their authorization gate, or at
+/// repository resolution, and the two `/block-issue` verbs at their scanner or
+/// at the same resolution. The sandbox has no `gh`, no `git`, and no network.
+const ISSUE_DEPENDENCY_CASES: &[IssueCreateFixture] = &[
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-no-arguments",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-unknown-option",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &["--bogus", "x"],
+        seeds: &[],
+        environment: &[],
+    },
+    // A value-taking option that ends the line reads as an unknown option.
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-trailing-repo-flag",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &["--client-issue", "1", "--blocker-issue", "2", "--repo"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-missing-blocker",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &["--client-issue", "1"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-non-positive-issue",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[
+            "--client-issue",
+            "0",
+            "--blocker-issue",
+            "2",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-non-numeric-blocker-id",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[
+            "--client-issue",
+            "1",
+            "--blocker-issue",
+            "2",
+            "--blocker-id",
+            "x",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    // The gate refuses before the repository is resolved or contacted.
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-unauthorized",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[
+            "--client-issue",
+            "1",
+            "--blocker-issue",
+            "2",
+            "--repo",
+            "o/r",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-test-denied",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[
+            "--client-issue",
+            "1",
+            "--blocker-issue",
+            "2",
+            "--repo",
+            "o/r",
+        ],
+        seeds: &[],
+        environment: &[("LARCH_ISSUE_MUTATION_DENY", "true")],
+    },
+    IssueCreateFixture {
+        name: "issue-add-blocked-by-unresolvable-repo",
+        reference: "issue-add-blocked-by",
+        selector: &["issue", "add-blocked-by"],
+        arguments: &[
+            "--client-issue",
+            "1",
+            "--blocker-issue",
+            "2",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-sub-issue-no-arguments",
+        reference: "issue-add-sub-issue",
+        selector: &["issue", "add-sub-issue"],
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    // Each verb reads only its own option names; the other pair is unknown.
+    IssueCreateFixture {
+        name: "issue-add-sub-issue-foreign-option",
+        reference: "issue-add-sub-issue",
+        selector: &["issue", "add-sub-issue"],
+        arguments: &["--client-issue", "1"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-sub-issue-non-positive-issue",
+        reference: "issue-add-sub-issue",
+        selector: &["issue", "add-sub-issue"],
+        arguments: &[
+            "--parent-issue",
+            "1",
+            "--child-issue",
+            "0",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-sub-issue-unauthorized",
+        reference: "issue-add-sub-issue",
+        selector: &["issue", "add-sub-issue"],
+        arguments: &["--parent-issue", "1", "--child-issue", "2", "--repo", "o/r"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-add-sub-issue-unresolvable-repo",
+        reference: "issue-add-sub-issue",
+        selector: &["issue", "add-sub-issue"],
+        arguments: &[
+            "--parent-issue",
+            "1",
+            "--child-issue",
+            "2",
+            "--operator-invoked",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-no-arguments",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-unknown-flag",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["--bogus"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-empty-repo-value",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["1", "2", "--repo", ""],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-non-positive-issue",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["0", "2", "--operator-invoked"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-requires-operator",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["1", "2"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-invalid-timestamp",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &[
+            "1",
+            "2",
+            "--operator-invoked",
+            "--triage-controlled",
+            "--expected-updated-at",
+            "yesterday",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-timestamp-without-triage",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &[
+            "1",
+            "2",
+            "--operator-invoked",
+            "--expected-updated-at",
+            "2026-08-07T01:02:03Z",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-invalid-repo-slug",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["1", "2", "--operator-invoked", "--repo", "not-a-slug"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-add-blocked-by-unresolvable-repo",
+        reference: "block-issue-add-blocked-by",
+        selector: &["block-issue", "add-blocked-by"],
+        arguments: &["1", "2", "--operator-invoked"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-remove-blocked-by-usage",
+        reference: "block-issue-remove-blocked-by",
+        selector: &["block-issue", "remove-blocked-by"],
+        arguments: &["1"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "block-issue-remove-blocked-by-unresolvable-repo",
+        reference: "block-issue-remove-blocked-by",
+        selector: &["block-issue", "remove-blocked-by"],
+        arguments: &["1", "2", "--operator-invoked"],
+        seeds: &[],
+        environment: &[],
+    },
+];
+
+#[test]
+fn issue_dependency_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("issue_dependency_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ISSUE_DEPENDENCY_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
 
 #[test]
 fn issue_create_commands_have_reviewed_parity() {

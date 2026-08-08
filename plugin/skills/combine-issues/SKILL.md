@@ -156,7 +156,7 @@ For each issue, parse its body and extract the individual items. Then for each i
       The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
    b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
-      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
+      "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
       ```
       On failure, still keep the item as **actual** (not blocked) and emit a warning.
    c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
@@ -317,7 +317,7 @@ Use `plan-inherited` as the only source of remapped inherited edge classificatio
 
 - Mark sources with dependency read failures as not close-eligible.
 - Mark sources tied to unknown inherited classifications as not close-eligible.
-- Write `safe_edges` with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO" --operator-invoked`.
+- Write `safe_edges` with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO" --operator-invoked`.
 - Treat `satisfied_edges` as closed-blocker dependencies. Do not write them and do not treat them as close-blocking.
 - Record safe-edge write success, idempotent already-present success, write failures, and unresolved writes in one write-results JSON file.
 
@@ -445,7 +445,7 @@ Approval-required audit edges include:
 - Audit exception edges where the client is non-OOS and the blocker is a newly combined `[OOS]` issue.
 - All Tier-2 semantic edges.
 
-Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO" --operator-invoked`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
+Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO" --operator-invoked`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
 
 <!-- step:oos-10 — Dependency Summary -->
 

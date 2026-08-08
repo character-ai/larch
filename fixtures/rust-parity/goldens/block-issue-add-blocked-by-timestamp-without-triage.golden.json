@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=--expected-updated-at requires --triage-controlled\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

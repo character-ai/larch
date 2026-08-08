@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -606,13 +605,23 @@ def test_dependency_mutation_passes_operator_authorization(monkeypatch: pytest.M
         calls.append(argv)
         return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
-    monkeypatch.setattr(decompose.proc, "run", fake_run)
+    def verified_run(_self: object, argv: list[str], **kwargs: object) -> proc.CommandResult:
+        result = fake_run(argv, **kwargs)
+        return proc.CommandResult(result.argv, 0, "SUCCESS=true\nRELATION_VERIFIED=true\n", "", 0.0)
+
+    def unproven_run(_self: object, argv: list[str], **kwargs: object) -> proc.CommandResult:
+        return fake_run(argv, **kwargs)
+
+    monkeypatch.setattr(decompose.proc.ProcRunner, "run", verified_run)
     assert decompose._run_dependency_mutation(remove=False, blocked=101, blocker=99, repo="o/r")  # pyright: ignore[reportPrivateUsage]
     assert calls == [[
-        sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"),
+        str(larch_entrypoint(decompose.PLUGIN_ROOT)),
         "block-issue", "add-blocked-by", "101", "99", "--repo", "o/r",
         "--operator-invoked",
     ]]
+    # A zero exit without both receipt rows is an unproven edge, never a success.
+    monkeypatch.setattr(decompose.proc.ProcRunner, "run", unproven_run)
+    assert not decompose._run_dependency_mutation(remove=True, blocked=101, blocker=99, repo="o/r")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_migrate_dependencies_replaces_incoming_and_outgoing_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

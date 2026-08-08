@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
@@ -22,6 +21,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core.repo_roots import larch_entrypoint
 from larch.core import retry
+from larch.core import rust_runtime
 from larch.design.design_step0_env import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
@@ -619,9 +619,9 @@ def _load_migration(path: Path) -> DependencyMigration:
 
 
 def _run_dependency_mutation(*, remove: bool, blocked: int, blocker: int, repo: str) -> bool:
-    verb = "remove-blocked-by" if remove else "add-blocked-by"
-    result = proc.run([sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "block-issue", verb, str(blocked), str(blocker), "--repo", repo, "--operator-invoked"])
-    return result.returncode == 0
+    return rust_runtime.block_issue_dependency(
+        proc.ProcRunner(), remove=remove, issue=str(blocked), blocker=str(blocker), repo=repo
+    )
 
 
 def _intra_piece_edges(design_tmpdir: Path, pieces: tuple[FiledPiece, ...]) -> tuple[DependencyEdge, ...]:

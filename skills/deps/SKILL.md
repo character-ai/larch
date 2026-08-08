@@ -217,7 +217,7 @@ Summarize applied, skipped, failed, and warning counts from the apply JSON.
 For a desired edge `client blocked by blocker`:
 
 - Write only when `client` is mutable REGULAR.
-- Write via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" block-issue add-blocked-by <client> <blocker> --repo "$REPO" --operator-invoked`.
+- Write via `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" block-issue add-blocked-by <client> <blocker> --repo "$REPO" --operator-invoked`.
 - Never add a new blocked-by edge to DESIGNING, DESIGNED, IMPLEMENTING, busy-prefix, or OOS issues.
 - If the desired client is in-flight and the blocker is REGULAR, emit a loud warning and skip. Do not auto-flip.
 - If both endpoints are in-flight, emit a loud warning and write no edge.

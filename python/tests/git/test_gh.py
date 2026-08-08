@@ -34,22 +34,6 @@ class TimeoutRecordingRunner(RecordingRunner):
         return [call.cwd for call in self.records]
 
 
-def test_issue_sub_issue_transport_uses_file_backed_json_and_cleans_up() -> None:
-    runner = RecordingRunner(responses=[CommandResult(("gh", "api"), 0, "", "", 0.01)])
-    result = gh.issue_add_sub_issue(runner, "12", 34, repo="owner/repo")
-    assert result.returncode == 0
-    argv = runner.records[0].argv
-    assert argv[:6] == ("gh", "api", "repos/owner/repo/issues/12/sub_issues", "-X", "POST", "--input")  # lint-gh-argv-literal: ok exact transport contract
-    payload_path = Path(argv[6])
-    assert not payload_path.exists()
-
-
-def test_issue_sub_issues_read_uses_native_endpoint() -> None:
-    runner = RecordingRunner(responses=[CommandResult(("gh", "api"), 0, "[]", "", 0.01)])
-    assert gh.issue_sub_issues_read(runner, "12", repo="owner/repo").stdout == "[]"
-    assert runner.records[0].argv == ("gh", "api", "repos/owner/repo/issues/12/sub_issues", "--paginate")  # lint-gh-argv-literal: ok exact transport contract
-
-
 def test_pr_view_parses_json() -> None:
     runner = RecordingRunner(
         responses=[
