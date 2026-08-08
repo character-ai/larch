@@ -217,6 +217,92 @@ def _compose(arguments: list[str]) -> int:
     return 0
 
 
+def _collect_result_files(arguments: list[str]) -> tuple[set[str], dict[str, str], list[str]]:
+    switches: set[str] = set()
+    values: dict[str, str] = {}
+    files: list[str] = []
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument in {
+            "--summary-only",
+            "--substantive-validation",
+            "--validation-mode",
+            "--structured-reviewer-validation",
+        }:
+            switches.add(argument)
+            index += 1
+        elif argument in {"--timeout", "--paths-file"} and index + 1 < len(arguments):
+            values[argument] = arguments[index + 1]
+            index += 2
+        else:
+            files.append(argument)
+            index += 1
+    paths_file = values.get("--paths-file")
+    if paths_file:
+        try:
+            files.extend(
+                line.strip()
+                for line in Path(paths_file).read_text(encoding="utf-8", errors="replace").splitlines()
+                if line.strip()
+            )
+        except OSError:
+            return switches, values, []
+    return switches, values, files
+
+
+def _collector_status(path: Path, *, substantive_validation: bool) -> tuple[str, str]:  # noqa: PLR0911 - status cases mirror collector terminal outcomes.
+    done = path.with_name(path.name + ".done")
+    if not done.is_file():
+        return "TIMEOUT", "124"
+    code = "".join(done.read_text(encoding="utf-8", errors="replace").split()) or "unknown"
+    if code not in {"0", "00"}:
+        return "ERROR", code
+    if not path.is_file() or path.stat().st_size == 0:
+        return "EMPTY_OUTPUT", code
+    if substantive_validation:
+        for sidecar in (
+            path.with_name(path.name + ".structured.tsv"),
+            path.with_name(path.name + ".sidecar.tsv"),
+        ):
+            if sidecar.is_file() and sidecar.stat().st_size > 0:
+                return "OK", code
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if any(line.strip() == "NO_ISSUES_FOUND" for line in text.splitlines()):
+            return "OK", code
+        return "NOT_SUBSTANTIVE", code
+    return "OK", code
+
+
+def _collect_results(arguments: list[str]) -> int:
+    switches, _values, files = _collect_result_files(arguments)
+    if not files:
+        return 2
+    substantive_validation = "--substantive-validation" in switches
+    rc = 0
+    for raw_file in files:
+        reviewer = Path(raw_file)
+        status, exit_code = _collector_status(
+            reviewer, substantive_validation=substantive_validation
+        )
+        tool = "codex" if "codex" in reviewer.name else "cursor" if "cursor" in reviewer.name else "claude"
+        print(f"REVIEWER_FILE={reviewer}")
+        print(f"TOOL={tool}")
+        print(f"STATUS={status}")
+        print(f"EXIT_CODE={exit_code}")
+        for sidecar in (
+            reviewer.with_name(reviewer.name + ".structured.tsv"),
+            reviewer.with_name(reviewer.name + ".sidecar.tsv"),
+        ):
+            if sidecar.is_file() and sidecar.stat().st_size > 0:
+                print(f"STRUCTURED_SIDECAR={sidecar}")
+                break
+        print()
+        if status in {"TIMEOUT", "ERROR"}:
+            rc = 1
+    return rc
+
+
 def _run_external_agent(arguments: list[str]) -> int:
     """Minimal Rust-command double for Python callers that retry an artifact."""
     output = ""
@@ -372,7 +458,9 @@ def _launch_review(arguments: list[str]) -> int:
     """Test-double implementation of the Rust review launcher contract.
 
     Caller integration tests run through the verified bootstrap and only need
-    fake-vendor artifacts. Native Rust tests cover the real command itself.
+    fake-vendor artifacts. Native Rust tests cover the real command itself, so
+    this double must never execute ambient vendor binaries from the operator's
+    machine.
     """
     values, switches = _option_values(arguments)
     tool = values.get("--tool", "")
@@ -389,40 +477,20 @@ def _launch_review(arguments: list[str]) -> int:
     _ = output.with_suffix(output.suffix + ".prompt").write_text(prompt, encoding="utf-8")
     _append_panel_row(tool=tool, output=output, prompt=prompt)
     if tool == "codex":
-        command = [
-            "codex", "exec",  # lint-codex-exec-auth: ok test-only fake vendor invocation
-            "--sandbox",
-            "read-only",
-            "--output-last-message",
-            str(output),
-            prompt,
-        ]
-        result = subprocess.run(command, check=False, capture_output=True)
+        _ = output.write_text(os.environ.get("LARCH_TEST_CODEX_REVIEW_RESULT", "codex review\n"), encoding="utf-8")
         _ = output.with_suffix(output.suffix + ".events.jsonl").write_text("{}\n", encoding="utf-8")
+        result = subprocess.CompletedProcess(["codex", "exec"], 0, b"", b"")
     else:
-        command = ["cursor", "--mode", "ask", prompt]
-        result = subprocess.run(command, check=False, capture_output=True)
-        _ = output.write_bytes(result.stdout)
-        if result.returncode == 0:
-            try:
-                payload: object = json.loads(result.stdout.decode("utf-8", errors="replace"))
-            except json.JSONDecodeError:
-                payload = {}
-            if isinstance(payload, dict):
-                record = cast("dict[str, object]", payload)
-                result_text = record.get("result")
-                usage = record.get("usage")
-                usage_record = cast("dict[str, object]", usage) if isinstance(usage, dict) else {}
-                output_tokens = usage_record.get("outputTokens", 0)
-                if (
-                    isinstance(result_text, str)
-                    and isinstance(output_tokens, int)
-                    and output_tokens > CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
-                    and len(result_text.encode()) < CURSOR_DEGRADED_RESULT_BYTES_CEILING
-                ):
-                    _ = output.write_text("CURSOR_DEGRADED_RESPONSE\n", encoding="utf-8")
-                elif isinstance(result_text, str):
-                    _ = output.write_text(result_text, encoding="utf-8")
+        result_text = os.environ.get("LARCH_TEST_CURSOR_REVIEW_RESULT", "cursor review")
+        output_tokens = int(os.environ.get("LARCH_TEST_CURSOR_REVIEW_OUTPUT_TOKENS", "1"))
+        if (
+            output_tokens > CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
+            and len(result_text.encode()) < CURSOR_DEGRADED_RESULT_BYTES_CEILING
+        ):
+            _ = output.write_text("CURSOR_DEGRADED_RESPONSE\n", encoding="utf-8")
+        else:
+            _ = output.write_text(result_text + ("\n" if not result_text.endswith("\n") else ""), encoding="utf-8")
+        result = subprocess.CompletedProcess(["cursor"], 0, b"", b"")
     sidecar = output.with_suffix(output.suffix + ".sidecar")
     if result.returncode == 0:
         _ = sidecar.write_text(
@@ -1540,6 +1608,7 @@ def main(arguments: list[str]) -> int:
             ("agent", "wait-reviewers"): _wait,
             ("agent", "gather-branch-context"): _gather,
             ("agent", "compose-collector-failure-log"): _compose,
+            ("agent", "collect-results"): _collect_results,
             ("agent", "run-external-agent"): _run_external_agent,
             ("agent", "launch-review"): _launch_review,
             ("agent", "dispatch-waterfall"): _dispatch_waterfall,

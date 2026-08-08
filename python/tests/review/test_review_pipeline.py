@@ -3525,6 +3525,43 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     )
 
 
+def test_dispatch_panel_rust_stub_does_not_execute_vendor_binaries(
+    tmp_path: Path, fake_bin_dir
+) -> None:
+    case_dir = tmp_path / "stub-no-vendors"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    fake_bin = fake_bin_dir()
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "PATH": f"{fake_bin.path}{os.pathsep}{os.environ.get('PATH', '')}",
+            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert fake_bin.invocations() == []
+
+
 def test_dispatch_panel_core_both_vendor_passes_no_fallback(tmp_path: Path) -> None:
     case_dir = tmp_path / "core-both-vendor"
     case_dir.mkdir()

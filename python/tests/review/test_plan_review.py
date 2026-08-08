@@ -4117,6 +4117,7 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
     rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "2"])
@@ -4168,6 +4169,7 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
     rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "2"])
@@ -4210,6 +4212,7 @@ def test_step3_loop_zero_findings_degraded_stop_records_completions(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
     monkeypatch.setenv("RUN_STEP3_CONTINUATION_SH", str(continuation_stub))
 
