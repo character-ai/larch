@@ -1,0 +1,113 @@
+## Report Tokens Analysis
+
+Analyzed 3 parseable runs.
+Tracked total estimated cost: $2.19.
+Pricing fallback used for 1 runs; blended rates are marked with `fallback` in tables.
+
+## Aggregate cost
+
+| Label | Runs | Total | Median | Mean | Max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| All runs | 3 | $2.19 | $0.32 | $0.73 | $1.86 |
+
+## Vendor breakdown
+
+| Vendor | Cost | Tokens |
+| --- | ---: | ---: |
+| Claude | $1.54 | 26,215 |
+| Codex | $0.47 | 6,010 |
+| Cursor | $0.11 | 2,450 |
+| Claude (subprocess) | $0.07 | 960 |
+
+## Top runs by estimated cost
+
+| Issue | Started | Total | Claude | Codex | Cursor | Claude (sub) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| [#101](https://github.com/character-ai/larch/issues/101) | 2026-05-01 | $1.86 (python-pricing) | $1.23 | $0.45 | $0.11 (Composer $0.08, Grok $0.03) | $0.07 |
+| [#102](https://github.com/character-ai/larch/issues/102) | 2026-05-02 | $0.32 (fallback) | $0.30 | $0.02 | $0.00 | $0.00 |
+| [#103](https://github.com/character-ai/larch/issues/103) | unknown | $0.01 (python-pricing) | $0.01 | $0.00 | $0.00 | $0.00 |
+
+## Phase breakdown
+
+| Vendor | Phase | Runs | Tokens |
+| --- | --- | ---: | ---: |
+| claude | Step 2 — implementation | 2 | 25,700 |
+| codex | Step 5 — review | 1 | 4,900 |
+
+## Per-day cost trends
+
+### Total cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $1.86 |
+| 2026-05-02 | $0.32 |
+
+_1 runs lacked a parseable started_at date._
+
+### Claude cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $1.23 |
+| 2026-05-02 | $0.30 |
+
+_1 runs lacked a parseable started_at date._
+
+### Codex cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $0.45 |
+| 2026-05-02 | $0.02 |
+
+_1 runs lacked a parseable started_at date._
+
+### Cursor cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $0.11 |
+| 2026-05-02 | $0.00 |
+
+_1 runs lacked a parseable started_at date._
+
+### Cursor Composer cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $0.08 |
+
+_1 runs lacked a parseable started_at date._
+
+### Cursor Grok cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $0.03 |
+
+_1 runs lacked a parseable started_at date._
+
+### Claude (subprocess) cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-05-01 | $0.07 |
+| 2026-05-02 | $0.00 |
+
+_1 runs lacked a parseable started_at date._
+
+## Cost-reduction suggestions
+
+- Review the highest-cost runs above before optimizing lower-cost phases.
+- Cache-read tokens observed: 21,700; preserve prompt stability where cache hits are useful.
+- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/larch/report/report_tokens_cost.py` used blended fallback pricing.
+
+## Rates used for display/fallback
+
+Claude: input 5.0/M, cache read 0.5/M, output 25.0/M.
+Codex: input 5.0/M, cached input 0.5/M, output 30.0/M.
+Cursor Composer: input 0.75/M, cache read 0.45/M, output 2.75/M.
+Cursor Grok: input 2.0/M, cache read 0.5/M, output 6.0/M.
+
+Cache JSON: <CACHE>

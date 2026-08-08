@@ -12,6 +12,7 @@ mod path_warning;
 mod run_log_corpus;
 pub mod timing;
 mod token_cost;
+mod token_report;
 mod token_scan;
 
 pub use exec_issue_detail::{
@@ -39,6 +40,11 @@ pub use token_cost::{
     aggregate_vendor_tokens, cursor_buckets_are_detailed, display_rates, exact_rate_row,
     fallback_cost, format_money, price_counts, price_run, python_round, rate_row, render_cost_kv,
     render_cost_line,
+};
+pub use token_report::{
+    CACHE_BASENAME, EMPTY_REPORT_BODY, IssueBodyError, PricedRun, REPORT_HEADING, RenderedReport,
+    ReportSection, SectionPriority, assemble_issue_body, cache_ndjson, plot_input_json,
+    render_report, title_for_skill,
 };
 pub use token_scan::{
     CODEX_IMPLEMENT_RAW_LABEL, CURSOR_IMPLEMENT_RAW_LABEL, IMPLEMENT_STEP2_LABEL,
