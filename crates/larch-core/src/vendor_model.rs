@@ -19,6 +19,42 @@ pub const CODEX_FIX_MODEL_DEFAULT: &str = "gpt-5.6-terra";
 pub const DEBATE_CODEX_MODEL: &str = CODEX_DEFAULT_MODEL;
 /// Debate Cursor model pin (inactive until debate live launch owns it).
 pub const DEBATE_CURSOR_MODEL: &str = CURSOR_GROK_4_5_HIGH_MODEL;
+/// Claude Opus model id recorded in token ledgers.
+pub const CLAUDE_OPUS_4_8_MODEL: &str = "claude-opus-4-8";
+/// Claude Sonnet model id recorded in token ledgers.
+pub const CLAUDE_SONNET_4_6_MODEL: &str = "claude-sonnet-4-6";
+/// Claude Sonnet long-context alias recorded in token ledgers.
+pub const CLAUDE_SONNET_4_6_1M_MODEL: &str = "claude-sonnet-4-6[1m]";
+/// Claude Haiku model id recorded in token ledgers.
+pub const CLAUDE_HAIKU_4_5_MODEL: &str = "claude-haiku-4-5";
+/// Claude Fable model id recorded in token ledgers.
+pub const CLAUDE_FABLE_5_MODEL: &str = "claude-fable-5";
+
+/// Fold the Claude long-context alias onto its base id for ledger accounting.
+///
+/// Every other model string is returned unchanged, so an unrecognized id keeps
+/// its exact recorded spelling instead of being coerced to a known model.
+#[must_use]
+pub fn normalize_claude_ledger_model(model: &str) -> &str {
+    if model == CLAUDE_SONNET_4_6_1M_MODEL {
+        CLAUDE_SONNET_4_6_MODEL
+    } else {
+        model
+    }
+}
+
+/// Return the model a `claude_sub` ledger row implies from its `raw` role label.
+///
+/// The single Rust owner of the model-less `claude_sub` default. Callers that
+/// have an explicit recorded model must use it instead of this fallback.
+#[must_use]
+pub fn claude_sub_default_model(raw: &str) -> &'static str {
+    match raw {
+        "claude_review" | "claude_vote" | "claude_scout" | "claude_draft" | "claude_ci_fix"
+        | "claude_review_fix" => CLAUDE_SONNET_4_6_MODEL,
+        _other => CLAUDE_OPUS_4_8_MODEL,
+    }
+}
 
 /// Vendor tool accepted by `agent model-args --tool`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,0 +1,336 @@
+{
+  "BUCKETS_claude": {
+    "cache_create_1h": 0,
+    "cache_create_5m": 4,
+    "cache_read": 0,
+    "input": 15,
+    "output": 3,
+    "total": 22
+  },
+  "BUCKETS_claude_sub": {
+    "cache_create_1h": 0,
+    "cache_create_5m": 9,
+    "cache_read": 3,
+    "input": 70,
+    "output": 13,
+    "total": 95
+  },
+  "BUCKETS_claude_sub_by_model": {
+    "claude-opus-4-8": {
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 0,
+      "input": 40,
+      "output": 7,
+      "total": 47
+    },
+    "claude-sonnet-4-6": {
+      "cache_create_1h": 0,
+      "cache_create_5m": 9,
+      "cache_read": 3,
+      "input": 30,
+      "output": 6,
+      "total": 48
+    }
+  },
+  "BUCKETS_codex": {
+    "cached_input": 501,
+    "input": 1007,
+    "output": 13,
+    "total": 1521
+  },
+  "BUCKETS_codex_by_model": {
+    "gpt-5.6-sol": {
+      "cached_input": 501,
+      "input": 1007,
+      "output": 13,
+      "total": 1521
+    }
+  },
+  "BUCKETS_cursor": {
+    "cache_read": 2,
+    "input": 20,
+    "output": 5,
+    "total": 27
+  },
+  "BUCKETS_cursor_by_model": {
+    "cursor-grok-4.5-high": {
+      "cache_read": 2,
+      "input": 20,
+      "output": 5,
+      "total": 27
+    }
+  },
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 6,
+          "output": 1,
+          "total": 7
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 4,
+          "cache_create_1h": 0,
+          "cache_create_5m": 4,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 9,
+          "output": 2,
+          "total": 15
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 4,
+      "cache_create_1h": 0,
+      "cache_create_5m": 4,
+      "cache_read": 0,
+      "cached_input": 0,
+      "input": 15,
+      "output": 3,
+      "total": 22
+    }
+  },
+  "claude_sub": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 9,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 3,
+          "cached_input": 0,
+          "input": 70,
+          "output": 13,
+          "total": 95
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 9,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 3,
+      "cached_input": 0,
+      "input": 70,
+      "output": 13,
+      "total": 95
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 500,
+          "cached_input": 0,
+          "input": 1000,
+          "output": 10,
+          "total": 1510
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 1,
+          "cached_input": 0,
+          "input": 7,
+          "output": 3,
+          "total": 11
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 0,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 501,
+      "cached_input": 0,
+      "input": 1007,
+      "output": 13,
+      "total": 1521
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 2,
+          "cached_input": 0,
+          "input": 20,
+          "output": 5,
+          "total": 27
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 0,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 2,
+      "cached_input": 0,
+      "input": 20,
+      "output": 5,
+      "total": 27
+    }
+  },
+  "mystery": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 11,
+          "output": 1,
+          "total": 12
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 0,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 0,
+      "cached_input": 0,
+      "input": 11,
+      "output": 1,
+      "total": 12
+    }
+  },
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor",
+    "claude_sub",
+    "mystery"
+  ]
+}

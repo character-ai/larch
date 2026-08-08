@@ -145,9 +145,21 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.report.final_report`, `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #8090 (`final-report`), #7682 (issue surfaces), later run-log leaves |
 | `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
+| `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost`, `larch.report.report_tokens_cli`, `larch.report.report_tokens_render` | #8087 (cost model), #8088 (`report-tokens analyze`) |
 | `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch.issue.issue_wire.extract_scope_paths` (`larch_core::plan_scope`) | #8171 | `larch.design.decompose`, `larch.implement.dispatch_step2`, `larch.implement.scope_disposition` | #7680 (`/design` decompose), #7681 (`/implement` dispatch and scope disposition) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
+
+Issue 8086 ports the scanning half of the token pipeline: ledger and transcript
+discovery, per-model usage extraction, cache-read and cache-write accounting,
+vendor usage records, and the run-record scan over
+`larch_core::report::RunLogCorpus`. It adds no command, and it keeps model ids
+and usage fields exact: an unrecognized model keeps its recorded spelling, and
+a defaulted, normalized, unpinned, or unconsumed field is reported through
+`TokenObservations` instead of being dropped. `larch_core::vendor_model` is the
+single Rust owner of the `claude_sub` model default and the long-context ledger
+alias, which `larch_adapters::phase_detail` now reuses. Pricing stays with issue
+8087, and `report-tokens analyze` switches in issue 8088.
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python

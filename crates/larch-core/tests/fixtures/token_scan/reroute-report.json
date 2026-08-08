@@ -1,0 +1,137 @@
+{
+  "BUCKETS_claude": {
+    "cache_create_1h": 0,
+    "cache_create_5m": 0,
+    "cache_read": 0,
+    "input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_claude_sub": {
+    "cache_create_1h": 0,
+    "cache_create_5m": 0,
+    "cache_read": 0,
+    "input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_claude_sub_by_model": {},
+  "BUCKETS_codex": {
+    "cached_input": 0,
+    "input": 100,
+    "output": 10,
+    "total": 110
+  },
+  "BUCKETS_codex_by_model": {
+    "gpt-5.6-sol": {
+      "cached_input": 0,
+      "input": 100,
+      "output": 10,
+      "total": 110
+    }
+  },
+  "BUCKETS_cursor": {
+    "cache_read": 0,
+    "input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor_by_model": {},
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 0,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 0,
+      "cached_input": 0,
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — setup",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "cache_create": 0,
+          "cache_create_1h": 0,
+          "cache_create_5m": 0,
+          "cache_read": 0,
+          "cached_input": 0,
+          "input": 100,
+          "output": 10,
+          "total": 110
+        }
+      }
+    ],
+    "totals": {
+      "cache_create": 0,
+      "cache_create_1h": 0,
+      "cache_create_5m": 0,
+      "cache_read": 0,
+      "cached_input": 0,
+      "input": 100,
+      "output": 10,
+      "total": 110
+    }
+  },
+  "vendors": [
+    "claude",
+    "codex"
+  ]
+}
