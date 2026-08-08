@@ -3695,10 +3695,10 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage-profile:", 1)[0]
-    rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
-        "\n  rust-coverage:", 1
-    )[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_coverage = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
     lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
@@ -3733,8 +3733,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "rust-deny:" in workflow
     assert "rust-build-test:" not in workflow
     assert "\n  rust-clippy:" not in workflow
-    assert "rust-coverage-profile:" in workflow
+    assert "rust-coverage-profile:" not in workflow
     assert "rust-coverage:" in workflow
+    assert "rust-coverage-benchmark:" in workflow
     assert "rust-gate:" in workflow
     assert "needs: [rust-lint, rust-deny, rust-coverage]" in workflow
     assert "make rust-fmt" in rust_lint
@@ -3745,8 +3746,8 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "make rust-lint" not in rust_coverage
     assert "make rust-build" not in workflow
     assert "make rust-test" not in workflow
-    assert "cargo llvm-cov nextest --no-report" in workflow
-    assert "cargo test --doc" in workflow
+    assert "cargo llvm-cov nextest --no-report" in rust_coverage
+    assert "cargo test --doc" in rust_coverage
     assert "make rust-coverage" not in workflow
     assert "rust-coverage" not in makefile
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
@@ -3774,13 +3775,16 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage-profile:", 1)[0]
-    rust_coverage = workflow.split("\n  rust-coverage-profile:", 1)[1].split(
-        "\n  rust-coverage:", 1
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_coverage_job = workflow.split("\n  rust-coverage:", 1)[1].split(
+        "\n  rust-coverage-benchmark:", 1
     )[0]
-    rust_coverage_gate = workflow.split("\n  rust-coverage:", 1)[1].split(
+    rust_coverage_benchmark = workflow.split("\n  rust-coverage-benchmark:", 1)[1].split(
         "\n  rust-gate:", 1
     )[0]
+    rust_coverage = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
     rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
     python_tests = workflow.split("\n  python-tests:", 1)[1].split(
         "\n  python-tests-gate:", 1
@@ -3861,12 +3865,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', "
         "'crates/**/Cargo.toml', '.cargo/**') }}"
     )
-    assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage
-    assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in rust_coverage
-    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage
-    assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in rust_coverage
-    assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in rust_coverage
-    assert 'RUST_COVERAGE_LINKER: "runner-default"' in rust_coverage
+    for coverage_job in (rust_coverage_job, rust_coverage_benchmark):
+        assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in coverage_job
+        assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
+        assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
+        assert 'RUST_COVERAGE_LINKER: "runner-default"' in coverage_job
     assert "path: target/llvm-cov-target" in coverage_target_restore
     assert coverage_target_key in coverage_target_restore
     assert "actions/cache/restore@" + cache_sha in coverage_target_restore
@@ -3898,7 +3903,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage-target-cache-restore" in rust_coverage
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
-    assert "Start Rust coverage job timing" in rust_coverage
+    assert "Start Rust coverage job timing" in rust_coverage_job
+    assert "Start Rust coverage job timing" in rust_coverage_benchmark
     assert "job-total-after-runner-setup" in rust_coverage
     assert "restored_bytes=unavailable" in rust_coverage
     assert "rust-coverage-target-cache-inventory" in rust_coverage
@@ -3934,7 +3940,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "9a75fe29538d3800b3da57f6f6efb64cba5c720a257bf0cb8b51f39d495a9168",
         "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042",
     ):
-        assert checksum in rust_coverage
+        assert checksum in rust_coverage_job
+        assert checksum in rust_coverage_benchmark
     assert "--retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120" in rust_coverage
     assert 'test "$(tar -tzf "$nextest_archive")" = "cargo-nextest"' in rust_coverage
     assert 'test "$(tar -tzf "$llvm_cov_archive")" = "cargo-llvm-cov"' in rust_coverage
@@ -3945,15 +3952,31 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage_profile_benchmark:" in workflow
     assert "coverage_profile_runner:" in workflow
     assert "large_ubuntu_4cpu" in workflow
-    assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage
-    assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage
+    assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage_benchmark
+    assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_coverage_job
+    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: ""' in rust_coverage_job
+    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"' in rust_coverage_job
+    assert rust_coverage_benchmark.count(
+        "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
+    ) == 1
+    assert rust_coverage_benchmark.count(
+        "COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
+    ) == 1
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_job
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_benchmark
     assert "NEXTEST_TEST_THREADS=16" in rust_testing
     assert "Post-policy nextest-tail candidate evidence" in rust_testing
-    assert "&& '[\"0\", \"1\"]' || '[\"0\"]')" in rust_coverage
-    assert "&& '[1, 2, 3]' || '[1]')" in rust_coverage
-    assert 'CARGO_INCREMENTAL: "0"' in rust_coverage
-    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage
-    assert "timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark && 60 || 15 }}" in rust_coverage
+    assert "if: github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark" in rust_coverage_benchmark
+    assert 'test_opt_level: ["0", "1"]' in rust_coverage_benchmark
+    assert "sample: [1, 2, 3]" in rust_coverage_benchmark
+    assert 'CARGO_INCREMENTAL: "0"' in rust_coverage_job
+    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage_job
+    assert "timeout-minutes: 15" in rust_coverage_job
+    assert "timeout-minutes: 60" in rust_coverage_benchmark
+    assert "strategy:" not in rust_coverage_job
+    assert "needs:" not in rust_coverage_job
+    assert "uses: ./.github/actions/rust-coverage" in rust_coverage_job
+    assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
@@ -3962,10 +3985,12 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
-    assert "run_timed doctests cargo test --doc --workspace --all-features --locked" in rust_coverage
+    assert "run_timed doctests run_doctests" in rust_coverage
+    assert "cargo test --doc --workspace --all-features --locked \\" in rust_coverage
+    assert '--target-dir "$coverage_target_dir"' in rust_coverage
     assert "--status-level slow --final-status-level slow" in rust_coverage
     assert '--fail-under-lines "${RUST_COVERAGE_MIN_LINES}"' in rust_coverage
-    assert "rust-coverage-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
+    assert "rust-coverage-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}" in rust_coverage
     assert "## Rust coverage phase timings" in rust_coverage
     assert "phase\\tseconds\\toutcome\\tdetail" in rust_coverage
     for timing_phase in (
@@ -3991,7 +4016,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert rust_coverage.count('"$coverage_larch" lint all') == 1
     assert '"$coverage_larch" release plugin-runtime' in rust_coverage
     assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
-    assert "git diff --exit-code -- plugin" in rust_coverage
+    assert "git diff --exit-code -- plugin" not in rust_coverage
+    assert "git diff --exit-code -- plugin" in rust_coverage_job
+    assert "git diff --exit-code -- plugin" in rust_coverage_benchmark
     repository_policy = rust_coverage.split("run_repository_policy() (", 1)[1].split(
         'thread_counts="$NEXTEST_TEST_THREADS"', 1
     )[0]
@@ -4014,7 +4041,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "name: larch-linux-test-binary" in coverage_binary_artifact
     assert f"path: {coverage_binary}" in coverage_binary_artifact
     assert "if-no-files-found: error" in coverage_binary_artifact
-    assert "matrix.test_opt_level == '0' && matrix.sample == 1" in coverage_binary_artifact
+    assert "env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'" in coverage_binary_artifact
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
     )
@@ -4025,7 +4052,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Upload Rust coverage report"
     )
     assert "Upload Rust repository policy rule timings" in rust_coverage
-    assert "rust-repository-policy-rule-timings-opt${{ matrix.test_opt_level }}-sample${{ matrix.sample }}" in rust_coverage
+    assert "rust-repository-policy-rule-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}" in rust_coverage
     assert "## Rust repository policy rule timings" in rust_coverage
     assert "rust-repository-policy-rule-timings-*" in rust_testing
     assert "repository-policy scan" in rust_testing
@@ -4050,20 +4077,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage
-    assert "rust-coverage-lcov${{ github.event_name == 'workflow_dispatch'" in rust_coverage
+    assert "rust-coverage-lcov${{ env.COVERAGE_LCOV_ARTIFACT_SUFFIX }}" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
         "Upload coverage-built Rust executable for cross-language integration tests"
     )
     assert rust_coverage.index("Upload coverage-built Rust executable for cross-language integration tests") < rust_coverage.index(
         "Save cargo-nextest binary"
     )
-
-    assert "name: rust-coverage" in rust_coverage_gate
-    assert "needs: [rust-coverage-profile]" in rust_coverage_gate
-    assert "if: always()" in rust_coverage_gate
-    assert "strategy:" not in rust_coverage_gate
-    assert 'coverage_profile_result="${{ needs.rust-coverage-profile.result }}"' in rust_coverage_gate
-    assert "rust-coverage-profile result=$coverage_profile_result" in rust_coverage_gate
 
     assert "needs: [rust-lint, rust-deny, rust-coverage]" in rust_gate
     for result_name in ("lint_result", "deny_result", "coverage_result"):
