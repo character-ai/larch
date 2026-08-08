@@ -1235,49 +1235,18 @@ async fn ensure_snapshot(
     root: &StorageRoot,
     remote: &RemoteArchive,
     destination: &Path,
+    expected_sha256: &str,
 ) -> Result<PathBuf, String> {
-    let absolute = absolute_lexical(destination);
-    assert_no_symlink_path_or_ancestors(&absolute)?;
-    if destination.is_symlink() {
-        return Err("snapshot archive path is a symlink".to_owned());
-    }
     if is_regular_nonsymlink(destination)
         && fs::metadata(destination)
             .map_err(|error| format!("could not inspect source snapshot: {error}"))?
             .len()
             == remote.remote.size
+        && sha256_file(destination)? == expected_sha256
     {
         return Ok(destination.to_path_buf());
     }
-    if destination.exists() {
-        return Err("source snapshot has an unexpected type or size".to_owned());
-    }
-    let parent = destination
-        .parent()
-        .ok_or_else(|| "snapshot parent is missing".to_owned())?;
-    fs::create_dir_all(parent)
-        .map_err(|error| format!("could not create snapshot directory: {error}"))?;
-    assert_no_symlink_path_or_ancestors(&absolute)?;
-    if fs::symlink_metadata(parent)
-        .map_err(|error| format!("could not inspect snapshot directory: {error}"))?
-        .file_type()
-        .is_symlink()
-    {
-        return Err("snapshot directory is unsafe".to_owned());
-    }
-    store
-        .download(&root.base.bucket, &root.key(&remote.key)?, destination)
-        .await
-        .map_err(|error| store_error("download", error))?;
-    if !is_regular_nonsymlink(destination)
-        || fs::metadata(destination)
-            .map_err(|error| format!("could not inspect downloaded snapshot: {error}"))?
-            .len()
-            != remote.remote.size
-    {
-        return Err("downloaded snapshot size differs from listing".to_owned());
-    }
-    Ok(destination.to_path_buf())
+    download_fresh(store, root, &remote.key, destination, remote.remote.size).await
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -1727,9 +1696,16 @@ async fn apply_layout(
                 &planned.mapping.client_repo,
                 &source_key,
             )?;
-            let source_snapshot =
-                ensure_snapshot(store, &planned.mapping.source, remote, &snapshot_path).await?;
-            if sha256_file(&source_snapshot)? != row_string(row, "source_sha256")? {
+            let source_digest = row_string(row, "source_sha256")?;
+            let source_snapshot = ensure_snapshot(
+                store,
+                &planned.mapping.source,
+                remote,
+                &snapshot_path,
+                &source_digest,
+            )
+            .await?;
+            if sha256_file(&source_snapshot)? != source_digest {
                 return Err("source digest changed after planning".to_owned());
             }
             let (candidate, candidate_result) = candidate_archive(
@@ -2502,7 +2478,14 @@ async fn plan_layout(
         for (index, archive) in source.values().enumerate() {
             let snapshot =
                 safe_snapshot_path(work_dir, "source", &mapping.client_repo, &archive.key)?;
-            let snapshot = ensure_snapshot(store, &mapping.source, archive, &snapshot).await?;
+            let snapshot = download_fresh(
+                store,
+                &mapping.source,
+                &archive.key,
+                &snapshot,
+                archive.remote.size,
+            )
+            .await?;
             let source_digest = sha256_file(&snapshot)?;
             let (kind, transformation, materialized) = match inventory.archive_for(&archive.key) {
                 Some(legacy) => (
@@ -4240,6 +4223,15 @@ mod tests {
         let report_path = directory.path().join("report.json");
         let final_path = directory.path().join("final.json");
         let work_dir = directory.path().join("work");
+        let stale_source_snapshot = work_dir.join("source/larch/run-logs/issue/modern-run.tar.gz");
+        fs::create_dir_all(
+            stale_source_snapshot
+                .parent()
+                .expect("source snapshot parent"),
+        )
+        .expect("source snapshot directory");
+        fs::write(&stale_source_snapshot, vec![0; larch_archive.len()])
+            .expect("stale source snapshot");
         let runtime = LarchRuntime::current_thread().expect("test runtime");
         let plan = runtime
             .block_on(plan_layout(
@@ -4261,6 +4253,8 @@ mod tests {
             modern_archive(directory.path(), "design", "legacy-run", b"wrong!\n"),
         )
         .expect("stale candidate");
+        fs::write(&stale_source_snapshot, vec![0; larch_archive.len()])
+            .expect("stale source snapshot");
         let first_report = runtime
             .block_on(apply_layout(&store, &plan_path, &report_path, &work_dir))
             .expect("first apply");
