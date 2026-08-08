@@ -72,6 +72,11 @@ impl CleanInstallCase {
             | "clean-install-triage-apply"
             | "clean-install-triage-inspect"
             | "clean-install-triage-probe"
+            | "clean-install-umbrella-mark-in-flight"
+            | "clean-install-umbrella-persist-proposal"
+            | "clean-install-umbrella-prepare"
+            | "clean-install-umbrella-reconcile-in-flight"
+            | "clean-install-umbrella-record-resolved"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr" => 2,
             _ => 0,
@@ -443,6 +448,27 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-triage-apply", "triage", "apply"),
     CleanInstallCase::new("clean-install-triage-inspect", "triage", "inspect"),
     CleanInstallCase::new("clean-install-triage-probe", "triage", "probe"),
+    CleanInstallCase::new(
+        "clean-install-umbrella-mark-in-flight",
+        "umbrella",
+        "mark-in-flight",
+    ),
+    CleanInstallCase::new(
+        "clean-install-umbrella-persist-proposal",
+        "umbrella",
+        "persist-proposal",
+    ),
+    CleanInstallCase::new("clean-install-umbrella-prepare", "umbrella", "prepare"),
+    CleanInstallCase::new(
+        "clean-install-umbrella-reconcile-in-flight",
+        "umbrella",
+        "reconcile-in-flight",
+    ),
+    CleanInstallCase::new(
+        "clean-install-umbrella-record-resolved",
+        "umbrella",
+        "record-resolved",
+    ),
     CleanInstallCase::new(
         "clean-install-untrusted-content-block",
         "untrusted",
@@ -5626,6 +5652,536 @@ const ISSUE_WIRE_CASES: &[IssueWireFixture] = &[
         seeds: &[],
     },
 ];
+
+/// One `/umbrella` parity case.
+///
+/// Four of the five verbs never leave the filesystem, so a case carries its
+/// argument line and the seed tree it runs against; the harness compares the
+/// published artifacts as well as the contract stream.
+struct UmbrellaFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl UmbrellaFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.reference))
+                .chain(self.arguments.iter().copied()),
+        );
+        let rust_program = Program::new(rust).args(
+            self.selector
+                .iter()
+                .copied()
+                .chain(self.arguments.iter().copied()),
+        );
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+/// SHA-256 of `[LEAF OF 12] One` and its exact body.
+const LEAF_ONE: &str = "9f098c3c884e445fe3249c20b4393b3eec2fc76da7a888ca928f90294109ca9d";
+/// SHA-256 of `[LEAF OF 12] Two` and its exact body.
+const LEAF_TWO: &str = "15ec5048c213762b103ea765030abdf57afc581af7ca42b58a245f68850360bf";
+
+/// One durable record: leaf one in flight, leaf two still pending.
+const RECORD: &str = concat!(
+    r#"{"common_context":"context","dependency_edges":[],"#,
+    r#""expected_updated_at":"2026-07-26T00:00:00Z","leaves":["#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst.","#,
+    r#""identity":"9f098c3c884e445fe3249c20b4393b3eec2fc76da7a888ca928f90294109ca9d","#,
+    r#""issue_id":"","number":"","state":"in-flight","title":"[LEAF OF 12] One","url":""},"#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nSecond.","#,
+    r#""identity":"15ec5048c213762b103ea765030abdf57afc581af7ca42b58a245f68850360bf","#,
+    r#""issue_id":"","number":"","state":"pending","title":"[LEAF OF 12] Two","url":""}],"#,
+    r#""prepared_deps_sha256":"","prepared_input_sha256":"","repository":"owner/repo","#,
+    r#""umbrella":"12","version":1}"#,
+    "\n"
+);
+
+/// The same record with leaf one already bound to an issue.
+const RECORD_RESOLVED: &str = concat!(
+    r#"{"common_context":"context","dependency_edges":[],"#,
+    r#""expected_updated_at":"2026-07-26T00:00:00Z","leaves":["#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst.","#,
+    r#""identity":"9f098c3c884e445fe3249c20b4393b3eec2fc76da7a888ca928f90294109ca9d","#,
+    r#""issue_id":"99","number":"34","state":"resolved","title":"[LEAF OF 12] One","#,
+    r#""url":"https://example.test/issues/34"},"#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nSecond.","#,
+    r#""identity":"15ec5048c213762b103ea765030abdf57afc581af7ca42b58a245f68850360bf","#,
+    r#""issue_id":"","number":"","state":"pending","title":"[LEAF OF 12] Two","url":""}],"#,
+    r#""prepared_deps_sha256":"","prepared_input_sha256":"","repository":"owner/repo","#,
+    r#""umbrella":"12","version":1}"#,
+    "\n"
+);
+
+/// The same record with leaf one's identity rewritten.
+const RECORD_TAMPERED: &str = concat!(
+    r#"{"common_context":"context","dependency_edges":[],"#,
+    r#""expected_updated_at":"2026-07-26T00:00:00Z","leaves":["#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst.","#,
+    r#""identity":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","#,
+    r#""issue_id":"","number":"","state":"in-flight","title":"[LEAF OF 12] One","url":""}],"#,
+    r#""prepared_deps_sha256":"","prepared_input_sha256":"","repository":"owner/repo","#,
+    r#""umbrella":"12","version":1}"#,
+    "\n"
+);
+
+/// One candidate row carrying leaf one's exact title and body.
+const CANDIDATE_ONE_ROW: &str = concat!(
+    r#"[{"number":34,"url":"https://example.test/issues/34","id":99,"#,
+    r#""title":"[LEAF OF 12] One","#,
+    r#""body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst."}]"#,
+    "\n"
+);
+
+/// The same row twice, so no single remote issue carries the leaf.
+const CANDIDATE_TWO_ROWS: &str = concat!(
+    r#"[{"number":34,"url":"https://example.test/issues/34","id":99,"#,
+    r#""title":"[LEAF OF 12] One","#,
+    r#""body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst."},"#,
+    r#"{"number":35,"url":"https://example.test/issues/35","id":100,"#,
+    r#""title":"[LEAF OF 12] One","#,
+    r#""body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst."}]"#,
+    "\n"
+);
+
+/// The managed source snapshot a prepared partition is approved against.
+const PREPARED_SNAPSHOT: &str = concat!(
+    r#"{"repository": "owner/repo", "number": "12", "title": "[DESIGNING] Split", "#,
+    r#""body": "Shared context.", "state": "OPEN", "updated_at": "2026-08-03T00:00:00Z"}"#,
+    "\n"
+);
+
+/// The exact parent-approved batch two leaves are read from.
+const PREPARED_INPUT: &str = "### One\n\nFirst body.\n\n### Two\n\nSecond body.\n";
+
+/// The nine paths a prepared-partition invocation names, in scanner order.
+const PREPARED_ARGUMENTS: &[&str] = &[
+    "--snapshot",
+    "{sandbox}/snapshot.json",
+    "--prepared-root",
+    "{sandbox}",
+    "--prepared-input",
+    "{sandbox}/input.txt",
+    "--prepared-deps",
+    "{sandbox}/deps.tsv",
+    "--completion-sentinel",
+    "{sandbox}/complete.sentinel",
+    "--output-root",
+    "{sandbox}",
+    "--output",
+    "{sandbox}/proposal.json",
+    "--issue-input-output",
+    "{sandbox}/issue-input.txt",
+    "--deps-output",
+    "{sandbox}/prepared-deps.tsv",
+];
+
+/// The sandbox has no `gh`, no credential, and no network, so `prepare` stops
+/// at its scanner or at the identity check that precedes the first request.
+/// Every other verb runs end to end against the seeded record.
+#[rustfmt::skip]
+const UMBRELLA_CASES: &[UmbrellaFixture] = &[
+    UmbrellaFixture {
+        name: "umbrella-prepare-missing-arguments",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo", "owner/repo"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-unknown-flag",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repository", "owner/repo"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-valueless-flag",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-repeated-flag",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo", "owner/repo", "--repo", "other/repo", "--issue", "12", "--output", "{sandbox}/s.json"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-non-boolean-managed-partition",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo", "owner/repo", "--issue", "12", "--output", "{sandbox}/s.json", "--managed-partition", "maybe"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-malformed-repository",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo", "owner", "--issue", "12", "--output", "{sandbox}/s.json"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepare-non-positive-issue",
+        reference: "umbrella-prepare",
+        selector: &["umbrella", "prepare"],
+        arguments: &["--repo", "owner/repo", "--issue", "0", "--output", "{sandbox}/s.json"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-missing-arguments",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &[],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-mixed-modes",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--proposal", "record.json", "--output", "out.json", "--output-root", "{sandbox}"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-partial-prepared-group",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--snapshot", "{sandbox}/snapshot.json", "--output-root", "{sandbox}"],
+        seeds: &[("snapshot.json", PREPARED_SNAPSHOT)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-round-trip",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--proposal", "record.json", "--output", "published.json"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-tampered-identity",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--proposal", "record.json", "--output", "published.json"],
+        seeds: &[("record.json", RECORD_TAMPERED)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-absent-record",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--proposal", "absent.json", "--output", "published.json"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-persist-proposal-malformed-record",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &["--proposal", "record.json", "--output", "published.json"],
+        seeds: &[("record.json", "{\"umbrella\": 12}\n")],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mark-in-flight-missing-arguments",
+        reference: "umbrella-mark-in-flight",
+        selector: &["umbrella", "mark-in-flight"],
+        arguments: &["--proposal", "record.json"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mark-in-flight-records-state",
+        reference: "umbrella-mark-in-flight",
+        selector: &["umbrella", "mark-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_TWO],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mark-in-flight-unknown-identity",
+        reference: "umbrella-mark-in-flight",
+        selector: &["umbrella", "mark-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", "absent"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mark-in-flight-already-resolved",
+        reference: "umbrella-mark-in-flight",
+        selector: &["umbrella", "mark-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE],
+        seeds: &[("record.json", RECORD_RESOLVED)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-record-resolved-missing-arguments",
+        reference: "umbrella-record-resolved",
+        selector: &["umbrella", "record-resolved"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE, "--number", "34"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-record-resolved-binds-one-issue",
+        reference: "umbrella-record-resolved",
+        selector: &["umbrella", "record-resolved"],
+        arguments: &[
+            "--proposal", "record.json", "--identity", LEAF_ONE,
+            "--number", "34", "--url", "https://example.test/issues/34", "--issue-id", "99",
+        ],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-record-resolved-non-positive-number",
+        reference: "umbrella-record-resolved",
+        selector: &["umbrella", "record-resolved"],
+        arguments: &[
+            "--proposal", "record.json", "--identity", LEAF_ONE,
+            "--number", "0", "--url", "https://example.test/issues/34",
+        ],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-record-resolved-unknown-identity",
+        reference: "umbrella-record-resolved",
+        selector: &["umbrella", "record-resolved"],
+        arguments: &[
+            "--proposal", "record.json", "--identity", "absent",
+            "--number", "34", "--url", "https://example.test/issues/34",
+        ],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-missing-arguments",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-binds-a-single-match",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE, "--candidates", "candidates.json"],
+        seeds: &[("record.json", RECORD), ("candidates.json", CANDIDATE_ONE_ROW)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-duplicate-matches",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE, "--candidates", "candidates.json"],
+        seeds: &[("record.json", RECORD), ("candidates.json", CANDIDATE_TWO_ROWS)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-pending-leaf",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_TWO, "--candidates", "candidates.json"],
+        seeds: &[("record.json", RECORD), ("candidates.json", CANDIDATE_ONE_ROW)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-absent-candidates",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE, "--candidates", "absent.json"],
+        seeds: &[("record.json", RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-reconcile-non-array-candidates",
+        reference: "umbrella-reconcile-in-flight",
+        selector: &["umbrella", "reconcile-in-flight"],
+        arguments: &["--proposal", "record.json", "--identity", LEAF_ONE, "--candidates", "candidates.json"],
+        seeds: &[("record.json", RECORD), ("candidates.json", "{}\n")],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-publishes-three-artifacts",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-stale-sentinel",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+            ("complete.sentinel", "GRAPH_VERIFIED=true\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-unmanaged-snapshot",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", "{\"repository\": \"owner/repo\", \"number\": \"12\", \"title\": \"Regular issue\", \"body\": \"Shared.\", \"state\": \"OPEN\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-non-positive-number",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", "{\"repository\": \"owner/repo\", \"number\": \"0\", \"title\": \"[DESIGNING] Split\", \"body\": \"Shared.\", \"state\": \"OPEN\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-closed-snapshot",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", "{\"repository\": \"owner/repo\", \"number\": \"12\", \"title\": \"[DESIGNING] Split\", \"body\": \"Shared.\", \"state\": \"CLOSED\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-malformed-snapshot",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", "[]\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-absent-snapshot",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-dependency-cycle",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n2\t1\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-out-of-range-edge",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t3\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-single-leaf",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", "### One\n\nOnly body.\n"),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-leaf-titled-item",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: PREPARED_ARGUMENTS,
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", "### One\n\nFirst.\n\n### [LEAF OF 9] Two\n\nSecond.\n"),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-relative-path",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &[
+            "--snapshot", "snapshot.json",
+            "--prepared-root", "{sandbox}",
+            "--prepared-input", "{sandbox}/input.txt",
+            "--prepared-deps", "{sandbox}/deps.tsv",
+            "--completion-sentinel", "{sandbox}/complete.sentinel",
+            "--output-root", "{sandbox}",
+            "--output", "{sandbox}/proposal.json",
+            "--issue-input-output", "{sandbox}/issue-input.txt",
+            "--deps-output", "{sandbox}/prepared-deps.tsv",
+        ],
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-prepared-partition-escaping-input",
+        reference: "umbrella-persist-proposal",
+        selector: &["umbrella", "persist-proposal"],
+        arguments: &[
+            "--snapshot", "{sandbox}/snapshot.json",
+            "--prepared-root", "{sandbox}/parent",
+            "--prepared-input", "{sandbox}/input.txt",
+            "--prepared-deps", "{sandbox}/parent/deps.tsv",
+            "--completion-sentinel", "{sandbox}/parent/complete.sentinel",
+            "--output-root", "{sandbox}",
+            "--output", "{sandbox}/proposal.json",
+            "--issue-input-output", "{sandbox}/issue-input.txt",
+            "--deps-output", "{sandbox}/prepared-deps.tsv",
+        ],
+        seeds: &[
+            ("snapshot.json", PREPARED_SNAPSHOT),
+            ("input.txt", PREPARED_INPUT),
+            ("parent/deps.tsv", ""),
+        ],
+    },
+];
+
+#[test]
+fn umbrella_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("umbrella_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in UMBRELLA_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
 
 #[test]
 fn triage_commands_have_reviewed_parity() {

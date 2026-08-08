@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Final, cast
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc
+from larch.core import logging_util, proc
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import issue_create, issue_mutation
@@ -30,10 +30,6 @@ MAX_PREPARED_DEPS_BYTES: Final = 16_384
 PREPARED_DEP_FIELD_COUNT: Final = 2
 COMPLETION_SENTINEL_VERSION: Final = "2"
 SHA256_HEX_LENGTH: Final = 64
-MANAGED_PARTITION_PREFIXES: Final = (
-    config.TRACKING_ISSUE_PREFIX_BY_STATE["designing"],
-    config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"],
-)
 
 
 class UmbrellaError(ShipError):
@@ -79,14 +75,6 @@ class InFlightLeaf:
 
 
 @dataclass(frozen=True)
-class ResolvedLeaf:
-    identity: str
-    number: str
-    url: str
-    issue_id: str = ""
-
-
-@dataclass(frozen=True)
 class ProposalRecord:
     umbrella: str
     repository: str
@@ -120,10 +108,6 @@ def _valid_sha256(value: str) -> bool:
 def _require_positive(value: str, name: str) -> None:
     if not value.isdecimal() or value == "0":
         raise UmbrellaError(f"invalid-{name}")
-
-
-def _managed_partition_title(title: str) -> bool:
-    return title.startswith(MANAGED_PARTITION_PREFIXES)
 
 
 def _load_json(path: Path) -> object:
@@ -222,10 +206,6 @@ def _validate_dependency_graph(*, leaves: tuple[ExpectedLeaf, ...], edges: tuple
         raise UmbrellaError(reason) from exc
 
 
-def _proposal_text(proposal: ProposalRecord) -> str:
-    return json.dumps(asdict(proposal), sort_keys=True, separators=(",", ":")) + "\n"
-
-
 def _prepared_graph_sha256(proposal: ProposalRecord) -> str:
     shape = {
         "leaves": [
@@ -240,13 +220,6 @@ def _prepared_graph_sha256(proposal: ProposalRecord) -> str:
 def _immutable_proposal_shape(proposal: ProposalRecord) -> tuple[tuple[tuple[str, str, str], ...], tuple[ExpectedDependencyEdge, ...]]:
     leaves = tuple((leaf.identity, leaf.title, leaf.body) for leaf in proposal.leaves)
     return leaves, proposal.dependency_edges
-
-
-def persist_proposal(*, path: Path, proposal: ProposalRecord) -> None:
-    """Atomically persist a bounded proposal before any leaf filing begins."""
-    if len(proposal.leaves) > MAX_LEAVES:
-        raise UmbrellaError("leaf-cap-exceeded")
-    larch_io.atomic_write(path=path, text=_proposal_text(proposal), prefix=f".{path.name}.", nofollow=True, mode=0o600)
 
 
 def _prepared_edges(*, deps_text: str, leaves: tuple[ExpectedLeaf, ...]) -> tuple[ExpectedDependencyEdge, ...]:
@@ -312,127 +285,8 @@ def prepare_proposal_from_batch(*, snapshot: UmbrellaSnapshot, input_text: str, 
     return proposal, issue_input
 
 
-def persist_prepared_proposal(  # noqa: PLR0913 - prepared handoff keeps both trusted roots and every input/output path explicit.
-    *, snapshot_path: Path, prepared_root: Path, input_path: Path, deps_path: Path, completion_sentinel_path: Path, output_root: Path, proposal_path: Path, issue_input_path: Path, deps_output_path: Path
-) -> ProposalRecord:
-    try:
-        all_paths = (
-            snapshot_path,
-            prepared_root,
-            input_path,
-            deps_path,
-            completion_sentinel_path,
-            output_root,
-            proposal_path,
-            issue_input_path,
-            deps_output_path,
-        )
-        if not all(path.is_absolute() for path in all_paths):
-            raise UmbrellaError("invalid-prepared-path")
-        _ = larch_io.validate_trusted_directory(completion_sentinel_path.parent, root=prepared_root)
-        if larch_io.trusted_file_present(completion_sentinel_path, root=prepared_root):
-            raise UmbrellaError("stale-completion-sentinel")
-        snapshot_value = json.loads(larch_io.read_trusted_text(snapshot_path, root=output_root))
-        if not isinstance(snapshot_value, dict):
-            raise TypeError("snapshot is not an object")
-        row = cast("dict[str, object]", snapshot_value)
-        snapshot = UmbrellaSnapshot(
-            repository=_string(row.get("repository"), "invalid-snapshot"),
-            number=_string(row.get("number"), "invalid-snapshot"),
-            title=_string(row.get("title"), "invalid-snapshot"),
-            body=_string(row.get("body"), "invalid-snapshot"),
-            state=_string(row.get("state"), "invalid-snapshot"),
-            updated_at=_string(row.get("updated_at"), "invalid-snapshot"),
-        )
-        _require_positive(snapshot.number, "umbrella")
-        if not gh.validate_repo_slug(snapshot.repository) or snapshot.state.upper() != "OPEN" or not snapshot.updated_at or not _managed_partition_title(snapshot.title):
-            raise UmbrellaError("invalid-snapshot")
-        input_text = larch_io.read_trusted_text(input_path, root=prepared_root)
-        deps_text = larch_io.read_trusted_text(deps_path, root=prepared_root)
-        proposal, issue_input = prepare_proposal_from_batch(snapshot=snapshot, input_text=input_text, deps_text=deps_text)
-        larch_io.trusted_atomic_write(proposal_path, _proposal_text(proposal), root=output_root)
-        larch_io.trusted_atomic_write(issue_input_path, issue_input, root=output_root)
-        larch_io.trusted_atomic_write(deps_output_path, deps_text, root=output_root)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise UmbrellaError("invalid-prepared-partition") from exc
-    return proposal
-
-
-def prepare_snapshot(*, repository: str, issue: str, managed_partition: bool = False) -> UmbrellaSnapshot:
-    snapshot = issue_mutation.read_snapshot(proc, repository=repository, issue=issue)
-    if snapshot.state.upper() != "OPEN":
-        raise UmbrellaError("closed-input")
-    managed_title = _managed_partition_title(snapshot.title)
-    compatible_umbrella = snapshot.title.startswith(UMBRELLA_PREFIX) and PROPOSAL_MARKER in snapshot.body
-    if managed_partition and not managed_title and not compatible_umbrella:
-        raise UmbrellaError("incompatible-managed-partition")
-    if snapshot.title.startswith("[PR]") or ("<!-- larch:plan" in snapshot.body and not managed_partition and not compatible_umbrella):
-        raise UmbrellaError("incompatible-input")
-    if snapshot.title.startswith(UMBRELLA_PREFIX) and PROPOSAL_MARKER not in snapshot.body:
-        raise UmbrellaError("incompatible-umbrella")
-    return UmbrellaSnapshot(repository, issue, snapshot.title, snapshot.body, snapshot.state, snapshot.updated_at)
-
-
 def _leaf_contract(*, leaf: ExpectedLeaf, umbrella: str) -> bool:
     return leaf.title.startswith(f"[LEAF OF {umbrella}]") and leaf.body.startswith(leaf_opening(umbrella=umbrella))
-
-
-def mark_in_flight(*, proposal_path: Path, identity: str) -> ProposalRecord:
-    proposal = load_proposal(proposal_path)
-    found = False
-    leaves: list[ExpectedLeaf] = []
-    for leaf in proposal.leaves:
-        if leaf.identity == identity:
-            if leaf.state == "resolved":
-                raise UmbrellaError("leaf-already-resolved")
-            leaves.append(replace(leaf, state="in-flight"))
-            found = True
-        else:
-            leaves.append(leaf)
-    if not found:
-        raise UmbrellaError("unknown-leaf-identity")
-    updated = replace(proposal, leaves=tuple(leaves))
-    persist_proposal(path=proposal_path, proposal=updated)
-    return updated
-
-
-def record_resolved(*, proposal_path: Path, identity: str, number: str, url: str, issue_id: str = "") -> ProposalRecord:
-    _require_positive(number, "leaf")
-    if not url:
-        raise UmbrellaError("invalid-resolved-leaf")
-    proposal = load_proposal(proposal_path)
-    leaves: list[ExpectedLeaf] = []
-    found = False
-    for leaf in proposal.leaves:
-        if leaf.identity == identity:
-            leaves.append(replace(leaf, state="resolved", number=number, url=url, issue_id=issue_id))
-            found = True
-        else:
-            leaves.append(leaf)
-    if not found:
-        raise UmbrellaError("unknown-leaf-identity")
-    updated = replace(proposal, leaves=tuple(leaves))
-    persist_proposal(path=proposal_path, proposal=updated)
-    return updated
-
-
-def reconcile_in_flight(*, proposal: ProposalRecord, identity: str, candidates: list[dict[str, object]]) -> ResolvedLeaf:
-    """Resolve exactly one remote issue matching the immutable in-flight contract."""
-    leaf = next((item for item in proposal.leaves if item.identity == identity), None)
-    if leaf is None or leaf.state != "in-flight" or not _leaf_contract(leaf=leaf, umbrella=proposal.umbrella):
-        raise UmbrellaError("ambiguous-in-flight-recovery")
-    matches: list[ResolvedLeaf] = []
-    for row in candidates:
-        title = row.get("title")
-        body = row.get("body")
-        number = row.get("number")
-        url = row.get("url")
-        issue_id = row.get("id", "")
-        if title == leaf.title and body == leaf.body and isinstance(number, int) and isinstance(url, str) and url:
-            matches.append(ResolvedLeaf(identity, str(number), url, str(issue_id)))
-    if len(matches) != 1:
-        raise UmbrellaError("ambiguous-in-flight-recovery")
-    return matches[0]
 
 
 def finalize(*, repository: str, issue: str, title: str, body: str, managed_partition: bool = False) -> None:
@@ -457,99 +311,6 @@ def _emit_error(reason: str) -> int:
     logging_util.emit_kv(key="UMBRELLA_FAILED", value="true")
     logging_util.emit_kv(key="REASON", value=reason)
     return 2
-
-
-def prepare_main(argv: list[str]) -> int:
-    values = _parse_values(argv, {"--repo", "--issue", "--output", "--managed-partition"})
-    if values is None or not {"--repo", "--issue", "--output"} <= values.keys():
-        return _emit_error("usage")
-    managed_partition = values.get("--managed-partition", "false")
-    if managed_partition not in {"true", "false"}:
-        return _emit_error("usage")
-    try:
-        snapshot = prepare_snapshot(repository=values["--repo"], issue=values["--issue"], managed_partition=managed_partition == "true")
-        larch_io.atomic_write(path=Path(values["--output"]), text=json.dumps(asdict(snapshot), sort_keys=True) + "\n", prefix=".umbrella-snapshot.", nofollow=True, mode=0o600)
-    except (UmbrellaError, ShipError) as exc:
-        return _emit_error(getattr(exc, "reason", "snapshot-failed"))
-    logging_util.emit_kv(key="UMBRELLA_READY", value="true")
-    logging_util.emit_kv(key="UPDATED_AT", value=snapshot.updated_at)
-    return 0
-
-
-def persist_proposal_main(argv: list[str]) -> int:
-    values = _parse_values(argv, {"--proposal", "--snapshot", "--prepared-root", "--prepared-input", "--prepared-deps", "--completion-sentinel", "--output-root", "--output", "--issue-input-output", "--deps-output"})
-    if values is None:
-        return _emit_error("usage")
-    prepared_mode = "--proposal" not in values
-    try:
-        if "--proposal" in values:
-            if set(values) != {"--proposal", "--output"}:
-                return _emit_error("usage")
-            proposal = load_proposal(Path(values["--proposal"]))
-            persist_proposal(path=Path(values["--output"]), proposal=proposal)
-        else:
-            required = {"--snapshot", "--prepared-root", "--prepared-input", "--prepared-deps", "--completion-sentinel", "--output-root", "--output", "--issue-input-output", "--deps-output"}
-            if set(values) != required:
-                return _emit_error("usage")
-            proposal = persist_prepared_proposal(
-                snapshot_path=Path(values["--snapshot"]),
-                prepared_root=Path(values["--prepared-root"]),
-                input_path=Path(values["--prepared-input"]),
-                deps_path=Path(values["--prepared-deps"]),
-                completion_sentinel_path=Path(values["--completion-sentinel"]),
-                output_root=Path(values["--output-root"]),
-                proposal_path=Path(values["--output"]),
-                issue_input_path=Path(values["--issue-input-output"]),
-                deps_output_path=Path(values["--deps-output"]),
-            )
-    except (OSError, UmbrellaError) as exc:
-        return _emit_error(getattr(exc, "reason", "proposal-write-failed"))
-    logging_util.emit_kv(key="PROPOSAL_PERSISTED", value="true")
-    if prepared_mode:
-        logging_util.emit_kv(key="LEAF_COUNT", value=len(proposal.leaves))
-    return 0
-
-
-def mark_in_flight_main(argv: list[str]) -> int:
-    values = _parse_values(argv, {"--proposal", "--identity"})
-    if values is None or not {"--proposal", "--identity"} <= values.keys():
-        return _emit_error("usage")
-    try:
-        _ = mark_in_flight(proposal_path=Path(values["--proposal"]), identity=values["--identity"])
-    except UmbrellaError as exc:
-        return _emit_error(exc.reason)
-    logging_util.emit_kv(key="IN_FLIGHT_PERSISTED", value="true")
-    return 0
-
-
-def record_resolved_main(argv: list[str]) -> int:
-    values = _parse_values(argv, {"--proposal", "--identity", "--number", "--url", "--issue-id"})
-    if values is None or not {"--proposal", "--identity", "--number", "--url"} <= values.keys():
-        return _emit_error("usage")
-    try:
-        _ = record_resolved(proposal_path=Path(values["--proposal"]), identity=values["--identity"], number=values["--number"], url=values["--url"], issue_id=values.get("--issue-id", ""))
-    except UmbrellaError as exc:
-        return _emit_error(exc.reason)
-    logging_util.emit_kv(key="RESOLVED_PERSISTED", value="true")
-    return 0
-
-
-def reconcile_in_flight_main(argv: list[str]) -> int:
-    values = _parse_values(argv, {"--proposal", "--identity", "--candidates"})
-    if values is None or not {"--proposal", "--identity", "--candidates"} <= values.keys():
-        return _emit_error("usage")
-    try:
-        candidate_value = _load_json(Path(values["--candidates"]))
-        if not isinstance(candidate_value, list) or not all(isinstance(item, dict) for item in cast("list[object]", candidate_value)):
-            raise UmbrellaError("ambiguous-in-flight-recovery")
-        result = reconcile_in_flight(proposal=load_proposal(Path(values["--proposal"])), identity=values["--identity"], candidates=cast("list[dict[str, object]]", candidate_value))
-        _ = record_resolved(proposal_path=Path(values["--proposal"]), identity=result.identity, number=result.number, url=result.url, issue_id=result.issue_id)
-    except UmbrellaError as exc:
-        return _emit_error(exc.reason)
-    logging_util.emit_kv(key="RECONCILED", value="true")
-    logging_util.emit_kv(key="ISSUE_NUMBER", value=result.number)
-    logging_util.emit_kv(key="ISSUE_URL", value=result.url)
-    return 0
 
 
 def mutate_main(argv: list[str]) -> int:

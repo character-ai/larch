@@ -74,7 +74,7 @@ issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682	com
 issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	issue add-sub-issue
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
-issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	issue context,issue fetch-issue-details,issue info,issue list-issues,issue state
+issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
 issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs *,combine-issues *,deps *,issue migration-audit
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify label,issue migration-audit

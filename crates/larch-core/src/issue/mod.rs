@@ -21,6 +21,7 @@ mod report_core;
 mod rows;
 mod title;
 mod triage;
+mod umbrella;
 mod untrusted;
 
 pub use body::{
@@ -67,5 +68,18 @@ pub use triage::{
     strip_triage_lifecycle_prefixes, triage_label_is_security, triage_probe_command,
     triage_text_is_security_sensitive, triage_title_has_lifecycle_prefix, triaged_title,
     validate_triage_evidence_path,
+};
+pub use umbrella::{
+    AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, CandidateIssue, DependencyEdge, ExpectedLeaf,
+    INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INVALID_LEAF_NUMBER,
+    INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
+    INVALID_RESOLVED_LEAF, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LEAF_CAP_EXCEEDED,
+    LeafState, MANAGED_PARTITION_PREFIXES, MAX_PREPARED_DEPS_BYTES, MAX_PREPARED_INPUT_BYTES,
+    MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, PREPARED_DEPENDENCY_CYCLE,
+    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN,
+    UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, check_leaf_cap,
+    classify_umbrella_source, is_managed_partition_title, leaf_identity, mark_leaf_in_flight,
+    parse_proposal, prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved,
+    render_proposal, render_snapshot, umbrella_leaf_opening_text,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

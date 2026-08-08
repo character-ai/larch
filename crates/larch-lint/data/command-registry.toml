@@ -7661,11 +7661,13 @@ verb = "mark-in-flight"
 python_module = "larch.issue.umbrella"
 python_function = "mark_in_flight_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8173
+clean_install_test = "clean-install-umbrella-mark-in-flight"
 
 [[commands]]
 domain = "umbrella"
@@ -7685,11 +7687,13 @@ verb = "persist-proposal"
 python_module = "larch.issue.umbrella"
 python_function = "persist_proposal_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8173
+clean_install_test = "clean-install-umbrella-persist-proposal"
 
 [[commands]]
 domain = "umbrella"
@@ -7697,11 +7701,13 @@ verb = "prepare"
 python_module = "larch.issue.umbrella"
 python_function = "prepare_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8173
+clean_install_test = "clean-install-umbrella-prepare"
 
 [[commands]]
 domain = "umbrella"
@@ -7709,11 +7715,13 @@ verb = "reconcile-in-flight"
 python_module = "larch.issue.umbrella"
 python_function = "reconcile_in_flight_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8173
+clean_install_test = "clean-install-umbrella-reconcile-in-flight"
 
 [[commands]]
 domain = "umbrella"
@@ -7721,11 +7729,13 @@ verb = "record-resolved"
 python_module = "larch.issue.umbrella"
 python_function = "record_resolved_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8173
+clean_install_test = "clean-install-umbrella-record-resolved"
 
 [[commands]]
 domain = "umbrella"
@@ -9742,8 +9752,8 @@ rust = ["issue title-eligibility", "triage apply", "triage inspect", "triage pro
 [[callers]]
 path = "skills/umbrella/SKILL.md"
 kind = "skill"
-python = ["session setup", "umbrella mark-in-flight", "umbrella persist-proposal", "umbrella prepare", "verify skill-called"]
-rust = []
+python = ["session setup", "verify skill-called"]
+rust = ["umbrella mark-in-flight", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved"]
 
 [[callers]]
 path = "skills/upgrade-larch/SKILL.md"

@@ -55,6 +55,19 @@ pub fn positive_integer(value: &str) -> Option<u64> {
     unsigned_integer(value).filter(|parsed| *parsed > 0)
 }
 
+/// Report whether `value` spells a positive decimal with no bound.
+///
+/// Python's `str.isdecimal()` guards accepted non-ASCII digits and magnitudes
+/// no integer type holds. This owner narrows the digits to ASCII and keeps the
+/// magnitude unbounded, so a value too large to parse is still refused for the
+/// same reason Python refused it rather than for a different one.
+#[must_use]
+pub fn is_positive_decimal(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.bytes().any(|byte| byte != b'0')
+}
+
 /// A trailing boundary does not produce a final empty element.
 #[must_use]
 pub fn split_text_lines(text: &str) -> Vec<&str> {
