@@ -59,8 +59,15 @@ issue-mutation owner and the reader drives the typed issue read, so the
 `gh` calls. The same leaf moved `issue insert-signal-marker`,
 `issue title-archival-jq`, and `issue title-eligibility` to Rust; they reach no
 GitHub service at all, so they left the `comments`, `issues`, and `labels` rows
-without joining another. The rows that still name Python-owned issue commands
-enumerate them instead of claiming the whole domain.
+without joining another. The `umbrella-conversion` row records the #8174
+cutover of `umbrella mutate`, the one live write `/umbrella` performs: it
+drives the shared issue-mutation owner's field-scoped compare-and-swap, and the
+managed-to-umbrella carve-out is the conversion field that owner already
+validates. The same leaf moved `umbrella verify` and
+`umbrella verify-completion` to Rust; both prove a completed run entirely from
+recorded artifacts and reach no GitHub service, so neither joins a row. The
+rows that still name Python-owned issue commands enumerate them instead of
+claiming the whole domain.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
@@ -85,6 +92,7 @@ pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	
 pull-request-rust-selection	crates/larch-adapters/src/github/operations.rs	python	#8216	pending	pending	pending	ci rust-select,ci rust-select-summary
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
+umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	umbrella mutate
 ```
 <!-- github-service-ownership:end -->
 <!-- markdownlint-enable MD010 -->

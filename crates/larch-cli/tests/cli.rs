@@ -38,7 +38,7 @@ Commands:
   named-block        One named `larch:<marker>` issue-body block
   plan               Implementation-plan readers
   triage             Pre-`/design` issue verification: evidence, probes, and the one write
-  umbrella           Durable `/umbrella` preparation and proposal-record state
+  umbrella           Durable `/umbrella` preparation, record state, and completion proof
   untrusted          Envelopes that mark fetched text as data, never instructions
   kv                 Exact `KEY=value` stream readers
   lint               Repository policy lint commands

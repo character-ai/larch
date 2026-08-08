@@ -153,7 +153,7 @@ enum Domain {
     /// Pre-`/design` issue verification: evidence, probes, and the one write.
     #[command(subcommand)]
     Triage(TriageCommand),
-    /// Durable `/umbrella` preparation and proposal-record state.
+    /// Durable `/umbrella` preparation, record state, and completion proof.
     #[command(subcommand)]
     Umbrella(UmbrellaCommand),
     /// Envelopes that mark fetched text as data, never instructions.
@@ -513,6 +513,15 @@ enum UmbrellaCommand {
     /// Bind one in-flight leaf to the single remote issue carrying it.
     #[command(name = "reconcile-in-flight", disable_help_flag = true)]
     ReconcileInFlight(RawCompatibilityArguments),
+    /// Convert the source issue into its final `[UMBRELLA]` title and body.
+    #[command(disable_help_flag = true)]
+    Mutate(RawCompatibilityArguments),
+    /// Prove the recorded graph landed, then publish the completion sentinel.
+    #[command(disable_help_flag = true)]
+    Verify(RawCompatibilityArguments),
+    /// Prove one child's completion sentinel against the approved partition.
+    #[command(name = "verify-completion", disable_help_flag = true)]
+    VerifyCompletion(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1226,6 +1235,11 @@ fn run(
             }
             UmbrellaCommand::ReconcileInFlight(arguments) => {
                 umbrella_commands::reconcile_in_flight_command(&arguments.arguments)
+            }
+            UmbrellaCommand::Mutate(arguments) => umbrella_commands::mutate(&arguments.arguments),
+            UmbrellaCommand::Verify(arguments) => umbrella_commands::verify(&arguments.arguments),
+            UmbrellaCommand::VerifyCompletion(arguments) => {
+                umbrella_commands::verify_completion(&arguments.arguments)
             }
         }),
         Domain::Untrusted(command) => Ok(match command {

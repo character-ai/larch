@@ -7675,11 +7675,13 @@ verb = "mutate"
 python_module = "larch.issue.umbrella"
 python_function = "mutate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8174
+clean_install_test = "clean-install-umbrella-mutate"
 
 [[commands]]
 domain = "umbrella"
@@ -7743,11 +7745,13 @@ verb = "verify"
 python_module = "larch.issue.umbrella"
 python_function = "verify_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8174
+clean_install_test = "clean-install-umbrella-verify"
 
 [[commands]]
 domain = "umbrella"
@@ -7755,11 +7759,13 @@ verb = "verify-completion"
 python_module = "larch.issue.umbrella"
 python_function = "verify_completion_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7983
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7682
+migration_issue = 8174
+clean_install_test = "clean-install-umbrella-verify-completion"
 
 [[commands]]
 domain = "untrusted"
@@ -8924,8 +8930,8 @@ rust = ["agent collect-results", "agent launch-review", "bgjob start", "bgjob wa
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
 kind = "skill"
-python = ["decompose prepare", "umbrella verify-completion"]
-rust = []
+python = ["decompose prepare"]
+rust = ["umbrella verify-completion"]
 
 [[callers]]
 path = "skills/design/references/design-outline.md"
@@ -9260,8 +9266,8 @@ rust = ["bgjob wait"]
 [[callers]]
 path = "skills/implement/references/umbrella-partition.md"
 kind = "skill"
-python = ["umbrella verify-completion"]
-rust = []
+python = []
+rust = ["umbrella verify-completion"]
 
 [[callers]]
 path = "skills/implement/scripts/cleanup.md"
@@ -9753,7 +9759,7 @@ rust = ["issue title-eligibility", "triage apply", "triage inspect", "triage pro
 path = "skills/umbrella/SKILL.md"
 kind = "skill"
 python = ["session setup", "verify skill-called"]
-rust = ["umbrella mark-in-flight", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved"]
+rust = ["umbrella mark-in-flight", "umbrella mutate", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved", "umbrella verify"]
 
 [[callers]]
 path = "skills/upgrade-larch/SKILL.md"

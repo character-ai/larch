@@ -73,10 +73,13 @@ impl CleanInstallCase {
             | "clean-install-triage-inspect"
             | "clean-install-triage-probe"
             | "clean-install-umbrella-mark-in-flight"
+            | "clean-install-umbrella-mutate"
             | "clean-install-umbrella-persist-proposal"
             | "clean-install-umbrella-prepare"
             | "clean-install-umbrella-reconcile-in-flight"
             | "clean-install-umbrella-record-resolved"
+            | "clean-install-umbrella-verify"
+            | "clean-install-umbrella-verify-completion"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr" => 2,
             _ => 0,
@@ -468,6 +471,13 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-umbrella-record-resolved",
         "umbrella",
         "record-resolved",
+    ),
+    CleanInstallCase::new("clean-install-umbrella-mutate", "umbrella", "mutate"),
+    CleanInstallCase::new("clean-install-umbrella-verify", "umbrella", "verify"),
+    CleanInstallCase::new(
+        "clean-install-umbrella-verify-completion",
+        "umbrella",
+        "verify-completion",
     ),
     CleanInstallCase::new(
         "clean-install-untrusted-content-block",
@@ -6168,6 +6178,381 @@ const UMBRELLA_CASES: &[UmbrellaFixture] = &[
     },
 ];
 
+/// The prepared record after both leaves were bound to their issues.
+const RESOLVED_RECORD: &str = concat!(
+    r#"{"common_context":"Shared context.","dependency_edges":[{"blocked":"#,
+    r#""91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c","blocker":"#,
+    r#""8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364"}],"#,
+    r#""expected_updated_at":"2026-08-03T00:00:00Z","leaves":["#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst body.","#,
+    r#""identity":"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364","#,
+    r#""issue_id":"90","number":"21","state":"resolved","title":"[LEAF OF 12] One","#,
+    r#""url":"https://example.test/issues/21"},"#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nSecond body.","#,
+    r#""identity":"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c","#,
+    r#""issue_id":"91","number":"22","state":"resolved","title":"[LEAF OF 12] Two","#,
+    r#""url":"https://example.test/issues/22"}],"#,
+    r#""prepared_deps_sha256":"0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971","#,
+    r#""prepared_input_sha256":"ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00","#,
+    r#""repository":"owner/repo","umbrella":"12","version":1}"#,
+    "\n"
+);
+
+/// The same record with its second leaf still waiting to be filed.
+const PENDING_RECORD: &str = concat!(
+    r#"{"common_context":"Shared context.","dependency_edges":[{"blocked":"#,
+    r#""91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c","blocker":"#,
+    r#""8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364"}],"#,
+    r#""expected_updated_at":"2026-08-03T00:00:00Z","leaves":["#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst body.","#,
+    r#""identity":"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364","#,
+    r#""issue_id":"90","number":"21","state":"resolved","title":"[LEAF OF 12] One","#,
+    r#""url":"https://example.test/issues/21"},"#,
+    r#"{"body":"This is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nSecond body.","#,
+    r#""identity":"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c","#,
+    r#""issue_id":"","number":"","state":"pending","title":"[LEAF OF 12] Two","url":""}],"#,
+    r#""prepared_deps_sha256":"0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971","#,
+    r#""prepared_input_sha256":"ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00","#,
+    r#""repository":"owner/repo","umbrella":"12","version":1}"#,
+    "\n"
+);
+
+/// The two live issues that exactly carry the recorded leaves.
+const RESOLVED_LEAVES: &str = concat!(
+    r#"[{"number": 21, "title": "[LEAF OF 12] One", "body": "This is a leaf of umbrella #12. "#,
+    r#"Read the umbrella in full before acting.\n\nFirst body."}, "#,
+    r#"{"number": 22, "title": "[LEAF OF 12] Two", "body": "This is a leaf of umbrella #12. "#,
+    r#"Read the umbrella in full before acting.\n\nSecond body."}]"#,
+    "\n"
+);
+
+/// The same rows with one live title edited away from its recorded leaf.
+const DRIFTED_LEAVES: &str = concat!(
+    r#"[{"number": 21, "title": "[LEAF OF 12] Renamed", "body": "This is a leaf of umbrella #12. "#,
+    r#"Read the umbrella in full before acting.\n\nFirst body."}, "#,
+    r#"{"number": 22, "title": "[LEAF OF 12] Two", "body": "This is a leaf of umbrella #12. "#,
+    r#"Read the umbrella in full before acting.\n\nSecond body."}]"#,
+    "\n"
+);
+
+/// The exact completion sentinel the prepared partition above authorizes.
+const VALID_SENTINEL: &str = concat!(
+    "UMBRELLA_SENTINEL_VERSION=2\nREPOSITORY=owner/repo\nUMBRELLA_NUMBER=12\n",
+    "PREPARED_INPUT_SHA256=ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00\n",
+    "PREPARED_DEPS_SHA256=0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971\n",
+    "PREPARED_GRAPH_SHA256=5a3a565074e99ebcc5715804373065855f81e10ba1c1a2745ef3febdec9f607b\n",
+    "GRAPH_VERIFIED=true\n"
+);
+
+/// The same rows with the graph digest rewritten to a value nothing produces.
+const STALE_SENTINEL: &str = concat!(
+    "UMBRELLA_SENTINEL_VERSION=2\nREPOSITORY=owner/repo\nUMBRELLA_NUMBER=12\n",
+    "PREPARED_INPUT_SHA256=ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00\n",
+    "PREPARED_DEPS_SHA256=0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971\n",
+    "PREPARED_GRAPH_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+    "GRAPH_VERIFIED=true\n"
+);
+
+/// The final umbrella body, carrying the record a resumed run reads.
+const FINAL_UMBRELLA_BODY: &str = "Shared context.\n\n<!-- larch:umbrella-proposal -->\n";
+
+/// The six flags `verify` names when it must publish the sentinel too.
+const VERIFY_ARGUMENTS: &[&str] = &[
+    "--proposal",
+    "{sandbox}/record.json",
+    "--leaves",
+    "{sandbox}/leaves.json",
+    "--sentinel-file",
+    "{sandbox}/complete.sentinel",
+    "--sentinel-root",
+    "{sandbox}",
+    "--prepared-input",
+    "{sandbox}/input.txt",
+    "--prepared-deps",
+    "{sandbox}/deps.tsv",
+];
+
+/// The six flags `verify-completion` names, in scanner order.
+const COMPLETION_ARGUMENTS: &[&str] = &[
+    "--sentinel-file",
+    "{sandbox}/complete.sentinel",
+    "--sentinel-root",
+    "{sandbox}",
+    "--prepared-input",
+    "{sandbox}/input.txt",
+    "--prepared-deps",
+    "{sandbox}/deps.tsv",
+    "--repo",
+    "owner/repo",
+    "--issue",
+    "12",
+];
+
+/// The five flags `mutate` names for the managed conversion path.
+const MUTATE_ARGUMENTS: &[&str] = &[
+    "--repo",
+    "owner/repo",
+    "--issue",
+    "12",
+    "--title",
+    "[UMBRELLA] Split",
+    "--body-file",
+    "{sandbox}/body.md",
+];
+
+/// The seed tree a completed run leaves behind: record, rows, and partition.
+const COMPLETION_SEEDS: &[(&str, &str)] = &[
+    ("record.json", RESOLVED_RECORD),
+    ("leaves.json", RESOLVED_LEAVES),
+    ("input.txt", PREPARED_INPUT),
+    ("deps.tsv", "1\t2\n"),
+];
+
+/// `mutate` writes one GitHub issue, and the sandbox has no `gh`, no
+/// credential, and no network, so its cases stop at the scanner, the body it
+/// cannot read, or the umbrella contract that body fails. `verify` and
+/// `verify-completion` never leave the filesystem, so their cases run end to
+/// end and the harness compares the published sentinel byte for byte.
+#[rustfmt::skip]
+const UMBRELLA_COMPLETION_CASES: &[UmbrellaFixture] = &[
+    UmbrellaFixture {
+        name: "umbrella-mutate-missing-arguments",
+        reference: "umbrella-mutate",
+        selector: &["umbrella", "mutate"],
+        arguments: &["--repo", "owner/repo"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mutate-non-boolean-managed-partition",
+        reference: "umbrella-mutate",
+        selector: &["umbrella", "mutate"],
+        arguments: &[
+            "--repo", "owner/repo", "--issue", "12", "--title", "[UMBRELLA] Split",
+            "--body-file", "{sandbox}/body.md", "--managed-partition", "maybe",
+        ],
+        seeds: &[("body.md", FINAL_UMBRELLA_BODY)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mutate-absent-body",
+        reference: "umbrella-mutate",
+        selector: &["umbrella", "mutate"],
+        arguments: MUTATE_ARGUMENTS,
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mutate-title-without-prefix",
+        reference: "umbrella-mutate",
+        selector: &["umbrella", "mutate"],
+        arguments: &[
+            "--repo", "owner/repo", "--issue", "12", "--title", "[DESIGNING] Split",
+            "--body-file", "{sandbox}/body.md",
+        ],
+        seeds: &[("body.md", FINAL_UMBRELLA_BODY)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-mutate-body-without-record",
+        reference: "umbrella-mutate",
+        selector: &["umbrella", "mutate"],
+        arguments: MUTATE_ARGUMENTS,
+        seeds: &[("body.md", "Shared context.\n")],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-missing-arguments",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &["--proposal", "{sandbox}/record.json"],
+        seeds: &[("record.json", RESOLVED_RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-partial-completion-group",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &[
+            "--proposal", "{sandbox}/record.json", "--leaves", "{sandbox}/leaves.json",
+            "--sentinel-file", "{sandbox}/complete.sentinel",
+        ],
+        seeds: COMPLETION_SEEDS,
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-proves-the-graph-alone",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &[
+            "--proposal", "{sandbox}/record.json", "--leaves", "{sandbox}/leaves.json",
+        ],
+        seeds: COMPLETION_SEEDS,
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-publishes-the-sentinel",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: VERIFY_ARGUMENTS,
+        seeds: COMPLETION_SEEDS,
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-unresolved-leaf",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: VERIFY_ARGUMENTS,
+        seeds: &[
+            ("record.json", PENDING_RECORD),
+            ("leaves.json", RESOLVED_LEAVES),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-drifted-leaf-title",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: VERIFY_ARGUMENTS,
+        seeds: &[
+            ("record.json", RESOLVED_RECORD),
+            ("leaves.json", DRIFTED_LEAVES),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-absent-leaves",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &[
+            "--proposal", "{sandbox}/record.json", "--leaves", "{sandbox}/absent.json",
+        ],
+        seeds: &[("record.json", RESOLVED_RECORD)],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-non-array-leaves",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &[
+            "--proposal", "{sandbox}/record.json", "--leaves", "{sandbox}/leaves.json",
+        ],
+        seeds: &[("record.json", RESOLVED_RECORD), ("leaves.json", "{}\n")],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-stale-prepared-partition",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: VERIFY_ARGUMENTS,
+        seeds: &[
+            ("record.json", RESOLVED_RECORD),
+            ("leaves.json", RESOLVED_LEAVES),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", ""),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-absent-sentinel-root",
+        reference: "umbrella-verify",
+        selector: &["umbrella", "verify"],
+        arguments: &[
+            "--proposal", "{sandbox}/record.json", "--leaves", "{sandbox}/leaves.json",
+            "--sentinel-file", "{sandbox}/absent/complete.sentinel",
+            "--sentinel-root", "{sandbox}/absent",
+            "--prepared-input", "{sandbox}/absent/input.txt",
+            "--prepared-deps", "{sandbox}/absent/deps.tsv",
+        ],
+        seeds: COMPLETION_SEEDS,
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-missing-arguments",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: &["--repo", "owner/repo", "--issue", "12"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-unknown-flag",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: &["--repository", "owner/repo"],
+        seeds: &[],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-proves-the-sentinel",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: COMPLETION_ARGUMENTS,
+        seeds: &[
+            ("complete.sentinel", VALID_SENTINEL),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-stale-sentinel",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: COMPLETION_ARGUMENTS,
+        seeds: &[
+            ("complete.sentinel", STALE_SENTINEL),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-truncated-sentinel",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: COMPLETION_ARGUMENTS,
+        seeds: &[
+            ("complete.sentinel", "GRAPH_VERIFIED=true\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-carriage-return",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: COMPLETION_ARGUMENTS,
+        seeds: &[
+            ("complete.sentinel", "UMBRELLA_SENTINEL_VERSION=2\r\nGRAPH_VERIFIED=true\n"),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-absent-sentinel",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: COMPLETION_ARGUMENTS,
+        seeds: &[("input.txt", PREPARED_INPUT), ("deps.tsv", "1\t2\n")],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-non-positive-issue",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: &[
+            "--sentinel-file", "{sandbox}/complete.sentinel", "--sentinel-root", "{sandbox}",
+            "--prepared-input", "{sandbox}/input.txt", "--prepared-deps", "{sandbox}/deps.tsv",
+            "--repo", "owner/repo", "--issue", "0",
+        ],
+        seeds: &[
+            ("complete.sentinel", VALID_SENTINEL),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+    UmbrellaFixture {
+        name: "umbrella-verify-completion-malformed-repository",
+        reference: "umbrella-verify-completion",
+        selector: &["umbrella", "verify-completion"],
+        arguments: &[
+            "--sentinel-file", "{sandbox}/complete.sentinel", "--sentinel-root", "{sandbox}",
+            "--prepared-input", "{sandbox}/input.txt", "--prepared-deps", "{sandbox}/deps.tsv",
+            "--repo", "owner", "--issue", "12",
+        ],
+        seeds: &[
+            ("complete.sentinel", VALID_SENTINEL),
+            ("input.txt", PREPARED_INPUT),
+            ("deps.tsv", "1\t2\n"),
+        ],
+    },
+];
+
 #[test]
 fn umbrella_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
@@ -6176,7 +6561,7 @@ fn umbrella_commands_have_reviewed_parity() {
     let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
     let golden_directory = fixture_directory.join("goldens");
 
-    for fixture in UMBRELLA_CASES {
+    for fixture in UMBRELLA_CASES.iter().chain(UMBRELLA_COMPLETION_CASES) {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));

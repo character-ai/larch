@@ -1,0 +1,24 @@
+{
+  "exit_code": 2,
+  "files": {
+    "deps.tsv": {
+      "text": "1\t2\n"
+    },
+    "input.txt": {
+      "text": "### One\n\nFirst body.\n\n### Two\n\nSecond body.\n"
+    },
+    "leaves.json": {
+      "text": "[{\"number\": 21, \"title\": \"[LEAF OF 12] One\", \"body\": \"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nFirst body.\"}, {\"number\": 22, \"title\": \"[LEAF OF 12] Two\", \"body\": \"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nSecond body.\"}]\n"
+    },
+    "record.json": {
+      "text": "{\"common_context\":\"Shared context.\",\"dependency_edges\":[{\"blocked\":\"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c\",\"blocker\":\"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364\"}],\"expected_updated_at\":\"2026-08-03T00:00:00Z\",\"leaves\":[{\"body\":\"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nFirst body.\",\"identity\":\"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364\",\"issue_id\":\"90\",\"number\":\"21\",\"state\":\"resolved\",\"title\":\"[LEAF OF 12] One\",\"url\":\"https://example.test/issues/21\"},{\"body\":\"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nSecond body.\",\"identity\":\"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c\",\"issue_id\":\"91\",\"number\":\"22\",\"state\":\"resolved\",\"title\":\"[LEAF OF 12] Two\",\"url\":\"https://example.test/issues/22\"}],\"prepared_deps_sha256\":\"0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971\",\"prepared_input_sha256\":\"ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00\",\"repository\":\"owner/repo\",\"umbrella\":\"12\",\"version\":1}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UMBRELLA_FAILED=true\nREASON=sentinel-write-failed\n"
+  }
+}

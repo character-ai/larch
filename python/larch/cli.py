@@ -304,9 +304,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         False,
     ),
     ("plan-review", "drift-baseline"): ("larch.review.plan_review", "drift_baseline_main", False),
-    ("umbrella", "mutate"): ("larch.issue.umbrella", "mutate_main", False),
-    ("umbrella", "verify"): ("larch.issue.umbrella", "verify_main", False),
-    ("umbrella", "verify-completion"): ("larch.issue.umbrella", "verify_completion_main", False),
     ("issue", "migration-audit"): (
         "larch.issue.migration_governance",
         "migration_audit_main",

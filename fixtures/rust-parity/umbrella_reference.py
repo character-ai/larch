@@ -1,17 +1,19 @@
-"""Frozen Python behavior for the issue #8173 `/umbrella` record cutover.
+"""Frozen Python behavior for the `/umbrella` cutovers in #8173 and #8174.
 
-This reproduces `umbrella prepare`, `umbrella persist-proposal`,
-`umbrella mark-in-flight`, `umbrella record-resolved`, and
-`umbrella reconcile-in-flight` from `python/larch/issue/umbrella.py` as they
-behaved at cutover, restricted to the paths a hermetic sandbox can reach.
+This reproduces all eight `/umbrella` verbs from
+`python/larch/issue/umbrella.py` as they behaved at cutover, restricted to the
+paths a hermetic sandbox can reach. The five record verbs moved to Rust in
+#8173; `mutate`, `verify`, and `verify-completion` followed in #8174, and the
+whole Python module was removed with them.
 
-Four of the five verbs never leave the filesystem, so their cases cover the
+Six of the eight verbs never leave the filesystem, so their cases cover the
 whole command: the strict `--flag value` scanner, the durable record's exact
 JSON bytes, the leaf identity hash, the bound and grammar refusals, the
-prepared-partition round trip, the trusted-root confinement, the completion
-sentinel, and each state transition. `prepare` reads one GitHub issue, and the
-sandbox has no `gh`, no credential, and no network, so its cases cover the
-scanner and the identity validation that runs before the first request.
+prepared-partition round trip, the trusted-root confinement, the graph
+verification, the completion sentinel's exact bytes, and each state transition.
+`prepare` reads one GitHub issue and `mutate` writes one, and the sandbox has
+no `gh`, no credential, and no network, so their cases cover the scanner and
+every validation that runs before the first request.
 
 The batch grammar is not restated here. `parse_issue_input` is imported from
 `issue_input_reference.py`, the frozen owner of that grammar for the #8168
@@ -76,6 +78,7 @@ MAX_PREPARED_INPUT_BYTES = 262_144
 MAX_PREPARED_DEPS_BYTES = 16_384
 PREPARED_DEP_FIELD_COUNT = 2
 SHA256_HEX_LENGTH = 64
+COMPLETION_SENTINEL_VERSION = "2"
 MANAGED_PARTITION_PREFIXES = ("[DESIGNING] ", "[IMPLEMENTING] ")
 LEAF_STATES = ("pending", "in-flight", "resolved")
 REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
@@ -204,12 +207,16 @@ def trusted_file_present(path: Path, root: Path) -> bool:
     return True
 
 
-def read_trusted_text(path: Path, root: Path) -> str:
+def read_trusted_text(path: Path, root: Path, reject_cr: bool = False) -> str:
     absolute_path, absolute_root = assert_contained(path, root)
     _ = validate_trusted_directory(absolute_root)
     assert_no_symlink_components(absolute_path)
     with absolute_path.open("r", encoding="utf-8", newline="") as handle:
-        return handle.read()
+        text = handle.read()
+    if reject_cr and "\r" in text:
+        msg = f"carriage return not allowed in {path}"
+        raise ValueError(msg)
+    return text
 
 
 def atomic_write(path: Path, text: str) -> None:
@@ -553,7 +560,88 @@ def reconcile_in_flight(proposal: dict[str, object], identity: str, candidates: 
     return matches[0]
 
 
-# --- the five entrypoints -------------------------------------------------
+# --- the completion half ---------------------------------------------------
+
+
+def leaf_contract(leaf: dict[str, object], umbrella: str) -> bool:
+    return str(leaf["title"]).startswith(f"[LEAF OF {umbrella}]") and str(leaf["body"]).startswith(
+        leaf_opening(umbrella)
+    )
+
+
+def prepared_graph_sha256(proposal: dict[str, object]) -> str:
+    shape = {
+        "leaves": [
+            {"identity": leaf["identity"], "title": leaf["title"], "body": leaf["body"]}
+            for leaf in list(proposal["leaves"])
+        ],
+        "dependency_edges": [
+            {"blocker": edge["blocker"], "blocked": edge["blocked"]}
+            for edge in list(proposal["dependency_edges"])
+        ],
+    }
+    return text_sha256(json.dumps(shape, sort_keys=True, separators=(",", ":")))
+
+
+def immutable_proposal_shape(proposal: dict[str, object]) -> tuple[object, object]:
+    leaves = tuple(
+        (leaf["identity"], leaf["title"], leaf["body"]) for leaf in list(proposal["leaves"])
+    )
+    edges = tuple((edge["blocker"], edge["blocked"]) for edge in list(proposal["dependency_edges"]))
+    return leaves, edges
+
+
+def write_completion_sentinel(
+    proposal: dict[str, object],
+    sentinel_file: str,
+    sentinel_root: str,
+    prepared_input: str,
+    prepared_deps: str,
+) -> None:
+    live_input = read_trusted_text(Path(prepared_input), Path(sentinel_root))
+    live_deps = read_trusted_text(Path(prepared_deps), Path(sentinel_root))
+    expected_proposal, _issue_input = prepare_proposal_from_batch(
+        {
+            "repository": str(proposal["repository"]),
+            "number": str(proposal["umbrella"]),
+            "title": "",
+            "body": str(proposal["common_context"]),
+            "state": "OPEN",
+            "updated_at": str(proposal["expected_updated_at"]),
+        },
+        live_input,
+        live_deps,
+    )
+    if (
+        not proposal["prepared_input_sha256"]
+        or text_sha256(live_input) != proposal["prepared_input_sha256"]
+        or text_sha256(live_deps) != proposal["prepared_deps_sha256"]
+        or immutable_proposal_shape(proposal) != immutable_proposal_shape(expected_proposal)
+    ):
+        raise UmbrellaError("stale-prepared-partition")
+    trusted_atomic_write(
+        Path(sentinel_file),
+        f"UMBRELLA_SENTINEL_VERSION={COMPLETION_SENTINEL_VERSION}\n"
+        f"REPOSITORY={proposal['repository']}\n"
+        f"UMBRELLA_NUMBER={proposal['umbrella']}\n"
+        f"PREPARED_INPUT_SHA256={proposal['prepared_input_sha256']}\n"
+        f"PREPARED_DEPS_SHA256={proposal['prepared_deps_sha256']}\n"
+        f"PREPARED_GRAPH_SHA256={prepared_graph_sha256(expected_proposal)}\n"
+        "GRAPH_VERIFIED=true\n",
+        Path(sentinel_root),
+    )
+
+
+def completion_paths(values: dict[str, str]) -> tuple[str, str, str, str] | None:
+    flags = ("--sentinel-file", "--sentinel-root", "--prepared-input", "--prepared-deps")
+    if not any(flag in values for flag in flags):
+        return "", "", "", ""
+    if not all(flag in values and values[flag] for flag in flags):
+        return None
+    return values[flags[0]], values[flags[1]], values[flags[2]], values[flags[3]]
+
+
+# --- the eight entrypoints -------------------------------------------------
 
 
 def prepare_main(argv: list[str]) -> int:
@@ -665,12 +753,124 @@ def reconcile_in_flight_main(argv: list[str]) -> int:
     return 0
 
 
+def mutate_main(argv: list[str]) -> int:
+    values = parse_values(argv, {"--repo", "--issue", "--title", "--body-file", "--managed-partition"})
+    if values is None or not {"--repo", "--issue", "--title", "--body-file"} <= values.keys():
+        return emit_error("usage")
+    managed = values.get("--managed-partition", "false")
+    if managed not in {"true", "false"}:
+        return emit_error("usage")
+    try:
+        body = Path(values["--body-file"]).read_text(encoding="utf-8")
+    except OSError:
+        return emit_error("mutation-failed")
+    if not values["--title"].startswith(UMBRELLA_PREFIX) or PROPOSAL_MARKER not in body:
+        return emit_error("invalid-final-umbrella")
+    msg = "the sandbox cannot reach the GitHub mutation this case would perform"
+    raise NotImplementedError(msg)
+
+
+def verify_main(argv: list[str]) -> int:
+    values = parse_values(
+        argv,
+        {"--proposal", "--leaves", "--sentinel-file", "--sentinel-root", "--prepared-input", "--prepared-deps"},
+    )
+    if values is None or not {"--proposal", "--leaves"} <= values.keys():
+        return emit_error("usage")
+    paths = completion_paths(values)
+    if paths is None:
+        return emit_error("usage")
+    sentinel_file, sentinel_root, prepared_input, prepared_deps = paths
+    try:
+        proposal = load_proposal(Path(values["--proposal"]))
+        rows_value = load_json(Path(values["--leaves"]))
+        if not isinstance(rows_value, list) or not all(isinstance(item, dict) for item in rows_value):
+            raise UmbrellaError("incomplete-graph-state")
+        for leaf in list(proposal["leaves"]):
+            if leaf["state"] != "resolved" or not leaf_contract(leaf, str(proposal["umbrella"])):
+                raise UmbrellaError("incomplete-graph-state")
+            matching = [row for row in rows_value if str(row.get("number") or "") == leaf["number"]]
+            if len(matching) != 1 or matching[0].get("title") != leaf["title"] or matching[0].get("body") != leaf["body"]:
+                raise UmbrellaError("incomplete-graph-state")
+        if sentinel_file:
+            write_completion_sentinel(proposal, sentinel_file, sentinel_root, prepared_input, prepared_deps)
+    except OSError:
+        return emit_error("sentinel-write-failed")
+    except UmbrellaError as exc:
+        return emit_error(exc.reason)
+    emit_kv("GRAPH_VERIFIED", True)
+    return 0
+
+
+def verify_completion_main(argv: list[str]) -> int:
+    required = {"--sentinel-file", "--sentinel-root", "--prepared-input", "--prepared-deps", "--repo", "--issue"}
+    values = parse_values(argv, required)
+    if values is None or set(values) != required:
+        return emit_error("usage")
+    try:
+        require_positive(values["--issue"], "umbrella")
+        if not validate_repo_slug(values["--repo"]):
+            raise UmbrellaError("invalid-repository")
+        sentinel_text = read_trusted_text(
+            Path(values["--sentinel-file"]), Path(values["--sentinel-root"]), reject_cr=True
+        )
+        rows: dict[str, str] = {}
+        for line in sentinel_text.splitlines():
+            key, separator, value = line.partition("=")
+            if not separator or not key or key in rows:
+                raise UmbrellaError("invalid-completion-sentinel")
+            rows[key] = value
+        if set(rows) != {
+            "UMBRELLA_SENTINEL_VERSION",
+            "REPOSITORY",
+            "UMBRELLA_NUMBER",
+            "PREPARED_INPUT_SHA256",
+            "PREPARED_DEPS_SHA256",
+            "PREPARED_GRAPH_SHA256",
+            "GRAPH_VERIFIED",
+        }:
+            raise UmbrellaError("invalid-completion-sentinel")
+        live_input = read_trusted_text(Path(values["--prepared-input"]), Path(values["--sentinel-root"]))
+        live_deps = read_trusted_text(Path(values["--prepared-deps"]), Path(values["--sentinel-root"]))
+        expected_proposal, _issue_input = prepare_proposal_from_batch(
+            {
+                "repository": values["--repo"],
+                "number": values["--issue"],
+                "title": "",
+                "body": "",
+                "state": "OPEN",
+                "updated_at": "",
+            },
+            live_input,
+            live_deps,
+        )
+        expected_rows = {
+            "UMBRELLA_SENTINEL_VERSION": COMPLETION_SENTINEL_VERSION,
+            "REPOSITORY": values["--repo"],
+            "UMBRELLA_NUMBER": values["--issue"],
+            "PREPARED_INPUT_SHA256": text_sha256(live_input),
+            "PREPARED_DEPS_SHA256": text_sha256(live_deps),
+            "PREPARED_GRAPH_SHA256": prepared_graph_sha256(expected_proposal),
+            "GRAPH_VERIFIED": "true",
+        }
+        if rows != expected_rows:
+            raise UmbrellaError("stale-completion-sentinel")
+    except (OSError, ValueError, UmbrellaError) as exc:
+        return emit_error(getattr(exc, "reason", "invalid-completion-sentinel"))
+    emit_kv("UMBRELLA_COMPLETION_VERIFIED", True)
+    emit_kv("UMBRELLA_NUMBER", values["--issue"])
+    return 0
+
+
 ENTRYPOINTS = {
     "umbrella-prepare": prepare_main,
     "umbrella-persist-proposal": persist_proposal_main,
     "umbrella-mark-in-flight": mark_in_flight_main,
     "umbrella-record-resolved": record_resolved_main,
     "umbrella-reconcile-in-flight": reconcile_in_flight_main,
+    "umbrella-mutate": mutate_main,
+    "umbrella-verify": verify_main,
+    "umbrella-verify-completion": verify_completion_main,
 }
 
 

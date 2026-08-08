@@ -1,4 +1,5 @@
-//! The five `/umbrella` verbs that prepare a source issue and own its record.
+//! The eight `/umbrella` verbs that prepare a source issue, own its record,
+//! and close the run out.
 //!
 //! `/umbrella` files a flat set of leaf issues from one approved decomposition.
 //! The skill decides what the leaves are; these verbs decide what survives a
@@ -15,6 +16,14 @@
 //! * `mark-in-flight`, `record-resolved`, and `reconcile-in-flight` move one
 //!   named leaf between the three states the record recognizes. Recovery binds
 //!   a leaf only to a single remote issue carrying its exact title and body.
+//! * `mutate` is the one live write: it converts the source issue into the
+//!   final `[UMBRELLA]` title and body, refusing anything that would drop the
+//!   prefix or the embedded record a resumed run reads.
+//! * `verify` proves every recorded leaf is resolved, still on contract, and
+//!   still the exact issue the record bound it to, and only then publishes the
+//!   completion sentinel. `verify-completion` is the parent's half of that
+//!   proof: it rebuilds the expected sentinel from the batch it approved and
+//!   compares every row.
 //!
 //! Every refusal publishes `UMBRELLA_FAILED=true` and one stable `REASON=`
 //! token at exit code 2, matching the Python contract callers branch on. Issue
@@ -24,21 +33,26 @@
 use crate::{
     github_repository_resolution::validate_repo_slug,
     github_service::{ServiceFailure, with_github_service},
+    issue_mutation_support::authorization_request,
 };
 use larch_adapters::{
-    ConfinedPath, PathIntent, TemporaryRoot, atomic_write_utf8, github::OctocrabGitHubService,
-    read_utf8, runtime::Cancellation,
+    ConfinedPath, PathIntent, TemporaryRoot, atomic_write_utf8,
+    github::{IssueMutationOwner, OctocrabGitHubService},
+    read_utf8,
+    runtime::Cancellation,
 };
 use larch_core::{
-    CandidateIssue, GitHubIssueState, GitHubService, ProposalRecord, ResolvedLeaf,
-    UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source, emit_kv,
-    is_managed_partition_title, is_positive_decimal, mark_leaf_in_flight, parse_proposal,
-    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
-    render_snapshot,
+    CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService, IssueMutationField,
+    IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf, UmbrellaSnapshot,
+    check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record, emit_kv,
+    expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
+    mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
+    record_leaf_resolved, render_proposal, render_snapshot, validate_final_umbrella,
+    verify_graph_state,
 };
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
     ffi::OsString,
     fs,
@@ -581,19 +595,401 @@ fn candidate_issue(row: &Value) -> Option<CandidateIssue> {
     })
 }
 
+/// One trusted root a completion artifact is read or published through.
+///
+/// A declared root is re-resolved once and every artifact below it is confined
+/// against the canonical spelling, so a platform alias such as the macOS `/tmp`
+/// is not mistaken for an escape and a symlinked component still refuses.
+struct SentinelRoot {
+    root: TemporaryRoot,
+    declared: PathBuf,
+}
+
+impl SentinelRoot {
+    fn resolve(path: &str, reason: &'static str) -> Result<Self, &'static str> {
+        let declared = absolute(path, reason)?;
+        Ok(Self {
+            root: TemporaryRoot::resolve(Some(&declared)).map_err(|_| reason)?,
+            declared,
+        })
+    }
+
+    fn confine(
+        &self,
+        path: &str,
+        intent: PathIntent,
+        reason: &'static str,
+    ) -> Result<ConfinedPath, &'static str> {
+        let target = absolute(path, reason)?;
+        anchored(&self.root, &self.declared, &target, intent, reason)
+    }
+
+    fn read(&self, path: &str, reason: &'static str) -> Result<String, &'static str> {
+        read_utf8(&self.confine(path, PathIntent::Read, reason)?).map_err(|_| reason)
+    }
+}
+
+/// The four paths one completion sentinel is written or checked through.
+struct CompletionPaths<'values> {
+    sentinel_file: &'values str,
+    sentinel_root: &'values str,
+    prepared_input: &'values str,
+    prepared_deps: &'values str,
+}
+
+impl<'values> CompletionPaths<'values> {
+    /// The four flags that name a completion group, in scanner order.
+    const FLAGS: [&'static str; 4] = [
+        "--sentinel-file",
+        "--sentinel-root",
+        "--prepared-input",
+        "--prepared-deps",
+    ];
+
+    /// Read the group, which is all four non-empty paths or none at all.
+    ///
+    /// `Ok(None)` reports that the caller asked for no sentinel at all, which
+    /// `verify` alone is allowed to do.
+    ///
+    /// # Errors
+    /// Returns the usage refusal for a partial or empty-valued group.
+    fn read(values: &'values BTreeMap<String, String>) -> Result<Option<Self>, &'static str> {
+        let present = Self::FLAGS
+            .iter()
+            .filter(|flag| values.contains_key(**flag))
+            .count();
+        if present == 0 {
+            return Ok(None);
+        }
+        if present != Self::FLAGS.len() || Self::FLAGS.iter().any(|flag| values[*flag].is_empty()) {
+            return Err("usage");
+        }
+        Ok(Some(Self {
+            sentinel_file: &values[Self::FLAGS[0]],
+            sentinel_root: &values[Self::FLAGS[1]],
+            prepared_input: &values[Self::FLAGS[2]],
+            prepared_deps: &values[Self::FLAGS[3]],
+        }))
+    }
+}
+
+/// Convert the source issue into its final `[UMBRELLA]` title and body.
+pub fn mutate(arguments: &[OsString]) -> ExitCode {
+    let Some(values) = parse_values(
+        arguments,
+        &[
+            "--repo",
+            "--issue",
+            "--title",
+            "--body-file",
+            "--managed-partition",
+        ],
+    ) else {
+        return refuse("usage");
+    };
+    if !has_required(&values, &["--repo", "--issue", "--title", "--body-file"]) {
+        return refuse("usage");
+    }
+    let Some(managed) = managed_partition(&values) else {
+        return refuse("usage");
+    };
+    match mutate_with(
+        &LiveUmbrellaMutation,
+        &values["--repo"],
+        &values["--issue"],
+        &values["--title"],
+        &values["--body-file"],
+        managed,
+    ) {
+        Ok(()) => {
+            emit_kv("UMBRELLA_MUTATED", "true");
+            ExitCode::SUCCESS
+        }
+        Err(reason) => refuse(reason),
+    }
+}
+
+/// The one GitHub effect `/umbrella` finalization performs, behind one seam.
+///
+/// Finalization is a judgement about what may replace a live issue's title and
+/// body, and that judgement is only provable if the write is replaceable. The
+/// live implementation below makes no decision the seam does not carry.
+trait UmbrellaMutation {
+    /// Write the final title and body, or name the refusal reason.
+    fn finalize(
+        &self,
+        repository: &str,
+        issue: &str,
+        title: &str,
+        body: &str,
+        managed: bool,
+    ) -> Result<(), &'static str>;
+}
+
+/// Read the body file, prove the contract, then perform the one write.
+///
+/// The body is read before the contract is checked because the contract is
+/// about the body, exactly as the Python owner ordered it: a caller that names
+/// an unreadable file learns that first.
+fn mutate_with(
+    sink: &impl UmbrellaMutation,
+    repository: &str,
+    issue: &str,
+    title: &str,
+    body_file: &str,
+    managed: bool,
+) -> Result<(), &'static str> {
+    let body = fs::read_to_string(body_file).map_err(|_| "mutation-failed")?;
+    validate_final_umbrella(title, &body).map_err(larch_core::UmbrellaRefusal::reason)?;
+    sink.finalize(repository, issue, title, &body, managed)
+}
+
+/// The live write: one compare-and-swap through the shared mutation owner.
+struct LiveUmbrellaMutation;
+
+impl UmbrellaMutation for LiveUmbrellaMutation {
+    fn finalize(
+        &self,
+        repository: &str,
+        issue: &str,
+        title: &str,
+        body: &str,
+        managed: bool,
+    ) -> Result<(), &'static str> {
+        if !validate_repo_slug(repository) || !is_positive_decimal(issue) {
+            return Err("invalid-identity");
+        }
+        let reference = crate::github_repository_resolution::repository_ref(repository)
+            .map_err(|()| "invalid-identity")?;
+        let number: u64 = issue.parse().map_err(|_| "invalid-identity")?;
+        let outcome = with_github_service(async |service, cancellation| {
+            Ok(finalize_umbrella(
+                &IssueMutationOwner::new(service),
+                cancellation,
+                &reference,
+                number,
+                (title, body, managed),
+            )
+            .await)
+        });
+        match outcome {
+            Ok(result) => result,
+            Err(ServiceFailure::Setup(_) | ServiceFailure::Operation(_)) => Err("read-failed"),
+        }
+    }
+}
+
+/// Apply the final title and body as one field-scoped, read-back-proved write.
+///
+/// The managed carve-out adds the umbrella-conversion field, which is what
+/// permits a protected `[DESIGNING]` or `[IMPLEMENTING]` body to be replaced at
+/// all; the mutation owner then enforces the conversion's own shape.
+async fn finalize_umbrella(
+    owner: &IssueMutationOwner<'_>,
+    cancellation: &Cancellation,
+    reference: &larch_core::GitHubRepositoryRef,
+    issue: u64,
+    contract: (&str, &str, bool),
+) -> Result<(), &'static str> {
+    let (title, body, managed) = contract;
+    let before = owner
+        .read_snapshot(reference, issue, cancellation)
+        .await
+        .map_err(larch_core::IssueMutationError::reason)?;
+    let mut fields = BTreeSet::from([IssueMutationField::Title, IssueMutationField::Body]);
+    if managed {
+        let _ = fields.insert(IssueMutationField::UmbrellaConversion);
+    }
+    let request = IssueMutationRequest {
+        repository: reference.clone(),
+        issue,
+        expected_updated_at: before.updated_at.clone(),
+        expected_state: before.state,
+        fields,
+        title: Some(title.to_owned()),
+        body: Some(body.to_owned()),
+        labels: None,
+        marker: None,
+        lease: None,
+    };
+    // `/umbrella` is an operator-invoked skill and the Python owner took no
+    // authorization of its own here, so the gate is satisfied in operator mode
+    // rather than re-deriving a session context this verb never receives.
+    owner
+        .apply(
+            cancellation,
+            &authorization_request("", "", "", true),
+            &request,
+        )
+        .await
+        .map(|_verified| ())
+        .map_err(larch_core::IssueMutationError::reason)
+}
+
+/// Prove the recorded graph landed, then publish the completion sentinel.
+pub fn verify(arguments: &[OsString]) -> ExitCode {
+    let mut permitted = vec!["--proposal", "--leaves"];
+    permitted.extend_from_slice(&CompletionPaths::FLAGS);
+    let Some(values) = parse_values(arguments, &permitted) else {
+        return refuse("usage");
+    };
+    if !has_required(&values, &["--proposal", "--leaves"]) {
+        return refuse("usage");
+    }
+    let completion = match CompletionPaths::read(&values) {
+        Ok(completion) => completion,
+        Err(reason) => return refuse(reason),
+    };
+    match verify_graph(
+        &values["--proposal"],
+        &values["--leaves"],
+        completion.as_ref(),
+    ) {
+        Ok(()) => {
+            emit_kv("GRAPH_VERIFIED", "true");
+            ExitCode::SUCCESS
+        }
+        Err(reason) => refuse(reason),
+    }
+}
+
+/// Verify the record against the live leaf rows and write the sentinel.
+fn verify_graph(
+    proposal: &str,
+    leaves: &str,
+    completion: Option<&CompletionPaths<'_>>,
+) -> Result<(), &'static str> {
+    let record = load_record(proposal)?;
+    verify_graph_state(&record, &read_remote_leaves(leaves)?)
+        .map_err(larch_core::UmbrellaRefusal::reason)?;
+    let Some(paths) = completion else {
+        return Ok(());
+    };
+    // Every filesystem failure below is reported as one reason. The sentinel is
+    // the only artifact this verb publishes, so a caller that cannot read the
+    // partition and a caller that cannot write the proof are in the same place.
+    let reason = "sentinel-write-failed";
+    let root = SentinelRoot::resolve(paths.sentinel_root, reason)?;
+    let input_text = root.read(paths.prepared_input, reason)?;
+    let deps_text = root.read(paths.prepared_deps, reason)?;
+    let sentinel = completion_sentinel_for_record(&record, &input_text, &deps_text)
+        .map_err(larch_core::UmbrellaRefusal::reason)?;
+    atomic_write_utf8(
+        &root.confine(paths.sentinel_file, PathIntent::Write, reason)?,
+        &sentinel.render(),
+        RECORD_MODE,
+    )
+    .map_err(|_| reason)
+}
+
+/// Read the live leaf rows the recorded graph is verified against.
+///
+/// A field the row cannot supply as text is dropped rather than interpreted:
+/// the comparison that follows is byte equality against a recorded leaf, so an
+/// unusable field can only fail to match.
+fn read_remote_leaves(path: &str) -> Result<Vec<RemoteLeaf>, &'static str> {
+    let text = fs::read_to_string(path).map_err(|_| "invalid-proposal-record")?;
+    let value: Value = serde_json::from_str(&text).map_err(|_| "invalid-proposal-record")?;
+    let rows = value.as_array().ok_or("incomplete-graph-state")?;
+    let mut leaves = Vec::with_capacity(rows.len());
+    for row in rows {
+        let row = row.as_object().ok_or("incomplete-graph-state")?;
+        let text = |key: &str| match row.get(key) {
+            Some(Value::String(value)) => value.clone(),
+            _ => String::new(),
+        };
+        leaves.push(RemoteLeaf {
+            number: row_number(row.get("number")),
+            title: text("title"),
+            body: text("body"),
+        });
+    }
+    Ok(leaves)
+}
+
+/// Render one row's issue number the way the Python comparison rendered it.
+///
+/// Python coerced the field with `str(row.get("number") or "")`, so every falsy
+/// spelling — absent, null, `false`, zero, an empty string — became the empty
+/// string that matches no recorded leaf.
+fn row_number(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) if number.as_f64() != Some(0.0) => number.to_string(),
+        Some(Value::Bool(true)) => String::from("True"),
+        _ => String::new(),
+    }
+}
+
+/// Prove one child's completion sentinel against the parent's own partition.
+pub fn verify_completion(arguments: &[OsString]) -> ExitCode {
+    let mut permitted = vec!["--repo", "--issue"];
+    permitted.extend_from_slice(&CompletionPaths::FLAGS);
+    let Some(values) = parse_values(arguments, &permitted) else {
+        return refuse("usage");
+    };
+    let Ok(Some(paths)) = CompletionPaths::read(&values) else {
+        return refuse("usage");
+    };
+    if !has_required(&values, &["--repo", "--issue"]) {
+        return refuse("usage");
+    }
+    match check_completion(&values["--repo"], &values["--issue"], &paths) {
+        Ok(()) => {
+            emit_kv("UMBRELLA_COMPLETION_VERIFIED", "true");
+            emit_kv("UMBRELLA_NUMBER", &values["--issue"]);
+            ExitCode::SUCCESS
+        }
+        Err(reason) => refuse(reason),
+    }
+}
+
+/// Rebuild the sentinel the live partition authorizes and compare every row.
+fn check_completion(
+    repository: &str,
+    issue: &str,
+    paths: &CompletionPaths<'_>,
+) -> Result<(), &'static str> {
+    if !is_positive_decimal(issue) {
+        return Err("invalid-umbrella");
+    }
+    if !validate_repo_slug(repository) {
+        return Err("invalid-repository");
+    }
+    let reason = "invalid-completion-sentinel";
+    let root = SentinelRoot::resolve(paths.sentinel_root, reason)?;
+    let stored = CompletionSentinel::parse(&root.read(paths.sentinel_file, reason)?)
+        .map_err(larch_core::UmbrellaRefusal::reason)?;
+    let expected = expected_completion_sentinel(
+        repository,
+        issue,
+        &root.read(paths.prepared_input, reason)?,
+        &root.read(paths.prepared_deps, reason)?,
+    )
+    .map_err(larch_core::UmbrellaRefusal::reason)?;
+    if stored == expected {
+        Ok(())
+    } else {
+        Err(larch_core::STALE_COMPLETION_SENTINEL.reason())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        SnapshotSource, absolute, candidate_issue, load_record, mark_in_flight, parse_values,
+        CompletionPaths, SnapshotSource, UmbrellaMutation, absolute, candidate_issue,
+        check_completion, load_record, mark_in_flight, mutate, mutate_with, parse_values,
         persist_prepared_proposal, persist_proposal, prepare, prepare_with, reconcile,
-        reconcile_in_flight_command, record_resolved, resolve_into,
+        reconcile_in_flight_command, record_resolved, resolve_into, row_number, verify,
+        verify_completion, verify_graph,
     };
     use larch_core::{
         ExpectedLeaf, LeafState, MANAGED_PARTITION_PREFIXES, ProposalRecord, ResolvedLeaf,
-        UmbrellaSnapshot, leaf_identity, mark_leaf_in_flight, render_proposal,
-        umbrella_leaf_opening_text,
+        UmbrellaSnapshot, leaf_identity, mark_leaf_in_flight, prepare_proposal_from_batch,
+        render_proposal, umbrella_leaf_opening_text,
     };
     use std::{
+        cell::RefCell,
         collections::BTreeMap,
         ffi::OsString,
         fs,
@@ -1147,5 +1543,425 @@ mod tests {
             text_path(&parent.join("real-input.txt")),
         );
         assert_eq!(persist_prepared_proposal(&values), Ok(2));
+    }
+    /// The exact parent-approved batch every completion case is built from.
+    const PREPARED_BATCH: &str = "### One\n\nFirst.\n\n### Two\n\nSecond.\n";
+
+    /// The six paths one completed `/umbrella` run leaves behind.
+    struct Completion {
+        proposal: String,
+        leaves: String,
+        sentinel: String,
+        root: String,
+        input: String,
+        deps: String,
+    }
+
+    impl Completion {
+        /// Confine the three completion artifacts to the fixture's own root.
+        fn paths(&self) -> CompletionPaths<'_> {
+            CompletionPaths {
+                sentinel_file: &self.sentinel,
+                sentinel_root: &self.root,
+                prepared_input: &self.input,
+                prepared_deps: &self.deps,
+            }
+        }
+
+        /// The argument vector `verify-completion` reads this run through.
+        fn completion_arguments(&self) -> Vec<OsString> {
+            arguments(&[
+                "--sentinel-file",
+                &self.sentinel,
+                "--sentinel-root",
+                &self.root,
+                "--prepared-input",
+                &self.input,
+                "--prepared-deps",
+                &self.deps,
+                "--repo",
+                "owner/repo",
+                "--issue",
+                "12",
+            ])
+        }
+    }
+
+    /// Publish one prepared partition whose two leaves are already resolved.
+    fn completion_fixture(parent: &Path) -> Completion {
+        let source = UmbrellaSnapshot {
+            repository: "owner/repo".to_owned(),
+            number: "12".to_owned(),
+            title: managed_title("Split"),
+            body: "Shared.".to_owned(),
+            state: "OPEN".to_owned(),
+            updated_at: "2026-08-03T00:00:00Z".to_owned(),
+        };
+        let (mut record, _issue_input) =
+            prepare_proposal_from_batch(&source, PREPARED_BATCH, "1\t2\n")
+                .expect("prepares the partition");
+        let mut rows = Vec::with_capacity(record.leaves.len());
+        for (index, leaf) in record.leaves.iter_mut().enumerate() {
+            let number = 21 + index;
+            leaf.state = LeafState::Resolved;
+            leaf.number = number.to_string();
+            leaf.url = format!("https://example.test/issues/{number}");
+            rows.push(serde_json::json!({
+                "number": number,
+                "title": leaf.title,
+                "body": leaf.body,
+            }));
+        }
+        Completion {
+            proposal: write(parent, "proposal.json", &render_proposal(&record)),
+            leaves: write(
+                parent,
+                "leaves.json",
+                &serde_json::Value::Array(rows).to_string(),
+            ),
+            sentinel: text_path(&parent.join("complete.sentinel")),
+            root: text_path(parent),
+            input: write(parent, "input.txt", PREPARED_BATCH),
+            deps: write(parent, "deps.tsv", "1\t2\n"),
+        }
+    }
+
+    /// One finalization sink that records the contract it was handed.
+    struct RecordingMutation(RefCell<Vec<String>>);
+
+    impl UmbrellaMutation for RecordingMutation {
+        fn finalize(
+            &self,
+            repository: &str,
+            issue: &str,
+            title: &str,
+            body: &str,
+            managed: bool,
+        ) -> Result<(), &'static str> {
+            self.0
+                .borrow_mut()
+                .push(format!("{repository} {issue} {title} {body} {managed}"));
+            Ok(())
+        }
+    }
+
+    /// One finalization sink standing in for a refused live mutation.
+    struct RefusedMutation;
+
+    impl UmbrellaMutation for RefusedMutation {
+        fn finalize(
+            &self,
+            _repository: &str,
+            _issue: &str,
+            _title: &str,
+            _body: &str,
+            _managed: bool,
+        ) -> Result<(), &'static str> {
+            Err("stale-identity")
+        }
+    }
+
+    #[test]
+    fn finalization_writes_only_a_body_that_keeps_the_umbrella_contract() {
+        let directory = TempDir::new().expect("temporary directory");
+        let sandbox = root(&directory);
+        let body = write(
+            &sandbox,
+            "body.md",
+            "Context\n<!-- larch:umbrella-proposal -->\n",
+        );
+        let bare = write(&sandbox, "bare.md", "Context only\n");
+        let sink = RecordingMutation(RefCell::new(Vec::new()));
+
+        assert_eq!(
+            mutate_with(&sink, "owner/repo", "12", "[UMBRELLA] Split", &body, true),
+            Ok(())
+        );
+        assert_eq!(
+            sink.0.borrow().as_slice(),
+            ["owner/repo 12 [UMBRELLA] Split Context\n<!-- larch:umbrella-proposal -->\n true"]
+        );
+        assert_eq!(
+            mutate_with(
+                &sink,
+                "owner/repo",
+                "12",
+                &managed_title("Split"),
+                &body,
+                false
+            ),
+            Err("invalid-final-umbrella")
+        );
+        assert_eq!(
+            mutate_with(&sink, "owner/repo", "12", "[UMBRELLA] Split", &bare, false),
+            Err("invalid-final-umbrella")
+        );
+        assert_eq!(
+            mutate_with(
+                &sink,
+                "owner/repo",
+                "12",
+                "[UMBRELLA] Split",
+                "/larch-umbrella-absent-body.md",
+                false
+            ),
+            Err("mutation-failed")
+        );
+        assert_eq!(
+            mutate_with(
+                &RefusedMutation,
+                "owner/repo",
+                "12",
+                "[UMBRELLA] Split",
+                &body,
+                false
+            ),
+            Err("stale-identity")
+        );
+        // Only the one accepted contract reached the sink.
+        assert_eq!(sink.0.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_verified_graph_publishes_the_sentinel_the_parent_rechecks() {
+        let directory = TempDir::new().expect("temporary directory");
+        let parent = root(&directory);
+        let fixture = completion_fixture(&parent);
+        let paths = fixture.paths();
+
+        assert_eq!(
+            verify_graph(&fixture.proposal, &fixture.leaves, Some(&paths)),
+            Ok(())
+        );
+        let published = fs::read_to_string(&fixture.sentinel).expect("sentinel published");
+        assert!(published.starts_with("UMBRELLA_SENTINEL_VERSION=2\nREPOSITORY=owner/repo\n"));
+        assert!(published.ends_with("GRAPH_VERIFIED=true\n"));
+        assert_eq!(check_completion("owner/repo", "12", &paths), Ok(()));
+
+        // The parent rebuilds the proof from its own artifacts, so editing one
+        // after the fact invalidates the sentinel without touching it.
+        fs::write(&fixture.deps, "").expect("rewrite the edge list");
+        assert_eq!(
+            check_completion("owner/repo", "12", &paths),
+            Err("stale-completion-sentinel")
+        );
+        assert_eq!(
+            verify_graph(&fixture.proposal, &fixture.leaves, Some(&paths)),
+            Err("stale-prepared-partition")
+        );
+        fs::write(&fixture.deps, "1\t2\n").expect("restore the edge list");
+        assert_eq!(check_completion("owner/repo", "12", &paths), Ok(()));
+    }
+
+    #[test]
+    fn verification_refuses_every_incomplete_or_unreadable_graph() {
+        let directory = TempDir::new().expect("temporary directory");
+        let parent = root(&directory);
+        let fixture = completion_fixture(&parent);
+        let paths = fixture.paths();
+
+        assert_eq!(
+            verify_graph(&fixture.proposal, "/larch-umbrella-absent.json", None),
+            Err("invalid-proposal-record")
+        );
+        let unusable = write(&parent, "object.json", "{}\n");
+        assert_eq!(
+            verify_graph(&fixture.proposal, &unusable, None),
+            Err("incomplete-graph-state")
+        );
+        let scalar_rows = write(&parent, "scalars.json", "[3]\n");
+        assert_eq!(
+            verify_graph(&fixture.proposal, &scalar_rows, None),
+            Err("incomplete-graph-state")
+        );
+        let renumbered = write(
+            &parent,
+            "renumbered.json",
+            "[{\"number\": 0, \"title\": \"t\", \"body\": \"b\"}]\n",
+        );
+        assert_eq!(
+            verify_graph(&fixture.proposal, &renumbered, None),
+            Err("incomplete-graph-state")
+        );
+        // A record whose leaves never resolved cannot authorize a sentinel.
+        let pending = write(&parent, "pending.json", &render_proposal(&record()));
+        assert_eq!(
+            verify_graph(&pending, &fixture.leaves, None),
+            Err("incomplete-graph-state")
+        );
+        assert!(!Path::new(&fixture.sentinel).exists());
+
+        let missing_root = CompletionPaths {
+            sentinel_root: "/larch-umbrella-missing-root",
+            ..paths
+        };
+        assert_eq!(
+            verify_graph(&fixture.proposal, &fixture.leaves, Some(&missing_root)),
+            Err("sentinel-write-failed")
+        );
+        let escaping = CompletionPaths {
+            prepared_input: "/larch-umbrella-outside/input.txt",
+            ..paths
+        };
+        assert_eq!(
+            verify_graph(&fixture.proposal, &fixture.leaves, Some(&escaping)),
+            Err("sentinel-write-failed")
+        );
+    }
+
+    #[test]
+    fn a_completion_proof_is_refused_unless_every_row_is_rebuilt() {
+        let directory = TempDir::new().expect("temporary directory");
+        let parent = root(&directory);
+        let fixture = completion_fixture(&parent);
+        let paths = fixture.paths();
+        assert_eq!(
+            verify_graph(&fixture.proposal, &fixture.leaves, Some(&paths)),
+            Ok(())
+        );
+
+        assert_eq!(
+            check_completion("owner/repo", "0", &paths),
+            Err("invalid-umbrella")
+        );
+        assert_eq!(
+            check_completion("owner", "12", &paths),
+            Err("invalid-repository")
+        );
+        assert_eq!(
+            check_completion("owner/repo", "13", &paths),
+            Err("stale-completion-sentinel")
+        );
+        let published = fs::read_to_string(&fixture.sentinel).expect("sentinel published");
+        fs::write(&fixture.sentinel, published.replace('\n', "\r\n")).expect("rewrite the proof");
+        assert_eq!(
+            check_completion("owner/repo", "12", &paths),
+            Err("invalid-completion-sentinel")
+        );
+        fs::write(&fixture.sentinel, "GRAPH_VERIFIED=true\n").expect("truncate the proof");
+        assert_eq!(
+            check_completion("owner/repo", "12", &paths),
+            Err("invalid-completion-sentinel")
+        );
+        fs::remove_file(&fixture.sentinel).expect("drop the proof");
+        assert_eq!(
+            check_completion("owner/repo", "12", &paths),
+            Err("invalid-completion-sentinel")
+        );
+        fs::write(&fixture.input, "### Only\n\nOne item.\n").expect("shrink the batch");
+        assert_eq!(
+            check_completion("owner/repo", "12", &paths),
+            Err("invalid-completion-sentinel")
+        );
+    }
+
+    #[test]
+    fn every_completion_entrypoint_scans_its_own_command_line() {
+        let directory = TempDir::new().expect("temporary directory");
+        let parent = root(&directory);
+        let fixture = completion_fixture(&parent);
+        let refused = ExitCode::from(2);
+
+        assert_eq!(mutate(&arguments(&["--repo", "owner/repo"])), refused);
+        assert_eq!(mutate(&arguments(&["--repo"])), refused);
+        assert_eq!(
+            mutate(&arguments(&[
+                "--repo",
+                "owner/repo",
+                "--issue",
+                "12",
+                "--title",
+                "[UMBRELLA] Split",
+                "--body-file",
+                &fixture.input,
+                "--managed-partition",
+                "maybe",
+            ])),
+            refused
+        );
+        assert_eq!(
+            verify(&arguments(&["--proposal", &fixture.proposal])),
+            refused
+        );
+        assert_eq!(verify(&arguments(&["--leaves"])), refused);
+        // A partial completion group is a usage refusal, not a missing proof.
+        assert_eq!(
+            verify(&arguments(&[
+                "--proposal",
+                &fixture.proposal,
+                "--leaves",
+                &fixture.leaves,
+                "--sentinel-file",
+                &fixture.sentinel,
+            ])),
+            refused
+        );
+        assert_eq!(
+            verify(&arguments(&[
+                "--proposal",
+                &fixture.proposal,
+                "--leaves",
+                &fixture.leaves
+            ])),
+            ExitCode::SUCCESS
+        );
+        assert!(!Path::new(&fixture.sentinel).exists());
+        assert_eq!(
+            verify_completion(&arguments(&["--repo", "owner/repo"])),
+            refused
+        );
+        assert_eq!(
+            verify_completion(&arguments(&[
+                "--sentinel-file",
+                &fixture.sentinel,
+                "--sentinel-root",
+                &fixture.root,
+                "--prepared-input",
+                &fixture.input,
+                "--prepared-deps",
+                &fixture.deps,
+            ])),
+            refused
+        );
+        assert_eq!(verify_completion(&fixture.completion_arguments()), refused);
+
+        assert_eq!(
+            verify(&arguments(&[
+                "--proposal",
+                &fixture.proposal,
+                "--leaves",
+                &fixture.leaves,
+                "--sentinel-file",
+                &fixture.sentinel,
+                "--sentinel-root",
+                &fixture.root,
+                "--prepared-input",
+                &fixture.input,
+                "--prepared-deps",
+                &fixture.deps,
+            ])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            verify_completion(&fixture.completion_arguments()),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn a_row_number_matches_only_what_python_rendered() {
+        assert_eq!(row_number(Some(&serde_json::json!(34))), "34");
+        assert_eq!(row_number(Some(&serde_json::json!("34"))), "34");
+        assert_eq!(row_number(Some(&serde_json::json!(true))), "True");
+        for falsy in [
+            serde_json::json!(0),
+            serde_json::json!(false),
+            serde_json::json!(null),
+            serde_json::json!(""),
+            serde_json::json!([34]),
+        ] {
+            assert_eq!(row_number(Some(&falsy)), "", "value {falsy}");
+        }
+        assert_eq!(row_number(None), "");
     }
 }
