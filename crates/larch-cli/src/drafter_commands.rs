@@ -45,10 +45,7 @@ use crate::external_agent::{
     cursor_preflight_verdict, hold_vendor_startup_lock, run_bare_vendor,
     run_external_agent_with_auth_retries,
 };
-use crate::python_verb::{
-    plugin_root_directory, run_python_verb,
-    run_python_verb_best_effort,
-};
+use crate::python_verb::{plugin_root_directory, run_python_verb, run_python_verb_best_effort};
 
 /// Vendor label used by every launcher in this module that drives Codex.
 const CODEX_TOOL: &str = "codex";

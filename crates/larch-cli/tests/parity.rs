@@ -178,14 +178,36 @@ impl CleanInstallCase {
             "clean-install-timing-mark" => &["clean-install"],
             "clean-install-timing-report" => &["--summary"],
             "clean-install-timing-record-round" => &[
-                "--skill", "implement", "--step", "clean-install", "--round", "1",
-                "--start-s", "0", "--end-s", "1", "--accepted", "0", "--rejected", "0",
+                "--skill",
+                "implement",
+                "--step",
+                "clean-install",
+                "--round",
+                "1",
+                "--start-s",
+                "0",
+                "--end-s",
+                "1",
+                "--accepted",
+                "0",
+                "--rejected",
+                "0",
             ],
             "clean-install-timing-record-vendor-task" => &[
-                "--vendor", "codex", "--task-kind", "codex-review",
-                "--start-s", "0", "--end-s", "1", "--output", "clean-install.log",
+                "--vendor",
+                "codex",
+                "--task-kind",
+                "codex-review",
+                "--start-s",
+                "0",
+                "--end-s",
+                "1",
+                "--output",
+                "clean-install.log",
             ],
-            "clean-install-timing-harness-mark" => &["--label", "clean-install", "--", "/usr/bin/true"],
+            "clean-install-timing-harness-mark" => {
+                &["--label", "clean-install", "--", "/usr/bin/true"]
+            }
             _ => &["--help"],
         }
     }

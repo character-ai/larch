@@ -263,7 +263,9 @@ pub fn is_wellformed_task_kind(task_kind: &str) -> bool {
         return false;
     }
     task_kind.len() <= 64
-        && characters.all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-')
+        && characters.all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
 }
 
 /// Return whether `task_kind` is on the canonical allow-list.
@@ -333,20 +335,13 @@ pub fn parse_ledger(text: &str) -> LedgerRows {
                 });
             }
             "vendor" => {
-                let (
-                    Some(timestamp),
-                    Some(start),
-                    Some(end),
-                    Some(duration),
-                    Some(exit_code),
-                ) = (
+                let (Some(timestamp), Some(start), Some(end), Some(duration), Some(exit_code)) = (
                     parse_i64(columns[2]),
                     parse_i64(columns[7]),
                     parse_i64(columns[8]),
                     parse_i64(columns[9]),
                     parse_i64(columns[11]),
-                )
-                else {
+                ) else {
                     rows.warnings.push(malformed_warning());
                     continue;
                 };
@@ -541,7 +536,11 @@ pub fn summary_line(rows: &LedgerRows, now: i64) -> String {
     let Some(first) = rows.marks.first() else {
         return REPORT_UNAVAILABLE.to_owned();
     };
-    counted_line("Total", now - first.timestamp, vendor_counts_since(rows, first.timestamp))
+    counted_line(
+        "Total",
+        now - first.timestamp,
+        vendor_counts_since(rows, first.timestamp),
+    )
 }
 
 /// Render the one-line `--terse` report for one skill.
@@ -550,7 +549,11 @@ pub fn terse_line(rows: &LedgerRows, skill: &str, now: i64) -> String {
     let Some(last) = rows.marks.iter().rev().find(|mark| mark.skill == skill) else {
         return REPORT_UNAVAILABLE.to_owned();
     };
-    counted_line(&last.step, now - last.timestamp, vendor_counts_since(rows, last.timestamp))
+    counted_line(
+        &last.step,
+        now - last.timestamp,
+        vendor_counts_since(rows, last.timestamp),
+    )
 }
 
 fn counted_line(label: &str, elapsed: i64, counts: [i64; 3]) -> String {
@@ -600,7 +603,14 @@ pub fn build_report(rows: &LedgerRows, now: i64, threshold: i64) -> TimingReport
         per_step.push(step_row(mark, end, threshold, rows));
         if mark.skill == "implement" {
             for child in ["design", "review"] {
-                per_step.extend(child_steps(rows, child, mark.timestamp, end, now, threshold));
+                per_step.extend(child_steps(
+                    rows,
+                    child,
+                    mark.timestamp,
+                    end,
+                    now,
+                    threshold,
+                ));
             }
         }
     }
@@ -1020,7 +1030,9 @@ mod tests {
 
     #[test]
     fn malformed_rows_are_skipped_with_one_warning_each() {
-        let rows = parse_ledger("v1\tmark\tnot-a-number\timplement\tstep\t-\t-\t-\t-\t-\t-\t-\t-\nshort\n");
+        let rows = parse_ledger(
+            "v1\tmark\tnot-a-number\timplement\tstep\t-\t-\t-\t-\t-\t-\t-\t-\nshort\n",
+        );
         assert!(rows.marks.is_empty());
         assert_eq!(rows.warnings.len(), 2);
     }
@@ -1041,10 +1053,44 @@ mod tests {
         let text = ledger(&[
             mark_row(100, "implement", "Step 1"),
             mark_row(110, "design", "design Step 3"),
-            round_row(115, "design", "design Step 3", 1, 111, 118, 7, 2, 1, Some(3), 1),
+            round_row(
+                115,
+                "design",
+                "design Step 3",
+                1,
+                111,
+                118,
+                7,
+                2,
+                1,
+                Some(3),
+                1,
+            ),
             mark_row(160, "implement", "Step 2"),
-            vendor_row(150, "implement", "codex", "codex-review", 100, 130, 30, "out.txt", 0, "complete"),
-            vendor_row(155, "implement", "codex", "codex-review", 100, 150, 50, "out.txt", 0, "complete"),
+            vendor_row(
+                150,
+                "implement",
+                "codex",
+                "codex-review",
+                100,
+                130,
+                30,
+                "out.txt",
+                0,
+                "complete",
+            ),
+            vendor_row(
+                155,
+                "implement",
+                "codex",
+                "codex-review",
+                100,
+                150,
+                50,
+                "out.txt",
+                0,
+                "complete",
+            ),
         ]);
         let rows = parse_ledger(&text);
         let data = build_report(&rows, 200, 14400);
@@ -1059,8 +1105,14 @@ mod tests {
         assert!(rendered.starts_with("{\"per_step\": ["), "{rendered}");
         assert!(rendered.contains("\"average_seconds\": 40.0"), "{rendered}");
         let markdown = report_markdown(&data);
-        assert!(markdown.contains("| **Total** | | 00:01:00 |"), "{markdown}");
-        assert!(markdown.contains("| codex | codex-review | 2 | 0.7 min | 0.5 min-0.8 min |"), "{markdown}");
+        assert!(
+            markdown.contains("| **Total** | | 00:01:00 |"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("| codex | codex-review | 2 | 0.7 min | 0.5 min-0.8 min |"),
+            "{markdown}"
+        );
     }
 
     #[test]
@@ -1090,8 +1142,30 @@ mod tests {
     fn summary_and_terse_lines_count_vendor_tasks_by_end_time() {
         let text = ledger(&[
             mark_row(10, "implement", "Step 1"),
-            vendor_row(30, "implement", "codex", "codex-review", 5, 9, 4, "a.txt", 0, "complete"),
-            vendor_row(40, "implement", "cursor", "cursor-review", 12, 30, 18, "b.txt", 0, "complete"),
+            vendor_row(
+                30,
+                "implement",
+                "codex",
+                "codex-review",
+                5,
+                9,
+                4,
+                "a.txt",
+                0,
+                "complete",
+            ),
+            vendor_row(
+                40,
+                "implement",
+                "cursor",
+                "cursor-review",
+                12,
+                30,
+                18,
+                "b.txt",
+                0,
+                "complete",
+            ),
             mark_row(50, "design", "design Step 3"),
         ]);
         let rows = parse_ledger(&text);

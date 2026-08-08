@@ -16,7 +16,8 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().expect("temporary root should create");
-        let tmpdir = fs::canonicalize(directory.path()).expect("temporary root should canonicalize");
+        let tmpdir =
+            fs::canonicalize(directory.path()).expect("temporary root should canonicalize");
         Self {
             _directory: directory,
             tmpdir,
@@ -98,7 +99,10 @@ fn mark_appends_one_canonical_row_and_task_kinds_lists_the_allow_list() {
     let rows = fixture.rows();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0..2], ["v1".to_owned(), "mark".to_owned()]);
-    assert_eq!(rows[0][3..5], ["implement".to_owned(), "Step 3 — checks".to_owned()]);
+    assert_eq!(
+        rows[0][3..5],
+        ["implement".to_owned(), "Step 3 — checks".to_owned()]
+    );
     assert_eq!(rows[0].len(), 13);
 
     let kinds = fixture.run(&["task-kinds"]);
@@ -113,8 +117,18 @@ fn mark_appends_one_canonical_row_and_task_kinds_lists_the_allow_list() {
 #[test]
 fn mark_if_latest_differs_suppresses_only_a_repeated_label_for_the_same_skill() {
     let fixture = Fixture::new();
-    assert!(fixture.run(&["mark", "--if-latest-differs", "Step 5"]).status.success());
-    assert!(fixture.run(&["mark", "--if-latest-differs", "Step 5"]).status.success());
+    assert!(
+        fixture
+            .run(&["mark", "--if-latest-differs", "Step 5"])
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run(&["mark", "--if-latest-differs", "Step 5"])
+            .status
+            .success()
+    );
     assert!(
         fixture
             .run_with_skill("design", &["mark", "--if-latest-differs", "Step 5"])
@@ -148,20 +162,47 @@ fn mark_without_a_resolvable_ledger_writes_nothing_and_succeeds() {
 fn record_vendor_task_normalizes_status_names_and_clamps_a_reversed_window() {
     let fixture = Fixture::new();
     let ok = fixture.run(&[
-        "record-vendor-task", "--vendor", "codex", "--task-kind", "codex-review",
-        "--start-s", "10.9", "--end-s", "25.4", "--output", "/nested/dir/codex.log",
-        "--exit-code", "3", "--status", "ERROR",
+        "record-vendor-task",
+        "--vendor",
+        "codex",
+        "--task-kind",
+        "codex-review",
+        "--start-s",
+        "10.9",
+        "--end-s",
+        "25.4",
+        "--output",
+        "/nested/dir/codex.log",
+        "--exit-code",
+        "3",
+        "--status",
+        "ERROR",
     ]);
     assert!(ok.status.success(), "{}", stderr(&ok));
     let reversed = fixture.run(&[
-        "record-vendor-task", "--vendor", "cursor", "--task-kind", "cursor-review",
-        "--start-s", "50", "--end-s", "10", "--output", "cursor.log",
+        "record-vendor-task",
+        "--vendor",
+        "cursor",
+        "--task-kind",
+        "cursor-review",
+        "--start-s",
+        "50",
+        "--end-s",
+        "10",
+        "--output",
+        "cursor.log",
     ]);
     assert!(reversed.status.success());
     assert!(stderr(&reversed).contains("end_s precedes start_s"));
     let rows = fixture.rows();
-    assert_eq!(rows[0][5..7], ["codex".to_owned(), "codex-review".to_owned()]);
-    assert_eq!(rows[0][7..10], ["10".to_owned(), "25".to_owned(), "15".to_owned()]);
+    assert_eq!(
+        rows[0][5..7],
+        ["codex".to_owned(), "codex-review".to_owned()]
+    );
+    assert_eq!(
+        rows[0][7..10],
+        ["10".to_owned(), "25".to_owned(), "15".to_owned()]
+    );
     assert_eq!(rows[0][10], "codex.log");
     assert_eq!(rows[0][11..13], ["3".to_owned(), "signal".to_owned()]);
     assert_eq!(rows[1][9], "0");
@@ -172,14 +213,32 @@ fn record_vendor_task_normalizes_status_names_and_clamps_a_reversed_window() {
 fn record_vendor_task_refuses_an_unknown_vendor_and_warns_on_an_unlisted_kind() {
     let fixture = Fixture::new();
     let refused = fixture.run(&[
-        "record-vendor-task", "--vendor", "gemini", "--task-kind", "codex-review",
-        "--start-s", "0", "--end-s", "1", "--output", "o",
+        "record-vendor-task",
+        "--vendor",
+        "gemini",
+        "--task-kind",
+        "codex-review",
+        "--start-s",
+        "0",
+        "--end-s",
+        "1",
+        "--output",
+        "o",
     ]);
     assert_eq!(refused.status.code(), Some(1));
     assert!(stderr(&refused).contains("vendor must be codex, cursor, or claude"));
     let warned = fixture.run(&[
-        "record-vendor-task", "--vendor", "codex", "--task-kind", "codex-unregistered",
-        "--start-s", "0", "--end-s", "1", "--output", "o",
+        "record-vendor-task",
+        "--vendor",
+        "codex",
+        "--task-kind",
+        "codex-unregistered",
+        "--start-s",
+        "0",
+        "--end-s",
+        "1",
+        "--output",
+        "o",
     ]);
     assert!(warned.status.success());
     assert!(stderr(&warned).contains("unknown task-kind: codex-unregistered"));
@@ -191,16 +250,40 @@ fn record_round_counts_prior_attempts_of_the_same_round() {
     let fixture = Fixture::new();
     for start in ["100", "300"] {
         let output = fixture.run(&[
-            "record-round", "--skill", "implement", "--step", "Step 5 — code review",
-            "--round", "1", "--start-s", start, "--end-s", "400",
-            "--accepted", "1", "--rejected", "0",
+            "record-round",
+            "--skill",
+            "implement",
+            "--step",
+            "Step 5 — code review",
+            "--round",
+            "1",
+            "--start-s",
+            start,
+            "--end-s",
+            "400",
+            "--accepted",
+            "1",
+            "--rejected",
+            "0",
         ]);
         assert!(output.status.success(), "{}", stderr(&output));
     }
     let second = fixture.run(&[
-        "record-round", "--skill", "implement", "--step", "Step 5 — code review",
-        "--round", "2", "--start-s", "500", "--end-s", "600",
-        "--accepted", "0", "--rejected", "0",
+        "record-round",
+        "--skill",
+        "implement",
+        "--step",
+        "Step 5 — code review",
+        "--round",
+        "2",
+        "--start-s",
+        "500",
+        "--end-s",
+        "600",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
     ]);
     assert!(second.status.success());
     let rows = fixture.rows();
@@ -209,8 +292,21 @@ fn record_round_counts_prior_attempts_of_the_same_round() {
     assert_eq!(rounds, ["1", "1", "2"]);
     assert_eq!(attempts, ["1", "2", "1"]);
     let refused = fixture.run(&[
-        "record-round", "--skill", "review", "--step", "s", "--round", "1",
-        "--start-s", "0", "--end-s", "1", "--accepted", "0", "--rejected", "0",
+        "record-round",
+        "--skill",
+        "review",
+        "--step",
+        "s",
+        "--round",
+        "1",
+        "--start-s",
+        "0",
+        "--end-s",
+        "1",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
     ]);
     assert_eq!(refused.status.code(), Some(1));
     assert!(stderr(&refused).contains("--skill must be implement or design"));
@@ -221,9 +317,7 @@ fn concurrent_marks_from_separate_processes_keep_every_row_intact() {
     let fixture = Fixture::new();
     let mut children = Vec::new();
     for index in 0..8 {
-        let mut command = std::process::Command::new(
-            assert_cmd::cargo::cargo_bin("larch"),
-        );
+        let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin("larch"));
         command
             .current_dir(&fixture.tmpdir)
             .env("TMPDIR", &fixture.tmpdir)
@@ -234,11 +328,19 @@ fn concurrent_marks_from_separate_processes_keep_every_row_intact() {
         children.push(command.spawn().expect("concurrent mark should launch"));
     }
     for mut child in children {
-        assert!(child.wait().expect("concurrent mark should finish").success());
+        assert!(
+            child
+                .wait()
+                .expect("concurrent mark should finish")
+                .success()
+        );
     }
     let rows = fixture.rows();
     assert_eq!(rows.len(), 8);
-    assert!(rows.iter().all(|row| row.len() == 13 && row[0] == "v1" && row[1] == "mark"));
+    assert!(
+        rows.iter()
+            .all(|row| row.len() == 13 && row[0] == "v1" && row[1] == "mark")
+    );
     let mut steps: Vec<String> = rows.iter().map(|row| row[4].clone()).collect();
     steps.sort();
     let mut expected: Vec<String> = (0..8).map(|index| format!("Step {index}")).collect();
@@ -260,14 +362,20 @@ fn full_report_json_publishes_every_machine_field() {
     assert_eq!(steps[1]["skill"], "design");
     assert_eq!(steps[1]["rounds"][0]["oos"], 3);
     assert_eq!(steps[1]["rounds"][0]["accepted"], 2);
-    let averages = parsed["vendor_task_averages"].as_array().expect("averages array");
+    let averages = parsed["vendor_task_averages"]
+        .as_array()
+        .expect("averages array");
     assert_eq!(averages[0]["vendor"], "codex");
     assert_eq!(averages[0]["samples"], 2);
     assert_eq!(averages[0]["average_hms"], "00:00:40");
     assert_eq!(averages[0]["min_seconds"], 30);
     assert_eq!(averages[0]["max_seconds"], 50);
     // Python's `json.dumps(..., sort_keys=True)` spacing is part of the contract.
-    assert!(stdout(&output).starts_with("{\"per_step\": [{\"duration_hms\""), "{}", stdout(&output));
+    assert!(
+        stdout(&output).starts_with("{\"per_step\": [{\"duration_hms\""),
+        "{}",
+        stdout(&output)
+    );
 }
 
 #[test]
@@ -276,12 +384,35 @@ fn markdown_report_keeps_the_readable_prose_contract() {
     seeded(&fixture);
     let output = fixture.run(&["report", "--full", "--test-now", "200"]);
     let rendered = stdout(&output);
-    assert!(rendered.starts_with("## Per-Step Durations\n\n| Skill | Step | Duration |\n"), "{rendered}");
-    assert!(rendered.contains("| implement | Step 1 | 00:01:00 |"), "{rendered}");
-    assert!(rendered.contains("| **Total** | | 00:01:00 |"), "{rendered}");
-    assert!(rendered.contains("| codex | codex-review | 2 | 0.7 min | 0.5 min-0.8 min |"), "{rendered}");
-    let flagged = fixture.run(&["report", "--full", "--outlier-threshold", "5", "--test-now", "200"]);
-    assert!(stdout(&flagged).contains("| implement | Step 1 | 00:01:00 [OUTLIER] |"), "{}", stdout(&flagged));
+    assert!(
+        rendered.starts_with("## Per-Step Durations\n\n| Skill | Step | Duration |\n"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("| implement | Step 1 | 00:01:00 |"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("| **Total** | | 00:01:00 |"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("| codex | codex-review | 2 | 0.7 min | 0.5 min-0.8 min |"),
+        "{rendered}"
+    );
+    let flagged = fixture.run(&[
+        "report",
+        "--full",
+        "--outlier-threshold",
+        "5",
+        "--test-now",
+        "200",
+    ]);
+    assert!(
+        stdout(&flagged).contains("| implement | Step 1 | 00:01:00 [OUTLIER] |"),
+        "{}",
+        stdout(&flagged)
+    );
 }
 
 #[test]
@@ -299,7 +430,11 @@ fn summary_and_terse_reports_count_vendor_tasks_by_end_time() {
         "Step 2: elapsed=00:00:40 vendor-tasks=0 (codex=0, cursor=0, claude=0)"
     );
     let design = fixture.run_with_skill("design", &["report", "--terse", "--test-now", "200"]);
-    assert!(stdout(&design).starts_with("design Step 3: elapsed=00:01:30"), "{}", stdout(&design));
+    assert!(
+        stdout(&design).starts_with("design Step 3: elapsed=00:01:30"),
+        "{}",
+        stdout(&design)
+    );
 }
 
 #[test]
@@ -312,12 +447,22 @@ fn report_flag_and_ledger_failures_stay_non_fatal() {
         vec!["report", "--full", "--format", "yaml"],
     ] {
         let output = fixture.run(&arguments);
-        assert!(output.status.success(), "{arguments:?} should not fail the workflow");
-        assert!(stderr(&output).starts_with("Timing report unavailable:"), "{}", stderr(&output));
+        assert!(
+            output.status.success(),
+            "{arguments:?} should not fail the workflow"
+        );
+        assert!(
+            stderr(&output).starts_with("Timing report unavailable:"),
+            "{}",
+            stderr(&output)
+        );
     }
     let empty = Fixture::new();
     let output = empty.run(&["report", "--full", "--test-now", "200"]);
-    assert_eq!(stdout(&output).trim(), "Timing report unavailable: no step marks in ledger");
+    assert_eq!(
+        stdout(&output).trim(),
+        "Timing report unavailable: no step marks in ledger"
+    );
 }
 
 #[test]
@@ -326,26 +471,46 @@ fn report_writes_the_output_file_and_upserts_the_appended_section() {
     seeded(&fixture);
     let target = fixture.tmpdir.join("report.json");
     let written = fixture.run(&[
-        "report", "--full", "--format", "json", "--test-now", "200",
-        "--output", target.to_str().expect("utf-8 path"),
+        "report",
+        "--full",
+        "--format",
+        "json",
+        "--test-now",
+        "200",
+        "--output",
+        target.to_str().expect("utf-8 path"),
     ]);
     assert!(written.status.success(), "{}", stderr(&written));
     assert!(stdout(&written).is_empty(), "--output must not also print");
-    assert!(fs::read_to_string(&target).expect("report file").contains("\"total_seconds\": 60"));
+    assert!(
+        fs::read_to_string(&target)
+            .expect("report file")
+            .contains("\"total_seconds\": 60")
+    );
 
     let body = fixture.tmpdir.join("body.md");
     fs::write(&body, "intro\n").expect("body should seed");
     for _attempt in 0..2 {
         let appended = fixture.run(&[
-            "report", "--test-now", "200",
-            "--append-timing-section", body.to_str().expect("utf-8 path"),
+            "report",
+            "--test-now",
+            "200",
+            "--append-timing-section",
+            body.to_str().expect("utf-8 path"),
         ]);
         assert!(appended.status.success(), "{}", stderr(&appended));
-        assert!(stdout(&appended).is_empty(), "--append-timing-section must not also print");
+        assert!(
+            stdout(&appended).is_empty(),
+            "--append-timing-section must not also print"
+        );
     }
     let rendered = fs::read_to_string(&body).expect("body should read");
     assert!(rendered.starts_with("intro\n"), "{rendered}");
-    assert_eq!(rendered.matches("<!-- timing-report-begin -->").count(), 1, "{rendered}");
+    assert_eq!(
+        rendered.matches("<!-- timing-report-begin -->").count(),
+        1,
+        "{rendered}"
+    );
     assert!(rendered.contains("## Timing Report"), "{rendered}");
 }
 
@@ -357,7 +522,10 @@ fn dump_prints_the_resolved_path_then_the_raw_rows() {
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
     let mut lines = text.lines();
-    assert_eq!(lines.next(), Some(fixture.ledger().to_string_lossy().as_ref()));
+    assert_eq!(
+        lines.next(),
+        Some(fixture.ledger().to_string_lossy().as_ref())
+    );
     assert_eq!(lines.next(), Some(MARK_STEP_1));
 
     let refused = fixture.run(&["dump", "--ledger", "/etc/timing-ledger.tsv"]);
@@ -371,7 +539,11 @@ fn harness_mark_publishes_the_sentinel_and_forwards_the_child_exit_code() {
     let ok = fixture.run(&["harness-mark", "--label", "unit", "--", "/bin/echo", "hi"]);
     assert!(ok.status.success());
     assert!(stdout(&ok).contains("hi\n"));
-    assert!(stdout(&ok).contains("LARCH_HARNESS_TIMING\tunit\t"), "{}", stdout(&ok));
+    assert!(
+        stdout(&ok).contains("LARCH_HARNESS_TIMING\tunit\t"),
+        "{}",
+        stdout(&ok)
+    );
 
     let failed = fixture.run(&["harness-mark", "unit-2", "--", "/bin/sh", "-c", "exit 7"]);
     assert_eq!(failed.status.code(), Some(7));
@@ -412,8 +584,20 @@ fn telemetry_mark_writes_the_implement_timing_row_and_ignores_a_bad_tmpdir() {
 
     for arguments in [
         vec!["telemetry-mark"],
-        vec!["telemetry-mark", "--implement-tmpdir", "relative/path", "--label", "x"],
-        vec!["telemetry-mark", "--implement-tmpdir", "/larch/missing", "--label", "x"],
+        vec![
+            "telemetry-mark",
+            "--implement-tmpdir",
+            "relative/path",
+            "--label",
+            "x",
+        ],
+        vec![
+            "telemetry-mark",
+            "--implement-tmpdir",
+            "/larch/missing",
+            "--label",
+            "x",
+        ],
     ] {
         let skipped = fixture.run(&arguments);
         assert!(skipped.status.success(), "{arguments:?}");
@@ -432,5 +616,9 @@ fn malformed_rows_are_skipped_with_a_warning_instead_of_failing_the_report() {
         "{}",
         stderr(&output)
     );
-    assert!(stdout(&output).contains("| **Total** | | 00:01:00 |"), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("| **Total** | | 00:01:00 |"),
+        "{}",
+        stdout(&output)
+    );
 }

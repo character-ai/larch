@@ -24,11 +24,12 @@ use larch_adapters::{
     resolve_allow_missing,
 };
 use larch_core::{
-    BlockMarkers, BusinessClock, ChildEnvironment,
+    BlockMarkers, BusinessClock, ChildEnvironment, python_json_dumps, replace_markdown_block,
     report::timing::{
-        self, DEFAULT_OUTLIER_THRESHOLD_S, LedgerRows, REPORT_UNAVAILABLE, TIMING_TASK_KINDS_ALLOWED,
+        self, DEFAULT_OUTLIER_THRESHOLD_S, LedgerRows, REPORT_UNAVAILABLE,
+        TIMING_TASK_KINDS_ALLOWED,
     },
-    python_json_dumps, replace_markdown_block, validate_progress_run_id,
+    validate_progress_run_id,
 };
 
 #[cfg(unix)]
@@ -279,7 +280,13 @@ pub fn record_round(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(1);
     };
     let mut numbers = Vec::new();
-    for flag in ["--round", "--start-s", "--end-s", "--accepted", "--rejected"] {
+    for flag in [
+        "--round",
+        "--start-s",
+        "--end-s",
+        "--accepted",
+        "--rejected",
+    ] {
         let Some(raw) = options.get(flag) else {
             eprintln!("{label}: '{flag}'");
             return ExitCode::from(1);
@@ -391,25 +398,26 @@ pub fn harness_mark(arguments: &[OsString]) -> ExitCode {
         .map(|value| value.to_string_lossy().into_owned())
         .collect();
     let usage = "timing harness-mark requires --label <label> -- <command> [args...]";
-    let (label, command): (&str, &[String]) = if values.first().is_some_and(|first| first == "--label")
-    {
-        if values.len() < 4 || values[2] != "--" {
+    let (label, command): (&str, &[String]) =
+        if values.first().is_some_and(|first| first == "--label") {
+            if values.len() < 4 || values[2] != "--" {
+                eprintln!("{usage}");
+                return ExitCode::from(2);
+            }
+            (values[1].as_str(), &values[3..])
+        } else if values.len() >= 3 && values[1] == "--" {
+            (values[0].as_str(), &values[2..])
+        } else if values.len() < 2 {
             eprintln!("{usage}");
             return ExitCode::from(2);
-        }
-        (values[1].as_str(), &values[3..])
-    } else if values.len() >= 3 && values[1] == "--" {
-        (values[0].as_str(), &values[2..])
-    } else if values.len() < 2 {
-        eprintln!("{usage}");
-        return ExitCode::from(2);
-    } else {
-        (values[0].as_str(), &values[1..])
-    };
+        } else {
+            (values[0].as_str(), &values[1..])
+        };
     let started = SystemTime::now();
     // The harness wrapper must inherit the caller's stdio and exit code verbatim,
     // which the bounded capturing runner cannot do.
-    let code = match Command::new(&command[0]).args(&command[1..]).status() { // lint-subprocess-via-runner: ok harness wrapper inherits stdio and the child exit code
+    let code = match Command::new(&command[0]).args(&command[1..]).status() {
+        // lint-subprocess-via-runner: ok harness wrapper inherits stdio and the child exit code
         Ok(status) => status.code().unwrap_or(1),
         Err(error) => {
             eprintln!("timing harness-mark: {error}");
@@ -432,7 +440,10 @@ pub fn telemetry_mark(arguments: &[OsString]) -> ExitCode {
         .map(|value| value.to_string_lossy().into_owned())
         .collect();
     let options = flag_map(&values);
-    let Some(raw) = options.get("--implement-tmpdir").filter(|value| !value.is_empty()) else {
+    let Some(raw) = options
+        .get("--implement-tmpdir")
+        .filter(|value| !value.is_empty())
+    else {
         return ExitCode::SUCCESS;
     };
     let tmpdir = PathBuf::from(raw);
@@ -446,8 +457,14 @@ pub fn telemetry_mark(arguments: &[OsString]) -> ExitCode {
     let session_text = read_text(&session);
     let mut published = vec![(ChildEnvironment::ImplementTmpdir, OsString::from(raw))];
     for (key, child) in [
-        ("LARCH_TOKEN_SESSION_ID", ChildEnvironment::LarchTokenSessionId),
-        ("LARCH_CLAUDE_SOURCE_FILE", ChildEnvironment::LarchClaudeSourceFile),
+        (
+            "LARCH_TOKEN_SESSION_ID",
+            ChildEnvironment::LarchTokenSessionId,
+        ),
+        (
+            "LARCH_CLAUDE_SOURCE_FILE",
+            ChildEnvironment::LarchClaudeSourceFile,
+        ),
         ("LARCH_TIMING_LEDGER", ChildEnvironment::LarchTimingLedger),
     ] {
         let value = session_value(&session_text, key);
@@ -470,7 +487,8 @@ pub fn telemetry_mark(arguments: &[OsString]) -> ExitCode {
     environment.set("LARCH_TIMING_SKILL", "implement");
     match resolve_ledger_path(None, &environment) {
         Ok(Some(path)) => {
-            if let Err(message) = append_row(&path, &timing::mark_row(epoch_now(), "implement", label))
+            if let Err(message) =
+                append_row(&path, &timing::mark_row(epoch_now(), "implement", label))
             {
                 eprintln!("timing telemetry-mark: timing mark skipped: {message}");
             }
@@ -604,20 +622,22 @@ fn render_report(arguments: &[OsString]) -> Result<(), String> {
             );
             let data = timing::build_report(&rows, now, threshold);
             if format == "json" {
-                python_json_dumps(&timing::report_json(&data))
-                    .map_err(|error| error.to_string())?
+                python_json_dumps(&timing::report_json(&data)).map_err(|error| error.to_string())?
             } else {
                 timing::report_markdown(&data)
             }
         }
     };
     if let Some(target) = append.as_deref() {
-        let block =
-            format!("<!-- {BLOCK_BEGIN} -->\n## Timing Report\n\n{rendered}\n<!-- {BLOCK_END} -->\n");
+        let block = format!(
+            "<!-- {BLOCK_BEGIN} -->\n## Timing Report\n\n{rendered}\n<!-- {BLOCK_END} -->\n"
+        );
         write_timing_section(target, &block)?;
     }
     let text = format!("{rendered}\n");
-    if mode == "full" && let Some(target) = output.as_deref() {
+    if mode == "full"
+        && let Some(target) = output.as_deref()
+    {
         atomic_write(target, &text)?;
     } else if append.is_none() {
         print!("{text}");
@@ -645,7 +665,10 @@ fn atomic_write(target: &Path, text: &str) -> Result<(), String> {
         .write_all(text.as_bytes())
         .map_err(|error| error.to_string())?;
     if fs::symlink_metadata(target).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(format!("refusing to follow a symlink: {}", target.display()));
+        return Err(format!(
+            "refusing to follow a symlink: {}",
+            target.display()
+        ));
     }
     temporary
         .persist(target)
@@ -736,8 +759,9 @@ fn read_rows(path: &Path) -> LedgerRows {
 
 fn epoch_now() -> i64 {
     let now = BusinessClock::now(&SystemClock);
-    now.duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX))
+    now.duration_since(UNIX_EPOCH).map_or(0, |elapsed| {
+        i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+    })
 }
 
 fn positive_or(raw: &str, fallback: i64) -> i64 {
@@ -857,7 +881,10 @@ fn resolve_ledger_path(
             continue;
         }
         let candidate = if key == "SESSION_ENV_PATH" {
-            Path::new(raw).parent().unwrap_or(Path::new("")).to_path_buf()
+            Path::new(raw)
+                .parent()
+                .unwrap_or(Path::new(""))
+                .to_path_buf()
         } else {
             PathBuf::from(raw)
         };
@@ -872,16 +899,19 @@ fn resolve_ledger_path(
 
 /// Confine a caller-supplied ledger path to one of the session temporary roots.
 fn validate_ledger_path(raw: &str, environment: &Environment) -> Result<PathBuf, String> {
-    if raw.is_empty() || Path::new(raw).components().any(|part| part.as_os_str() == "..") {
+    if raw.is_empty()
+        || Path::new(raw)
+            .components()
+            .any(|part| part.as_os_str() == "..")
+    {
         return Err(format!(
             "ledger path must not be empty or contain '..': {raw}"
         ));
     }
     let roots = allowed_roots(environment);
-    let default_root = roots
-        .first()
-        .cloned()
-        .unwrap_or_else(|| resolve_allow_missing("/tmp").unwrap_or_else(|_error| PathBuf::from("/tmp")));
+    let default_root = roots.first().cloned().unwrap_or_else(|| {
+        resolve_allow_missing("/tmp").unwrap_or_else(|_error| PathBuf::from("/tmp"))
+    });
     let candidate = if Path::new(raw).is_absolute() {
         PathBuf::from(raw)
     } else {
