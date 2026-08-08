@@ -4205,9 +4205,18 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert 'RUST_CI_PARTIAL_ENFORCEMENT: "false"' in workflow
     assert 'RUST_CI_SKIP_ENFORCEMENT: "true"' in workflow
     assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in selector_job
-    assert "fetch-depth: 0" in selector_job
+    assert "fetch-depth: 2" in selector_job
+    assert "fetch-depth: 0" not in selector_job
     assert "ref: ${{ github.sha }}" in selector_job
     assert "git worktree add --detach" in selector_job
+    assert 'git merge-base --is-ancestor "$RUST_CI_BASE_SHA" "$RUST_CI_HEAD_SHA"' in selector_job
+    assert "full-history-fallback" in selector_job
+    assert "git fetch --no-tags --prune --unshallow origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
+    assert "git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
+    assert "selector-history-unavailable-or-untrusted" in selector_job
+    assert "RUST_SELECTION_HISTORY_MILLISECONDS" in selector_job
+    assert "RUST_SELECTION_WORKTREE_MILLISECONDS" in selector_job
+    assert "RUST_SELECTION_COMMAND_MILLISECONDS" in selector_job
     assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select' in selector_job
     assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select-summary' in selector_job
     assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
@@ -4271,6 +4280,8 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "trusted-main-rust-policy",
         "full-workspace\n  coverage threshold",
         "non-ancestor base",
+        "bounded depth",
+        "fetches full branch\nhistory",
         "redaction boundary",
         "a scrub failure emits a static",
         "full-rust-ci",
@@ -4288,6 +4299,8 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "residual-secret rescan",
         "redaction failure emits a static",
         "trusted-main-rust-policy",
+        "bounded depth",
+        "complete branch history",
         "`RUST_CI_PARTIAL_ENFORCEMENT` remains `false`",
         "`RUST_CI_SKIP_ENFORCEMENT` is `true`",
     ):

@@ -348,8 +348,10 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           # The selector compares the tested merge candidate to the PR base.
-          # It refuses shallow or mismatched history before a non-full result.
-          fetch-depth: 0
+          # The selector proves its base ancestry below. Start with the two
+          # merge parents, then fetch full history only when that proof needs
+          # it; an unavailable proof remains a full-mode fallback.
+          fetch-depth: 2
           ref: ${{ github.sha }}
       - name: Select Rust CI mode from the trusted base
         id: proposed-selection
@@ -363,6 +365,9 @@ jobs:
           selector_result="$RUNNER_TEMP/rust-ci-selection.json"
           selector_root="$RUNNER_TEMP/rust-ci-selector-base"
           selector_worktree_added=false
+          selector_history_source=bounded-depth-2
+          selector_worktree_milliseconds=0
+          selector_command_milliseconds=0
           cleanup_selector_worktree() {
             if [ "$selector_worktree_added" = true ]; then
               git worktree remove --force "$selector_root" || true
@@ -370,9 +375,10 @@ jobs:
           }
           trap cleanup_selector_worktree EXIT
           fallback_selection() {
+            fallback_reason="${1:-selector-workflow-failed}"
             # Keep this fallback readable by a trusted base that predates the
             # current selector schema.
-            jq -cn '{
+            jq -cn --arg fallback_reason "$fallback_reason" '{
               affected_packages: [],
               base_sha: null,
               base_source: "unavailable",
@@ -384,7 +390,7 @@ jobs:
               doctest_packages: [],
               event_name: "pull_request",
               format_required: true,
-              full_run_trigger: "selector-workflow-failed",
+              full_run_trigger: $fallback_reason,
               head_sha: null,
               mode: "full",
               partial_commands: [],
@@ -394,19 +400,52 @@ jobs:
               validation_owners: []
             }' > "$selector_result"
           }
-          if git worktree add --detach "$selector_root" "$RUST_CI_BASE_SHA"; then
-            selector_worktree_added=true
-            if ! PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select \
-              --event-name "$RUST_CI_EVENT_NAME" \
-              --base-sha "$RUST_CI_BASE_SHA" \
-              --head-sha "$RUST_CI_HEAD_SHA" \
-              --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
-              printf '%s\n' '::warning::Rust selector command failed; using the full Rust CI fallback.'
-              fallback_selection
+          valid_commit_sha() {
+            [[ "$1" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
+          }
+          selector_history_ready() {
+            git cat-file -e "${RUST_CI_BASE_SHA}^{commit}" 2>/dev/null \
+              && git cat-file -e "${RUST_CI_HEAD_SHA}^{commit}" 2>/dev/null \
+              && git merge-base --is-ancestor "$RUST_CI_BASE_SHA" "$RUST_CI_HEAD_SHA"
+          }
+          prepare_selector_history() {
+            valid_commit_sha "$RUST_CI_BASE_SHA" && valid_commit_sha "$RUST_CI_HEAD_SHA" || return 1
+            selector_history_ready && return 0
+            selector_history_source=full-history-fallback
+            if git rev-parse --is-shallow-repository | grep -qx true; then
+              git fetch --no-tags --prune --unshallow origin '+refs/heads/*:refs/remotes/origin/*'
+            else
+              git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+            fi
+            selector_history_ready
+          }
+          selector_history_started_milliseconds="$(date +%s%3N)"
+          if prepare_selector_history; then
+            selector_history_milliseconds="$(( $(date +%s%3N) - selector_history_started_milliseconds ))"
+            selector_worktree_started_milliseconds="$(date +%s%3N)"
+            if git worktree add --detach "$selector_root" "$RUST_CI_BASE_SHA"; then
+              selector_worktree_milliseconds="$(( $(date +%s%3N) - selector_worktree_started_milliseconds ))"
+              selector_worktree_added=true
+              selector_command_started_milliseconds="$(date +%s%3N)"
+              if ! PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select \
+                --event-name "$RUST_CI_EVENT_NAME" \
+                --base-sha "$RUST_CI_BASE_SHA" \
+                --head-sha "$RUST_CI_HEAD_SHA" \
+                --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
+                printf '%s\n' '::warning::Rust selector command failed; using the full Rust CI fallback.'
+                fallback_selection
+              fi
+              selector_command_milliseconds="$(( $(date +%s%3N) - selector_command_started_milliseconds ))"
             fi
           else
+            selector_history_milliseconds="$(( $(date +%s%3N) - selector_history_started_milliseconds ))"
+            selector_history_source=unavailable
+            printf '%s\n' '::warning::Rust selector history was unavailable or untrusted; using the full Rust CI fallback.'
+            fallback_selection selector-history-unavailable-or-untrusted
+          fi
+          if [ ! -f "$selector_result" ]; then
             printf '%s\n' '::warning::Rust selector base worktree failed; using the full Rust CI fallback.'
-            fallback_selection
+            fallback_selection selector-base-worktree-unavailable
           fi
           read_selection_outputs() {
             mode="$(jq -er '
@@ -445,6 +484,20 @@ jobs:
             printf '%s\n' '::warning::Rust selector summary failed; the full fallback remains available.'
           fi
           test -n "$RUST_POLICY_INPUTS_SHA256"
+          {
+            printf 'RUST_SELECTION_HISTORY_MILLISECONDS=%s\n' "$selector_history_milliseconds"
+            printf 'RUST_SELECTION_HISTORY_SOURCE=%s\n' "$selector_history_source"
+            printf 'RUST_SELECTION_WORKTREE_MILLISECONDS=%s\n' "$selector_worktree_milliseconds"
+            printf 'RUST_SELECTION_COMMAND_MILLISECONDS=%s\n' "$selector_command_milliseconds"
+          } >> "$GITHUB_ENV"
+          {
+            printf '## Rust CI selection setup timings\n\n'
+            printf '| Phase | Milliseconds | Detail |\n'
+            printf '| --- | ---: | --- |\n'
+            printf '| Trusted selector history | %s | %s |\n' "$selector_history_milliseconds" "$selector_history_source"
+            printf '| Base worktree | %s | trusted base checkout |\n' "$selector_worktree_milliseconds"
+            printf '| Selector command | %s | trusted-base CLI |\n' "$selector_command_milliseconds"
+          } >> "$GITHUB_STEP_SUMMARY"
           {
             printf 'mode=%s\n' "$mode"
             printf 'partial_packages=%s\n' "$partial_packages"

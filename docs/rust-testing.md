@@ -284,25 +284,28 @@ remain visible in the job log.
 ### Pull-request Rust selection
 
 `rust-selection` runs only for pull requests. It checks out GitHub's tested
-merge candidate with full history, creates a detached worktree at the pull
-request base, and executes the stdlib-only selector from that trusted base
-worktree. The selector inspects the candidate checkout only as data. A pull
-request therefore cannot change selector code and use that change to choose a
-narrower path; changes to the selector, CI workflow, coverage action, or its
-redaction/process dependencies are global inputs and run `full`.
+merge candidate at bounded depth, then proves the base and candidate commits
+and their ancestry before creating a detached worktree at the pull-request
+base. If the bounded checkout cannot prove that history, it fetches full branch
+history and repeats the proof; a failed fetch or proof selects `full`. It then
+executes the stdlib-only selector from that trusted base worktree. The selector
+inspects the candidate checkout only as data. A pull request therefore cannot
+change selector code and use that change to choose a narrower path; changes to
+the selector, CI workflow, coverage action, or its redaction/process
+dependencies are global inputs and run `full`.
 
 The selector verifies both commits, the candidate checkout, and base ancestry
-before it reads the diff. A missing commit, shallow history, non-ancestor base,
-empty or malformed diff, unsupported status, metadata parse failure, unknown
-path, unsupported workspace shape, or internal error selects `full`. It emits
-one redacted deterministic JSON result as the `rust-ci-selection` artifact and
-renders a concise step summary. Every dynamic field crosses the Python core
-redaction boundary and a residual-secret rescan; a scrub failure emits a static
-`full` result with no changed-path data. The summary HTML-escapes the redacted
-data. The artifact preserves the classifier's `mode` as `proposed_mode` and
-records the lane's `effective_mode`, reason, `rollout_state`, and
-`observation_only` value after trusted-cache validation and any
-`full-rust-ci` override; the summary shows both proposed and effective
+before it reads the diff. An unavailable history proof, missing commit,
+non-ancestor base, empty or malformed diff, unsupported status, metadata parse
+failure, unknown path, unsupported workspace shape, or internal error selects
+`full`. It emits one redacted deterministic JSON result as the
+`rust-ci-selection` artifact and renders a concise step summary. Every dynamic
+field crosses the Python core redaction boundary and a residual-secret rescan;
+a scrub failure emits a static `full` result with no changed-path data. The
+summary HTML-escapes the redacted data. The artifact preserves the classifier's
+`mode` as `proposed_mode` and records the lane's `effective_mode`, reason,
+`rollout_state`, and `observation_only` value after trusted-cache validation
+and any `full-rust-ci` override; the summary shows both proposed and effective
 execution decisions.
 
 `RUST_CI_PARTIAL_ENFORCEMENT` remains `false` while the partial class collects
