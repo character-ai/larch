@@ -22,8 +22,8 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
   the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
   run the fixer waterfall, and return the GOTO-Rebase signal.
-- **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`,
-  `run_log_manifest.py`, and `run_log_commit.py` owners, `tokens.py`, `tracking_issue.py`,
+- **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`
+  and `run_log_manifest.py` owners, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. `merge.py`
@@ -36,8 +36,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   owns archive creation, materialization, standalone and lifecycle publication,
   synchronization, tool-first layout migration, historical repair sweeps, and
   completed-implement-run cleanup. `run_log_archive.py` and
-  `run_lifecycle.py` are typed `scripts/larch.sh` consumers; the historical
-  migration-only reader lives separately in `run_log_legacy_archive.py`.
+  `run_lifecycle.py` are typed `scripts/larch.sh` consumers.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
 - `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 

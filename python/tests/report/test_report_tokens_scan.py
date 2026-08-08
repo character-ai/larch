@@ -18,7 +18,7 @@ import pytest
 
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
-from larch.report import run_log_archive, run_log_corpus, run_log_legacy_archive
+from larch.report import run_log_corpus
 from larch.report.report_tokens_scan import scan, scan_prepared_corpus
 
 
@@ -126,12 +126,8 @@ def test_scan_prepared_corpus_performs_no_later_sync(
     assert len(result.records) == 1
 
 
-def test_report_tokens_matches_legacy_git_tree_and_compatibility_cache(tmp_path: Path) -> None:
-    legacy = tmp_path / "legacy"
-    _write_run(legacy, skill="implement")
-    source_run = legacy / "larch-logs/implement/run1"
-    archive_path = tmp_path / "legacy.tar.gz"
-    members: list[run_log_legacy_archive.LegacyArchiveMember] = []
+def _materialize_legacy_corpus_run(source_run: Path, *, archive_path: Path, run_dir: Path) -> None:
+    """Round-trip one legacy run directory through a tar archive into a cache tree."""
     with tarfile.open(archive_path, mode="w:gz", format=tarfile.PAX_FORMAT) as archive:
         for source in sorted(source_run.iterdir()):
             content = source.read_bytes()
@@ -139,18 +135,22 @@ def test_report_tokens_matches_legacy_git_tree_and_compatibility_cache(tmp_path:
             info.type, info.size, info.mode, info.mtime = tarfile.REGTYPE, len(content), 0o644, 0
             info.uid, info.gid, info.uname, info.gname = 0, 0, "", ""
             archive.addfile(info, io.BytesIO(content))
-            members.append(run_log_legacy_archive.LegacyArchiveMember(
-                source.name, len(content), hashlib.sha256(content).hexdigest(), 0o644,
-            ))
+    run_dir.mkdir(parents=True)
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        for member in archive.getmembers():
+            extracted = archive.extractfile(member)
+            assert extracted is not None
+            _ = (run_dir / member.name).write_bytes(extracted.read())
+
+
+def test_report_tokens_matches_legacy_git_tree_and_compatibility_cache(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy"
+    _write_run(legacy, skill="implement")
     cache_root = tmp_path / "cache"
-    run_dir = cache_root / "implement/run1"
-    run_dir.parent.mkdir(parents=True)
-    _ = run_log_legacy_archive.materialize_legacy_run_archive(
-        archive_path=archive_path, run_dir=run_dir, expected_skill="implement", expected_run_id="run1",
-        legacy=run_log_legacy_archive.LegacyRunArchive(
-            archive_size=archive_path.stat().st_size, archive_sha256=run_log_archive.sha256_file(archive_path),
-            member_count=len(members), expanded_size=sum(member.size for member in members), members=tuple(members),
-        ),
+    _materialize_legacy_corpus_run(
+        legacy / "larch-logs/implement/run1",
+        archive_path=tmp_path / "legacy.tar.gz",
+        run_dir=cache_root / "implement/run1",
     )
 
     direct = scan_prepared_corpus(

@@ -103,10 +103,9 @@ The same leaf deleted the superseded Python Git-commit implementation in
 `python/larch/report/run_log_commit.py` — `_commit_run`, `larch_log_commit_main`,
 `commit_larch_logs`, `_larch_log_commit`, `prepare_run_tree_for_publication`,
 the repo-copy and volatile-cleanup helpers, and the pre-commit retry ladder had
-no production caller after the flush retirement in #7995. The module keeps only
-`prepare_run_for_archive` and its scrub helpers for compatibility callers, plus
-`_publish_breadcrumbs_with_warning`, now a Rust consumer that
-builds an argv and executes `scripts/larch.sh`.
+no production caller after the flush retirement in #7995. #8267 deleted the
+whole module once `prepare_run_for_archive`, its scrub helpers, and
+`_publish_breadcrumbs_with_warning` also lost their last production importer.
 
 **Mutable flush cut over in #8078.** `run-log checkpoint`, `refresh`,
 `prepare-terminal-snapshot`, and `capture-transcript` are Rust-owned.
@@ -124,8 +123,8 @@ and `run-log materialize` are Rust-owned through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The Python registrations and command
 entrypoints are removed. `larch.report.run_log_archive` is only a typed Rust
 consumer for bounded compatibility callers. The historical migration-only
-reader remains isolated in `run_log_legacy_archive.py`; it is not a normal
-archive command or fallback implementation.
+reader stayed isolated in `run_log_legacy_archive.py` until #8267 deleted it,
+after #8081 moved the last legacy inventory consumer to Rust.
 
 **Historical layout migration and retro sweeps cut over in #8081.**
 `run-log migrate-layout`, `retro-v3-sweep`, and `retro-fix-cursor` are

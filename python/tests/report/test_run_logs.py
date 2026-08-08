@@ -16,11 +16,9 @@ import pytest
 from larch.core import rust_runtime
 from larch.core import config
 from larch import io as larch_io
-from larch.report import run_log_batch, run_log_commit, run_log_manifest, run_logs
+from larch.report import run_log_batch, run_log_manifest, run_logs
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch, _append_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import tokens
-from larch.errors import ShipError
-from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner, RunCall, make_run_context
 from tests.support.stall_recovery import frozen_normalized_outcome
@@ -447,42 +445,6 @@ def test_load_or_recover_manifest_fails_closed_without_valid_run_id(
     assert not manifest.steps_ran
 
 
-def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    sub = run_dir / "round-1"
-    sub.mkdir(parents=True)
-    secret = (
-        "cursor --api-key crsr_1620abcdefghijklmnopqrstuvwxyz0123456789 --workspace /x\n"
-    )
-    _ = (sub / "findings.md").write_text(secret, encoding="utf-8")
-    _ = (run_dir / "clean.md").write_text("clean prose\n", encoding="utf-8")
-    violations, files_scrubbed = run_log_commit._scrub_run_tree(  # pyright: ignore[reportPrivateUsage]
-        run_dir,
-    )
-    assert violations == 1
-    assert files_scrubbed == 1
-    assert "crsr_1620" not in (sub / "findings.md").read_text(encoding="utf-8")
-    assert (run_dir / "clean.md").read_text(encoding="utf-8") == "clean prose\n"
-
-
-def test_scrub_run_tree_redacts_tmpdir_paths(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    artifact = run_dir / "artifact.txt"
-    _ = artifact.write_text(
-        "failure at /private/tmp/larch-design-run.123/result.env\n",
-        encoding="utf-8",
-    )
-
-    violations, files_scrubbed = run_log_commit._scrub_run_tree(  # pyright: ignore[reportPrivateUsage]
-        run_dir
-    )
-
-    assert violations == 0
-    assert files_scrubbed == 1
-    assert "/private/tmp/" not in artifact.read_text(encoding="utf-8")
-
-
 def test_rebase_under_tmpdir_handles_session_local_absolute_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -850,78 +812,6 @@ def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
     assert not run_log_batch._round_artifact_included("dyn-lint-output.txt")  # pyright: ignore[reportPrivateUsage]
 
 
-def test_warn_secret_scrub_remains_warning_only(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    run_log_commit._warn_secret_scrub(violations=2, files_scrubbed=1, directory=tmp_path)  # pyright: ignore[reportPrivateUsage]
-
-    assert "SECRETS DETECTED AND SCRUBBED" in capsys.readouterr().err
-
-
-def test_publish_breadcrumbs_consumer_invokes_rust_owner(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    recorded: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
-        recorded.append(argv)
-        return CommandResult(tuple(argv), 0, "", "", 0.0)
-
-    monkeypatch.setattr(run_log_commit.proc, "run", fake_run)
-    dest = tmp_path / "larch-logs" / "implement" / "run-abc"
-
-    run_log_commit._publish_breadcrumbs_with_warning(log_root=tmp_path / "larch-logs", dest=dest)  # pyright: ignore[reportPrivateUsage]
-
-    assert len(recorded) == 1
-    assert recorded[0][0].endswith("/scripts/larch.sh")
-    assert recorded[0][1:] == [
-        "run-log",
-        "publish-breadcrumbs",
-        "--source-dir",
-        str(tmp_path / "breadcrumbs"),
-        "--dest-dir",
-        str(dest / "breadcrumbs"),
-    ]
-
-
-def test_publish_breadcrumbs_consumer_warns_on_owner_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def failing_run(argv: list[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(argv), 1, "", "publish-breadcrumbs: refusing symlink\n", 0.0)
-
-    monkeypatch.setattr(run_log_commit.proc, "run", failing_run)
-
-    run_log_commit._publish_breadcrumbs_with_warning(  # pyright: ignore[reportPrivateUsage]
-        log_root=tmp_path / "larch-logs",
-        dest=tmp_path / "larch-logs" / "implement" / "run-abc",
-    )
-
-    assert (
-        "WARN: run-log breadcrumb publish failed: publish-breadcrumbs: refusing symlink"
-        in capsys.readouterr().err
-    )
-
-
-def test_publish_breadcrumbs_consumer_skips_non_larch_logs_root(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:
-        raise AssertionError(f"unexpected breadcrumb spawn: {argv}")
-
-    monkeypatch.setattr(run_log_commit.proc, "run", fail_run)
-
-    run_log_commit._publish_breadcrumbs_with_warning(  # pyright: ignore[reportPrivateUsage]
-        log_root=tmp_path / "review-logs",
-        dest=tmp_path / "review-logs" / "review" / "run-abc",
-    )
-
-
 def _write_run_manifest(run_dir: Path, *, skill: str, steps_ran: dict[str, object] | None = None) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, object] = {
@@ -1169,27 +1059,25 @@ def test_design_invariant_assessment_not_required_for_nonapproved_absent_invalid
     assert missing == []
 
 
-def test_archive_prep_completeness_refuses_missing_invariant_assessment(
+def test_completeness_uses_consumer_repo_root_for_invariants(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
-    log_root = tmp_path / "session" / "larch-logs"
-    run_dir = log_root / "design" / "RUN1"
+    run_dir = tmp_path / "session" / "larch-logs" / "design" / "RUN1"
     _write_run_manifest(run_dir, skill="design")
     (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
     (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
 
-    with pytest.raises(ShipError) as excinfo:
-        _ = run_log_commit.prepare_run_for_archive(
-            log_root=log_root,
-            repo_root=repo,
-            skill="design",
-            run_id="RUN1",
-        )
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
 
-    assert str(excinfo.value) == "run-log incomplete: invariant-assessment:architectural-invariant-assessment.md"
+    assert ok is False
+    assert missing == ["invariant-assessment:architectural-invariant-assessment.md"]
 
 
 def test_design_guideline_assessment_required_for_approved_present_guidelines(tmp_path: Path) -> None:
@@ -1273,27 +1161,25 @@ def test_design_guideline_assessment_not_required_for_nonapproved_or_absent_inva
     assert missing == []
 
 
-def test_archive_prep_completeness_uses_consumer_repo_root_for_guidelines(
+def test_completeness_uses_consumer_repo_root_for_guidelines(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
-    log_root = tmp_path / "session" / "larch-logs"
-    run_dir = log_root / "design" / "RUN1"
+    run_dir = tmp_path / "session" / "larch-logs" / "design" / "RUN1"
     _write_run_manifest(run_dir, skill="design")
     (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
     (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
 
-    with pytest.raises(ShipError) as excinfo:
-        _ = run_log_commit.prepare_run_for_archive(
-            log_root=log_root,
-            repo_root=repo,
-            skill="design",
-            run_id="RUN1",
-        )
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
 
-    assert str(excinfo.value) == "run-log incomplete: guideline-assessment:architectural-guideline-assessment.md"
+    assert ok is False
+    assert missing == ["guideline-assessment:architectural-guideline-assessment.md"]
 
 
 def test_design_completed_step3_without_plan_review_does_not_reach_round_requirements(tmp_path: Path) -> None:

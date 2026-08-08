@@ -1,17 +1,13 @@
-"""Tests for the Rust-owned run-log archive consumer and legacy reader."""
+"""Tests for the Rust-owned run-log archive consumer."""
 
 from __future__ import annotations
 
-import hashlib
-import io
-import json
-import tarfile
 from pathlib import Path
 
 import pytest
 
 from larch.core import proc
-from larch.report import run_log_archive, run_log_legacy_archive
+from larch.report import run_log_archive
 
 
 def _command_result(
@@ -213,93 +209,4 @@ def test_consumer_preserves_the_staging_drift_error_type(
             expected_skill="review",
             expected_run_id="run-1",
             expected_manifest_sha256="a" * 64,
-        )
-
-
-def _legacy_archive(
-    path: Path,
-    members: list[tuple[str, bytes, bytes]],
-) -> run_log_legacy_archive.LegacyRunArchive:
-    with tarfile.open(path, mode="w:gz", format=tarfile.PAX_FORMAT) as archive:
-        for name, content, entry_type in members:
-            info = tarfile.TarInfo(name)
-            info.type = entry_type
-            info.mode = 0o644
-            info.mtime = info.uid = info.gid = 0
-            info.uname = info.gname = ""
-            if entry_type == tarfile.SYMTYPE:
-                info.linkname = "target"
-            else:
-                info.size = len(content)
-            archive.addfile(
-                info, io.BytesIO(content) if entry_type == tarfile.REGTYPE else None
-            )
-    inventory = tuple(
-        run_log_legacy_archive.LegacyArchiveMember(
-            name,
-            len(content),
-            hashlib.sha256(content).hexdigest(),
-            0o644,
-        )
-        for name, content, entry_type in members
-        if entry_type == tarfile.REGTYPE
-    )
-    return run_log_legacy_archive.LegacyRunArchive(
-        archive_size=path.stat().st_size,
-        archive_sha256=run_log_archive.sha256_file(path),
-        member_count=len(inventory),
-        expanded_size=sum(member.size for member in inventory),
-        members=inventory,
-    )
-
-
-def test_legacy_reader_synthesizes_the_versioned_manifest(tmp_path: Path) -> None:
-    archive = tmp_path / "legacy.tar.gz"
-    legacy = _legacy_archive(
-        archive,
-        [("nested/result.txt", b"legacy\n", tarfile.REGTYPE)],
-    )
-    result = run_log_legacy_archive.materialize_legacy_run_archive(
-        archive_path=archive,
-        run_dir=tmp_path / "cache" / "run-1",
-        expected_skill="implement",
-        expected_run_id="run-1",
-        legacy=legacy,
-    )
-
-    assert result.member_count == 2
-    manifest = json.loads(
-        (result.run_dir / run_log_archive.ARCHIVE_MANIFEST_NAME).read_text()
-    )
-    assert {member["path"] for member in manifest["members"]} == {
-        "nested",
-        "nested/result.txt",
-    }
-
-
-def test_legacy_reader_refuses_an_uninventoried_member(tmp_path: Path) -> None:
-    archive = tmp_path / "legacy.tar.gz"
-    legacy = _legacy_archive(archive, [("actual.txt", b"actual", tarfile.REGTYPE)])
-    mismatched = run_log_legacy_archive.LegacyRunArchive(
-        archive_size=legacy.archive_size,
-        archive_sha256=legacy.archive_sha256,
-        member_count=1,
-        expanded_size=len(b"expected"),
-        members=(
-            run_log_legacy_archive.LegacyArchiveMember(
-                "expected.txt",
-                len(b"expected"),
-                hashlib.sha256(b"expected").hexdigest(),
-                0o644,
-            ),
-        ),
-    )
-
-    with pytest.raises(ValueError, match="do not match"):
-        _ = run_log_legacy_archive.materialize_legacy_run_archive(
-            archive_path=archive,
-            run_dir=tmp_path / "cache" / "run-1",
-            expected_skill="implement",
-            expected_run_id="run-1",
-            legacy=mismatched,
         )
