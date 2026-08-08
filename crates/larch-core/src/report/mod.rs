@@ -9,6 +9,7 @@
 mod exec_issue_detail;
 mod markdown_block;
 mod run_log_corpus;
+pub mod timing;
 
 pub use exec_issue_detail::{
     EMPTY_GROUPS, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN,

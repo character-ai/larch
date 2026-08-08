@@ -28,7 +28,7 @@ mod process;
 mod process_identity;
 mod progress;
 mod redaction;
-mod report;
+pub mod report;
 mod retry;
 mod review_dispatch;
 mod run_log;

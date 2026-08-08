@@ -329,8 +329,8 @@ def step0_session_main(argv: Sequence[str]) -> int:
         env=env,
     )
     _run_best_effort(
-        command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"),
-        env={**env, "LARCH_TIMING_SKILL": "design"},
+        command=[str(repo_roots.larch_entrypoint(plugin_root)), "timing", "mark", "design Step 0: session setup"],
+        env={**env, "CLAUDE_PLUGIN_ROOT": str(plugin_root), "LARCH_TIMING_SKILL": "design"},
     )
     gate = subprocess.run(
         [
@@ -877,5 +877,5 @@ def step0c_main(argv: Sequence[str]) -> int:
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     (completed / "step-0c").write_text("", encoding="utf-8")
-    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design folded discussion block"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=[str(repo_roots.larch_entrypoint(plugin_root)), "timing", "mark", "design folded discussion block"], env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     return 0

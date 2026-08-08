@@ -868,19 +868,17 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
+# The ledger row writers keep the retired command's keyword-only signatures so
+# the in-process Python callers stay unchanged after the Rust cutover.
+"timing.py" = [
+    "PLR0913",
+]
 # Consolidated marker-delimited block recovery state machine extracted from
-# tokens.py::_replace_block and timing.py::_replace_block; complexity is
+# tokens.py::_replace_block; complexity is
 # inherent to the paired / lone-begin / lone-end / absent-marker handling.
 "markdown_block.py" = [
     "C901",
     "PLR0912",
-]
-"timing.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "tokens.py" = [
     "C901",

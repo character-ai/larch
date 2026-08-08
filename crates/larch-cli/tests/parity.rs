@@ -115,6 +115,7 @@ impl CleanInstallCase {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
             id if id.starts_with("clean-install-run-log-") => run_log_arguments(id),
+            id if id.starts_with("clean-install-timing-") => timing_arguments(id),
             "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
                 "--repo-root",
                 "/larch-clean-install-clone-missing",
@@ -237,6 +238,28 @@ fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static s
             Some(&["--round-dir", "/larch-clean-install-round-missing"])
         }
         _ => None,
+    }
+}
+
+/// Argument sets for every Rust-owned `timing` clean-install case.
+///
+/// A clean install names no session temporary directory, so every verb resolves
+/// no ledger: each case proves the whole dispatch route and still writes nothing.
+#[rustfmt::skip]
+fn timing_arguments(id: &str) -> &'static [&'static str] {
+    match id {
+        "clean-install-timing-mark" => &["clean-install"],
+        "clean-install-timing-report" => &["--summary"],
+        "clean-install-timing-record-round" => &[
+            "--skill", "implement", "--step", "clean-install", "--round", "1",
+            "--start-s", "0", "--end-s", "1", "--accepted", "0", "--rejected", "0",
+        ],
+        "clean-install-timing-record-vendor-task" => &[
+            "--vendor", "codex", "--task-kind", "codex-review",
+            "--start-s", "0", "--end-s", "1", "--output", "clean-install.log",
+        ],
+        "clean-install-timing-harness-mark" => &["--label", "clean-install", "--", "/usr/bin/true"],
+        _ => &[],
     }
 }
 
@@ -692,6 +715,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new("clean-install-timing-dump", "timing", "dump"),
+    CleanInstallCase::new(
+        "clean-install-timing-harness-mark",
+        "timing",
+        "harness-mark",
+    ),
+    CleanInstallCase::new("clean-install-timing-mark", "timing", "mark"),
+    CleanInstallCase::new("clean-install-timing-record-round", "timing", "record-round"),
+    CleanInstallCase::new(
+        "clean-install-timing-record-vendor-task",
+        "timing",
+        "record-vendor-task",
+    ),
+    CleanInstallCase::new("clean-install-timing-report", "timing", "report"),
+    CleanInstallCase::new("clean-install-timing-task-kinds", "timing", "task-kinds"),
+    CleanInstallCase::new(
+        "clean-install-timing-telemetry-mark",
+        "timing",
+        "telemetry-mark",
+    ),
     CleanInstallCase::new("clean-install-test-shard-pack", "test-shard", "pack"),
     CleanInstallCase::new(
         "clean-install-test-shard-read-makefile",

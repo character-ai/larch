@@ -7171,11 +7171,13 @@ verb = "dump"
 python_module = "larch.report.timing"
 python_function = "timing_dump_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-dump"
 
 [[commands]]
 domain = "timing"
@@ -7183,11 +7185,13 @@ verb = "harness-mark"
 python_module = "larch.report.timing"
 python_function = "timing_harness_mark_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-harness-mark"
 
 [[commands]]
 domain = "timing"
@@ -7195,11 +7199,13 @@ verb = "mark"
 python_module = "larch.report.timing"
 python_function = "timing_mark_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-mark"
 
 [[commands]]
 domain = "timing"
@@ -7207,11 +7213,13 @@ verb = "record-round"
 python_module = "larch.report.timing"
 python_function = "timing_record_round_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-record-round"
 
 [[commands]]
 domain = "timing"
@@ -7219,11 +7227,13 @@ verb = "record-vendor-task"
 python_module = "larch.report.timing"
 python_function = "timing_record_vendor_task_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-record-vendor-task"
 
 [[commands]]
 domain = "timing"
@@ -7231,11 +7241,13 @@ verb = "report"
 python_module = "larch.report.timing"
 python_function = "timing_report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-report"
 
 [[commands]]
 domain = "timing"
@@ -7243,11 +7255,13 @@ verb = "task-kinds"
 python_module = "larch.report.timing"
 python_function = "timing_task_kinds_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-task-kinds"
 
 [[commands]]
 domain = "timing"
@@ -7255,11 +7269,13 @@ verb = "telemetry-mark"
 python_module = "larch.report.timing"
 python_function = "timing_telemetry_mark_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8083
+clean_install_test = "clean-install-timing-telemetry-mark"
 
 [[commands]]
 domain = "token"
@@ -8226,7 +8242,7 @@ rust = ["lint gitleaks"]
 [[callers]]
 path = "Makefile"
 kind = "ci"
-python = ["checks rust-clippy", "eval research", "generate check", "timing harness-mark"]
+python = ["checks rust-clippy", "eval research", "generate check"]
 rust = []
 
 [[callers]]
@@ -8323,7 +8339,7 @@ rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-
 path = "python/larch/agents/_run_external.py"
 kind = "python-runtime"
 python = []
-rust = ["agent parse-codex-usage", "run-log append-failure"]
+rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/calibration/calibration_replay.py"
@@ -8410,16 +8426,22 @@ python = ["tracking-issue rename"]
 rust = ["issue title-eligibility", "session write-design-env", "session write-run-params"]
 
 [[callers]]
+path = "python/larch/design/design_session.py"
+kind = "python-runtime"
+python = []
+rust = ["timing mark"]
+
+[[callers]]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
 kind = "python-runtime"
 python = []
-rust = ["agent collect-results", "dirty-tree checkpoint"]
+rust = ["agent collect-results", "dirty-tree checkpoint", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_step2b.py"
@@ -8455,7 +8477,7 @@ rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery 
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/design/plan_scout.py"
@@ -8491,7 +8513,7 @@ rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "git commit",
 path = "python/larch/implement/checks_run_relevant.py"
 kind = "python-runtime"
 python = ["checks run-relevant"]
-rust = []
+rust = ["timing mark", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/implement/ci_monitor.py"
@@ -8503,13 +8525,19 @@ rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
-rust = ["bgjob adapt", "dirty-tree scope-check"]
+rust = ["bgjob adapt", "dirty-tree scope-check", "timing mark"]
+
+[[callers]]
+path = "python/larch/implement/dispatch_helpers.py"
+kind = "python-runtime"
+python = []
+rust = ["timing mark"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_recovery.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit"]
+rust = ["git commit", "timing mark"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_ship.py"
@@ -8528,6 +8556,12 @@ path = "python/larch/implement/preflight.py"
 kind = "python-runtime"
 python = []
 rust = ["admission gate", "gh resolve-repo", "plan-block read"]
+
+[[callers]]
+path = "python/larch/implement/step_7a.py"
+kind = "python-runtime"
+python = []
+rust = ["timing mark"]
 
 [[callers]]
 path = "python/larch/issue/analyze_bugs.py"
@@ -8564,6 +8598,12 @@ path = "python/larch/issue/validate_merged.py"
 kind = "python-runtime"
 python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "validate-merged prepare", "validate-merged report", "validate-merged write-state"]
 rust = []
+
+[[callers]]
+path = "python/larch/lint/timing_task_kind_allowlist.py"
+kind = "python-runtime"
+python = []
+rust = ["timing task-kinds"]
 
 [[callers]]
 path = "python/larch/rendering/_rendering_generators.py"
@@ -8629,7 +8669,7 @@ rust = ["run-log write", "run-log write-round"]
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/review/plan_review.py"
@@ -8665,7 +8705,7 @@ rust = ["agent dispatch-waterfall", "dirty-tree scope-marker", "run-log append-e
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation"]
+rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "timing record-round"]
 
 [[callers]]
 path = "python/larch/review/review_collect.py"
@@ -8707,7 +8747,7 @@ rust = ["git snapshot-untracked", "session entry-gate", "session persist-run-fla
 path = "python/larch/state/closeout.py"
 kind = "python-runtime"
 python = ["final-report write"]
-rust = ["run-log append-failure", "slack issue-announce"]
+rust = ["run-log append-failure", "slack issue-announce", "timing telemetry-mark"]
 
 [[callers]]
 path = "python/larch/state/session_env.py"
@@ -9012,14 +9052,14 @@ rust = ["bgjob adapt", "session require-plugin-root", "session validate-design-t
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
 kind = "skill"
-python = ["design pause-save", "timing mark"]
-rust = ["session require-plugin-root"]
+python = ["design pause-save"]
+rust = ["session require-plugin-root", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "timing mark"]
-rust = ["bgjob adapt", "session validate-design-tmpdir"]
+python = ["design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview"]
+rust = ["bgjob adapt", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -9156,8 +9196,8 @@ rust = ["git rebase-abort", "push checkpoint-probe", "push rebase"]
 [[callers]]
 path = "skills/implement/references/self-review.md"
 kind = "skill"
-python = ["review-and-fix write-self-review-tally", "timing telemetry-mark"]
-rust = ["bgjob wait"]
+python = ["review-and-fix write-self-review-tally"]
+rust = ["bgjob wait", "timing telemetry-mark"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"

@@ -135,7 +135,7 @@ if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
   exit 0
 fi
 
-LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4 — rejected findings" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" timing mark "design Step 4 — rejected findings" || true
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e
   printf '%s\n' 'ACTION=FINALIZE' \
@@ -166,7 +166,7 @@ if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
   publish_step4_result pause-save
   exit 0
 fi
-LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4b — gate C" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" timing mark "design Step 4b — gate C" || true
 if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
     true) _skip_approve_requested_gatec=true ;;

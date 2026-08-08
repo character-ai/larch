@@ -16,6 +16,7 @@ from collections.abc import Callable, Sequence
 
 from larch import io as larch_io
 from larch.core.ctx import Ctx
+from larch.core.repo_roots import larch_entrypoint
 from larch.design import design_pause
 from larch.state import session_env
 
@@ -522,9 +523,10 @@ def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
         return
     env = ctx.subprocess_env(overrides={"LARCH_TIMING_SKILL": "design"}) if ctx is not None else os.environ.copy()
     env["LARCH_TIMING_SKILL"] = "design"
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     with contextlib.suppress(OSError):
         subprocess.run(
-            [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", label],
+            [str(larch_entrypoint(plugin_root)), "timing", "mark", label],
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

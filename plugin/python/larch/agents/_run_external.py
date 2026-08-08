@@ -1209,8 +1209,7 @@ def _temporary_env(*, name: str, value: str):
 def _record_launch_timing(*, tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
     proc.run(
         [
-            sys.executable,
-            str(_PY_CLI),
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
             "timing",
             "record-vendor-task",
             "--vendor",

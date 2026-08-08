@@ -981,7 +981,7 @@ fn record_prep_span(options: &Options, start: u64, end: u64) {
         return;
     }
     let output = format!("voter-dispatch-prep-round-{}.out", options.round_num);
-    crate::python_verb::record_vendor_timing(
+    crate::timing_commands::record_vendor_timing(
         "claude",
         "voter-dispatch-prep",
         start,

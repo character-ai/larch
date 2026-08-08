@@ -144,6 +144,23 @@ requires that marker). It revalidates each confined destructive action. The
 Python registration, implementation, and test are removed. Dry-run and live
 output name the same planned local changes.
 
+**Timing capture and timing reports cut over in #8083.**
+`timing mark`, `record-vendor-task`, `record-round`, `dump`, `report`,
+`harness-mark`, `telemetry-mark`, and `task-kinds` are Rust-owned through
+`crates/larch-cli/src/timing_commands.rs` over the pure rules in
+`crates/larch-core/src/report/timing.rs`. Ledger rows, the dump, and the
+rendered report keep every machine field and the readable prose contract,
+including Python's `json.dumps(..., sort_keys=True)` spacing. Appends take an
+exclusive `flock`, so concurrent marks from separate processes never lose or
+corrupt a row, and every clock value arrives through the injected
+`BusinessClock`, so tests pin time instead of sleeping. The Python
+registrations and the superseded command implementations are removed;
+`python/larch/report/timing.py` keeps only the ledger writers and the path
+resolver that in-process Python callers still import. `timing harness-mark`
+reaches developer and CI harnesses through the Makefile `HARNESS_MARK`
+variable. One deliberate difference: the Rust report parses the ledger once, so
+a malformed row now warns once instead of once per internal read.
+
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py` (the gzip-embedded `tally-plan-review.sh` body is retained for contract tests but no longer executed). Treat the remaining delegated Python entry points as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.

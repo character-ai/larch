@@ -175,7 +175,7 @@ Harness: `python/test_implement_dispatch.py`.
 
 ## Step 4 commit wrapper
 
-Thin Step 4 wrapper around `scripts/larch.sh git commit`. The Python caller emits `python3 python/cli.py token` and `python3 python/cli.py timing` marks for "Step 4 — commit implementation" before invoking Rust. It inherits `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment and forces `LARCH_TIMING_SKILL=implement` for the timing mark.
+Thin Step 4 wrapper around `scripts/larch.sh git commit`. The Python caller emits `python3 python/cli.py token` and `scripts/larch.sh timing` marks for "Step 4 — commit implementation" before invoking Rust. It inherits `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment and forces `LARCH_TIMING_SKILL=implement` for the timing mark.
 
 After Step 0 bootstrap, invoke through the session launcher so plugin-root rehydration matches `skills/implement/SKILL.md` Step 4. Bare `python3 …/python/cli.py` is only for pre-bootstrap call sites.
 

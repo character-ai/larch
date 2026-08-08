@@ -7,6 +7,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from larch.core.repo_roots import larch_entrypoint
+
 _PYTHON_PKG_MIN = 2
 
 
@@ -111,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve()
     allowed = set(
         subprocess.check_output(  # lint-subprocess-via-runner: ok lint utility invokes larch CLI to fetch the canonical allow-list
-            [sys.executable, str(root / "python/cli.py"), "timing", "task-kinds"], text=True
+            [str(larch_entrypoint(root)), "timing", "task-kinds"], text=True
         ).splitlines()
     )
     tracked = subprocess.check_output(  # lint-subprocess-via-runner: ok lint utility calls git to enumerate tracked files; no proc.Runner needed

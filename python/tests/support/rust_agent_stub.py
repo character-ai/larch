@@ -1690,6 +1690,76 @@ def _named_block_write(arguments: list[str]) -> int:
     return 0
 
 
+def _timing_ledger_path() -> Path | None:
+    """Resolve the ledger the Rust `timing` owner would write."""
+    declared = os.environ.get("LARCH_TIMING_LEDGER", "")
+    if declared:
+        return Path(declared)
+    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "REVIEW_TMPDIR"):
+        root = os.environ.get(key, "")
+        if root and Path(root).is_dir():
+            return Path(root) / "timing-ledger.tsv"
+    return None
+
+
+def _timing_append(row: list[str]) -> int:
+    ledger = _timing_ledger_path()
+    if ledger is None:
+        return 0
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as handle:
+        _ = handle.write("\t".join(row) + "\n")
+    return 0
+
+
+def _timing_flags(arguments: list[str]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    index = 0
+    while index < len(arguments):
+        if arguments[index].startswith("--") and index + 1 < len(arguments) and not arguments[index + 1].startswith("--"):
+            values[arguments[index]] = arguments[index + 1]
+            index += 2
+        else:
+            index += 1
+    return values
+
+
+def _timing_mark(arguments: list[str]) -> int:
+    labels = [value for value in arguments if not value.startswith("--")]
+    skill = os.environ.get("LARCH_TIMING_SKILL", "implement")
+    return _timing_append(
+        ["v1", "mark", str(int(time.time())), skill, labels[0] if labels else "", *(["-"] * 8)]
+    )
+
+
+def _timing_record_round(arguments: list[str]) -> int:
+    values = _timing_flags(arguments)
+    start = int(float(values.get("--start-s", "0")))
+    end = int(float(values.get("--end-s", "0")))
+    return _timing_append([
+        "v1", "round", str(int(time.time())), values.get("--skill", "implement"),
+        values.get("--step", ""), values.get("--round", "0"), str(start), str(end),
+        str(max(0, end - start)), values.get("--accepted", "0"), values.get("--rejected", "0"),
+        values.get("--oos", "-"), "1",
+    ])
+
+
+def _timing_record_vendor_task(arguments: list[str]) -> int:
+    values = _timing_flags(arguments)
+    start = int(float(values.get("--start-s", "0")))
+    end = int(float(values.get("--end-s", "0")))
+    return _timing_append([
+        "v1", "vendor", str(int(time.time())), os.environ.get("LARCH_TIMING_SKILL", "implement"), "-",
+        values.get("--vendor", ""), values.get("--task-kind", ""), str(start), str(end),
+        str(max(0, end - start)), Path(values.get("--output", "")).name,
+        values.get("--exit-code", "0"), values.get("--status", "complete"),
+    ])
+
+
+def _timing_noop(_arguments: list[str]) -> int:
+    return 0
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -1724,6 +1794,12 @@ def main(arguments: list[str]) -> int:
             ("named-block", "write"): _named_block_write,
             ("plan", "scope-paths"): _plan_scope_paths,
             ("plan-block", "strip-body"): _plan_block_strip_body,
+            ("timing", "mark"): _timing_mark,
+            ("timing", "record-round"): _timing_record_round,
+            ("timing", "record-vendor-task"): _timing_record_vendor_task,
+            ("timing", "report"): _timing_noop,
+            ("timing", "dump"): _timing_noop,
+            ("timing", "telemetry-mark"): _timing_noop,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

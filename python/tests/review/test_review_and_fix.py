@@ -2450,7 +2450,7 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
     assert lock_calls == ["cursor"]
     assert len(release_calls) == 1
-    timing_calls = [call for call in run_calls if call[0][2:4] == ["timing", "record-vendor-task"]]
+    timing_calls = [call for call in run_calls if call[0][1:3] == ["timing", "record-vendor-task"]]
     assert len(timing_calls) == 1
     cursor_calls = [call for call in run_calls if "run-external-agent" in call[0]]
     assert len(cursor_calls) == 1
@@ -2560,7 +2560,7 @@ def test_run_coder_cursor_records_failure_vendor_task(tmp_path, monkeypatch):
 
     assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is False
 
-    timing_call = next(argv for argv in run_calls if argv[2:4] == ["timing", "record-vendor-task"])
+    timing_call = next(argv for argv in run_calls if argv[1:3] == ["timing", "record-vendor-task"])
     assert timing_call[timing_call.index("--task-kind") + 1] == "cursor-review-fix"
     assert timing_call[timing_call.index("--exit-code") + 1] == "7"
     assert timing_call[timing_call.index("--status") + 1] == "signal"

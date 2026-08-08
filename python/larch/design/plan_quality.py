@@ -954,7 +954,6 @@ def _dispatch_vendor_fix(
     plugin: Path,
     timeout: int,
 ) -> int:
-    cli = plugin / "python" / "cli.py"
     if vendor == "codex":
         launcher_stdout = run_dir / "codex.launcher-stdout"
         (run_dir / "codex.log.token-record").write_text("", encoding="utf-8")
@@ -1032,8 +1031,7 @@ def _dispatch_vendor_fix(
         timing_end = int(subprocess.check_output(["date", "+%s"], text=True).strip())
         subprocess.run(
             [
-                sys.executable,
-                str(cli),
+                str(larch_entrypoint(plugin)),
                 "timing",
                 "record-vendor-task",
                 "--vendor",

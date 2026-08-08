@@ -25,7 +25,7 @@ from larch.calibration import difficulty
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
 from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally
@@ -917,7 +917,7 @@ def step5(argv: list[str] | None = None) -> int:
         os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TOKEN_SESSION_ID", default=args.run_id)
         os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_CLAUDE_SOURCE_FILE", default=os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
         os.environ["LARCH_TIMING_LEDGER"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TIMING_LEDGER", default=os.environ.get("LARCH_TIMING_LEDGER", ""))
-        _run(["python3", str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "--if-latest-differs", "Step 5 — code review"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
+        _run([str(larch_entrypoint(_plugin_root())), "timing", "mark", "--if-latest-differs", "Step 5 — code review"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
         if not loop_mode:
             progress_done = implement_tmpdir / "progress" / "done"
         if args.mode == "mav-apply":
@@ -1271,7 +1271,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
                 os.environ[key] = _session_get(session_env_path=session, key=key, default="")
     cli = _plugin_root() / "python" / "cli.py"
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
-    _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
+    _run([str(larch_entrypoint(_plugin_root())), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
         return _commit_fixes_stage_all(args.message)
     result = _run([str(larch_entrypoint(_plugin_root())), "git", "commit", "-m", args.message, *args.files])
@@ -1367,9 +1367,14 @@ def record_round_timing(argv: list[str] | None = None) -> int:
                 step_label=step_label,
             ):
                 return 0
-    env = {**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir), "LARCH_TIMING_LEDGER": str(ledger), "LARCH_TIMING_SKILL": "implement"}
+    env = {
+        **larch_entrypoint_env(_plugin_root()),
+        "IMPLEMENT_TMPDIR": str(implement_tmpdir),
+        "LARCH_TIMING_LEDGER": str(ledger),
+        "LARCH_TIMING_SKILL": "implement",
+    }
     _run([
-        "python3", str(_plugin_root() / "python" / "cli.py"), "timing", "record-round",
+        str(larch_entrypoint(_plugin_root())), "timing", "record-round",
         "--skill", "implement",
         "--step", step_label,
         "--round", str(round_num),

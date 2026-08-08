@@ -606,14 +606,16 @@ pub struct LaunchTimingRecord {
     pub exit_code: i32,
 }
 
-/// Build the exact `cli.py timing record-vendor-task` argv and key set.
+/// Build the exact `timing record-vendor-task` argv and key set.
+///
+/// The command is Rust-owned, so the argv starts at the verified bootstrap
+/// script that remaining Python launchers execute.
 #[must_use]
 pub fn build_record_launch_timing_argv(
-    python_executable: &str,
-    cli_path: &str,
+    entrypoint: &str,
     record: &LaunchTimingRecord,
 ) -> Vec<String> {
-    let mut argv = [python_executable, cli_path, "timing", "record-vendor-task"]
+    let mut argv = [entrypoint, "timing", "record-vendor-task"]
         .map(str::to_owned)
         .to_vec();
     let status = if record.exit_code == 0 {

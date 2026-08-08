@@ -569,7 +569,7 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
     } else {
         PathBuf::from(&context.timing_ledger)
     }; let mut timing_args = vec![
-        os("timing"), os("report"), os("--full"), os("--format"), os("json"), os("--output"),
+        os("--full"), os("--format"), os("json"), os("--output"),
         timing_output.as_os_str().to_owned(), os("--ledger"),
         timing_ledger.as_os_str().to_owned(), os("--implement-tmpdir"),
         context.tmpdir.as_os_str().to_owned(),
@@ -579,15 +579,13 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
         timing_args.extend([os("--outlier-threshold"), value]);
     } if let Some(value) = env::var_os("LARCH_TEST_TIMING_NOW").filter(|value| !value.is_empty()) {
         timing_args.extend([os("--test-now"), value]);
-    } let timing_result = run_python_verb(timing_args, PYTHON_TIMEOUT);
+    } let timing_result = crate::timing_commands::render_report_arguments(&timing_args);
     let mut errors = Vec::new(); if strict {
         if let Some(message) = renderer_failure("token report render failed", token_result.as_ref())
         {
             errors.push(message);
-        } if let Some(message) =
-            renderer_failure("timing report render failed", timing_result.as_ref())
-        {
-            errors.push(message);
+        } if let Err(message) = timing_result.as_ref() {
+            errors.push(format!("timing report render failed: {message}"));
         }
     } if token_output.is_file() {
         if let Err(message) = stage_replace_batch(
@@ -606,8 +604,9 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
             errors.push(format!("timing report staging failed: {message}"));
         }
     } else if strict {
-        errors.push(report_error(
-            "timing-report.json source was not produced", timing_result.as_ref(),
+        errors.push(timing_result.as_ref().err().map_or_else(
+            || "timing-report.json source was not produced".to_owned(),
+            |message| format!("timing-report.json source was not produced: {message}"),
         ));
     } if strict && !errors.is_empty() {
         return Err(errors.join("; "));

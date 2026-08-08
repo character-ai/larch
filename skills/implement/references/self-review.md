@@ -9,7 +9,7 @@ Entry conditions: this reference is used for explicit `--self-review` and runtim
 When `self_review=true` (or after `self-review-required` fallback), self-review runs via a Claude Agent-tool subagent. First, mark Step 5 telemetry best-effort, then print the Step 5 banner.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true
 ```
 
 Print `> **🔶 /implement 5: code review: self-review mode (Claude subagent)**` after the telemetry mark returns.

@@ -425,9 +425,9 @@ write-final-report-bash-harness:
 test-harness-shards-coverage:
 	bash scripts/test-harness-shards-coverage.sh
 test-eval-set-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/test_research_eval.py
 test-eval-research-baseline-flag:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/test_research_eval.py
 eval-research:
 	python3 python/cli.py eval research
 EOF

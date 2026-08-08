@@ -1117,7 +1117,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, ".dirty-tree-prompted-step0-plan-materialize", "SKILL dirty-tree prompt sentinel moved to bootstrap-recovery.md")
         forbid(skill, "Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0)", "SKILL verbose degraded-prompt table prose moved to bootstrap-recovery.md")
         forbid(skill, "Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`", "SKILL verbose dirty-recovery table prose moved to bootstrap-recovery.md")
-        forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review"', "SKILL self-review telemetry fence moved to self-review.md")
+        forbid(skill, 'timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review"', "SKILL self-review telemetry fence moved to self-review.md")
         forbid(skill, "python/cli.py review-and-fix write-pre-self-review-snapshot", "SKILL self-review snapshot fence moved to claude-self-reviewer agent")
         forbid(skill, "checks-commit-route --checks-site step5-self-review", "SKILL self-review composite fence moved to self-review.md")
         forbid(skill, "python/cli.py review-and-fix write-self-review-tally", "SKILL self-review tally fence moved to self-review.md")
@@ -1159,7 +1159,7 @@ def run(repo_root: Path) -> list[str]:
 
         self_review_text = Path(self_review_ref).read_text()
         for needle in [
-            'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true',
+            'scripts/larch.sh timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true',
             "larch:claude-self-reviewer",
             "self-review mode (Claude subagent)",
             "skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review",

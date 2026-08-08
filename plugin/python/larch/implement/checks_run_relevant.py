@@ -25,7 +25,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
-from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
 from larch.report import run_log_corpus
 from larch.report.tokens import (
     CHECKS_DIGEST_SIZE_BASENAME,
@@ -244,10 +244,14 @@ def _mark_step_ledger(*, runner: Runner, canonical_tmp: Path, site: str) -> None
     else:
         return
     cli = plugin_scripts_dir().parent / "python" / "cli.py"
-    env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp), "LARCH_TIMING_SKILL": "implement"}
+    env = {
+        **larch_entrypoint_env(cli.parents[1]),
+        "IMPLEMENT_TMPDIR": str(canonical_tmp),
+        "LARCH_TIMING_SKILL": "implement",
+    }
     _ = runner.run(["python3", str(cli), "token", "mark", label], env=env)
     timing_env = {**env, "DESIGN_TMPDIR": ""}
-    _ = runner.run(["python3", str(cli), "timing", "mark", label], env=timing_env)
+    _ = runner.run([str(larch_entrypoint(cli.parents[1])), "timing", "mark", label], env=timing_env)
 
 
 def record_checks_vendor_task(  # noqa: PLR0913,RUF100
@@ -263,11 +267,14 @@ def record_checks_vendor_task(  # noqa: PLR0913,RUF100
 ) -> None:
     with contextlib.suppress(Exception):
         cli = plugin_scripts_dir().parent / "python" / "cli.py"
-        env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp), "LARCH_TIMING_SKILL": "implement"}
+        env = {
+            **larch_entrypoint_env(cli.parents[1]),
+            "IMPLEMENT_TMPDIR": str(canonical_tmp),
+            "LARCH_TIMING_SKILL": "implement",
+        }
         timing_env = {**env, "DESIGN_TMPDIR": ""}
         _ = runner.run([
-            "python3",
-            str(cli),
+            str(larch_entrypoint(cli.parents[1])),
             "timing",
             "record-vendor-task",
             "--vendor",

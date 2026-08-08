@@ -725,16 +725,19 @@ fn the_pre_dispatch_window_lands_in_the_timing_ledger() {
     ]);
     let output = command.output().expect("dispatch runs");
     assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
-    let timing = fixture.read("timing.log");
-    assert!(
-        timing.contains("--task-kind voter-dispatch-prep"),
-        "{timing}"
-    );
-    assert!(
-        timing.contains("--output voter-dispatch-prep-round-4.out"),
-        "{timing}"
-    );
-    assert!(timing.contains("--vendor claude"), "{timing}");
+    // `timing record-vendor-task` is Rust-owned, so the row lands in the ledger
+    // rather than in the Python-verb double's argv log.
+    let recorded = fs::read_to_string(&ledger).expect("read timing ledger");
+    let row: Vec<&str> = recorded
+        .lines()
+        .find(|line| line.contains("voter-dispatch-prep"))
+        .unwrap_or_default()
+        .split('\t')
+        .collect();
+    assert_eq!(row.len(), 13, "{recorded}");
+    assert_eq!(row[5], "claude", "{recorded}");
+    assert_eq!(row[6], "voter-dispatch-prep", "{recorded}");
+    assert_eq!(row[10], "voter-dispatch-prep-round-4.out", "{recorded}");
 }
 
 #[test]
