@@ -441,17 +441,6 @@ def make_file_conflict_deps_input(tmp_path: Path, name: str) -> Path:
 
 
 
-def _write_manifest(path: Path, observations: object) -> None:
-    _ = path.write_text(
-        json.dumps(
-            {
-                "schema_version": "1",
-                "status": "complete",
-                "oos_observations": observations,
-            }
-        ),
-        encoding="utf-8",
-    )
 
 
 
@@ -515,11 +504,6 @@ def test_read_kv_file_missing_symlink_follow_and_crlf_strip(tmp_path: Path) -> N
 
 
 
-class _DispositionGateGitResult:
-    def __init__(self, returncode: int, stdout: str = "") -> None:
-        self.returncode = returncode
-        self.stdout = stdout
-        self.stderr = ""
 
 
 

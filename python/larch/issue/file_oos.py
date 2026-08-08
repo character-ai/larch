@@ -402,7 +402,7 @@ def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, s
     return resolve_implement_run_id(tmpdir, state=state)
 
 
-def _append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str) -> None:
+def append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
         handle.write(f"\n### Tool Failures\n- **{site}**: {tool} exited {rc}\n")

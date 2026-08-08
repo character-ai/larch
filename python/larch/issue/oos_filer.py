@@ -257,7 +257,7 @@ def _invoke_larch(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _append_tool_failure(*, tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
-    file_oos._append_failure_log(log=tmpdir / "execution-issues.md", site=site, tool=tool, rc=rc, output=output)  # pyright: ignore[reportPrivateUsage]
+    file_oos.append_failure_log(log=tmpdir / "execution-issues.md", site=site, tool=tool, rc=rc, output=output)
 
 
 def _append_warning(*, tmpdir: Path, message: str) -> None:

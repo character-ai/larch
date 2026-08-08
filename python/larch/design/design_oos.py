@@ -37,17 +37,6 @@ _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
 
 
-def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None) -> subprocess.CompletedProcess[str]:
-    root = plugin_root(Path(__file__).resolve().parents[3])
-    command = [sys.executable, str(root / "python" / "cli.py"), *args]
-    if capture:
-        return subprocess.run(command, capture_output=True, text=True, check=False)
-    if stderr_path:
-        with stderr_path.open("w", encoding="utf-8") as stderr_handle:
-            return subprocess.run(command, text=True, stdout=subprocess.DEVNULL, stderr=stderr_handle, check=False)
-    return subprocess.run(command, text=True, check=False)
-
-
 def _run_larch(*args: str) -> subprocess.CompletedProcess[str]:
     """Invoke one Rust-owned command through the verified bootstrap script."""
     root = plugin_root(Path(__file__).resolve().parents[3])

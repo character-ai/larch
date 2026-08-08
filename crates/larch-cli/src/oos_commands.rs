@@ -41,7 +41,15 @@ use larch_core::{
 };
 use serde_json::Value;
 
-use crate::{argparse_compat::parse_with_flags, execution_issue_commands::append_execution_issue};
+use crate::{
+    argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
+    execution_issue_commands::append_execution_issue,
+};
+
+/// Publish one `argparse`-shaped usage refusal at this domain's usage code.
+fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
+    argparse_usage_error(usage, program, error, VALIDATION_FAILED_RC)
+}
 
 /// Exit code every verb reports for a rejected command line.
 const VALIDATION_FAILED_RC: u8 = 2;
@@ -130,25 +138,6 @@ fn append_failure_log(log: &Path, site: &str, tool: &str, rc: i32, output: &str)
 /// file, and materialization must not fail on a hostile session directory.
 fn append_run_log_warning(tmpdir: &Path, entry: &str) {
     let _recorded = append_execution_issue(&tmpdir.join(EXECUTION_ISSUES_FILE), "Warnings", entry);
-}
-
-/// Publish one `argparse`-shaped usage refusal.
-fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
-    eprintln!("{usage}\n{program}: error: {error}");
-    ExitCode::from(VALIDATION_FAILED_RC)
-}
-
-/// Render the `argparse` missing-required-arguments line.
-fn missing(options: &[(&str, bool)]) -> String {
-    let absent: Vec<&str> = options
-        .iter()
-        .filter(|(_name, present)| !present)
-        .map(|(name, _present)| *name)
-        .collect();
-    format!(
-        "the following arguments are required: {}",
-        absent.join(", ")
-    )
 }
 
 // ---------------------------------------------------------------------------

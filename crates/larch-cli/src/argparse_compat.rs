@@ -85,6 +85,26 @@ impl ParsedCommandLine {
     }
 }
 
+/// Render the `argparse` message for the required options that were absent.
+#[must_use]
+pub fn missing(options: &[(&str, bool)]) -> String {
+    let absent: Vec<&str> = options
+        .iter()
+        .filter(|(_name, present)| !present)
+        .map(|(name, _present)| *name)
+        .collect();
+    format!(
+        "the following arguments are required: {}",
+        absent.join(", ")
+    )
+}
+
+/// Publish one `argparse`-shaped usage refusal under `code`.
+pub fn usage_error(usage: &str, program: &str, error: &str, code: u8) -> ExitCode {
+    eprintln!("{usage}\n{program}: error: {error}");
+    ExitCode::from(code)
+}
+
 /// Parse `arguments` against a closed option table and a positional budget.
 ///
 /// `options` lists the long flags that take exactly one value. `max_positionals`
