@@ -832,10 +832,15 @@ pub struct FetchRequest {
     pub remote: GitRemote,
     pub refspec: Option<GitRefspec>,
     pub quiet: bool,
+    /// Skip the tag auto-follow a bounded single-object fetch does not want.
+    pub no_tags: bool,
 }
 impl FetchRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         let mut a = Vec::new();
+        if self.no_tags {
+            a.push("--no-tags".into());
+        }
         if self.quiet {
             a.push("--quiet".into());
         }

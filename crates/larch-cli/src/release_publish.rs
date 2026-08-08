@@ -276,6 +276,7 @@ fn main_fetch_request() -> Result<FetchRequest, String> {
         remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
         refspec: Some(GitRefspec::new("main").map_err(|error| error.to_string())?),
         quiet: true,
+        no_tags: false,
     })
 }
 

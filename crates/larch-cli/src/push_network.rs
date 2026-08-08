@@ -234,6 +234,7 @@ fn fetch_branch(branch: &str) -> Result<(), PushFailure> {
                 remote,
                 refspec: Some(refspec),
                 quiet: true,
+                no_tags: false,
             },
             &cancellation,
         ))

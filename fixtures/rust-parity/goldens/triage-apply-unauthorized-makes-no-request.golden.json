@@ -1,0 +1,15 @@
+{
+  "exit_code": 3,
+  "files": {
+    "body.md": {
+      "text": "diagnosis\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "TRIAGE_FAILURE=authorization\nERROR=live mutation authorization refused: unauthorized-mutation\n"
+  },
+  "stdout": {
+    "text": "ISSUE_UPDATED=false\n"
+  }
+}

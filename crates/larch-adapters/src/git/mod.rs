@@ -565,8 +565,9 @@ mod tests {
                 remote: GitRemote::new("origin").unwrap(),
                 refspec: Some(GitRefspec::new("main").unwrap()),
                 quiet: true,
+                no_tags: true,
             },
-            &["fetch", "--quiet", "origin", "main"],
+            &["fetch", "--no-tags", "--quiet", "origin", "main"],
         );
         check(
             &PushRequest {
@@ -1635,6 +1636,7 @@ mod tests {
                         remote: GitRemote::new("missing").unwrap(),
                         refspec: None,
                         quiet: false,
+                        no_tags: false,
                     },
                     &NeverCancelled,
                 ))

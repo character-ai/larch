@@ -718,6 +718,7 @@ impl Git {
             remote,
             refspec: Some(refspec),
             quiet: true,
+            no_tags: false,
         };
         outcome_of(
             self.runtime

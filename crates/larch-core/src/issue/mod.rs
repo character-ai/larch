@@ -20,6 +20,7 @@ mod input;
 mod report_core;
 mod rows;
 mod title;
+mod triage;
 mod untrusted;
 
 pub use body::{
@@ -57,5 +58,14 @@ pub use title::{
     insert_signal_marker, insert_tag_after_bug_prefix, leading_square_bracket_prefix,
     normalize_title_prefix, strip_lifecycle_prefix, title_has_archival_report_prefix,
     title_is_archival, title_lifecycle_reject_marker, title_starts_with_brainstorm,
+};
+pub use triage::{
+    MAX_TRIAGE_EVIDENCE_BYTES, MAX_TRIAGE_PROBE_BYTES, TRIAGE_MARKER_END, TRIAGE_MARKER_START,
+    TRIAGE_PROBE_TIMEOUT_SECONDS, TRIAGE_TMP_PREFIX, TRIAGE_VERDICT_COMMENT_PREFIX, TRIAGED_TAG,
+    TriageBlockDefect, TriageProbe, TriageProbeError, TriageSanitizeError,
+    body_has_foreign_larch_marker, replace_triage_block, sanitize_triage_outbound,
+    strip_triage_lifecycle_prefixes, triage_label_is_security, triage_probe_command,
+    triage_text_is_security_sensitive, triage_title_has_lifecycle_prefix, triaged_title,
+    validate_triage_evidence_path,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

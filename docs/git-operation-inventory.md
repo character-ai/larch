@@ -49,6 +49,7 @@ crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
@@ -84,7 +85,6 @@ python/larch/issue/file_oos.py	later-domain	#7682	log,merge-base,rev-list,rev-pa
 python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7682	dynamic
-python/larch/issue/triage.py	later-domain	#7682	--version
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base

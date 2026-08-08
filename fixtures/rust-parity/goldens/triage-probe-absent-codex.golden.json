@@ -1,0 +1,11 @@
+{
+  "exit_code": 8,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "PROBE_STATUS=failed\nPROBE_EXIT_CODE=127\nPROBE_TRUNCATED=false\nPROBE_OUTPUT_BEGIN\ncodex: command not found\nPROBE_OUTPUT_END\n"
+  }
+}

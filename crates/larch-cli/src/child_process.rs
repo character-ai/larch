@@ -11,7 +11,10 @@ use larch_adapters::{
     NoopProcessObserver, TokioProcessRunner,
     runtime::{Cancellation, LarchRuntime},
 };
-use larch_core::{ExternalProcessRunner as _, ExternalProgram, ProcessOutput, ProcessRequest};
+use larch_core::{
+    ExternalProcessRunner as _, ExternalProgram, ProcessError, ProcessErrorKind, ProcessOutput,
+    ProcessRequest,
+};
 
 /// Build one bounded, captured child request for an approved program.
 ///
@@ -43,9 +46,20 @@ pub fn bounded_request(
 /// Returns a stable message when the runtime cannot start or the child fails
 /// to run to completion.
 pub fn run_bounded(request: ProcessRequest) -> Result<ProcessOutput, String> {
-    let runtime = LarchRuntime::current_thread().map_err(|error| error.to_string())?;
+    run_bounded_detailed(request).map_err(|error| error.message().to_owned())
+}
+
+/// Run one bounded child and keep the typed failure when it does not complete.
+///
+/// Callers that must tell a deadline from a missing executable — and that keep
+/// whatever the child wrote before either — read the error kind and its
+/// captured output instead of the collapsed message.
+///
+/// # Errors
+/// Returns the runner's typed failure, including any partial captured output.
+pub fn run_bounded_detailed(request: ProcessRequest) -> Result<ProcessOutput, ProcessError> {
+    let runtime = LarchRuntime::current_thread()
+        .map_err(|error| ProcessError::new(ProcessErrorKind::Spawn, error.to_string(), None))?;
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    runtime
-        .block_on(runner.run(request, &Cancellation::new()))
-        .map_err(|error| error.message().to_owned())
+    runtime.block_on(runner.run(request, &Cancellation::new()))
 }

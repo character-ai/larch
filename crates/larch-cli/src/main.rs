@@ -75,6 +75,7 @@ mod stall_recovery_reporting;
 mod state_commands;
 mod test_shards;
 mod timing_commands;
+mod triage_commands;
 mod voter_dispatch_commands;
 mod waterfall_commands;
 
@@ -148,6 +149,9 @@ enum Domain {
     /// Implementation-plan readers.
     #[command(subcommand)]
     Plan(PlanCommand),
+    /// Pre-`/design` issue verification: evidence, probes, and the one write.
+    #[command(subcommand)]
+    Triage(TriageCommand),
     /// Envelopes that mark fetched text as data, never instructions.
     #[command(subcommand)]
     Untrusted(UntrustedCommand),
@@ -473,6 +477,19 @@ enum PlanCommand {
     /// Publish the scope paths one implementation plan declares.
     #[command(name = "scope-paths", disable_help_flag = true)]
     ScopePaths(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum TriageCommand {
+    /// Read evidence only through an immutable fixed-origin object.
+    #[command(disable_help_flag = true)]
+    Inspect(RawCompatibilityArguments),
+    /// Run one fixed, bounded, no-shell reproduction probe.
+    #[command(disable_help_flag = true)]
+    Probe(RawCompatibilityArguments),
+    /// Apply one verified verdict with compare-and-swap checks.
+    #[command(disable_help_flag = true)]
+    Apply(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1168,6 +1185,11 @@ fn run(
         Domain::Plan(PlanCommand::ScopePaths(arguments)) => {
             Ok(issue_wire_commands::scope_paths(&arguments.arguments))
         }
+        Domain::Triage(command) => Ok(match command {
+            TriageCommand::Inspect(arguments) => triage_commands::inspect(&arguments.arguments),
+            TriageCommand::Probe(arguments) => triage_commands::probe(&arguments.arguments),
+            TriageCommand::Apply(arguments) => triage_commands::apply(&arguments.arguments),
+        }),
         Domain::Untrusted(command) => Ok(match command {
             UntrustedCommand::ContentBlock(arguments) => {
                 issue_wire_commands::untrusted_content_block(&arguments.arguments)
