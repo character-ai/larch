@@ -1,14 +1,15 @@
 # pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
-import json
 import io
+import json
 import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from larch.core import config
 from larch.core import proc
@@ -20,9 +21,11 @@ from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
-from tests.support.shell_fixtures import FakeBinDirFactory
 
 from test_support import RecordingRunner, make_committed_repo
+
+if TYPE_CHECKING:
+    from tests.support.shell_fixtures import FakeBinDirFactory
 
 ROOT = rts.ROOT
 CLI = rts.CLI
