@@ -989,7 +989,11 @@ fn sentinel_specialist_render_args(sentinel: &BTreeMap<String, String>) -> Vec<S
     render
 }
 
-fn findings_ledger_path(review_root: &Path, session_env_path: &str) -> PathBuf {
+/// Resolve the cross-round findings ledger one review session writes.
+///
+/// A `round-N` tmpdir nested directly below its session root shares that
+/// root's ledger; every other review root owns its own.
+pub fn findings_ledger_path(review_root: &Path, session_env_path: &str) -> PathBuf {
     let review_real = fs::canonicalize(review_root).unwrap_or_else(|_| review_root.to_path_buf());
     let parent = review_real.parent().unwrap_or(&review_real);
     let nested = review_real

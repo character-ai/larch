@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportArgumentType=false, reportAttributeAccessIssue=false
 from __future__ import annotations
 
-import importlib
 import json
 import subprocess
 from pathlib import Path
@@ -11,8 +10,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pytest
 
-from larch.agents import agent_voters
-from larch.agents import slot_manifest
 from larch.agents import agents
 from larch.calibration import difficulty
 from larch.state import bootstrap
@@ -393,33 +390,6 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     assert [row["slot"] for row in rows] == ["sentinel"]
     assert seen_slots == ["review.panel"]
     assert seen_policy == ["review.panel"]
-
-
-def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch) -> None:
-    original = external_defaults.voter_policies
-
-    def fake_voter_policies(role_id: str) -> tuple[config.VoterPolicyDefault, ...]:
-        assert role_id == "review.voters"
-        return (
-            config.VoterPolicyDefault("1", "voter-1", "cursor", "sentinel-v1", "validity-correctness", "validity", "v1.out", (("cursor", "sentinel-v1"),)),
-            config.VoterPolicyDefault("2", "voter-2", "cursor", "sentinel-v2", "plan-fidelity-completeness", "plan", "v2.out", (("cursor", "sentinel-v2"),)),
-            config.VoterPolicyDefault("3", "voter-3", "codex", "sentinel-v3", "pragmatism-cost", "prag", "v3.out", (("codex", "sentinel-v3"),)),
-        )
-
-    monkeypatch.setattr(external_defaults, "voter_policies", fake_voter_policies)
-    try:
-        reloaded = importlib.reload(agent_voters)
-        state = reloaded._state_from_bindings(
-            bindings={
-                "voter-2": slot_manifest.SlotOutputBinding(path="v2.txt", tool="cursor"),
-                "voter-3": slot_manifest.SlotOutputBinding(path="v3.txt", tool="codex"),
-            },
-            launched_policies=reloaded.VOTER_SLOT_POLICIES,
-        )
-        assert (state.voter_2_path, state.voter_3_path, state.voter_2_tool, state.voter_3_tool) == ("v2.txt", "v3.txt", "sentinel-v2", "sentinel-v3")
-    finally:
-        monkeypatch.setattr(external_defaults, "voter_policies", original)
-        importlib.reload(agent_voters)
 
 
 def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

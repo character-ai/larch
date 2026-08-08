@@ -144,11 +144,13 @@ verb = "dispatch-voters"
 python_module = "larch.agents.agent_voters"
 python_function = "dispatch_voters_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8117
+clean_install_test = "clean-install-agent-dispatch-voters"
 
 [[commands]]
 domain = "agent"
@@ -8274,16 +8276,16 @@ python = []
 rust = ["agent parse-codex-usage", "run-log append-failure"]
 
 [[callers]]
-path = "python/larch/agents/agent_voters.py"
-kind = "python-runtime"
-python = ["render voter"]
-rust = ["agent dispatch-waterfall"]
-
-[[callers]]
 path = "python/larch/agents/collect_results.py"
 kind = "python-runtime"
 python = []
 rust = ["agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "agent wait-reviewers"]
+
+[[callers]]
+path = "python/larch/calibration/calibration_replay.py"
+kind = "python-runtime"
+python = []
+rust = ["agent dispatch-voters"]
 
 [[callers]]
 path = "python/larch/core/redact.py"
@@ -8307,7 +8309,7 @@ rust = []
 path = "python/larch/debate/orchestrator.py"
 kind = "python-runtime"
 python = []
-rust = ["agent dispatch-waterfall"]
+rust = ["agent dispatch-voters", "agent dispatch-waterfall"]
 
 [[callers]]
 path = "python/larch/design/clarify.py"
@@ -9524,8 +9526,8 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent dispatch-voters", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-waterfall", "agent launch-claude-subprocess", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
+python = ["checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "session setup", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
@@ -9536,8 +9538,8 @@ rust = []
 [[callers]]
 path = "skills/review/references/heavy-worker.md"
 kind = "skill"
-python = ["agent collect-results", "agent dispatch-voters", "review tally-code-votes"]
-rust = ["dirty-tree checkpoint"]
+python = ["agent collect-results", "review tally-code-votes"]
+rust = ["agent dispatch-voters", "dirty-tree checkpoint"]
 
 [[callers]]
 path = "skills/review/references/self-review.md"
@@ -9626,8 +9628,8 @@ rust = []
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["agent dispatch-voters", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review"]
+python = ["plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
+rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

@@ -42,7 +42,8 @@ use serde_json::{Map, Value};
 use crate::agent_commands::AgentRawArguments;
 use crate::claude_commands::parse_uint;
 use crate::launcher_support::{
-    LauncherArtifacts, confined_target, is_control_character, is_positive_int, write_confined,
+    LauncherArtifacts, confined_target, is_control_character, is_positive_int, parse_presence,
+    validate_site, write_confined,
 };
 use crate::python_verb::{plugin_root_directory, publish_session_environment, run_python_verb};
 
@@ -366,37 +367,20 @@ fn missing_value_message(flag: &str) -> String {
     format!("{PROG}: {reported} requires a value")
 }
 
-fn parse_presence(raw: &str, flag: &str) -> Result<bool, String> {
-    match raw {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(format!("{PROG}: {flag} must be true or false")),
-    }
-}
-
 fn validate_options(raw: RawOptions) -> Result<Options, String> {
     let mut options = raw.options;
     if options.slots_file.is_empty() || !Path::new(&options.slots_file).is_file() {
         return Err(format!("{PROG}: --slots-file must name a file"));
     }
-    options.codex_present = parse_presence(&raw.codex_present, "--codex-present")?;
-    options.cursor_present = parse_presence(&raw.cursor_present, "--cursor-present")?;
+    options.codex_present = parse_presence(PROG, "--codex-present", &raw.codex_present)?;
+    options.cursor_present = parse_presence(PROG, "--cursor-present", &raw.cursor_present)?;
     if options.mode != "diff" && options.mode != "description" {
         return Err(format!("{PROG}: --mode must be diff or description"));
     }
     if !is_positive_int(&options.timeout) {
         return Err(format!("{PROG}: --timeout must be a positive integer"));
     }
-    if options.site.trim().is_empty() || options.site.starts_with("--") {
-        return Err(format!(
-            "{PROG}: --site requires a non-empty, non-flag-like value"
-        ));
-    }
-    if options.site.chars().any(is_control_character) {
-        return Err(format!(
-            "{PROG}: --site must not contain control characters"
-        ));
-    }
+    validate_site(PROG, &options.site)?;
     if !options.model_role.is_empty() && !is_model_role(&options.model_role) {
         return Err(format!(
             "{PROG}: --model-role must be default, review, vote, or fix"
@@ -1051,7 +1035,10 @@ fn round_component(name: &str) -> Option<u64> {
 }
 
 /// Session rows every slot child inherits from this dispatch.
-fn inherited_child_rows() -> Vec<(ChildEnvironment, OsString)> {
+///
+/// The voter dispatcher spawns this command as its own child and reuses the
+/// same set, so one owner decides what session context reaches a vendor launch.
+pub fn inherited_child_rows() -> Vec<(ChildEnvironment, OsString)> {
     [
         ChildEnvironment::AnthropicApiKey,
         ChildEnvironment::ClaudePluginData,

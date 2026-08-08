@@ -79,6 +79,9 @@ pub enum AgentCommand {
     /// Dispatch one slot manifest through the three-phase review waterfall.
     #[command(name = "dispatch-waterfall", disable_help_flag = true)]
     DispatchWaterfall(AgentRawArguments),
+    /// Dispatch the three code-review judge slots over one findings ballot.
+    #[command(name = "dispatch-voters", disable_help_flag = true)]
+    DispatchVoters(AgentRawArguments),
     /// Launch the Codex CI fixer with legacy-compatible artifacts.
     #[command(name = "launch-codex-ci", disable_help_flag = true)]
     LaunchCodexCi(AgentRawArguments),
@@ -215,6 +218,9 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::LaunchReview(arguments) => crate::agent_review::launch_review(&arguments),
         AgentCommand::DispatchWaterfall(arguments) => {
             crate::waterfall_commands::dispatch_waterfall(&arguments)
+        }
+        AgentCommand::DispatchVoters(arguments) => {
+            crate::voter_dispatch_commands::dispatch_voters(&arguments)
         }
         AgentCommand::LaunchCodexCi(arguments) => {
             crate::ci_launcher_commands::launch_codex_ci(&arguments)

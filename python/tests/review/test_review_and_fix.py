@@ -4547,7 +4547,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         prune_records.append((panel_manifest, classification_file))
         return ()
 
-    monkeypatch.setattr(round_runner.review_core_body, "_run_python_cli", fake_dispatch)
+    monkeypatch.setattr(round_runner.review_core_body, "run_larch", fake_dispatch)
     monkeypatch.setattr(round_runner.review_core_body, "_run_tally_request", fake_tally)
     monkeypatch.setattr(round_runner.review_core_body, "_emit_tally", fake_emit)
     monkeypatch.setattr(round_runner.review_core_body, "_record_prune_round", fake_record_prune_round)
@@ -4735,7 +4735,7 @@ def test_under_quorum_targeted_setup_failure_runs_full_retry(tmp_path: Path, mon
     def fail_dispatch(argv, **_kwargs):
         raise AssertionError(f"targeted dispatch should not run after ballot extraction fails: {argv}")
 
-    monkeypatch.setattr(round_runner.review_core_body, "_run_python_cli", fail_dispatch)
+    monkeypatch.setattr(round_runner.review_core_body, "run_larch", fail_dispatch)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),

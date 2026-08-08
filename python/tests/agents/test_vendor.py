@@ -73,7 +73,6 @@ _FORBIDDEN_MODULES = frozenset(
         "larch.agents.agents",
         "larch.agents._claude_runner",
         "larch.agents._ci_launcher",
-        "larch.agents.agent_voters",
         "larch.agents.collect_results",
     }
 )
@@ -81,7 +80,6 @@ _FORBIDDEN_MODULES = frozenset(
 _PRODUCTION_LAUNCHERS = (
     "agents.py",
     "_claude_runner.py",
-    "agent_voters.py",
     "collect_results.py",
 )
 

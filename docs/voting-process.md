@@ -26,7 +26,7 @@ Eligible voters are counted at the panel level from non-failed voter outputs. Mi
 
 ## Debate Stalemate Voting
 
-`/debate --vote-stalemates` (`-s`) is a consumer of `python/cli.py agent dispatch-voters`. It presents the existing shared voter panel with an anonymized, two-position ballot for each unresolved debate point and uses the threshold table above without changing its tiers. The tally is local to the debate run: it does not write reviewer scores or any scoreboard.
+`/debate --vote-stalemates` (`-s`) is a consumer of `scripts/larch.sh agent dispatch-voters`. It presents the existing shared voter panel with an anonymized, two-position ballot for each unresolved debate point and uses the threshold table above without changing its tiers. The tally is local to the debate run: it does not write reviewer scores or any scoreboard.
 
 For each point, exactly one accepted position becomes `SELECTED`. Every no-unique-winner result — including a split, both positions accepted, neither position accepted, or an empty panel — records both positions as `BOTH_VIABLE`. A missing per-item vote remains `JUDGE_ERROR` at the shared panel tier; it records `BOTH_VIABLE` only when neither position is a unique winner. Autonomous debate never falls back to an operator after voter dispatch.
 
@@ -47,7 +47,7 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Fixed slots: `v1` = `codex-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. If Codex is down but Cursor is up, launched slots may fall through to Cursor labels. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py plan-review voter-dispatch`. |
-| `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `codex-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. If Codex is down but Cursor is up, launched slots may fall through to Cursor labels. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
+| `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `codex-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. If Codex is down but Cursor is up, launched slots may fall through to Cursor labels. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `scripts/larch.sh agent dispatch-voters`. |
 
 On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 22 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, trailing `scope`, and no `body_severity`. `/design` plan review keeps its separate 23-column `finding_reviewers` + `body_severity` + `scope` schema. The `scope` column is `in_scope` or `oos`; tally producers write it for `OOS_*` ids, `[OUT_OF_SCOPE]` or `[OOS]` legacy rows, and `_scope_drift`. Top reviewers and weighted scoreboards skip `scope=oos` even when `finding_id` is `FINDING_N`.
 

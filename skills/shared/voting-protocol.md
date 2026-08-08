@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After deduplication, a panel casts YES/NO votes on each finding. `/design` plan review normally uses three voters (Claude, Codex, Cursor). `/review` and `/implement` Step 5 code review use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`; each waterfalls Codex, then Cursor, then Claude. Full-tier findings need 2+ YES votes. Unavailable voters degrade through the tier table and never fail open. `/review` dispatch is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters`; tally is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn points from vote outcomes.
+After deduplication, a panel casts YES/NO votes on each finding. `/design` plan review normally uses three voters (Claude, Codex, Cursor). `/review` and `/implement` Step 5 code review use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`; each waterfalls Codex, then Cursor, then Claude. Full-tier findings need 2+ YES votes. Unavailable voters degrade through the tier table and never fail open. `/review` dispatch is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters`; tally is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn points from vote outcomes.
 
 ## Ballot Format
 
@@ -63,7 +63,7 @@ After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but bel
 - **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Codex, then Cursor, then Claude)
 - **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Cursor, then Codex, then Claude)
 
-**For code review** (`/review` Step 3 and `/implement` Step 5): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches three fixed voter slots, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). All three voters use Codex-primary waterfall dispatch (Codex, then Cursor, then Claude) and may fall through to the configured external fallback labels:
+**For code review** (`/review` Step 3 and `/implement` Step 5): `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters` launches three fixed voter slots, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). All three voters use Codex-primary waterfall dispatch (Codex, then Cursor, then Claude) and may fall through to the configured external fallback labels:
 - **Voter 1** (`v1`): `codex-validity`: `render voter --archetype validity-correctness`
 - **Voter 2** (`v2`): `codex-plan-fidelity`: `render voter --archetype plan-fidelity-completeness`
 - **Voter 3** (`v3`): `codex-pragmatism`: `render voter --archetype pragmatism-cost`
@@ -116,7 +116,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 Voter dispatch is owned by Python dispatchers, not prompt-side launch scaffolding.
 
 - `/design` plan review voter dispatch is owned by `python/cli.py plan-review voter-dispatch`.
-- `/review` and `/implement` Step 5 code-review voter dispatch is owned by `python/cli.py agent dispatch-voters`.
+- `/review` and `/implement` Step 5 code-review voter dispatch is owned by `scripts/larch.sh agent dispatch-voters`.
 - Tally ownership remains with the existing Python tally verbs, including `python/cli.py plan-review tally` and `python/cli.py review tally-code-votes`.
 - The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.
 

@@ -1153,7 +1153,7 @@ def test_review_core_body_threads_session_env_to_emit_and_parent_copy(
             )
         raise AssertionError(f"unexpected review command: {review_name}")
 
-    def fake_run_python_cli(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    def fake_run_larch(argv: list[str]) -> subprocess.CompletedProcess[str]:
         if argv[:3] == ["agent", "dispatch-voters", "--ballot-file"]:
             _ = voter_file.write_text(
                 "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
@@ -1165,7 +1165,7 @@ def test_review_core_body_threads_session_env_to_emit_and_parent_copy(
                 f"DISPATCH_OK=true\nVOTER_1_PATH={voter_file}\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n",
                 "",
             )
-        raise AssertionError(f"unexpected python cli: {argv}")
+        raise AssertionError(f"unexpected larch command: {argv}")
 
     def fake_emit_tally(
         *,
@@ -1182,7 +1182,7 @@ def test_review_core_body_threads_session_env_to_emit_and_parent_copy(
         return {"EMIT_OK": "true", "OOS_FILING_COUNT": "1"}
 
     monkeypatch.setattr(review_core_body, "_call_maybe_override", fake_call_maybe_override)
-    monkeypatch.setattr(review_core_body, "_run_python_cli", fake_run_python_cli)
+    monkeypatch.setattr(review_core_body, "run_larch", fake_run_larch)
     monkeypatch.setattr(review_core_body, "_emit_tally", fake_emit_tally)
 
     rc = review_core_body.review_core(

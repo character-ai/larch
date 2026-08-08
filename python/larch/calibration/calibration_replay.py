@@ -7,9 +7,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
-import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -18,6 +16,7 @@ from larch import io as larch_io
 from typing import Any, cast
 
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.core import external_defaults
 from larch.design import plan_grammar
 from larch.review import findings_ledger
@@ -696,10 +695,6 @@ def _write_ballot_output(*, ballot_text: str, output_path: Path | None) -> str:
     return str(output_path)
 
 
-def _cli_path(repo_root: Path) -> Path:
-    return repo_root / "python" / "cli.py"
-
-
 def _dispatch_voters_for_row(
     *,
     repo_root: Path,
@@ -712,8 +707,7 @@ def _dispatch_voters_for_row(
     v1_tool = (row.get("v1_tool") or "").strip()
     codex_available, cursor_available = _availability_flags(v2_tool=v2_tool, v1_tool=v1_tool)
     argv = [
-        sys.executable,
-        str(_cli_path(repo_root)),
+        str(larch_entrypoint(repo_root)),
         "agent",
         "dispatch-voters",
         "--ballot-file",
@@ -733,7 +727,7 @@ def _dispatch_voters_for_row(
     ]
     if diff_path is not None:
         argv.extend(["--diff-file", str(diff_path)])
-    env = dict(os.environ)
+    env = larch_entrypoint_env(repo_root)
     env["LARCH_VOTER_CALIBRATION_FEEDBACK"] = "0"
     result = proc.run(argv, cwd=str(repo_root), env=env)
     output = "\n".join(part for part in (result.stdout, result.stderr) if part)

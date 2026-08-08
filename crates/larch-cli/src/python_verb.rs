@@ -8,20 +8,16 @@
 use std::{
     env,
     ffi::OsString,
-    num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Mutex, PoisonError},
     time::Duration,
 };
 
-use larch_adapters::{
-    NoopProcessObserver, TokioProcessRunner,
-    runtime::{Cancellation, LarchRuntime},
-};
 use larch_core::{
-    ChildEnvironment, ExternalProcessRunner as _, ExternalProgram, ProcessOutput, ProcessRequest,
-    PythonVerbProgram, is_valid_plugin_root_value,
+    ChildEnvironment, ExternalProgram, ProcessOutput, PythonVerbProgram, is_valid_plugin_root_value,
 };
+
+use crate::child_process::{bounded_request, run_bounded};
 
 /// Bounded capture for a delegated verb's standard streams.
 const VERB_OUTPUT_LIMIT: usize = 256 * 1024;
@@ -65,17 +61,13 @@ pub fn run_python_verb(
     let root =
         plugin_root_directory().ok_or_else(|| "cannot resolve the plugin root".to_owned())?;
     let program = PythonVerbProgram::new(&root).map_err(|error| error.to_string())?;
-    let runtime = LarchRuntime::current_thread().map_err(|error| error.to_string())?;
-    let working_directory = env::current_dir().map_err(|error| error.to_string())?;
-    let mut request = ProcessRequest::new(
+    let mut request = bounded_request(
         ExternalProgram::PythonVerb(program),
         arguments,
-        working_directory,
         timeout,
         VERB_SHUTDOWN_GRACE,
-        NonZeroUsize::new(VERB_OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN),
-    )
-    .map_err(|error| error.to_string())?;
+        VERB_OUTPUT_LIMIT,
+    )?;
     // Legacy report verbs may invoke the operator-authenticated `gh` CLI.
     // Preserve only its non-secret configuration selectors; credential
     // environment variables remain excluded by the shared process policy.
@@ -102,10 +94,7 @@ pub fn run_python_verb(
     for (key, value) in session_environment() {
         request = request.with_environment(key, value);
     }
-    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    runtime
-        .block_on(runner.run(request, &Cancellation::new()))
-        .map_err(|error| error.message().to_owned())
+    run_bounded(request)
 }
 
 /// Run one still-Python verb whose failure must not fail the caller.
