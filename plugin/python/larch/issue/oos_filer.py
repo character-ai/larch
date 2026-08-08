@@ -21,6 +21,7 @@ from typing import Literal, cast
 
 from larch.core import config
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import issue_mutation
@@ -752,7 +753,7 @@ def _body_files_for_item(
     *,
     tmpdir: Path,
     item_index: int,
-    item: issue_create.ParsedItem,
+    item: rust_runtime.IssueParsedItem,
     body_path: Path | None,
 ) -> list[Path]:
     body = body_path.read_text(encoding="utf-8", errors="replace") if body_path is not None and body_path.is_file() else ""
@@ -845,7 +846,7 @@ def _run_issue_batch(
     sanitized_input = bodies_dir / "oos-combined-sanitized.md"
     sanitized_input.write_text(file_oos._sanitize_public_text(combined.read_text(encoding="utf-8", errors="replace")), encoding="utf-8")  # pyright: ignore[reportPrivateUsage]
 
-    parsed = issue_create.parse_input(input_file=sanitized_input, output_dir=bodies_dir)
+    parsed = rust_runtime.parse_issue_input(proc.ProcRunner(), input_file=sanitized_input, output_dir=bodies_dir)
     if parsed.exit_code != 0:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue parse-input", rc=parsed.exit_code, output=parsed.error)
         return BatchResult([], 1, "hard_create")
@@ -878,7 +879,7 @@ def _run_issue_batch(
             failures += 1
             failure_mode = "priority_provision"
             continue
-        body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, item=item, body_path=parsed.body_paths[item_index - 1])
+        body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, item=item, body_path=Path(item.body_file) if item.body_file else None)
         source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
         primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
         total_parts = len(body_files)

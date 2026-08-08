@@ -197,6 +197,7 @@ mod tests {
             labels: Vec::new(),
             comments: 0,
             created_at: "2026-01-01T00:00:00Z".to_owned(),
+            closed_at: String::new(),
             updated_at: "2026-01-01T00:00:00Z".to_owned(),
             is_pull_request: false,
         }

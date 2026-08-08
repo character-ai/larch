@@ -317,9 +317,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("untrusted", "content-block"): ("larch.issue.issue_wire", "untrusted_content_block_main", False),
     ("untrusted", "redact-stream"): ("larch.issue.issue_wire", "untrusted_redact_stream_main", False),
     ("untrusted", "xml-escape-attr"): ("larch.issue.issue_wire", "untrusted_xml_escape_attr_main", False),
-    ("issue", "parse-input"): ("larch.issue.issue_create", "parse_input_main", False),
     ("issue", "create-one"): ("larch.issue.issue_create", "create_one_main", False),
-    ("issue", "allocate-candidates"): ("larch.issue.issue_create", "allocate_candidates_main", False),
     ("issue", "add-blocked-by"): ("larch.issue.issue_create", "add_blocked_by_main", False),
     ("issue", "add-sub-issue"): ("larch.issue.issue_create", "add_sub_issue_main", False),
     ("umbrella", "prepare"): ("larch.issue.umbrella", "prepare_main", False),
@@ -330,8 +328,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("umbrella", "mutate"): ("larch.issue.umbrella", "mutate_main", False),
     ("umbrella", "verify"): ("larch.issue.umbrella", "verify_main", False),
     ("umbrella", "verify-completion"): ("larch.issue.umbrella", "verify_completion_main", False),
-    ("issue", "fetch-issue-details"): ("larch.issue.issue_create", "fetch_issue_details_main", False),
-    ("issue", "list-issues"): ("larch.issue.issue_create", "list_issues_main", False),
     ("issue", "migration-audit"): (
         "larch.issue.migration_governance",
         "migration_audit_main",

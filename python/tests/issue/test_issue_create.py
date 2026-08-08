@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
 
@@ -22,15 +21,6 @@ def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str 
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
 
 
-def _parse_input_fixture(tmp_path: Path, capsys: Any, input_text: str) -> tuple[int, str, Path]:
-    input_file = tmp_path / "input.md"
-    input_file.write_text(input_text, encoding="utf-8")
-    out_dir = tmp_path / "bodies"
-    rc = issue_create.parse_input_main(["--input-file", str(input_file), "--output-dir", str(out_dir)])
-    out = capsys.readouterr().out
-    return rc, out, out_dir
-
-
 def _kv_value(output: str, key: str) -> str:
     prefix = f"{key}="
     for line in output.splitlines():
@@ -39,427 +29,154 @@ def _kv_value(output: str, key: str) -> str:
     return ""
 
 
-def _body_file_contents(output: str, index: int) -> str:
-    return Path(_kv_value(output, f"ITEM_{index}_BODY_FILE")).read_text(encoding="utf-8")
-
-
-def test_parse_input_issue_129_oos_subheading_absorption(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### OOS_1: Example bug\n"
-        "- **Description**: First description paragraph.\n"
-        "### Notes\n"
-        "Second paragraph after the subheading.\n"
-        "- **Reviewer**: Codex\n"
-        "- **Vote tally**: YES=3, NO=0\n"
-        "- **Phase**: review\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert _kv_value(out, "ITEM_1_TITLE") == "Example bug"
-    expected = "First description paragraph.\n### Notes\nSecond paragraph after the subheading."
-    assert _body_file_contents(out, 1) == expected
-
-
-def test_parse_input_issue_129_generic_body_preserves_oos_bullets(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### Regular issue title\n"
-        "This is preceding body text that must survive.\n"
-        "- **Description**: stray description bullet that should stay in body\n"
-        "- **Reviewer**: stray reviewer bullet\n"
-        "- **Vote tally**: stray tally bullet\n"
-        "- **Phase**: stray phase bullet\n"
-        "Trailing body text after bullets.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    expected = (
-        "This is preceding body text that must survive.\n"
-        "- **Description**: stray description bullet that should stay in body\n"
-        "- **Reviewer**: stray reviewer bullet\n"
-        "- **Vote tally**: stray tally bullet\n"
-        "- **Phase**: stray phase bullet\n"
-        "Trailing body text after bullets."
-    )
-    assert _body_file_contents(out, 1) == expected
-    assert "ITEM_1_REVIEWER=" not in out
-
-
-def test_parse_input_issue_131_empty_inline_description(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### OOS_1: Description body from continuations only\n"
-        "- **Description**:\n"
-        "  First continuation line.\n"
-        "\n"
-        "  Third line after blank.\n"
-        "- **Reviewer**: Code\n"
-        "- **Vote tally**: YES=3, NO=0\n"
-        "- **Phase**: design\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    expected = "  First continuation line.\n\n  Third line after blank."
-    assert _body_file_contents(out, 1) == expected
-    assert "ITEM_1_MALFORMED=" not in out
-
-
-def test_parse_input_issue_132_generic_body_absorbs_nested_oos_heading(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### Regular issue with nested OOS-shaped heading\n"
-        "Preceding body text.\n"
-        "### OOS_42: nested example\n"
+PINNED_PARSE_CASES: list[tuple[str, str, list[tuple[str, str, str, str, str, bool]]]] = [
+    # #129: an `### <heading>` inside an OOS description is absorbed once a
+    # later metadata field proves it did not open a new item.
+    (
+        "oos-subheading-absorption",
+        "### OOS_1: Example bug\n- **Description**: First description paragraph.\n### Notes\n"
+        "Second paragraph after the subheading.\n- **Reviewer**: Codex\n- **Vote tally**: YES=3, NO=0\n- **Phase**: review\n",
+        [("Example bug", "First description paragraph.\n### Notes\nSecond paragraph after the subheading.", "Codex", "YES=3, NO=0", "review", False)],
+    ),
+    # #129: the same bullets inside a generic item are body text, never metadata.
+    (
+        "generic-body-preserves-oos-bullets",
+        "### Regular issue title\nThis is preceding body text that must survive.\n"
+        "- **Description**: stray description bullet that should stay in body\n- **Reviewer**: stray reviewer bullet\n"
+        "- **Vote tally**: stray tally bullet\n- **Phase**: stray phase bullet\nTrailing body text after bullets.\n",
+        [(
+            "Regular issue title",
+            "This is preceding body text that must survive.\n- **Description**: stray description bullet that should stay in body\n"
+            "- **Reviewer**: stray reviewer bullet\n- **Vote tally**: stray tally bullet\n- **Phase**: stray phase bullet\n"
+            "Trailing body text after bullets.",
+            "", "", "", False,
+        )],
+    ),
+    # #131: an empty inline description still captures its continuations.
+    (
+        "empty-inline-description",
+        "### OOS_1: Description body from continuations only\n- **Description**:\n  First continuation line.\n\n"
+        "  Third line after blank.\n- **Reviewer**: Code\n- **Vote tally**: YES=3, NO=0\n- **Phase**: design\n",
+        [("Description body from continuations only", "  First continuation line.\n\n  Third line after blank.", "Code", "YES=3, NO=0", "design", False)],
+    ),
+    # #132: a nested OOS-shaped heading inside a generic body stays payload.
+    (
+        "generic-body-absorbs-nested-oos-heading",
+        "### Regular issue with nested OOS-shaped heading\nPreceding body text.\n### OOS_42: nested example\n"
         "Trailing body text after the nested heading.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    expected = "Preceding body text.\n### OOS_42: nested example\nTrailing body text after the nested heading."
-    assert _body_file_contents(out, 1) == expected
-    assert "ITEM_2_TITLE=" not in out
-
-
-def test_parse_input_oos_and_malformed_body_file(tmp_path: Path, capsys: Any) -> None:
-    input_file = tmp_path / "items.md"
-    input_file.write_text(
-        "### OOS_1: first\n"
-        "- **Description**: body\n"
-        "### Ambiguous\n"
-        "pending body\n"
-        "### OOS_2: second\n"
-        "- **Description**: ok\n"
-        "- **Reviewer**: R\n"
-        "- **Vote tally**: YES=1\n"
-        "- **Phase**: review\n"
-        "### title only\n",
-        encoding="utf-8",
-    )
-    out_dir = tmp_path / "out"
-    assert issue_create.parse_input_main(["--input-file", str(input_file), "--output-dir", str(out_dir)]) == 0
-    out = capsys.readouterr().out
-    assert "ITEMS_TOTAL=4" in out
-    assert "ITEM_1_BODY_FILE=" in out
-    assert "ITEM_1_MALFORMED=true" in out
-    assert "ITEM_3_REVIEWER=R" in out
-    assert "ITEM_4_TITLE=title only" in out
-    assert "ITEM_4_BODY_FILE=" not in out
-    assert (out_dir / "item-1-body.txt").read_text(encoding="utf-8") == "body"
-
-
-def test_parse_input_returns_frozen_typed_result(tmp_path: Path) -> None:
-    input_file = tmp_path / "items.md"
-    input_file.write_text("### OOS_1: first\n- **Description**: body\n", encoding="utf-8")
-
-    result = issue_create.parse_input(input_file=input_file, output_dir=tmp_path / "out")
-
-    assert result.exit_code == 0
-    assert result.items[0].title == "first"
-    assert result.body_paths[0] == (tmp_path / "out" / "item-1-body.txt").resolve()
-    with pytest.raises(FrozenInstanceError):
-        result.mode = "changed"  # type: ignore[misc]  # frozen-result regression assertion
-
-
-def test_parse_input_finding_format_oos_captures_body(tmp_path: Path, capsys: Any) -> None:
-    """#5260: a FINDING-block OOS (Concern/Reviewer(s)) must round-trip to a non-empty body."""
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### OOS_1: [OUT_OF_SCOPE] Stale rubric cross-reference\n"
-        "- **Reviewer(s)**: cursor-edge-cases, cursor-testing\n"
-        "- **Severity**: latent\n"
-        "- **Concern**: `plan-review.md` points to a renamed section; stale cross-doc guidance only.\n"
-        "- **Suggested revisions (informational for voters; coder decides)**:\n"
-        "  - From cursor-edge-cases: Update the bullet to the new contract.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert _kv_value(out, "ITEM_1_TITLE") == "[OUT_OF_SCOPE] Stale rubric cross-reference"
-    assert "ITEM_1_MALFORMED=" not in out
-    assert _kv_value(out, "ITEM_1_REVIEWER") == "cursor-edge-cases, cursor-testing"
-    body = _body_file_contents(out, 1)
-    assert "stale cross-doc guidance only." in body
-    assert "Suggested revisions" in body
-    assert "Update the bullet to the new contract." in body
-
-
-def test_parse_input_oos_body_without_field_labels_is_captured(tmp_path: Path, capsys: Any) -> None:
-    """#5260: prose directly under an OOS heading (no Description/Concern line) is captured, not dropped."""
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
+        [(
+            "Regular issue with nested OOS-shaped heading",
+            "Preceding body text.\n### OOS_42: nested example\nTrailing body text after the nested heading.",
+            "", "", "", False,
+        )],
+    ),
+    # #138: an ambiguous heading with no structured close splits the block and
+    # marks the interrupted item malformed; a title with no body is malformed.
+    (
+        "ambiguous-boundary-and-title-only",
+        "### OOS_1: first\n- **Description**: body\n### Ambiguous\npending body\n### OOS_2: second\n"
+        "- **Description**: ok\n- **Reviewer**: R\n- **Vote tally**: YES=1\n- **Phase**: review\n### title only\n",
+        [
+            ("first", "body", "", "", "", True),
+            ("Ambiguous", "pending body", "", "", "", False),
+            ("second", "ok", "R", "YES=1", "review", False),
+            ("title only", "", "", "", "", True),
+        ],
+    ),
+    # #5260: a FINDING-block OOS uses `Concern` and `Reviewer(s)`.
+    (
+        "finding-format-captures-body",
+        "### OOS_1: [OUT_OF_SCOPE] Stale rubric cross-reference\n- **Reviewer(s)**: cursor-edge-cases, cursor-testing\n"
+        "- **Severity**: latent\n- **Concern**: `plan-review.md` points to a renamed section; stale cross-doc guidance only.\n"
+        "- **Suggested revisions (informational for voters; coder decides)**:\n  - From cursor-edge-cases: Update the bullet to the new contract.\n",
+        [(
+            "[OUT_OF_SCOPE] Stale rubric cross-reference",
+            "`plan-review.md` points to a renamed section; stale cross-doc guidance only.\n"
+            "- **Suggested revisions (informational for voters; coder decides)**:\n  - From cursor-edge-cases: Update the bullet to the new contract.",
+            "cursor-edge-cases, cursor-testing", "", "", False,
+        )],
+    ),
+    # #5260: prose directly under an OOS heading is captured with no field label.
+    (
+        "oos-body-without-field-labels",
         "### OOS_1: Body prose with no field labels\nFirst body line under the heading.\nSecond body line.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert "ITEM_1_MALFORMED=" not in out
-    assert _body_file_contents(out, 1) == "First body line under the heading.\nSecond body line."
+        [("Body prose with no field labels", "First body line under the heading.\nSecond body line.", "", "", "", False)],
+    ),
+    (
+        "generic-fenced-heading-stays-body",
+        "### Fixture item: one intended item with a fenced payload\nIntro line before the fence.\n\n```markdown\n"
+        "### G-Fake-1: fenced heading that is payload, not a boundary\n- Why: this line is verbatim payload inside a fenced block.\n"
+        "```\n\nTrailing line after the fence.\n",
+        [(
+            "Fixture item: one intended item with a fenced payload",
+            "Intro line before the fence.\n\n```markdown\n### G-Fake-1: fenced heading that is payload, not a boundary\n"
+            "- Why: this line is verbatim payload inside a fenced block.\n```\n\nTrailing line after the fence.",
+            "", "", "", False,
+        )],
+    ),
+    (
+        "generic-fenced-oos-heading-stays-generic",
+        "### Generic item with fenced OOS payload\nBefore fence.\n~~~markdown\n### OOS_42: fenced heading that must stay payload\n"
+        "Fenced OOS-shaped body.\n~~~\nAfter fence.\n",
+        [(
+            "Generic item with fenced OOS payload",
+            "Before fence.\n~~~markdown\n### OOS_42: fenced heading that must stay payload\nFenced OOS-shaped body.\n~~~\nAfter fence.",
+            "", "", "", False,
+        )],
+    ),
+    # An unmatched opener fences nothing, so the later boundary still splits.
+    (
+        "unclosed-fence-does-not-protect-later-boundary",
+        "### First item with unclosed fence\n```markdown\nPlain text before the next real boundary.\n"
+        "### Second item after unclosed fence\nSecond body.\n",
+        [
+            ("First item with unclosed fence", "```markdown\nPlain text before the next real boundary.", "", "", "", False),
+            ("Second item after unclosed fence", "Second body.", "", "", "", False),
+        ],
+    ),
+    (
+        "oos-description-fenced-heading-and-field-stay-body",
+        "### OOS_1: Fenced payload in description\n- **Description**: Before fence.\n```markdown\n"
+        "### Fenced heading stays payload\n- **Description**: fenced field-looking line stays body\n```\n"
+        "- **Reviewer**: Codex\n- **Vote tally**: YES=1, NO=0\n- **Phase**: review\n",
+        [(
+            "Fenced payload in description",
+            "Before fence.\n```markdown\n### Fenced heading stays payload\n- **Description**: fenced field-looking line stays body\n```",
+            "Codex", "YES=1, NO=0", "review", False,
+        )],
+    ),
+    (
+        "closed-fence-then-real-boundary-splits",
+        "### First item with closed fence\n```\n### Payload heading inside fence\n```\n### Second item after fence\nSecond body.\n",
+        [
+            ("First item with closed fence", "```\n### Payload heading inside fence\n```", "", "", "", False),
+            ("Second item after fence", "Second body.", "", "", "", False),
+        ],
+    ),
+    # The closer of a balanced fence must not be read as a new opener.
+    (
+        "fence-closer-is-not-reopened-to-swallow-boundary",
+        "### First item with closed fence\n```markdown\n### Payload heading inside fence\n```\n"
+        "### Second item must remain a boundary\nSecond body.\n```\n",
+        [
+            ("First item with closed fence", "```markdown\n### Payload heading inside fence\n```", "", "", "", False),
+            ("Second item must remain a boundary", "Second body.\n```", "", "", "", False),
+        ],
+    ),
+]
 
 
-def test_parse_input_generic_fenced_heading_stays_body(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### Fixture item: one intended item with a fenced payload\n"
-        "Intro line before the fence.\n"
-        "\n"
-        "```markdown\n"
-        "### G-Fake-1: fenced heading that is payload, not a boundary\n"
-        "- Why: this line is verbatim payload inside a fenced block.\n"
-        "```\n"
-        "\n"
-        "Trailing line after the fence.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert _kv_value(out, "ITEM_1_TITLE") == "Fixture item: one intended item with a fenced payload"
-    expected = (
-        "Intro line before the fence.\n"
-        "\n"
-        "```markdown\n"
-        "### G-Fake-1: fenced heading that is payload, not a boundary\n"
-        "- Why: this line is verbatim payload inside a fenced block.\n"
-        "```\n"
-        "\n"
-        "Trailing line after the fence."
-    )
-    assert _body_file_contents(out, 1) == expected
+@pytest.mark.parametrize(("name", "text", "expected"), PINNED_PARSE_CASES, ids=[case[0] for case in PINNED_PARSE_CASES])
+def test_parse_issue_input_pinned_grammar(name: str, text: str, expected: list[tuple[str, str, str, str, str, bool]]) -> None:
+    """Pin the grammar `file_oos`, `umbrella`, and `learn_from_bugs` still consume.
 
-
-def test_parse_input_generic_fenced_oos_heading_stays_generic(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### Generic item with fenced OOS payload\n"
-        "Before fence.\n"
-        "~~~markdown\n"
-        "### OOS_42: fenced heading that must stay payload\n"
-        "Fenced OOS-shaped body.\n"
-        "~~~\n"
-        "After fence.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert _kv_value(out, "ITEM_1_TITLE") == "Generic item with fenced OOS payload"
-    assert "ITEM_2_TITLE=" not in out
-    expected = (
-        "Before fence.\n"
-        "~~~markdown\n"
-        "### OOS_42: fenced heading that must stay payload\n"
-        "Fenced OOS-shaped body.\n"
-        "~~~\n"
-        "After fence."
-    )
-    assert _body_file_contents(out, 1) == expected
-
-
-def test_parse_input_unclosed_fence_does_not_protect_later_boundary(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### First item with unclosed fence\n"
-        "```markdown\n"
-        "Plain text before the next real boundary.\n"
-        "### Second item after unclosed fence\n"
-        "Second body.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "2"
-    assert _kv_value(out, "ITEM_1_TITLE") == "First item with unclosed fence"
-    assert _kv_value(out, "ITEM_2_TITLE") == "Second item after unclosed fence"
-    assert _body_file_contents(out, 1) == "```markdown\nPlain text before the next real boundary."
-    assert _body_file_contents(out, 2) == "Second body."
-
-
-def test_parse_input_oos_description_fenced_heading_and_field_stay_body(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### OOS_1: Fenced payload in description\n"
-        "- **Description**: Before fence.\n"
-        "```markdown\n"
-        "### Fenced heading stays payload\n"
-        "- **Description**: fenced field-looking line stays body\n"
-        "```\n"
-        "- **Reviewer**: Codex\n"
-        "- **Vote tally**: YES=1, NO=0\n"
-        "- **Phase**: review\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "1"
-    assert _kv_value(out, "ITEM_1_REVIEWER") == "Codex"
-    expected = (
-        "Before fence.\n"
-        "```markdown\n"
-        "### Fenced heading stays payload\n"
-        "- **Description**: fenced field-looking line stays body\n"
-        "```"
-    )
-    assert _body_file_contents(out, 1) == expected
-
-
-def test_parse_input_closed_fence_then_real_boundary_splits(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### First item with closed fence\n"
-        "```\n"
-        "### Payload heading inside fence\n"
-        "```\n"
-        "### Second item after fence\n"
-        "Second body.\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "2"
-    assert _kv_value(out, "ITEM_1_TITLE") == "First item with closed fence"
-    assert _kv_value(out, "ITEM_2_TITLE") == "Second item after fence"
-    assert _body_file_contents(out, 1) == "```\n### Payload heading inside fence\n```"
-    assert _body_file_contents(out, 2) == "Second body."
-
-
-def test_parse_input_fence_closer_is_not_reopened_to_swallow_boundary(tmp_path: Path, capsys: Any) -> None:
-    rc, out, _out_dir = _parse_input_fixture(
-        tmp_path,
-        capsys,
-        "### First item with closed fence\n"
-        "```markdown\n"
-        "### Payload heading inside fence\n"
-        "```\n"
-        "### Second item must remain a boundary\n"
-        "Second body.\n"
-        "```\n",
-    )
-    assert rc == 0
-    assert _kv_value(out, "ITEMS_TOTAL") == "2"
-    assert _kv_value(out, "ITEM_1_TITLE") == "First item with closed fence"
-    assert _kv_value(out, "ITEM_2_TITLE") == "Second item must remain a boundary"
-    assert _body_file_contents(out, 1) == "```markdown\n### Payload heading inside fence\n```"
-    assert _body_file_contents(out, 2) == "Second body.\n```"
-
-
-def test_allocate_candidates_union_credit() -> None:
-    rows = (
-        "CAND 1 10 dup high\n"
-        "CAND 1 11 dup medium\n"
-        "CAND 2 10 dup low\n"
-        "CAND 2 12 dep high"
-    )
-    assert issue_create.allocate_candidates(total_items=2, rows_text=rows) == [10, 11, 12]
-
-
-def test_allocate_candidates_n11_floor_two_spillover() -> None:
-    rows = ""
-    for i in range(1, 12):
-        base = i * 100
-        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 1} dup high\nCAND {i} {base + 2} dup medium\n"
-    expected = (
-        "100,101,102,200,201,202,300,301,302,400,401,402,500,501,502,"
-        "600,601,602,700,701,702,800,801,802,900,901,1000,1001,1100,1101"
-    )
-    assert issue_create.allocate_candidates(total_items=11, rows_text=rows) == [int(value) for value in expected.split(",")]
-
-
-def test_allocate_candidates_n16_floor_one_spillover() -> None:
-    rows = ""
-    for i in range(1, 17):
-        base = i * 100
-        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 1} dup high\n"
-    expected = (
-        "100,101,200,201,300,301,400,401,500,501,600,601,700,701,800,801,"
-        "900,901,1000,1001,1100,1101,1200,1201,1300,1301,1400,1401,1500,1600"
-    )
-    assert issue_create.allocate_candidates(total_items=16, rows_text=rows) == [int(value) for value in expected.split(",")]
-
-
-def test_allocate_candidates_n30_floor_one() -> None:
-    rows = "".join(f"CAND {i} {i * 100} dup high\n" for i in range(1, 31))
-    assert issue_create.allocate_candidates(total_items=30, rows_text=rows) == [i * 100 for i in range(1, 31)]
-
-
-def test_allocate_candidates_over_cap_confidence_only() -> None:
-    rows = ""
-    for i in range(1, 16):
-        base = i * 100
-        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 50} dup medium\nCAND {i} {base + 75} dup low\n"
-    expected = [
-        100,
-        150,
-        200,
-        250,
-        300,
-        350,
-        400,
-        450,
-        500,
-        550,
-        600,
-        650,
-        700,
-        750,
-        800,
-        850,
-        900,
-        950,
-        1000,
-        1050,
-        1100,
-        1150,
-        1200,
-        1250,
-        1300,
-        1350,
-        1400,
-        1450,
-        1500,
-        1550,
-    ]
-    assert issue_create.allocate_candidates(total_items=31, rows_text=rows) == expected
-
-
-def test_allocate_candidates_tie_break_issue_asc() -> None:
-    rows = (
-        "CAND 1 105 dup medium\n"
-        "CAND 1 102 dup medium\n"
-        "CAND 1 101 dup medium\n"
-        "CAND 1 104 dup medium\n"
-        "CAND 1 103 dup medium\n"
-    )
-    assert issue_create.allocate_candidates(total_items=10, rows_text=rows) == [101, 102, 103, 104, 105]
-
-
-def test_allocate_candidates_kind_both_first_class() -> None:
-    rows = "CAND 1 100 both high\nCAND 2 100 both medium\n"
-    assert issue_create.allocate_candidates(total_items=2, rows_text=rows) == [100]
-
-
-def test_allocate_candidates_missing_confidence_defaults_low() -> None:
-    rows = "CAND 1 100 dup\nCAND 1 101 dup high\n"
-    assert issue_create.allocate_candidates(total_items=1, rows_text=rows) == [100, 101]
-
-
-def test_allocate_candidates_unknown_kind_defaults_dup() -> None:
-    rows = "CAND 1 100 unknown high\nCAND 1 101 weird medium\n"
-    assert issue_create.allocate_candidates(total_items=1, rows_text=rows) == [100, 101]
-
-
-def test_allocate_candidates_n_zero_ignores_stdin() -> None:
-    assert issue_create.allocate_candidates(total_items=0, rows_text="CAND 1 100 dup high\n") == []
-
-
-def test_allocate_candidates_empty_stdin() -> None:
-    assert issue_create.allocate_candidates(total_items=5, rows_text="") == []
-
-
-def test_allocate_candidates_hard_cap_thirty() -> None:
-    rows = ""
-    for i in range(1, 6):
-        for offset in range(10):
-            rows += f"CAND {i} {i * 1000 + offset} dup high\n"
-    assert len(issue_create.allocate_candidates(total_items=5, rows_text=rows)) == 30
+    `issue parse-input` itself is Rust owned after #8168; the byte-for-byte
+    command contract is pinned by the `issue-parse-input-*` parity goldens and
+    `crates/larch-core/tests/issue_input.rs`. What remains here is the library
+    those three Python modules call in process.
+    """
+    items, _mode = issue_create.parse_issue_input(text)
+    assert [(item.title, item.body, item.reviewer, item.vote, item.phase, item.malformed) for item in items] == expected, name
 
 
 def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
@@ -644,34 +361,6 @@ def test_write_sentinel_dry_run_and_failures(tmp_path: Path, capsys: Any) -> Non
     ]
     assert issue_create.write_sentinel_main(failure_args) == 0
     assert capsys.readouterr().err == "WROTE=false REASON=failures\n"
-
-
-def test_fetch_issue_details_partial_failure(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    payload = {
-        "number": 9,
-        "title": "T",
-        "body": "body",
-        "state": "open",
-        "url": "https://x/issues/9",
-        "comments": [],
-    }
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "9":  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout=json.dumps(payload))
-        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "10":  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, returncode=1, stderr="not found")
-        return _result(argv, stdout="o/r\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    out_path = tmp_path / "corpus.md"
-    assert issue_create.fetch_issue_details_main(["--numbers", "9,10", "--output", str(out_path), "--repo", "o/r"]) == 0
-    out = capsys.readouterr().out
-    assert "FETCH_STATUS_9=ok" in out
-    assert "FETCH_STATUS_10=failed" in out
-    text = out_path.read_text(encoding="utf-8")
-    assert "<external_issue_9>" in text
-    assert "<external_issue_10>" not in text
 
 
 def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
@@ -912,72 +601,6 @@ def test_blocked_by_read_back_accepts_paginated_pages(monkeypatch: Any) -> None:
     assert issue_create._blocked_by_read_back(client="7", blocker="2", repo="o/r")  # pyright: ignore[reportPrivateUsage]  # read-back helper has no public alias
 
 
-def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
-    payload = [
-        {"number": 1, "title": "Keep\tTitle", "state": "OPEN", "url": "u1"},
-        {"number": 2, "title": "Research spike", "state": "OPEN", "url": "u2"},
-        {"number": 3, "title": "Closed", "state": "CLOSED", "closedAt": "2099-01-01T00:00:00Z", "url": "u3"},
-        {"number": 4, "title": "Other", "state": "OPEN", "url": "u4"},
-    ]
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        calls.append(list(argv))
-        if argv[:3] == ["gh", "issue", "list"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout=json.dumps(payload))
-        return _result(argv, stdout="o/r\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.list_issues_main(["--repo", "o/r", "--closed-window-days", "90"]) == 0
-    out = capsys.readouterr().out
-    assert "LIST_STATUS=ok" in out
-    assert "1\tKeep Title\topen\tu1" in out
-    assert "3\tClosed\tclosed\tu3" in out
-    assert "4\tOther\topen\tu4" in out
-    assert "Research" not in out
-    assert calls[0][:3] == ["gh", "issue", "list"]  # lint-gh-argv-literal: ok fixture assertion
-    assert calls[0][calls[0].index("--limit") + 1] == "100000"
-    assert calls[0][calls[0].index("--json") + 1] == "number,title,state,closedAt,url"
-
-
-def test_parse_input_write_failure_returns_one(tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
-    input_file = tmp_path / "items.md"
-    input_file.write_text("### OOS_1: first\n- **Description**: body\n", encoding="utf-8")
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-
-    def fail_write(*_: object, **__: object) -> None:
-        raise OSError(13, "permission denied")
-
-    monkeypatch.setattr(Path, "write_text", fail_write)
-    assert issue_create.parse_input_main(["--input-file", str(input_file), "--output-dir", str(out_dir)]) == 1
-    assert "failed to write body file" in capsys.readouterr().err
-
-
-def test_fetch_issue_details_success_and_validation(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    payload = {
-        "number": 9,
-        "title": "T",
-        "body": "body",
-        "state": "open",
-        "url": "https://x/issues/9",
-        "comments": [],
-    }
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout=json.dumps(payload))
-        return _result(argv, stdout="o/r\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    out_path = tmp_path / "corpus.md"
-    assert issue_create.fetch_issue_details_main(["--numbers", "9", "--output", str(out_path), "--repo", "o/r"]) == 0
-    out = capsys.readouterr().out
-    assert "FETCH_STATUS_9=ok" in out
-    assert "<external_issue_9>" in out_path.read_text(encoding="utf-8")
-    assert issue_create.fetch_issue_details_main(["--numbers", "9", "--output", str(out_path), "--max-comments", "x"]) == 1
-
-
 def test_cleanup_failed_closes_orphan(monkeypatch: Any, capsys: Any) -> None:
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
@@ -989,12 +612,6 @@ def test_cleanup_failed_closes_orphan(monkeypatch: Any, capsys: Any) -> None:
     out = capsys.readouterr().out
     assert "CLOSED=true" in out
     assert "ISSUE=7" in out
-
-
-def test_allocate_candidates_rejects_over_cap(monkeypatch: Any, capsys: Any) -> None:
-    monkeypatch.setattr("larch.issue.issue_create.sys.stdin", type("S", (), {"read": lambda _self: ""})())
-    assert issue_create.allocate_candidates_main(["--total-items", "31"]) == 0
-    assert "exceeds 30" in capsys.readouterr().err
 
 
 def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
@@ -1080,18 +697,6 @@ def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path
     create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(create_calls) == 1
     assert "--json" in create_calls[0]
-
-
-def test_list_issues_missing_gh_emits_failed(monkeypatch: Any, capsys: Any) -> None:
-    def missing_gh(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv and argv[0] == "gh":
-            return proc.CommandResult(tuple(argv), 127, "", "gh: command not found\n", 0.0)
-        return _result(argv)
-
-    monkeypatch.setattr(issue_create.proc, "run", missing_gh)
-    assert issue_create.list_issues_main(["--repo", "o/r"]) == 0
-    out = capsys.readouterr().out
-    assert "LIST_STATUS=failed" in out
 
 
 def test_create_one_redaction_failure_exits_three(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

@@ -59,6 +59,32 @@ class IssueStateOutput:
 
 
 @dataclass(frozen=True)
+class IssueParsedItem:
+    """One item published by the Rust-owned ``issue parse-input`` command."""
+
+    title: str
+    body_file: str = ""
+    reviewer: str = ""
+    vote: str = ""
+    phase: str = ""
+    malformed: bool = False
+
+
+@dataclass(frozen=True)
+class IssueParseInputOutput:
+    """Validated result from the Rust-owned ``issue parse-input`` command.
+
+    ``exit_code`` is the caller's only success test. A refused parse, a missing
+    ``ITEMS_TOTAL`` row, and a row count that disagrees with it are all reported
+    as a failure with no items, so a partial parse never reaches a filing loop.
+    """
+
+    items: tuple[IssueParsedItem, ...] = ()
+    exit_code: int = 0
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class CheckpointProbeOutput:
     """Parsed result from the Rust-owned ``push checkpoint-probe`` command.
 
@@ -431,6 +457,74 @@ def issue_info(
         return ""
     values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
     return values.get("VALUE", "")
+
+
+_ISSUE_ITEM_FIELDS = {
+    "TITLE": "title",
+    "BODY_FILE": "body_file",
+    "REVIEWER": "reviewer",
+    "VOTE_TALLY": "vote",
+    "PHASE": "phase",
+}
+
+
+def parse_issue_input(
+    runner: Runner,
+    *,
+    input_file: Path,
+    output_dir: Path,
+    cwd: str | None = None,
+) -> IssueParseInputOutput:
+    """Parse one issue-input file through its Rust owner.
+
+    The command materializes each non-empty body itself and reports the item
+    rows on stdout, so this consumer only validates and types that envelope.
+    """
+    result: CommandResult = runner.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "issue",
+            "parse-input",
+            "--input-file",
+            str(input_file),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return IssueParseInputOutput(
+            exit_code=result.returncode,
+            error=" ".join((result.stderr or result.stdout).split())[:500],
+        )
+    fields: dict[int, dict[str, str]] = {}
+    total: int | None = None
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        if key == "ITEMS_TOTAL":
+            total = int(value) if value.isdigit() else None
+            continue
+        if not key.startswith("ITEM_"):
+            continue
+        position, _, suffix = key[len("ITEM_") :].partition("_")
+        if not position.isdigit() or (suffix not in _ISSUE_ITEM_FIELDS and suffix != "MALFORMED"):
+            continue
+        fields.setdefault(int(position), {})[suffix] = value
+    if total is None or len(fields) != total or sorted(fields) != list(range(1, total + 1)):
+        return IssueParseInputOutput(exit_code=1, error="issue parse-input published an incomplete item envelope")
+    items = tuple(
+        IssueParsedItem(
+            malformed=fields[position].get("MALFORMED") == "true",
+            **{
+                attribute: fields[position].get(suffix, "")
+                for suffix, attribute in _ISSUE_ITEM_FIELDS.items()
+            },
+        )
+        for position in range(1, total + 1)
+    )
+    return IssueParseInputOutput(items=items)
 
 
 def install_statusline(

@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: --input-file is required\nUsage: parse-input --input-file FILE --output-dir DIR\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: --total-items must be a non-negative integer\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

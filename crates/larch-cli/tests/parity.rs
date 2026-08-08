@@ -34,7 +34,15 @@ impl CleanInstallCase {
     /// than reaching the network or mutating a repository to reach `0`.
     fn expected_exit(self) -> i32 {
         match self.id {
-            "clean-install-issue-state" => 1,
+            // `issue state` refuses its own missing-value line. Neither
+            // `parse-input` nor `fetch-issue-details` has a `--help` action, so
+            // the clean-install token reads as an unknown option and each
+            // refuses too. The other two issue-input verbs accept that token and
+            // exit 0: `allocate-candidates` prints its usage, and `list-issues`
+            // reports its fail-open envelope.
+            "clean-install-issue-fetch-issue-details"
+            | "clean-install-issue-parse-input"
+            | "clean-install-issue-state" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             "clean-install-run-log-prepare-terminal-snapshot" => 2,
@@ -312,7 +320,19 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new(
+        "clean-install-issue-allocate-candidates",
+        "issue",
+        "allocate-candidates",
+    ),
+    CleanInstallCase::new(
+        "clean-install-issue-fetch-issue-details",
+        "issue",
+        "fetch-issue-details",
+    ),
     CleanInstallCase::new("clean-install-issue-info", "issue", "info"),
+    CleanInstallCase::new("clean-install-issue-list-issues", "issue", "list-issues"),
+    CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(
         "clean-install-session-check-live-mutation-auth",
@@ -3733,6 +3753,329 @@ fn issue_query_commands_have_reviewed_parity() {
     let golden_directory = fixture_directory.join("goldens");
 
     for fixture in ISSUE_QUERY_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+/// One issue-input case, addressed by its reference sub-verb and its real
+/// `DOMAIN VERB` selector.
+///
+/// `parse-input` and `allocate-candidates` run end to end here, so their cases
+/// compare the materialized body files as well as the contract streams.
+struct IssueInputFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    stdin: &'static str,
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl IssueInputFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.reference))
+                .chain(self.arguments.iter().copied()),
+        );
+        let rust_program = Program::new(rust).args(
+            self.selector
+                .iter()
+                .copied()
+                .chain(self.arguments.iter().copied()),
+        );
+        ParityCase {
+            name: self.name,
+            python: python_program.stdin(self.stdin.as_bytes()),
+            rust: rust_program.stdin(self.stdin.as_bytes()),
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+/// The batch file every `parse-input` case parses. It exercises the OOS block,
+/// the ambiguous heading that splits an item, the generic fallback, a balanced
+/// fence whose payload heading is not a boundary, and a title with no body.
+const BATCH_INPUT: &str = concat!(
+    "### OOS_1: first\n",
+    "- **Description**: body\n",
+    "### Ambiguous\n",
+    "pending body\n",
+    "### OOS_2: second\n",
+    "- **Concern**: concern body\n",
+    "- **Reviewer(s)**: cursor-edge-cases, cursor-testing\n",
+    "- **Vote tally**: YES=1\n",
+    "- **Phase**: review\n",
+    "### Generic item\n",
+    "Intro line.\n",
+    "```markdown\n",
+    "### Payload heading inside a fence\n",
+    "- **Description**: fenced field-looking line stays body\n",
+    "```\n",
+    "Trailing line.\n",
+    "### title only\n",
+);
+
+const ISSUE_INPUT_CASES: &[IssueInputFixture] = &[
+    IssueInputFixture {
+        name: "issue-parse-input-batch-file",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &[
+            "--input-file",
+            "{sandbox}/batch.md",
+            "--output-dir",
+            "{sandbox}/bodies",
+        ],
+        stdin: "",
+        seeds: &[("batch.md", BATCH_INPUT)],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-empty-file",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &[
+            "--input-file",
+            "{sandbox}/empty.md",
+            "--output-dir",
+            "{sandbox}/bodies",
+        ],
+        stdin: "",
+        seeds: &[("empty.md", "")],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-missing-input",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &[
+            "--input-file",
+            "{sandbox}/absent.md",
+            "--output-dir",
+            "{sandbox}/bodies",
+        ],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-missing-output-dir",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &["--input-file", "{sandbox}/batch.md"],
+        stdin: "",
+        seeds: &[("batch.md", BATCH_INPUT)],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-no-arguments",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-unknown-option",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &["--bogus", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    // A value-taking option that ends the line reads as an unknown option.
+    IssueInputFixture {
+        name: "issue-parse-input-trailing-input-flag",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &["--input-file"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-floor-and-spillover",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--total-items", "3"],
+        stdin: concat!(
+            "CAND 1 10 dup high\n",
+            "CAND 1 11 dep medium\n",
+            "CAND 2 10 dup low\n",
+            "CAND 2 12 both high\n",
+            "CAND 3 13 dup\n",
+            "CAND 3 14 weird medium\n",
+        ),
+        seeds: &[],
+    },
+    // Every defensive drop reports its own reason, in row order.
+    IssueInputFixture {
+        name: "issue-allocate-candidates-malformed-rows",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--total-items", "2"],
+        stdin: concat!(
+            "noise\n",
+            "CAND 1 10\n",
+            "CAND x 10 dup\n",
+            "CAND 9 10 dup\n",
+            "CAND 1 0 dup\n",
+            "CAND 1 abc dup\n",
+        ),
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-over-cap-warns",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--total-items", "31"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-zero-items-ignores-stdin",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--total-items", "0"],
+        stdin: "CAND 1 100 dup high\n",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-help",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--help"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-non-numeric-total",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--total-items", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-allocate-candidates-unknown-option",
+        reference: "issue-allocate-candidates",
+        selector: &["issue", "allocate-candidates"],
+        arguments: &["--bogus"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-list-issues-unresolvable-repo",
+        reference: "issue-list-issues",
+        selector: &["issue", "list-issues"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    // An explicit repository still reaches a client that cannot be built.
+    IssueInputFixture {
+        name: "issue-list-issues-unreachable-explicit-repo",
+        reference: "issue-list-issues",
+        selector: &["issue", "list-issues"],
+        arguments: &["--repo", "o/r", "--closed-window-days", "30"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-list-issues-non-numeric-window",
+        reference: "issue-list-issues",
+        selector: &["issue", "list-issues"],
+        arguments: &["--closed-window-days", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-list-issues-unknown-option",
+        reference: "issue-list-issues",
+        selector: &["issue", "list-issues"],
+        arguments: &["--bogus", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-list-issues-trailing-repo-flag",
+        reference: "issue-list-issues",
+        selector: &["issue", "list-issues"],
+        arguments: &["--repo"],
+        stdin: "",
+        seeds: &[],
+    },
+    // The corpus envelope is written even when every fetch fails, and a
+    // non-numeric identifier is skipped before any read is attempted.
+    IssueInputFixture {
+        name: "issue-fetch-issue-details-every-read-refused",
+        reference: "issue-fetch-issue-details",
+        selector: &["issue", "fetch-issue-details"],
+        arguments: &[
+            "--numbers",
+            "9,abc,,10",
+            "--output",
+            "{sandbox}/candidates.md",
+            "--repo",
+            "o/r",
+        ],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-fetch-issue-details-missing-output",
+        reference: "issue-fetch-issue-details",
+        selector: &["issue", "fetch-issue-details"],
+        arguments: &["--numbers", "9"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-fetch-issue-details-non-numeric-bound",
+        reference: "issue-fetch-issue-details",
+        selector: &["issue", "fetch-issue-details"],
+        arguments: &[
+            "--numbers",
+            "9",
+            "--output",
+            "{sandbox}/candidates.md",
+            "--max-comments",
+            "x",
+        ],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-fetch-issue-details-unknown-option",
+        reference: "issue-fetch-issue-details",
+        selector: &["issue", "fetch-issue-details"],
+        arguments: &["--bogus", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueInputFixture {
+        name: "issue-fetch-issue-details-trailing-numbers-flag",
+        reference: "issue-fetch-issue-details",
+        selector: &["issue", "fetch-issue-details"],
+        arguments: &["--numbers"],
+        stdin: "",
+        seeds: &[],
+    },
+];
+
+#[test]
+fn issue_input_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("issue_input_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ISSUE_INPUT_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));

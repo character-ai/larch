@@ -7,7 +7,7 @@
 //! the composition root, and passed into the adapter layer explicitly.
 
 use crate::argparse_compat::{
-    ParsedCommandLine, parse, resolve_option, split_inline_option, write_stdout,
+    ParsedCommandLine, parse, read_stdin, resolve_option, split_inline_option, write_stdout,
 };
 use larch_adapters::{
     phase_detail::{self, PhaseSkill, RenderRequest},
@@ -18,7 +18,6 @@ use larch_core::STATUSLINE_DISABLE_ENV;
 use std::{
     env,
     ffi::OsString,
-    io::Read as _,
     path::{Path, PathBuf},
     process::ExitCode,
 };
@@ -417,12 +416,6 @@ fn statusline_environment() -> StatuslineEnvironment {
 
 fn statusline_disabled() -> bool {
     env::var(STATUSLINE_DISABLE_ENV).as_deref() == Ok("1")
-}
-
-fn read_stdin() -> String {
-    let mut buffer = Vec::new();
-    let _read = std::io::stdin().lock().read_to_end(&mut buffer);
-    String::from_utf8_lossy(&buffer).into_owned()
 }
 
 fn required_run_id(parsed: &ParsedCommandLine, usage: &str, program: &str) -> Option<String> {

@@ -38,6 +38,7 @@ mod github_service;
 mod gitleaks;
 mod implement_launcher_commands;
 mod issue_commands;
+mod issue_input_commands;
 mod kill_background;
 mod launcher_support;
 mod progress_commands;
@@ -334,12 +335,24 @@ enum BlockerCommand {
 
 #[derive(Subcommand)]
 enum IssueCommand {
+    /// Allocate the bounded Phase 2 dedup candidate set from stdin rows.
+    #[command(name = "allocate-candidates", disable_help_flag = true)]
+    AllocateCandidates(RawCompatibilityArguments),
     /// Materialize one issue's title and body into a caller-named directory.
     #[command(disable_help_flag = true)]
     Context(RawCompatibilityArguments),
+    /// Write the untrusted candidate corpus Phase 2 reasons over.
+    #[command(name = "fetch-issue-details", disable_help_flag = true)]
+    FetchIssueDetails(RawCompatibilityArguments),
     /// Emit one issue field as the single `VALUE` row.
     #[command(disable_help_flag = true)]
     Info(RawCompatibilityArguments),
+    /// Publish the open and recently closed issue snapshot as a TSV.
+    #[command(name = "list-issues", disable_help_flag = true)]
+    ListIssues(RawCompatibilityArguments),
+    /// Parse one batch-input file into per-item rows and body files.
+    #[command(name = "parse-input", disable_help_flag = true)]
+    ParseInput(RawCompatibilityArguments),
     /// Emit one issue's state, URL, and pull-request discrimination.
     #[command(disable_help_flag = true)]
     State(RawCompatibilityArguments),
@@ -959,8 +972,20 @@ fn run(
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Issue(command) => Ok(match command {
+            IssueCommand::AllocateCandidates(arguments) => {
+                issue_input_commands::allocate_candidates(&arguments.arguments)
+            }
             IssueCommand::Context(arguments) => issue_commands::context(&arguments.arguments),
+            IssueCommand::FetchIssueDetails(arguments) => {
+                issue_input_commands::fetch_issue_details(&arguments.arguments)
+            }
             IssueCommand::Info(arguments) => issue_commands::info(&arguments.arguments),
+            IssueCommand::ListIssues(arguments) => {
+                issue_input_commands::list_issues(&arguments.arguments)
+            }
+            IssueCommand::ParseInput(arguments) => {
+                issue_input_commands::parse_input(&arguments.arguments)
+            }
             IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
         }),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),

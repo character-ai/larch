@@ -109,14 +109,14 @@ Structural regression coverage for the `--body-file` + trailing title semantics 
 Invoke the parser:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue parse-input --input-file "$INPUT_FILE" --output-dir "$ISSUE_TMPDIR/bodies"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue parse-input --input-file "$INPUT_FILE" --output-dir "$ISSUE_TMPDIR/bodies"
 ```
 
 **Parser exit-status check (MANDATORY)**: after the Bash call, check the parser's exit code. On non-zero (missing flags, missing input, write failure under `set -euo pipefail`), discard any captured stdout as unreliable, emit `**⚠ /issue: issue parse-input failed (exit <N>) — aborting batch-mode run.**` on stderr, run `rm -rf "$ISSUE_TMPDIR"` to clean up any partial body files already written (Step 9 cleanup won't run on this abort path), and exit non-zero. Do NOT proceed to Phase 1/2 or create.
 
 On zero exit: parse the stdout for `ITEMS_TOTAL=<N>` and per-item `ITEM_<i>_TITLE`, `ITEM_<i>_BODY_FILE` (absolute path to a plain-text body file under `$ISSUE_TMPDIR/bodies/`), optional `ITEM_<i>_REVIEWER`, `ITEM_<i>_PHASE`, `ITEM_<i>_VOTE_TALLY`, and `ITEM_<i>_MALFORMED=true` for items that cannot be emitted cleanly — either a title without a body, or (issue #138) an incomplete OOS item whose body was terminated by an ambiguous boundary heading with no structured-field close. The latter shape emits `ITEM_<i>_BODY_FILE` alongside `ITEM_<i>_MALFORMED=true`, but per the rule below malformed items never reach Phase 1/2 or create — the description is written to the body file at `$ISSUE_TMPDIR/bodies/item-<i>-body.txt` and survives there as a diagnostic surface until Step 9 cleanup. Title-only MALFORMED items have no `ITEM_<i>_BODY_FILE` line and no body file.
 
-Parser regression coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py` and is wired into the Python test target. The harness covers baseline / boundary / issues #129 / #131 / #132 / #138, plus negative tests and the "no base64 on stdout" invariant (issue #402).
+Parser regression coverage lives in `crates/larch-core/tests/issue_input.rs` and the `issue-parse-input-*` parity goldens under `fixtures/rust-parity/goldens/`. It covers baseline / boundary / issues #129 / #131 / #132 / #138, plus the argument scanner and the materialized body files.
 
 **Authoring caution (generic fallback)**: in batch-mode files using the generic `### <title>` + body fallback, unfenced body content must not start a line with `###` followed by a space — that three-hash sequence with a leading space is the item-boundary separator. Balanced fenced code blocks, using backticks or tildes, may contain byte-exact `###` payload headings. Unclosed fences do not protect later `###` boundaries. Use `####` or deeper for unfenced subsections within body sections, or use a different markup convention (lists, bold leaders) for sub-items. OOS-formatted input files do not have this constraint because the OOS-specific absorption rules disambiguate `### <subheading>` inside an OOS Description; the constraint applies only to the generic fallback path. Use `--dry-run` to preview a parse before creating; the stderr breadcrumb (`▶ parse-input: …`) emitted on every successful parse also shows the item count.
 
@@ -135,10 +135,10 @@ If `no_dedup=true`: skip Steps 4 and 5 entirely. Set `ITEM_<i>_VERDICT=CREATE` f
 Run the title snapshot helper:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue list-issues --repo "$REPO" --closed-window-days "${CLOSED_WINDOW_DAYS:-90}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue list-issues --repo "$REPO" --closed-window-days "${CLOSED_WINDOW_DAYS:-90}"
 ```
 
-Regression coverage for the title snapshot helper lives in `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`. The harness pins archival-title filtering, PR filtering, closed-window cutoff handling, and TSV shaping.
+Regression coverage for the title snapshot helper lives in `crates/larch-cli/src/issue_input_commands.rs` and the `issue-list-issues-*` parity goldens. It pins archival-title filtering, pull-request filtering, closed-window cutoff handling, TSV shaping, and the fail-open refusal envelope.
 
 Parse for `LIST_STATUS`. If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is empty, emit a stderr warning `**⚠ /issue: Phase 1 title snapshot failed; skipping dedup and dep-analysis, creating all items with no blocker edges.**` and jump to Step 6 (Create) — fail-open consistent with the existing dedup contract; dep-analysis cannot run without a candidate snapshot, so creating without dep edges is the safest default. (The /issue exit will still be non-zero only if `ISSUES_FAILED>0` from create or dep-link failures; missing dep analysis due to snapshot-fail is a degraded-warning state, not a hard fail.) If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is set, continue through the Step 4.0 probe below, then jump to Step 6 with `STEP5_SKIPPED_REASON=list-status-failed` so the validated policy edge can still be applied.
 
@@ -219,7 +219,7 @@ CAND <item-i> <issue-N> <kind:dup|dep|both> <confidence:high|medium|low>
 **Step C — invoke the allocator.** If at least one CAND row was emitted, invoke the allocator via Bash with the rows piped via stdin heredoc:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue allocate-candidates --total-items "$N_NON_MALFORMED" <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue allocate-candidates --total-items "$N_NON_MALFORMED" <<'EOF'
 CAND 1 100 dup high
 CAND 1 101 dep medium
 CAND 2 100 dup low
@@ -228,7 +228,7 @@ CAND 3 103 dup medium
 EOF
 ```
 
-The allocator applies (single normative source: `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/issue_create.py`):
+The allocator applies (single normative source: `crates/larch-core/src/issue/candidates.rs`):
 
 - `F = 0` if `N_NON_MALFORMED > 30`; else `F = min(3, floor(30 / N_NON_MALFORMED))`.
 - **Pass A (floor reservation)**: process items in ascending item index; within each item, sort the item's rows by confidence-desc then issue-asc; reserve up to F coverage credits per item. Union-credit semantics — a candidate already in the union covers every item that nominated it (the second nominator's `floor_credits` increments without growing the union).
@@ -250,7 +250,7 @@ Worked examples (per the formula):
 
 **Step E — empty-CAND short-circuit.** If Tier-1 emitted zero CAND rows (snapshot is empty, or no candidates look suspicious in either category for any item), skip the allocator invocation entirely and set `CANDIDATES=""`. If `N_NON_MALFORMED >= 2`, proceed to Step 5 for intra-batch dependency analysis (Step 5's gate admits this path). Otherwise (`N_NON_MALFORMED < 2`), jump to Step 6 with `ITEM_<i>_VERDICT=CREATE` for every non-malformed item, with empty `ITEM_<i>_BLOCKED_BY` / `ITEM_<i>_BLOCKS` lines.
 
-The allocator's regression coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`. The harness pins the floor formula at boundary, partial-floor + Pass-B interaction, tie-breaks, union-credit semantics, `kind=both` first-class behavior, defensive-default drops, the N>30 stderr warning, empty-stdin / N=0 paths, and the stdout-shape invariant.
+The allocator's regression coverage lives in `crates/larch-core/tests/issue_input.rs` and the `issue-allocate-candidates-*` parity goldens. It pins the floor formula at boundary, partial-floor + Pass-B interaction, tie-breaks, union-credit semantics, `kind=both` first-class behavior, defensive-default drops, the N>30 stderr warning, empty-stdin / N=0 paths, and the stdout-shape invariant.
 
 Note on Phase 2 fetch drops: the per-item floor guarantees a candidate **enters** the union, NOT that its body is **successfully fetched** in Step 5. `FETCH_STATUS_<N>=failed` rows are dropped from Phase 2 reasoning per the existing contract — "floor ⇒ deep coverage" is best-effort, not a guarantee.
 
@@ -265,7 +265,7 @@ Only run this step if `CANDIDATES` is non-empty OR `N_NON_MALFORMED >= 2`.
 When `CANDIDATES` is non-empty, fetch full bodies + comments for the candidates:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue fetch-issue-details \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue fetch-issue-details \
   --numbers "<comma-separated CANDIDATES>" \
   --output "$ISSUE_TMPDIR/candidates.md" \
   --repo "$REPO"
@@ -450,8 +450,8 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by` — applies a single dependency POST with retry/idempotent semantics.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue cleanup-failed` — best-effort orphan close on dep-wiring exhaustion.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one` — captures `ISSUE_ID=<numeric-id>` from a single `gh issue create --json` round-trip, with fallback to `gh issue create` plus `gh api .../issues/N --jq .id` for older gh versions.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue fetch-issue-details` — fetches body/comment details for Phase 2 candidate reasoning.
-- Regression coverage: `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`.
+- `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue fetch-issue-details` — fetches body/comment details for Phase 2 candidate reasoning. Regression coverage: `crates/larch-cli/src/issue_input_commands.rs` and the `issue-fetch-issue-details-*` parity goldens.
+- Regression coverage for the Python-owned helpers above: `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`.
 
 <!-- step:7 — Emit Aggregate Counters and Final Output -->
 

@@ -3797,11 +3797,13 @@ verb = "allocate-candidates"
 python_module = "larch.issue.issue_create"
 python_function = "allocate_candidates_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8168
+clean_install_test = "clean-install-issue-allocate-candidates"
 
 [[commands]]
 domain = "issue"
@@ -3846,11 +3848,13 @@ verb = "fetch-issue-details"
 python_module = "larch.issue.issue_create"
 python_function = "fetch_issue_details_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8168
+clean_install_test = "clean-install-issue-fetch-issue-details"
 
 [[commands]]
 domain = "issue"
@@ -3884,11 +3888,13 @@ verb = "list-issues"
 python_module = "larch.issue.issue_create"
 python_function = "list_issues_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8168
+clean_install_test = "clean-install-issue-list-issues"
 
 [[commands]]
 domain = "issue"
@@ -3908,11 +3914,13 @@ verb = "parse-input"
 python_module = "larch.issue.issue_create"
 python_function = "parse_input_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8168
+clean_install_test = "clean-install-issue-parse-input"
 
 [[commands]]
 domain = "issue"
@@ -8297,7 +8305,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -9070,8 +9078,8 @@ rust = ["git rebase-abort", "push rebase"]
 [[callers]]
 path = "skills/implement/references/execution-issues-tracking.md"
 kind = "skill"
-python = ["issue parse-input", "oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
-rust = ["run-log append-failure"]
+python = ["oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
+rust = ["issue parse-input", "run-log append-failure"]
 
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
@@ -9442,8 +9450,8 @@ rust = []
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
-rust = []
+python = ["issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
+rust = ["issue allocate-candidates", "issue fetch-issue-details", "issue list-issues", "issue parse-input"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"

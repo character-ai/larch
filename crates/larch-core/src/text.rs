@@ -31,16 +31,27 @@ pub fn ensure_ascii_json(text: &str) -> String {
 /// on LF alone would merge records that Python treated as separate, so the
 /// migrated usage parser and diagnostic tails share this one owner.
 ///
-/// Parse a positive decimal integer, rejecting every other spelling.
+/// Parse an unsigned decimal integer, rejecting every other spelling.
 ///
-/// Only all-ASCII-digit input parses: no sign, no whitespace, no separators,
-/// and zero is not positive. Shared by the issue-number and interval readers.
+/// Only all-ASCII-digit input that fits a `u64` parses: no sign, no whitespace,
+/// and no separators. Python's `str.isdigit()` also admitted non-ASCII digits
+/// and unbounded magnitudes, both of which failed downstream; the migrated
+/// readers narrow to this one owner instead.
 #[must_use]
-pub fn positive_integer(value: &str) -> Option<u64> {
+pub fn unsigned_integer(value: &str) -> Option<u64> {
     if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    value.parse::<u64>().ok().filter(|parsed| *parsed > 0)
+    value.parse::<u64>().ok()
+}
+
+/// Parse a positive decimal integer, rejecting every other spelling.
+///
+/// [`unsigned_integer`] without zero. Shared by the issue-number and interval
+/// readers.
+#[must_use]
+pub fn positive_integer(value: &str) -> Option<u64> {
+    unsigned_integer(value).filter(|parsed| *parsed > 0)
 }
 
 /// A trailing boundary does not produce a final empty element.

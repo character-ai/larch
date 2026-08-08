@@ -7,8 +7,10 @@
 //! rendering — so each command module states only its own option table.
 
 use std::{
+    env,
     ffi::{OsStr, OsString},
-    io::{self, Write as _},
+    io::{self, Read as _, Write as _},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
@@ -263,6 +265,31 @@ pub fn write_stdout_line(value: &[u8]) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+/// Read all of stdin as text, treating an unreadable or non-UTF-8 stream as the
+/// bytes it could recover.
+///
+/// A command that reads stdin is fed by a heredoc or a pipe, so a read failure
+/// is an empty payload rather than a reason to refuse.
+#[must_use]
+pub fn read_stdin() -> String {
+    let mut buffer = Vec::new();
+    let _read = io::stdin().lock().read_to_end(&mut buffer);
+    String::from_utf8_lossy(&buffer).into_owned()
+}
+
+/// Resolve a caller-supplied path against the working directory.
+///
+/// # Errors
+///
+/// Returns the working-directory lookup failure.
+pub fn absolute_path(path: &Path) -> Result<PathBuf, io::Error> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(env::current_dir()?.join(path))
     }
 }
 

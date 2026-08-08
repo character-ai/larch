@@ -14,7 +14,9 @@
 //! and merged-change analyses stay with the research umbrella.
 
 mod body;
+mod candidates;
 mod ground_truth;
+mod input;
 mod report_core;
 mod rows;
 mod title;
@@ -27,6 +29,9 @@ pub use body::{
     issue_plan_marker_defect, named_block_marker_allowed, neutralize_named_block_markers,
     parse_named_block, plan_named_block_write, strip_named_block,
 };
+pub use candidates::{
+    CANDIDATE_CAP, CandidateAllocation, CandidateRowDefect, CandidateRowDrop, allocate_candidates,
+};
 pub use ground_truth::{
     ClassificationSource, CorpusFilter, CorpusScanStats, EvidenceIndex, EvidenceOrdering,
     EvidenceSource, GateFailure, GroundTruthAnalysis, GroundTruthCorpusScan, GroundTruthEvidence,
@@ -38,6 +43,7 @@ pub use ground_truth::{
     issue_evidence, normalize_diagnostic_path, realized_alignment_rate, run_dir_key,
     scan_ground_truth_corpus, strong_match, version_components, version_meets_floor,
 };
+pub use input::{InputMode, ParsedInput, ParsedItem, parse_issue_input};
 pub use report_core::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, CoverageStats,
     IssueCategory, IssueLifecycle, IssueSummary, STRIPPED_TITLE_PREFIXES, categorize,
@@ -49,7 +55,7 @@ pub use title::{
     ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES, DONE_PREFIX, IMPLEMENTING_PREFIX,
     LIFECYCLE_PREFIXES, UMBRELLA_PREFIX, bug_title_match, detect_lifecycle_prefix,
     insert_signal_marker, insert_tag_after_bug_prefix, leading_square_bracket_prefix,
-    strip_lifecycle_prefix, title_has_archival_report_prefix, title_lifecycle_reject_marker,
-    title_starts_with_brainstorm,
+    strip_lifecycle_prefix, title_has_archival_report_prefix, title_is_archival,
+    title_lifecycle_reject_marker, title_starts_with_brainstorm,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

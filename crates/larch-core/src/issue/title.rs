@@ -59,6 +59,10 @@ const SIGNAL_INSERT_PREFIXES: [&str; 9] = [
     "PLANNED",
 ];
 
+/// Title openings that mark an issue as an archival narrative artifact.
+const ARCHIVAL_TITLE_PREFIXES: [&str; 4] =
+    ["research ", "[research] ", "investigate ", "[investigate] "];
+
 /// The `jq` archival-eligibility filter, byte compatible with the legacy shell
 /// helper that still consumes it.
 pub const ARCHIVAL_JQ_FILTER: &str = r#"select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\[.*report\] "))) | not)"#;
@@ -117,6 +121,21 @@ pub fn title_lifecycle_reject_marker(title: &str) -> Option<String> {
 #[must_use]
 pub fn title_has_archival_report_prefix(title: &str) -> bool {
     archival_report_pattern().is_match(trim_leading_whitespace(title))
+}
+
+/// Return whether the title names an archival research, investigation, or
+/// report issue.
+///
+/// This is the predicate behind [`ARCHIVAL_JQ_FILTER`], expressed for readers
+/// that hold the title in memory. Such issues are narrative artifacts, so a
+/// dedup snapshot leaves them out rather than proposing them as duplicates.
+#[must_use]
+pub fn title_is_archival(title: &str) -> bool {
+    let lowered = trim_leading_whitespace(title).to_lowercase();
+    ARCHIVAL_TITLE_PREFIXES
+        .iter()
+        .any(|prefix| lowered.starts_with(prefix))
+        || title_has_archival_report_prefix(&lowered)
 }
 
 /// Return whether the title opens with the `brainstorm` word.

@@ -836,6 +836,10 @@ fn issue_from_model(
         labels,
         comments: value.comments,
         created_at: value.created_at.to_rfc3339(),
+        closed_at: value
+            .closed_at
+            .map(|closed_at| closed_at.to_rfc3339())
+            .unwrap_or_default(),
         updated_at: value.updated_at.to_rfc3339(),
         is_pull_request: value.pull_request.is_some(),
     })

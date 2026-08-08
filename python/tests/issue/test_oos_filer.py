@@ -16,6 +16,7 @@ from larch.core import config
 from larch.errors import ShipError
 from larch import io as larch_io
 from larch.issue import file_oos
+from larch.core import rust_runtime
 from larch.issue import issue_create
 from larch.issue import oos_filer
 from larch.issue import oos_priority
@@ -172,12 +173,17 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 
 
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
-    original_parse = issue_create.parse_input
+    original_parse = rust_runtime.parse_issue_input
     original_stamp = oos_filer._stamp_manifest
 
-    def parse_input(*, input_file: Path, output_dir: Path) -> issue_create.ParseInputResult:
-        _ = fake(["issue", "parse-input", "--input-file", str(input_file), "--output-dir", str(output_dir)])
-        return original_parse(input_file=input_file, output_dir=output_dir)
+    class _FakeRunner:
+        """Route the Rust `issue parse-input` invocation into the CLI fake."""
+
+        def run(self, argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            return fake(list(argv)[1:])
+
+    def parse_issue_input(_runner: object, *, input_file: Path, output_dir: Path, cwd: str | None = None) -> rust_runtime.IssueParseInputOutput:
+        return original_parse(_FakeRunner(), input_file=input_file, output_dir=output_dir, cwd=cwd)  # type: ignore[arg-type]
 
     def create_one(parsed: dict[str, object]) -> issue_create.CreateIssueResult:
         args = ["issue", "create-one", "--title", str(parsed["title"]), "--title-prefix", str(parsed["title_prefix"]), "--body-file", str(parsed["body_file"])]
@@ -237,7 +243,7 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
         # The launcher is Rust-owned: argv[0] is scripts/larch.sh, then the verb.
         return fake(args[1:])
 
-    monkeypatch.setattr(issue_create, "parse_input", parse_input)
+    monkeypatch.setattr(oos_filer.rust_runtime, "parse_issue_input", parse_issue_input)
     monkeypatch.setattr(issue_create, "create_one", create_one)
     monkeypatch.setattr(issue_create, "add_blocked_by", add_blocked_by)
     monkeypatch.setattr(issue_create, "cleanup_failed", cleanup_failed)
@@ -270,7 +276,7 @@ def test_empty_batch_writes_zero_statistics_and_stamps_true(tmp_path: Path, monk
 def test_oos_filer_keeps_cli_reentry_only_for_external_codex() -> None:
     source = Path(oos_filer.__file__).read_text(encoding="utf-8")
     assert "def _run_cli" not in source
-    assert "issue_create.parse_input(" in source
+    assert "rust_runtime.parse_issue_input(" in source
     assert "issue_create.create_one(" in source
     assert "issue_create.add_blocked_by(" in source
     assert "issue_create.cleanup_failed(" in source

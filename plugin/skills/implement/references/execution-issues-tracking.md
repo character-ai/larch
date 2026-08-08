@@ -77,7 +77,7 @@ Threshold convention: rules 2 and 3 use `< ~30` and `>= ~30` respectively, with 
 
 Whenever the main agent identifies a Pre-existing code issue, log it under `Pre-existing Code Issues` in `execution-issues.md` regardless of triage outcome (the log is the durable audit trail). Then apply the OOS triage policy above: if and only if the item survives triage as a filed-OOS candidate (i.e. NOT doc drift and NOT a < ~30 LOC bug), the agent MUST also append a corresponding `### OOS_N:` block to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` so Step 9a.1 can file it. External implementer `oos_observations[]` are materialized by `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest` at Step 2 complete and again at ship pre-trigger; the live implementation is `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/file_oos.py`, its regression harness is `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_file_oos.py`, and Step 9a.1 does not parse manifest JSON in prompt-side prose. Items classified by triage as "fold inline" are logged under `Pre-existing Code Issues` but are NOT dual-written to the OOS artifact; the inline fix lands in the current PR's commits. This dual-write rule is mechanical, runs in every mode, and converges main-agent-discovered bugs into the same accepted-OOS pipeline as reviewer-surfaced OOS from `/design` and Step 5. For durable follow-up outside this category, enforcement is prescriptive (principle above), not mechanical — use `/issue` directly.
 
-**Schema** (matches `/issue`'s batch-mode parser at `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue parse-input`):
+**Schema** (matches `/issue`'s batch-mode parser at `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue parse-input`):
 
 ```markdown
 ### OOS_<N>: <short title — one line>

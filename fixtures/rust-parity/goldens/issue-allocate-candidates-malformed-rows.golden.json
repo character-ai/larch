@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "**⚠ /issue: dropped malformed CAND row (too few fields): CAND 1 10**\n**⚠ /issue: dropped malformed CAND row (non-numeric item index): CAND x 10 dup**\n**⚠ /issue: dropped malformed CAND row (item index 9 out of range 1..2): CAND 9 10 dup**\n**⚠ /issue: dropped malformed CAND row (non-numeric or non-positive issue number): CAND 1 0 dup**\n**⚠ /issue: dropped malformed CAND row (non-numeric or non-positive issue number): CAND 1 abc dup**\n"
+  },
+  "stdout": {
+    "text": "CANDIDATES=\n"
+  }
+}

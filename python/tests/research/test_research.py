@@ -550,7 +550,6 @@ def test_findings_batch_round_trip_parse_input(tmp_path: Path) -> None:
     report = tmp_path / "report.md"
     question = tmp_path / "question.txt"
     batch = tmp_path / "batch.md"
-    out_dir = tmp_path / "issues"
     question.write_text("How safe is this?\n", encoding="utf-8")
     report.write_text(
         "### Findings Summary\n\n"
@@ -564,8 +563,8 @@ def test_findings_batch_round_trip_parse_input(tmp_path: Path) -> None:
     )
     count, _ = research.render_findings_batch(report=report, output=batch, research_question_file=question, branch="br", commit="abc", timestamp="2026-01-01T00:00:00Z")
     assert count == 1
-    assert issue_create.parse_input_main(["--input-file", str(batch), "--output-dir", str(out_dir)]) == 0
-    assert any(out_dir.glob("item-*-body.txt"))
+    items, _mode = issue_create.parse_issue_input(batch.read_text(encoding="utf-8"))
+    assert [item.body for item in items if item.body]
 
 
 def _run_quiet_cli(*cli_args: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[str], Path | None]:
@@ -662,12 +661,13 @@ _RENDER_FOOTER = (
 )
 
 
-def _assert_render_round_trip(batch: Path, expected_count: int, out_dir: Path) -> None:
-    cp = run_cli("issue", "parse-input", "--input-file", str(batch), "--output-dir", str(out_dir))
-    assert cp.returncode == 0
-    items_total = next(line.split("=", 1)[1] for line in cp.stdout.splitlines() if line.startswith("ITEMS_TOTAL="))
-    assert items_total == str(expected_count)
-    assert "MALFORMED=true" not in cp.stdout
+def _assert_render_round_trip(batch: Path, expected_count: int, _out_dir: Path) -> None:
+    # `issue parse-input` is Rust owned; the grammar it shares with `/research`
+    # is still `larch.issue.issue_create.parse_issue_input`, so the round trip
+    # is asserted against that library rather than through the retired command.
+    items, _mode = issue_create.parse_issue_input(batch.read_text(encoding="utf-8"))
+    assert len(items) == expected_count
+    assert not any(item.malformed for item in items)
 
 
 @pytest.mark.parametrize(
