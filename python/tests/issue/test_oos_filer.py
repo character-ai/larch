@@ -9,7 +9,6 @@ import io
 import json
 import subprocess
 from pathlib import Path
-from typing import cast
 
 import pytest
 from larch.core import config
@@ -76,7 +75,6 @@ class FakeCli:
         self.urls = ["https://github.com/owner/repo/issues/101", "https://github.com/owner/repo/issues/102"]
         self.fail_create = False
         self.fail_create_after = 0
-        self.duplicate = False
         self.codex_output = ""
         self.codex_rc = 0
         self.fail_blocked_by = False
@@ -142,8 +140,6 @@ class FakeCli:
             if self.fail_create or (self.fail_create_after and len(self.created_bodies) >= self.fail_create_after):
                 return _cp(args, stdout="ISSUE_FAILED=true\n", rc=0)
             url = self.urls[min(len(self.created_bodies) - 1, len(self.urls) - 1)]
-            if self.duplicate:
-                return _cp(args, stdout=f"ISSUE_DUPLICATE_OF_URL={url}\nISSUE_TITLE=[OOS] Duplicate\n")
             return _cp(args, stdout=f"ISSUE_NUMBER={url.rsplit('/', 1)[-1]}\nISSUE_URL={url}\nISSUE_TITLE=[OOS] Filed\n")
         if args[:2] == ["issue", "add-blocked-by"]:
             if self.fail_blocked_by:
@@ -174,6 +170,8 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
     original_parse = rust_runtime.parse_issue_input
+    original_create_one = rust_runtime.issue_create_one
+    original_cleanup_failed = rust_runtime.issue_cleanup_failed
     original_stamp = oos_filer._stamp_manifest
 
     class _FakeRunner:
@@ -185,24 +183,8 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     def parse_issue_input(_runner: object, *, input_file: Path, output_dir: Path, cwd: str | None = None) -> rust_runtime.IssueParseInputOutput:
         return original_parse(_FakeRunner(), input_file=input_file, output_dir=output_dir, cwd=cwd)  # type: ignore[arg-type]
 
-    def create_one(parsed: dict[str, object]) -> issue_create.CreateIssueResult:
-        args = ["issue", "create-one", "--title", str(parsed["title"]), "--title-prefix", str(parsed["title_prefix"]), "--body-file", str(parsed["body_file"])]
-        if repo := str(parsed.get("repo", "")):
-            args.extend(["--repo", repo])
-        labels = parsed.get("labels", [])
-        if isinstance(labels, list):
-            for label in cast("list[object]", labels):
-                args.extend(["--label", str(label)])
-        completed = fake(args)
-        fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
-        if completed.returncode or fields.get("ISSUE_FAILED") == "true":
-            return issue_create.CreateIssueResult(error=fields.get("ISSUE_ERROR", "create failed"), exit_code=completed.returncode or 1)
-        return issue_create.CreateIssueResult(
-            title=fields.get("ISSUE_TITLE", ""),
-            number=fields.get("ISSUE_NUMBER", ""),
-            url=fields.get("ISSUE_URL") or fields.get("ISSUE_DUPLICATE_OF_URL", ""),
-            duplicate=bool(fields.get("ISSUE_DUPLICATE_OF_URL")),
-        )
+    def issue_create_one(_runner: object, **kwargs: object) -> rust_runtime.IssueCreateOutput:
+        return original_create_one(_FakeRunner(), **kwargs)  # type: ignore[arg-type]
 
     def add_blocked_by(*, client: str, blocker: str, repo: str = "", **kwargs: object) -> issue_create.BlockedByResult:
         args = ["issue", "add-blocked-by", "--client-issue", client, "--blocker-issue", blocker, *([] if not repo else ["--repo", repo])]
@@ -222,9 +204,8 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
         fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
         return issue_create.BlockedByResult(client=client, blocker=blocker, added=not completed.returncode and fields.get("BLOCKED_BY_FAILED") != "true", error=fields.get("ERROR", ""), exit_code=completed.returncode)
 
-    def cleanup_failed(*, issue: str, repo: str = "") -> issue_create.CleanupResult:
-        completed = fake(["issue", "cleanup-failed", "--issue-number", issue, *([] if not repo else ["--repo", repo])])
-        return issue_create.CleanupResult(issue=issue, closed=completed.returncode == 0)
+    def issue_cleanup_failed(_runner: object, **kwargs: object) -> bool:
+        return original_cleanup_failed(_FakeRunner(), **kwargs)  # type: ignore[arg-type]
 
     def checkpoint(_tmpdir: Path) -> int:
         return fake(["oos", "disposition-checkpoint", "--implement-tmpdir", str(_tmpdir)]).returncode
@@ -244,9 +225,9 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
         return fake(args[1:])
 
     monkeypatch.setattr(oos_filer.rust_runtime, "parse_issue_input", parse_issue_input)
-    monkeypatch.setattr(issue_create, "create_one", create_one)
+    monkeypatch.setattr(oos_filer.rust_runtime, "issue_create_one", issue_create_one)
+    monkeypatch.setattr(oos_filer.rust_runtime, "issue_cleanup_failed", issue_cleanup_failed)
     monkeypatch.setattr(issue_create, "add_blocked_by", add_blocked_by)
-    monkeypatch.setattr(issue_create, "cleanup_failed", cleanup_failed)
     monkeypatch.setattr(oos_filer, "_run_disposition_checkpoint", checkpoint)
     monkeypatch.setattr(oos_filer, "_file_conflict_deps", conflict_deps)
     monkeypatch.setattr(oos_filer, "_stamp_manifest", stamp_manifest)
@@ -277,9 +258,9 @@ def test_oos_filer_keeps_cli_reentry_only_for_external_codex() -> None:
     source = Path(oos_filer.__file__).read_text(encoding="utf-8")
     assert "def _run_cli" not in source
     assert "rust_runtime.parse_issue_input(" in source
-    assert "issue_create.create_one(" in source
+    assert "rust_runtime.issue_create_one(" in source
+    assert "rust_runtime.issue_cleanup_failed(" in source
     assert "issue_create.add_blocked_by(" in source
-    assert "issue_create.cleanup_failed(" in source
 
 
 def test_single_item_files_issue_and_writes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -662,11 +643,10 @@ def test_sanitizes_internal_url_before_create_one(tmp_path: Path, monkeypatch: p
     assert any("<INTERNAL-URL>" in body for body in fake.created_bodies)
 
 
-def test_duplicate_of_url_is_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_created_url_is_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _setup(tmp_path)
     _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
     fake = FakeCli(tmp_path)
-    fake.duplicate = True
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
@@ -1349,34 +1329,6 @@ def test_multipart_priority_label_failure_stops_later_parts(
     assert payload["status"] == "issue_batch_failed"
     assert payload["failure_mode"] == "priority_label"
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
-
-
-def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
-    _setup(tmp_path)
-    _write_oos(
-        tmp_path,
-        "### OOS_1: Correctness dup\n- **Focus area**: correctness\n- **Description**: Risk.\n",
-    )
-    fake = FakeCli(tmp_path)
-    fake.duplicate = True
-
-    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
-        return _cp(args)
-
-    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
-    _stub_priority_label_add(monkeypatch, fail=True)
-    rc, payload = _run(tmp_path, fake, monkeypatch)
-
-    assert rc == 1
-    assert payload["status"] == "priority_label_partial_failure"
-    urls = payload["urls"]
-    assert isinstance(urls, list)
-    assert "https://github.com/owner/repo/issues/101" in urls
-    assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
 
 
 def test_priority_urls_from_combined_order_uses_stable_ids_on_count_mismatch(tmp_path: Path) -> None:

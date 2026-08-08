@@ -180,11 +180,16 @@ allowlist: `/tmp`, `/private/tmp`, `/var/folders`, `/private/var/folders`, and
 the `XDG_CACHE_HOME` or `HOME` cache root. A caller-supplied `TMPDIR` does not
 widen that set. `python/larch/state/session_env.py` keeps an in-process copy of
 the same rule for the Python-owned commands that still call it directly.
-`python/larch/issue/issue_create.py` and the operation-specific issue modules
-own their mutation entry points. Unauthorized calls fail before any GitHub
-request, emit the documented refusal result, and do not retry through another
-route. Within `issue_create.py`, `issue create-one`, `issue add-sub-issue`, and
-`issue add-blocked-by` each apply that check before a GitHub lookup or mutation.
+`crates/larch-adapters/src/github/issue_mutation.rs` owns the Rust issue
+mutations, and `python/larch/issue/issue_create.py` plus the operation-specific
+issue modules own the entry points that have not migrated yet. Unauthorized
+calls fail before any GitHub request, emit the documented refusal result, and do
+not retry through another route. `issue create-one` applies the check in the
+Rust owner before the create request is built, and `issue add-sub-issue` and
+`issue add-blocked-by` each apply it in `issue_create.py` before a GitHub lookup
+or mutation. `issue cleanup-failed` deliberately carries no gate: it closes an
+issue the same caller has just created, and its predecessor took no
+authorization either.
 
 `python/conftest.py` sets `LARCH_ISSUE_MUTATION_DENY=true` and removes inherited
 live authorization for tests. Denial overrides a valid parent session. Tests

@@ -11,8 +11,8 @@ use chrono::DateTime;
 use regex::Regex;
 
 use crate::{
-    GitHubIssueState, GitHubRepositoryRef, MANAGED_PREFIXES, UMBRELLA_PREFIX, has_managed_prefix,
-    redact, redact_secrets,
+    GitHubIssue, GitHubIssueState, GitHubRepositoryRef, MANAGED_PREFIXES, UMBRELLA_PREFIX,
+    has_managed_prefix, redact, redact_secrets,
 };
 
 /// Marker proving that `/umbrella` persisted its proposal in the parent body.
@@ -212,6 +212,104 @@ fn validate_field_values(request: &IssueMutationRequest) -> Result<(), IssueMuta
         return Err(IssueMutationError::new("invalid-lease"));
     }
     Ok(())
+}
+
+/// One request to create a new issue, already normalized by its caller.
+///
+/// Creation has no compare-and-swap precondition: there is no prior state to
+/// be stale against. What it shares with a field mutation is the fail-closed
+/// redaction of every outbound string and the live-mutation authorization the
+/// owner checks before it contacts GitHub.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IssueCreateRequest {
+    pub repository: GitHubRepositoryRef,
+    pub title: String,
+    pub body: String,
+    pub labels: Vec<String>,
+}
+
+/// The verified identity of one freshly created issue.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreatedIssue {
+    pub number: u64,
+    pub url: String,
+    pub id: u64,
+}
+
+/// Redact every outbound string of a create request, failing closed.
+///
+/// # Errors
+///
+/// Returns `redaction-failed` when a known secret survives the verification
+/// pass on the title, the body, or any label.
+pub fn redact_issue_create_request(
+    request: &IssueCreateRequest,
+) -> Result<IssueCreateRequest, IssueMutationError> {
+    Ok(IssueCreateRequest {
+        repository: request.repository.clone(),
+        title: redact_issue_text_outbound(&request.title)?,
+        body: redact_issue_text_outbound(&request.body)?,
+        labels: request
+            .labels
+            .iter()
+            .map(|label| redact_issue_text_outbound(label))
+            .collect::<Result<Vec<String>, IssueMutationError>>()?,
+    })
+}
+
+/// Redact secret families from one outbound issue string, failing closed.
+///
+/// Unlike [`redact_issue_mutation_request`], this leaves session and operator
+/// paths intact: an issue body legitimately names repository paths, and the
+/// Python owner this ports scrubbed secrets only. The caller's newline intent
+/// is preserved, so a value that did not end in a newline still does not.
+///
+/// A truncation marker is not a refusal here, unlike a protected-field
+/// mutation: an unterminated private-key block drops the body tail and says so,
+/// and a caller that legitimately publishes truncated evidence still files.
+/// The verification pass is the fail-closed half, and it cannot fire on
+/// redacted text because the replacement token matches no secret family.
+///
+/// # Errors
+///
+/// Returns `redaction-failed` when a known secret survives the verification
+/// pass.
+pub fn redact_issue_text_outbound(value: &str) -> Result<String, IssueMutationError> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let scrubbed = redact_secrets(value).text().to_owned();
+    let scrubbed = if value.ends_with('\n') {
+        scrubbed
+    } else {
+        scrubbed.trim_end_matches('\n').to_owned()
+    };
+    if redact_secrets(&scrubbed).findings().is_empty() {
+        Ok(scrubbed)
+    } else {
+        Err(IssueMutationError::new("redaction-failed"))
+    }
+}
+
+/// Accept a create read-back only when it names one concrete open issue.
+///
+/// # Errors
+///
+/// Returns `invalid-read-back` when GitHub's echo of the created issue lacks
+/// the number, node id, or URL every caller of `issue create-one` consumes.
+pub fn verify_created_issue(issue: &GitHubIssue) -> Result<CreatedIssue, IssueMutationError> {
+    if issue.number == 0
+        || issue.id == 0
+        || issue.url.is_empty()
+        || issue.state != GitHubIssueState::Open
+    {
+        return Err(IssueMutationError::new("invalid-read-back"));
+    }
+    Ok(CreatedIssue {
+        number: issue.number,
+        url: issue.url.clone(),
+        id: issue.id,
+    })
 }
 
 /// Return a redacted copy of a mutation request before it crosses to GitHub.
@@ -578,10 +676,11 @@ fn strip_implementation_leases(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, same_mutation_identity,
-        snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
+        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
+        redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
+        validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
     };
-    use crate::{GitHubIssueState, GitHubRepositoryRef};
+    use crate::{GitHubIssue, GitHubIssueState, GitHubRepositoryRef};
     use std::collections::BTreeSet;
 
     fn snapshot() -> IssueMutationSnapshot {
@@ -708,5 +807,67 @@ mod tests {
         after.updated_at = String::from("2026-07-19T00:00:01Z");
         assert!(snapshot_is_strictly_newer(&before, &after));
         assert!(!snapshot_is_strictly_newer(&after, &before));
+    }
+    #[test]
+    fn outbound_issue_text_scrubs_secrets_keeps_paths_and_preserves_newline_intent() {
+        assert_eq!(redact_issue_text_outbound("").expect("empty"), "");
+        assert_eq!(
+            redact_issue_text_outbound("leak ghp_abcdefghijklmnopqrstuvwxyz0123456789 here")
+                .expect("scrubbed"),
+            "leak <REDACTED-TOKEN> here"
+        );
+        // Operator and session paths survive: an issue body names repository
+        // paths, and the Python owner scrubbed secrets only.
+        let path = "see /Users/operator/clone/python/larch/issue/issue_create.py";
+        assert_eq!(redact_issue_text_outbound(path).expect("kept"), path);
+        assert_eq!(
+            redact_issue_text_outbound("body\n").expect("kept"),
+            "body\n"
+        );
+        assert_eq!(redact_issue_text_outbound("body").expect("kept"), "body");
+        // A truncation marker files rather than refusing.
+        let truncated = "evidence\n\n[content truncated to 10 characters]\n";
+        assert_eq!(
+            redact_issue_text_outbound(truncated).expect("kept"),
+            truncated
+        );
+    }
+
+    #[test]
+    fn a_create_read_back_needs_a_number_a_node_id_a_url_and_an_open_state() {
+        let created = GitHubIssue {
+            id: 70,
+            number: 7,
+            title: String::from("T"),
+            body: String::new(),
+            state: GitHubIssueState::Open,
+            url: String::from("https://github.com/owner/repo/issues/7"),
+            author: String::new(),
+            labels: Vec::new(),
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: String::from("2026-07-19T00:00:00Z"),
+            is_pull_request: false,
+        };
+        let verified = verify_created_issue(&created).expect("a usable echo");
+        assert_eq!((verified.number, verified.id), (7, 70));
+        assert_eq!(verified.url, created.url);
+
+        for mutate in [
+            (|issue: &mut GitHubIssue| issue.number = 0) as fn(&mut GitHubIssue),
+            |issue: &mut GitHubIssue| issue.id = 0,
+            |issue: &mut GitHubIssue| issue.url = String::new(),
+            |issue: &mut GitHubIssue| issue.state = GitHubIssueState::Closed,
+        ] {
+            let mut broken = created.clone();
+            mutate(&mut broken);
+            assert_eq!(
+                verify_created_issue(&broken)
+                    .expect_err("an unusable echo")
+                    .reason(),
+                "invalid-read-back"
+            );
+        }
     }
 }

@@ -3811,11 +3811,13 @@ verb = "cleanup-failed"
 python_module = "larch.issue.issue_create"
 python_function = "cleanup_failed_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8169
+clean_install_test = "clean-install-issue-cleanup-failed"
 
 [[commands]]
 domain = "issue"
@@ -3836,11 +3838,13 @@ verb = "create-one"
 python_module = "larch.issue.issue_create"
 python_function = "create_one_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8169
+clean_install_test = "clean-install-issue-create-one"
 
 [[commands]]
 domain = "issue"
@@ -3966,11 +3970,13 @@ verb = "write-sentinel"
 python_module = "larch.issue.issue_create"
 python_function = "write_sentinel_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8169
+clean_install_test = "clean-install-issue-write-sentinel"
 
 [[commands]]
 domain = "kv"
@@ -8307,7 +8313,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree *", "git phantom-probe", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["dirty-tree *", "git phantom-probe", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -9446,8 +9452,8 @@ rust = []
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
-rust = ["issue allocate-candidates", "issue fetch-issue-details", "issue list-issues", "issue parse-input"]
+python = ["issue add-blocked-by", "oos file-conflict-deps", "session setup", "verify skill-called"]
+rust = ["issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"

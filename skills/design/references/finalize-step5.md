@@ -14,7 +14,7 @@ Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches; Step 5b.5 writes
 
 ## Step 5b OOS filing body
 
-**Privacy guardrail.** OOS Descriptions and reviewer `path:line` hints become **public** GitHub issues through `/larch:issue`. Reviewers must follow `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` and avoid high-risk paths or secret-adjacent material. `python/larch/core/redact.py` inside `issue create-one` is only a mechanical backstop.
+**Privacy guardrail.** OOS Descriptions and reviewer `path:line` hints become **public** GitHub issues through `/larch:issue`. Reviewers must follow `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` and avoid high-risk paths or secret-adjacent material. The outbound redaction inside `issue create-one` is only a mechanical backstop.
 
 **Session-backed authorization.** Step 5b `/larch:issue` OOS filing is session-backed. When constructing nested `issue create-one` args for session-backed filing, pass `--context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` and `LARCH_RUN_ID` set by the real `/design` Step 0 driver. Manual OOS recovery via direct `issue create-one` must pass `--operator-invoked` instead of a context file. Dry-run paths are authorization-free and require neither flag.
 

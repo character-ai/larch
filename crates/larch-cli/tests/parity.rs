@@ -40,9 +40,14 @@ impl CleanInstallCase {
             // refuses too. The other two issue-input verbs accept that token and
             // exit 0: `allocate-candidates` prints its usage, and `list-issues`
             // reports its fail-open envelope.
-            "clean-install-issue-fetch-issue-details"
+            // `issue state` refuses its own missing-value line, and neither
+            // `create-one` nor `write-sentinel` has a `--help` action, so the
+            // clean-install token reads as an unknown option there too.
+            "clean-install-issue-create-one"
+            | "clean-install-issue-fetch-issue-details"
             | "clean-install-issue-parse-input"
-            | "clean-install-issue-state" => 1,
+            | "clean-install-issue-state"
+            | "clean-install-issue-write-sentinel" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             "clean-install-run-log-prepare-terminal-snapshot" => 2,
@@ -326,6 +331,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "allocate-candidates",
     ),
     CleanInstallCase::new(
+        "clean-install-issue-cleanup-failed",
+        "issue",
+        "cleanup-failed",
+    ),
+    CleanInstallCase::new("clean-install-issue-create-one", "issue", "create-one"),
+    CleanInstallCase::new(
         "clean-install-issue-fetch-issue-details",
         "issue",
         "fetch-issue-details",
@@ -334,6 +345,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-issue-list-issues", "issue", "list-issues"),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
+    CleanInstallCase::new(
+        "clean-install-issue-write-sentinel",
+        "issue",
+        "write-sentinel",
+    ),
     CleanInstallCase::new(
         "clean-install-session-check-live-mutation-auth",
         "session",
@@ -4071,6 +4087,365 @@ const ISSUE_INPUT_CASES: &[IssueInputFixture] = &[
         seeds: &[],
     },
 ];
+
+/// One issue-creation case, addressed by its reference sub-verb and its real
+/// `DOMAIN VERB` selector.
+///
+/// `write-sentinel` runs end to end here, so its cases compare the published
+/// sentinel as well as the contract streams.
+struct IssueCreateFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+    environment: &'static [(&'static str, &'static str)],
+}
+
+impl IssueCreateFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python).args(
+            std::iter::once(path_text(fixture))
+                .chain(std::iter::once(self.reference))
+                .chain(self.arguments.iter().copied()),
+        );
+        let mut rust_program = Program::new(rust).args(
+            self.selector
+                .iter()
+                .copied()
+                .chain(self.arguments.iter().copied()),
+        );
+        for (key, value) in self.environment {
+            python_program = python_program.env(key, value);
+            rust_program = rust_program.env(key, value);
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![
+                NormalizationRule::SandboxRoot,
+                NormalizationRule::Rfc3339Utc,
+            ],
+        }
+    }
+}
+
+/// Every GitHub-backed case stops before a client is built: `create-one` at
+/// its authorization gate or at repository resolution, `cleanup-failed` at
+/// repository resolution. The sandbox has no `gh`, no `git`, and no network.
+const ISSUE_CREATE_CASES: &[IssueCreateFixture] = &[
+    IssueCreateFixture {
+        name: "issue-create-one-no-arguments",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-create-one-unknown-option",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--bogus", "x"],
+        seeds: &[],
+        environment: &[],
+    },
+    // A value-taking option that ends the line names itself, unlike the
+    // input-pipeline scanners that report it as an unknown option.
+    IssueCreateFixture {
+        name: "issue-create-one-trailing-title-flag",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--title"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-create-one-dry-run",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &[
+            "--title",
+            "[oos] already tagged",
+            "--title-prefix",
+            "[OOS]",
+            "--label",
+            "one",
+            "--label",
+            "two",
+            "--dry-run",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    // A dry run reads no body file, so a path that does not exist is not a
+    // refusal on this path.
+    IssueCreateFixture {
+        name: "issue-create-one-dry-run-ignores-the-body-file",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &[
+            "--title",
+            "Fix",
+            "--body-file",
+            "{sandbox}/absent.md",
+            "--dry-run",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    // Outbound redaction scrubs secrets and leaves operator paths alone.
+    IssueCreateFixture {
+        name: "issue-create-one-dry-run-redacts-a-secret-title",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &[
+            "--title",
+            "leak ghp_abcdefghijklmnopqrstuvwxyz0123456789 in /Users/operator/clone",
+            "--dry-run",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-create-one-missing-body-file",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--title", "Fix", "--body-file", "{sandbox}/absent.md"],
+        seeds: &[],
+        environment: &[],
+    },
+    // The gate refuses before any repository is resolved or contacted.
+    IssueCreateFixture {
+        name: "issue-create-one-unauthorized",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--title", "Fix", "--body-file", "{sandbox}/body.md"],
+        seeds: &[("body.md", "## Out-of-Scope Observation\nbody\n")],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-create-one-test-denied",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--title", "Fix", "--operator-invoked"],
+        seeds: &[],
+        environment: &[("LARCH_ISSUE_MUTATION_DENY", "true")],
+    },
+    // An operator-invoked create passes the gate and stops at resolution.
+    IssueCreateFixture {
+        name: "issue-create-one-unresolvable-repo",
+        reference: "issue-create-one",
+        selector: &["issue", "create-one"],
+        arguments: &["--title", "Fix", "--operator-invoked"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-writes-the-receipt",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/run/issue.sentinel",
+            "--issues-created",
+            "2",
+            "--issues-deduplicated",
+            "1",
+            "--issues-failed",
+            "0",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-dry-run",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/issue.sentinel",
+            "--issues-created",
+            "2",
+            "--issues-deduplicated",
+            "1",
+            "--issues-failed",
+            "0",
+            "--dry-run",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-unknown-argument",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &["--bogus"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-trailing-path-flag",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &["--path"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-empty-path-value",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &["--path", ""],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-missing-counters",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/issue.sentinel",
+            "--issues-created",
+            "1",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-relative-path",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "issue.sentinel",
+            "--issues-created",
+            "0",
+            "--issues-deduplicated",
+            "0",
+            "--issues-failed",
+            "0",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-parent-segment",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/../issue.sentinel",
+            "--issues-created",
+            "0",
+            "--issues-deduplicated",
+            "0",
+            "--issues-failed",
+            "0",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-write-sentinel-non-numeric-counter",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/issue.sentinel",
+            "--issues-created",
+            "x",
+            "--issues-deduplicated",
+            "0",
+            "--issues-failed",
+            "0",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    // A run with failures is a successful non-write, not a refusal.
+    IssueCreateFixture {
+        name: "issue-write-sentinel-failures-block-the-write",
+        reference: "issue-write-sentinel",
+        selector: &["issue", "write-sentinel"],
+        arguments: &[
+            "--path",
+            "{sandbox}/issue.sentinel",
+            "--issues-created",
+            "1",
+            "--issues-deduplicated",
+            "0",
+            "--issues-failed",
+            "2",
+        ],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-cleanup-failed-no-arguments",
+        reference: "issue-cleanup-failed",
+        selector: &["issue", "cleanup-failed"],
+        arguments: &[],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-cleanup-failed-non-numeric-issue",
+        reference: "issue-cleanup-failed",
+        selector: &["issue", "cleanup-failed"],
+        arguments: &["--issue-number", "12a"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-cleanup-failed-unknown-option",
+        reference: "issue-cleanup-failed",
+        selector: &["issue", "cleanup-failed"],
+        arguments: &["--bogus"],
+        seeds: &[],
+        environment: &[],
+    },
+    // The issue read before the unusable token still names the subject.
+    IssueCreateFixture {
+        name: "issue-cleanup-failed-trailing-repo-flag",
+        reference: "issue-cleanup-failed",
+        selector: &["issue", "cleanup-failed"],
+        arguments: &["--issue-number", "42", "--repo"],
+        seeds: &[],
+        environment: &[],
+    },
+    IssueCreateFixture {
+        name: "issue-cleanup-failed-unresolvable-repo",
+        reference: "issue-cleanup-failed",
+        selector: &["issue", "cleanup-failed"],
+        arguments: &["--issue-number", "42"],
+        seeds: &[],
+        environment: &[],
+    },
+];
+
+#[test]
+fn issue_create_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("issue_create_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ISSUE_CREATE_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
 
 #[test]
 fn issue_input_commands_have_reviewed_parity() {

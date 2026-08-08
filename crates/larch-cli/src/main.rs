@@ -38,6 +38,7 @@ mod github_service;
 mod gitleaks;
 mod implement_launcher_commands;
 mod issue_commands;
+mod issue_create_commands;
 mod issue_input_commands;
 mod kill_background;
 mod launcher_support;
@@ -342,9 +343,15 @@ enum IssueCommand {
     /// Allocate the bounded Phase 2 dedup candidate set from stdin rows.
     #[command(name = "allocate-candidates", disable_help_flag = true)]
     AllocateCandidates(RawCompatibilityArguments),
+    /// Close one orphaned issue left by a partially created batch.
+    #[command(name = "cleanup-failed", disable_help_flag = true)]
+    CleanupFailed(RawCompatibilityArguments),
     /// Materialize one issue's title and body into a caller-named directory.
     #[command(disable_help_flag = true)]
     Context(RawCompatibilityArguments),
+    /// File one GitHub issue and publish its number, URL, and node id.
+    #[command(name = "create-one", disable_help_flag = true)]
+    CreateOne(RawCompatibilityArguments),
     /// Write the untrusted candidate corpus Phase 2 reasons over.
     #[command(name = "fetch-issue-details", disable_help_flag = true)]
     FetchIssueDetails(RawCompatibilityArguments),
@@ -360,6 +367,9 @@ enum IssueCommand {
     /// Emit one issue's state, URL, and pull-request discrimination.
     #[command(disable_help_flag = true)]
     State(RawCompatibilityArguments),
+    /// Record that one `/issue` run reached its end.
+    #[command(name = "write-sentinel", disable_help_flag = true)]
+    WriteSentinel(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -979,7 +989,13 @@ fn run(
             IssueCommand::AllocateCandidates(arguments) => {
                 issue_input_commands::allocate_candidates(&arguments.arguments)
             }
+            IssueCommand::CleanupFailed(arguments) => {
+                issue_create_commands::cleanup_failed(&arguments.arguments)
+            }
             IssueCommand::Context(arguments) => issue_commands::context(&arguments.arguments),
+            IssueCommand::CreateOne(arguments) => {
+                issue_create_commands::create_one(&arguments.arguments)
+            }
             IssueCommand::FetchIssueDetails(arguments) => {
                 issue_input_commands::fetch_issue_details(&arguments.arguments)
             }
@@ -991,6 +1007,9 @@ fn run(
                 issue_input_commands::parse_input(&arguments.arguments)
             }
             IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
+            IssueCommand::WriteSentinel(arguments) => {
+                issue_create_commands::write_sentinel(&arguments.arguments)
+            }
         }),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),
         Domain::Lint(arguments) => match arguments.into_dispatch() {

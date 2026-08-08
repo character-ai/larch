@@ -1264,7 +1264,7 @@ def _create_followup_issue(
         repo,
     ]
     create_args.extend(_session_mutation_auth_args(tmpdir))
-    created = _run_cli(create_args)
+    created = _run_larch(create_args)
     fields = _require_cli_success(created, label="issue create-one")
     number = fields.get("ISSUE_NUMBER", "")
     url = fields.get("ISSUE_URL", "")

@@ -143,8 +143,8 @@ pub use issue::{
     classify_named_block, compose_named_block, detect_lifecycle_prefix, insert_signal_marker,
     insert_tag_after_bug_prefix, is_valid_named_block_marker, issue_plan_marker_defect,
     leading_square_bracket_prefix, named_block_marker_allowed, neutralize_named_block_markers,
-    open_issue_rows, parse_named_block, parse_open_issue_row, plan_named_block_write,
-    redact_untrusted_stream, strip_lifecycle_prefix, strip_named_block,
+    normalize_title_prefix, open_issue_rows, parse_named_block, parse_open_issue_row,
+    plan_named_block_write, redact_untrusted_stream, strip_lifecycle_prefix, strip_named_block,
     title_has_archival_report_prefix, title_is_archival, title_lifecycle_reject_marker,
     title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
 };
@@ -168,10 +168,12 @@ pub use issue::{
     ParsedInput, ParsedItem, allocate_candidates, parse_issue_input,
 };
 pub use issue_mutation::{
-    IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
-    IssueMutationSnapshot, UMBRELLA_PROPOSAL_MARKER, VerifiedIssueMutation, mutation_postcondition,
-    mutation_would_change, redact_issue_mutation_request, same_mutation_identity,
+    CreatedIssue, IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationLease,
+    IssueMutationRequest, IssueMutationSnapshot, UMBRELLA_PROPOSAL_MARKER, VerifiedIssueMutation,
+    mutation_postcondition, mutation_would_change, redact_issue_create_request,
+    redact_issue_mutation_request, redact_issue_text_outbound, same_mutation_identity,
     snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
+    verify_created_issue,
 };
 pub use logging_util::emit_kv;
 pub use object_store::{

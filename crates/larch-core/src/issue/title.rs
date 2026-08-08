@@ -144,6 +144,37 @@ pub fn title_starts_with_brainstorm(title: &str) -> bool {
     brainstorm_pattern().is_match(trim_leading_whitespace(title))
 }
 
+/// Prepend `prefix` to `title`, absorbing the prefix the title already carries.
+///
+/// The rewrite is idempotent and case insensitive, so `"[oos] Fix"` under
+/// `"[OOS]"` becomes `"[OOS] Fix"` rather than `"[OOS] [oos] Fix"`, and the
+/// caller's spelling of the prefix always wins. An empty prefix leaves the
+/// title untouched. This is the single normalization `/issue` relies on to
+/// deduplicate prefixes it may have applied already.
+#[must_use]
+pub fn normalize_title_prefix(title: &str, prefix: &str) -> String {
+    if prefix.is_empty() {
+        return title.to_owned();
+    }
+    // Compare over the prefix's own character count so a title whose leading
+    // characters lowercase to the prefix is absorbed. Python sliced the
+    // original title by the prefix length after lowercasing both sides; the
+    // two agree for every character whose lowercase form is one character.
+    let width = prefix.chars().count();
+    let head: String = title.chars().take(width).collect();
+    let body = if head.to_lowercase() == prefix.to_lowercase() {
+        title
+            .chars()
+            .skip(width)
+            .collect::<String>()
+            .trim_start_matches(is_python_whitespace)
+            .to_owned()
+    } else {
+        title.to_owned()
+    };
+    format!("{prefix} {body}")
+}
+
 /// Insert `[marker]` into `title`, after a lifecycle prefix when one is present.
 ///
 /// The insert is idempotent: a title that already carries the marker in its

@@ -695,7 +695,7 @@ def _cleanup_created_issues(
         number = issue.url.rsplit("/", 1)[-1]
         if not number.isdigit():
             continue
-        _ = issue_create.cleanup_failed(issue=number, repo=repo)
+        _ = rust_runtime.issue_cleanup_failed(proc.ProcRunner(), issue=number, repo=repo)
 
 
 def _body_bytes(text: str) -> int:
@@ -885,23 +885,25 @@ def _run_issue_batch(
         total_parts = len(body_files)
         for part_index, body_file in enumerate(body_files, start=1):
             part_title = title if total_parts == 1 else f"{title} (part {part_index}/{total_parts})"
-            create_args: dict[str, object] = {
-                "title": part_title,
-                "title_prefix": "[OOS]",
-                "body_file": str(body_file),
-                "labels": [oos_priority.OOS_CORRECTNESS_LABEL] if item_priority else [],
-            }
-            if repo:
-                create_args["repo"] = repo
-            if context_file is not None:
-                create_args.update({"context_file": str(context_file), "run_id": run_id, "trusted_root": str(tmpdir)})
-            created = issue_create.create_one(create_args)
+            created = rust_runtime.issue_create_one(
+                proc.ProcRunner(),
+                title=part_title,
+                title_prefix="[OOS]",
+                body_file=str(body_file),
+                labels=[oos_priority.OOS_CORRECTNESS_LABEL] if item_priority else [],
+                repo=repo,
+                context_file=str(context_file) if context_file is not None else "",
+                run_id=run_id,
+                trusted_root=str(tmpdir),
+            )
             if created.exit_code != 0:
                 failures += 1
                 _cleanup_created_issues(tmpdir, filed, repo=repo)
                 return BatchResult(filed, failures, "hard_create")
             url = created.url
-            duplicate = created.duplicate
+            # `create-one` has never reported a duplicate; the dedup verdict is
+            # decided by `/issue` before an item reaches a create at all.
+            duplicate = False
             filed_issue: FiledIssue | None = None
             if url:
                 part_stable = primary_stable if part_index == 1 else f"{primary_stable}:part{part_index}"

@@ -30,7 +30,7 @@ GitHub issue bodies and comments fetched in Phase 2 are **untrusted** content. T
 
 ## Outbound Secret Redaction
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one` pipes both the issue title and the issue body through `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets` before `gh issue create`, and also redacts captured `gh` stderr on the failure path. This is a deterministic defense-in-depth backstop for tokens (`sk-*`, `ghp_`, `AKIA…`, `xox-`, JWTs, PEM private keys) that slipped past prompt-level sanitization. Helper failure is fail-closed (`exit 3`, `ISSUE_ERROR=redaction:…`). Regression test: `make test-redact` (wired into `make lint`). See `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` for covered families and explicit non-coverage.
+`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one` redacts the issue title, the issue body, and every requested label before the create request is built, and also redacts captured failure output on the failure path. This is a deterministic defense-in-depth backstop for tokens (`sk-*`, `ghp_`, `AKIA…`, `xox-`, JWTs, PEM private keys) that slipped past prompt-level sanitization. Helper failure is fail-closed (`exit 3`, `ISSUE_ERROR=redaction:…`). Regression test: `make test-redact` (wired into `make lint`). See `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` for covered families and explicit non-coverage.
 
 <!-- step:1 — Parse Arguments -->
 
@@ -359,7 +359,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 
   Build `issue create-one` args:
   ```
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one \
     --title "<item title>" \
     --body-file "$ITEM_<i>_BODY_FILE" \
     [--title-prefix "$TITLE_PREFIX"] \
@@ -411,7 +411,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     Then for each entry in `ITEM_<i>_BLOCKS=<M>` (BLOCKS direction — the new issue blocks an existing issue), invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue $M --blocker-issue $N --blocker-id $ISSUE_ID_FROM_CREATE --repo "$REPO" --operator-invoked`. Same parsing.
 
     **Dep-link failure recovery** (per-item rollback, issue #546): on the first `BLOCKED_BY_FAILED=true` for item `i`:
-      1. Invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue cleanup-failed --issue-number $N --repo "$REPO"` to close the orphan. Parse `CLOSED=true|false`. If `CLOSED=false`, emit on stderr: `**⚠ /issue: orphan close failed for #$N (<url>): <redacted-error>. Manually close.**`.
+      1. Invoke `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue cleanup-failed --issue-number $N --repo "$REPO"` to close the orphan. Parse `CLOSED=true|false`. If `CLOSED=false`, emit on stderr: `**⚠ /issue: orphan close failed for #$N (<url>): <redacted-error>. Manually close.**`.
       2. Emit `ISSUE_<i>_FAILED=true ISSUE_<i>_TITLE=<input-title> ISSUE_<i>_ERROR=dep-link-failed: <redacted-msg> ISSUE_<i>_BLOCKER_LINKS_APPLIED=<n_applied>`. Increment `ISSUES_FAILED`.
       3. **Propagate transitive failure**: walk the dependency graph from `i` and find every batch item whose `BLOCKED_BY` (or `DUPLICATE_OF_ITEM`) chain points at `i`, transitively. For each such descendant `d`: emit `ISSUE_<d>_FAILED=true ISSUE_<d>_TITLE=<descendant input title> ISSUE_<d>_ERROR=transitive-failure: parent #$N (item $i) failed dep-wiring`, increment `ISSUES_FAILED`, and SKIP that descendant's create call when its turn comes in the topological order (test for `ISSUE_<d>_FAILED=true` already set before invoking `issue create-one`).
       4. Do NOT decrement `ISSUES_CREATED` for `i` — the issue WAS created (it just got rolled back); operators inspecting GitHub will see the closed orphan.
@@ -448,8 +448,8 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 **Helpers and contracts**:
 
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by` — applies a single dependency POST with retry/idempotent semantics.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue cleanup-failed` — best-effort orphan close on dep-wiring exhaustion.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one` — captures `ISSUE_ID=<numeric-id>` from a single `gh issue create --json` round-trip, with fallback to `gh issue create` plus `gh api .../issues/N --jq .id` for older gh versions.
+- `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue cleanup-failed` — best-effort orphan close on dep-wiring exhaustion. Regression coverage: `crates/larch-cli/src/issue_create_commands.rs` and the `issue-cleanup-failed-*` parity goldens.
+- `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one` — captures `ISSUE_ID=<numeric-id>` from the typed create response, with no second lookup round-trip. Regression coverage: `crates/larch-cli/src/issue_create_commands.rs`, `crates/larch-adapters/src/github/issue_mutation.rs`, and the `issue-create-one-*` parity goldens.
 - `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue fetch-issue-details` — fetches body/comment details for Phase 2 candidate reasoning. Regression coverage: `crates/larch-cli/src/issue_input_commands.rs` and the `issue-fetch-issue-details-*` parity goldens.
 - Regression coverage for the Python-owned helpers above: `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`.
 
@@ -473,7 +473,7 @@ Plus the per-item `ISSUE_<i>_*` lines accumulated above.
 **Post-success sentinel write** (after the machine lines above; runs unconditionally — the helper internally gates on the run state):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue write-sentinel \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue write-sentinel \
   --path "$SENTINEL_PATH" \
   --issues-created "$ISSUES_CREATED" \
   --issues-deduplicated "$ISSUES_DEDUPLICATED" \
@@ -485,7 +485,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue write-sentinel \
 
 ## Sentinel file (post-success)
 
-A small KV file `/issue` writes to mark a successful run that a parent skill (e.g. `/research`'s `## Filing findings as issues` numbered procedure) reads via `${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called --sentinel-file` to confirm the child completed before continuing. Defense in depth on top of stdout `ISSUES_*` parsing.
+A small KV file `/issue` writes to mark a successful run that a parent skill (e.g. `/research`'s `## Filing findings as issues` numbered procedure) reads via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file` to confirm the child completed before continuing. Defense in depth on top of stdout `ISSUES_*` parsing.
 
 **Path resolution** (from Step 1):
 - Explicit `--sentinel-file <path>` → `SENTINEL_PATH=<path>`, `SENTINEL_PATH_EXPLICIT=true`. Parent owns lifecycle.
@@ -512,13 +512,13 @@ TIMESTAMP=<ISO 8601 UTC>
 
 `ISSUE_SENTINEL_VERSION=1` enables future format changes without silent mis-parse.
 
-**Atomicity**: `issue write-sentinel` writes to a same-directory `mktemp`, then `mv` to `SENTINEL_PATH`. Final file is either complete or absent — never partial.
+**Atomicity**: `issue write-sentinel` writes to a same-directory temporary file, then renames it onto `SENTINEL_PATH`. Final file is either complete or absent — never partial. The parent directory must not be a symlink, and `--path` must be absolute with no `..` segment.
 
 **Channel discipline**: helper status output (`WROTE=true`, `WROTE=false REASON=...`, `ERROR=<msg>`) goes to **stderr**. Stdout remains the `ISSUES_*` grammar consumers like `/implement` Step 9a.1 parse. (Issue #509 plan review FINDING_5.)
 
 **Backward compatibility**: existing `/issue` callers that do not pass `--sentinel-file` are unaffected — the child-local default sentinel is written and removed in the same run by Step 9 cleanup, so `/tmp` does not accumulate sentinel files. Callers that pass `--sentinel-file` (e.g. `/research`) own the path and the lifecycle.
 
-**Helper**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue write-sentinel`. Regression coverage: `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`.
+**Helper**: `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue write-sentinel`. Regression coverage: `crates/larch-cli/src/issue_create_commands.rs` and the `issue-write-sentinel-*` parity goldens.
 
 <!-- step:8 — Single-Mode Human Summary (backward compat) -->
 
