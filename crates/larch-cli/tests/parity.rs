@@ -50,30 +50,27 @@ impl CleanInstallCase {
             | "clean-install-issue-parse-input"
             | "clean-install-issue-state"
             | "clean-install-issue-write-sentinel" => 1,
-            // The three title verbs and the four untrusted verbs have no
-            // `--help` action either. Each refuses the clean-install token as
-            // an unknown option and exits `2`, which proves dispatch reached
-            // the verb without reading stdin or touching the network.
-            "clean-install-issue-insert-signal-marker"
-            | "clean-install-issue-title-archival-jq"
-            | "clean-install-issue-title-eligibility"
-            | "clean-install-untrusted-file-block"
-            | "clean-install-untrusted-redact-stream"
-            | "clean-install-untrusted-xml-escape-attr" => 2,
-            // Each write verb refuses its own missing-required-option line, and
-            // `plan-block read` refuses the same way; none reaches GitHub.
-            "clean-install-named-block-write"
-            | "clean-install-plan-block-read"
-            | "clean-install-plan-block-write" => 2,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
             // clean-install token reads as an unknown flag and each refuses
             // with its own usage exit code, which is the same `2` the terminal
-            // snapshot reports for its missing session directory.
+            // snapshot reports for its missing session directory, the three
+            // title verbs and four untrusted verbs report for the token they
+            // cannot use, and each write verb reports for its missing required
+            // option.
             "clean-install-block-issue-add-blocked-by"
             | "clean-install-block-issue-remove-blocked-by"
-            | "clean-install-run-log-prepare-terminal-snapshot" => 2,
+            | "clean-install-issue-insert-signal-marker"
+            | "clean-install-issue-title-archival-jq"
+            | "clean-install-issue-title-eligibility"
+            | "clean-install-named-block-write"
+            | "clean-install-plan-block-read"
+            | "clean-install-plan-block-write"
+            | "clean-install-run-log-prepare-terminal-snapshot"
+            | "clean-install-untrusted-file-block"
+            | "clean-install-untrusted-redact-stream"
+            | "clean-install-untrusted-xml-escape-attr" => 2,
             _ => 0,
         }
     }

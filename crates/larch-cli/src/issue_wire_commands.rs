@@ -397,10 +397,10 @@ pub fn plan_block_strip_body(arguments: &[OsString]) -> ExitCode {
             emit_kv("MALFORMED", defect.reason());
             ExitCode::from(1)
         }
-        Ok(stripped) => match output.as_deref() {
-            Some(output) => write_artifact(output, &stripped).unwrap_or(ExitCode::SUCCESS),
-            None => write_stdout(&stripped),
-        },
+        Ok(stripped) => output.as_deref().map_or_else(
+            || write_stdout(&stripped),
+            |output| write_artifact(output, &stripped).unwrap_or(ExitCode::SUCCESS),
+        ),
     }
 }
 
@@ -509,55 +509,55 @@ struct NamedBlockRequest {
     content: Option<String>,
 }
 
+/// The writer's fixed identity: its usage block, help block, and program name.
+///
+/// `plan-block write` and `named-block write` share every rule but their option
+/// table and the three strings `argparse` printed under the retired script name
+/// each caller still quotes.
+struct NamedBlockProgram {
+    usage: &'static str,
+    help: &'static str,
+    name: &'static str,
+    /// Options in `argparse` declaration order; the required ones come first.
+    options: Vec<&'static str>,
+    required: usize,
+}
+
+impl NamedBlockProgram {
+    fn resolve(marker_default: Option<&str>) -> Self {
+        if marker_default.is_some() {
+            return Self {
+                usage: PLAN_BLOCK_WRITE_USAGE,
+                help: PLAN_BLOCK_WRITE_HELP,
+                name: "plan-block-write.sh",
+                options: vec!["--issue", "--content-file", "--repo"],
+                required: 1,
+            };
+        }
+        Self {
+            usage: NAMED_BLOCK_WRITE_USAGE,
+            help: NAMED_BLOCK_WRITE_HELP,
+            name: "named-block-write.sh",
+            options: vec!["--marker", "--issue", "--content-file", "--repo"],
+            required: 2,
+        }
+    }
+}
+
 /// Scan, validate, and run one named-block write.
 ///
 /// `marker_default` fixes the marker for `plan-block write`, whose command line
 /// carries no `--marker` at all.
 fn named_block_command(arguments: &[OsString], marker_default: Option<&str>) -> ExitCode {
-    let plan_only = marker_default.is_some();
-    let (usage, help, program) = if plan_only {
-        (
-            PLAN_BLOCK_WRITE_USAGE,
-            PLAN_BLOCK_WRITE_HELP,
-            "plan-block-write.sh",
-        )
-    } else {
-        (
-            NAMED_BLOCK_WRITE_USAGE,
-            NAMED_BLOCK_WRITE_HELP,
-            "named-block-write.sh",
-        )
-    };
-    let mut options: Vec<&'static str> = vec!["--issue", "--content-file", "--repo"];
-    if !plan_only {
-        options.insert(0, "--marker");
-    }
-    let parsed = parse_with_flags(arguments, &options, &["-h", "--help", "--delete"], 0);
-    if let Some(error) = parsed.value_error() {
-        return diagnostic_argparse_error(usage, program, error);
-    }
-    if help_requested(&parsed) {
-        diagnostic(help);
-        return ExitCode::SUCCESS;
-    }
-    let missing = options
-        .iter()
-        .take(if plan_only { 1 } else { 2 })
-        .filter(|option| parsed.value(option).is_none())
-        .copied()
-        .collect::<Vec<&str>>();
-    if !missing.is_empty() {
-        return diagnostic_argparse_error(
-            usage,
-            program,
-            &format!(
-                "the following arguments are required: {}",
-                missing.join(", ")
-            ),
-        );
-    }
-    if let Some(error) = parsed.error() {
-        return diagnostic_argparse_error(usage, program, &error);
+    let program = NamedBlockProgram::resolve(marker_default);
+    let parsed = parse_with_flags(
+        arguments,
+        &program.options,
+        &["-h", "--help", "--delete"],
+        0,
+    );
+    if let Some(refusal) = named_block_line_refusal(&parsed, &program) {
+        return refusal;
     }
     let marker = marker_default.map_or_else(
         || {
@@ -571,10 +571,11 @@ fn named_block_command(arguments: &[OsString], marker_default: Option<&str>) -> 
     );
     if !named_block_marker_allowed(&marker) {
         if is_valid_named_block_marker(&marker) {
-            diagnostic(&format!("{program}: unsupported marker: {marker}"));
+            diagnostic(&format!("{}: unsupported marker: {marker}", program.name));
         } else {
             diagnostic(&format!(
-                "{program}: --marker must match ^[a-z0-9][a-z0-9-]*$"
+                "{}: --marker must match ^[a-z0-9][a-z0-9-]*$",
+                program.name
             ));
         }
         return ExitCode::from(1);
@@ -585,19 +586,23 @@ fn named_block_command(arguments: &[OsString], marker_default: Option<&str>) -> 
         .to_string_lossy()
         .into_owned();
     let Some(number) = positive_issue(&issue) else {
-        diagnostic(&format!("{program}: --issue must be a positive integer"));
+        diagnostic(&format!(
+            "{}: --issue must be a positive integer",
+            program.name
+        ));
         return ExitCode::from(1);
     };
     let content_file = parsed.value("--content-file").map(PathBuf::from);
     let delete = parsed.flag("--delete");
     if delete && content_file.is_some() {
         diagnostic(&format!(
-            "{program}: --delete and --content-file are mutually exclusive"
+            "{}: --delete and --content-file are mutually exclusive",
+            program.name
         ));
         return ExitCode::from(1);
     }
     if !delete && content_file.is_none() {
-        diagnostic(usage);
+        diagnostic(program.usage);
         return ExitCode::from(1);
     }
     let content = match content_file.as_deref() {
@@ -624,6 +629,45 @@ fn named_block_command(arguments: &[OsString], marker_default: Option<&str>) -> 
         repository,
         content,
     })
+}
+
+/// Report the `argparse`-shaped refusals a writer's command line can take.
+///
+/// The order is `argparse`'s own: a value error stops the scan, `--help` wins
+/// next, then the required-option check, and only then unrecognized tokens.
+fn named_block_line_refusal(
+    parsed: &ParsedCommandLine,
+    program: &NamedBlockProgram,
+) -> Option<ExitCode> {
+    if let Some(error) = parsed.value_error() {
+        return Some(diagnostic_argparse_error(
+            program.usage,
+            program.name,
+            error,
+        ));
+    }
+    if help_requested(parsed) {
+        diagnostic(program.help);
+        return Some(ExitCode::SUCCESS);
+    }
+    let missing = program.options[..program.required]
+        .iter()
+        .filter(|option| parsed.value(option).is_none())
+        .copied()
+        .collect::<Vec<&str>>();
+    if !missing.is_empty() {
+        return Some(diagnostic_argparse_error(
+            program.usage,
+            program.name,
+            &format!(
+                "the following arguments are required: {}",
+                missing.join(", ")
+            ),
+        ));
+    }
+    parsed
+        .error()
+        .map(|error| diagnostic_argparse_error(program.usage, program.name, &error))
 }
 
 /// Compose, publish, and prove one named-block write.
