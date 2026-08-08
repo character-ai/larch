@@ -95,6 +95,52 @@ the separately validated installed cache root to `upgrade-larch run`. This
 keeps executable identity bound to the released working tree without treating
 the active old-session root as the executable owner.
 
+## Run-log, report, and rendering boundary
+
+`larch lint rule reporting-python-free` pins the closed #7683 command set:
+the 45 rows that still name the umbrella as their roadmap owner plus the nine
+rows its leaves migrated for an earlier owner (`run-log lifecycle-*` under
+#7826, `run-log checkpoint` and `run-log prepare-terminal-snapshot` under
+#7995, `gantt render` under #7680, and `analyze-issues render-chart` under
+#7682). Every pinned row must stay Rust-owned, or retired for `run-log flush`,
+with complete parity, consumer cutover, and Python removal, and must keep its
+exact migration leaf and its retired Python target. The rule rejects a restored
+Python registration in `python/larch/cli.py`, a restored module-level Python
+entrypoint, and any other ledger row that still names #7683 as its planning
+issue.
+
+That last check is what keeps a hand-off honest. #7683 owns no unmigrated
+command, so a row that still points at it is either a missed migration or a
+hand-off nobody wrote down. The audit in #8093 repointed 37 such rows to the
+umbrella that owns their remaining consumers:
+
+| Surface | Rows | Owning issue | Basis |
+| --- | ---: | --- | --- |
+| `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176, a #7682 leaf; the planning issue never followed. |
+| `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Live callers are the `/implement` prompts, the implementer agent base, `review-and-fix`, and the cross-repo failure-report script. |
+| `render reviewer`, `specialist`, `voter`, `findings-view`, `plan-review` | 5 | #7679 | Review-panel and voting prompt renderers, named by #8091 as staying with the review umbrella. |
+| `render lane-status` | 1 | #7678 | Vendor lane orchestration. |
+| `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
+| `render run-summary` | 1 | #7682 | Already recorded as a #7682 consumer cutover in the pending-consumer table below. |
+| `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #7681 | Step 2 dispatch and PR line counts. |
+| `token claude-source` | 1 | #7679 | Called from `skills/review/SKILL.md`. |
+| `token cost`, `token render-cost-line` | 2 | #7682 | The pricing consumers #8087 and #8088 already deferred there. |
+| The remaining 15 `token` verbs | 15 | #7684 | Research lane capture, ledger dumps, and the `measure-*` analytics, which is #7684's "deterministic models, aggregation, and report inputs" scope. |
+
+Two surfaces this umbrella touched are recorded rather than closed. Neither
+blocks #7683, and each names its own issue. `python/larch/report/run_log_commit.py`
+and `python/larch/report/run_log_legacy_archive.py` have no production importer
+left; their remaining symbols are reachable only from tests, and #8267 retires
+them. `/report-tokens` still renders its trend plots through a matplotlib child
+that step 2 of `skills/report-tokens/SKILL.md` runs, because #8088 declined to
+add an arbitrary-script process class for a chart renderer; #8268 owns that
+decision.
+
+Direct `bin/larch` execution stays outside this umbrella's surfaces. The
+`larch-runtime-entrypoint` rule already rejects it in `python/larch/**`,
+`skills/`, `.claude/skills/`, `agents/`, `hooks/`, and `scripts/*.sh`, and no
+tracked file in those roots references the binary.
+
 ## State transitions
 
 Keep `owner = "python"` and `consumer_cutover = "pending"` while Python owns
@@ -164,6 +210,13 @@ single Rust owner of the `claude_sub` model default and the long-context ledger
 alias, which `larch_adapters::phase_detail` now reuses. Pricing stays with issue
 8087, and `report-tokens analyze` switches in issue 8088.
 
+One extraction contract point changed deliberately, recorded here as well as at
+`crates/larch-core/src/report/token_scan.rs`. Python's `_epoch` resolves a
+timestamp with no UTC designator through `datetime.fromisoformat(...).timestamp()`,
+which reads it in the process's local zone; the port reads such a timestamp as
+UTC so extraction is deterministic across machines. Every timestamp larch writes
+carries an explicit `Z`, so no recorded run changes.
+
 Issue 8087 ports the pricing half: the per-model rate table, per-tier cache
 rates, environment rate overrides, the bucket-to-counts mapping, Python's
 rounding, and per-run cost aggregation. It adds no command either.
@@ -226,6 +279,13 @@ Python owners of their dependencies and became verbs there:
 of `larch.implement.architectural_assessment`). Neither adds a second
 implementation of anything: the logic has exactly one home, and the Rust command
 consumes it.
+
+One contract point changed deliberately. A `PR_URL` absent from
+`ship-pr-state.sh` now falls through to `finalize-state.sh` before the report
+prints `N/A`, matching how the same command already resolves `PR_NUMBER`. The
+retired Python owner wrote the fallback but could never reach it: its first read
+defaulted to the truthy string `N/A`, which short-circuited the `or`, so a run
+that recorded its PR during finalization printed `N/A` for a PR that existed.
 
 Issue 8091 moved `run-log render-session-transcript` to Rust and deleted
 `larch.rendering.render_session_transcript`.
