@@ -179,6 +179,54 @@ for the affected class. The reviewed class-specific enforcement toggle that
 follows a completed window does not change the classifier or its trusted-input
 contract.
 
+## Rust-selection critical-path measurement (2026-08-08)
+
+Issue #8274 compares three successful pull-request controls with three
+successful workflow attempts of the same immutable [#8288 pull-request merge
+candidate](https://github.com/character-ai/larch/pull/8288). The repeated
+attempts make scheduler and full-lane variation visible without changing the
+candidate. They are performance samples, not distinct live-observation rows.
+Every sample used `ubuntu-24.04`, proposed and ran `full` because this workflow
+change is a global input, had the coverage-target cache disabled, and completed
+`rust-full`, `rust-coverage`, and `rust-gate` successfully. The trusted-main
+policy restore and validation were skipped in every full-path control.
+
+The candidate assessment retained the base worktree: the pre-change controls
+showed only 0.21--0.24 seconds for its creation. Moving the trusted-main policy
+cache could not improve these full paths because its restore and validation were
+already skipped. Starting `rust-full` unconditionally was rejected because it
+would either run a second lane for selected `partial` or `skip` paths or weaken
+the `rust-coverage` assertion that exactly the selected lane passes. The safe
+reduction is a depth-two checkout, followed by a proof of both commits and base
+ancestry. Valid identities with insufficient history fetch complete branch
+history and repeat that proof; an invalid identity or failed proof remains an
+explicit `full` fallback.
+
+| Group | Pull-request run | Selection job | Checkout | Trusted history | Base worktree | Selector command | Policy restore / validation | Artifact upload | Prelude to `rust-full` | Selection-to-gate critical path |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| Before | [run 31279643073](https://github.com/character-ai/larch/actions/runs/31279643073/job/93158778455) | 19 s | 14 s | full checkout | 0.24 s | 0.62 s remainder | skipped / skipped | 1 s | 22 s | 424 s |
+| Before | [run 31278658870](https://github.com/character-ai/larch/actions/runs/31278658870/job/93156285633) | 29 s | 14 s | full checkout | 0.21 s | 8.50 s remainder | skipped / skipped | 1 s | 33 s | 436 s |
+| Before | [run 31276770466](https://github.com/character-ai/larch/actions/runs/31276770466/job/93151508673) | 23 s | 16 s | full checkout | 0.23 s | 0.63 s remainder | skipped / skipped | 1 s | 27 s | 398 s |
+| Before median | three controls | 23 s | 14 s | full checkout | 0.23 s | 0.63 s remainder | skipped / skipped | 1 s | 27 s | 424 s |
+| After | [#8288, attempt 1](https://github.com/character-ai/larch/actions/runs/31281254323/job/93162874969) | 10 s | 3 s | 0.006 s, bounded depth | 0.225 s | 0.100 s | skipped / skipped | 1 s | 14 s | 435 s |
+| After | [#8288, attempt 2](https://github.com/character-ai/larch/actions/runs/31281254323/job/93163683498) | 8 s | 2 s | 0.007 s, bounded depth | 0.229 s | 0.111 s | skipped / skipped | 1 s | 12 s | 395 s |
+| After | [#8288, attempt 3](https://github.com/character-ai/larch/actions/runs/31281254323/job/93164428379) | 8 s | 2 s | 0.007 s, bounded depth | 0.225 s | 0.110 s | skipped / skipped | 1 s | 12 s | 422 s |
+| After median | three attempts | 8 s | 2 s | 0.007 s, bounded depth | 0.225 s | 0.110 s | skipped / skipped | 1 s | 12 s | 422 s |
+
+`Prelude to rust-full` measures from `rust-selection` start to `rust-full`
+start; the critical path measures from `rust-selection` start to `rust-gate`
+completion. GitHub's job and step timestamps are whole seconds; the history,
+worktree, and selector-command entries are the new millisecond measurements.
+Before the change, the combined selector step exposed only the remainder after
+worktree creation.
+
+The median serialized prelude fell from 27 to 12 seconds, while selection job
+duration fell from 23 to 8 seconds. The three-sample end-to-end median changed
+from 424 to 422 seconds; the full Rust lane varied more than the remaining
+selector cost, so this is not evidence for another broad topology change. The
+bounded checkout is retained because it removes a measured serial cost while
+preserving trusted-base execution, artifact upload, and fail-closed behavior.
+
 ## Timing interpretation and rollback
 
 The historical full `rust-coverage` samples above are contextual baselines: the

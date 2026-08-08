@@ -4209,11 +4209,14 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "fetch-depth: 0" not in selector_job
     assert "ref: ${{ github.sha }}" in selector_job
     assert "git worktree add --detach" in selector_job
+    assert "valid_commit_sha()" in selector_job
+    assert 'git cat-file -e "${RUST_CI_BASE_SHA}^{commit}"' in selector_job
     assert 'git merge-base --is-ancestor "$RUST_CI_BASE_SHA" "$RUST_CI_HEAD_SHA"' in selector_job
     assert "full-history-fallback" in selector_job
     assert "git fetch --no-tags --prune --unshallow origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
     assert "git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
     assert "selector-history-unavailable-or-untrusted" in selector_job
+    assert "selector-base-worktree-unavailable" in selector_job
     assert "RUST_SELECTION_HISTORY_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_WORKTREE_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_COMMAND_MILLISECONDS" in selector_job
@@ -4328,6 +4331,12 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "75%) shorter on that measured Rust PR critical path",
         "does not change the classifier or its trusted-input\ncontract",
         "Do not count a label-forced run",
+        "Rust-selection critical-path measurement (2026-08-08)",
+        "#8288, attempt 3",
+        "Before median",
+        "After median",
+        "27 to 12 seconds",
+        "23 to 8 seconds",
         "#8002",
         "#8039",
     ):

@@ -286,9 +286,10 @@ remain visible in the job log.
 `rust-selection` runs only for pull requests. It checks out GitHub's tested
 merge candidate at bounded depth, then proves the base and candidate commits
 and their ancestry before creating a detached worktree at the pull-request
-base. If the bounded checkout cannot prove that history, it fetches full branch
-history and repeats the proof; a failed fetch or proof selects `full`. It then
-executes the stdlib-only selector from that trusted base worktree. The selector
+base. If valid commit identities need more history, it fetches full branch
+history and repeats the proof; a malformed identity or failed fetch or proof
+selects `full`. It then executes the stdlib-only selector from that trusted
+base worktree. The selector
 inspects the candidate checkout only as data. A pull request therefore cannot
 change selector code and use that change to choose a narrower path; changes to
 the selector, CI workflow, coverage action, or its redaction/process
