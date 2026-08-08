@@ -25,6 +25,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
+    time::Duration,
 };
 
 use larch_adapters::github::IssueMutationOwner;
@@ -41,9 +42,11 @@ use larch_core::{
     summarize_to_github_limit, topological_create_order, unsigned_integer,
     validate_issue_cap_input, working_batch, wrap_oos_body,
 };
+use larch_core::{ChildEnvironment, ExternalProgram, LarchProgram};
 
 use crate::{
     argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
+    child_process::{bounded_request, run_bounded},
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
     issue_create_commands::{CreateSpec, create_issue},
@@ -54,6 +57,7 @@ use crate::{
         checkpoint, conflict_cap, issue_cap_value, materialize, read_state, resolve_design_path,
         state_value, write_conflict_deps,
     },
+    python_verb::plugin_root_directory,
 };
 
 /// Usage line an unusable `oos file` command line is refused with.
@@ -76,6 +80,14 @@ const COMBINED_FILE: &str = "oos-combined.md";
 const SENTINEL_FILE: &str = "oos-issues-created.md";
 /// Marker prefix a carve-out run records instead of a live URL.
 const SKIPPED_URL_PREFIX: &str = "skipped://oos/";
+/// Deadline the combine launcher assumes when the caller names an unusable one.
+const COMBINE_DEFAULT_TIMEOUT_SECONDS: u64 = 300;
+/// Headroom over the launcher's own deadline, so it reports its own timeout.
+const COMBINE_TIMEOUT_MARGIN: Duration = Duration::from_secs(60);
+/// Grace the combine child gets to exit after cancellation.
+const COMBINE_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+/// How many bytes of the combine child's streams are retained.
+const COMBINE_OUTPUT_LIMIT: usize = 64 * 1024;
 
 // ---------------------------------------------------------------------------
 // Effect seam
@@ -288,33 +300,45 @@ impl FilingGateway for LiveFiling {
         timeout: &str,
         tmpdir: &Path,
     ) -> Result<(), String> {
+        // The Codex boundary stays a process boundary: `agent launch-codex-exec`
+        // owns the sandbox, the deadline, and the usage accounting, and it
+        // publishes its own rows, so it runs as a bounded captured child of the
+        // verified executable rather than in this verb's contract stream.
         let workdir = env::current_dir().map_err(|error| error.to_string())?;
-        let argv: Vec<OsString> = [
-            "agent",
-            "launch-codex-exec",
-            "--output",
-            &output.to_string_lossy(),
-            "--timeout",
-            timeout,
-            "--prompt-file",
-            &prompt.to_string_lossy(),
-            "--sandbox",
-            "read-only",
-            "--workdir",
-            &workdir.to_string_lossy(),
-            "--add-dir",
-            &tmpdir.to_string_lossy(),
+        let root = plugin_root_directory().ok_or("could not resolve the plugin root")?;
+        let program = LarchProgram::binary(&root)
+            .map_err(|_error| "could not resolve the larch executable")?;
+        let arguments: Vec<OsString> = [
+            OsString::from("agent"),
+            OsString::from("launch-codex-exec"),
+            OsString::from("--output"),
+            output.as_os_str().to_owned(),
+            OsString::from("--timeout"),
+            OsString::from(timeout),
+            OsString::from("--prompt-file"),
+            prompt.as_os_str().to_owned(),
+            OsString::from("--sandbox"),
+            OsString::from("read-only"),
+            OsString::from("--workdir"),
+            workdir.into_os_string(),
+            OsString::from("--add-dir"),
+            tmpdir.as_os_str().to_owned(),
         ]
         .into_iter()
-        .map(OsString::from)
         .collect();
-        // The Codex boundary stays a process boundary: the external agent runs
-        // under its own sandbox and timeout, which the launcher owns.
-        let status = std::process::Command::new(env::current_exe().map_err(|e| e.to_string())?)
-            .args(&argv)
-            .status()
-            .map_err(|error| error.to_string())?;
-        if status.success() {
+        let seconds = timeout.parse().unwrap_or(COMBINE_DEFAULT_TIMEOUT_SECONDS);
+        let request = bounded_request(
+            ExternalProgram::Larch(program),
+            arguments,
+            Duration::from_secs(seconds).saturating_add(COMBINE_TIMEOUT_MARGIN),
+            COMBINE_SHUTDOWN_GRACE,
+            COMBINE_OUTPUT_LIMIT,
+        )
+        .map(|request| {
+            request.with_environment(ChildEnvironment::ClaudePluginRoot, root.into_os_string())
+        })?;
+        let output = run_bounded(request)?;
+        if output.status().code() == Some(0) {
             Ok(())
         } else {
             Err("codex combine launcher failed".to_owned())
