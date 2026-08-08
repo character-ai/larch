@@ -48,6 +48,7 @@ Commands:
   progress           Clone-scoped progress breadcrumbs and the larch statusline
   object-store       Narrow provider transports used by Python-owned run-log workflows
   release            Release-maintenance commands
+  final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
   session            Session state compatibility commands
   slack              Slack announcement helpers

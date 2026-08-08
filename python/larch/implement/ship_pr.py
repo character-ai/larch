@@ -14,7 +14,6 @@ from larch.core import rust_runtime as run_log_flush
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.git import git
-from larch.report import final_report
 from larch.outcomes import Outcome
 from larch.report import run_log_manifest
 from larch.state import finalize
@@ -79,6 +78,15 @@ def _ship_has_active_failure_signal(tmpdir: Path) -> bool:
     )
 
 
+def _summary_heading_is_stalled(text: str) -> bool:
+    """Whether a rendered summary still carries a stalled run heading."""
+    return any(
+        line.strip().startswith("## /")
+        and line.strip().endswith((": stalled", "\u2014 stalled"))
+        for line in text.splitlines()
+    )
+
+
 def _staged_summary_heading_is_stalled(*, ctx: RunContext) -> bool:
     run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id:
@@ -86,7 +94,7 @@ def _staged_summary_heading_is_stalled(*, ctx: RunContext) -> bool:
     summary = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / "final-summary.md"
     if not summary.is_file():
         return False
-    return final_report.summary_heading_is_stalled(summary.read_text(encoding="utf-8", errors="replace"))
+    return _summary_heading_is_stalled(summary.read_text(encoding="utf-8", errors="replace"))
 
 
 def _live_recovered_outcome(runner: Runner, ctx: RunContext) -> str:

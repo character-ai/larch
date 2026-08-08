@@ -69,7 +69,7 @@ Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/s
 
 ## Terminal manifest contract
 
-Terminal runs must leave explicit `steps_ran` values through `python/cli.py final-report write`. The full invariant lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.md`.
+Terminal runs must leave explicit `steps_ran` values through `scripts/larch.sh final-report write`. The full invariant lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.md`.
 
 ## Execution-issues checkpoint and metadata refresh
 

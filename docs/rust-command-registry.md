@@ -142,11 +142,12 @@ Python consumer moves, the Python module remains the production owner.
 | Library (Rust module) | Planning leaf | Pending Python consumers | Consumer cutover leaves |
 | --- | --- | --- | --- |
 | `larch.report.markdown_block` (`larch_core::report`) | #8089 | `larch.report.tokens`, `larch.report.timing` | #8088 (`report-tokens`), #8083 (`timing`) |
-| `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.report.final_report`, `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #8090 (`final-report`), #7682 (issue surfaces), later run-log leaves |
+| `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #7682 (issue surfaces), later run-log leaves |
 | `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
-| `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost` | #8090 (`final-report`), #7682 (issue surfaces), later `token` cutovers |
-| `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.tokens`, `larch.git.pr_body`, `larch.report.final_report`, `larch.design.design_summary`, `larch.calibration.difficulty_calibration`, `larch.issue.analyze_bugs` | #8090 (`final-report`), #7682 (`pr create`), later `token cost` and `token render-cost-line` cutovers |
+| `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost` | #7682 (issue surfaces), later `token` cutovers |
+| `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.tokens`, `larch.git.pr_body`, `larch.design.design_summary`, `larch.calibration.difficulty_calibration`, `larch.issue.analyze_bugs` | #7682 (`pr create`), later `token cost` and `token render-cost-line` cutovers |
+| `larch.git.pr_body.render_run_summary` (`larch_core::report::run_summary`) | #8090 | `larch.git.pr_body` (`render run-summary`), `larch.design.design_summary` | #7680 (`/design` summary), #7682 (`render run-summary`) |
 | `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch.issue.issue_wire.extract_scope_paths` (`larch_core::plan_scope`) | #8171 | `larch.design.decompose`, `larch.implement.dispatch_step2`, `larch.implement.scope_disposition` | #7680 (`/design` decompose), #7681 (`/implement` dispatch and scope disposition) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
@@ -193,9 +194,37 @@ and adding one for a chart renderer is a security-relevant change that belongs
 to its own reviewed leaf, not to a renderer port.
 
 `report_tokens_cost`, `report_tokens_models`, `report_tokens_scan`, and
-`analysis_state` stay Python-owned. They serve consumers outside
-`/report-tokens` whose cutovers belong to #8090 and #7682, so `token cost` and
+`analysis_state` stay Python-owned. Issue 8090 removed `larch.report.final_report`
+from their consumer set by pricing the terminal report through
+`larch_core::report::token_cost` directly; the remaining consumers sit outside
+`/report-tokens` and belong to #7682, so `token cost` and
 `token render-cost-line` stay Python-owned with them.
+
+Issue 8090 moved `final-report write` and `final-report step18b` to Rust and
+deleted `larch.report.final_report` plus the `larch.git.pr_body` final-report
+compatibility wrappers. `larch_core::report::run_summary` is the single Rust
+owner of the `## /<skill> run <id>: <outcome>` block, and
+`larch_core::report::final_report` owns the derived tally, duration, difficulty,
+dynamic-archetype, out-of-scope, outcome-backstop, stalled-summary, and
+token-pricing-argument derivations. The command layer reuses
+`larch_adapters::phase_detail` for the review-phase prefix,
+`larch_core::report::exec_issue_detail` for the issue-detail prefix,
+`larch_adapters::stall_recovery` for the normalized outcome, and
+`larch_adapters::run_log_manifest` for the terminal manifest stamp.
+
+Five inputs keep Python owners this leaf does not move, and each is reached
+through the one `python_verb` seam rather than a second implementation: the
+rendered token report (`token report`), PR line counts
+(`token compute-pr-line-counts`), the tracking-issue upsert
+(`tracking-issue upsert-summary`), the plan-coverage line, and the architectural
+assessment sections. The last two moved out of the deleted module into the
+Python owners of their dependencies and became verbs there:
+`implement scope-disposition summary-line` (owned by #7681 with the rest of
+`larch.implement.scope_disposition`) and
+`architectural-assessment final-report-sections` (owned by #7679 with the rest
+of `larch.implement.architectural_assessment`). Neither adds a second
+implementation of anything: the logic has exactly one home, and the Rust command
+consumes it.
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python

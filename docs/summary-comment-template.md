@@ -36,4 +36,4 @@ Flow section.
 The `larch:metadata` body may include `Force: true` when the run was started
 with `/implement --force`; the line is omitted when false.
 
-**Edit when**: Update this docs page when changing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `scripts/larch.sh execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `python/cli.py final-report write` / Step 16-17 final-report paths. This page is not a runtime `/implement` reference.
+**Edit when**: Update this docs page when changing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `scripts/larch.sh execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `scripts/larch.sh final-report write` / Step 16-17 final-report paths. This page is not a runtime `/implement` reference.

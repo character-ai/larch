@@ -91,6 +91,11 @@ impl CleanInstallCase {
             | "clean-install-umbrella-verify-completion"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr"
+            // Neither final-report verb declares a `--help` action either, so
+            // the clean-install token reads as an unrecognized argument and each
+            // refuses for its missing `--implement-tmpdir`.
+            | "clean-install-final-report-step18b"
+            | "clean-install-final-report-write"
             // None of the four execution-issue verbs declares a `--help`
             // action, so the clean-install token reads as an unrecognized
             // argument and each refuses with the same usage exit code.
@@ -823,6 +828,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-report-tokens-analyze",
         "report-tokens",
         "analyze",
+    ),
+    CleanInstallCase::new("clean-install-final-report-write", "final-report", "write"),
+    CleanInstallCase::new(
+        "clean-install-final-report-step18b",
+        "final-report",
+        "step18b",
     ),
     CleanInstallCase::new("clean-install-timing-dump", "timing", "dump"),
     CleanInstallCase::new(

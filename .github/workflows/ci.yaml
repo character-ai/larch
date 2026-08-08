@@ -1518,5 +1518,4 @@ jobs:
         run: |
           cd python
           python3 -m pytest --durations=0 -m rust_integration \
-            tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap \
-            tests/git/test_pr_body.py::test_write_final_report_renders_panel_failed_merge_downgrade
+            tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap

@@ -8,7 +8,7 @@ The markdown body is produced by [`python/cli.py render run-summary`](../../../p
 
 ## Implement outcome enum (`--outcome` raw values)
 
-These values are emitted by the shared `scripts/larch.sh stall-recovery normalize-outcome` helper. `python/cli.py final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `python/tests/report/test_final_report.py` stays aligned with the helper.
+These values are emitted by the shared `scripts/larch.sh stall-recovery normalize-outcome` helper. `scripts/larch.sh final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `crates/larch-cli/tests/final_report.rs` stays aligned with the helper.
 
 1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run`: `FORKED_TARGET=true`.
@@ -24,7 +24,7 @@ These values are emitted by the shared `scripts/larch.sh stall-recovery normaliz
 
 If the run ends before Step 9a.1 or before `oos file` succeeds, the terminal manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. Step 9a.1 completion requires post-checkpoint `run-statistics.md`; explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file. `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans. `oos-issues.ndjson` without `run-statistics.md` is provisional disposition evidence and must not suppress `steps_ran.step9a1=false`.
 
-`python/cli.py final-report write` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `run-log manifest` call fails finalization. `scripts/larch.sh run-log verify-completeness` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `python/cli.py audit-runs scan-run`.
+`scripts/larch.sh final-report write` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `run-log manifest` call fails finalization. `scripts/larch.sh run-log verify-completeness` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `python/cli.py audit-runs scan-run`.
 
 ## Usage
 
@@ -139,7 +139,7 @@ absent, or every available token bucket is zero, the in-process writer passes
 
 ## Render failure behavior
 
-The wrapper delegates to `python/cli.py final-report write`, which renders the
+The wrapper delegates to `scripts/larch.sh final-report write`, which renders the
 summary in process via `python/cli.py render run-summary` helpers. There is no
 separate Bash self-composed renderer fallback. Tracking-comment failures still
 return `STATUS=failed` after writing `summary-final.md`; repo-unavailable runs
@@ -147,5 +147,5 @@ skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.
 
 ## Test authority
 
-- **Behavioral authority**: `python/tests/report/test_final_report.py` (`make test-write-final-report` → `write-final-report-py-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
+- **Behavioral authority**: `crates/larch-cli/tests/final_report.rs` (`make test-write-final-report` → `write-final-report-py-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
 - **Delegation smoke**: `skills/implement/scripts/test-write-final-report.sh` (`write-final-report-bash-harness`) covers only thin-wrapper plugin-root selection, exact `final-report write` CLI routing, argv forwarding, exit-status forwarding, and stdout/stderr passthrough.

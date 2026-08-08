@@ -82,7 +82,9 @@ from larch.issue import migration_governance
 
 
 def _write_final_report_comment(ctx: RunContext) -> None:
-    result = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
+    result = run_log_flush.final_report_write(
+        proc.ProcRunner(), implement_tmpdir=str(ctx.tmpdir), comment_only=True
+    )
     if result.exit_code != 0:
         raise ShipError(result.error or "final report comment write failed")
 

@@ -761,7 +761,7 @@ def run(repo_root: Path) -> list[str]:
                 "python/cli.py ship seed-initial-state` owns the canonical initial",
                 "CI_PASSED=true` does not append execution issues",
                 "## Terminal manifest contract",
-                "Terminal runs must leave explicit `steps_ran` values through `python/cli.py final-report write`.",
+                "Terminal runs must leave explicit `steps_ran` values through `scripts/larch.sh final-report write`.",
                 "skills/implement/scripts/write-final-report.md",
                 "python/cli.py pr checks",
             ]:
@@ -953,7 +953,7 @@ def run(repo_root: Path) -> list[str]:
                 "## Bail-time `steps_ran` invariant",
                 "If the run ends before Step 9a.1 or before `oos file` succeeds",
                 "explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file",
-                "`python/cli.py final-report write` records explicit `steps_ran.step9a1=false`",
+                "`scripts/larch.sh final-report write` records explicit `steps_ran.step9a1=false`",
                 "`scripts/larch.sh run-log verify-completeness` treats missing/null `steps_ran` like `jq",
             ]:
                 require_text(write_final_text, needle, "write-final-report.md bail-time steps_ran invariant")

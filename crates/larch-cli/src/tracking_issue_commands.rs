@@ -926,6 +926,33 @@ pub fn upsert_summary(arguments: &[OsString]) -> ExitCode {
     )
 }
 
+/// Upsert one summary comment for an in-process caller that owns its stdout.
+///
+/// The terminal final report is the only such caller; routing it here keeps the
+/// live-mutation gate, redaction, and run-lease refresh under one owner instead
+/// of re-entering the command through a child process.
+///
+/// # Errors
+///
+/// Returns the operator-facing refusal message.
+pub fn upsert_summary_rows(
+    issue: &str,
+    marker: &str,
+    content_file: &str,
+    repository: Option<&str>,
+) -> Result<Vec<(&'static str, String)>, String> {
+    upsert_summary_with(
+        &LiveEffects,
+        issue,
+        marker,
+        content_file,
+        repository,
+        None,
+        &env::var("RUN_ID").unwrap_or_default(),
+    )
+    .map_err(|refusal| refusal.envelope().0)
+}
+
 /// Accept only a single-line `<!-- larch:… -->` marker.
 fn validate_marker_shape(marker: &str) -> Result<(), Refusal> {
     if !marker.starts_with("<!-- larch:")

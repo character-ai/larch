@@ -14,7 +14,7 @@ import pytest
 
 from larch.core import config, rust_runtime
 from larch.core import rust_runtime as run_log_flush
-from larch.report import final_report
+from larch.implement import architectural_assessment
 from larch.report import run_log_batch
 from larch.report import run_log_manifest
 from larch.implement import ship
@@ -76,7 +76,7 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
 
 def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep ship orchestration tests isolated from the Rust bootstrap."""
-    original_run = final_report.subprocess.run
+    original_run = subprocess.run
 
     def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if "run-log" not in argv or "manifest" not in argv:
@@ -105,7 +105,7 @@ def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(final_report.subprocess, "run", run_manifest_in_process)
+    monkeypatch.setattr(subprocess, "run", run_manifest_in_process)
 
 
 def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_resume.ResumePlan:
@@ -1555,13 +1555,16 @@ def _prepare_recovered_stalled_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     recovered = "pr-created-draft" if draft else "pr-created"
 
     def render_recovered_summary(*_args: object, **kwargs: object) -> run_log_flush.RunLogRefreshOutput:
+        # Stand in for the Rust `final-report write` refresh, whose own
+        # composition is covered by crates/larch-cli/tests/final_report.rs.
         active = cast("RunContext", kwargs["ctx"])
-        rc, _url, error = final_report.write_final_report(
-            Path(active.tmpdir),
-            skip_tracking_upsert=True,
-            normalized_outcome_override=recovered,
+        summary = (
+            Path(active.tmpdir) / "larch-logs" / "implement" / "run-abc" / "final-summary.md"
         )
-        assert rc == 0, error
+        _ = summary.write_text(
+            f"## /implement run run-abc: {recovered}\n\n- **Outcome**: \u2705 DONE\n- **PR**: #7\n",
+            encoding="utf-8",
+        )
         return run_log_flush.RunLogRefreshOutput(skipped=False, reason="")
 
     monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", render_recovered_summary)
@@ -7393,9 +7396,8 @@ def _write_minimal_final_report_state(tmp_path: Path) -> None:
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
 
-def _stub_final_report_cost_and_assessment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda **_kw: {"cost_unavailable": True})
-    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_args, **_kwargs: {})
+def _stub_final_report_head_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(architectural_assessment, "_current_head_sha", lambda: "head")
 
 
 def test_guidelines_invalidate_removes_note_from_final_report(
@@ -7403,7 +7405,7 @@ def test_guidelines_invalidate_removes_note_from_final_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_final_report_state(tmp_path)
-    _stub_final_report_cost_and_assessment(monkeypatch)
+    _stub_final_report_head_sha(monkeypatch)
     ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
         note_text="Guideline note\n",
@@ -7413,12 +7415,8 @@ def test_guidelines_invalidate_removes_note_from_final_report(
     )
 
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
-    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
-    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
-    assert (rc, err) == (0, "")
-    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "## Architectural guidelines" not in summary
+    assert "## Architectural guidelines" not in architectural_assessment.final_report_sections(tmp_path)
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
@@ -7427,7 +7425,7 @@ def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_final_report_state(tmp_path)
-    _stub_final_report_cost_and_assessment(monkeypatch)
+    _stub_final_report_head_sha(monkeypatch)
     ship.architectural_guidelines.write_staged_assessment(
         outcome="clean",
         implement_tmpdir=tmp_path,
@@ -7438,11 +7436,8 @@ def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report
         diff_text="implementation diff",
     )
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
-    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
-    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
-    assert (rc, err) == (0, "")
-    assert "## Architectural guidelines" not in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## Architectural guidelines" not in architectural_assessment.final_report_sections(tmp_path)
 
 
 def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:

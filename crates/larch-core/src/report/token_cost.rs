@@ -643,7 +643,7 @@ impl ClaudeCounts {
     }
 
     /// Read one Claude-shaped bucket, folding legacy cache creation into 5m.
-    fn from_bucket(bucket: &Map<String, Value>) -> Self {
+    pub(super) fn from_bucket(bucket: &Map<String, Value>) -> Self {
         let legacy = safe_int(bucket.get("cache_create"), 0);
         let mut five_minute = safe_int(bucket.get("cache_create_5m"), 0);
         let one_hour = safe_int(bucket.get("cache_create_1h"), 0);
@@ -659,7 +659,7 @@ impl ClaudeCounts {
         }
     }
 
-    const fn add(&mut self, other: Self) {
+    pub(super) const fn add(&mut self, other: Self) {
         self.input += other.input;
         self.cache_read += other.cache_read;
         self.cache_create_5m += other.cache_create_5m;
@@ -691,6 +691,22 @@ pub struct CodexCounts {
 }
 
 impl CodexCounts {
+    /// Read one Codex-shaped report bucket.
+    pub(super) fn from_bucket(bucket: &Map<String, Value>) -> Self {
+        Self {
+            input: safe_int(bucket.get("input"), 0),
+            cached_input: safe_int(bucket.get("cached_input"), 0),
+            output: safe_int(bucket.get("output"), 0),
+        }
+    }
+
+    /// Accumulate one per-model bucket into this display bucket.
+    pub(super) const fn add(&mut self, other: Self) {
+        self.input += other.input;
+        self.cached_input += other.cached_input;
+        self.output += other.output;
+    }
+
     /// Sum every component.
     #[must_use]
     pub const fn total(&self) -> i64 {

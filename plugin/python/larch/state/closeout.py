@@ -159,13 +159,13 @@ def step_16(argv: list[str] | None = None) -> int:
     plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
+    cli = str(plugin_root / "python" / "cli.py")
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     run_id = _read_key(path=tmpdir / "session-env.sh", key="LARCH_RUN_ID", default=env.get("RUN_ID", ""))
     if not run_id:
         run_id = _read_key(path=tmpdir / "ship-pr-state.sh", key="RUN_ID", default="")
     if not run_id:
         run_id = _read_key(path=tmpdir / "finalize-state.sh", key="RUN_ID", default="")
-    cli = str(plugin_root / "python" / "cli.py")
     _run([str(larch_entrypoint(plugin_root)), "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 16 — rejected findings"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _run([sys.executable, cli, "review-and-fix", "write-rejected", "--implement-tmpdir", str(tmpdir), "--run-id", run_id, "--log-root", str(tmpdir / "larch-logs")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return 0
@@ -268,13 +268,12 @@ def step_17(argv: list[str] | None = None) -> int:
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
-    cli = str(plugin_root / "python" / "cli.py")
     _run([str(larch_entrypoint(plugin_root)), "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 17 — final report"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     summary = tmpdir / "summary-final.md"
     log = tmpdir / "step17-write-final-report.failure.log"
     with suppress(OSError):
         log.write_text("", encoding="utf-8")
-    cmd = [sys.executable, cli, "final-report", "write", "--implement-tmpdir", str(tmpdir)]
+    cmd = [str(larch_entrypoint(plugin_root)), "final-report", "write", "--implement-tmpdir", str(tmpdir)]
     if args.no_print_stdout:
         backup = tmpdir / ".summary-final.pre-step17.bak"
         had_backup = False
@@ -302,7 +301,7 @@ def step_17(argv: list[str] | None = None) -> int:
             plugin_root=plugin_root,
             env=env,
             site="Step 17 — final report",
-            tool="python/cli.py final-report write",
+            tool="scripts/larch.sh final-report write",
             exit_code=completed.returncode,
             category="Tool Failures",
             output_file=log,
@@ -334,7 +333,7 @@ def step_17(argv: list[str] | None = None) -> int:
             plugin_root=plugin_root,
             env=env,
             site="Step 17 — final report",
-            tool="python/cli.py final-report write",
+            tool="scripts/larch.sh final-report write",
             exit_code=completed.returncode,
             category="Tool Failures",
             output_file=log,

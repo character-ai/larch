@@ -1561,7 +1561,101 @@ def _emit_coverage(coverage: PlanCoverage) -> None:
         logging_util.emit_kv(key=key, value=str(value))
 
 
-def scope_disposition_main(argv: list[str] | None = None) -> int:
+_STALE_LIVE_COVERAGE_MISMATCH = "coverage artifact does not match live repository inputs"
+
+
+def _is_stale_live_coverage_mismatch(exc: BaseException) -> bool:
+    """True only for the canonical post-merge live-fingerprint ShipError."""
+    return isinstance(exc, ShipError) and str(exc) == _STALE_LIVE_COVERAGE_MISMATCH
+
+
+def plan_coverage_summary_line(
+    tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
+    """Render the final report's optional `- **Plan coverage**:` line body."""
+    from larch.report import progress_file  # noqa: PLC0415 - local import avoids a progress/scope import cycle.
+
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=tmpdir)
+    if repo_root is None:
+        if load_coverage(tmpdir) is None:
+            if disposition_path(tmpdir).exists() or disposition_path(tmpdir).is_symlink():
+                _ = load_disposition(tmpdir)
+                raise ShipError("scope disposition exists without trusted coverage")
+            return ""
+        raise ShipError("persisted repository root is required for coverage validation")
+    try:
+        coverage = load_live_coverage(
+            tmpdir=tmpdir, repo_root=repo_root, manifest_path=manifest_path
+        )
+    except ShipError as exc:
+        if _is_stale_live_coverage_mismatch(exc):
+            if not (tmpdir / "post-merge-sentinel").is_file():
+                raise
+            persisted_coverage = load_coverage(tmpdir)
+            if persisted_coverage is None:
+                raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
+            _ = load_disposition(tmpdir, coverage=persisted_coverage)
+            return ""
+        raise
+    if coverage is None:
+        if disposition_path(tmpdir).exists() or disposition_path(tmpdir).is_symlink():
+            _ = load_disposition(tmpdir)
+            raise ShipError("scope disposition exists without trusted coverage")
+        return ""
+    record = load_disposition(tmpdir, coverage=coverage)
+    disposition = record.disposition if record is not None else "none"
+    followup = (
+        f"; follow-up #{record.followup_issue_number}"
+        if record is not None and record.followup_issue_number
+        else ""
+    )
+    return (
+        f"{coverage.touched}/{coverage.total} firm headings; "
+        f"band: {coverage.band}; disposition: {disposition}; "
+        f"todos_left: {coverage.todos_left_count}{followup}"
+    )
+
+
+def plan_coverage_summary_line_or_empty(
+    tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
+    """Optional plan-coverage line for the final report; never fatal on staleness.
+
+    The final report is written after merge, when live coverage no longer matches
+    the persisted fingerprint (the same stale-live mismatch #6908 recovers in
+    teardown). That expected mismatch must not abort the report, so it degrades
+    to an empty line. Genuine integrity failures still propagate.
+    """
+    try:
+        return plan_coverage_summary_line(tmpdir, manifest_path=manifest_path)
+    except ShipError as exc:
+        if not _is_stale_live_coverage_mismatch(exc):
+            raise
+        logging_util.BreadcrumbWriter().emit(
+            "final report: live coverage no longer matches repository inputs; "
+            "omitting optional plan-coverage line",
+            quiet=False,
+        )
+        return ""
+
+
+def _emit_plan_coverage_summary_line(
+    tmpdir: Path, *, manifest_path: Path | None
+) -> int:
+    """Emit the final report's plan-coverage line envelope."""
+    try:
+        line = plan_coverage_summary_line_or_empty(tmpdir, manifest_path=manifest_path)
+    except (OSError, ShipError) as exc:
+        # An explicit envelope key separates a coverage-integrity failure, which
+        # must fail the terminal report, from an unreachable helper, which must
+        # not.
+        logging_util.emit_kv(key="PLAN_COVERAGE_ERROR", value=_safe_line(exc))
+        return config.EXIT_STALLED
+    logging_util.emit_kv(key="PLAN_COVERAGE_LINE", value=line)
+    return config.EXIT_OK
+
+
+def scope_disposition_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return per declared action
     parser = argparse.ArgumentParser(prog="cli.py implement scope-disposition")
     _ = parser.add_argument(
         "action",
@@ -1571,6 +1665,7 @@ def scope_disposition_main(argv: list[str] | None = None) -> int:
             "validate-ship",
             "invalidate-if-stale",
             "render-deferred-inventory",
+            "summary-line",
         ),
     )
     _ = parser.add_argument(
@@ -1599,6 +1694,8 @@ def scope_disposition_main(argv: list[str] | None = None) -> int:
     manifest = Path(args.manifest_path) if args.manifest_path else None
     plan_file = Path(args.plan_file) if args.plan_file else None
     try:
+        if args.action == "summary-line":
+            return _emit_plan_coverage_summary_line(tmpdir, manifest_path=manifest)
         if args.action == "compute":
             coverage = compute_and_write_coverage(
                 tmpdir=tmpdir,

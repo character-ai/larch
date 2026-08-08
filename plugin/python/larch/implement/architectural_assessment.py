@@ -769,3 +769,64 @@ def sanitize_detail_main(argv: list[str] | None = None) -> int:
         diagnostic = diagnostic.decode("utf-8", errors="replace")
     print(sanitize_detail(diagnostic, implement_tmpdir=implement_tmpdir))
     return config.EXIT_OK
+
+
+def _current_head_sha() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],  # noqa: S607
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _consumable_note_section(implement_tmpdir: Path, *, kind: AssessmentKind, heading: str) -> str:
+    """Return one redacted assessment section, or empty when it is not consumable."""
+    from larch.git import pr_body  # noqa: PLC0415 - local import avoids the pr-body/assessment cycle.
+
+    head_sha = _current_head_sha()
+    consumable = (
+        architectural_guidelines.invariant_note_consumable
+        if kind is INVARIANTS
+        else architectural_guidelines.note_consumable
+    )
+    if not head_sha or not consumable(implement_tmpdir=implement_tmpdir, head_sha=head_sha):
+        return ""
+    note_path = (
+        architectural_guidelines.invariant_durable_note_path
+        if kind is INVARIANTS
+        else architectural_guidelines.durable_note_path
+    )
+    try:
+        note = note_path(implement_tmpdir).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    stripped = pr_body.redact_pr_body(note).strip()
+    return f"## {heading}\n\n{stripped}\n" if stripped else ""
+
+
+def final_report_sections(implement_tmpdir: Path) -> str:
+    """Render the final report's architectural invariant and guideline sections.
+
+    Fail-soft per section: an unavailable or non-consumable note contributes
+    nothing rather than failing the terminal report.
+    """
+    sections: list[str] = []
+    for kind, heading in ((INVARIANTS, "Architectural invariants"), (GUIDELINES, "Architectural guidelines")):
+        try:
+            section = _consumable_note_section(implement_tmpdir, kind=kind, heading=heading)
+        except Exception:  # the terminal report never fails on assessment prose.
+            section = ""
+        if section:
+            sections.append(section.strip("\n"))
+    return "\n\n".join(sections) + "\n" if sections else ""
+
+
+def final_report_sections_main(argv: list[str] | None = None) -> int:
+    """Print the architectural sections the terminal final report appends."""
+    parser = argparse.ArgumentParser(prog="cli.py architectural-assessment final-report-sections")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    _ = sys.stdout.write(final_report_sections(Path(args.implement_tmpdir)))
+    return config.EXIT_OK
