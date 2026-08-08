@@ -20,6 +20,10 @@
 //! are hashed, compared, and re-rendered, never interpreted.
 
 use crate::{
+    env_file::{
+        CommentPolicy, CrStrip, DuplicateInputPolicy, EmptyKeyPolicy, KeyPolicy, KvDocument,
+        MalformedLinePolicy, ParseOptions, WhitespacePolicy,
+    },
     issue::{
         UMBRELLA_PREFIX,
         input::{InputMode, parse_issue_input},
@@ -53,6 +57,10 @@ pub const MAX_PREPARED_DEPS_BYTES: usize = 16_384;
 const PREPARED_DEP_FIELD_COUNT: usize = 2;
 /// Hexadecimal characters in a SHA-256 digest.
 const SHA256_HEX_LENGTH: usize = 64;
+/// Version row every completion sentinel carries.
+pub const COMPLETION_SENTINEL_VERSION: &str = "2";
+/// Value the sentinel's proof row carries once verification has succeeded.
+const GRAPH_VERIFIED_VALUE: &str = "true";
 
 /// One stable, safe reason token for a refused umbrella operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,6 +111,17 @@ pub const INCOMPATIBLE_UMBRELLA: UmbrellaRefusal = UmbrellaRefusal("incompatible
 /// The prepared-partition carve-out was requested for an ineligible source.
 pub const INCOMPATIBLE_MANAGED_PARTITION: UmbrellaRefusal =
     UmbrellaRefusal("incompatible-managed-partition");
+/// The final title or body does not carry the umbrella contract.
+pub const INVALID_FINAL_UMBRELLA: UmbrellaRefusal = UmbrellaRefusal("invalid-final-umbrella");
+/// A recorded leaf is unresolved, off-contract, or drifted from its issue.
+pub const INCOMPLETE_GRAPH_STATE: UmbrellaRefusal = UmbrellaRefusal("incomplete-graph-state");
+/// The live prepared artifacts no longer prove the persisted record.
+pub const STALE_PREPARED_PARTITION: UmbrellaRefusal = UmbrellaRefusal("stale-prepared-partition");
+/// The sentinel is not the exact seven `KEY=value` rows a proof carries.
+pub const INVALID_COMPLETION_SENTINEL: UmbrellaRefusal =
+    UmbrellaRefusal("invalid-completion-sentinel");
+/// The sentinel's rows disagree with the live artifacts it claims to prove.
+pub const STALE_COMPLETION_SENTINEL: UmbrellaRefusal = UmbrellaRefusal("stale-completion-sentinel");
 
 /// The bounded fields one umbrella source issue contributes.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -197,6 +216,119 @@ pub struct CandidateIssue {
     pub title: String,
     pub body: String,
     pub issue_id: String,
+}
+
+/// One live GitHub issue the recorded graph is verified against.
+///
+/// A field the remote row could not supply as text arrives empty. Every
+/// recorded leaf reaching verification already carries the fixed leaf title and
+/// opening, so an empty field can only fail to match, never match by accident.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RemoteLeaf {
+    pub number: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// The seven rows one completion sentinel publishes, in the order it writes.
+///
+/// The parent that approved a partition reads this file to prove the child
+/// consumed exactly that partition and nothing else, so every row is compared
+/// rather than inspected: an unexpected value is staleness, not a message.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompletionSentinel {
+    pub version: String,
+    pub repository: String,
+    pub umbrella: String,
+    pub prepared_input_sha256: String,
+    pub prepared_deps_sha256: String,
+    pub prepared_graph_sha256: String,
+    pub graph_verified: String,
+}
+
+impl CompletionSentinel {
+    /// The one decoding policy a completion proof is read under.
+    const PARSE_OPTIONS: ParseOptions = ParseOptions {
+        malformed_lines: MalformedLinePolicy::Reject,
+        key_policy: Some(KeyPolicy::Wire),
+        empty_keys: EmptyKeyPolicy::Keep,
+        comments: CommentPolicy::Keep,
+        key_whitespace: WhitespacePolicy::Preserve,
+        value_whitespace: WhitespacePolicy::Preserve,
+        cr_strip: CrStrip::None,
+        duplicates: DuplicateInputPolicy::Reject,
+    };
+
+    /// Render the sentinel as the exact bytes an atomic publish writes.
+    #[must_use]
+    pub fn render(&self) -> String {
+        let mut text = String::new();
+        for (key, value) in self.rows() {
+            let _ = writeln!(text, "{key}={value}");
+        }
+        text
+    }
+
+    /// Read one sentinel from its stored text.
+    ///
+    /// The proof is decoded through the shared `KEY=value` codec under the one
+    /// policy this file allows: every record must be a well-formed pair, no key
+    /// may repeat, and no carriage return or blank record may stand where a row
+    /// belongs. Anything else is not a weaker proof, it is not a proof.
+    ///
+    /// # Errors
+    /// Returns [`INVALID_COMPLETION_SENTINEL`] for a record that is not one
+    /// `KEY=value` pair, a repeated key, or any key set but the exact seven.
+    pub fn parse(text: &str) -> Result<Self, UmbrellaRefusal> {
+        if text.contains('\r') || split_text_lines(text).iter().any(|line| line.is_empty()) {
+            return Err(INVALID_COMPLETION_SENTINEL);
+        }
+        let document = KvDocument::parse(text, Self::PARSE_OPTIONS)
+            .map_err(|_| INVALID_COMPLETION_SENTINEL)?;
+        let mut rows: BTreeMap<&str, &str> = BTreeMap::new();
+        for row in document.rows() {
+            let _ = rows.insert(row.key(), row.value());
+        }
+        let mut parsed = Self {
+            version: String::new(),
+            repository: String::new(),
+            umbrella: String::new(),
+            prepared_input_sha256: String::new(),
+            prepared_deps_sha256: String::new(),
+            prepared_graph_sha256: String::new(),
+            graph_verified: String::new(),
+        };
+        for (key, slot) in [
+            ("UMBRELLA_SENTINEL_VERSION", &mut parsed.version),
+            ("REPOSITORY", &mut parsed.repository),
+            ("UMBRELLA_NUMBER", &mut parsed.umbrella),
+            ("PREPARED_INPUT_SHA256", &mut parsed.prepared_input_sha256),
+            ("PREPARED_DEPS_SHA256", &mut parsed.prepared_deps_sha256),
+            ("PREPARED_GRAPH_SHA256", &mut parsed.prepared_graph_sha256),
+            ("GRAPH_VERIFIED", &mut parsed.graph_verified),
+        ] {
+            let value = rows.remove(key).ok_or(INVALID_COMPLETION_SENTINEL)?;
+            slot.push_str(value);
+        }
+        if rows.is_empty() {
+            Ok(parsed)
+        } else {
+            Err(INVALID_COMPLETION_SENTINEL)
+        }
+    }
+
+    /// Return the rows in publication order, keyed by their contract names.
+    const fn rows(&self) -> [(&'static str, &str); 7] {
+        [
+            ("UMBRELLA_SENTINEL_VERSION", self.version.as_str()),
+            ("REPOSITORY", self.repository.as_str()),
+            ("UMBRELLA_NUMBER", self.umbrella.as_str()),
+            ("PREPARED_INPUT_SHA256", self.prepared_input_sha256.as_str()),
+            ("PREPARED_DEPS_SHA256", self.prepared_deps_sha256.as_str()),
+            ("PREPARED_GRAPH_SHA256", self.prepared_graph_sha256.as_str()),
+            ("GRAPH_VERIFIED", self.graph_verified.as_str()),
+        ]
+    }
 }
 
 /// Return the exact first body line every direct leaf of `umbrella` carries.
@@ -816,6 +948,182 @@ pub fn reconcile_in_flight(
     })
 }
 
+/// Refuse a final umbrella that would lose its prefix or its durable record.
+///
+/// This is the last check standing between a live managed issue and a title or
+/// body a resumed run could no longer recognize as an umbrella, so it runs
+/// before the mutation rather than after it.
+///
+/// # Errors
+/// Returns [`INVALID_FINAL_UMBRELLA`] for a title without the umbrella prefix
+/// or a body without the embedded proposal marker.
+pub fn validate_final_umbrella(title: &str, body: &str) -> Result<(), UmbrellaRefusal> {
+    if title.starts_with(UMBRELLA_PREFIX.trim_end()) && body.contains(UMBRELLA_PROPOSAL_TOKEN) {
+        Ok(())
+    } else {
+        Err(INVALID_FINAL_UMBRELLA)
+    }
+}
+
+/// Prove every recorded leaf is resolved, on contract, and unchanged remotely.
+///
+/// Verification is all-or-nothing on purpose: the umbrella is only complete
+/// when each recorded leaf names exactly one live issue whose title and body
+/// are still the exact bytes the record bound the leaf to. One unresolved leaf,
+/// one leaf that lost its `[LEAF OF N]` title or fixed opening, one number that
+/// matches no issue or several, or one byte of drift refuses the whole graph.
+///
+/// # Errors
+/// Returns [`INCOMPLETE_GRAPH_STATE`] for every one of those outcomes.
+pub fn verify_graph_state(
+    record: &ProposalRecord,
+    remote: &[RemoteLeaf],
+) -> Result<(), UmbrellaRefusal> {
+    for leaf in &record.leaves {
+        if leaf.state != LeafState::Resolved || !leaf_keeps_contract(leaf, &record.umbrella) {
+            return Err(INCOMPLETE_GRAPH_STATE);
+        }
+        let mut matches = remote.iter().filter(|row| row.number == leaf.number);
+        let (Some(row), None) = (matches.next(), matches.next()) else {
+            return Err(INCOMPLETE_GRAPH_STATE);
+        };
+        if row.title != leaf.title || row.body != leaf.body {
+            return Err(INCOMPLETE_GRAPH_STATE);
+        }
+    }
+    Ok(())
+}
+
+/// Return the digest of the record's deterministic leaf and edge shape.
+///
+/// Only the fields a partition fixes are hashed. The run-local state a leaf
+/// accumulates — its number, URL, node id, and lifecycle — is deliberately
+/// excluded, so the same approved partition hashes identically before the
+/// first leaf is filed and after the last one is bound.
+fn prepared_graph_sha256(record: &ProposalRecord) -> String {
+    let mut text = String::from("{\"dependency_edges\":[");
+    for (index, edge) in record.dependency_edges.iter().enumerate() {
+        if index > 0 {
+            text.push(',');
+        }
+        text.push('{');
+        push_pair(&mut text, "blocked", &edge.blocked, true);
+        text.push(',');
+        push_pair(&mut text, "blocker", &edge.blocker, true);
+        text.push('}');
+    }
+    text.push_str("],\"leaves\":[");
+    for (index, leaf) in record.leaves.iter().enumerate() {
+        if index > 0 {
+            text.push(',');
+        }
+        text.push('{');
+        push_pair(&mut text, "body", &leaf.body, true);
+        text.push(',');
+        push_pair(&mut text, "identity", &leaf.identity, true);
+        text.push(',');
+        push_pair(&mut text, "title", &leaf.title, true);
+        text.push('}');
+    }
+    text.push_str("]}");
+    text_sha256(&text)
+}
+
+/// Report whether two records describe the same fixed leaves and edges.
+fn same_immutable_shape(left: &ProposalRecord, right: &ProposalRecord) -> bool {
+    left.dependency_edges == right.dependency_edges
+        && left.leaves.len() == right.leaves.len()
+        && left.leaves.iter().zip(&right.leaves).all(|(one, other)| {
+            one.identity == other.identity && one.title == other.title && one.body == other.body
+        })
+}
+
+/// Compose the sentinel one proven partition authorizes.
+fn completion_sentinel(
+    repository: &str,
+    umbrella: &str,
+    input_text: &str,
+    deps_text: &str,
+    graph: &ProposalRecord,
+) -> CompletionSentinel {
+    CompletionSentinel {
+        version: COMPLETION_SENTINEL_VERSION.to_owned(),
+        repository: repository.to_owned(),
+        umbrella: umbrella.to_owned(),
+        prepared_input_sha256: text_sha256(input_text),
+        prepared_deps_sha256: text_sha256(deps_text),
+        prepared_graph_sha256: prepared_graph_sha256(graph),
+        graph_verified: GRAPH_VERIFIED_VALUE.to_owned(),
+    }
+}
+
+/// Prove the live prepared artifacts still are the ones the record was built
+/// from, and return the sentinel that proof authorizes.
+///
+/// A record with no prepared hashes never came from a parent partition, so it
+/// can authorize no completion sentinel at all. Beyond the two hashes the shape
+/// is recomputed from the live batch and compared, so an edit that happens to
+/// preserve a hash still cannot pass.
+///
+/// # Errors
+/// Returns [`STALE_PREPARED_PARTITION`] when the live artifacts disagree with
+/// the record, or the batch refusal when they no longer parse as a partition.
+pub fn completion_sentinel_for_record(
+    record: &ProposalRecord,
+    input_text: &str,
+    deps_text: &str,
+) -> Result<CompletionSentinel, UmbrellaRefusal> {
+    let snapshot = UmbrellaSnapshot {
+        repository: record.repository.clone(),
+        number: record.umbrella.clone(),
+        title: String::new(),
+        body: record.common_context.clone(),
+        state: String::from("OPEN"),
+        updated_at: record.expected_updated_at.clone(),
+    };
+    let (expected, _issue_input) = prepare_proposal_from_batch(&snapshot, input_text, deps_text)?;
+    if record.prepared_input_sha256.is_empty()
+        || text_sha256(input_text) != record.prepared_input_sha256
+        || text_sha256(deps_text) != record.prepared_deps_sha256
+        || !same_immutable_shape(record, &expected)
+    {
+        return Err(STALE_PREPARED_PARTITION);
+    }
+    Ok(completion_sentinel(
+        &record.repository,
+        &record.umbrella,
+        input_text,
+        deps_text,
+        &expected,
+    ))
+}
+
+/// Return the sentinel one repository, umbrella, and live partition must carry.
+///
+/// The parent holds no proposal record — it holds the batch it approved — so
+/// the expected shape is rebuilt from that batch alone and compared row by row
+/// against the sentinel the child published.
+///
+/// # Errors
+/// Returns the batch refusal when the live artifacts are not one partition.
+pub fn expected_completion_sentinel(
+    repository: &str,
+    umbrella: &str,
+    input_text: &str,
+    deps_text: &str,
+) -> Result<CompletionSentinel, UmbrellaRefusal> {
+    let snapshot = UmbrellaSnapshot {
+        repository: repository.to_owned(),
+        number: umbrella.to_owned(),
+        state: String::from("OPEN"),
+        ..UmbrellaSnapshot::default()
+    };
+    let (record, _issue_input) = prepare_proposal_from_batch(&snapshot, input_text, deps_text)?;
+    Ok(completion_sentinel(
+        repository, umbrella, input_text, deps_text, &record,
+    ))
+}
+
 /// Refuse a record that carries more leaves than one umbrella may wire.
 ///
 /// # Errors
@@ -830,14 +1138,18 @@ pub const fn check_leaf_cap(record: &ProposalRecord) -> Result<(), UmbrellaRefus
 #[cfg(test)]
 mod tests {
     use super::{
-        AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, CandidateIssue, DependencyEdge, ExpectedLeaf,
-        INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
-        INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
-        INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LeafState, MANAGED_PARTITION_PREFIXES,
-        PREPARED_DEPENDENCY_CYCLE, PREPARED_PARTITION_TOO_LARGE, ProposalRecord, ResolvedLeaf,
-        UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot, classify_umbrella_source, leaf_identity,
-        mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
-        record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
+        AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, COMPLETION_SENTINEL_VERSION, CandidateIssue,
+        CompletionSentinel, DependencyEdge, ExpectedLeaf, INCOMPATIBLE_INPUT,
+        INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INCOMPLETE_GRAPH_STATE,
+        INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA, INVALID_PREPARED_DEPENDENCIES,
+        INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD, INVALID_UMBRELLA_NUMBER,
+        LEAF_ALREADY_RESOLVED, LeafState, MANAGED_PARTITION_PREFIXES, PREPARED_DEPENDENCY_CYCLE,
+        PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
+        STALE_PREPARED_PARTITION, UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot,
+        classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
+        leaf_identity, mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch,
+        reconcile_in_flight, record_leaf_resolved, render_proposal, render_snapshot,
+        umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
     };
 
     fn snapshot() -> UmbrellaSnapshot {
@@ -1099,6 +1411,159 @@ mod tests {
         assert_eq!(
             prepare_proposal_from_batch(&snapshot(), valid, &"1\t2\n".repeat(4_100)),
             Err(PREPARED_PARTITION_TOO_LARGE)
+        );
+    }
+
+    /// The exact parent-approved batch every completion case is built from.
+    const PREPARED_BATCH: &str = "### One\n\nFirst.\n\n### Two\n\nSecond.\n";
+
+    /// One prepared record whose two leaves are already bound to issues.
+    fn prepared_record() -> ProposalRecord {
+        let (mut record, _issue_input) =
+            prepare_proposal_from_batch(&snapshot(), PREPARED_BATCH, "1\t2\n")
+                .expect("prepares the partition");
+        for (index, leaf) in record.leaves.iter_mut().enumerate() {
+            let number = 21 + index;
+            leaf.state = LeafState::Resolved;
+            leaf.number = number.to_string();
+            leaf.url = format!("https://example.test/issues/{number}");
+        }
+        record
+    }
+
+    /// The live issues that exactly carry one record's recorded leaves.
+    fn remote_rows(record: &ProposalRecord) -> Vec<RemoteLeaf> {
+        record
+            .leaves
+            .iter()
+            .map(|leaf| RemoteLeaf {
+                number: leaf.number.clone(),
+                title: leaf.title.clone(),
+                body: leaf.body.clone(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_final_umbrella_must_keep_its_prefix_and_its_record() {
+        let body = "context\n<!-- larch:umbrella-proposal -->\n";
+        assert_eq!(validate_final_umbrella("[UMBRELLA] Work", body), Ok(()));
+        assert_eq!(
+            validate_final_umbrella(&format!("{}Work", MANAGED_PARTITION_PREFIXES[0]), body),
+            Err(INVALID_FINAL_UMBRELLA)
+        );
+        assert_eq!(
+            validate_final_umbrella("[UMBRELLA] Work", "context\n"),
+            Err(INVALID_FINAL_UMBRELLA)
+        );
+    }
+
+    #[test]
+    fn a_complete_graph_is_proved_one_recorded_leaf_at_a_time() {
+        let record = prepared_record();
+        let rows = remote_rows(&record);
+        assert_eq!(verify_graph_state(&record, &rows), Ok(()));
+
+        let mut pending = record.clone();
+        pending.leaves[1].state = LeafState::InFlight;
+        assert_eq!(
+            verify_graph_state(&pending, &rows),
+            Err(INCOMPLETE_GRAPH_STATE)
+        );
+
+        let mut renamed = record.clone();
+        renamed.leaves[0].title = String::from("Plain title");
+        assert_eq!(
+            verify_graph_state(&renamed, &rows),
+            Err(INCOMPLETE_GRAPH_STATE)
+        );
+
+        let mut drifted = rows.clone();
+        drifted[0].body.push_str(" edited remotely");
+        assert_eq!(
+            verify_graph_state(&record, &drifted),
+            Err(INCOMPLETE_GRAPH_STATE)
+        );
+        assert_eq!(
+            verify_graph_state(&record, &rows[1..]),
+            Err(INCOMPLETE_GRAPH_STATE)
+        );
+        let duplicated = [rows[0].clone(), rows[0].clone(), rows[1].clone()];
+        assert_eq!(
+            verify_graph_state(&record, &duplicated),
+            Err(INCOMPLETE_GRAPH_STATE)
+        );
+    }
+
+    #[test]
+    fn a_sentinel_round_trips_and_refuses_every_other_row_shape() {
+        let sentinel = completion_sentinel_for_record(&prepared_record(), PREPARED_BATCH, "1\t2\n")
+            .expect("the live partition proves the record");
+        let rendered = sentinel.render();
+        assert!(rendered.starts_with(&format!(
+            "UMBRELLA_SENTINEL_VERSION={COMPLETION_SENTINEL_VERSION}\nREPOSITORY=owner/repo\nUMBRELLA_NUMBER=12\n"
+        )));
+        assert!(rendered.ends_with("GRAPH_VERIFIED=true\n"));
+        assert_eq!(CompletionSentinel::parse(&rendered), Ok(sentinel.clone()));
+        // Frozen against Python's `json.dumps(..., sort_keys=True,
+        // separators=(",", ":"))` of the same leaf and edge shape.
+        assert_eq!(
+            sentinel.prepared_graph_sha256,
+            "20b76514a5936553c5a18422112a87e07ac4f2aad78897bfa35b822488bc92a6"
+        );
+
+        for text in [
+            rendered.replace("GRAPH_VERIFIED=true\n", ""),
+            format!("{rendered}EXTRA=row\n"),
+            format!("{rendered}REPOSITORY=owner/repo\n"),
+            rendered.replace("REPOSITORY=owner/repo", "no-separator"),
+            rendered.replace("REPOSITORY=owner/repo", "=owner/repo"),
+            rendered.replace("REPOSITORY=owner/repo\n", "REPOSITORY=owner/repo\r\n"),
+            format!("{rendered}\n"),
+        ] {
+            assert_eq!(
+                CompletionSentinel::parse(&text),
+                Err(INVALID_COMPLETION_SENTINEL),
+                "text {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_exact_prepared_partition_authorizes_a_sentinel() {
+        let record = prepared_record();
+        let sentinel = completion_sentinel_for_record(&record, PREPARED_BATCH, "1\t2\n")
+            .expect("the live partition proves the record");
+        // The parent holds only the batch it approved, so its independently
+        // rebuilt expectation must be the same seven rows byte for byte.
+        assert_eq!(
+            expected_completion_sentinel("owner/repo", "12", PREPARED_BATCH, "1\t2\n"),
+            Ok(sentinel)
+        );
+        assert_eq!(
+            completion_sentinel_for_record(
+                &record,
+                "### One\n\nEdited.\n\n### Two\n\nSecond.\n",
+                "1\t2\n"
+            ),
+            Err(STALE_PREPARED_PARTITION)
+        );
+        assert_eq!(
+            completion_sentinel_for_record(&record, PREPARED_BATCH, ""),
+            Err(STALE_PREPARED_PARTITION)
+        );
+        let drafted = ProposalRecord {
+            prepared_input_sha256: String::new(),
+            prepared_deps_sha256: String::new(),
+            ..record
+        };
+        assert_eq!(
+            completion_sentinel_for_record(&drafted, PREPARED_BATCH, "1\t2\n"),
+            Err(STALE_PREPARED_PARTITION)
+        );
+        assert_eq!(
+            expected_completion_sentinel("owner/repo", "12", "### Only\n\nOne.\n", ""),
+            Err(INVALID_PREPARED_PARTITION)
         );
     }
 

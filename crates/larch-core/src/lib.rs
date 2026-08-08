@@ -150,17 +150,21 @@ pub use issue::{
     title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
 };
 pub use issue::{
-    AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, CandidateIssue, DependencyEdge, ExpectedLeaf,
-    INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INVALID_LEAF_NUMBER,
+    AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, COMPLETION_SENTINEL_VERSION, CandidateIssue,
+    CompletionSentinel, DependencyEdge, ExpectedLeaf, INCOMPATIBLE_INPUT,
+    INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INCOMPLETE_GRAPH_STATE,
+    INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA, INVALID_LEAF_NUMBER,
     INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
     INVALID_RESOLVED_LEAF, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LEAF_CAP_EXCEEDED,
     LeafState, MANAGED_PARTITION_PREFIXES, MAX_PREPARED_DEPS_BYTES, MAX_PREPARED_INPUT_BYTES,
     MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, PREPARED_DEPENDENCY_CYCLE,
-    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN,
+    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
+    STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION, UMBRELLA_PROPOSAL_TOKEN,
     UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, check_leaf_cap,
-    classify_umbrella_source, is_managed_partition_title, leaf_identity, mark_leaf_in_flight,
-    parse_proposal, prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved,
-    render_proposal, render_snapshot, umbrella_leaf_opening_text,
+    classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
+    is_managed_partition_title, leaf_identity, mark_leaf_in_flight, parse_proposal,
+    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
+    render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
 };
 pub use issue::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, ClassificationSource,

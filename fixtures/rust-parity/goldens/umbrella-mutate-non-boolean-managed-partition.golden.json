@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "body.md": {
+      "text": "Shared context.\n\n<!-- larch:umbrella-proposal -->\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UMBRELLA_FAILED=true\nREASON=usage\n"
+  }
+}

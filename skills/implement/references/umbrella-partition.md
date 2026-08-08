@@ -19,7 +19,7 @@ Invoke `/umbrella` via the Skill tool. Try bare `umbrella` first, retry as `larc
 After the child returns, run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella verify-completion \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify-completion \
   --sentinel-file "$IMPLEMENT_TMPDIR/umbrella-partition/umbrella-complete.sentinel" \
   --sentinel-root "$IMPLEMENT_TMPDIR/umbrella-partition" \
   --prepared-input "$IMPLEMENT_TMPDIR/umbrella-partition/partition-input.txt" \

@@ -68,7 +68,7 @@ The child consumes the exact prior approval, keeps `/issue` deduplication, appli
 After the child returns, validate the completion proof against the live approved artifacts and target identity:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella verify-completion \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify-completion \
   --sentinel-file "$DESIGN_TMPDIR/decompose/umbrella-complete.sentinel" \
   --sentinel-root "$DESIGN_TMPDIR/decompose" \
   --prepared-input "$DESIGN_TMPDIR/decompose/partition-input.txt" \
