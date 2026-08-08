@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn a_long_label_narrows_only_the_default_width() {
         let label = "l".repeat(100);
-        let rows = vec![GanttRow::new(label.clone(), 0, 10)];
+        let rows = vec![GanttRow::new(label, 0, 10)];
         let default = render_gantt(0, 10, &rows, None);
         let explicit = render_gantt(0, 10, &rows, Some(DEFAULT_WIDTH));
         assert!(default.contains(&"█".repeat(10)), "{default}");
