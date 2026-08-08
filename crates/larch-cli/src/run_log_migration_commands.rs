@@ -3207,14 +3207,21 @@ fn set_legacy_mode(_path: &Path, _mode: u32) -> Result<(), String> {
 mod tests {
     use super::{
         LayoutMapping, LegacyDescriptor, StorageRoot, apply_layout, cursor_cost, decimal_after,
-        plan_layout, read_json, retro_fix_cursor_impl, retro_v3_sweep_impl, transform_transcript,
-        validate_object_relative, verify_layout,
+        live_mappings, migrate_layout, parse_legacy_inventory, plan_layout, read_json,
+        retro_fix_cursor, retro_fix_cursor_impl, retro_v3_sweep, retro_v3_sweep_impl,
+        transform_cursor_summary, transform_transcript, validate_member_path,
+        validate_object_relative, value_as_i64, verify_layout,
     };
     use larch_adapters::{run_lifecycle, runtime::LarchRuntime};
-    use larch_core::{ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject};
-    use serde_json::json;
+    use larch_core::{
+        ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, OrderedJson, RemoteObject,
+    };
+    use serde_json::{Value, json};
     use sha2::{Digest as _, Sha256};
-    use std::{collections::BTreeMap, fs, io::Write as _, path::Path, sync::Mutex};
+    use std::{
+        collections::BTreeMap, ffi::OsString, fs, io::Write as _, path::Path, process::ExitCode,
+        sync::Mutex,
+    };
 
     #[derive(Default)]
     struct MemoryStore {
@@ -3286,6 +3293,7 @@ mod tests {
                     return Err(ObjectStoreError::AlreadyExists);
                 }
                 objects.insert(key.to_owned(), value.clone());
+                drop(objects);
                 Ok(remote_object(key, &value))
             })
         }
@@ -3318,9 +3326,14 @@ mod tests {
             key: &'a str,
         ) -> ObjectStoreFuture<'a, RemoteObject> {
             Box::pin(async move {
-                let objects = self.objects.lock().map_err(|_| ObjectStoreError::LocalIo)?;
-                let value = objects.get(key).ok_or(ObjectStoreError::NotFound)?;
-                Ok(remote_object(key, value))
+                let value = self
+                    .objects
+                    .lock()
+                    .map_err(|_| ObjectStoreError::LocalIo)?
+                    .get(key)
+                    .cloned()
+                    .ok_or(ObjectStoreError::NotFound)?;
+                Ok(remote_object(key, &value))
             })
         }
     }
@@ -3353,8 +3366,8 @@ mod tests {
         use tar::Builder;
 
         let mut encoded = Vec::new();
-        let encoder = GzEncoder::new(&mut encoded, Compression::default());
-        let mut archive = Builder::new(encoder);
+        let gzip_writer = GzEncoder::new(&mut encoded, Compression::default());
+        let mut archive = Builder::new(gzip_writer);
         let mut header = tar::Header::new_gnu();
         header.set_size(content.len() as u64);
         header.set_mode(0o644);
@@ -3374,9 +3387,101 @@ mod tests {
         encoded
     }
 
+    fn argv(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(|value| OsString::from(*value)).collect()
+    }
+
+    fn live_plan_values() -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--larch-source-uri".to_owned(),
+                "s3://zhupanov/larch".to_owned(),
+            ),
+            (
+                "--larch-target-uri".to_owned(),
+                "s3://zhupanov/larch/larch".to_owned(),
+            ),
+            (
+                "--agent-lint-source-uri".to_owned(),
+                "s3://zhupanov/agent-lint".to_owned(),
+            ),
+            (
+                "--agent-lint-target-uri".to_owned(),
+                "s3://zhupanov/larch/agent-lint".to_owned(),
+            ),
+            (
+                "--legacy-schema".to_owned(),
+                "larch-run-log-migration-inventory-v1".to_owned(),
+            ),
+            ("--legacy-source-commit".to_owned(), "1".repeat(40)),
+            (
+                "--legacy-inventory-key".to_owned(),
+                "migration/inventory.json".to_owned(),
+            ),
+            ("--legacy-inventory-sha256".to_owned(), "2".repeat(64)),
+        ])
+    }
+
+    fn legacy_inventory_fixture() -> (LegacyDescriptor, StorageRoot, Vec<u8>) {
+        let descriptor = LegacyDescriptor {
+            schema: "larch-run-log-migration-inventory-v1".to_owned(),
+            source_commit: "1".repeat(40),
+            storage_root: "s3://zhupanov/larch".to_owned(),
+            inventory_key: "migration/inventory.json".to_owned(),
+            inventory_sha256: "2".repeat(64),
+        };
+        let root = StorageRoot::parse(&descriptor.storage_root).expect("storage root");
+        let payload = json!({
+            "archives": [{
+                "archive_bytes": 100,
+                "kind": "run",
+                "member_count": 1,
+                "object_key": "larch/run-logs/design/legacy-run.tar.gz",
+                "run_id": "legacy-run",
+                "sha256": "3".repeat(64),
+                "skill": "design",
+                "uncompressed_bytes": 7,
+            }],
+            "schema": descriptor.schema,
+            "source_commit": descriptor.source_commit,
+            "source_files": [{
+                "archive_member_path": "result.txt",
+                "archive_object_key": "larch/run-logs/design/legacy-run.tar.gz",
+                "bytes": 7,
+                "git_oid": "4".repeat(40),
+                "mode": "100644",
+                "path": "larch-logs/design/legacy-run/result.txt",
+                "sha256": "5".repeat(64),
+            }],
+            "storage_root": descriptor.storage_root,
+            "totals": {
+                "archive_bytes": 100,
+                "archive_objects": 1,
+                "members": 1,
+                "run_directories": 1,
+                "source_paths": 1,
+                "uncompressed_bytes": 7,
+            },
+        });
+        (
+            descriptor,
+            root,
+            serde_json::to_vec(&payload).expect("inventory JSON"),
+        )
+    }
+
+    fn write_cursor_case(root: &Path, run_id: &str, summary: &str, report: Option<&str>) {
+        let run = root.join("larch-logs/implement").join(run_id);
+        fs::create_dir_all(&run).expect("cursor case directory");
+        fs::write(run.join("final-summary.md"), summary).expect("cursor case summary");
+        if let Some(report) = report {
+            fs::write(run.join("token-report-final.json"), report).expect("cursor case report");
+        }
+    }
+
     #[test]
     fn cursor_cost_preserves_the_historical_surcharge() {
-        assert_eq!(cursor_cost(0, 1_000_000, 0), 0.45);
+        assert!((cursor_cost(0, 1_000_000, 0) - 0.45).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -3590,6 +3695,418 @@ mod tests {
         assert!(retro_fix_cursor_impl(directory.path(), true, Some("../outside")).is_err());
     }
 
+    #[test]
+    fn retro_command_entrypoints_cover_live_dry_and_failure_paths() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().to_str().expect("UTF-8 root");
+        let run = directory.path().join("larch-logs/implement/run-1");
+        fs::create_dir_all(&run).expect("run directory");
+        fs::write(
+            run.join("session-transcript.jsonl"),
+            "{\"v\":2}\n{\"blocks\":[{\"type\":\"text\",\"text\":\"keep\"}]}\n",
+        )
+        .expect("transcript fixture");
+        fs::write(
+            run.join("final-summary.md"),
+            "- **Cost**: TOTAL ~$9.99 — Cursor $0.01\n",
+        )
+        .expect("summary fixture");
+        fs::write(
+            run.join("token-report-final.json"),
+            "{\"BUCKETS_cursor\":{\"input\":0,\"cache_read\":2000000,\"output\":0}}",
+        )
+        .expect("token fixture");
+
+        assert_eq!(
+            retro_v3_sweep(&argv(&["--root", root, "--dry-run"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(retro_v3_sweep(&argv(&["--root", root])), ExitCode::SUCCESS);
+        assert_eq!(
+            retro_fix_cursor(&argv(&["--root", root, "--dry-run"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            retro_fix_cursor(&argv(&["--root", root])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(retro_v3_sweep(&argv(&["--unknown"])), ExitCode::from(2));
+        assert_eq!(retro_fix_cursor(&argv(&["--unknown"])), ExitCode::from(2));
+
+        let unavailable = directory.path().join("unavailable");
+        let unavailable = unavailable.to_str().expect("UTF-8 unavailable root");
+        assert_eq!(
+            retro_v3_sweep(&argv(&["--root", unavailable])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            retro_fix_cursor(&argv(&["--root", unavailable])),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn migration_command_entrypoints_validate_every_phase() {
+        assert_eq!(migrate_layout(&argv(&[])), ExitCode::from(2));
+        assert_eq!(migrate_layout(&argv(&["unknown"])), ExitCode::from(2));
+        assert_eq!(migrate_layout(&argv(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(
+            migrate_layout(&argv(&["plan", "--help"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            migrate_layout(&argv(&["apply", "--help"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            migrate_layout(&argv(&["verify", "--help"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(migrate_layout(&argv(&["plan"])), ExitCode::from(2));
+        assert_eq!(
+            migrate_layout(&argv(&["plan", "--unknown"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            migrate_layout(&argv(&[
+                "apply",
+                "--plan",
+                "plan.json",
+                "--report",
+                "report.json",
+                "--work-dir",
+                "work",
+            ])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            migrate_layout(&argv(&[
+                "verify",
+                "--plan",
+                "plan.json",
+                "--report",
+                "report.json",
+                "--final-report",
+                "final.json",
+                "--work-dir",
+                "work",
+                "--publish-report-key",
+                "migration/final.json",
+            ])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            migrate_layout(&argv(&[
+                "plan",
+                "--larch-source-uri",
+                "s3://untrusted/larch",
+                "--larch-target-uri",
+                "s3://zhupanov/larch/larch",
+                "--agent-lint-source-uri",
+                "s3://zhupanov/agent-lint",
+                "--agent-lint-target-uri",
+                "s3://zhupanov/larch/agent-lint",
+                "--legacy-schema",
+                "larch-run-log-migration-inventory-v1",
+                "--legacy-source-commit",
+                "1111111111111111111111111111111111111111",
+                "--legacy-inventory-key",
+                "migration/inventory.json",
+                "--legacy-inventory-sha256",
+                "2222222222222222222222222222222222222222222222222222222222222222",
+                "--output",
+                "plan.json",
+                "--work-dir",
+                "work",
+                "--operator",
+                "tester",
+                "--tool-version",
+                "test",
+                "--source-commit",
+                "3333333333333333333333333333333333333333",
+            ])),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn live_mapping_allowlist_accepts_only_the_two_live_roots() {
+        let values = live_plan_values();
+        let mappings = live_mappings(&values).expect("allowlisted mappings");
+        assert_eq!(mappings.len(), 2);
+        assert_eq!(mappings[0].client_repo, "larch");
+        assert_eq!(mappings[1].client_repo, "agent-lint");
+
+        let mut missing = values;
+        missing.remove("--larch-target-uri");
+        assert!(live_mappings(&missing).is_err());
+
+        let mut mismatched = mappings[0].clone();
+        mismatched.target =
+            StorageRoot::parse("s3://zhupanov/larch/not-larch").expect("mismatched target");
+        assert!(mismatched.validate().is_err());
+    }
+
+    #[test]
+    fn retro_transformations_classify_legacy_input_shapes() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let transcript = directory.path().join("session-transcript.jsonl");
+        fs::write(&transcript, "").expect("empty transcript");
+        assert!(matches!(
+            transform_transcript(&transcript, true),
+            Ok(super::TranscriptStatus::Empty)
+        ));
+        fs::write(&transcript, "not JSON\n").expect("invalid transcript");
+        assert!(matches!(
+            transform_transcript(&transcript, true),
+            Ok(super::TranscriptStatus::Empty)
+        ));
+        fs::write(
+            &transcript,
+            "{\"v\":2}\n{\"without_blocks\":true}\n{\"blocks\":[{\"type\":\"tool_call\"}]}\n",
+        )
+        .expect("mixed transcript");
+        assert!(matches!(
+            transform_transcript(&transcript, true),
+            Ok(super::TranscriptStatus::Transformed)
+        ));
+
+        let summary = directory.path().join("final-summary.md");
+        fs::write(&summary, "Cursor $0.00").expect("zero cursor summary");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::NoCursor)
+        ));
+        fs::write(&summary, "Cursor $1.00").expect("missing report summary");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::NoReport)
+        ));
+        fs::write(directory.path().join("token-report-final.json"), "{}").expect("empty report");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::NoBuckets)
+        ));
+        fs::write(
+            directory.path().join("token-report-final.json"),
+            "{\"BUCKETS_cursor\":{\"cache_read\":0}}",
+        )
+        .expect("zero-cache report");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::NoCacheRead)
+        ));
+        fs::write(
+            directory.path().join("token-report-final.json"),
+            "{\"BUCKETS_cursor\":{\"cache_read\":1000000}}",
+        )
+        .expect("cost report");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::FormatMismatch)
+        ));
+        fs::write(&summary, "TOTAL ~$10.45 — Cursor $0.45").expect("correct summary");
+        assert!(matches!(
+            transform_cursor_summary(&summary, true),
+            Ok(super::CursorStatus::AlreadyCorrect)
+        ));
+    }
+
+    #[test]
+    fn retro_helpers_preserve_the_old_python_coercion_and_truthiness_rules() {
+        assert_eq!(value_as_i64(None), 0);
+        assert_eq!(value_as_i64(Some(&json!(true))), 1);
+        assert_eq!(value_as_i64(Some(&json!(false))), 0);
+        assert_eq!(value_as_i64(Some(&json!(-3))), -3);
+        assert_eq!(value_as_i64(Some(&json!(2.8))), 2);
+        assert_eq!(value_as_i64(Some(&json!(u64::MAX))), 0);
+        assert_eq!(value_as_i64(Some(&json!("7"))), 0);
+
+        assert!(!super::ordered_value_is_truthy(&OrderedJson::Null));
+        assert!(!super::ordered_value_is_truthy(&OrderedJson::Bool(false)));
+        assert!(super::ordered_value_is_truthy(&OrderedJson::Bool(true)));
+        assert!(!super::ordered_value_is_truthy(&OrderedJson::Number(
+            serde_json::Number::from(0)
+        )));
+        assert!(super::ordered_value_is_truthy(&OrderedJson::Number(
+            serde_json::Number::from(1)
+        )));
+        assert!(!super::ordered_value_is_truthy(&OrderedJson::String(
+            String::new()
+        )));
+        assert!(super::ordered_value_is_truthy(&OrderedJson::Array(vec![
+            OrderedJson::Null
+        ])));
+        assert!(super::ordered_value_is_truthy(&OrderedJson::Object(vec![
+            ("key".to_owned(), OrderedJson::Null),
+        ])));
+    }
+
+    #[test]
+    fn run_log_discovery_keeps_summaries_inside_a_real_root() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        assert!(
+            super::summary_files(directory.path(), None)
+                .expect("missing logs")
+                .is_empty()
+        );
+        let implement = directory.path().join("larch-logs/implement/run-1");
+        let design = directory.path().join("larch-logs/design/run-1");
+        fs::create_dir_all(&implement).expect("implement directory");
+        fs::create_dir_all(&design).expect("design directory");
+        fs::write(implement.join("final-summary.md"), "summary").expect("implement summary");
+        fs::write(design.join("final-summary.md"), "summary").expect("design summary");
+        fs::write(implement.join("session-transcript.jsonl"), "{\"v\":3}\n").expect("transcript");
+
+        assert_eq!(
+            super::summary_files(directory.path(), None)
+                .expect("all summaries")
+                .len(),
+            2
+        );
+        assert_eq!(
+            super::summary_files(directory.path(), Some("run-1"))
+                .expect("selected summaries")
+                .len(),
+            2
+        );
+        assert_eq!(
+            super::transcript_files(directory.path())
+                .expect("transcripts")
+                .len(),
+            1
+        );
+        assert!(super::summary_files(directory.path(), Some("../run-1")).is_err());
+    }
+
+    #[test]
+    fn retro_sweeps_report_empty_roots_and_account_for_every_cursor_skip() {
+        let empty = tempfile::tempdir().expect("empty root");
+        let empty_root = empty.path().to_str().expect("UTF-8 root");
+        assert_eq!(
+            retro_v3_sweep(&argv(&["--root", empty_root])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            retro_fix_cursor(&argv(&["--root", empty_root])),
+            ExitCode::SUCCESS
+        );
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        write_cursor_case(directory.path(), "no-cursor", "no cursor here", None);
+        write_cursor_case(directory.path(), "no-report", "Cursor $1.00", None);
+        write_cursor_case(directory.path(), "no-buckets", "Cursor $1.00", Some("{}"));
+        write_cursor_case(
+            directory.path(),
+            "no-cache",
+            "Cursor $1.00",
+            Some("{\"BUCKETS_cursor\":{\"cache_read\":0}}"),
+        );
+        write_cursor_case(
+            directory.path(),
+            "format",
+            "Cursor $1.00",
+            Some("{\"BUCKETS_cursor\":{\"cache_read\":1000000}}"),
+        );
+        write_cursor_case(
+            directory.path(),
+            "correct",
+            "TOTAL ~$10.45 — Cursor $0.45",
+            Some("{\"BUCKETS_cursor\":{\"cache_read\":1000000}}"),
+        );
+        let empty_transcript = directory
+            .path()
+            .join("larch-logs/implement/empty/session-transcript.jsonl");
+        fs::create_dir_all(empty_transcript.parent().expect("transcript parent"))
+            .expect("transcript directory");
+        fs::write(empty_transcript, "").expect("empty transcript");
+
+        let cursor = retro_fix_cursor_impl(directory.path(), true, None).expect("cursor sweep");
+        assert_eq!(cursor.counts.no_cursor, 1);
+        assert_eq!(cursor.counts.no_report, 1);
+        assert_eq!(cursor.counts.no_buckets, 1);
+        assert_eq!(cursor.counts.no_cache_read, 1);
+        assert_eq!(cursor.counts.format_mismatch, 1);
+        assert_eq!(cursor.counts.already_correct, 1);
+        let transcript = retro_v3_sweep_impl(directory.path(), true).expect("v3 sweep");
+        assert_eq!(transcript.counts.empty, 1);
+    }
+
+    #[test]
+    fn transcript_and_storage_helpers_reject_noncanonical_records() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let transcript = directory.path().join("session-transcript.jsonl");
+        fs::write(
+            &transcript,
+            "{\"v\":2}\nnot-json\n{\"blocks\":[1,{\"type\":true},{\"type\":\"tool_result\",\"error\":true}]}\n",
+        )
+        .expect("transcript fixture");
+        assert!(matches!(
+            transform_transcript(&transcript, true),
+            Ok(super::TranscriptStatus::Transformed)
+        ));
+
+        let root = StorageRoot::parse("s3://bucket").expect("root without prefix");
+        assert_eq!(root.key("run-logs/").expect("root key"), "run-logs/");
+        assert_eq!(
+            root.relative_key("run-logs/implement/run.tar.gz")
+                .expect("relative key"),
+            "run-logs/implement/run.tar.gz"
+        );
+        assert!(super::parse_archive_key("run-logs/implement/run.tar.gz").is_ok());
+        assert!(super::parse_archive_key("run-logs/implement/nested/run.tar.gz").is_err());
+        assert!(super::parse_archive_key("not-a-run-log").is_err());
+    }
+
+    #[test]
+    fn legacy_inventory_parser_rejects_mutated_pinned_rows() {
+        let (descriptor, root, encoded) = legacy_inventory_fixture();
+        let inventory = parse_legacy_inventory(&encoded, &descriptor, &root).expect("inventory");
+        assert!(
+            inventory
+                .archive_for("run-logs/design/legacy-run.tar.gz")
+                .is_some()
+        );
+        assert!(
+            parse_legacy_inventory(br#"{"schema":"one","schema":"two"}"#, &descriptor, &root,)
+                .is_err()
+        );
+
+        let payload: Value = serde_json::from_slice(&encoded).expect("fixture value");
+        let mut invalid_kind = payload.clone();
+        invalid_kind["archives"][0]["kind"] = json!("unknown");
+        assert!(
+            parse_legacy_inventory(
+                &serde_json::to_vec(&invalid_kind).expect("invalid kind JSON"),
+                &descriptor,
+                &root,
+            )
+            .is_err()
+        );
+        let mut unsafe_member = payload.clone();
+        unsafe_member["source_files"][0]["archive_member_path"] = json!("../escape");
+        assert!(
+            parse_legacy_inventory(
+                &serde_json::to_vec(&unsafe_member).expect("unsafe member JSON"),
+                &descriptor,
+                &root,
+            )
+            .is_err()
+        );
+        let mut wrong_total = payload;
+        wrong_total["totals"]["members"] = json!(2);
+        assert!(
+            parse_legacy_inventory(
+                &serde_json::to_vec(&wrong_total).expect("wrong total JSON"),
+                &descriptor,
+                &root,
+            )
+            .is_err()
+        );
+        assert!(validate_member_path("archive-manifest.json").is_err());
+    }
+
+    #[allow(clippy::too_many_lines)] // One in-memory transaction fixture binds plan, apply, and verify.
     #[test]
     fn layout_plan_apply_verify_is_create_only_and_resumable() {
         let directory = tempfile::tempdir().expect("temporary directory");
