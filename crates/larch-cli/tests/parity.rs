@@ -423,6 +423,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
+    CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
+    CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),
+    CleanInstallCase::new("clean-install-deps-plan", "deps", "plan"),
+    CleanInstallCase::new("clean-install-deps-resolve-repo", "deps", "resolve-repo"),
+    CleanInstallCase::new("clean-install-deps-write-proposals", "deps", "write-proposals"),
     CleanInstallCase::new(
         "clean-install-block-issue-add-blocked-by",
         "block-issue",

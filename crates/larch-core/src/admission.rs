@@ -165,22 +165,8 @@ pub fn single_line(value: &str) -> String {
 #[must_use]
 pub fn parse_prose_blockers(text: &str) -> Vec<u64> {
     let mut refs: Vec<u64> = Vec::new();
-    let mut in_fence = false;
-    for raw_line in text.lines() {
-        if fence_pattern().is_match(raw_line) {
-            in_fence = !in_fence;
-            continue;
-        }
-        if in_fence {
-            continue;
-        }
-        let stripped = inline_code_pattern().replace_all(raw_line, "");
-        let stripped = stripped.replace(['*', '_'], "");
-        let line = markdown_prefix_pattern().replace(&stripped, "");
-        let line = line.trim();
-        if line.is_empty() || line.starts_with("<!--") || example_prefix_pattern().is_match(line) {
-            continue;
-        }
+    for line in prose_reference_lines(text) {
+        let line = line.as_str();
         for capture in keyword_pattern().captures_iter(line) {
             let (Some(whole), Some(digits)) = (capture.get(0), capture.get(1)) else {
                 continue;
@@ -198,6 +184,36 @@ pub fn parse_prose_blockers(text: &str) -> Vec<u64> {
     }
     refs.sort_unstable();
     refs
+}
+
+/// Yield the lines of `text` a dependency-reference scan is allowed to read.
+///
+/// Fenced code, inline code spans, HTML comments, and example lines carry
+/// references that were never declarations, so they are dropped here rather
+/// than by each scanner. What survives is trimmed, with list and emphasis
+/// markup removed, so a keyword pattern can be anchored at the line start.
+#[must_use]
+pub fn prose_reference_lines(text: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut in_fence = false;
+    for raw_line in text.lines() {
+        if fence_pattern().is_match(raw_line) {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let stripped = inline_code_pattern().replace_all(raw_line, "");
+        let stripped = stripped.replace(['*', '_'], "");
+        let line = markdown_prefix_pattern().replace(&stripped, "");
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("<!--") || example_prefix_pattern().is_match(line) {
+            continue;
+        }
+        lines.push(line.to_owned());
+    }
+    lines
 }
 
 fn has_scoped_negation(prefix: &str) -> bool {

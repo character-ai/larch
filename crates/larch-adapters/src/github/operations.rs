@@ -999,6 +999,27 @@ impl OctocrabGitHubService {
         self.dependency_pages(cancellation, &route).await
     }
 
+    /// List the issues that one issue blocks.
+    ///
+    /// This is the mirror of [`Self::list_blocked_by`]. `/deps` reads both
+    /// directions for every open issue so its snapshot of the dependency graph
+    /// still contains an edge whose other endpoint has since been closed.
+    ///
+    /// # Errors
+    /// Returns a typed error on cancellation, deadline, authorization, transport
+    /// failure, or a response that does not match the dependency contract.
+    pub async fn list_blocking(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        issue: u64,
+    ) -> Result<Vec<DependencyRef>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/issues/{issue}/dependencies/blocking");
+        self.dependency_pages(cancellation, &route).await
+    }
+
     /// List the direct native sub-issues of one parent issue.
     ///
     /// The response follows only bounded, same-origin pagination links.

@@ -379,6 +379,56 @@ pub fn add_blocked_by(arguments: &[OsString]) -> ExitCode {
     )
 }
 
+/// How one in-process dependency write proves it is allowed to happen.
+///
+/// A driver either carries the operator's own invocation or the run's session
+/// context; nothing else authorizes a live mutation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EdgeAuthorization<'session> {
+    /// The operator asked for this write directly.
+    OperatorInvoked,
+    /// The write belongs to one run, proven by its session context.
+    Session {
+        /// Path of the run's context file.
+        context_file: &'session str,
+        /// The run identifier the context file must name.
+        run_id: &'session str,
+        /// The trusted root the context file must live under.
+        trusted_root: &'session str,
+    },
+}
+
+/// Compose one in-process blocked-by edge against an already-resolved slug.
+///
+/// The two in-process drivers name the same endpoints and differ only in how
+/// the write is authorized, so the request shape is stated once here.
+#[must_use]
+pub fn in_process_edge(
+    repository: GitHubRepositoryRef,
+    client: u64,
+    blocker: u64,
+    authorization: EdgeAuthorization<'_>,
+) -> LiveEdge {
+    let (context_file, run_id, trusted_root, operator_invoked) = match authorization {
+        EdgeAuthorization::OperatorInvoked => ("", "", "", true),
+        EdgeAuthorization::Session {
+            context_file,
+            run_id,
+            trusted_root,
+        } => (context_file, run_id, trusted_root, false),
+    };
+    LiveEdge {
+        repository,
+        subject: client,
+        object: blocker,
+        object_id: None,
+        context_file: context_file.to_owned(),
+        run_id: run_id.to_owned(),
+        trusted_root: trusted_root.to_owned(),
+        operator_invoked,
+    }
+}
+
 /// Add the dependency edge, resolving the blocker's database id when needed.
 ///
 /// An in-process caller reads the refusal as its flat diagnostic; the command
