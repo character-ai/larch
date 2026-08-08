@@ -147,6 +147,7 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost`, `larch.report.report_tokens_cli`, `larch.report.report_tokens_render` | #8087 (cost model), #8088 (`report-tokens analyze`) |
 | `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.report_tokens_cost`, `larch.report.tokens`, `larch.report.report_tokens_cli`, `larch.report.report_tokens_render` | #8088 (`report-tokens analyze`), later `token cost` and `token render-cost-line` cutovers |
+| `larch.report.report_tokens_render`, `larch.report.report_tokens_issue`, and the series half of `larch.report.report_tokens_plot` (`larch_core::report` token report) | #8088 | `larch.report.report_tokens_cli`, `larch.report.report_tokens_render`, `larch.report.report_tokens_issue`, `larch.report.report_tokens_plot` | #8088 (`report-tokens analyze`) |
 | `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch.issue.issue_wire.extract_scope_paths` (`larch_core::plan_scope`) | #8171 | `larch.design.decompose`, `larch.implement.dispatch_step2`, `larch.implement.scope_disposition` | #7680 (`/design` decompose), #7681 (`/implement` dispatch and scope disposition) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
@@ -171,6 +172,19 @@ alias. A model priced by another model's rate row, including a display bucket
 that folds one model onto another, is recorded as
 `TokenObservationKind::UnpricedModel` rather than passing silently. Python keeps
 `token cost` and `token render-cost-line` until a later cutover leaf moves them.
+
+Issue 8088 ports the presentation half of `/report-tokens`: the eight report
+sections, the priority order an oversized issue body drops them in, the durable
+NDJSON cache rows, the plot child's JSON input, and the report title.
+`larch_core::report::render_report` is pure, so a report is reproducible from
+its priced records alone. The machine contracts keep Python's key order,
+rounding, and `json.dumps` spacing, and the fixtures under
+`crates/larch-core/tests/data/token_report` were recorded from the Python owner
+over the same records. The command itself has not moved: `report-tokens analyze`
+still runs the Python entry point, which owns corpus synchronization, GitHub
+repository resolution, issue posting, the plot subprocess, and the temporary-root
+lifecycle. Those consumers, and the Python deletions that follow them, remain
+open work on this leaf.
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
