@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +82,24 @@ class IssueParseInputOutput:
 
     items: tuple[IssueParsedItem, ...] = ()
     exit_code: int = 0
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class IssueCreateOutput:
+    """Validated result from the Rust-owned ``issue create-one`` command.
+
+    ``exit_code`` is the caller's only success test: every refusal publishes
+    ``ISSUE_FAILED=true`` with a non-zero code, and a zero exit that carries no
+    issue number is treated as a failure too, so a partial envelope never reads
+    as a filed issue.
+    """
+
+    exit_code: int = 0
+    number: str = ""
+    url: str = ""
+    issue_id: str = ""
+    title: str = ""
     error: str = ""
 
 
@@ -525,6 +544,84 @@ def parse_issue_input(
         for position in range(1, total + 1)
     )
     return IssueParseInputOutput(items=items)
+
+
+def issue_create_one(  # noqa: PLR0913 - mirrors the create-one CLI option surface plus the injected runner
+    runner: Runner,
+    *,
+    title: str,
+    title_prefix: str = "",
+    body_file: str = "",
+    labels: Sequence[str] = (),
+    repo: str = "",
+    context_file: str = "",
+    run_id: str = "",
+    trusted_root: str = "",
+    cwd: str | None = None,
+) -> IssueCreateOutput:
+    """File one issue through the Rust owner and fail closed without its rows.
+
+    The command owns redaction, title-prefix normalization, label probing, and
+    the live-mutation gate, so this consumer only validates and types the
+    envelope it publishes.
+    """
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "issue",
+        "create-one",
+        "--title",
+        title,
+    ]
+    if title_prefix:
+        argv.extend(["--title-prefix", title_prefix])
+    if body_file:
+        argv.extend(["--body-file", body_file])
+    for label in labels:
+        argv.extend(["--label", label])
+    if repo:
+        argv.extend(["--repo", repo])
+    if context_file:
+        argv.extend(["--context-file", context_file, "--run-id", run_id, "--trusted-root", trusted_root])
+    result: CommandResult = runner.run(argv, cwd=cwd)
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    error = values.get("ISSUE_ERROR", "") or " ".join((result.stderr or result.stdout).split())[:500]
+    if result.returncode != 0 or values.get("ISSUE_FAILED") == "true":
+        return IssueCreateOutput(exit_code=result.returncode or 1, error=error)
+    if not values.get("ISSUE_NUMBER", "").isdigit() or not values.get("ISSUE_URL", ""):
+        return IssueCreateOutput(exit_code=1, error="issue create-one published an incomplete envelope")
+    return IssueCreateOutput(
+        number=values["ISSUE_NUMBER"],
+        url=values["ISSUE_URL"],
+        issue_id=values.get("ISSUE_ID", ""),
+        title=values.get("ISSUE_TITLE", ""),
+    )
+
+
+def issue_cleanup_failed(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str = "",
+    cwd: str | None = None,
+) -> bool:
+    """Close one orphaned issue through the Rust owner, best effort.
+
+    The command always exits ``0`` and reports its outcome as ``CLOSED``, so a
+    refused close is reported here as ``False`` rather than raised: the caller
+    has already counted the failure that produced the orphan.
+    """
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "issue",
+        "cleanup-failed",
+        "--issue-number",
+        issue,
+    ]
+    if repo:
+        argv.extend(["--repo", repo])
+    result: CommandResult = runner.run(argv, cwd=cwd)
+    values: dict[str, str] = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    return result.returncode == 0 and values.get("CLOSED") == "true"
 
 
 def install_statusline(

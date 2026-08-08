@@ -12,7 +12,7 @@ pub use attestation::{
     AttestationServiceErrorKind, AttestationTransport, OctocrabAttestationTransport,
 };
 
-pub use issue_mutation::IssueMutationOwner;
+pub use issue_mutation::{IssueCreateFailure, IssueMutationOwner};
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
     CreatedPullRequest, DependencyEdge, DependencyMutation, DependencyMutationReceipt,

@@ -10,10 +10,11 @@ use larch_core::{
     bug_title_match, classify_named_block, compose_named_block, detect_lifecycle_prefix,
     insert_signal_marker, insert_tag_after_bug_prefix, is_valid_named_block_marker,
     issue_plan_marker_defect, leading_square_bracket_prefix, named_block_marker_allowed,
-    neutralize_named_block_markers, open_issue_rows, parse_named_block, parse_open_issue_row,
-    plan_named_block_write, redact_untrusted_stream, split_lines_keep_ends, strip_lifecycle_prefix,
-    strip_named_block, title_has_archival_report_prefix, title_lifecycle_reject_marker,
-    title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
+    neutralize_named_block_markers, normalize_title_prefix, open_issue_rows, parse_named_block,
+    parse_open_issue_row, plan_named_block_write, redact_untrusted_stream, split_lines_keep_ends,
+    strip_lifecycle_prefix, strip_named_block, title_has_archival_report_prefix,
+    title_lifecycle_reject_marker, title_starts_with_brainstorm, untrusted_content_block,
+    xml_escape_attr,
 };
 use larch_test_support::{IssueFixture, IssueGraph};
 use serde_json::{Value, json};
@@ -558,6 +559,43 @@ fn title_rewrites_match_python_and_are_idempotent() {
         assert_eq!(once, *expected, "{title:?}");
         assert_eq!(insert_tag_after_bug_prefix(&once, tag), once, "{title:?}");
     }
+}
+
+/// `(title, prefix, normalize_title_prefix)` from the Python owner. The prefix
+/// the caller names always wins, whatever the title spelled it as.
+const TITLE_PREFIXES: &[(&str, &str, &str)] = &[
+    ("Fix it", "[OOS]", "[OOS] Fix it"),
+    ("Fix it", "", "Fix it"),
+    ("", "[OOS]", "[OOS] "),
+    ("[OOS] Fix it", "[OOS]", "[OOS] Fix it"),
+    ("[oos] Fix it", "[OOS]", "[OOS] Fix it"),
+    ("[OOS]Fix it", "[OOS]", "[OOS] Fix it"),
+    // `lstrip` eats every Python whitespace character after the prefix.
+    ("[OOS]\t\u{1f} Fix it", "[OOS]", "[OOS] Fix it"),
+    // A title that only looks like the prefix keeps its own text.
+    ("[OOSX] Fix it", "[OOS]", "[OOS] [OOSX] Fix it"),
+    // A shorter title than the prefix cannot match it.
+    ("[O]", "[OOS]", "[OOS] [O]"),
+];
+
+#[test]
+fn title_prefix_normalization_is_case_insensitive_and_idempotent() {
+    for (title, prefix, expected) in TITLE_PREFIXES {
+        let once = normalize_title_prefix(title, prefix);
+        assert_eq!(once, *expected, "{title:?} {prefix:?}");
+        assert_eq!(normalize_title_prefix(&once, prefix), once, "{title:?}");
+    }
+    // Leading whitespace hides the prefix from the match, so the first rewrite
+    // duplicates it. Python behaved the same way; the second rewrite then
+    // absorbs the copy it just made.
+    assert_eq!(
+        normalize_title_prefix(" [OOS] Fix it", "[OOS]"),
+        "[OOS]  [OOS] Fix it"
+    );
+    assert_eq!(
+        normalize_title_prefix("[OOS]  [OOS] Fix it", "[OOS]"),
+        "[OOS] [OOS] Fix it"
+    );
 }
 
 #[test]

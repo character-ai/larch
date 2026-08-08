@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +18,6 @@ ISSUE_DEDUP_AGENT_PATH = Path(__file__).resolve().parents[3] / "agents/issue-ded
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
-
-
-def _kv_value(output: str, key: str) -> str:
-    prefix = f"{key}="
-    for line in output.splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix) :]
-    return ""
 
 
 PINNED_PARSE_CASES: list[tuple[str, str, list[tuple[str, str, str, str, str, bool]]]] = [
@@ -179,157 +170,6 @@ def test_parse_issue_input_pinned_grammar(name: str, text: str, expected: list[t
     assert [(item.title, item.body, item.reviewer, item.vote, item.phase, item.malformed) for item in items] == expected, name
 
 
-def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body crsr_0123456789abcdefghijklmnopqrstuvwxyzABCDEF", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "label", "list"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="bug\n")
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(
-        [
-            "--title",
-            "[OOS] leaking crsr_0123456789abcdefghijklmnopqrstuvwxyzABCDEF",
-            "--title-prefix",
-            "[OOS]",
-            "--label",
-            "bug",
-            "--body-file",
-            str(body),
-            "--repo",
-            "owner/repo",
-            "--dry-run",
-        ],
-    )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "DRY_RUN=true" in out
-    assert "DRY_RUN_LABELS=bug" in out
-    assert "[OOS] leaking <REDACTED-TOKEN>" in out
-    assert "crsr_0123456789" not in out
-
-
-def test_create_one_dry_run_does_not_read_or_prefix_body_file(tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "missing.md"
-
-    rc = issue_create.create_one_main(
-        ["--title", "Follow up", "--body-file", str(body), "--repo", "owner/repo", "--dry-run"],
-    )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert _kv_value(out, "ISSUE_TITLE") == "Follow up"
-
-
-def test_create_one_success_json(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout=json.dumps({"id": 99, "number": 5, "url": "https://x/issues/5"}))
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"]) == 0
-    out = capsys.readouterr().out
-    assert "ISSUE_NUMBER=5" in out
-    assert "ISSUE_ID=99" in out
-    assert "ISSUE_TITLE=T" in out
-
-
-def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        calls.append(argv)
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="4242\n")
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"]) == 0
-    out = capsys.readouterr().out
-    assert "ISSUE_NUMBER=42" in out
-    assert "ISSUE_ID=4242" in out
-    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]  # lint-gh-argv-literal: ok fixture assertion
-    assert len(create_calls) == 1
-    assert "--json" in create_calls[0]
-
-
-def test_create_one_resolves_rest_id_for_graphql_node_id(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(
-                argv,
-                stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
-            )
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="12345\n")
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "ISSUE_ID=12345" in out
-    assert "ISSUE_NUMBER=5" in out
-
-
-def test_create_one_graphql_node_id_lookup_failure_rolls_back(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(
-                argv,
-                stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
-            )
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, returncode=1, stderr="lookup failed")
-        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv)
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
-    captured = capsys.readouterr()
-    assert rc == 2
-    assert "ISSUE_FAILED=true" in captured.out
-    assert "ROLLBACK: closed orphan issue #5" in captured.err
-
-
-def test_create_one_id_lookup_failure_emits_rollback_failed(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, returncode=1, stderr="lookup failed")
-        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, returncode=1, stderr="close failed")
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
-    captured = capsys.readouterr()
-    assert rc == 2
-    assert "ISSUE_FAILED=true" in captured.out
-    assert "ROLLBACK_FAILED" in captured.err
-
-
 def test_skill_pins_body_file_title_semantics() -> None:
     text = SKILL_PATH.read_text(encoding="utf-8")
     needles = (
@@ -341,26 +181,6 @@ def test_skill_pins_body_file_title_semantics() -> None:
     )
     for needle in needles:
         assert needle in text, needle
-
-
-def test_write_sentinel_dry_run_and_failures(tmp_path: Path, capsys: Any) -> None:
-    target = tmp_path / "sentinel.env"
-    args = ["--path", str(target), "--issues-created", "1", "--issues-deduplicated", "0", "--issues-failed", "0"]
-    assert issue_create.write_sentinel_main([*args, "--dry-run"]) == 0
-    assert capsys.readouterr().err == "WROTE=false REASON=dry_run\n"
-    assert not target.exists()
-    failure_args = [
-        "--path",
-        str(target),
-        "--issues-created",
-        "1",
-        "--issues-deduplicated",
-        "0",
-        "--issues-failed",
-        "1",
-    ]
-    assert issue_create.write_sentinel_main(failure_args) == 0
-    assert capsys.readouterr().err == "WROTE=false REASON=failures\n"
 
 
 def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
@@ -601,19 +421,6 @@ def test_blocked_by_read_back_accepts_paginated_pages(monkeypatch: Any) -> None:
     assert issue_create._blocked_by_read_back(client="7", blocker="2", repo="o/r")  # pyright: ignore[reportPrivateUsage]  # read-back helper has no public alias
 
 
-def test_cleanup_failed_closes_orphan(monkeypatch: Any, capsys: Any) -> None:
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv)
-        return _result(argv, stdout="o/r\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.cleanup_failed_main(["--issue-number", "7", "--repo", "o/r"]) == 0
-    out = capsys.readouterr().out
-    assert "CLOSED=true" in out
-    assert "ISSUE=7" in out
-
-
 def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
     calls: list[list[str]] = []
 
@@ -647,71 +454,6 @@ def test_add_blocked_by_redaction_failure_exits_three(monkeypatch: Any, capsys: 
     assert rc == 3
     assert "BLOCKED_BY_FAILED=true" in out
     assert "ERROR=redaction:" in out
-
-
-def test_create_one_dry_run_preserves_operator_paths(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    operator_path = "/Users/alice/myproject/docs/guide.md"
-    body.write_text(f"see {operator_path}", encoding="utf-8")
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "label", "list"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout="bug\n")
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(
-        [
-            "--title",
-            f"Path in {operator_path}",
-            "--body-file",
-            str(body),
-            "--repo",
-            "owner/repo",
-            "--dry-run",
-        ],
-    )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert operator_path in out
-    assert "<OPERATOR_REPO_PATH>" not in out
-
-
-def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        calls.append(argv)
-        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return _result(argv, stdout=json.dumps({"id": "", "number": "", "url": ""}))
-        return _result(argv, stdout="owner/repo\n")
-
-    monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
-    out = capsys.readouterr().out
-    assert rc == 2
-    assert "ISSUE_FAILED=true" in out
-    assert "empty field" in out
-    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]  # lint-gh-argv-literal: ok fixture assertion
-    assert len(create_calls) == 1
-    assert "--json" in create_calls[0]
-
-
-def test_create_one_redaction_failure_exits_three(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    body = tmp_path / "body.md"
-    body.write_text("body", encoding="utf-8")
-
-    def boom(_text: str) -> str:
-        raise RuntimeError("redact failed")
-
-    monkeypatch.setattr(issue_create, "redact_secrets_outbound", boom)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "o/r"])
-    out = capsys.readouterr().out
-    assert rc == 3
-    assert "ISSUE_FAILED=true" in out
-    assert "ISSUE_ERROR=redaction:" in out
 
 
 def test_skill_pins_intra_batch_dependency_contract() -> None:
@@ -810,36 +552,6 @@ def test_skill_pins_issue_dedup_subagent_wiring() -> None:
     assert "CAND <item-i> <issue-N> <kind:dup|dep|both> <confidence:high|medium|low>" in text
 
 
-def test_write_sentinel_stderr_only(tmp_path: Path, capsys: Any) -> None:
-    target = tmp_path / "sentinel.env"
-    rc = issue_create.write_sentinel_main(
-        ["--path", str(target), "--issues-created", "1", "--issues-deduplicated", "2", "--issues-failed", "0"],
-    )
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert captured.out == ""
-    assert captured.err == "WROTE=true\n"
-    assert "ISSUES_CREATED=1" in target.read_text(encoding="utf-8")
-
-
-def test_write_sentinel_sanitizes_hostile_usage_error(capsys: Any) -> None:
-    rc = issue_create.write_sentinel_main(["--unknown\nFORGED=value"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert captured.out == ""
-    assert captured.err == "ERROR=Unknown argument: --unknownFORGED=value\n"
-
-
-def test_create_result_sanitizes_hostile_diagnostic(capsys: Any) -> None:
-    rc = issue_create.emit_create_issue_result(
-        issue_create.CreateIssueResult(error="create failed\nFORGED=value", exit_code=2)
-    )
-
-    assert rc == 2
-    assert capsys.readouterr().out == "ISSUE_FAILED=true\nISSUE_ERROR=create failedFORGED=value\n"
-
-
 def test_blocked_by_result_sanitizes_hostile_diagnostic(capsys: Any) -> None:
     rc = issue_create.emit_blocked_by_result(
         issue_create.BlockedByResult(
@@ -919,39 +631,3 @@ def test_add_blocked_by_accepts_valid_session_authorization(
     assert "BLOCKED_BY_ADDED=true" in capsys.readouterr().out
     assert len(calls) == 2
 
-
-def test_create_one_refuses_without_authorization(capsys: Any) -> None:
-    """Non-dry-run create-one must refuse when no context-file or operator-invoked."""
-    rc = issue_create.create_one_main(["--title", "Test issue", "--repo", "owner/repo"])
-    captured = capsys.readouterr()
-    assert rc == _issue_create_config.EXIT_MUTATION_REFUSED
-    assert "ISSUE_FAILED=true" in captured.out
-    assert _issue_create_config.LIVE_MUTATION_REFUSAL_STATUS in captured.out
-
-
-def test_create_one_dry_run_no_auth_required(capsys: Any) -> None:
-    """Dry-run must return without requiring authorization."""
-    rc = issue_create.create_one_main(["--title", "Test", "--dry-run", "--repo", "owner/repo"])
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert "DRY_RUN=true" in captured.out
-
-
-def test_create_one_refuses_with_test_deny_on_session_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test-deny blocks session-backed auth (but not operator-invoked)."""
-    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
-    sessions_root.mkdir(parents=True)
-    ctx = sessions_root / "session-env.sh"
-    ctx.write_text(f"{_issue_create_config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
-    monkeypatch.setenv(_issue_create_config.LIVE_MUTATION_TEST_DENY_KEY, "true")
-    rc = issue_create.create_one_main(["--title", "T", "--repo", "o/r", "--context-file", str(ctx)])
-    assert rc == _issue_create_config.EXIT_MUTATION_REFUSED
-
-
-def test_create_one_operator_invoked_skips_gh_in_dry_run(capsys: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """--operator-invoked with --dry-run returns before any gh call."""
-    monkeypatch.delenv("LARCH_ISSUE_MUTATION_DENY", raising=False)
-    rc = issue_create.create_one_main(["--title", "T", "--dry-run", "--repo", "o/r", "--operator-invoked"])
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert "DRY_RUN=true" in captured.out

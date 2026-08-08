@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

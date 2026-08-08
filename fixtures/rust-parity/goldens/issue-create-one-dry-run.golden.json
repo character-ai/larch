@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "DRY_RUN=true\nDRY_RUN_TITLE=[OOS] already tagged\nISSUE_TITLE=[OOS] already tagged\nDRY_RUN_LABELS=one,two\n"
+  }
+}

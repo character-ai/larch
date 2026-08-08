@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "WROTE=false REASON=dry_run\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
