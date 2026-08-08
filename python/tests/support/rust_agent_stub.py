@@ -479,7 +479,7 @@ def _launch_review(arguments: list[str]) -> int:
     if tool == "codex":
         _ = output.write_text(os.environ.get("LARCH_TEST_CODEX_REVIEW_RESULT", "codex review\n"), encoding="utf-8")
         _ = output.with_suffix(output.suffix + ".events.jsonl").write_text("{}\n", encoding="utf-8")
-        result = subprocess.CompletedProcess(["codex", "exec"], 0, b"", b"")
+        result = subprocess.CompletedProcess(["codex", "exec"], 0, b"", b"")  # lint-codex-exec-auth: ok fixture records synthetic argv only
     else:
         result_text = os.environ.get("LARCH_TEST_CURSOR_REVIEW_RESULT", "cursor review")
         output_tokens = int(os.environ.get("LARCH_TEST_CURSOR_REVIEW_OUTPUT_TOKENS", "1"))
