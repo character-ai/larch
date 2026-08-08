@@ -760,8 +760,7 @@ fn launch_cursor(args: &CiArguments) -> i32 {
 fn cursor_stall_threshold_seconds() -> u64 {
     env::var("LARCH_CURSOR_CI_STALL_THRESHOLD")
         .ok()
-        .filter(|raw| !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit()))
-        .and_then(|raw| raw.parse::<u64>().ok())
+        .and_then(|raw| crate::claude_commands::parse_uint(&raw))
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_CURSOR_CI_STALL_THRESHOLD_SECONDS)
 }

@@ -1263,6 +1263,269 @@ def _launch_claude_review(arguments: list[str]) -> int:
     return _launch_claude_subprocess(forwarded)
 
 
+WATERFALL_SWITCHES = frozenset({"--competition-notice", "--no-fallback", "--straggler-cutoff", "--skip-invalid-slots"})
+
+
+def _waterfall_rows(slots_file: str) -> list[dict[str, object]]:
+    text: str = Path(slots_file).read_text(encoding="utf-8", errors="replace")
+    rows: list[dict[str, object]] = []
+    for line in text.splitlines():
+        if not line:
+            continue
+        parsed: object = json.loads(line)
+        if not isinstance(parsed, dict):
+            raise TypeError(line)
+        rows.append(cast("dict[str, object]", parsed))
+    return rows
+
+
+def _waterfall_prompt(row: dict[str, object], tool: str) -> str:
+    per_tool: object = row.get("prompt_files")
+    if isinstance(per_tool, dict):
+        return str(cast("dict[str, object]", per_tool).get(tool, ""))
+    return str(row.get("prompt_file", ""))
+
+
+def _waterfall_output(base: str, phase: str) -> str:
+    if phase == "phase1":
+        return base
+    if base.endswith(".txt"):
+        return f"{base[:-4]}-{phase}.txt"
+    return f"{base}-{phase}"
+
+
+def _waterfall_panel_env(*, row: dict[str, object], tool: str, phase: str, values: dict[str, str]) -> dict[str, str]:
+    """Publish the panel-context keys the real dispatcher gives its children."""
+    artifact_dir = values.get("--panel-artifact-dir", "") or os.environ.get("LARCH_PANEL_ARTIFACT_DIR", "")
+    if not artifact_dir:
+        return {}
+    per_tool: object = row.get("payload_files")
+    payload = cast("dict[str, object]", per_tool).get(tool, 0) if isinstance(per_tool, dict) else row.get("payload_bytes", 0)
+    published = {
+        "LARCH_PANEL_ARTIFACT_DIR": artifact_dir,
+        "LARCH_PANEL_SITE": values.get("--site", "review Step 2"),
+        "LARCH_PANEL_SLOT": str(row.get("slot", "")),
+        "LARCH_PANEL_PHASE": phase,
+        "LARCH_PANEL_PRIMARY_TOOL": tool,
+        "LARCH_PANEL_SOURCE_AGENT_FILE": str(row.get("agent", "")),
+        "LARCH_PANEL_PAYLOAD_BYTES": str(payload),
+    }
+    name = Path(artifact_dir).name
+    if name.startswith("round-") and name[len("round-") :].isdigit():
+        published["LARCH_PANEL_ROUND_DIR"] = artifact_dir
+        published["LARCH_PANEL_ROUND_NUM"] = name[len("round-") :]
+    return published
+
+
+def _waterfall_context(values: dict[str, str]) -> list[str]:
+    context: list[str] = []
+    for flag in ("--diff-file", "--commit-count", "--plan-file", "--feature-file", "--scope-files", "--description-text", "--difficulty", "--session-env-path"):
+        if values.get(flag):
+            context.extend([flag, values[flag]])
+    return context
+
+
+def _waterfall_vendor_extras(*, row: dict[str, object], tool: str, values: dict[str, str], switches: set[str]) -> list[str]:
+    extras: list[str] = ["--site", values.get("--site", "review Step 2")]
+    if "--competition-notice" in switches:
+        extras.append("--competition-notice")
+    if values.get("--competition-notice-file"):
+        extras.extend(["--competition-notice-file", values["--competition-notice-file"]])
+    if tool == "codex":
+        role = str(row.get("model_role", "")) or values.get("--model-role", "")
+        if role:
+            extras.extend(["--model-role", role])
+        if values.get("--default-model"):
+            extras.extend(["--default-model", values["--default-model"]])
+    elif tool == "cursor" and row.get("cursor_model"):
+        extras.extend(["--cursor-model", str(row["cursor_model"])])
+    return extras
+
+
+def _waterfall_launch(*, row: dict[str, object], tool: str, output: str, values: dict[str, str], switches: set[str]) -> int:
+    prompt = _waterfall_prompt(row, tool)
+    source = ["--prompt-file", prompt] if prompt else ["--agent-file", str(row.get("agent", ""))]
+    shared = ["--output", output, *source, "--mode", values.get("--mode", "description"), "--timeout", values.get("--timeout", "1800"), *_waterfall_context(values)]
+    if tool == "claude":
+        forwarded = list(shared)
+        if values.get("--claude-read-tools-add-dir"):
+            forwarded.extend(["--read-tools-add-dir", values["--claude-read-tools-add-dir"]])
+        return _launch_claude_review(forwarded)
+    extras = _waterfall_vendor_extras(row=row, tool=tool, values=values, switches=switches)
+    return _launch_review(["--tool", tool, *shared, *extras])
+
+
+def _waterfall_accepted(output: str, timeout: str, pattern: str) -> tuple[bool, str]:
+    root = os.environ.get(ENV_CLAUDE_PLUGIN_ROOT, "")
+    command = [sys.executable, str(Path(root) / "python" / "cli.py"), "agent", "collect-results", "--timeout", timeout, "--summary-only", output]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        return False, ""
+    status = ""
+    reviewer = ""
+    for line in completed.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key == "STATUS":
+            status = value
+        elif separator and key == "REVIEWER_FILE":
+            reviewer = value
+    if status not in {"OK", "cap_hit"}:
+        return False, ""
+    final = reviewer or output
+    if status == "OK" and pattern:
+        try:
+            body = Path(final).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False, ""
+        if not re.search(pattern, body, re.MULTILINE):
+            return False, ""
+    return True, final
+
+
+@dataclass(frozen=True)
+class _WaterfallOutcome:
+    """One slot's ladder result inside the bootstrap test double."""
+
+    final: str
+    tool: str
+    accepted: bool
+    fallback: int
+
+
+def _waterfall_ladder(*, row: dict[str, object], present: dict[str, bool], switches: set[str]) -> list[tuple[str, str]]:
+    primary = str(row.get("tool", ""))
+    other = "cursor" if primary == "codex" else "codex"
+    ladder: list[tuple[str, str]] = [(primary, "phase1")] if present.get(primary, False) else []
+    if "--no-fallback" not in switches:
+        if present.get(other, False):
+            ladder.append((other, "phase2"))
+        ladder.append(("claude", "phase3"))
+    return ladder
+
+
+@dataclass(frozen=True)
+class _WaterfallRequest:
+    """Everything one slot's ladder run needs from the dispatch arguments."""
+
+    values: dict[str, str]
+    switches: set[str]
+    timeout: str
+    pattern: str
+
+
+def _waterfall_run_ladder(
+    *,
+    row: dict[str, object],
+    ladder: list[tuple[str, str]],
+    request: _WaterfallRequest,
+    phases: dict[str, list[str]],
+) -> _WaterfallOutcome:
+    base = str(row.get("output", ""))
+    fallback = 0
+    for tool, phase in ladder:
+        output = _waterfall_output(base, phase)
+        phases[phase].append(output)
+        if phase == "phase3":
+            fallback += 1
+        _waterfall_launch_with_panel_env(row=row, tool=tool, phase=phase, output=output, request=request)
+        accepted, final = _waterfall_accepted(output, request.timeout, request.pattern)
+        if accepted:
+            return _WaterfallOutcome(final=final, tool=tool, accepted=True, fallback=fallback)
+        if phase == "phase3":
+            return _WaterfallOutcome(final=output, tool=tool, accepted=False, fallback=fallback)
+    return _WaterfallOutcome(final="", tool="", accepted=False, fallback=fallback)
+
+
+def _waterfall_launch_with_panel_env(
+    *, row: dict[str, object], tool: str, phase: str, output: str, request: _WaterfallRequest
+) -> None:
+    published = _waterfall_panel_env(row=row, tool=tool, phase=phase, values=request.values)
+    saved = {key: os.environ.get(key) for key in published}
+    os.environ.update(published)
+    try:
+        _ = _waterfall_launch(row=row, tool=tool, output=output, values=request.values, switches=request.switches)
+    finally:
+        for key, previous in saved.items():
+            if previous is None:
+                _ = os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
+
+def _dispatch_waterfall(arguments: list[str]) -> int:
+    """Sequential test double for the Rust three-phase waterfall dispatcher.
+
+    Python caller tests only need the phase order, the published paths file,
+    and the stdout key-values. The real contract, including concurrency, drop
+    sidecars, and the straggler cutoff, is proved in
+    `crates/larch-cli/tests/waterfall_commands.rs`.
+    """
+    switches = {argument for argument in arguments if argument in WATERFALL_SWITCHES}
+    values, _unused = _option_values([argument for argument in arguments if argument not in WATERFALL_SWITCHES])
+    slots_file = values.get("--slots-file", "")
+    if not slots_file or values.get("--mode", "") not in {"diff", "description"}:
+        return 2
+    present = {"codex": values.get("--codex-present") == "true", "cursor": values.get("--cursor-present") == "true", "claude": False}
+    request = _WaterfallRequest(
+        values=values,
+        switches=switches,
+        timeout=values.get("--timeout", "1800"),
+        pattern=_posix_pattern(values.get("--require-result-pattern", "")),
+    )
+    rows = _waterfall_rows(slots_file)
+    paths_file = values.get("--paths-file", "") or f"{slots_file}.output-files"
+    finals: list[str] = []
+    tools: list[str] = []
+    phases: dict[str, list[str]] = {"phase1": [], "phase2": [], "phase3": []}
+    fallback = 0
+    dispatch_ok = True
+    for row in rows:
+        ladder = _waterfall_ladder(row=row, present=present, switches=switches)
+        outcome = _waterfall_run_ladder(row=row, ladder=ladder, request=request, phases=phases)
+        fallback += outcome.fallback
+        if outcome.final:
+            finals.append(outcome.final)
+            tools.append(outcome.tool)
+        if not outcome.accepted:
+            dispatch_ok = False
+    Path(paths_file).parent.mkdir(parents=True, exist_ok=True)
+    _ = Path(paths_file).write_text("".join(f"{value}\n" for value in finals), encoding="utf-8")
+    for key, value in (
+        ("PHASE1_SLOTS", " ".join(phases["phase1"])),
+        ("PHASE2_SLOTS", " ".join(phases["phase2"])),
+        ("PHASE3_SLOTS", " ".join(phases["phase3"])),
+        ("ALL_OUTPUT_FILES", " ".join(finals)),
+        ("ALL_OUTPUT_FILES_PATH", paths_file),
+        ("ALL_OUTPUT_TOOLS", " ".join(tools)),
+        ("FALLBACK_COUNT", str(fallback)),
+        ("COMBINED_FALLBACK_COUNT", str(fallback)),
+        ("STRAGGLER_DROPPED_COUNT", "0"),
+        ("DISPATCH_OK", "true" if dispatch_ok else "false"),
+        ("STATIC_DISPATCH_OK", "true" if dispatch_ok else "false"),
+        ("DYNAMIC_DISPATCH_OK", "true"),
+    ):
+        print(f"{key}={value}")
+    if "--no-fallback" in switches and not finals and rows:
+        print("ALL_SLOTS_DROPPED=true")
+    return 0
+
+
+def _posix_pattern(raw: str) -> str:
+    replacements = {
+        "[[:alnum:]]": "[A-Za-z0-9]",
+        "[[:alpha:]]": "[A-Za-z]",
+        "[[:blank:]]": "[ \t]",
+        "[[:digit:]]": r"\d",
+        "[[:lower:]]": "[a-z]",
+        "[[:space:]]": r"\s",
+        "[[:upper:]]": "[A-Z]",
+    }
+    translated = raw
+    for needle, replacement in replacements.items():
+        translated = translated.replace(needle, replacement)
+    return translated
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -1279,6 +1542,7 @@ def main(arguments: list[str]) -> int:
             ("agent", "compose-collector-failure-log"): _compose,
             ("agent", "run-external-agent"): _run_external_agent,
             ("agent", "launch-review"): _launch_review,
+            ("agent", "dispatch-waterfall"): _dispatch_waterfall,
             ("run-log", "append-failure"): _append_failure,
             ("run-log", "append-entry"): _append_entry,
             ("run-log", "archive"): _run_log_archive,

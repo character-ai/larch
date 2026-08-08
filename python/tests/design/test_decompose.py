@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.design import decompose
 from larch.issue import issue_wire
 
@@ -559,7 +560,7 @@ def test_dispatch_panel_defaults_to_agent_dispatch_waterfall(tmp_path: Path, mon
     monkeypatch.setattr(decompose.subprocess, "run", fake_run)  # type: ignore[arg-type]
     decompose.dispatch_panel(design_tmpdir=d, codex_present=True, cursor_present=True, mode="plan", plan_file=plan)
     assert seen
-    assert seen[0][:4] == [sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+    assert seen[0][:3] == [str(larch_entrypoint(decompose.PLUGIN_ROOT)), "agent", "dispatch-waterfall"]
 
 
 def test_aggregate_partition_defaults_to_agent_dispatch_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -583,7 +584,7 @@ def test_aggregate_partition_defaults_to_agent_dispatch_waterfall(tmp_path: Path
     status = decompose.aggregate_partition(design_tmpdir=d, panel_outputs_file=panel, codex_present=True, cursor_present=True, output=d / "merged.md")
     assert status == "ok"
     assert seen
-    assert seen[0][:4] == [sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+    assert seen[0][:3] == [str(larch_entrypoint(decompose.PLUGIN_ROOT)), "agent", "dispatch-waterfall"]
 
 
 def test_migrate_dependencies_denies_before_github_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

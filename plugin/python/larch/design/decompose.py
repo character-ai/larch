@@ -951,7 +951,7 @@ def dispatch_panel(  # noqa: C901,PLR0912,PLR0915,RUF100
     if "DECOMPOSE_PANEL_WATERFALL_SH" in os.environ:
         waterfall_argv: list[str] = [os.environ["DECOMPOSE_PANEL_WATERFALL_SH"]]
     else:
-        waterfall_argv = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+        waterfall_argv = [str(larch_entrypoint(PLUGIN_ROOT)), "agent", "dispatch-waterfall"]
     cmd: list[str] = [*waterfall_argv, "--slots-file", str(manifest), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description"]
     if decompose_policy is None or decompose_policy.panel_no_fallback:
         cmd.append("--no-fallback")
@@ -1110,7 +1110,7 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
     if "DECOMPOSE_AGGREGATE_WATERFALL_SH" in os.environ:
         waterfall_argv: list[str] = [os.environ["DECOMPOSE_AGGREGATE_WATERFALL_SH"]]
     else:
-        waterfall_argv = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+        waterfall_argv = [str(larch_entrypoint(PLUGIN_ROOT)), "agent", "dispatch-waterfall"]
     cmd: list[str] = [*waterfall_argv, "--slots-file", str(slots), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--feature-file", str(feature), "--require-result-pattern", "^[[:space:]]*## Recommendation", "--timeout", str(timeout)]
     result: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=False, capture_output=True, text=True)
     kvs: dict[str, str] = _parse_kv_lines(result.stdout)

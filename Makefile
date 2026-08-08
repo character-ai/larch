@@ -888,7 +888,7 @@ test-degraded-tools-gate:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands degraded_tools_gate
 
 test-no-grouped-reuse-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py -k grouped_reuse_guard
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse
 
 test-external-tool-registry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-external-tool-registry.sh
@@ -907,7 +907,7 @@ test-launch-claude-review:
 
 
 test-dispatch-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands
 
 test-agent-model-args:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k model_args

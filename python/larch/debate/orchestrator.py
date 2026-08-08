@@ -40,7 +40,7 @@ from larch.agents._vendor import (
     build_cursor_resume_argv,
 )
 from larch.core import config, external_defaults, proc, redact
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, plugin_root
 from larch.debate import protocol
 from larch.report import run_logs
 from larch.review import voting
@@ -1827,8 +1827,7 @@ def synthesize(*, root: str | Path, expected_fingerprint: str) -> tuple[Proposal
         )
         available = {slot.tool: slot.available for slot in state.initialization.slots}
         command = [
-            sys.executable,
-            str(plugin_root(_PLUGIN_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_PLUGIN_ROOT)),
             "agent",
             "dispatch-waterfall",
             "--slots-file",

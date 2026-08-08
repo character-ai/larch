@@ -104,7 +104,7 @@ Authoritative flag documentation lives in the `--substantive-validation` / `--va
 
 External reviewers participate in multiple phases:
 
-The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned external tool → the *other* external tool → Claude, per slot (via `python/cli.py agent dispatch-waterfall` for reviewer panels, or selection/runtime tiers for coders); **replacement-first** = tool unavailable → Claude directly (no cross-tool tier); **skip** = tool unavailable → slot dropped, no substitution.
+The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned external tool → the *other* external tool → Claude, per slot (via `scripts/larch.sh agent dispatch-waterfall` for reviewer panels, or selection/runtime tiers for coders); **replacement-first** = tool unavailable → Claude directly (no cross-tool tier); **skip** = tool unavailable → slot dropped, no substitution.
 
 | Phase | Role | Skills | Fallback behavior |
 |---|---|---|---|

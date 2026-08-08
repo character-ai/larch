@@ -15,7 +15,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import external_defaults
 from larch.core import logging_util
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.issue.oos import is_security_tagged
 from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 from larch.review.review_types import is_canonical_heading, parse_blocks, parse_findings_text, parse_findings
@@ -899,7 +899,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
         dispatch_args.extend(["--plan-file", args.plan_file])
     dispatch_args.extend(["--require-result-pattern", rf"^(### FINDING_[0-9]+:|[[:space:]]*{_EMPTY_MERGE_ATTESTATION}[[:space:]]*$)"])
     override = os.environ.get("AGGREGATE_DISPATCH_SH", "")
-    dispatch_argv = [override, *dispatch_args] if override else [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall", *dispatch_args]
+    dispatch_argv = [override, *dispatch_args] if override else [str(larch_entrypoint(_PLUGIN_ROOT)), "agent", "dispatch-waterfall", *dispatch_args]
     dispatch_out = review_tmpdir / "aggregator-dispatch.env"
     dispatch_err = review_tmpdir / "aggregator-dispatch.stderr"
     # Bounded re-dispatch on semantic-validation failure: a single non-deterministic LLM slip that
@@ -929,7 +929,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
             payload_bytes=payload_bytes,
         )
         try:
-            proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False, env=panel_env)
+            proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False, env=larch_entrypoint_env(_PLUGIN_ROOT, base=panel_env))
         except OSError as exc:
             _write_text(path=dispatch_err, text=str(exc))
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))

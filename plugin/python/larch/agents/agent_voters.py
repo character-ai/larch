@@ -15,13 +15,13 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 from typing import cast
 
-from larch.agents import agent_waterfall
+from larch.agents import slot_manifest
 from larch.calibration import difficulty
 from larch.review import findings_ledger
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.review.dispatch_shared import (
     DispatchState,
     VoterPromptResult,
@@ -264,7 +264,9 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:
     artifact_dir, _round_dir, panel_env = _panel_artifact_context(review_tmpdir=review_tmpdir, round_num=opts.round_num, site=opts.site)
     waterfall_args = [
-            *_cli_argv("agent", "dispatch-waterfall"),
+            str(larch_entrypoint(_PLUGIN_ROOT)),
+            "agent",
+            "dispatch-waterfall",
             "--slots-file",
             manifest,
             "--panel-artifact-dir",
@@ -291,7 +293,7 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
     vote_default = config.CODEX_VOTE_MODEL_BY_DIFFICULTY.get(opts.tier, "")
     if vote_default:
         waterfall_args.extend(["--default-model", vote_default])
-    result = proc.run(waterfall_args, env=panel_env)
+    result = proc.run(waterfall_args, env=larch_entrypoint_env(_PLUGIN_ROOT, base=panel_env))
     if result.returncode != 0:
         _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode}: proceeding with partial or empty result")
     return result.stdout
@@ -381,7 +383,7 @@ def _emit_final_kvs(*, state: DispatchState, voter_paths_file: str, dispatch_ok:
     )
 
 
-def _state_from_bindings(*, bindings: Mapping[str, agent_waterfall.SlotOutputBinding], launched_policies: Sequence[VoterSlotPolicy]) -> DispatchState:
+def _state_from_bindings(*, bindings: Mapping[str, slot_manifest.SlotOutputBinding], launched_policies: Sequence[VoterSlotPolicy]) -> DispatchState:
     return state_from_voter_bindings(
         policies=VOTER_SLOT_POLICIES,
         bindings=bindings,
@@ -439,7 +441,7 @@ def dispatch_voters(opts: Options) -> int:
         round_num=opts.round_num,
     )
     _outputs, _tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
-    bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
+    bindings = slot_manifest.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
 
     state = _state_from_bindings(bindings=bindings, launched_policies=launched_policies)
 

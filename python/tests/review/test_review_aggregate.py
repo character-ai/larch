@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
+from larch.core.repo_roots import larch_entrypoint
 from larch.review import review_aggregate
 import review_test_support as rts
 
@@ -1746,7 +1746,7 @@ def test_prune_nit_security_rows_stay_out_of_public_audit(tmp_path: Path) -> Non
     assert "Security nit" not in public_audit.read_text(encoding="utf-8")
 
 
-def test_aggregate_default_dispatch_argv_uses_python_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_aggregate_default_dispatch_argv_uses_the_verified_bootstrap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     _ = findings.write_text(
         """### FINDING_1: Dup A
@@ -1788,7 +1788,7 @@ def test_aggregate_default_dispatch_argv_uses_python_cli(monkeypatch: pytest.Mon
 
     assert captured
     dispatch_argv = captured[0]
-    assert dispatch_argv[:4] == [sys.executable, str(ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+    assert dispatch_argv[:3] == [str(larch_entrypoint(ROOT)), "agent", "dispatch-waterfall"]
 
 
 def test_aggregate_revision_traceability_strict_fails(tmp_path: Path) -> None:
