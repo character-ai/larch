@@ -53,6 +53,7 @@ mod release_version;
 mod run_lifecycle_commands;
 mod run_log_commands;
 mod run_log_entry_commands;
+mod run_log_migration_commands;
 mod run_log_publication_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
@@ -208,6 +209,9 @@ enum RunLogCommand {
     /// Verify and atomically materialize one archived run-log tree.
     #[command(name = "materialize", disable_help_flag = true)]
     Materialize(RawCompatibilityArguments),
+    /// Plan, apply, and independently verify the one-time run-log layout migration.
+    #[command(name = "migrate-layout", disable_help_flag = true)]
+    MigrateLayout(RawCompatibilityArguments),
     /// Publish one immutable completed run archive and verified local cache.
     #[command(name = "publish", disable_help_flag = true)]
     Publish(RawCompatibilityArguments),
@@ -217,6 +221,12 @@ enum RunLogCommand {
     /// Synchronize the immutable remote run-log corpus into the local cache.
     #[command(name = "sync", disable_help_flag = true)]
     Sync(RawCompatibilityArguments),
+    /// Correct historical Cursor cost lines in committed run summaries.
+    #[command(name = "retro-fix-cursor", disable_help_flag = true)]
+    RetroFixCursor(RawCompatibilityArguments),
+    /// Rewrite historical session transcripts to the v3 redaction policy.
+    #[command(name = "retro-v3-sweep", disable_help_flag = true)]
+    RetroV3Sweep(RawCompatibilityArguments),
     /// Prepare the complete mutable snapshot immediately before publication.
     #[command(name = "prepare-terminal-snapshot", disable_help_flag = true)]
     PrepareTerminalSnapshot(RawCompatibilityArguments),
@@ -1025,6 +1035,9 @@ fn run(
         Domain::RunLog(RunLogCommand::Materialize(arguments)) => {
             Ok(run_log_commands::materialize(&arguments.arguments))
         }
+        Domain::RunLog(RunLogCommand::MigrateLayout(arguments)) => Ok(
+            run_log_migration_commands::migrate_layout(&arguments.arguments),
+        ),
         Domain::RunLog(RunLogCommand::Publish(arguments)) => {
             Ok(run_log_publication_commands::publish(&arguments.arguments))
         }
@@ -1092,6 +1105,12 @@ fn run(
         Domain::RunLog(RunLogCommand::Sync(arguments)) => {
             Ok(run_log_publication_commands::sync(&arguments.arguments))
         }
+        Domain::RunLog(RunLogCommand::RetroFixCursor(arguments)) => Ok(
+            run_log_migration_commands::retro_fix_cursor(&arguments.arguments),
+        ),
+        Domain::RunLog(RunLogCommand::RetroV3Sweep(arguments)) => Ok(
+            run_log_migration_commands::retro_v3_sweep(&arguments.arguments),
+        ),
         Domain::RunLog(RunLogCommand::Checkpoint(arguments)) => {
             Ok(run_log_flush_commands::checkpoint(&arguments.arguments))
         }

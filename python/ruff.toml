@@ -691,9 +691,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"retro_v3_sweep.py" = [
-    "C901",
-]
 "retry.py" = [
     "C901",
     "PLR0911",

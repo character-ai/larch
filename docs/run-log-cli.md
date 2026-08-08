@@ -3,8 +3,8 @@
 `scripts/larch.sh run-log ...` owns Rust run-log initialization, entry writes,
 mutable flushes, transcript capture, durable manifest updates, archive creation,
 materialization, publication, synchronization, storage preflight, and the five
-shared lifecycle verbs. `python3 python/cli.py run-log ...` retains only the
-historical layout-migration verb.
+shared lifecycle verbs, historical layout migration, and retroactive repair
+sweeps. `python3 python/cli.py run-log ...` owns none of these verbs.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -33,9 +33,18 @@ secret-survival failure blocks publication, but a clean pattern scan does not
 make a log public-safe. See the canonical
 [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#redaction-invariants).
 
-## Remaining Python-owned verb
+## Rust-owned one-time maintenance verbs
 
 - `run-log migrate-layout plan|apply|verify`
+- `run-log retro-v3-sweep [--root <repo-root>] [--dry-run]`
+- `run-log retro-fix-cursor [--root <repo-root>] [--run-id <id>] [--dry-run]`
+
+The two retro sweeps enumerate only regular files below the configured root;
+they reject a symlinked root or run ID that could escape it. A dry run emits a
+`DRY_RUN_PATH=` row for every file a live invocation would change; the live
+invocation emits the matching `CHANGED_PATH=` rows before its established
+summary line. Re-running either sweep converges without rewriting already
+correct files.
 
 ## Rust-owned publication and synchronization
 
@@ -210,8 +219,9 @@ state, emit `RUN_LOG_PUBLICATION=failed`, `LIFECYCLE_FLUSHED=false`, and
 
 ## One-time tool-first S3 migration
 
-`run-log migrate-layout` is the operator-only command for
-`character-ai/larch#7966`. It migrates the frozen larch-tool corpora from:
+`run-log migrate-layout` is the Rust-owned, operator-only command for
+`character-ai/larch#8081` (the historical migration program is #7966). It
+migrates the frozen larch-tool corpora from:
 
 ```text
 s3://zhupanov/larch/run-logs/

@@ -21,11 +21,11 @@ this recipe.
 The run-log domain is mixed-runtime. Rust owns initialization, entry writes,
 mutable checkpoint and terminal flushes, transcript capture, manifest updates,
 breadcrumb publication, archive creation, materialization, cache promotion,
-storage preflight, shared lifecycle operations, standalone publication, and
-synchronization. Python retains only the historical layout migration, bounded
-compatibility consumers, and content renderers until their named leaves cut
-over. A renderer invoked by Rust produces a payload only. It is not a fallback
-command owner.
+storage preflight, shared lifecycle operations, standalone publication,
+synchronization, historical layout migration, and retroactive repair sweeps.
+Python retains bounded compatibility consumers and content renderers until
+their named leaves cut over. A renderer invoked by Rust produces a payload
+only. It is not a fallback command owner.
 
 Before a Rust cutover, pass the shared
 `tests/fixtures/run-log-object-store-contract-v1.json` fixture plus archive,
@@ -126,6 +126,14 @@ entrypoints are removed. `larch.report.run_log_archive` is only a typed Rust
 consumer for bounded compatibility callers. The historical migration-only
 reader remains isolated in `run_log_legacy_archive.py`; it is not a normal
 archive command or fallback implementation.
+
+**Historical layout migration and retro sweeps cut over in #8081.**
+`run-log migrate-layout`, `retro-v3-sweep`, and `retro-fix-cursor` are
+Rust-owned through `crates/larch-cli/src/run_log_migration_commands.rs`. The
+layout command preserves its create-only S3 plan/apply/verify contract and the
+retro sweeps use root-confined, atomic local rewrites. All three Python command
+registrations and implementations are removed; a dry run names the exact files
+a live retro sweep would modify.
 
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 

@@ -1621,7 +1621,7 @@ def test_run_lint_fix_structural_ruff_diagnostics_fast_fail(
     "log_text",
     [
         "C901 `transform_file` is too complex (11 > 10)\n"
-        " --> python/larch/report/retro_fix_cursor.py:65:5\n",
+        " --> python/larch/report/report_tokens_render.py:65:5\n",
     ],
 )
 def test_run_lint_fix_structural_ruff_human_block_fast_fail(

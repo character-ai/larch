@@ -59,8 +59,6 @@ const DIRECT_FILES: &[&str] = &[
 const DEV_ONLY_PYTHON: &[&str] = &[
     "python/larch/calibration/calibration_replay.py",
     "python/larch/core/residual_bash.py",
-    "python/larch/report/retro_fix_cursor.py",
-    "python/larch/report/retro_v3_sweep.py",
 ];
 
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";

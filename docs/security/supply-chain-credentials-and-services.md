@@ -364,9 +364,9 @@ it, while new objects are verified through returned and fetched metadata. No
 run-log production route uses the AWS CLI. The complete hard-cutover boundary
 lives in [Run-log storage contracts](../run-log-archive.md#rust-handoff).
 
-The one-time `character-ai/larch#7966` layout migration uses the same
-normalized S3 transport. Live plan, apply, and verify operations accept only
-the fixed old and tool-first roots for the larch and agent-lint client
+The Rust-owned one-time `character-ai/larch#8081` layout migration uses the
+same normalized S3 transport. Live plan, apply, and verify operations accept
+only the fixed old and tool-first roots for the larch and agent-lint client
 repositories. Apply requires an explicit live-migration authorization flag.
 Final report publication requires a separate authorization flag. Both archive
 and report uploads are create-only. Source objects, target objects, provider

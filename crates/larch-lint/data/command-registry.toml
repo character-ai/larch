@@ -6158,11 +6158,13 @@ verb = "migrate-layout"
 python_module = "larch.report.run_log_layout_migration"
 python_function = "main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7966
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7683
+migration_issue = 8081
+clean_install_test = "clean-install-run-log-migrate-layout"
 
 [[commands]]
 domain = "run-log"
@@ -6238,11 +6240,13 @@ verb = "retro-fix-cursor"
 python_module = "larch.report.retro_fix_cursor"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8081
+clean_install_test = "clean-install-run-log-retro-fix-cursor"
 
 [[commands]]
 domain = "run-log"
@@ -6250,11 +6254,13 @@ verb = "retro-v3-sweep"
 python_module = "larch.report.retro_v3_sweep"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8081
+clean_install_test = "clean-install-run-log-retro-v3-sweep"
 
 [[commands]]
 domain = "run-log"

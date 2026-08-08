@@ -14,7 +14,9 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit and CI scans.
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
-- `render_session_transcript.py`, `cleanup_implement_logs.py`, `retro_v3_sweep.py` — run-log maintenance surfaces exposed as `python/cli.py run-log render-session-transcript`, `python/cli.py run-log cleanup-implement-logs`, and `python/cli.py run-log retro-v3-sweep`.
+- `render_session_transcript.py`, `cleanup_implement_logs.py` — bounded Python
+  run-log maintenance consumers exposed as `python/cli.py run-log
+  render-session-transcript` and `python/cli.py run-log cleanup-implement-logs`.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py`, `report_tokens_render.py`, `report_tokens_plot.py`, `report_tokens_issue.py`, `report_tokens_cli.py` — live `/report-tokens` scan, pricing, render, plot-subprocess, issue-posting, and CLI pipeline.
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
@@ -33,12 +35,12 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
 - `larch/report/run_log_archive.py`, `object_store.py`, `storage_config.py`,
-  `run_log_publish.py`, and `run_log_layout_migration.py` retain bounded Python
-  compatibility and historical-migration helpers. Rust owns archive creation,
-  materialization, standalone and lifecycle publication, synchronization, and
-  cache promotion. `run_log_archive.py` and
-  `run_lifecycle.py` are typed `scripts/larch.sh` consumers; the historical
-  migration-only reader lives separately in `run_log_legacy_archive.py`.
+  and `run_log_publish.py` retain bounded Python compatibility helpers. Rust
+  owns archive creation, materialization, standalone and lifecycle publication,
+  synchronization, tool-first layout migration, and the historical repair
+  sweeps. `run_log_archive.py` and `run_lifecycle.py` are typed
+  `scripts/larch.sh` consumers; the historical migration-only reader lives
+  separately in `run_log_legacy_archive.py`.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
 - `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 
