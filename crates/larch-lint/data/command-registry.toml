@@ -5605,11 +5605,13 @@ verb = "analyze"
 python_module = "larch.report.report_tokens_cli"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8088
+clean_install_test = "clean-install-report-tokens-analyze"
 
 [[commands]]
 domain = "research"
@@ -9590,8 +9592,8 @@ rust = []
 [[callers]]
 path = "skills/report-tokens/SKILL.md"
 kind = "skill"
-python = ["report-tokens analyze"]
-rust = []
+python = []
+rust = ["report-tokens analyze"]
 
 [[callers]]
 path = "skills/research/SKILL.md"

@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is Rust-owned via `scripts/larch.sh report-tokens analyze`. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -17,7 +17,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `render_session_transcript.py` — bounded Python run-log maintenance consumer
   exposed as `python/cli.py run-log render-session-transcript`.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py`, `report_tokens_render.py`, `report_tokens_plot.py`, `report_tokens_issue.py`, `report_tokens_cli.py` — live `/report-tokens` scan, pricing, render, plot-subprocess, issue-posting, and CLI pipeline.
+- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — token scan and pricing helpers still used by `larch.report.tokens`, `larch.git.pr_body`, `larch.report.final_report`, and the calibration analyzers. The `/report-tokens` render, plot, issue, and CLI modules retired with issue 8088.
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)

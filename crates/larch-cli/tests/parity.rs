@@ -757,6 +757,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new(
+        "clean-install-report-tokens-analyze",
+        "report-tokens",
+        "analyze",
+    ),
     CleanInstallCase::new("clean-install-timing-dump", "timing", "dump"),
     CleanInstallCase::new(
         "clean-install-timing-harness-mark",

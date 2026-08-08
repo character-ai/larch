@@ -89,12 +89,18 @@ def test_retired_gc_run_logs_module_is_not_importable() -> None:
     assert importlib.util.find_spec("larch.report.gc_run_logs") is None
 
 
-def test_dispatch_report_tokens_analyze() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.report.report_tokens_cli": MagicMock(main=mock_main)}):
-        rc = cli.main(["report-tokens", "analyze", "--skill", "implement"])
-    mock_main.assert_called_once_with(["--skill", "implement"])
-    assert rc == 0
+def test_retired_report_tokens_modules_are_not_importable() -> None:
+    for module in (
+        "larch.report.report_tokens_cli",
+        "larch.report.report_tokens_render",
+        "larch.report.report_tokens_plot",
+        "larch.report.report_tokens_issue",
+    ):
+        assert importlib.util.find_spec(module) is None
+
+
+def test_report_tokens_analyze_is_not_a_python_command() -> None:
+    assert cli.main(["report-tokens", "analyze", "--skill", "implement"]) == 2
 
 
 def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:

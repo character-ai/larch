@@ -664,14 +664,6 @@ ignore = [
 "report_tokens_cost.py" = [
     "PLR0913",
 ]
-"report_tokens_plot.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0913",
-]
-"report_tokens_render.py" = [
-    "PLR0913",
-]
 "research.py" = [
     "C901",
     "PLR0911",

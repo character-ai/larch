@@ -65,6 +65,7 @@ pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
+mod report_tokens_commands;
 mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
@@ -176,6 +177,9 @@ enum Domain {
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
+    /// Token-cost analysis over the synchronized run-log corpus.
+    #[command(subcommand, name = "report-tokens")]
+    ReportTokens(ReportTokensCommand),
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
@@ -313,6 +317,13 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ReportTokensCommand {
+    /// Price the synchronized run-log corpus and render the token report.
+    #[command(disable_help_flag = true)]
+    Analyze(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1298,6 +1309,11 @@ fn run(
             }
         }),
         Domain::Release(command) => run_release(command),
+        Domain::ReportTokens(command) => Ok(match command {
+            ReportTokensCommand::Analyze(arguments) => {
+                report_tokens_commands::analyze(&arguments.arguments)
+            }
+        }),
         Domain::Session(command) => Ok(run_session(command)),
         Domain::Slack(command) => Ok(slack_commands::run(command)),
         Domain::StallRecovery(arguments) => Ok(stall_recovery_commands::run(&arguments.arguments)),

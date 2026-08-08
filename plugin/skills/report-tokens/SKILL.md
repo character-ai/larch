@@ -12,7 +12,7 @@ allowed-tools: Bash, Read
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Analyze token costs from synchronized larch run logs for the selected skill (`--skill=design|implement`) in the current Git repository. The CLI syncs once, scans the unpacked cache, reads the skill-specific token report JSON files, prices each run through `python/larch/report/report_tokens_cost.py`, prints a markdown analysis, writes a durable NDJSON cache snapshot, optionally generates plots, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
+Analyze token costs from synchronized larch run logs for the selected skill (`--skill=design|implement`) in the current Git repository. The CLI syncs once, scans the unpacked cache, reads the skill-specific token report JSON files, prices each run through `larch_core::report`, prints a markdown analysis, writes a durable NDJSON cache snapshot, writes the plot child's input, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
 
 For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design`, one aggregate report is generated. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.
 
@@ -32,15 +32,27 @@ Pass any of these after the skill name (for example, `/report-tokens --skill imp
 Parse and validate `--skill` first. Reject missing or out-of-enum values before calling the CLI. Parse any `--no-issue`, `--no-plot`, or `--run-id <ID>` flags. The `--run-id` flag is consumed by the orchestrator and NOT forwarded to the CLI. Then:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" report-tokens analyze --skill "<name>" [FLAGS]
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" report-tokens analyze --skill "<name>" --operator-invoked [FLAGS]
 ```
 
-where `[FLAGS]` are only `--no-issue` and/or `--no-plot`; `--run-id` is never included.
+where `[FLAGS]` are only `--no-issue` and/or `--no-plot`; `--run-id` is never included. `--operator-invoked` authorizes the analysis-report issue write, because `/report-tokens` is a direct operator-requested command; omit it with `--no-issue`, which posts nothing.
 
-Plot subprocess contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.md`; helper: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.py`.
+Verify the CLI exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON: <path>`. If it exits non-zero, stop and surface the error; do not invent partial cost results.
 
-Verify the CLI exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON: <path>`. If it exits non-zero, stop and surface the error; do not invent partial cost results. The CLI uses Python quiet routing via `quiet_init`, so scan warnings and issue-creation failures are visible to callers.
-Advertised `Cache JSON:` and plot paths remain on disk after CLI exit and expire through automatic SessionStart `cleanup run` age sweeps for `larch-*` paths, rather than growing without bound.
+<!-- step:2 — Render plots -->
+
+Skip this step when `--no-plot` was passed or `LARCH_REPORT_TOKENS_NO_PLOT` is set; the analysis text is already complete without it.
+
+Otherwise read the `Plot input written to:` path from step 1 and render the PNGs. The plot child is the only `/report-tokens` helper that needs matplotlib, so it runs here rather than inside the Rust CLI:
+
+```bash
+PLOT_DIR="$(dirname "<plot-input-path>")"
+MPLCONFIGDIR="$PLOT_DIR/mpl" python3 "${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.py" "<plot-input-path>" "$PLOT_DIR"
+```
+
+The child prints a JSON list of absolute PNG paths. Report those paths to the operator. A non-zero exit or unparseable output is not fatal: report that no plots were generated and keep the text analysis. Contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.md`.
+
+Advertised `Cache JSON:`, plot-input, and plot paths remain on disk after CLI exit and expire through automatic SessionStart `cleanup run` age sweeps for `larch-*` paths, rather than growing without bound.
 
 ## NEVER
 
