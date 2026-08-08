@@ -1,7 +1,7 @@
 //! Text framing shared by the ported Python line readers.
 
 use serde_json::Value;
-use std::{collections::BTreeSet, fmt::Write as _};
+use std::{borrow::Cow, collections::BTreeSet, fmt::Write as _};
 
 /// Escape non-ASCII scalars in already-serialized JSON text.
 ///
@@ -196,8 +196,73 @@ pub const fn is_python_whitespace(character: char) -> bool {
     character.is_whitespace() || matches!(character, '\u{1c}'..='\u{1f}')
 }
 
-fn trim_python_whitespace(text: &str) -> &str {
+/// Trim exactly the code points Python's `str.strip()` removes.
+#[must_use]
+pub fn trim_python_whitespace(text: &str) -> &str {
     text.trim_matches(is_python_whitespace)
+}
+
+/// Translate line endings the way Python's default text reader does.
+///
+/// `Path.read_text` opens in universal-newline mode, so every reader ported
+/// from it sees `\n` even when the file holds `\r\n` or a bare `\r`. Readers
+/// ported from `larch.io.read_text` do not, because that owner opens with
+/// `newline=""`. Which translation applies is therefore a property of the
+/// reader, not of the grammar, so the OOS text functions take whatever their
+/// caller read and this owner spells out the choice.
+#[must_use]
+pub fn universal_newlines(text: &str) -> Cow<'_, str> {
+    if text.contains('\r') {
+        Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n"))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+/// Extensions the reviewer file-reference grammar accepts without a line hint.
+const FILE_REFERENCE_LONG_EXTENSIONS: &str = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml";
+/// Extensions ambiguous enough to need a path separator or a line hint.
+const FILE_REFERENCE_SHORT_EXTENSIONS: &str = "lock|env|txt|c|h|m|r";
+
+/// The four alternatives of the shared reviewer file-reference grammar.
+///
+/// Ports Python `larch.review.voting.FILE_LINE_REGEXES` as one owner, so the
+/// evidence reader and the OOS conflict model cannot drift apart on which
+/// prose counts as a file reference. The alternatives are returned as source
+/// strings because the two readers compose them differently: evidence matching
+/// wants them as separate expressions, and conflict detection wants one.
+///
+/// `fold_extension_case` is the only difference between the two callers. The
+/// evidence reader accepts `.PY` because it is scoring similarity, while the
+/// conflict model keeps Python's case-sensitive spelling because a spurious
+/// match there would invent a dependency edge between unrelated items. Every
+/// alternative keeps its capture-group count in both spellings.
+#[must_use]
+pub fn file_reference_alternatives(fold_extension_case: bool) -> [String; 4] {
+    let group = |values: &str| {
+        if fold_extension_case {
+            format!("((?i-u:{values}))")
+        } else {
+            format!("({values})")
+        }
+    };
+    let long = group(FILE_REFERENCE_LONG_EXTENSIONS);
+    let short = group(FILE_REFERENCE_SHORT_EXTENSIONS);
+    [
+        format!(
+            r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*\.{long}(:[0-9]+(-[0-9]+)?)?($|[^A-Za-z0-9_:/-])"
+        ),
+        format!(
+            r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*[/_-][A-Za-z0-9_./-]*\.{short}(:[0-9]+(-[0-9]+)?)?($|[^A-Za-z0-9_:/-])"
+        ),
+        format!(
+            r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*\.{short}:[0-9]+(-[0-9]+)?($|[^A-Za-z0-9_:/-])"
+        ),
+        format!(
+            r"(^|[^A-Za-z0-9_]){}(:[0-9]+(-[0-9]+)?)?",
+            group("Makefile|Dockerfile|GNUmakefile")
+        ),
+    ]
 }
 
 const fn is_line_boundary(character: char) -> bool {
