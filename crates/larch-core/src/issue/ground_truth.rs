@@ -17,6 +17,7 @@ use std::{
 };
 
 use super::report_core::{IssueCategory, IssueSummary, category_pattern, title_tokens};
+use crate::text::file_reference_alternatives;
 use crate::{
     RunLogCorpus, RunLogCorpusEvent, RunLogCorpusWarning, RunLogRoundSort, RunLogRun,
     RunLogSelection, RunLogSlug, round_number_from_path,
@@ -39,26 +40,12 @@ static REVERSAL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 static DIAGNOSTIC_LINE_SUFFIX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r":\d+(?:-\d+)?$").expect("line-suffix regex should compile"));
 
-const LONG_EXTS: &str = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml";
-const SHORT_EXTS: &str = "lock|env|txt|c|h|m|r";
-
 static DIAGNOSTIC_PATH_PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
-    let long = format!(
-        r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*\.((?i-u:{LONG_EXTS}))(:[0-9]+(-[0-9]+)?)?($|[^A-Za-z0-9_:/-])"
-    );
-    let short_path = format!(
-        r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*[/_-][A-Za-z0-9_./-]*\.((?i-u:{SHORT_EXTS}))(:[0-9]+(-[0-9]+)?)?($|[^A-Za-z0-9_:/-])"
-    );
-    let short_line = format!(
-        r"(^|[^A-Za-z0-9])\.?[A-Za-z_][A-Za-z0-9_./-]*\.((?i-u:{SHORT_EXTS})):[0-9]+(-[0-9]+)?($|[^A-Za-z0-9_:/-])"
-    );
+    let [long, short_path, short_line, extensionless] = file_reference_alternatives(true);
     [
         Regex::new(&format!("{long}|{short_path}|{short_line}"))
             .expect("file-line regex should compile"),
-        Regex::new(
-            r"(^|[^A-Za-z0-9_])((?i-u:Makefile|Dockerfile|GNUmakefile))(:[0-9]+(-[0-9]+)?)?",
-        )
-        .expect("extensionless file regex should compile"),
+        Regex::new(&extensionless).expect("extensionless file regex should compile"),
     ]
 });
 

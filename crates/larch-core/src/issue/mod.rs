@@ -18,6 +18,10 @@ mod candidates;
 mod ground_truth;
 mod input;
 mod lease;
+mod oos_conflict;
+mod oos_disposition;
+mod oos_priority;
+mod oos_record;
 mod report_core;
 mod rows;
 mod title;
@@ -50,6 +54,27 @@ pub use input::{InputMode, ParsedInput, ParsedItem, parse_issue_input};
 pub use lease::{
     ImplementationLease, LeaseDefect, parse_implementation_lease, render_implementation_lease,
     upsert_implementation_lease,
+};
+pub use oos_conflict::{
+    ConflictPlan, FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP,
+    FileConflictEdge, FileConflictError, FileConflictRecord, item_file_records, parse_conflict_cap,
+    parse_intra_batch_deps, plan_file_conflict_deps, render_deps_tsv, topological_create_order,
+};
+pub use oos_disposition::{
+    ACCEPTED_OOS_FILENAMES, DispositionCounters, DispositionState, INLINE_TRIAGE_MARKER,
+    INLINE_TRIAGE_SOURCES, OosDispositionCounts, analyze_run_dir, count_filed_urls_union_files,
+    count_inline_triage_hits, count_non_security_oos_blocks,
+    count_rejected_oos_markers_from_ndjson, issue_url_pattern,
+};
+pub use oos_priority::{
+    HIGH_RISK_FOCUS_VALUES, OOS_CORRECTNESS_LABEL, OOS_CORRECTNESS_LABEL_COLOR,
+    OOS_CORRECTNESS_LABEL_DESCRIPTION, is_high_risk_oos_block, issue_number_from_url,
+    label_create_argv,
+};
+pub use oos_record::{
+    BlockBoundary, CanonicalHeading, OosBlock, OosItemKind, SerializedOos,
+    count_non_security_blocks, is_canonical_heading, is_oos_eligible_block, is_security_block_text,
+    normalize_oos_block_header, parse_canonical_heading, parse_oos_blocks, serialize_accepted_oos,
 };
 pub use report_core::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, CoverageStats,

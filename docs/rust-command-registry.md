@@ -149,6 +149,7 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.tokens`, `larch.git.pr_body`, `larch.report.final_report`, `larch.design.design_summary`, `larch.calibration.difficulty_calibration`, `larch.issue.analyze_bugs` | #8090 (`final-report`), #7682 (`pr create`), later `token cost` and `token render-cost-line` cutovers |
 | `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch.issue.issue_wire.extract_scope_paths` (`larch_core::plan_scope`) | #8171 | `larch.design.decompose`, `larch.implement.dispatch_step2`, `larch.implement.scope_disposition` | #7680 (`/design` decompose), #7681 (`/implement` dispatch and scope disposition) |
+| `larch.issue.oos`, `larch.issue.oos_priority`, `larch.issue.oos_disposition`, and the conflict and create-ordering subsets of `larch.issue.file_oos` and `larch.issue.oos_filer` (`larch_core::issue` OOS core) | #8177 | `larch.issue.oos`, `larch.issue.oos_priority`, `larch.issue.oos_disposition`, `larch.issue.file_oos`, `larch.issue.oos_filer`, `larch.issue._oos`, `larch.design.design_oos`, `larch.issue.audit_runs` | #8178 (`oos materialize-manifest`, `oos issue-cap`, `oos file-conflict-deps`, `oos disposition-gate`, `oos disposition-checkpoint`), #8179 (`oos file`), #7681 (`oos serialize`, `oos normalize-header`, and `larch.review.review_types`), #8188 (run audit counters) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
 
 Issue 8086 ports the scanning half of the token pipeline: ledger and transcript
@@ -200,6 +201,32 @@ to its own reviewed leaf, not to a renderer port.
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
 `assess_issue_details` remains until those consumers move.
+
+Issue 8177 ports the OOS record, its priority classification, the disposition
+counters and state, and the file-conflict and create-ordering model. It adds no
+command. `larch_core::issue` becomes the single Rust owner of the canonical
+`### OOS_<n>:` / `### FINDING_<n>:` block, so #8178 and #8179 consume it rather
+than defining a second record model.
+
+Two commands stay Python-owned deliberately. `oos serialize` and
+`oos normalize-header` are review-pipeline entry points whose remaining Python
+callers live behind `larch.review`, so #7681 migrates them together with
+`larch.review.review_types`; the Rust library parity they need is already here.
+The review pipeline's `finding-heading` and `level-three-heading` block
+boundaries stay with `larch.review.review_types` for the same reason.
+
+`larch_core::text::file_reference_alternatives` is the single owner of the
+reviewer file-reference grammar ported from `larch.review.voting`. The
+ground-truth evidence reader and the OOS conflict model both compose it, and
+they differ only in whether extension matching folds case.
+
+One reader difference is load bearing and is not reconciled here.
+`larch.issue.oos_disposition` and `larch.issue.file_oos` count rejected OOS
+markers with slightly different section-end and case rules, and
+`larch.io.read_text` does not translate line endings where `Path.read_text`
+does. `larch_core` ports the `oos_disposition` spelling and exposes
+`larch_core::text::universal_newlines`, so #8178 chooses each reader's
+translation explicitly instead of inheriting one by accident.
 
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content
