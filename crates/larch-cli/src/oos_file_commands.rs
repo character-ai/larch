@@ -1556,8 +1556,8 @@ fn backfill_priority_labels(
 #[cfg(test)]
 mod tests {
     use super::{
-        BatchInputs, CreateRequest, CreatedRow, FailureMode, FileRequest, FilingGateway, Payload,
-        Session, drive, run_issue_batch,
+        BatchInputs, BatchResult, CreateRequest, CreatedRow, FailureMode, FileRequest,
+        FilingGateway, Payload, Recovered, Session, drive, report_batch_failure, run_issue_batch,
     };
     use larch_core::{AcceptedBlock, FiledIssue};
     use std::{
@@ -1847,6 +1847,84 @@ mod tests {
         assert_eq!(result.failure_mode, FailureMode::HardCreate);
         assert_eq!(result.filed.len(), 1);
         assert_eq!(gateway.closed.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_rolled_up_create_failure_preserves_the_filed_aggregate() {
+        let tmpdir = TempDir::new().expect("session directory");
+        let run = run_for(&tmpdir);
+        let recovered = Recovered {
+            pending: Vec::new(),
+            all_blocks: Vec::new(),
+            persisted: Vec::new(),
+            already: Vec::new(),
+        };
+        let filed = FiledIssue {
+            title: "Combined finding".to_owned(),
+            url: "https://github.com/o/r/issues/17".to_owned(),
+            source_stable_ids: vec!["OOS_1".to_owned(), "OOS_2".to_owned()],
+            ..FiledIssue::default()
+        };
+        let batch = BatchResult {
+            filed: vec![filed],
+            failures: 1,
+            failure_mode: FailureMode::HardCreate,
+        };
+
+        let (code, payload) = report_batch_failure(&run, &recovered, &batch, 2);
+
+        assert_eq!(code, 1);
+        assert_eq!(payload.status, "hard_create_partial_failure");
+        assert_eq!(payload.filed_count, 1);
+        assert_eq!(FailureMode::HardCreate.as_str(), "hard_create");
+        assert_eq!(FailureMode::None.as_str(), "none");
+        let sentinel = fs::read_to_string(tmpdir.path().join("oos-issues-created.md"))
+            .expect("sentinel written");
+        assert!(sentinel.contains("https://github.com/o/r/issues/17"));
+        let ndjson = fs::read_to_string(
+            tmpdir
+                .path()
+                .join("larch-logs/implement/run-1/oos-issues.ndjson"),
+        )
+        .expect("batch written");
+        assert!(ndjson.contains("Hard-create partial failure"));
+    }
+
+    #[test]
+    fn a_priority_failure_preserves_the_filed_issue() {
+        let tmpdir = TempDir::new().expect("session directory");
+        let run = run_for(&tmpdir);
+        let recovered = Recovered {
+            pending: Vec::new(),
+            all_blocks: Vec::new(),
+            persisted: Vec::new(),
+            already: Vec::new(),
+        };
+        let batch = BatchResult {
+            filed: vec![FiledIssue {
+                title: "Priority finding".to_owned(),
+                url: "https://github.com/o/r/issues/18".to_owned(),
+                ..FiledIssue::default()
+            }],
+            failures: 1,
+            failure_mode: FailureMode::PriorityLabel,
+        };
+
+        let (code, payload) = report_batch_failure(&run, &recovered, &batch, 1);
+
+        assert_eq!(code, 1);
+        assert_eq!(payload.status, "priority_label_partial_failure");
+        assert_eq!(payload.filed_count, 1);
+        let sentinel = fs::read_to_string(tmpdir.path().join("oos-issues-created.md"))
+            .expect("sentinel written");
+        assert!(sentinel.contains("https://github.com/o/r/issues/18"));
+        let ndjson = fs::read_to_string(
+            tmpdir
+                .path()
+                .join("larch-logs/implement/run-1/oos-issues.ndjson"),
+        )
+        .expect("batch written");
+        assert!(ndjson.contains("Priority label partial failure"));
     }
 
     #[test]
