@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "growth.tsv": {
+      "text": "key\tlabel\t2026-01\t2026-02\t2026-03\nA\tBug\t1\t5\t9\nB\tTask\t0\t2\t12\nCD\tChore\t3\t3\t3\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py [-h] [path]\ncli.py: error: unrecognized arguments: surplus\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

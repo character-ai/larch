@@ -252,6 +252,31 @@ warnings instead of vanishing.
 move, not a second owner of anything Rust holds: the Rust renderer needs the same
 rule and states it once in `session_transcript`.
 
+Issue 8092 moved `gantt render` and `analyze-issues render-chart` to Rust and
+deleted `larch.rendering.gantt` with both Python registrations.
+`larch_core::report::gantt` owns the ASCII Gantt renderer and its rows-TSV
+grammar, and `larch_core::report::growth_chart` owns the cumulative-growth
+chart. The same leaf finished the port of `larch.report.design_diagram_log` into
+`larch_core::report::diagram_log`, which now holds the bounded warning bullet and
+the bounded failure sidecar alongside the capture sanitizers that
+`larch_core::run_log::diagram_capture` held before.
+
+Three contract points changed deliberately, each named by the leaf's acceptance.
+`--width` above 10000 is refused with a bounded usage error, because the Python
+owner had no bound and died with `MemoryError`; no chart approaches that width.
+A window bound or width outside `i64` is refused as an invalid int value rather
+than carried as an arbitrary-precision Python integer. `analyze-issues
+render-chart` reports one bounded `ERROR:` line at exit 1 where the Python owner
+exited on an uncaught traceback, for an unreadable path, non-UTF-8 bytes, or a
+non-integer bucket value.
+
+`larch.rendering.render_chart` keeps only its pure `render_chart` function.
+`larch.issue._report` calls it in process to build the `/analyze-issues` growth
+section, and `analyze-issues run` is Python-owned under #7682; the residual
+function retires with that command. `larch.report.design_diagram_log` likewise
+stays until #7680 moves `design publish` and #7681 moves the `pr` verbs, the two
+in-process callers of its bounded logging.
+
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
 `assess_issue_details` remains until those consumers move.

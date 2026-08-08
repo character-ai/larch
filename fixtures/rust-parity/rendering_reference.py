@@ -1,4 +1,22 @@
-"""Generic ASCII Gantt chart renderer."""
+"""Frozen Python behavior for the issue #8092 rendering cutover.
+
+This reproduces `python/larch/rendering/gantt.py` and
+`python/larch/rendering/render_chart.py` as they behaved at cutover, so the
+parity harness can keep comparing the Rust owner against the retired code.
+
+Known differences, each stated so a reviewer can weigh it:
+
+* `render-chart` built its parser with a bare `argparse.ArgumentParser()`, so
+  its `prog=` came from `sys.argv[0]`, which was `cli.py` in production and
+  would be this fixture's filename here. The fixture pins `prog="cli.py"` to
+  reproduce the production spelling.
+* The retired `render-chart` raised `OSError`, `UnicodeDecodeError`, or
+  `ValueError` as an uncaught traceback for an unreadable path, non-UTF-8
+  bytes, or a non-integer bucket value. A traceback carries absolute paths and
+  line numbers, so no golden case covers those inputs; the Rust owner reports
+  one bounded line at the same exit code, and `crates/larch-cli/tests/`
+  covers it directly.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +25,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable, List, Tuple
 
 DEFAULT_WIDTH = 56
 SECONDS_PER_MINUTE = 60
@@ -21,7 +40,6 @@ class GanttRow:
 
 
 def format_mss(seconds: int) -> str:
-    """Format non-negative seconds as m:ss for chart axes and titles."""
     value = max(0, int(seconds))
     minutes = value // SECONDS_PER_MINUTE
     secs = value % SECONDS_PER_MINUTE
@@ -65,7 +83,6 @@ def render_gantt(
     rows: Sequence[GanttRow],
     width: int | None = None,
 ) -> str:
-    """Render rows as a plain ASCII Gantt chart."""
     use_default_width = width is None
     normalized_width = DEFAULT_WIDTH if use_default_width else width
     width = max(1, int(normalized_width))
@@ -88,7 +105,13 @@ def render_gantt(
     lines = [_axis(label_width=label_width, width=width, span_label=format_mss(span))]
     lines.append(f"{prefix}┌{'─' * width}┐")
     for row, clamped_start, clamped_end, duration in filtered:
-        track = _bar(start_s=clamped_start, end_s=clamped_end, window_start_s=int(window_start_s), span=span, width=width)
+        track = _bar(
+            start_s=clamped_start,
+            end_s=clamped_end,
+            window_start_s=int(window_start_s),
+            span=span,
+            width=width,
+        )
         duration_text = f"{duration}s".rjust(duration_width)
         lines.append(f"{row.label.ljust(label_width)} │{track}│ {duration_text}")
     lines.append(f"{prefix}└{'─' * width}┘")
@@ -123,7 +146,10 @@ def gantt_render_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--window-end-s", type=int, required=True)
     _ = parser.add_argument("--rows-tsv", required=True)
     _ = parser.add_argument("--width", type=int, default=None)
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
     if args.width is not None and args.width < 1:
         print("ERROR: --width must be positive", file=sys.stderr)
         return 2
@@ -132,7 +158,84 @@ def gantt_render_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    chart = render_gantt(window_start_s=args.window_start_s, window_end_s=args.window_end_s, rows=rows, width=args.width)
+    chart = render_gantt(
+        window_start_s=args.window_start_s,
+        window_end_s=args.window_end_s,
+        rows=rows,
+        width=args.width,
+    )
     if chart:
         print(chart)
     return 0
+
+
+def parse_tsv(text: str) -> Tuple[List[str], List[Tuple[str, str, List[int]]]]:
+    lines = [line.rstrip("\n") for line in text.splitlines() if line.strip()]
+    if not lines:
+        return [], []
+    header = lines[0].split("\t")
+    buckets = header[2:]
+    rows = []
+    for line in lines[1:]:
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        key, label = parts[0], parts[1]
+        values = [int(value or "0") for value in parts[2:]]
+        rows.append((key, label, values))
+    return buckets, rows
+
+
+def render_chart(*, buckets: Sequence[str], rows: Sequence[Tuple[str, str, Sequence[int]]]) -> str:
+    if not rows or not buckets:
+        return "No growth data available."
+
+    width = len(buckets)
+    max_final = max((values[-1] if values else 0) for _, _, values in rows)
+    max_final = max(max_final, 1)
+    canvas = [["." for _ in range(width)] for _ in range(len(rows))]
+
+    for _row_index, (key, _label, values) in enumerate(rows):
+        for col_index, value in enumerate(values[:width]):
+            if value <= 0:
+                continue
+            scaled = max(0, min(len(rows) - 1, round((value / max_final) * (len(rows) - 1))))
+            target = len(rows) - 1 - scaled
+            existing = canvas[target][col_index]
+            canvas[target][col_index] = key if existing == "." or existing == key else "*"
+
+    output = ["Cumulative growth chart"]
+    output.append(f"Buckets: {buckets[0]} -> {buckets[-1]} ({len(buckets)} buckets)")
+    for line in canvas:
+        output.append("".join(line))
+    output.append("Legend:")
+    for key, label, values in rows:
+        final = values[-1] if values else 0
+        output.append(f"  {key}: {label} ({final})")
+    return "\n".join(output)
+
+
+def render_chart_main(argv: Iterable[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py")
+    parser.add_argument("path", nargs="?")
+    try:
+        args = parser.parse_args(list(argv) if argv is not None else None)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    if args.path:
+        with open(args.path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    else:
+        text = sys.stdin.read()
+    buckets, rows = parse_tsv(text)
+    print(render_chart(buckets=buckets, rows=rows))
+    return 0
+
+
+if __name__ == "__main__":
+    command, *arguments = sys.argv[1:]
+    handlers = {
+        "render": gantt_render_main,
+        "render-chart": render_chart_main,
+    }
+    raise SystemExit(handlers.get(command, lambda _args: 2)(arguments))

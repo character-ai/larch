@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "rows.tsv": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,30 +1,17 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: PERF401, PLR1714, PLR2004, PTH123, UP006, UP015, UP035
+# ruff: noqa: PERF401, PLR1714, UP006, UP035
 # pylint: skip-file
-"""Render a compact ASCII cumulative-growth chart from TSV input."""
+"""Compact ASCII cumulative-growth chart, called in process by `analyze-issues`.
+
+`analyze-issues render-chart` moved to Rust in #8092; `larch_core::report::
+growth_chart` owns the renderer and the TSV grammar. This residual function
+serves only `larch.issue._report`, whose `analyze-issues run` command is still
+Python-owned under #7682, and it retires with that command.
+"""
 
 from __future__ import annotations
 
-import argparse
-import sys
-from typing import Iterable, List, Sequence, Tuple
-
-
-def parse_tsv(text: str) -> Tuple[List[str], List[Tuple[str, str, List[int]]]]:
-    lines = [line.rstrip("\n") for line in text.splitlines() if line.strip()]
-    if not lines:
-        return [], []
-    header = lines[0].split("\t")
-    buckets = header[2:]
-    rows = []
-    for line in lines[1:]:
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        key, label = parts[0], parts[1]
-        values = [int(value or "0") for value in parts[2:]]
-        rows.append((key, label, values))
-    return buckets, rows
+from typing import List, Sequence, Tuple
 
 
 def render_chart(*, buckets: Sequence[str], rows: Sequence[Tuple[str, str, Sequence[int]]]) -> str:
@@ -34,9 +21,9 @@ def render_chart(*, buckets: Sequence[str], rows: Sequence[Tuple[str, str, Seque
     width = len(buckets)
     max_final = max((values[-1] if values else 0) for _, _, values in rows)
     max_final = max(max_final, 1)
-    canvas = [["." for _ in range(width)] for _ in range(len(rows))]
+    canvas: List[List[str]] = [["." for _ in range(width)] for _ in range(len(rows))]
 
-    for _row_index, (key, _label, values) in enumerate(rows):
+    for key, _label, values in rows:
         for col_index, value in enumerate(values[:width]):
             if value <= 0:
                 continue
@@ -54,23 +41,3 @@ def render_chart(*, buckets: Sequence[str], rows: Sequence[Tuple[str, str, Seque
         final = values[-1] if values else 0
         output.append(f"  {key}: {label} ({final})")
     return "\n".join(output)
-
-
-def main(argv: Iterable[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", nargs="?")
-    args = parser.parse_args(list(argv) if argv is not None else None)
-    if args.path:
-        with open(args.path, "r", encoding="utf-8") as handle:
-            text = handle.read()
-    else:
-        text = sys.stdin.read()
-    buckets, rows = parse_tsv(text)
-    print(render_chart(buckets=buckets, rows=rows))
-    return 0
-
-
-
-
-def render_chart_main(argv: Iterable[str] | None = None) -> int:
-    return main(argv)

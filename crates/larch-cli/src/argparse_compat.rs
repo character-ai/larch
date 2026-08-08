@@ -47,6 +47,16 @@ impl ParsedCommandLine {
             .collect()
     }
 
+    /// Return every `(option, value)` pair in command-line order.
+    ///
+    /// `argparse` converts a typed value the moment it consumes it, so a command
+    /// whose options declare `type=int` must report the first bad spelling on
+    /// the line rather than the first bad option in its table.
+    #[must_use]
+    pub fn entries(&self) -> &[(&'static str, OsString)] {
+        &self.values
+    }
+
     /// Return whether a valueless `store_true` flag was supplied.
     #[must_use]
     pub fn flag(&self, name: &str) -> bool {
@@ -311,6 +321,21 @@ pub fn read_stdin() -> String {
     let mut buffer = Vec::new();
     let _read = io::stdin().lock().read_to_end(&mut buffer);
     String::from_utf8_lossy(&buffer).into_owned()
+}
+
+/// Render an I/O failure the way Python renders `OSError`.
+///
+/// Every command ported from a Python owner that let an `OSError` reach its
+/// message text needs this spelling, so it lives beside the other `argparse`
+/// compatibility helpers rather than once per command module.
+#[must_use]
+pub fn python_io_error(error: &io::Error, path: &Path) -> String {
+    let Some(code) = error.raw_os_error() else {
+        return error.to_string();
+    };
+    let rendered = error.to_string();
+    let detail = rendered.split(" (os error ").next().unwrap_or("I/O error");
+    format!("[Errno {code}] {detail}: '{}'", path.display())
 }
 
 /// Resolve a caller-supplied path against the working directory.

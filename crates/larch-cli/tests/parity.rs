@@ -2961,6 +2961,305 @@ fn phase_detail_public_artifacts_keep_the_legacy_writer_mode() {
     }
 }
 
+struct RenderingFixture {
+    name: &'static str,
+    domain: &'static str,
+    verb: &'static str,
+    arguments: &'static [&'static str],
+    stdin: Option<&'static str>,
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl RenderingFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let mut python_program = Program::new(python).args(
+            [path_text(fixture).to_owned(), self.verb.to_owned()]
+                .into_iter()
+                .chain(self.arguments.iter().map(|value| (*value).to_owned())),
+        );
+        let mut rust_program = Program::new(rust).args(
+            [self.domain.to_owned(), self.verb.to_owned()]
+                .into_iter()
+                .chain(self.arguments.iter().map(|value| (*value).to_owned())),
+        );
+        if let Some(input) = self.stdin {
+            python_program = python_program.stdin(input.as_bytes());
+            rust_program = rust_program.stdin(input.as_bytes());
+        }
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const GANTT_ROWS_TSV: &str =
+    "codex-arch\t10\t95\ncursor-edge\t0\t120\nclaude-security-specialist\t40\t60\n";
+const GROWTH_TSV: &str = "key\tlabel\t2026-01\t2026-02\t2026-03\nA\tBug\t1\t5\t9\nB\tTask\t0\t2\t12\nCD\tChore\t3\t3\t3\n";
+const GANTT_ROWS_SEED: &[(&str, &str)] = &[("rows.tsv", GANTT_ROWS_TSV)];
+
+const RENDERING_CASES: &[RenderingFixture] = &[
+    RenderingFixture {
+        name: "gantt-render-help",
+        domain: "gantt",
+        verb: "render",
+        arguments: &["--help"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-missing-required",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-surplus-argument-after-required",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "120",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+            "surplus",
+        ],
+        stdin: None,
+        seeds: GANTT_ROWS_SEED,
+    },
+    RenderingFixture {
+        name: "gantt-render-invalid-int",
+        domain: "gantt",
+        verb: "render",
+        arguments: &["--width", "wide"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-help-after-invalid-int",
+        domain: "gantt",
+        verb: "render",
+        arguments: &["--width", "wide", "--help"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-invalid-int-before-missing-value",
+        domain: "gantt",
+        verb: "render",
+        arguments: &["--width", "wide", "--window-start-s"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-help-after-valid-int",
+        domain: "gantt",
+        verb: "render",
+        arguments: &["--width", "12", "--help"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "gantt-render-nonpositive-width",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "120",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+            "--width",
+            "0",
+        ],
+        stdin: None,
+        seeds: GANTT_ROWS_SEED,
+    },
+    RenderingFixture {
+        name: "gantt-render-default-width",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "120",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+        ],
+        stdin: None,
+        seeds: GANTT_ROWS_SEED,
+    },
+    RenderingFixture {
+        name: "gantt-render-explicit-narrow-width",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "-30",
+            "--window-end-s",
+            "120",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+            "--width",
+            "13",
+        ],
+        stdin: None,
+        seeds: GANTT_ROWS_SEED,
+    },
+    RenderingFixture {
+        name: "gantt-render-no-overlapping-row",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "500",
+            "--window-end-s",
+            "600",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+        ],
+        stdin: None,
+        seeds: GANTT_ROWS_SEED,
+    },
+    RenderingFixture {
+        name: "gantt-render-empty-rows",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "60",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+        ],
+        stdin: None,
+        seeds: &[("rows.tsv", "")],
+    },
+    RenderingFixture {
+        name: "gantt-render-malformed-column-count",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "60",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+        ],
+        stdin: None,
+        seeds: &[("rows.tsv", "only\ttwo\n")],
+    },
+    RenderingFixture {
+        name: "gantt-render-malformed-bounds",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "60",
+            "--rows-tsv",
+            "{sandbox}/rows.tsv",
+        ],
+        stdin: None,
+        seeds: &[("rows.tsv", "label\tstart\t9\n")],
+    },
+    RenderingFixture {
+        name: "gantt-render-unreadable-rows",
+        domain: "gantt",
+        verb: "render",
+        arguments: &[
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "60",
+            "--rows-tsv",
+            "{sandbox}/absent.tsv",
+        ],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-help",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &["--help"],
+        stdin: None,
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-file",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &["{sandbox}/growth.tsv"],
+        stdin: None,
+        seeds: &[("growth.tsv", GROWTH_TSV)],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-stdin",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &[],
+        stdin: Some(GROWTH_TSV),
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-empty-stdin",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &[],
+        stdin: Some(""),
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-blank-and-short-rows",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &[],
+        stdin: Some("key\tlabel\tb1\tb2\n\n   \nAB\tBug\t1\t\nshort\trow\nB\tTask\t\t7\n"),
+        seeds: &[],
+    },
+    RenderingFixture {
+        name: "analyze-issues-render-chart-surplus-argument",
+        domain: "analyze-issues",
+        verb: "render-chart",
+        arguments: &["{sandbox}/growth.tsv", "surplus"],
+        stdin: None,
+        seeds: &[("growth.tsv", GROWTH_TSV)],
+    },
+];
+
+#[test]
+fn rendering_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("rendering_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in RENDERING_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[test]
 fn the_parity_clone_hash_is_pinned_to_its_path() {
     assert!(
