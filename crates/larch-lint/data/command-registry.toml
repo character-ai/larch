@@ -8688,12 +8688,6 @@ python = []
 rust = ["run-log archive", "run-log materialize"]
 
 [[callers]]
-path = "python/larch/report/run_log_commit.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log publish-breadcrumbs"]
-
-[[callers]]
 path = "python/larch/report/run_log_corpus.py"
 kind = "python-runtime"
 python = []

@@ -128,14 +128,13 @@ umbrella that owns their remaining consumers:
 | `token cost`, `token render-cost-line` | 2 | #7682 | The pricing consumers #8087 and #8088 already deferred there. |
 | The remaining 15 `token` verbs | 15 | #7684 | Research lane capture, ledger dumps, and the `measure-*` analytics, which is #7684's "deterministic models, aggregation, and report inputs" scope. |
 
-Two surfaces this umbrella touched are recorded rather than closed. Neither
-blocks #7683, and each names its own issue. `python/larch/report/run_log_commit.py`
-and `python/larch/report/run_log_legacy_archive.py` have no production importer
-left; their remaining symbols are reachable only from tests, and #8267 retires
-them. `/report-tokens` still renders its trend plots through a matplotlib child
-that step 2 of `skills/report-tokens/SKILL.md` runs, because #8088 declined to
-add an arbitrary-script process class for a chart renderer; #8268 owns that
-decision.
+One surface this umbrella touched is recorded rather than closed. It does not
+block #7683 and names its own issue. `/report-tokens` still renders its trend
+plots through a matplotlib child that step 2 of `skills/report-tokens/SKILL.md`
+runs, because #8088 declined to add an arbitrary-script process class for a
+chart renderer; #8268 owns that decision. #8267 deleted the two modules the
+audit found orphaned, `python/larch/report/run_log_commit.py` and
+`python/larch/report/run_log_legacy_archive.py`.
 
 Direct `bin/larch` execution stays outside this umbrella's surfaces. The
 `larch-runtime-entrypoint` rule already rejects it in `python/larch/**`,
@@ -190,7 +189,7 @@ Python consumer moves, the Python module remains the production owner.
 | --- | --- | --- | --- |
 | `larch.report.markdown_block` (`larch_core::report`) | #8089 | `larch.report.tokens`, `larch.report.timing` | #8088 (`report-tokens`), #8083 (`timing`) |
 | `larch.report.exec_issue_detail` (`larch_core::report`) | #8089 | `larch.design.design_summary`, `larch.issue.execution_issues`, `larch.report.run_log_manifest`, `larch.core.architectural_guidelines` | #7682 (issue surfaces), later run-log leaves |
-| `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
+| `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost` | #7682 (issue surfaces), later `token` cutovers |
 | `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.tokens`, `larch.git.pr_body`, `larch.design.design_summary`, `larch.calibration.difficulty_calibration`, `larch.issue.analyze_bugs` | #7682 (`pr create`), later `token cost` and `token render-cost-line` cutovers |
