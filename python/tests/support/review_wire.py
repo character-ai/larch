@@ -8,11 +8,51 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeAlias
 
 WireValue: TypeAlias = str | int | float | bool | None | Path
 WireRow: TypeAlias = Mapping[str, WireValue]
+
+
+@dataclass(frozen=True)
+class CollectorRecord:
+    """One `agent collect-results` record, as the Rust collector publishes it.
+
+    The command owns the live wire format. This mirrors its full-field block so
+    Python caller tests can build collector stdout without a Python collector.
+    """
+
+    reviewer_file: str
+    tool: str
+    status: str
+    exit_code: str
+    structured_sidecar: str = ""
+    failure_reason: str = ""
+    ns_retry_mode: str = ""
+    ns_retry_reason: str = ""
+
+    def fields(self) -> list[str]:
+        """Return the record's ``KEY=VALUE`` lines in wire order."""
+        rows = [
+            f"REVIEWER_FILE={self.reviewer_file}",
+            f"TOOL={self.tool}",
+            f"STATUS={self.status}",
+            f"EXIT_CODE={self.exit_code}",
+            f"STRUCTURED_SIDECAR={self.structured_sidecar}",
+            f"FAILURE_REASON={self.failure_reason}",
+        ]
+        if self.ns_retry_mode:
+            rows.append(f"NS_RETRY_MODE={self.ns_retry_mode}")
+        if self.ns_retry_reason:
+            rows.append(f"NS_RETRY_REASON={self.ns_retry_reason}")
+        return rows
+
+
+def collector_text(records: Sequence[CollectorRecord]) -> str:
+    """Render collector stdout: one block per record, separated by a blank line."""
+    return "\n\n".join("\n".join(record.fields()) for record in records) + "\n"
 
 
 def make_finding_block(  # noqa: PLR0913 - canonical Markdown fields map directly to the wire format.

@@ -53,7 +53,7 @@ Additionally write to the caller-env parent directory when `SESSION_ENV_PATH` is
 
 ## Wait Discipline
 
-NEVER return to the parent while any reviewer you launched is still running. The only allowed wait mechanism is a foreground `python/cli.py agent collect-results` Bash tool call. Do not enter a "wait for notifications" state and surrender control; the parent treats an Agent-tool return as the heavy phase result.
+NEVER return to the parent while any reviewer you launched is still running. The only allowed wait mechanism is a foreground `scripts/larch.sh agent collect-results` Bash tool call. Do not enter a "wait for notifications" state and surrender control; the parent treats an Agent-tool return as the heavy phase result.
 
 **SendMessage dependency.** This worker subagent is dispatched via the Agent tool. If the parent Claude Code session does not have `SendMessage` available, any worker yield becomes a fatal stall. Standalone `/review --diff --subagent` users in environments without `SendMessage` should omit `--subagent`. See `AGENTS.md` for the project-wide reference.
 

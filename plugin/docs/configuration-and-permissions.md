@@ -506,7 +506,7 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **`0`:** disables tail capture and chat surfacing.
 - **Non-numeric:** falls back to `30`.
 - **Failure-only:** success / exit 0 stays quiet.
-- **Collector dedup:** within one `python/cli.py agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
+- **Collector dedup:** within one `scripts/larch.sh agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
 - **Claude panel fallback:** `scripts/larch.sh agent launch-claude-review` clamps `--timeout` greater than **1800** to **1800** (subprocess cap in `scripts/larch.sh agent launch-claude-subprocess`).
 
 See `python/larch/agents/agents.py` and the canonical

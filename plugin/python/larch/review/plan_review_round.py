@@ -11,10 +11,10 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.report import progress_file
@@ -24,6 +24,7 @@ from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
 from larch.review import voting
 from larch.review.plan_review_common import resolve_plan_review_tier
+from larch.review.review_pipeline_shared import parse_collector_records
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _COLLECT_TIMEOUT = "1860"
@@ -92,10 +93,12 @@ def _run_cli_with_progress(
     env: dict[str, str] | None = None,
     step: str,
     text: str,
+    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     raw_tmpdir = (env or {}).get("DESIGN_TMPDIR") or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
     _progress_note(step=step, text=text, tmpdir=Path(raw_tmpdir) if raw_tmpdir else None)
-    return _run_cli(argv=argv, env=env)
+    selected_runner = runner or _run_cli
+    return selected_runner(argv=argv, env=env)
 
 
 # (slot-name prefix, human-label prefix, nominal vendor). Order matters: the
@@ -499,7 +502,7 @@ def _compose_findings_from_collector(
     oos_i = 1
     oos_counts_by_slot: dict[str, int] = {}
 
-    for record in collect_results.parse_collector_records(collect_text):
+    for record in parse_collector_records(collect_text):
         rf = record.get("REVIEWER_FILE", "")
         tool = record.get("TOOL", "")
         status = record.get("STATUS", "")
@@ -731,7 +734,7 @@ def write_reviewer_status_tsv(
       output file (the same ``OK`` predicate ``_compose_findings_from_collector`` uses),
       ``failed`` for any other collected status, and ``skipped`` when the slot produced
       no collector record.
-    - ``elapsed`` is left blank: ``collect_results.CollectorRecord`` carries no
+    - ``elapsed`` is left blank: ``agent collect-results`` carries no
       per-reviewer duration, so per-slot elapsed is not currently captured.
 
     Returns the written path, or ``None`` when there is no valid launched slot.
@@ -750,7 +753,7 @@ def write_reviewer_status_tsv(
         collector = design / "collector-results.env"
         text = collector.read_text(encoding="utf-8", errors="replace") if collector.is_file() and not collector.is_symlink() else ""
     if text:
-        for record in collect_results.parse_collector_records(text):
+        for record in parse_collector_records(text):
             reviewer_file = record.get("REVIEWER_FILE", "")
             if reviewer_file:
                 status = record.get("STATUS", "")
@@ -1081,6 +1084,7 @@ def execute_round(
     collect_rc = 0
     if paths_path.is_file() and paths_path.stat().st_size > 0:
         collect = _run_cli_with_progress(
+            runner=_run_larch,
             argv=[
                 "agent",
                 "collect-results",
@@ -1101,7 +1105,7 @@ def execute_round(
     else:
         _ = (design / "collector-results.env").write_text("", encoding="utf-8")
 
-    if collect_rc != 0 and not collect_results.parse_collector_records(collect_out):
+    if collect_rc != 0 and not parse_collector_records(collect_out):
         values.update(
             {
                 "LOOP_STATUS": "panel-failed",

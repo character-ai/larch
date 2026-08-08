@@ -416,6 +416,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "launch-claude-review-fix",
     ),
     CleanInstallCase::new(
+        "clean-install-agent-collect-results",
+        "agent",
+        "collect-results",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-dispatch-waterfall",
         "agent",
         "dispatch-waterfall",

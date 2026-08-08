@@ -5,7 +5,7 @@
 # Sourced by:
 #   - scripts/larch.sh agent model-args
 #   - scripts/larch.sh agent check-reviewers
-#   - python/cli.py agent collect-results
+#   - scripts/larch.sh agent collect-results
 #   - python/cli.py implement step2-dispatch
 #
 # Related:
@@ -30,7 +30,7 @@
 # Bash 3.2 constraint: indexed arrays only. No associative arrays, namerefs,
 # mapfile/readarray, or eval.
 #
-# python/cli.py agent collect-results derives observed tool labels from the
+# scripts/larch.sh agent collect-results derives observed tool labels from the
 # matching Python registry and still preserves `unknown` as an observational
 # fallback for partial or malformed launches.
 

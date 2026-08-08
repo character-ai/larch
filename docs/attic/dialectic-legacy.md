@@ -124,7 +124,7 @@ Per decision, based on eligible voters:
 | 2 (1-1 split) | — | `Disposition: fallback-to-synthesis` with reason `1-1 tie with 2 voters`. |
 | <2 | — | `Disposition: fallback-to-synthesis` with reason `<N> judges eligible`. |
 
-"Eligible" means the judge produced a parseable vote line for that specific decision. A judge with `STATUS != OK` from `python/cli.py agent collect-results` is ineligible for **every** decision on the ballot (the whole output is considered unparseable).
+"Eligible" means the judge produced a parseable vote line for that specific decision. A judge with `STATUS != OK` from `scripts/larch.sh agent collect-results` is ineligible for **every** decision on the ballot (the whole output is considered unparseable).
 
 ## Judge Panel Composition
 
@@ -238,18 +238,18 @@ Use `run_in_background: true` and `timeout: 1860000`.
 
 ## Collecting Judge Results (split pattern)
 
-External judges and inline Claude judges use different collection paths. This split is **required** because `python/cli.py agent collect-results` polls `.done` sentinels produced by `python3 python/cli.py agent run-external-agent`; inline Agent-tool subagents produce no sentinel.
+External judges and inline Claude judges use different collection paths. This split is **required** because `scripts/larch.sh agent collect-results` polls `.done` sentinels produced by `python3 python/cli.py agent run-external-agent`; inline Agent-tool subagents produce no sentinel.
 
 Timing note: v1 timing rows are emitted by launch-wrapper scripts. Codex judge calls through `launch-codex-exec.sh` currently record the launcher's default `codex-exec` task kind unless the caller passes an explicit `--timing-task-kind codex-judge`; Cursor judge rows remain tied to their launcher surface.
 
-1. **Inline judges (Claude subagent + any Claude replacements)**: vote text is returned in the Agent tool's return value. Parse per-decision vote lines directly from the returned text. Inline judges are always eligible (local execution does not fail in the `python/cli.py agent collect-results` sense).
+1. **Inline judges (Claude subagent + any Claude replacements)**: vote text is returned in the Agent tool's return value. Parse per-decision vote lines directly from the returned text. Inline judges are always eligible (local execution does not fail in the `scripts/larch.sh agent collect-results` sense).
 
-2. **External judges (Cursor, Codex)**: **Only perform this step if at least one external judge was actually launched** (i.e., at least one of `judge_cursor_available` / `judge_codex_available` was true at launch time). If zero external judges were launched — all three slots were filled by Claude subagent inline replacements — skip this step entirely and proceed to step 3 below. This guard is required because `python/cli.py agent collect-results` exits with `"at least one output file is required"` when called with no positional arguments, which would abort the all-fallback configuration that the replacement-first rule is designed to support.
+2. **External judges (Cursor, Codex)**: **Only perform this step if at least one external judge was actually launched** (i.e., at least one of `judge_cursor_available` / `judge_codex_available` was true at launch time). If zero external judges were launched — all three slots were filled by Claude subagent inline replacements — skip this step entirely and proceed to step 3 below. This guard is required because `scripts/larch.sh agent collect-results` exits with `"at least one output file is required"` when called with no positional arguments, which would abort the all-fallback configuration that the replacement-first rule is designed to support.
 
    When at least one external judge was launched, after all launches return, collect the external judge outputs:
 
    ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1860 \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent collect-results --timeout 1860 \
   <each launched external-judge output path>
 ```
 

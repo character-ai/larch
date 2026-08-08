@@ -56,7 +56,7 @@ Use this warning template when a slot reaches Phase 3:
 
 - `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for this slot.**`
 
-Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `python/cli.py agent collect-results` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
+Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `scripts/larch.sh agent collect-results` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
 Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` are immediate Step 0 gate outputs only; per-slot launch failures must stay local to the slot result.
 
@@ -65,7 +65,7 @@ Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CU
 After all other tasks are done, collect and validate external reviewer outputs using the shared collection script:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout <seconds> <output-file> [<output-file> ...]
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent collect-results --timeout <seconds> <output-file> [<output-file> ...]
 ```
 
 Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation. The script internally calls `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh agent wait-reviewers` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh agent run-external-agent`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
@@ -81,11 +81,11 @@ FAILURE_REASON=<explanation>
 Parse each reviewer's `STATUS`, `REVIEWER_FILE`, and `FAILURE_REASON`:
 - `STATUS=OK`: Read the output file — it is non-empty and validated. `FAILURE_REASON` is empty.
 - Any other status: The reviewer failed. `FAILURE_REASON` explains why (e.g., "Timed out after 1800s (limit: 1800s). Process was killed after exceeding the timeout." or "Failed with exit code 1 after 5s. Last output: error message here"). Follow the **Runtime Timeout Fallback** procedure above, including `FAILURE_REASON` in the message.
-- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `python/larch/agents/collect_results.py` for retry-row exit-code semantics.
+- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone. Retry-row semantics are owned by `crates/larch-cli/src/collector_commands.rs`.
 
-**Important**: Do NOT read output files before calling `python/cli.py agent collect-results`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
+**Important**: Do NOT read output files before calling `scripts/larch.sh agent collect-results`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
 
-**Substantive-content validation is opt-in.** The default collector behavior described above is sentinel + non-empty + retry. Substantive-content classification (`STATUS=NOT_SUBSTANTIVE`) only runs when callers pass `--substantive-validation` (and optionally `--validation-mode` for short reviewer-style outputs). See the `--substantive-validation` / `--validation-mode` stanza of the `python/cli.py agent collect-results` CLI implementation for the authoritative flag documentation and `docs/external-reviewers.md` Output Validation for the per-skill opt-in matrix.
+**Substantive-content validation is opt-in.** The default collector behavior described above is sentinel + non-empty + retry. Substantive-content classification (`STATUS=NOT_SUBSTANTIVE`) only runs when callers pass `--substantive-validation` (and optionally `--validation-mode` for short reviewer-style outputs). See the option grammar of `crates/larch-cli/src/collector_commands.rs` for the authoritative flag documentation and `docs/external-reviewers.md` Output Validation for the per-skill opt-in matrix.
 
 ## Negotiation Protocol
 

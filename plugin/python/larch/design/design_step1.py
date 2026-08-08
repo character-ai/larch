@@ -15,7 +15,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
-from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 
 from larch.design.design_router import _extract_args, _normalize_step, _parse_stdout_kv
 from larch.design.design_step0 import (
@@ -149,7 +149,7 @@ def step1d5_main(argv: Sequence[str]) -> int:
             print("design-step1d5.sh: --mode collect requires at least one output path after --", file=sys.stderr)
             return 2
         paths = [Path(item) for item in ns.public_argv]
-        collect = subprocess.run(_cli_cmd(plugin_root, "agent", "collect-results", "--timeout", "1260", *[str(p) for p in paths]), capture_output=True, text=True, check=False)
+        collect = subprocess.run([str(larch_entrypoint(plugin_root)), "agent", "collect-results", "--timeout", "1260", *[str(p) for p in paths]], capture_output=True, text=True, check=False, env=larch_entrypoint_env(plugin_root))
         (design_tmpdir / "brainstorm-collect.stdout.log").write_text(collect.stdout, encoding="utf-8")
         (design_tmpdir / "brainstorm-collect.stderr.log").write_text(collect.stderr, encoding="utf-8")
         if collect.stdout:

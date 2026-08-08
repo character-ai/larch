@@ -190,7 +190,7 @@ Collect and validate research outputs using the shared collection script. Build 
 COLLECT_ARGS=()
 ```
 
-**Zero-externals branch**: if `codex_binary_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
+**Zero-externals branch**: if `codex_binary_available=false` (all four lanes ran as Claude fallbacks), skip `scripts/larch.sh agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
 
 For each Codex lane that was actually started, wait on its unique bgjob step before adding that output path to `COLLECT_ARGS`:
 
@@ -207,12 +207,12 @@ Otherwise invoke the collector with substantive validation:
 
 ```bash
 export RESEARCH_TMPDIR
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent collect-results --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
 ```
 
 Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgrounds an overrunning call and notifies on completion.
 
-Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `python/cli.py agent collect-results`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
+Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `scripts/larch.sh agent collect-results`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
 
 **Codex sidecar ingestion after collection settles**: best-effort token sidecar ingestion is operator-visible and does not depend on collector `STATUS=OK`. Map collector rows to the slots in `COLLECT_ARGS` order: `arch`, `edge`, `ext`, `sec`. Use these fixed slot output paths: `arch` → `codex-research-arch-output.txt`, `edge` → `codex-research-edge-output.txt`, `ext` → `codex-research-ext-output.txt`, `sec` → `codex-research-sec-output.txt`. For each slot, build candidate output paths in this order: the collector-reported `REVIEWER_FILE` when present, the fixed slot output path, `${fixed%.txt}-retry.txt`. Keep `REVIEWER_FILE` first, and still include the fixed path plus the launch-retry-derived path even when `REVIEWER_FILE` points at the fixed output. Deduplicate candidate paths before ingestion. Launch retry outputs can have sidecars next to `REVIEWER_FILE` and next to the derived fixed retry path. No non-substantive retry artifacts are created; substantive or structured validation failure is terminal `NOT_SUBSTANTIVE`.
 

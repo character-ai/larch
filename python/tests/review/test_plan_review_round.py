@@ -1,6 +1,6 @@
 r"""Coverage for python/plan_review_round.py finding collection and classification.
 
-Regression guard for issue #4790: ``collect_results`` emits ``KEY=VALUE`` blocks,
+Regression guard for issue #4790: ``agent collect-results`` emits ``KEY=VALUE`` blocks,
 but ``_compose_findings_from_collector`` parsed ``\x1f``-delimited records, so every
 reviewer finding was silently dropped and a real zero-collector round was reported
 as a clean ``complete``.
@@ -16,21 +16,21 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from larch.agents import collect_results
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
 from larch.review import voting
 from larch.review import review_aggregate
+from larch.review.review_pipeline_shared import parse_collector_records
 from test_support import make_zero_findings_plan_review_fake_cli
+from tests.support.review_wire import CollectorRecord, collector_text
 
 if TYPE_CHECKING:
     import pytest
 
 
-def _collector_text(records: list[collect_results.CollectorRecord]) -> str:
-    """Mirror ``collect_results._emit_records``: KEY=VALUE per line, blank line between records."""
-    blocks = ["\n".join(rec.fields()) for rec in records]
-    return "\n\n".join(blocks) + "\n"
+def _collector_text(records: list[CollectorRecord]) -> str:
+    """Mirror the collector's emission: KEY=VALUE per line, blank line between records."""
+    return collector_text(records)
 
 
 def _write_sidecar(path: Path, rows: list[dict[str, str]]) -> None:
@@ -152,14 +152,14 @@ def test_compose_findings_parses_keyvalue_collector(tmp_path: Path) -> None:
         ],
     )
     records = [
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(design / "codex-plan-arch-output.txt"),
             tool="codex",
             status="OK",
             exit_code="0",
             structured_sidecar=str(sidecar_in),
         ),
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(design / "cursor-plan-pragmatic-output.txt"),
             tool="cursor",
             status="OK",
@@ -233,14 +233,14 @@ def test_compose_findings_caps_oos_per_manifest_slot_and_keeps_later_in_scope(tm
         encoding="utf-8",
     )
     records = [
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(reviewer_a),
             tool="codex",
             status="OK",
             exit_code="0",
             structured_sidecar=str(sidecar_a),
         ),
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(reviewer_b),
             tool="cursor",
             status="OK",
@@ -311,7 +311,7 @@ def test_compose_findings_lazily_materializes_structured_sidecar(
         design=design,
         collect_text=_collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(reviewer_file),
                     tool="cursor",
                     status="OK",
@@ -346,7 +346,7 @@ def test_compose_findings_keeps_ok_when_lazy_structured_materialization_fails(
         design=tmp_path,
         collect_text=_collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(reviewer_file),
                     tool="cursor",
                     status="OK",
@@ -393,7 +393,7 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
                 0,
                 _collector_text(
                     [
-                        collect_results.CollectorRecord(
+                        CollectorRecord(
                             reviewer_file=str(reviewer_file),
                             tool="cursor",
                             status="OK",
@@ -483,7 +483,7 @@ def test_log_dispatcher_dropped_slots_missing_file_is_noop(
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
         calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -599,7 +599,7 @@ def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
                 "",
             )
         if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
+            record = CollectorRecord(
                 reviewer_file=str(reviewer_file),
                 tool="cursor",
                 status="OK",
@@ -625,7 +625,7 @@ def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
         if argv[:2] == ["run-log", "append-failure"]:
             append_failure_argvs.append(argv[:])
             return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -719,14 +719,14 @@ def test_compose_findings_counts_failures_without_dropping_ok(tmp_path: Path, mo
         ],
     )
     records = [
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(design / "codex-plan-arch-output.txt"),
             tool="codex",
             status="OK",
             exit_code="0",
             structured_sidecar=str(sidecar_ok),
         ),
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(design / "cursor-plan-arch-output.txt"),
             tool="cursor",
             status="TIMEOUT",
@@ -783,7 +783,7 @@ def test_compose_findings_tolerates_non_dict_manifest_rows(tmp_path: Path) -> No
         encoding="utf-8",
     )
     records = [
-        collect_results.CollectorRecord(
+        CollectorRecord(
             reviewer_file=str(reviewer_file),
             tool="cursor",
             status="OK",
@@ -849,7 +849,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
                 "",
             )
         if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
+            record = CollectorRecord(
                 reviewer_file=str(reviewer_file),
                 tool="cursor",
                 status="OK",
@@ -872,7 +872,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
         if argv[:2] == ["plan-review", "tally"]:
             _ = (design / "accepted-plan-findings.md").write_text("", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -934,7 +934,7 @@ def test_execute_round_records_reviewer_collect_row(
             )
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
+            record = CollectorRecord(
                 reviewer_file=str(reviewer_file),
                 tool="cursor",
                 status="OK",
@@ -957,7 +957,7 @@ def test_execute_round_records_reviewer_collect_row(
         if argv[:2] == ["plan-review", "tally"]:
             _ = (design / "accepted-plan-findings.md").write_text("", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -982,14 +982,14 @@ def test_execute_round_records_reviewer_collect_row(
 
 def test_parse_collector_records_keyvalue_anchored() -> None:
     """parse_collector_records reads KEY=VALUE blocks by key and ignores leading diagnostics."""
-    rec_a = collect_results.CollectorRecord(
+    rec_a = CollectorRecord(
         reviewer_file="/d/a-output.txt",
         tool="codex",
         status="OK",
         exit_code="0",
         structured_sidecar="/d/a.tsv",
     )
-    rec_b = collect_results.CollectorRecord(
+    rec_b = CollectorRecord(
         reviewer_file="/d/b-output.txt",
         tool="cursor",
         status="TIMEOUT",
@@ -1000,7 +1000,7 @@ def test_parse_collector_records_keyvalue_anchored() -> None:
     # A diagnostic line before the first REVIEWER_FILE anchor must not become a record.
     text = "collect-results: warning: dropping something basename=x.txt\n" + body
 
-    parsed = collect_results.parse_collector_records(text)
+    parsed = parse_collector_records(text)
 
     assert len(parsed) == 2
     assert parsed[0]["REVIEWER_FILE"] == "/d/a-output.txt"
@@ -1124,7 +1124,7 @@ def _install_execute_round_fake(
                 0,
                 _collector_text(
                     [
-                        collect_results.CollectorRecord(
+                        CollectorRecord(
                             reviewer_file=str(design / "cursor-plan-arch-output.txt"),
                             tool="cursor",
                             status="OK",
@@ -1530,8 +1530,8 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
     _ = (design / "collector-results.env").write_text(
         _collector_text(
             [
-                collect_results.CollectorRecord(reviewer_file=str(arch), tool="cursor", status="OK", exit_code="0"),
-                collect_results.CollectorRecord(reviewer_file=str(innovation), tool="codex", status="EMPTY_OUTPUT", exit_code="4"),
+                CollectorRecord(reviewer_file=str(arch), tool="cursor", status="OK", exit_code="0"),
+                CollectorRecord(reviewer_file=str(innovation), tool="codex", status="EMPTY_OUTPUT", exit_code="4"),
             ]
         ),
         encoding="utf-8",
@@ -1581,9 +1581,9 @@ def test_write_reviewer_status_tsv_annotates_vendor_fallback(tmp_path: Path) -> 
         _collector_text(
             [
                 # Cursor unavailable: this slot fell back to Codex.
-                collect_results.CollectorRecord(reviewer_file=str(arch), tool="codex", status="OK", exit_code="0"),
+                CollectorRecord(reviewer_file=str(arch), tool="codex", status="OK", exit_code="0"),
                 # This slot really ran on Cursor: no annotation.
-                collect_results.CollectorRecord(reviewer_file=str(innovation), tool="cursor", status="OK", exit_code="0"),
+                CollectorRecord(reviewer_file=str(innovation), tool="cursor", status="OK", exit_code="0"),
             ]
         ),
         encoding="utf-8",
@@ -1780,7 +1780,7 @@ def test_write_reviewer_status_tsv_retry_path_maps_to_done(tmp_path: Path) -> No
     _ = (design / "collector-results.env").write_text(
         _collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(retry_output),
                     tool="cursor",
                     status="OK",
@@ -1822,7 +1822,7 @@ def test_write_reviewer_status_tsv_phase3_path_maps_to_done(tmp_path: Path) -> N
     _ = (design / "collector-results.env").write_text(
         _collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(phase3_output),
                     tool="cursor",
                     status="OK",
@@ -1852,7 +1852,7 @@ def test_write_reviewer_status_tsv_collect_text_overrides_stale_collector_file(t
     _ = (design / "collector-results.env").write_text(
         _collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(arch),
                     tool="cursor",
                     status="OK",
@@ -1887,12 +1887,12 @@ def test_write_reviewer_status_tsv_basename_collision_prefers_ok(tmp_path: Path)
     _ = (design / "plan-review-slots.ndjson").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
     for records in (
         [
-            collect_results.CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
-            collect_results.CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
+            CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
+            CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
         ],
         [
-            collect_results.CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
-            collect_results.CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
+            CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
+            CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
         ],
     ):
         _ = (design / "collector-results.env").write_text(_collector_text(records), encoding="utf-8")
@@ -1913,7 +1913,7 @@ def test_execute_round_empty_paths_clears_stale_collector_for_status(
     _ = (tmp_path / "collector-results.env").write_text(
         _collector_text(
             [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(reviewer_file),
                     tool="cursor",
                     status="OK",
@@ -2037,7 +2037,7 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
             # OK reviewer with no structured sidecar: a genuine zero-findings review
             # (ok_count==1, no findings parsed -> empty ballot), unlike the empty-collector
             # (ok_count==0) case that must stay degraded-empty-collector (issue #4790).
-            record = collect_results.CollectorRecord(
+            record = CollectorRecord(
                 reviewer_file=str(reviewer_file),
                 tool="cursor",
                 status="OK",
@@ -2046,13 +2046,17 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
             return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
         if argv[:2] == ["review", "aggregate-findings"]:
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["run-log", "append-failure"]:
+            return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             voter_called["hit"] = True
             # Faithful empty-ballot degradation: pre-fix this maps to panel-failed.
             return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
         if argv[:2] == ["plan-review", "tally"]:
             return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -2139,14 +2143,14 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
             records = [
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(ok_reviewer),
                     tool="cursor",
                     status="OK",
                     exit_code="0",
                     structured_sidecar=str(ok_sidecar),
                 ),
-                collect_results.CollectorRecord(
+                CollectorRecord(
                     reviewer_file=str(fail_reviewer),
                     tool="codex",
                     status="TIMEOUT",
@@ -2159,10 +2163,12 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["run-log", "append-failure"]:
+            return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             voter_called["hit"] = True
             return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
@@ -2279,7 +2285,7 @@ def test_execute_round_degraded_usable_voter_dispatch(
             )
             return subprocess.CompletedProcess(
                 argv, 0,
-                _collector_text([collect_results.CollectorRecord(reviewer_file=str(reviewer_file), tool="cursor", status="OK", exit_code="0", structured_sidecar=str(sidecar))]),
+                _collector_text([CollectorRecord(reviewer_file=str(reviewer_file), tool="cursor", status="OK", exit_code="0", structured_sidecar=str(sidecar))]),
                 "",
             )
         if argv[:2] == ["review", "aggregate-findings"]:

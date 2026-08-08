@@ -1,8 +1,8 @@
 //! End-to-end coverage for the three-phase review waterfall dispatcher.
 //!
 //! Every case runs the real command against a fixture plugin root: the child
-//! launcher is a shell stub reached through `scripts/larch.sh`, and the still-
-//! Python collector is a stub `python/cli.py`. Both are keyed by marker files in
+//! launcher is a shell stub reached through `scripts/larch.sh`, and the
+//! collector is the real in-process owner. The stub is keyed by marker files in
 //! the round directory, because the dispatcher publishes a typed child
 //! environment rather than the ambient one.
 
@@ -51,25 +51,6 @@ fi
 printf '0\n' > "$out.done"
 "#;
 
-/// The still-Python collector stub, reached through the delegated-verb seam.
-const COLLECTOR_STUB: &str = r#"import os
-import sys
-
-paths = [value for value in sys.argv[1:] if value.startswith("/")]
-blocks = []
-for path in paths:
-    directory = os.path.dirname(path)
-    name = os.path.basename(path)
-    status = "OK"
-    if os.path.exists(os.path.join(directory, "COLLECTOR-FAIL-" + name)):
-        status = "FAILED"
-    elif os.path.exists(os.path.join(directory, "CAPHIT-" + name)):
-        status = "cap_hit"
-    blocks.append("STATUS=%s\nREVIEWER_FILE=%s" % (status, path))
-sys.stdout.write("\n\n".join(blocks) + "\n")
-sys.stderr.write("collector stub diagnostics\n")
-"#;
-
 fn write(path: &Path, contents: &str) {
     fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture parent");
     fs::write(path, contents).expect("write fixture");
@@ -103,7 +84,6 @@ impl Fixture {
         let plugin = root.path().join("plugin");
         let round = root.path().join("round-1");
         write_executable(&plugin.join("scripts/larch.sh"), LAUNCHER_STUB);
-        write(&plugin.join("python/cli.py"), COLLECTOR_STUB);
         fs::create_dir_all(&round).expect("round directory");
         write(&round.join("prompt.txt"), "prompt body\n");
         Self {
@@ -581,7 +561,6 @@ fn absent_primary_tool_falls_through_to_cursor_then_claude() {
     let output = fixture.path("slot.txt");
     let manifest = fixture.manifest(&[row("correctness", "codex", &output, &prompt)]);
     fixture.marker("FAIL-slot-phase2.txt");
-    fixture.marker("COLLECTOR-FAIL-slot-phase2.txt");
     let mut command = fixture.command();
     command.args([
         "--slots-file",
@@ -686,7 +665,6 @@ fn collector_failure_drops_the_slot_with_a_stderr_snippet() {
     let prompt = fixture.path("prompt.txt");
     let output = fixture.path("slot.txt");
     fixture.marker("FAIL-slot.txt");
-    fixture.marker("COLLECTOR-FAIL-slot.txt");
     let manifest = fixture.manifest(&[row("correctness", "codex", &output, &prompt)]);
     let assert = fixture.dispatch(&manifest, &["--no-fallback"]).success();
     let dropped =
@@ -703,8 +681,10 @@ fn cap_hit_bypasses_the_result_gate() {
     let fixture = Fixture::create();
     let prompt = fixture.path("prompt.txt");
     let output = fixture.path("slot.txt");
-    write(&fixture.path("BODY-slot.txt"), "truncated body\n");
-    fixture.marker("CAPHIT-slot.txt");
+    write(
+        &fixture.path("BODY-slot.txt"),
+        "STATUS=cap_hit\ntruncated body\n",
+    );
     let manifest = fixture.manifest(&[row("correctness", "codex", &output, &prompt)]);
     let assert = fixture
         .dispatch(
@@ -876,7 +856,6 @@ fn per_tool_prompt_files_select_the_phase_two_prompt() {
     write(&cursor_prompt, "cursor\n");
     let output = fixture.path("slot.txt");
     fixture.marker("FAIL-slot.txt");
-    fixture.marker("COLLECTOR-FAIL-slot.txt");
     let manifest = fixture.manifest(&[format!(
         r#"{{"slot":"correctness","tool":"codex","output":"{}","prompt_files":{{"codex":"{}","cursor":"{}"}}}}"#,
         output.display(),
@@ -905,7 +884,6 @@ fn a_slot_without_a_claude_prompt_records_a_prompt_missing_drop() {
     write(&codex_prompt, "codex\n");
     let output = fixture.path("slot.txt");
     fixture.marker("FAIL-slot.txt");
-    fixture.marker("COLLECTOR-FAIL-slot.txt");
     let manifest = fixture.manifest(&[format!(
         r#"{{"slot":"correctness","tool":"codex","output":"{}","prompt_files":{{"codex":"{}"}}}}"#,
         output.display(),

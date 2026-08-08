@@ -76,11 +76,13 @@ verb = "collect-results"
 python_module = "larch.agents.collect_results"
 python_function = "collect_results_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7678
+migration_issue = 8119
+clean_install_test = "clean-install-agent-collect-results"
 
 [[commands]]
 domain = "agent"
@@ -8286,12 +8288,6 @@ python = []
 rust = ["agent parse-codex-usage", "run-log append-failure"]
 
 [[callers]]
-path = "python/larch/agents/collect_results.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "agent wait-reviewers"]
-
-[[callers]]
 path = "python/larch/calibration/calibration_replay.py"
 kind = "python-runtime"
 python = []
@@ -8379,7 +8375,7 @@ rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle
 path = "python/larch/design/design_step1.py"
 kind = "python-runtime"
 python = []
-rust = ["dirty-tree checkpoint"]
+rust = ["agent collect-results", "dirty-tree checkpoint"]
 
 [[callers]]
 path = "python/larch/design/design_step2b.py"
@@ -8678,8 +8674,8 @@ rust = ["bgjob reap"]
 [[callers]]
 path = "scripts/external-tool-registry.sh"
 kind = "script"
-python = ["agent collect-results", "implement step2-dispatch"]
-rust = ["agent check-reviewers", "agent model-args", "agent run-external-agent"]
+python = ["implement step2-dispatch"]
+rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent"]
 
 [[callers]]
 path = "scripts/file-failure-report-cross-repo.sh"
@@ -8780,8 +8776,8 @@ rust = ["kv get"]
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["agent collect-results", "architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
-rust = ["agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "run-log append-failure", "session write-run-params"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "named-block write", "plan *", "plan check-size", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "run-log append-failure", "session write-run-params"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -8816,8 +8812,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/brainstorm.md"
 kind = "skill"
-python = ["agent collect-results"]
-rust = ["agent launch-review", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "external-defaults role"]
+python = []
+rust = ["agent collect-results", "agent launch-review", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "external-defaults role"]
 
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
@@ -9512,14 +9508,14 @@ rust = ["admission gate", "push rebase"]
 [[callers]]
 path = "skills/research/references/research-phase.md"
 kind = "skill"
-python = ["agent collect-results", "research banner", "research run-planner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent launch-codex-exec", "bgjob start", "bgjob wait", "session cleanup-tmpdir"]
+python = ["research banner", "research run-planner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["agent collect-results", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait"]
+python = ["render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
@@ -9542,8 +9538,8 @@ rust = []
 [[callers]]
 path = "skills/review/references/heavy-worker.md"
 kind = "skill"
-python = ["agent collect-results", "review tally-code-votes"]
-rust = ["agent dispatch-voters", "dirty-tree checkpoint"]
+python = ["review tally-code-votes"]
+rust = ["agent collect-results", "agent dispatch-voters", "dirty-tree checkpoint"]
 
 [[callers]]
 path = "skills/review/references/self-review.md"
@@ -9566,8 +9562,8 @@ rust = ["bgjob start", "bgjob wait"]
 [[callers]]
 path = "skills/shared/external-reviewers.md"
 kind = "skill"
-python = ["agent collect-results"]
-rust = ["agent degraded-tools-gate", "agent launch-claude-review", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
+python = []
+rust = ["agent collect-results", "agent degraded-tools-gate", "agent launch-claude-review", "agent run-external-agent", "agent run-negotiation-round", "agent wait-reviewers"]
 
 [[callers]]
 path = "skills/shared/final-summary-emit.md"

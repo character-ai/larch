@@ -273,6 +273,42 @@ def _manifest_rows(path: Path) -> list[dict[str, object]]:
     return rows
 
 
+def parse_collector_records(text: str) -> list[dict[str, str]]:
+    r"""Parse `agent collect-results` stdout / ``collector-results.env`` into per-reviewer dicts.
+
+    The collector emits one ``KEY=VALUE`` per line, with records separated by a
+    blank line. Records are anchored on ``REVIEWER_FILE``: diagnostic
+    ``KEY=VALUE`` lines emitted before the first record are ignored, a new
+    ``REVIEWER_FILE`` opens the next record, and a blank line closes the current
+    one.
+
+    This is the single reader for that wire format. Consumers must not
+    re-implement delimiter parsing: a stale ``\x1f`` split here silently dropped
+    every reviewer finding (issue #4790).
+    """
+    records: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        if "=" not in line:
+            if not line.strip() and current is not None:
+                records.append(current)
+                current = None
+            continue
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if not parsed:
+            continue
+        key, value = next(iter(parsed.items()))
+        if key == "REVIEWER_FILE":
+            if current is not None:
+                records.append(current)
+            current = {key: value}
+        elif current is not None:
+            current[key] = value
+    if current is not None:
+        records.append(current)
+    return records
+
+
 def _collector_records(path: Path) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     current: dict[str, str] = {}

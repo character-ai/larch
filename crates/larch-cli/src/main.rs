@@ -27,6 +27,7 @@ mod child_process;
 mod ci_launcher_commands;
 mod ci_timing;
 pub(crate) mod claude_commands;
+mod collector_commands;
 mod complete_umbrella_commands;
 mod dirty_tree_commands;
 mod drafter_commands;

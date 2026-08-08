@@ -203,7 +203,7 @@ def run(repo_root: Path) -> list[str]:
     def first_line(needle: str) -> int | None:
         return next((index for index, line in enumerate(vlines, 1) if needle in line), None)
     indices = [first_line(needle) for needle in (
-        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1860 --substantive-validation --validation-mode',
+        '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent collect-results --timeout 1860 --substantive-validation --validation-mode',
         "1. Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`.",
         "2. **Codex/Cursor validation sidecar ingestion after collection settles**",
         "3. **Runtime fallback replacement**",

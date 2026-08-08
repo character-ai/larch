@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from larch.agents import collect_results
+from larch.review import review_pipeline_shared
 from larch.calibration import difficulty
 from larch.rendering.gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
@@ -616,7 +616,7 @@ def _top_reviewers_from_classification(
 def _executing_tool_by_norm_basename(collector_env: Path) -> dict[str, str]:
     """Map normalized reviewer basename -> executing tool from ``collector-results.env``.
 
-    ``collect_results.derive_tool`` records the tool that actually produced each
+    ``agent collect-results`` records the tool that actually produced each
     reviewer output (``TOOL=``); on vendor fallback this differs from the slot's
     nominal vendor. Keyed by ``voting.normalize_reviewer_basename`` so manifest
     ``output`` paths line up with collector ``REVIEWER_FILE`` entries. ``unknown``
@@ -625,7 +625,7 @@ def _executing_tool_by_norm_basename(collector_env: Path) -> dict[str, str]:
     if not collector_env.is_file() or collector_env.is_symlink():
         return {}
     result: dict[str, str] = {}
-    for record in collect_results.parse_collector_records("\n".join(_read_lines_best_effort(collector_env))):
+    for record in review_pipeline_shared.parse_collector_records("\n".join(_read_lines_best_effort(collector_env))):
         reviewer_file = record.get("REVIEWER_FILE", "")
         tool = record.get("TOOL", "")
         if reviewer_file and tool and tool != "unknown":
@@ -727,7 +727,7 @@ def _apply_fallback_remap(
 
 def _collector_substantive_failure_records(text: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
-    parsed = collect_results.parse_collector_records(text)
+    parsed = review_pipeline_shared.parse_collector_records(text)
     if not parsed or not any(record.get("STATUS") for record in parsed):
         for block in re.split(r"\n\s*\n", text):
             current: dict[str, str] = {}
@@ -824,7 +824,7 @@ def _collector_env_paths_for_round(round_dir: Path) -> list[Path]:
 
 def _collector_seen_bases(text: str) -> set[str]:
     seen: set[str] = set()
-    for record in collect_results.parse_collector_records(text):
+    for record in review_pipeline_shared.parse_collector_records(text):
         reviewer_file = record.get("REVIEWER_FILE", "")
         if reviewer_file:
             seen.add(_progress_normalize_output_base(Path(reviewer_file).name))
@@ -1637,7 +1637,7 @@ def _design_collector_field(*, round_dir: Path, failure_count: int) -> str:
         collector_env = round_dir.parent.parent / "collector-results.env"
     records: list[str] = []
     collector_text = "\n".join(_read_lines_best_effort(collector_env))
-    for record in collect_results.parse_collector_records(collector_text):
+    for record in review_pipeline_shared.parse_collector_records(collector_text):
         status = record.get("STATUS", "")
         if status and status != "OK":
             tool = record.get("TOOL", "")

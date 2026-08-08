@@ -273,7 +273,7 @@ Execute the Gate A body in `approval-gates-gate-a.md`. When entered from Gate B(
 <!-- step:2a: Sentinel Artifact Prep -->
 ## Step 2a: Sentinel Artifact Prep
 
-Step 2a is folded into the Step 2b drafter launcher. Do not run a standalone Step 2a fence. Proceed to the Step 2b breadcrumb and `design-step2b-drafter.sh`; the wrapper repairs or writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md`) and `.completed/step-2a`. Pre-existing non-sentinel artifacts cause refusal for inspection before validation or launch. Do NOT call `python/cli.py agent collect-results`.
+Step 2a is folded into the Step 2b drafter launcher. Do not run a standalone Step 2a fence. Proceed to the Step 2b breadcrumb and `design-step2b-drafter.sh`; the wrapper repairs or writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md`) and `.completed/step-2a`. Pre-existing non-sentinel artifacts cause refusal for inspection before validation or launch. Do NOT call `scripts/larch.sh agent collect-results`.
 
 <!-- step:2b: Design the Implementation Plan -->
 

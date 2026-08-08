@@ -33,19 +33,23 @@ use larch_adapters::{
     vendor_diagnostics::write_failure_diag,
 };
 use larch_core::{
-    ChildEnvironment, DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram,
-    LauncherArtifactKind, ParseOptions, ProcessRequest, SafeText, emit_kv,
+    ChildEnvironment, ExternalProgram, LarchProgram, LauncherArtifactKind, ProcessRequest,
+    SafeText, emit_kv,
 };
 use regex::Regex;
 use serde_json::{Map, Value};
 
 use crate::agent_commands::AgentRawArguments;
 use crate::claude_commands::parse_uint;
+use crate::collector_commands::{
+    CollectorOptions, CollectorRecord, Publication, StructuredValidation, SubstantiveValidation,
+    collect,
+};
 use crate::launcher_support::{
     LauncherArtifacts, confined_target, is_control_character, is_positive_int, parse_presence,
     validate_site, write_confined,
 };
-use crate::python_verb::{plugin_root_directory, publish_session_environment, run_python_verb};
+use crate::python_verb::plugin_root_directory;
 
 /// Program name every diagnostic and drop record still carries.
 const PROG: &str = "dispatch-with-waterfall.sh";
@@ -55,6 +59,8 @@ const TIMING_KIND_MAX: usize = 64;
 const MIN_STRAGGLER_PHASE_SLOTS: usize = 2;
 /// Interval between slot-completion samples inside one phase.
 const REAP_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Sentinel wait the collector uses when `--timeout` is unparseable.
+const DEFAULT_COLLECTOR_TIMEOUT: u64 = 1800;
 /// Grace a cancelled slot child gets before its process group is killed.
 const LAUNCH_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 /// Backstop above `--timeout` before the runner terminates a slot child itself.
@@ -62,8 +68,6 @@ const LAUNCH_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 /// The launcher enforces the real deadline; this only bounds a wedged child so
 /// one slot cannot hold the dispatcher open forever.
 const LAUNCH_TIMEOUT_MARGIN: Duration = Duration::from_secs(600);
-/// Extra time the still-Python collector gets above the dispatch timeout.
-const COLLECTOR_TIMEOUT_MARGIN: Duration = Duration::from_secs(300);
 /// Longest wait for slot teardown after an operating-system shutdown signal.
 const SHUTDOWN_DRAIN: Duration = Duration::from_secs(5);
 /// Exit code a terminated dispatch reports, matching the retired signal handler.
@@ -1396,50 +1400,31 @@ fn reap_phase(launches: &[Arc<Launch>], options: &Options, gates: &ResultGates) 
 // Result collection
 // ---------------------------------------------------------------------------
 
-fn collector_timeout(options: &Options) -> Duration {
-    Duration::from_secs(options.timeout.parse().unwrap_or(1800)) + COLLECTOR_TIMEOUT_MARGIN
-}
-
-/// Run the still-Python collector over one or more launcher outputs.
-fn run_collector(outputs: &[&str], options: &Options, summary_only: bool) -> Option<String> {
-    let mut arguments = vec![
-        OsString::from("agent"),
-        OsString::from("collect-results"),
-        OsString::from("--timeout"),
-        OsString::from(&options.timeout),
-    ];
-    if summary_only {
-        arguments.push(OsString::from("--summary-only"));
-    }
-    arguments.extend(outputs.iter().map(OsString::from));
-    let output = run_python_verb(arguments, collector_timeout(options)).ok()?;
-    if !summary_only {
-        let stderr = output.safe_stderr();
-        if !stderr.as_str().is_empty() {
-            eprint!("{}", stderr.as_str());
+/// Collect one or more launcher outputs through the shared collector owner.
+///
+/// The collector runs in process rather than as a delegated verb: it returns
+/// its records directly, and the caller decides whether its diagnostics reach
+/// the operator. A summary pass drops them, matching the retired dispatcher's
+/// discarded child stderr.
+fn run_collector(
+    outputs: &[&str],
+    options: &Options,
+    publication: Publication,
+) -> Vec<CollectorRecord> {
+    let request = CollectorOptions {
+        timeout: options.timeout.parse().unwrap_or(DEFAULT_COLLECTOR_TIMEOUT),
+        output_files: outputs.iter().map(|value| (*value).to_owned()).collect(),
+        substantive: SubstantiveValidation::Off,
+        structured: StructuredValidation::Off,
+        publication,
+    };
+    let outcome = collect(&request);
+    if publication == Publication::Full {
+        for line in &outcome.diagnostics {
+            eprintln!("{line}");
         }
     }
-    (output.status().code() == Some(0))
-        .then(|| String::from_utf8_lossy(output.stdout()).into_owned())
-}
-
-fn split_summary_blocks(stdout: &str) -> Vec<String> {
-    let mut blocks = Vec::new();
-    let mut current: Vec<&str> = Vec::new();
-    for line in stdout.lines() {
-        if line.is_empty() {
-            if !current.is_empty() {
-                blocks.push(current.join("\n"));
-                current.clear();
-            }
-        } else {
-            current.push(line);
-        }
-    }
-    if !current.is_empty() {
-        blocks.push(current.join("\n"));
-    }
-    blocks
+    outcome.records
 }
 
 /// What one collector summary block reported for a single slot.
@@ -1464,23 +1449,6 @@ impl CollectorStatus {
     }
 }
 
-/// One slot's decoded collector block: its status and its reviewer file.
-struct CollectorBlock {
-    status: CollectorStatus,
-    reviewer_file: String,
-}
-
-fn parse_block(block: &str) -> CollectorBlock {
-    let selected = KvDocument::parse(block, ParseOptions::legacy()).map_or_else(
-        |_error| std::collections::BTreeMap::new(),
-        |document| document.select(DuplicatePolicy::Last),
-    );
-    CollectorBlock {
-        status: CollectorStatus::from_label(selected.get("STATUS").map_or("", String::as_str)),
-        reviewer_file: selected.get("REVIEWER_FILE").cloned().unwrap_or_default(),
-    }
-}
-
 /// One collected slot's verdict: the published output, or why it was dropped.
 enum CollectorVerdict {
     Accepted(String),
@@ -1489,11 +1457,11 @@ enum CollectorVerdict {
 
 fn apply_collector_block(
     output: &str,
-    block: &CollectorBlock,
+    record: Option<&CollectorRecord>,
     gates: &ResultGates,
 ) -> CollectorVerdict {
-    let reviewer_file = block.reviewer_file.as_str();
-    match &block.status {
+    let reviewer_file = record.map_or("", CollectorRecord::reviewer_file);
+    match &CollectorStatus::from_label(record.map_or("", CollectorRecord::status)) {
         CollectorStatus::Refused(label) => {
             CollectorVerdict::Dropped(collector_failure_drop(output, label))
         }
@@ -1607,13 +1575,9 @@ fn salvage_first_line(check_file: &str, pattern: &Regex) -> bool {
 }
 
 fn slot_collector_accepted(launch: &Launch, options: &Options, gates: &ResultGates) -> bool {
-    let Some(stdout) = run_collector(&[launch.output.as_str()], options, true) else {
-        return false;
-    };
-    let blocks = split_summary_blocks(&stdout);
-    let block = parse_block(blocks.first().map_or("", String::as_str));
+    let records = run_collector(&[launch.output.as_str()], options, Publication::SummaryOnly);
     matches!(
-        apply_collector_block(&launch.output, &block, gates),
+        apply_collector_block(&launch.output, records.first(), gates),
         CollectorVerdict::Accepted(_)
     )
 }
@@ -1639,8 +1603,7 @@ fn collect_phase(
         .iter()
         .map(|launch| launch.output.as_str())
         .collect();
-    let stdout = run_collector(&outputs, options, true).unwrap_or_default();
-    let blocks = split_summary_blocks(&stdout);
+    let records = run_collector(&outputs, options, Publication::SummaryOnly);
     let mut failed = Vec::new();
     for (position, launch) in launches.iter().enumerate() {
         let index = launch.index;
@@ -1649,8 +1612,7 @@ fn collect_phase(
                 DropState::new("straggler-dropped", "cut at adaptive straggler deadline");
             continue;
         }
-        let block = parse_block(blocks.get(position).map_or("", String::as_str));
-        match apply_collector_block(&launch.output, &block, gates) {
+        match apply_collector_block(&launch.output, records.get(position), gates) {
             CollectorVerdict::Accepted(final_output) => {
                 results.outputs[index] = final_output;
                 launch.tool.as_str().clone_into(&mut results.tools[index]);
@@ -2082,13 +2044,9 @@ fn run_fallback_phases(
             .iter()
             .map(|index| results.outputs[*index].as_str())
             .collect();
-        // The terminal pass reports the collector's own diagnostics, so the
-        // delegated verb must not route its stderr into a quiet log file.
-        publish_session_environment(vec![(
-            ChildEnvironment::LarchQuietDisable,
-            OsString::from("1"),
-        )]);
-        let _reported = run_collector(&outputs, context.options, false);
+        // The terminal pass reports the collector's own diagnostics directly:
+        // the collector now runs in process, so no child stderr is at stake.
+        let _reported = run_collector(&outputs, context.options, Publication::Full);
     }
     Ok(fallback_count)
 }
