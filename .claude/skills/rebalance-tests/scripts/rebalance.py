@@ -125,7 +125,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--n-runs", type=_positive_int, default=5, help="baseline CI runs to sample")
     parser.add_argument("--branch-prefix", default="rebalance-shards")
     parser.add_argument("--n-verify-runs", type=_positive_int, default=3)
-    parser.add_argument("--n-python-shards", type=_positive_int, default=4)
+    parser.add_argument(
+        "--n-python-shards",
+        type=_positive_int,
+        default=None,
+        help="expected python-tests shard count (auto-detected from CI when omitted)",
+    )
     parser.add_argument("--balance-threshold", type=float, default=15.0)
     parser.add_argument(
         "--max-shard-wall-clock",
@@ -945,17 +950,22 @@ def _prepare_python_plan(args: argparse.Namespace, repo: str) -> PythonPlan:
         raise ShipError(
             "conflicting or missing python-tests shard X of N totals in CI logs"
         )
-    if observed != args.n_python_shards:
-        raise ShipError(
-            f"--n-python-shards={args.n_python_shards} does not match observed CI shard count {observed}"
-        )
+    if args.n_python_shards is None:
+        n_python_shards = observed
+        print(f"  Auto-detected {n_python_shards} python-tests shards from CI")
+    else:
+        n_python_shards = args.n_python_shards
+        if observed != n_python_shards:
+            raise ShipError(
+                f"--n-python-shards={n_python_shards} does not match observed CI shard count {observed}"
+            )
     medians = report.nodeid_medians
     if not medians:
         raise ShipError("no pytest nodeid medians after latest-attempt dedup")
-    assignments = _pack_nodeids(medians, args.n_python_shards)
-    print(f"  Packed {len(assignments)} nodeids across {args.n_python_shards} shards")
+    assignments = _pack_nodeids(medians, n_python_shards)
+    print(f"  Packed {len(assignments)} nodeids across {n_python_shards} shards")
     return PythonPlan(
-        assignments=assignments, medians=medians, n_shards=args.n_python_shards
+        assignments=assignments, medians=medians, n_shards=n_python_shards
     )
 
 
@@ -1097,6 +1107,7 @@ def _verify_python(
     *,
     repo: str,
     pr_url: str,
+    plan: PythonPlan,
 ) -> int:
     print(
         "\n[verify:python] Collecting python-tests timing and verifying shard balance …"
@@ -1121,7 +1132,7 @@ def _verify_python(
         return 1
 
     totals = report.shard_medians
-    expected = set(range(1, args.n_python_shards + 1))
+    expected = set(range(1, plan.n_shards + 1))
     missing = sorted(expected - set(totals))
     if missing:
         print(
@@ -1220,7 +1231,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         if plan.harness is not None:
             _verify_harness(args, verify_run_ids, repo=repo, plan=plan.harness)
         if plan.python is not None:
-            result = _verify_python(args, verify_run_ids, repo=repo, pr_url=pr.url)
+            result = _verify_python(
+                args,
+                verify_run_ids,
+                repo=repo,
+                pr_url=pr.url,
+                plan=plan.python,
+            )
             if result != 0:
                 return result
 

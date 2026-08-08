@@ -91,7 +91,7 @@ Or invoke via this skill and pass flags directly to the script:
 
 ```
 /rebalance-tests --kind all --n-runs 3
-/rebalance-tests --kind python --n-python-shards 4 --repo owner/name
+/rebalance-tests --kind python --repo owner/name
 ```
 
 Forward all args from the skill invocation to the script unchanged.
@@ -105,7 +105,7 @@ Forward all args from the skill invocation to the script unchanged.
 | `--n-runs` | `5` | Number of baseline CI runs to sample, from 1 through 20 |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the new git branch |
 | `--n-verify-runs` | `3` | Verification CI runs to trigger after PR creation |
-| `--n-python-shards` | `4` | Expected `python-tests` matrix shard count |
+| `--n-python-shards` | auto-detected | Expected `python-tests` matrix shard count; inferred from CI when omitted |
 | `--balance-threshold` | `15` | Max acceptable sum-estimate shard spread in seconds |
 | `--max-shard-wall-clock` | `60` | Real harness shard CI job wall-clock budget in seconds |
 | `--workflow` | `ci.yaml` | Workflow file name |
