@@ -144,6 +144,19 @@ reads one run at a time and both ledgers and transcripts line by line, so peak
 memory is bounded by the largest single run and not by corpus size, as
 `larch_core::report`'s token-scan module documents.
 
+Token pricing uses the same differential shape. `crates/larch-core/tests/
+fixtures/token_cost/` holds two recorded case files: `argv-cases.json` pairs
+pricing flags and a rate environment with the Python owner's `KEY=value` block
+and cost line, and `record-cases.json` pairs a raw token report with the flags
+`token_cost_argv` derived from it, the resulting block, and the `price_run` cost
+fields. `tests/token_cost.rs` asserts string and value equality against both,
+including the blended fallback a negative bucket forces. Every case stores its
+own inputs, so regeneration replays the recorded `argv`, `env`, and `report`
+through the Python owner. Regenerate both files together, and review a changed
+number as a pricing contract change. `flags.json` records the Python owner's
+exact count-flag set so the derived Rust flag grammar cannot drift wider or
+narrower.
+
 `LocalObjectStore` is a filesystem double for the documented object-store
 operations (`preflight_prefix`, `list`, `upload_create`, `metadata`,
 `download`). It stays offline, rejects unsafe keys, and never contacts a

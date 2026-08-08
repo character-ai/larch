@@ -8,7 +8,13 @@
 use crate::{TemporaryRoot, atomic_write_utf8_in, read_kv_raw, read_optional_utf8_lossy};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
-use larch_core::{KvDocument, ParseOptions, claude_sub_default_model, ensure_ascii_json};
+use larch_core::{
+    CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_MODEL,
+    CODEX_DEFAULT_MODEL, CODEX_MINI_MODELS, CODEX_REVIEW_MODEL_DEFAULT, CURSOR_COMPOSER_BASE_RATES,
+    CURSOR_GROK_4_5_HIGH_MODEL, CURSOR_GROK_MODELS, CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+    KvDocument, ParseOptions, RateRow, TokenVendor, claude_sub_default_model, ensure_ascii_json,
+    exact_rate_row,
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1671,30 +1677,23 @@ struct TokenRates {
     output: f64,
 }
 
-const OPUS_RATES: TokenRates = TokenRates {
-    input: 5.0,
-    cache_read: 0.5,
-    cache_create: 6.25,
-    output: 25.0,
-};
-const SONNET_RATES: TokenRates = TokenRates {
-    input: 3.0,
-    cache_read: 0.3,
-    cache_create: 3.75,
-    output: 15.0,
-};
-const HAIKU_RATES: TokenRates = TokenRates {
-    input: 1.0,
-    cache_read: 0.1,
-    cache_create: 1.25,
-    output: 5.0,
-};
-const FABLE_RATES: TokenRates = TokenRates {
-    input: 10.0,
-    cache_read: 1.0,
-    cache_create: 12.5,
-    output: 50.0,
-};
+/// Read one lane rate row from the shared pricing owner.
+///
+/// `larch_core::report::RATE_TABLE` is the single source of token rates. The
+/// legacy `cache_create` bucket priced at the five-minute cache-write tier, so
+/// that tier fills this renderer's single cache-creation rate.
+fn table_rates(vendor: TokenVendor, model: &str) -> TokenRates {
+    from_rate_row(exact_rate_row(vendor, model).expect("a pinned model has a rate row"))
+}
+
+const fn from_rate_row(row: RateRow) -> TokenRates {
+    TokenRates {
+        input: row.input,
+        cache_read: row.cache_read,
+        cache_create: row.cache_create_5m,
+        output: row.output,
+    }
+}
 
 #[allow(clippy::too_many_lines)] // One ordered legacy schema-to-pricing mapping preserves cost parity.
 fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> String {
@@ -1728,11 +1727,9 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
         let bucket = match vendor.as_str() {
             // The Python owner groups all non-mini Codex rows into its default
             // bucket; a recorded Terra model does not receive Terra pricing.
-            "codex" if matches!(model.as_str(), "gpt-5.4-mini" | "gpt-5.6-luna") => &mut codex_mini,
+            "codex" if CODEX_MINI_MODELS.contains(&model.as_str()) => &mut codex_mini,
             "codex" => &mut codex,
-            "cursor" if matches!(model.as_str(), "cursor-grok-4.5-high" | "grok-4.5") => {
-                &mut cursor_grok
-            }
+            "cursor" if CURSOR_GROK_MODELS.contains(&model.as_str()) => &mut cursor_grok,
             "cursor" => &mut cursor,
             "claude_sub" => match if model.is_empty() {
                 claude_sub_default_model(&raw).to_owned()
@@ -1741,9 +1738,9 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
             }
             .as_str()
             {
-                "claude-sonnet-4-6" => &mut claude_sub_sonnet,
-                "claude-haiku-4-5" => &mut claude_sub_haiku,
-                "claude-fable-5" => &mut claude_sub_fable,
+                CLAUDE_SONNET_4_6_MODEL => &mut claude_sub_sonnet,
+                CLAUDE_HAIKU_4_5_MODEL => &mut claude_sub_haiku,
+                CLAUDE_FABLE_5_MODEL => &mut claude_sub_fable,
                 // Model names outside the three explicit sub-agent buckets,
                 // including the `[1m]` spelling, use the generic Opus lane.
                 _other => &mut claude_sub_opus,
@@ -1759,10 +1756,11 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
         return "$0.00".to_owned();
     }
 
+    let codex_table = table_rates(TokenVendor::Codex, CODEX_DEFAULT_MODEL);
     let codex_default_rates = TokenRates {
         input: env_rate_any(
             &["LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"],
-            5.0,
+            codex_table.input,
         ),
         cache_read: env_rate_any(
             &[
@@ -1770,21 +1768,22 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
                 "LARCH_RATE_CODEX_CACHE_READ",
                 "LARCH_RATE_CODEX_CACHED_INPUT",
             ],
-            0.5,
+            codex_table.cache_read,
         ),
         cache_create: 0.0,
         output: env_rate_any(
             &["LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"],
-            30.0,
+            codex_table.output,
         ),
     };
+    let codex_mini_table = table_rates(TokenVendor::Codex, CODEX_REVIEW_MODEL_DEFAULT);
     let codex_mini_rates = TokenRates {
         input: env_rate_any(
             &[
                 "LARCH_CODEX_MINI_INPUT_RATE_PER_M",
                 "LARCH_RATE_CODEX_MINI_INPUT",
             ],
-            1.0,
+            codex_mini_table.input,
         ),
         cache_read: env_rate_any(
             &[
@@ -1792,7 +1791,7 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
                 "LARCH_RATE_CODEX_MINI_CACHE_READ",
                 "LARCH_RATE_CODEX_MINI_CACHED_INPUT",
             ],
-            0.1,
+            codex_mini_table.cache_read,
         ),
         cache_create: 0.0,
         output: env_rate_any(
@@ -1800,33 +1799,41 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
                 "LARCH_CODEX_MINI_OUTPUT_RATE_PER_M",
                 "LARCH_RATE_CODEX_MINI_OUTPUT",
             ],
-            6.0,
+            codex_mini_table.output,
         ),
     };
-    let surcharge = env_rate_any(&["LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"], 0.25);
+    let surcharge = env_rate_any(
+        &["LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"],
+        CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+    );
+    let cursor_base = from_rate_row(CURSOR_COMPOSER_BASE_RATES);
     let cursor_rates = TokenRates {
         input: env_rate_any(
             &["LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"],
-            0.5 + surcharge,
+            cursor_base.input + surcharge,
         ),
         cache_read: env_rate_any(
             &[
                 "LARCH_CURSOR_CACHE_READ_RATE_PER_M",
                 "LARCH_RATE_CURSOR_CACHE_READ",
             ],
-            0.2 + surcharge,
+            cursor_base.cache_read + surcharge,
         ),
         cache_create: 0.0,
         output: env_rate_any(
             &["LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"],
-            2.5 + surcharge,
+            cursor_base.output + surcharge,
         ),
     };
+    let grok_table = table_rates(TokenVendor::Cursor, CURSOR_GROK_4_5_HIGH_MODEL);
     let cursor_grok_rates = TokenRates {
-        input: env_rate_any(&["LARCH_CURSOR_GROK_INPUT_RATE_PER_M"], 2.0),
-        cache_read: env_rate_any(&["LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M"], 0.5),
+        input: env_rate_any(&["LARCH_CURSOR_GROK_INPUT_RATE_PER_M"], grok_table.input),
+        cache_read: env_rate_any(
+            &["LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M"],
+            grok_table.cache_read,
+        ),
         cache_create: 0.0,
-        output: env_rate_any(&["LARCH_CURSOR_GROK_OUTPUT_RATE_PER_M"], 6.0),
+        output: env_rate_any(&["LARCH_CURSOR_GROK_OUTPUT_RATE_PER_M"], grok_table.output),
     };
 
     let codex_cost = round_money(bucket_cost(codex, codex_default_rates));
@@ -1834,12 +1841,16 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
     let cursor_composer_cost = round_money(bucket_cost(cursor, cursor_rates));
     let cursor_grok_cost = round_money(bucket_cost(cursor_grok, cursor_grok_rates));
     let cursor_cost = round_money(cursor_composer_cost + cursor_grok_cost);
-    let mut claude_sub_cost = round_money(bucket_cost(claude_sub_opus, OPUS_RATES));
-    for (bucket, rates) in [
-        (claude_sub_sonnet, SONNET_RATES),
-        (claude_sub_haiku, HAIKU_RATES),
-        (claude_sub_fable, FABLE_RATES),
+    let mut claude_sub_cost = round_money(bucket_cost(
+        claude_sub_opus,
+        table_rates(TokenVendor::ClaudeSub, CLAUDE_OPUS_4_8_MODEL),
+    ));
+    for (bucket, model) in [
+        (claude_sub_sonnet, CLAUDE_SONNET_4_6_MODEL),
+        (claude_sub_haiku, CLAUDE_HAIKU_4_5_MODEL),
+        (claude_sub_fable, CLAUDE_FABLE_5_MODEL),
     ] {
+        let rates = table_rates(TokenVendor::ClaudeSub, model);
         claude_sub_cost = round_money(claude_sub_cost + round_money(bucket_cost(bucket, rates)));
     }
     format!(

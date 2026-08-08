@@ -1,0 +1,1102 @@
+[
+  {
+    "name": "totals-only",
+    "report": {
+      "claude": {
+        "totals": {
+          "input": 100003,
+          "cache_read": 900001,
+          "cache_create": 50003,
+          "output": 20011,
+          "total": 0
+        }
+      },
+      "codex": {
+        "totals": {
+          "input": 70001,
+          "cached_input": 400009,
+          "output": 9001,
+          "total": 0
+        }
+      },
+      "cursor": {
+        "totals": {
+          "input": 5003,
+          "cache_read": 30011,
+          "output": 1009,
+          "total": 0
+        }
+      },
+      "claude_sub": {
+        "totals": {
+          "input": 3001,
+          "cache_read": 20011,
+          "cache_create_5m": 1009,
+          "output": 703,
+          "total": 0
+        }
+      }
+    },
+    "main_model": "claude-opus-4-8",
+    "argv": [
+      "--claude-model",
+      "claude-opus-4-8",
+      "--claude-tokens",
+      "1070018",
+      "--codex-tokens",
+      "479011",
+      "--cursor-tokens",
+      "36023",
+      "--claude-sub-tokens",
+      "24724"
+    ],
+    "kv": "CLAUDE_COST=0.86\nCODEX_COST=0.53\nCODEX_GPT_5_5_COST=0.53\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.02\nCLAUDE_SUB_COST=0.02\nTOTAL_COST=1.43\nCLAUDE_TOKENS=1070018\nCODEX_TOKENS=479011\nCURSOR_TOKENS=36023\nCLAUDE_SUB_TOKENS=24724\nTOTAL_TOKENS=1609776\n",
+    "cost": {
+      "claude_cost": 0.86,
+      "codex_cost": 0.53,
+      "cursor_cost": 0.02,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.02,
+      "total_cost": 1.43,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "claude-bucket-with-legacy-cache-create",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 100003,
+        "cache_read": 900001,
+        "cache_create": 50003,
+        "output": 20011
+      }
+    },
+    "main_model": "claude-opus-4-8",
+    "argv": [
+      "--claude-model",
+      "claude-opus-4-8",
+      "--claude-input-tokens",
+      "100003",
+      "--claude-cache-read-tokens",
+      "900001",
+      "--claude-cache-write-5m-tokens",
+      "50003",
+      "--claude-cache-write-1h-tokens",
+      "0",
+      "--claude-output-tokens",
+      "20011",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=1.76\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=1.76\nCLAUDE_TOKENS=1070018\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1070018\n",
+    "cost": {
+      "claude_cost": 1.76,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 1.76,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "claude-bucket-with-split-cache-create",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 100003,
+        "cache_read": 900001,
+        "cache_create": 50003,
+        "cache_create_5m": 33331,
+        "cache_create_1h": 11113,
+        "output": 20011
+      }
+    },
+    "main_model": "claude-sonnet-4-6",
+    "argv": [
+      "--claude-model",
+      "claude-sonnet-4-6",
+      "--claude-input-tokens",
+      "100003",
+      "--claude-cache-read-tokens",
+      "900001",
+      "--claude-cache-write-5m-tokens",
+      "33331",
+      "--claude-cache-write-1h-tokens",
+      "11113",
+      "--claude-output-tokens",
+      "20011",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=1.06\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=1.06\nCLAUDE_TOKENS=1064459\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1064459\n",
+    "cost": {
+      "claude_cost": 1.06,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 1.06,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "codex-by-model-split",
+    "report": {
+      "BUCKETS_codex": {
+        "input": 300007,
+        "cached_input": 1200007,
+        "output": 40009
+      },
+      "BUCKETS_codex_by_model": {
+        "gpt-5.6-sol": {
+          "input": 200003,
+          "cached_input": 800011,
+          "output": 30011
+        },
+        "gpt-5.6-luna": {
+          "input": 60013,
+          "cached_input": 300007,
+          "output": 7001
+        },
+        "gpt-5.4-mini": {
+          "input": 40009,
+          "cached_input": 100003,
+          "output": 3001
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-input-tokens",
+      "200003",
+      "--codex-cached-input-tokens",
+      "800011",
+      "--codex-output-tokens",
+      "30011",
+      "--codex-mini-input-tokens",
+      "100022",
+      "--codex-mini-cached-input-tokens",
+      "400010",
+      "--codex-mini-output-tokens",
+      "10002",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=2.50\nCODEX_GPT_5_5_COST=2.30\nCODEX_GPT_5_4_MINI_COST=0.20\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=2.50\nCLAUDE_TOKENS=0\nCODEX_TOKENS=1540059\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1540059\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 2.5,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 2.5,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "codex-by-model-unpriced",
+    "report": {
+      "BUCKETS_codex": {
+        "input": 300007,
+        "cached_input": 1200007,
+        "output": 40009
+      },
+      "BUCKETS_codex_by_model": {
+        "gpt-5.6-sol": {
+          "input": 200003,
+          "cached_input": 800011,
+          "output": 30011
+        },
+        "gpt-9-unknown": {
+          "input": 100003,
+          "cached_input": 400009,
+          "output": 10007
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-input-tokens",
+      "300006",
+      "--codex-cached-input-tokens",
+      "1200020",
+      "--codex-output-tokens",
+      "40018",
+      "--codex-mini-input-tokens",
+      "0",
+      "--codex-mini-cached-input-tokens",
+      "0",
+      "--codex-mini-output-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=3.30\nCODEX_GPT_5_5_COST=3.30\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=3.30\nCLAUDE_TOKENS=0\nCODEX_TOKENS=1540044\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1540044\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 3.3,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 3.3,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "codex-bucket-without-split",
+    "report": {
+      "BUCKETS_codex": {
+        "input": 300007,
+        "cached_input": 1200007,
+        "output": 40009
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-input-tokens",
+      "300007",
+      "--codex-cached-input-tokens",
+      "1200007",
+      "--codex-output-tokens",
+      "40009",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=3.30\nCODEX_GPT_5_5_COST=3.30\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=3.30\nCLAUDE_TOKENS=0\nCODEX_TOKENS=1540023\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1540023\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 3.3,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 3.3,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-detailed-split",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": 100003,
+          "cache_read": 500009,
+          "output": 20011
+        },
+        "cursor-grok-4.5-high": {
+          "input": 30011,
+          "cache_read": 150001,
+          "output": 4001
+        },
+        "grok-4.5": {
+          "input": 19997,
+          "cache_read": 50021,
+          "output": 1009
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-input-tokens",
+      "100003",
+      "--cursor-cache-read-tokens",
+      "500009",
+      "--cursor-output-tokens",
+      "20011",
+      "--cursor-grok-input-tokens",
+      "50008",
+      "--cursor-grok-cache-read-tokens",
+      "200022",
+      "--cursor-grok-output-tokens",
+      "5010",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COMPOSER_COST=0.36\nCURSOR_GROK_COST=0.23\nCURSOR_COST=0.59\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.59\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=875063\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=875063\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.59,
+      "cursor_composer_cost": 0.36,
+      "cursor_grok_cost": 0.23,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.59,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-split-with-float-value",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": 100003.0,
+          "cache_read": 500009,
+          "output": 20011
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "875015",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.43\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.43\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=875015\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=875015\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.43,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.43,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-split-with-string-counts",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": "100003",
+          "cache_read": " 500009 ",
+          "output": 20011
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-input-tokens",
+      "100003",
+      "--cursor-cache-read-tokens",
+      "500009",
+      "--cursor-output-tokens",
+      "20011",
+      "--cursor-grok-input-tokens",
+      "0",
+      "--cursor-grok-cache-read-tokens",
+      "0",
+      "--cursor-grok-output-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COMPOSER_COST=0.36\nCURSOR_GROK_COST=0.00\nCURSOR_COST=0.36\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.36\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=620023\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=620023\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.36,
+      "cursor_composer_cost": 0.36,
+      "cursor_grok_cost": 0.0,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.36,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-split-with-negative-string",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": "-5",
+          "cache_read": 500009,
+          "output": 20011
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "875015",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.43\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.43\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=875015\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=875015\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.43,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.43,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-split-with-missing-key",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": 100003,
+          "output": 20011
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-input-tokens",
+      "100003",
+      "--cursor-cache-read-tokens",
+      "0",
+      "--cursor-output-tokens",
+      "20011",
+      "--cursor-grok-input-tokens",
+      "0",
+      "--cursor-grok-cache-read-tokens",
+      "0",
+      "--cursor-grok-output-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COMPOSER_COST=0.13\nCURSOR_GROK_COST=0.00\nCURSOR_COST=0.13\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.13\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=120014\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=120014\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.13,
+      "cursor_composer_cost": 0.13,
+      "cursor_grok_cost": 0.0,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.13,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "cursor-split-empty",
+    "report": {
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {}
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "875015",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.43\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.43\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=875015\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=875015\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.43,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.43,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "claude-sub-by-model-split",
+    "report": {
+      "BUCKETS_claude_sub": {
+        "input": 500009,
+        "cache_read": 2000003,
+        "cache_create": 60013,
+        "output": 30011
+      },
+      "BUCKETS_claude_sub_by_model": {
+        "claude-opus-4-8": {
+          "input": 200003,
+          "cache_read": 900001,
+          "cache_create": 20011,
+          "output": 12007
+        },
+        "claude-sonnet-4-6": {
+          "input": 150001,
+          "cache_read": 700001,
+          "cache_create_5m": 25013,
+          "cache_create_1h": 5003,
+          "output": 10007
+        },
+        "claude-haiku-4-5": {
+          "input": 100003,
+          "cache_read": 300007,
+          "cache_create": 10007,
+          "output": 5003
+        },
+        "claude-fable-5": {
+          "input": 50021,
+          "cache_read": 100003,
+          "cache_create": 5003,
+          "output": 3001
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-input-tokens",
+      "200003",
+      "--claude-sub-cache-read-tokens",
+      "900001",
+      "--claude-sub-cache-write-5m-tokens",
+      "20011",
+      "--claude-sub-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-output-tokens",
+      "12007",
+      "--claude-sub-sonnet-input-tokens",
+      "150001",
+      "--claude-sub-sonnet-cache-read-tokens",
+      "700001",
+      "--claude-sub-sonnet-cache-write-5m-tokens",
+      "25013",
+      "--claude-sub-sonnet-cache-write-1h-tokens",
+      "5003",
+      "--claude-sub-sonnet-output-tokens",
+      "10007",
+      "--claude-sub-haiku-input-tokens",
+      "100003",
+      "--claude-sub-haiku-cache-read-tokens",
+      "300007",
+      "--claude-sub-haiku-cache-write-5m-tokens",
+      "10007",
+      "--claude-sub-haiku-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-haiku-output-tokens",
+      "5003",
+      "--claude-sub-fable-input-tokens",
+      "50021",
+      "--claude-sub-fable-cache-read-tokens",
+      "100003",
+      "--claude-sub-fable-cache-write-5m-tokens",
+      "5003",
+      "--claude-sub-fable-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-fable-output-tokens",
+      "3001"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=3.79\nTOTAL_COST=3.79\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=2595095\nTOTAL_TOKENS=2595095\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 3.79,
+      "total_cost": 3.79,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "claude-sub-by-model-unpriced",
+    "report": {
+      "BUCKETS_claude_sub": {
+        "input": 500009,
+        "cache_read": 2000003,
+        "output": 30011
+      },
+      "BUCKETS_claude_sub_by_model": {
+        "glm-5.2": {
+          "input": 200003,
+          "cache_read": 900001,
+          "output": 12007
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-input-tokens",
+      "200003",
+      "--claude-sub-cache-read-tokens",
+      "900001",
+      "--claude-sub-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-output-tokens",
+      "12007",
+      "--claude-sub-sonnet-input-tokens",
+      "0",
+      "--claude-sub-sonnet-cache-read-tokens",
+      "0",
+      "--claude-sub-sonnet-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-sonnet-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-sonnet-output-tokens",
+      "0",
+      "--claude-sub-haiku-input-tokens",
+      "0",
+      "--claude-sub-haiku-cache-read-tokens",
+      "0",
+      "--claude-sub-haiku-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-haiku-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-haiku-output-tokens",
+      "0",
+      "--claude-sub-fable-input-tokens",
+      "0",
+      "--claude-sub-fable-cache-read-tokens",
+      "0",
+      "--claude-sub-fable-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-fable-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-fable-output-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=1.75\nTOTAL_COST=1.75\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=1112011\nTOTAL_TOKENS=1112011\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 1.75,
+      "total_cost": 1.75,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "bucket-with-string-counts",
+    "report": {
+      "BUCKETS_claude": {
+        "input": "1,000,003",
+        "cache_read": "5000007",
+        "cache_create_5m": 250001,
+        "output": "33337"
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-input-tokens",
+      "1000003",
+      "--claude-cache-read-tokens",
+      "5000007",
+      "--claude-cache-write-5m-tokens",
+      "250001",
+      "--claude-cache-write-1h-tokens",
+      "0",
+      "--claude-output-tokens",
+      "33337",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=9.90\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=9.90\nCLAUDE_TOKENS=6283348\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=6283348\n",
+    "cost": {
+      "claude_cost": 9.9,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 9.9,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "negative-bucket-falls-back",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 100003,
+        "cache_read": -50000,
+        "output": 20011
+      },
+      "claude": {
+        "totals": {
+          "input": 100003,
+          "cache_read": 900001,
+          "output": 20011,
+          "total": 0
+        }
+      },
+      "codex": {
+        "totals": {
+          "input": 70001,
+          "cached_input": 400009,
+          "output": 9001,
+          "total": 0
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-input-tokens",
+      "100003",
+      "--claude-cache-read-tokens",
+      "-50000",
+      "--claude-cache-write-5m-tokens",
+      "0",
+      "--claude-cache-write-1h-tokens",
+      "0",
+      "--claude-output-tokens",
+      "20011",
+      "--codex-tokens",
+      "479011",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": null,
+    "cost": {
+      "claude_cost": 0.82,
+      "codex_cost": 0.53,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 1.35,
+      "priced_by_token_cost": false
+    }
+  },
+  {
+    "name": "zero-bucket-uses-totals",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 0,
+        "cache_read": 0,
+        "output": 0
+      },
+      "claude": {
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "output": 0,
+          "total": 777001
+        }
+      }
+    },
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "777001",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.62\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.62\nCLAUDE_TOKENS=777001\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=777001\n",
+    "cost": {
+      "claude_cost": 0.62,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.62,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "empty-report",
+    "report": {},
+    "main_model": "",
+    "argv": [
+      "--claude-tokens",
+      "0",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=0.00\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=0.00\nCLAUDE_TOKENS=0\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=0\n",
+    "cost": {
+      "claude_cost": 0.0,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 0.0,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "unknown-main-model",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 100003,
+        "cache_read": 900001,
+        "output": 20011
+      }
+    },
+    "main_model": "made-up-model-9",
+    "argv": [
+      "--claude-model",
+      "made-up-model-9",
+      "--claude-input-tokens",
+      "100003",
+      "--claude-cache-read-tokens",
+      "900001",
+      "--claude-cache-write-5m-tokens",
+      "0",
+      "--claude-cache-write-1h-tokens",
+      "0",
+      "--claude-output-tokens",
+      "20011",
+      "--codex-tokens",
+      "0",
+      "--cursor-tokens",
+      "0",
+      "--claude-sub-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=1.45\nCODEX_COST=0.00\nCODEX_GPT_5_5_COST=0.00\nCODEX_GPT_5_4_MINI_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.00\nTOTAL_COST=1.45\nCLAUDE_TOKENS=1020015\nCODEX_TOKENS=0\nCURSOR_TOKENS=0\nCLAUDE_SUB_TOKENS=0\nTOTAL_TOKENS=1020015\n",
+    "cost": {
+      "claude_cost": 1.45,
+      "codex_cost": 0.0,
+      "cursor_cost": 0.0,
+      "cursor_composer_cost": null,
+      "cursor_grok_cost": null,
+      "claude_sub_cost": 0.0,
+      "total_cost": 1.45,
+      "priced_by_token_cost": true
+    }
+  },
+  {
+    "name": "every-lane",
+    "report": {
+      "BUCKETS_claude": {
+        "input": 100003,
+        "cache_read": 900001,
+        "cache_create_5m": 50003,
+        "cache_create_1h": 11113,
+        "output": 20011
+      },
+      "BUCKETS_codex": {
+        "input": 300007,
+        "cached_input": 1200007,
+        "output": 40009
+      },
+      "BUCKETS_codex_by_model": {
+        "gpt-5.6-sol": {
+          "input": 200003,
+          "cached_input": 800011,
+          "output": 30011
+        },
+        "gpt-5.6-luna": {
+          "input": 100003,
+          "cached_input": 400009,
+          "output": 10007
+        }
+      },
+      "BUCKETS_cursor": {
+        "input": 150001,
+        "cache_read": 700001,
+        "output": 25013
+      },
+      "BUCKETS_cursor_by_model": {
+        "composer-2.5": {
+          "input": 120011,
+          "cache_read": 600011,
+          "output": 21001
+        },
+        "cursor-grok-4.5-high": {
+          "input": 30011,
+          "cache_read": 100003,
+          "output": 4001
+        }
+      },
+      "BUCKETS_claude_sub": {
+        "input": 500009,
+        "cache_read": 2000003,
+        "output": 30011
+      },
+      "BUCKETS_claude_sub_by_model": {
+        "claude-opus-4-8": {
+          "input": 300007,
+          "cache_read": 1200007,
+          "output": 18013
+        },
+        "claude-sonnet-4-6": {
+          "input": 200003,
+          "cache_read": 800011,
+          "output": 12007
+        }
+      }
+    },
+    "main_model": "claude-opus-4-8",
+    "argv": [
+      "--claude-model",
+      "claude-opus-4-8",
+      "--claude-input-tokens",
+      "100003",
+      "--claude-cache-read-tokens",
+      "900001",
+      "--claude-cache-write-5m-tokens",
+      "50003",
+      "--claude-cache-write-1h-tokens",
+      "11113",
+      "--claude-output-tokens",
+      "20011",
+      "--codex-input-tokens",
+      "200003",
+      "--codex-cached-input-tokens",
+      "800011",
+      "--codex-output-tokens",
+      "30011",
+      "--codex-mini-input-tokens",
+      "100003",
+      "--codex-mini-cached-input-tokens",
+      "400009",
+      "--codex-mini-output-tokens",
+      "10007",
+      "--cursor-input-tokens",
+      "120011",
+      "--cursor-cache-read-tokens",
+      "600011",
+      "--cursor-output-tokens",
+      "21001",
+      "--cursor-grok-input-tokens",
+      "30011",
+      "--cursor-grok-cache-read-tokens",
+      "100003",
+      "--cursor-grok-output-tokens",
+      "4001",
+      "--claude-sub-input-tokens",
+      "300007",
+      "--claude-sub-cache-read-tokens",
+      "1200007",
+      "--claude-sub-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-output-tokens",
+      "18013",
+      "--claude-sub-sonnet-input-tokens",
+      "200003",
+      "--claude-sub-sonnet-cache-read-tokens",
+      "800011",
+      "--claude-sub-sonnet-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-sonnet-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-sonnet-output-tokens",
+      "12007",
+      "--claude-sub-haiku-input-tokens",
+      "0",
+      "--claude-sub-haiku-cache-read-tokens",
+      "0",
+      "--claude-sub-haiku-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-haiku-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-haiku-output-tokens",
+      "0",
+      "--claude-sub-fable-input-tokens",
+      "0",
+      "--claude-sub-fable-cache-read-tokens",
+      "0",
+      "--claude-sub-fable-cache-write-5m-tokens",
+      "0",
+      "--claude-sub-fable-cache-write-1h-tokens",
+      "0",
+      "--claude-sub-fable-output-tokens",
+      "0"
+    ],
+    "kv": "CLAUDE_COST=1.87\nCODEX_COST=2.50\nCODEX_GPT_5_5_COST=2.30\nCODEX_GPT_5_4_MINI_COST=0.20\nCURSOR_COMPOSER_COST=0.42\nCURSOR_GROK_COST=0.13\nCURSOR_COST=0.55\nCLAUDE_SUB_COST=3.57\nTOTAL_COST=8.49\nCLAUDE_TOKENS=1081131\nCODEX_TOKENS=1540044\nCURSOR_TOKENS=875038\nCLAUDE_SUB_TOKENS=2530048\nTOTAL_TOKENS=6026261\n",
+    "cost": {
+      "claude_cost": 1.87,
+      "codex_cost": 2.5,
+      "cursor_cost": 0.55,
+      "cursor_composer_cost": 0.42,
+      "cursor_grok_cost": 0.13,
+      "claude_sub_cost": 3.57,
+      "total_cost": 8.49,
+      "priced_by_token_cost": true
+    }
+  }
+]
