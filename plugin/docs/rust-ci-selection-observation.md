@@ -97,6 +97,24 @@ input, so it did not pretend to supply a selected skip duration. The ordinary
 eligible pull request below provides that measurement. The partial class remains
 in observation until it independently meets the same rule.
 
+### Partial promotion decision (2026-08-08)
+
+Partial enforcement remains off. At this decision point, the live record has
+one eligible partial observation, not the three independent pull requests the
+promotion rule requires. The decision did not change the selector, the package
+closure, or the trusted-input contract.
+
+| PR | Tested merge candidate | Proposed/effective decision | Full backstop | Comparison |
+|---|---|---|---|---|
+| [#8281](https://github.com/character-ai/larch/pull/8281) | `c9c0ce0a8ca12a5067176b7a5c4e2a3b6611ba0d` | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/31278658870/job/93156285633): `partial` → `full`; `partial-observation-window-open`; `rollout_state=observation`; `observation_only=true` | [`rust-full`, 391 s](https://github.com/character-ai/larch/actions/runs/31278658870/job/93156350059); [`rust-coverage` success](https://github.com/character-ai/larch/actions/runs/31278658870/job/93157028898); [`rust-gate` success](https://github.com/character-ai/larch/actions/runs/31278658870/job/93157039215) | false-safe: none observed; false-full: not assessed while `full` was effective |
+
+The run used `ubuntu-24.04`. Cargo-inputs, cargo-nextest, and cargo-llvm-cov
+caches restored exact-key hits; the coverage-target cache was disabled. It was
+not label-forced. Two more distinct, ordinary pull requests must produce the
+same audited partial-observation evidence, each with a successful full
+backstop and no false-safe result, before a reviewed workflow change can set
+`RUST_CI_PARTIAL_ENFORCEMENT` to `true`.
+
 ### Live-row collection
 
 Treat each row as evidence from the exact pull-request workflow run, not as a
