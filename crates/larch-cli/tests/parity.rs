@@ -115,6 +115,7 @@ impl CleanInstallCase {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
             id if id.starts_with("clean-install-run-log-") => run_log_arguments(id),
+            id if id.starts_with("clean-install-timing-") => timing_arguments(id),
             "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
                 "--repo-root",
                 "/larch-clean-install-clone-missing",
@@ -170,44 +171,6 @@ impl CleanInstallCase {
                 "--claude-pid",
                 "4242",
             ],
-            // Every timing verb resolves no session ledger in a clean install, so
-            // each dispatch proves the whole route and still writes nothing.
-            "clean-install-timing-dump"
-            | "clean-install-timing-task-kinds"
-            | "clean-install-timing-telemetry-mark" => &[],
-            "clean-install-timing-mark" => &["clean-install"],
-            "clean-install-timing-report" => &["--summary"],
-            "clean-install-timing-record-round" => &[
-                "--skill",
-                "implement",
-                "--step",
-                "clean-install",
-                "--round",
-                "1",
-                "--start-s",
-                "0",
-                "--end-s",
-                "1",
-                "--accepted",
-                "0",
-                "--rejected",
-                "0",
-            ],
-            "clean-install-timing-record-vendor-task" => &[
-                "--vendor",
-                "codex",
-                "--task-kind",
-                "codex-review",
-                "--start-s",
-                "0",
-                "--end-s",
-                "1",
-                "--output",
-                "clean-install.log",
-            ],
-            "clean-install-timing-harness-mark" => {
-                &["--label", "clean-install", "--", "/usr/bin/true"]
-            }
             _ => &["--help"],
         }
     }
@@ -275,6 +238,28 @@ fn phase_detail_clean_install_arguments(id: &str) -> Option<&'static [&'static s
             Some(&["--round-dir", "/larch-clean-install-round-missing"])
         }
         _ => None,
+    }
+}
+
+/// Argument sets for every Rust-owned `timing` clean-install case.
+///
+/// A clean install names no session temporary directory, so every verb resolves
+/// no ledger: each case proves the whole dispatch route and still writes nothing.
+#[rustfmt::skip]
+fn timing_arguments(id: &str) -> &'static [&'static str] {
+    match id {
+        "clean-install-timing-mark" => &["clean-install"],
+        "clean-install-timing-report" => &["--summary"],
+        "clean-install-timing-record-round" => &[
+            "--skill", "implement", "--step", "clean-install", "--round", "1",
+            "--start-s", "0", "--end-s", "1", "--accepted", "0", "--rejected", "0",
+        ],
+        "clean-install-timing-record-vendor-task" => &[
+            "--vendor", "codex", "--task-kind", "codex-review",
+            "--start-s", "0", "--end-s", "1", "--output", "clean-install.log",
+        ],
+        "clean-install-timing-harness-mark" => &["--label", "clean-install", "--", "/usr/bin/true"],
+        _ => &[],
     }
 }
 

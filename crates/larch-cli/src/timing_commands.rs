@@ -239,10 +239,6 @@ pub fn record_vendor_timing(
 }
 
 /// Build the flag list both vendor-timing entry points record.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one builder per ledger schema keeps the flag order in one place"
-)]
 pub fn vendor_timing_arguments(
     vendor: &str,
     task_kind: &str,
@@ -416,8 +412,8 @@ pub fn harness_mark(arguments: &[OsString]) -> ExitCode {
     let started = SystemTime::now();
     // The harness wrapper must inherit the caller's stdio and exit code verbatim,
     // which the bounded capturing runner cannot do.
-    let code = match Command::new(&command[0]).args(&command[1..]).status() {
-        // lint-subprocess-via-runner: ok harness wrapper inherits stdio and the child exit code
+    let launch = Command::new(&command[0]).args(&command[1..]).status(); // lint-subprocess-via-runner: ok harness wrapper inherits stdio and the child exit code
+    let code = match launch {
         Ok(status) => status.code().unwrap_or(1),
         Err(error) => {
             eprintln!("timing harness-mark: {error}");
@@ -508,110 +504,126 @@ pub fn render_report_arguments(arguments: &[OsString]) -> Result<(), String> {
     render_report(arguments)
 }
 
-fn render_report(arguments: &[OsString]) -> Result<(), String> {
-    let values: Vec<String> = arguments
-        .iter()
-        .map(|value| value.to_string_lossy().into_owned())
-        .collect();
-    let mut mode = String::new();
-    let mut format = "markdown".to_owned();
-    let mut output: Option<PathBuf> = None;
-    let mut append: Option<PathBuf> = None;
-    let mut ledger: Option<String> = None;
-    let mut implement_tmpdir = String::new();
-    let mut outlier_threshold = String::new();
-    let mut test_now = String::new();
+/// One parsed `timing report` invocation.
+#[derive(Default)]
+struct ReportRequest {
+    mode: &'static str,
+    format: &'static str,
+    output: Option<PathBuf>,
+    append: Option<PathBuf>,
+    ledger: Option<String>,
+    implement_tmpdir: String,
+    outlier_threshold: String,
+    test_now: String,
+}
+
+fn parse_report_arguments(values: &[String]) -> Result<ReportRequest, String> {
+    let mut request = ReportRequest {
+        format: "markdown",
+        ..ReportRequest::default()
+    };
     let mut index = 0;
     while index < values.len() {
         let flag = values[index].as_str();
-        let take_value = |target: &mut String| -> Result<(), String> {
-            let value = values
+        let value = || -> Result<String, String> {
+            values
                 .get(index + 1)
-                .ok_or_else(|| format!("{flag} requires a value"))?;
-            target.clone_from(value);
-            Ok(())
+                .cloned()
+                .ok_or_else(|| format!("{flag} requires a value"))
         };
         match flag {
             "--since-last-mark" | "--terse" => {
-                mode = "terse".to_owned();
+                request.mode = "terse";
                 index += 1;
             }
             "--summary" => {
-                mode = "summary".to_owned();
+                request.mode = "summary";
                 index += 1;
             }
             "--full" => {
-                mode = "full".to_owned();
+                request.mode = "full";
                 index += 1;
             }
             "--markdown" => {
-                format = "markdown".to_owned();
+                request.format = "markdown";
                 index += 1;
             }
             "--format" => {
-                take_value(&mut format)?;
+                request.format = match value()?.as_str() {
+                    "json" => "json",
+                    "markdown" => "markdown",
+                    other => return Err(format!("unknown format: {other}")),
+                };
                 index += 2;
             }
             "--output" => {
-                let mut value = String::new();
-                take_value(&mut value)?;
-                output = Some(PathBuf::from(value));
+                request.output = Some(PathBuf::from(value()?));
                 index += 2;
             }
             "--ledger" => {
-                let mut value = String::new();
-                take_value(&mut value)?;
-                ledger = Some(value);
+                request.ledger = Some(value()?);
                 index += 2;
             }
             "--implement-tmpdir" => {
-                take_value(&mut implement_tmpdir)?;
+                request.implement_tmpdir = value()?;
                 index += 2;
             }
             "--outlier-threshold" => {
-                take_value(&mut outlier_threshold)?;
+                request.outlier_threshold = value()?;
                 index += 2;
             }
             "--test-now" => {
-                take_value(&mut test_now)?;
+                request.test_now = value()?;
                 index += 2;
             }
             "--append-timing-section" => {
-                let mut value = String::new();
-                take_value(&mut value)?;
-                append = Some(PathBuf::from(value));
-                mode = "full".to_owned();
+                request.append = Some(PathBuf::from(value()?));
+                request.mode = "full";
                 index += 2;
             }
             other => return Err(format!("unknown flag: {other}")),
         }
     }
-    if mode.is_empty() {
+    if request.mode.is_empty() {
         return Err("missing report mode".to_owned());
     }
-    if format != "json" && format != "markdown" {
-        return Err(format!("unknown format: {format}"));
-    }
+    Ok(request)
+}
+
+fn report_environment(request: &ReportRequest) -> Environment {
     let mut environment = Environment::ambient();
-    if !implement_tmpdir.is_empty() {
-        environment.set("IMPLEMENT_TMPDIR", &implement_tmpdir);
+    if !request.implement_tmpdir.is_empty() {
+        environment.set("IMPLEMENT_TMPDIR", &request.implement_tmpdir);
         environment.set("LARCH_TIMING_SKILL", "implement");
         environment.set("DESIGN_TMPDIR", "");
     }
-    if !outlier_threshold.is_empty() {
-        environment.set("LARCH_TIMING_OUTLIER_THRESHOLD_S", &outlier_threshold);
+    if !request.outlier_threshold.is_empty() {
+        environment.set(
+            "LARCH_TIMING_OUTLIER_THRESHOLD_S",
+            &request.outlier_threshold,
+        );
     }
-    if !test_now.is_empty() {
-        environment.set("LARCH_TEST_TIMING_NOW", &test_now);
+    if !request.test_now.is_empty() {
+        environment.set("LARCH_TEST_TIMING_NOW", &request.test_now);
     }
-    let path = resolve_ledger_path(ledger.as_deref(), &environment)?
+    environment
+}
+
+fn render_report(arguments: &[OsString]) -> Result<(), String> {
+    let values: Vec<String> = arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let request = parse_report_arguments(&values)?;
+    let environment = report_environment(&request);
+    let path = resolve_ledger_path(request.ledger.as_deref(), &environment)?
         .ok_or_else(|| "ledger path unavailable".to_owned())?;
     let rows = read_rows(&path);
     let now = environment
         .get("LARCH_TEST_TIMING_NOW")
         .parse::<i64>()
         .unwrap_or_else(|_error| epoch_now());
-    let rendered = match mode.as_str() {
+    let rendered = match request.mode {
         "summary" => timing::summary_line(&rows, now),
         "terse" => timing::terse_line(&rows, &environment.skill(), now),
         _ if rows.marks.is_empty() => REPORT_UNAVAILABLE.to_owned(),
@@ -621,25 +633,25 @@ fn render_report(arguments: &[OsString]) -> Result<(), String> {
                 DEFAULT_OUTLIER_THRESHOLD_S,
             );
             let data = timing::build_report(&rows, now, threshold);
-            if format == "json" {
+            if request.format == "json" {
                 python_json_dumps(&timing::report_json(&data)).map_err(|error| error.to_string())?
             } else {
                 timing::report_markdown(&data)
             }
         }
     };
-    if let Some(target) = append.as_deref() {
+    if let Some(target) = request.append.as_deref() {
         let block = format!(
             "<!-- {BLOCK_BEGIN} -->\n## Timing Report\n\n{rendered}\n<!-- {BLOCK_END} -->\n"
         );
         write_timing_section(target, &block)?;
     }
     let text = format!("{rendered}\n");
-    if mode == "full"
-        && let Some(target) = output.as_deref()
+    if request.mode == "full"
+        && let Some(target) = request.output.as_deref()
     {
         atomic_write(target, &text)?;
-    } else if append.is_none() {
+    } else if request.append.is_none() {
         print!("{text}");
     }
     Ok(())
@@ -883,7 +895,7 @@ fn resolve_ledger_path(
         let candidate = if key == "SESSION_ENV_PATH" {
             Path::new(raw)
                 .parent()
-                .unwrap_or(Path::new(""))
+                .unwrap_or_else(|| Path::new(""))
                 .to_path_buf()
         } else {
             PathBuf::from(raw)
@@ -920,7 +932,10 @@ fn validate_ledger_path(raw: &str, environment: &Environment) -> Result<PathBuf,
     if !under_allowed_root(&candidate, &roots) {
         return Err(format!("ledger path not under an allowed root: {raw}"));
     }
-    let parent = candidate.parent().unwrap_or(Path::new("/")).to_path_buf();
+    let parent = candidate
+        .parent()
+        .unwrap_or_else(|| Path::new("/"))
+        .to_path_buf();
     fs::create_dir_all(&parent).map_err(|error| error.to_string())?;
     let parent = fs::canonicalize(&parent).map_err(|error| error.to_string())?;
     let resolved = parent.join(candidate.file_name().unwrap_or_default());

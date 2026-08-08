@@ -246,10 +246,7 @@ pub struct TimingReportData {
 /// Replace the row separators a ledger field must never carry.
 #[must_use]
 pub fn sanitize(value: &str) -> String {
-    value
-        .replace('\t', "<NUL>")
-        .replace('\n', "<NUL>")
-        .replace('\r', "<NUL>")
+    value.replace(['\t', '\n', '\r'], "<NUL>")
 }
 
 /// Return whether `task_kind` matches the canonical `^[a-z][a-z0-9-]{0,63}$` shape.
@@ -444,6 +441,10 @@ pub fn mark_row(now: i64, skill: &str, step: &str) -> String {
 }
 
 /// Build the tab-separated field list of a `v1 vendor` row.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one row writer per ledger schema keeps the column order in one place"
+)]
 #[must_use]
 pub fn vendor_row(
     now: i64,
