@@ -284,7 +284,7 @@ remain visible in the job log.
 ### Pull-request Rust selection
 
 `rust-selection` runs only for pull requests. It checks out GitHub's tested
-merge candidate at bounded depth, then proves the base and candidate commits
+merge candidate at bounded depth 8, then proves the base and candidate commits
 and their ancestry before creating a detached worktree at the pull-request
 base. If valid commit identities need more history, it fetches full branch
 history and repeats the proof; a malformed identity or failed fetch or proof

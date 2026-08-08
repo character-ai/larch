@@ -293,7 +293,7 @@ artifact, executable, repository-policy, or plugin-validation gates.
 ### CI Rust selection trust
 
 The pull-request `rust-selection` job has read-only workflow permissions. It
-checks out GitHub's tested merge candidate at bounded depth, then proves the
+checks out GitHub's tested merge candidate at bounded depth 8, then proves the
 base commit, candidate commit, and base ancestry are locally available. If
 valid commit identities need more history, it fetches complete branch history
 and repeats the same proof; an invalid identity or unavailable history proof
