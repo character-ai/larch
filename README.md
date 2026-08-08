@@ -113,7 +113,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#complete-umbrella"><code>/complete-umbrella</code></a></td>
       <td><code>&lt;umbrella-issue-N&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Implement every direct leaf of one managed umbrella serially. Each turn fetches the live graph, selects the smallest-numbered unblocked open leaf, and launches the same Claude model with larch skills disabled. A failed child hard-stops the run. After all leaves close, the invoking agent audits the combined result, files and attaches exact new leaves for concrete gaps, and repeats until it can mark the parent <code>[DONE]</code> and close it.</td></tr>
+    <tr><td colspan="2">Implement every direct leaf of one managed umbrella serially. Each turn fetches the live graph, selects the smallest-numbered unblocked open leaf, and launches a thin child on the same Claude model with larch skills disabled. That child runs fresh recon/design, implement, adversarial-review, and ship contexts in sequence. A standalone driver handles PR, five-minute CI, admin merge, issue lifecycle, and branch cleanup; an extra fixer context runs only after failed CI. A failed child hard-stops the run. After all leaves close, the invoking agent audits the combined result, files and attaches exact new leaves for concrete gaps, and repeats until it can mark the parent <code>[DONE]</code> and close it.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>

@@ -81,6 +81,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("combine-issues", "apply"): ("larch.issue.combine_issues", "apply_main", False),
     ("combine-issues", "close-sources"): ("larch.issue.combine_issues", "close_sources_main", False),
     ("combine-issues", "close-stale"): ("larch.issue.combine_issues", "close_stale_main", False),
+    ("complete-umbrella", "ship-leaf"): (
+        "larch.implement.complete_umbrella_ship",
+        "main",
+        True,
+    ),
     ("analyze-issues", "fetch"): ("larch.issue.analyze_issues", "fetch_main", False),
     ("analyze-issues", "run"): ("larch.issue.analyze_issues", "run_main", False),
     ("analyze-issues", "analyze"): ("larch.issue.analyze_issues", "analyze_main", False),

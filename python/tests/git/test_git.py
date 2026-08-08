@@ -63,6 +63,20 @@ def test_rev_parse_builds_argv() -> None:
     assert git.rev_parse(runner, "HEAD") == "abc"
 
 
+def test_switch_and_delete_branch_build_exact_argv() -> None:
+    switch_argv = ("git", "switch", "main")
+    delete_argv = ("git", "branch", "-D", "feature/leaf")
+    runner = StubRunner(
+        {
+            switch_argv: CommandResult(switch_argv, 0, "", "", 0.01),
+            delete_argv: CommandResult(delete_argv, 0, "", "", 0.01),
+        },
+    )
+
+    assert git.switch_branch(runner, "main").returncode == 0
+    assert git.delete_branch(runner, "feature/leaf", force=True).returncode == 0
+
+
 def test_status_parses_porcelain() -> None:
     runner = StubRunner(
         {

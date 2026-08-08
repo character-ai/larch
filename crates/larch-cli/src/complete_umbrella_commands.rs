@@ -312,10 +312,23 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     }
     let repo_root = canonical_directory(&arguments.repo_root, "--repo-root")?;
     let output_root = temporary_root(&arguments.output_root, "--output-root")?;
+    let handoff_root = output_root
+        .ensure_directory(format!("complete-umbrella-leaf-{}", arguments.leaf))
+        .map_err(|error| format!("could not create leaf handoff root: {error}"))?;
+    let handoff_root_text = handoff_root
+        .to_str()
+        .ok_or("leaf handoff root must be valid UTF-8")?;
+    if handoff_root_text
+        .chars()
+        .any(|character| matches!(character, '\n' | '\r'))
+    {
+        return Err("leaf handoff root must not contain line breaks".to_owned());
+    }
     let prompt = complete_umbrella_child_prompt(
         &format!("{}/{}", repository.owner(), repository.name()),
         arguments.umbrella,
         arguments.leaf,
+        handoff_root_text,
     );
     let repo_root_text = repo_root
         .to_str()
@@ -323,7 +336,8 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
         .to_owned();
     let mut launch = VendorLaunchRequest::new(&repo_root_text, "", prompt.clone());
     launch.model.clone_from(&arguments.model);
-    let argv = build_claude_argv("workflow-write", &launch).map_err(|error| error.to_string())?;
+    let argv = build_claude_argv("workflow-write-orchestrator", &launch)
+        .map_err(|error| error.to_string())?;
     let mut request = ProcessRequest::new(
         ExternalProgram::Vendor(VendorProgram::Claude),
         argv.arguments().iter().map(OsString::from),
@@ -334,7 +348,9 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?
     .with_stdin(prompt)
-    .with_environment(ChildEnvironment::ClaudeSubprocessHookExempt, "1");
+    .with_environment(ChildEnvironment::ClaudeSubprocessHookExempt, "1")
+    .with_environment(ChildEnvironment::ClaudeProjectDir, repo_root_text)
+    .with_environment(ChildEnvironment::SessionTmpdir, handoff_root);
     for key in [
         ChildEnvironment::AnthropicApiKey,
         ChildEnvironment::ClaudePluginRoot,

@@ -1,0 +1,48 @@
+"""Structure pins for complete-umbrella phase isolation."""
+
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REFERENCES = REPO_ROOT / "skills" / "complete-umbrella" / "references"
+PHASES = (
+    "recon-design.md",
+    "implement.md",
+    "adversarial-review.md",
+    "ship.md",
+)
+
+
+def _read(name: str) -> str:
+    return (REFERENCES / name).read_text(encoding="utf-8")
+
+
+def test_every_primary_phase_loads_the_shared_context_economy_contract() -> None:
+    for phase in PHASES:
+        assert "Read `phase-common.md` in this directory in full before acting." in _read(phase)
+
+    common = _read("phase-common.md")
+    assert "Set `head_limit` on every `Grep` call." in common
+    assert "`sed -n`, `grep -n`, or `grep -rn`" in common
+    assert "Put independent tool calls in one assistant message." in common
+    assert "Put any handoff over 2,000 tokens" in common
+    assert "tail -20" in common
+
+
+def test_implement_and_review_inputs_are_phase_scoped() -> None:
+    implementation = _read("implement.md")
+    assert "Read only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/leaf-issue.md`" in implementation
+    assert "Do not repeat broad repository exploration." in implementation
+
+    review = _read("adversarial-review.md")
+    assert "Start from only `$SESSION_TMPDIR/design-brief.md`" in review
+    assert "repository-wide stale-caller sweep" in review
+    assert "asserts a real success path executed" in review
+
+
+def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
+    ship = _read("ship.md")
+    assert "complete-umbrella ship-leaf" in ship
+    assert "refresh CI once every 300 seconds" in ship
+    assert "`ci_failed`" in ship
+    assert "Do not spawn a CI fixer when checks are pending or green." in ship
+    assert "The driver's persisted state enforces the fix-attempt cap." in ship

@@ -124,6 +124,26 @@ def branch_force(
 ) -> CommandResult:
     return _run(runner, ["git", "branch", "-f", name, start_point], cwd=cwd)
 
+def switch_branch(
+    runner: Runner,
+    name: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Switch to one caller-validated local branch."""
+    return _run(runner, ["git", "switch", name], cwd=cwd)
+
+def delete_branch(
+    runner: Runner,
+    name: str,
+    *,
+    force: bool = False,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Delete one caller-validated local branch."""
+    flag = "-D" if force else "-d"
+    return _run(runner, ["git", "branch", flag, name], cwd=cwd)
+
 def rev_count(
     runner: Runner,
     left: str,

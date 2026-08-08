@@ -25,6 +25,7 @@ from larch.git import gh
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core.proc import Runner
 
 
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
@@ -580,8 +581,8 @@ def _render_step_block(block: _StepBlock, *, include_body: bool) -> str:
     return redact.redact("\n".join(lines))
 
 
-def _failed_job_names(run_id: str, repo: str) -> tuple[str, ...]:
-    result = gh.failed_jobs_read(proc, int(run_id), repo=repo)
+def _failed_job_names(runner: Runner, run_id: str, repo: str) -> tuple[str, ...]:
+    result = gh.failed_jobs_read(runner, int(run_id), repo=repo)
     combined = result.stdout + result.stderr
     if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
         return ()
@@ -671,8 +672,13 @@ def _distill_validate_args(args: argparse.Namespace) -> tuple[_DistillArgs | Non
     return _DistillArgs(run_id=run_id, repo=repo, output=output), None
 
 
-def _distill_from_gh(args: _DistillArgs) -> DistillOutcome:
-    result = gh.run_log_failed_read(proc, args.run_id, repo=args.repo)
+def _distill_from_gh(
+    args: _DistillArgs,
+    *,
+    runner: Runner = proc,
+    trusted_root: Path | None = None,
+) -> DistillOutcome:
+    result = gh.run_log_failed_read(runner, args.run_id, repo=args.repo)
     combined = result.stdout + result.stderr
     if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
         return DistillOutcome(
@@ -699,11 +705,19 @@ def _distill_from_gh(args: _DistillArgs) -> DistillOutcome:
             bail_class="github-log-failure",
         )
 
-    failed_jobs = _failed_job_names(args.run_id, args.repo)
+    failed_jobs = _failed_job_names(runner, args.run_id, args.repo)
     blocks = _add_missing_job_placeholders(_parse_log_blocks(result.stdout), failed_jobs)
     digest = _render_digest(run_id=args.run_id, repo=args.repo, blocks=blocks, failed_jobs=failed_jobs)
     try:
-        larch_io.atomic_write(args.output, digest, mode=0o600, nofollow=True)
+        if trusted_root is None:
+            larch_io.atomic_write(args.output, digest, mode=0o600, nofollow=True)
+        else:
+            larch_io.trusted_atomic_write(
+                args.output,
+                digest,
+                root=trusted_root,
+                mode=0o600,
+            )
     except OSError as exc:
         print(f"ERROR: failed to write digest: {exc}", file=sys.stderr)
         return DistillOutcome(
@@ -737,6 +751,38 @@ def distill_log(*, run_id: str, repo: str, output: Path) -> DistillOutcome:
     if resolved is None:
         return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-output-path")
     return _distill_from_gh(_DistillArgs(run_id=run_id, repo=repo, output=resolved))
+
+
+def distill_log_to_root(
+    *,
+    runner: Runner = proc,
+    run_id: str,
+    repo: str,
+    output: Path,
+    trusted_root: Path,
+) -> DistillOutcome:
+    """Distill one failed run into a caller-owned trusted artifact root.
+
+    This is the standalone counterpart to :func:`distill_log`. It preserves
+    the same bounded digest and GitHub reads without requiring a fabricated
+    ``IMPLEMENT_TMPDIR`` session.
+    """
+    if not run_id.isdigit():
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-run-id")
+    if not gh.validate_repo_slug(repo):
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-repo")
+    try:
+        root = larch_io.validate_trusted_directory(trusted_root)
+        if not output.is_absolute() or ".." in output.parts:
+            raise ValueError("output must be an absolute lexical child")
+        output.parent.relative_to(root)
+    except (OSError, ValueError):
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-output-path")
+    return _distill_from_gh(
+        _DistillArgs(run_id=run_id, repo=repo, output=output),
+        runner=runner,
+        trusted_root=root,
+    )
 
 
 def distill_log_main(argv: list[str]) -> int:

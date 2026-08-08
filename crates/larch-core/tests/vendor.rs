@@ -345,6 +345,32 @@ fn claude_profiles_are_byte_exact() {
 }
 
 #[test]
+fn claude_workflow_orchestrator_profile_is_byte_exact() {
+    let argv = build_claude_argv("workflow-write-orchestrator", &claude_request())
+        .expect("workflow-write-orchestrator profile")
+        .full_argv();
+    assert_eq!(
+        argv,
+        [
+            "claude",
+            "--print",
+            "--output-format",
+            "json",
+            "--model",
+            "claude-sonnet-4-6",
+            "--add-dir",
+            "/repo",
+            "--allowedTools",
+            "Bash,Read,Edit,Write,Glob,Grep,Agent",
+            "--permission-mode",
+            "dontAsk",
+            "--disable-slash-commands",
+            "--no-session-persistence",
+        ]
+    );
+}
+
+#[test]
 fn unknown_profiles_and_missing_fields_are_rejected() {
     assert_eq!(
         build_codex_argv("nope", &codex_request(), CodexEnvAuth::Omit)

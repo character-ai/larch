@@ -113,7 +113,7 @@ fn gap_preflight_validates_files_before_issue_creation() {
 #[test]
 fn child_harness_pins_model_disables_skills_and_requires_completion_marker() {
     let (root, mut command) = fixture(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > claude.argv\nprintf 'GH_CONFIG_DIR=%s\\nXDG_CONFIG_HOME=%s\\n' \"$GH_CONFIG_DIR\" \"$XDG_CONFIG_HOME\" > claude.env\ncat > claude.prompt\nprintf '%s' '{\"result\":\"verified\\nCOMPLETE_UMBRELLA_CHILD_STATUS=complete\"}'\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > claude.argv\nprintf 'GH_CONFIG_DIR=%s\\nXDG_CONFIG_HOME=%s\\nSESSION_TMPDIR=%s\\nCLAUDE_PROJECT_DIR=%s\\n' \"$GH_CONFIG_DIR\" \"$XDG_CONFIG_HOME\" \"$SESSION_TMPDIR\" \"$CLAUDE_PROJECT_DIR\" > claude.env\ncat > claude.prompt\nprintf '%s' '{\"result\":\"verified\\nCOMPLETE_UMBRELLA_CHILD_STATUS=complete\"}'\n",
     );
     command
         .args(child_arguments(root.path()))
@@ -125,23 +125,31 @@ fn child_harness_pins_model_disables_skills_and_requires_completion_marker() {
     assert_eq!(
         fs::read_to_string(root.path().join("claude.argv")).expect("Claude argv"),
         format!(
-            "--print\n--output-format\njson\n--model\nclaude-test-model\n--add-dir\n{}\n--allowedTools\nBash,Read,Edit,Write,Glob,Grep\n--permission-mode\ndontAsk\n--disable-slash-commands\n--no-session-persistence\n",
+            "--print\n--output-format\njson\n--model\nclaude-test-model\n--add-dir\n{}\n--allowedTools\nBash,Read,Edit,Write,Glob,Grep,Agent\n--permission-mode\ndontAsk\n--disable-slash-commands\n--no-session-persistence\n",
             canonical.display()
         )
     );
     let prompt = fs::read_to_string(root.path().join("claude.prompt")).expect("Claude prompt");
     assert!(prompt.contains("leaf issue #42 of umbrella #40"));
     assert!(prompt.contains("without using any larch skills"));
-    assert!(prompt.contains("Read both leaf issue #42 and umbrella issue #40 in full"));
-    assert!(prompt.contains("once every five minutes"));
+    assert!(prompt.contains("exactly four primary general-purpose Agent subagents"));
+    assert!(prompt.contains("Do not personally call Read, Grep, Glob, Edit, or Write"));
+    assert!(prompt.contains(&format!(
+        "HANDOFF_ROOT={}",
+        canonical.join("complete-umbrella-leaf-42").display()
+    )));
+    assert!(prompt.contains("exact value of $SESSION_TMPDIR"));
     assert_eq!(
         fs::read_to_string(root.path().join("claude.env")).expect("Claude environment"),
         format!(
-            "GH_CONFIG_DIR={}\nXDG_CONFIG_HOME={}\n",
+            "GH_CONFIG_DIR={}\nXDG_CONFIG_HOME={}\nSESSION_TMPDIR={}\nCLAUDE_PROJECT_DIR={}\n",
             root.path().join("gh-config").display(),
-            root.path().join("xdg-config").display()
+            root.path().join("xdg-config").display(),
+            canonical.join("complete-umbrella-leaf-42").display(),
+            canonical.display()
         )
     );
+    assert!(canonical.join("complete-umbrella-leaf-42").is_dir());
     assert_eq!(
         fs::read_to_string(root.path().join("child.env")).expect("result env"),
         "CHILD_STATUS=complete\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=true\n"
