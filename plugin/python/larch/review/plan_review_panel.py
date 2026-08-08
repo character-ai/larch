@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from typing import cast
 
 from larch.review import findings_ledger
-from larch.agents import agent_waterfall
+from larch.agents import slot_manifest
 from larch.core import external_defaults
 from larch.calibration import difficulty
 from larch.review import review_prune
@@ -44,7 +44,7 @@ from larch.review.dispatch_shared import (
     with_manifest_attribution,
 )
 from larch.report.run_log_batch import append_execution_issue
-from larch.core.repo_roots import larch_entrypoint, plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
 
@@ -255,7 +255,7 @@ def _validate_tmpdir(*, parser: argparse.ArgumentParser, value: str, create: boo
 def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "", payload_bytes: int = 0) -> dict[str, object]:
     # Write the rendered prompt (or the one-line fallback when the render was empty or
     # non-zero) to its own file and reference it via "prompt_file", matching the voter
-    # manifest pattern below. agent_waterfall._load_slots accepts only "agent" or
+    # manifest pattern below. slot_manifest.load_slot_rows accepts only "agent" or
     # "prompt_file"; an inline "prompt" key is ignored, so the consumer rejected the
     # first row and the panel launched zero reviewers (#4765).
     prompt_text = prompt or f"Review the design plan with a {focus} lens."
@@ -562,7 +562,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     if waterfall:
         cmd = [waterfall]
     else:
-        cmd = [sys.executable, str(plugin_root(_REPO_ROOT) / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+        cmd = [str(larch_entrypoint(_REPO_ROOT)), "agent", "dispatch-waterfall"]
     panel_env = build_panel_dispatch_env(
         artifact_dir=round_dir,
         site="design Step 3",
@@ -606,7 +606,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         text=True,
         capture_output=True,
         check=False,
-        env=panel_env,
+        env=larch_entrypoint_env(_REPO_ROOT, base=panel_env),
     )
     print(proc.stdout, end="")
     if proc.returncode != 0:
@@ -862,7 +862,7 @@ def _state_from_bindings(
     *,
     design: Path,
     policies: Sequence[VoterSlotPolicy],
-    bindings: Mapping[str, agent_waterfall.SlotOutputBinding],
+    bindings: Mapping[str, slot_manifest.SlotOutputBinding],
     launched_policies: Sequence[VoterSlotPolicy],
 ) -> DispatchState:
     return state_from_voter_bindings(
@@ -1013,8 +1013,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         payload_files=payload_files,
     )
     wf_args = [
-        sys.executable,
-        str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+        str(larch_entrypoint(_REPO_ROOT)),
         "agent",
         "dispatch-waterfall",
         "--slots-file",
@@ -1044,7 +1043,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     wf = larch_proc.run(
         wf_args,
         cwd=str(_REPO_ROOT),
-        env=panel_env,
+        env=larch_entrypoint_env(_REPO_ROOT, base=panel_env),
     )
     record_voter_dispatch_prep(
         ledger=design / "timing-ledger.tsv",
@@ -1055,7 +1054,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     )
     waterfall_output = wf.stdout
     wf_kv = _parse_kv(waterfall_output)
-    bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=wf_kv)
+    bindings = slot_manifest.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=wf_kv)
     state = _state_from_bindings(
         design=design,
         policies=policies,

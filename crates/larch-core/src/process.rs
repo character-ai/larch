@@ -450,7 +450,29 @@ pub enum ChildEnvironment {
     NoOpenBrowser,
     ClaudePluginRoot,
     ClaudePluginData,
+    /// Consumer repository the invoking Claude session opened.
+    ClaudeProjectDir,
     ClaudeSubprocessHookExempt,
+    /// Disables quiet stream routing inside a delegated larch verb.
+    LarchQuietDisable,
+    /// Panel artifact directory a dispatched review slot records against.
+    LarchPanelArtifactDir,
+    /// Workflow site label a dispatched review slot records against.
+    LarchPanelSite,
+    /// Slot name a dispatched review slot records against.
+    LarchPanelSlot,
+    /// Dispatch phase a review slot ran in.
+    LarchPanelPhase,
+    /// Vendor a dispatched review slot's phase selected.
+    LarchPanelPrimaryTool,
+    /// Agent definition a dispatched review slot rendered from.
+    LarchPanelSourceAgentFile,
+    /// Round directory a dispatched review slot belongs to.
+    LarchPanelRoundDir,
+    /// Round number a dispatched review slot belongs to.
+    LarchPanelRoundNum,
+    /// Payload size a dispatched review slot's prompt carried.
+    LarchPanelPayloadBytes,
     DesignTmpdir,
     ImplementTmpdir,
     LarchRenderCacheDir,
@@ -461,6 +483,8 @@ pub enum ChildEnvironment {
     ResearchTmpdir,
     ReviewTmpdir,
     SessionEnvPath,
+    /// Session root a delegated larch verb resolves its work tree from.
+    SessionTmpdir,
     /// Active implementation-session root passed only to a delegated larch verb.
     ImplementTmpDir,
     /// Active design-session root passed only to a delegated larch verb.
@@ -503,7 +527,18 @@ impl ChildEnvironment {
             Self::NoOpenBrowser => env::NO_OPEN_BROWSER,
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
             Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
+            Self::ClaudeProjectDir => "CLAUDE_PROJECT_DIR",
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
+            Self::LarchQuietDisable => "LARCH_QUIET_DISABLE",
+            Self::LarchPanelArtifactDir => "LARCH_PANEL_ARTIFACT_DIR",
+            Self::LarchPanelSite => "LARCH_PANEL_SITE",
+            Self::LarchPanelSlot => "LARCH_PANEL_SLOT",
+            Self::LarchPanelPhase => "LARCH_PANEL_PHASE",
+            Self::LarchPanelPrimaryTool => "LARCH_PANEL_PRIMARY_TOOL",
+            Self::LarchPanelSourceAgentFile => "LARCH_PANEL_SOURCE_AGENT_FILE",
+            Self::LarchPanelRoundDir => "LARCH_PANEL_ROUND_DIR",
+            Self::LarchPanelRoundNum => "LARCH_PANEL_ROUND_NUM",
+            Self::LarchPanelPayloadBytes => "LARCH_PANEL_PAYLOAD_BYTES",
             Self::DesignTmpdir | Self::DesignTmpDir => env::DESIGN_TMPDIR,
             Self::ImplementTmpdir | Self::ImplementTmpDir => env::IMPLEMENT_TMPDIR,
             Self::LarchRenderCacheDir => env::LARCH_RENDER_CACHE_DIR,
@@ -514,6 +549,7 @@ impl ChildEnvironment {
             Self::ResearchTmpdir => env::RESEARCH_TMPDIR,
             Self::ReviewTmpdir => env::REVIEW_TMPDIR,
             Self::SessionEnvPath => env::SESSION_ENV_PATH,
+            Self::SessionTmpdir => env::SESSION_TMPDIR,
             Self::LarchClaudeSourceFile => "LARCH_CLAUDE_SOURCE_FILE",
             Self::GhConfigDir => env::GH_CONFIG_DIR,
             Self::XdgConfigHome => env::XDG_CONFIG_HOME,

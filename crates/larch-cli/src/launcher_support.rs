@@ -313,9 +313,7 @@ pub fn vendor_on_path(program: VendorProgram) -> bool {
 /// Return whether a launcher argument is a positive decimal integer.
 #[must_use]
 pub fn is_positive_int(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| character.is_ascii_digit())
-        && value.parse::<u64>().is_ok_and(|parsed| parsed > 0)
+    crate::claude_commands::parse_uint(value).is_some_and(|parsed| parsed > 0)
 }
 
 /// Return whether a `--model` argument is a single non-empty token.

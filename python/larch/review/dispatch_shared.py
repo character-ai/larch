@@ -11,7 +11,7 @@ from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Protocol, cast
 
-from larch.agents import _launch_failure, agent_waterfall
+from larch.agents import _launch_failure, slot_manifest
 from larch.core import config, external_defaults, logging_util
 from larch.report.timing import TimingLedger
 from larch.review import _voting_calibration, voting
@@ -107,7 +107,7 @@ def optional_positive_float(value: str, *, label: str) -> float | None:
 def state_from_voter_bindings(
     *,
     policies: Sequence[VoterSlotPolicy],
-    bindings: Mapping[str, agent_waterfall.SlotOutputBinding],
+    bindings: Mapping[str, slot_manifest.SlotOutputBinding],
     launched_policies: Sequence[VoterSlotPolicy],
     fallback_path: Callable[[VoterSlotPolicy], Path | None],
     binding_path: Callable[[str], Path],
@@ -122,7 +122,7 @@ def state_from_voter_bindings(
         if policy.slot_name not in launched:
             path, tool, status = default_path, policy.default_label, "skipped"
         else:
-            binding = bindings.get(policy.slot_name, agent_waterfall.SlotOutputBinding())
+            binding = bindings.get(policy.slot_name, slot_manifest.SlotOutputBinding())
             if binding.dropped or not binding.path:
                 path, tool, status = default_path, policy.default_label, "failed"
             else:

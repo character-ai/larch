@@ -15,6 +15,13 @@ from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
 
 
+def _argv_verb(argv: list[str]) -> tuple[str, ...]:
+    """Return the (domain, verb) pair for a Python-CLI or bootstrap argv."""
+    offset = 1 if argv and argv[0].endswith("larch.sh") else 2
+    return tuple(argv[offset : offset + 2])
+
+
+
 def _stdout_key_order(stdout: str) -> list[str]:
     keys: list[str] = []
     for line in stdout.splitlines():
@@ -59,7 +66,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$slots" ]] || exit 2
-# Mirror agent_waterfall.py's accepted set so a regressed dispatcher mode (issue
+# Mirror the dispatcher's accepted set so a regressed dispatcher mode (issue
 # #4747: the unsupported "plan-review") is rejected here exactly as the real
 # waterfall would, instead of being silently accepted.
 case "$mode" in
@@ -454,7 +461,7 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
         records.append(a)
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
@@ -507,10 +514,10 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
         "--round-num", "1",
     ])
     assert rc == 0
-    waterfall = next(a for a in records if tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
+    waterfall = next(a for a in records if _argv_verb(a) == ("agent", "dispatch-waterfall"))
     assert waterfall[waterfall.index("--site") + 1] == "design Step 3"
     assert waterfall[waterfall.index("--model-role") + 1] == "vote"
-    voter_renders = [a for a in records if tuple(a[2:4]) == ("render", "voter")]
+    voter_renders = [a for a in records if _argv_verb(a) == ("render", "voter")]
     assert voter_renders
     assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
     assert [(str(call["slot"]), str(call["voter_tool"])) for call in parse_calls] == [
@@ -534,7 +541,7 @@ def test_voter_dispatch_marks_failed_when_done_sidecar_nonzero(
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
@@ -562,7 +569,7 @@ def test_voter_dispatch_marks_failed_when_done_sidecar_nonzero(
 
     def _fake_larch_proc_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("agent", "dispatch-waterfall"):
             outs: list[tuple[str, str]] = []
             for i, tok in enumerate(a):
@@ -674,7 +681,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
         run_calls.append(a)
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("voter-calibration", "snapshot"):
             out = a[a.index("--out") + 1]
             _ = Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
@@ -728,10 +735,10 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         "--round-num", "1",
     ])
     assert rc == 0
-    snapshot_calls = [a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("voter-calibration", "snapshot")]
+    snapshot_calls = [a for a in run_calls if _argv_verb(a) == ("voter-calibration", "snapshot")]
     assert len(snapshot_calls) == 1
     assert snapshot_calls[0][snapshot_calls[0].index("--log-root") + 1] == str((consumer / "larch-logs").resolve())
-    render_calls = [a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("render", "voter")]
+    render_calls = [a for a in run_calls if _argv_verb(a) == ("render", "voter")]
     voter_tools = {
         (call[call.index("--voter-tool") + 1], Path(call[call.index("--calibration-stats-file") + 1]).name)
         for call in render_calls
@@ -752,7 +759,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         assert set(prompt_files) == expected_tools  # type: ignore[arg-type]
         assert row.get("model_role") == "vote"
         assert row.get("resolved_model") == config.CODEX_VOTE_MODEL_DEFAULT
-    waterfall = next(a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
+    waterfall = next(a for a in run_calls if _argv_verb(a) == ("agent", "dispatch-waterfall"))
     # Plan voters now waterfall through their cross-vendor + Claude tiers (issue #5817).
     assert "--no-fallback" not in waterfall
     assert "--claude-read-tools-add-dir" in waterfall
@@ -786,7 +793,7 @@ def test_dispatch_voters_records_voter_dispatch_prep_row(tmp_path: Path, monkeyp
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
@@ -842,7 +849,7 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
@@ -908,7 +915,7 @@ def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: P
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("voter-calibration", "snapshot"):
             return cp(a, 1, stdout="", stderr="snapshot failed\n")
         if verb == ("render", "voter"):
@@ -1186,7 +1193,7 @@ def test_dynamic_slot_rows_thread_payload_bytes_from_render(tmp_path: Path, monk
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "plan-review"):
             sidecar = Path(a[a.index("--payload-bytes-output") + 1])
             sidecar.write_text("27\n", encoding="utf-8")
@@ -1261,7 +1268,7 @@ def test_plan_review_rows_ignore_stale_payload_sidecars_on_fallback_prompt(
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "plan-review"):
             sidecar = Path(a[a.index("--payload-bytes-output") + 1])
             sidecar.write_text("99\n", encoding="utf-8")
@@ -1538,7 +1545,7 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
@@ -1624,7 +1631,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if tuple(a[1:3]) == ("agent", "launch-claude-review"):
@@ -1704,7 +1711,7 @@ def test_voter_dispatch_both_down_retry_recovers(
 
     def _fake_run(argv: object, **_kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if tuple(a[1:3]) == ("agent", "launch-claude-review"):
@@ -1992,14 +1999,15 @@ def test_panel_dispatch_dynamic_render_warning_on_waterfall_failure(
 
 def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # Regression for issue #4765: every plan-review slot row the panel emits must be
-    # accepted by the agent_waterfall consumer. The producer previously emitted an
-    # inline "prompt" key and never set "prompt_file"/"agent", so _load_slots raised
+    # accepted by the waterfall consumer. The producer previously emitted an
+    # inline "prompt" key and never set "prompt_file"/"agent", so the dispatcher raised
     # "slot '...' must set either agent or prompt_file" on the first row and the panel
     # launched zero reviewers, silently degrading every /design plan review to
     # panel-failed. Feed a producer-built manifest (static + dynamic rows) through the
-    # real slot validator and assert each row sets exactly one of agent/prompt_file
-    # with a readable prompt file.
-    from larch.agents import agent_waterfall  # noqa: PLC0415
+    # shared manifest reader and assert each row sets exactly one of agent/prompt_file
+    # with a readable prompt file. The dispatcher's own row grammar is proved in
+    # crates/larch-cli/tests/waterfall_commands.rs.
+    from larch.agents import slot_manifest  # noqa: PLC0415
 
     design = tmp_path / "design-contract"
     design.mkdir()
@@ -2056,8 +2064,8 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
         assert has_agent != has_prompt_file, f"row must set exactly one of agent/prompt_file: {row}"
         if has_prompt_file:
             assert Path(str(row["prompt_file"])).is_file(), f"prompt_file must be readable: {row}"
-    # The real consumer parser must accept the producer's manifest without raising.
-    slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
+    # The shared manifest reader must accept the producer's manifest without raising.
+    slots = slot_manifest.load_slot_rows(str(manifest))
     assert len(slots) == len(rows)
 
 
@@ -2107,7 +2115,7 @@ def test_plan_review_panel_dispatch_materializes_panel_prompt_sizes(tmp_path: Pa
 
     def _fake_run(argv: object, **kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         env = cast("dict[str, str]", kwargs.get("env") or {})
         if verb == ("render", "plan-review"):
             return cp(a, 0, stdout="prompt body\n", stderr="")
@@ -2153,7 +2161,7 @@ def test_plan_review_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Pa
 
     def _fake_run(argv: object, **kwargs: object) -> object:
         a = [str(x) for x in argv]  # type: ignore[union-attr]
-        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        verb = _argv_verb(a)
         env = cast("dict[str, str]", kwargs.get("env") or {})
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")

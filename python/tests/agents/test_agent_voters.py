@@ -127,7 +127,9 @@ def _result(argv: Sequence[str], returncode: int, *, stdout: str = "", stderr: s
 
 
 def _verb(argv: Sequence[str]) -> tuple[str, ...]:
-    return tuple(argv[2:4]) if len(argv) >= 4 else tuple(argv[2:])
+    """Return the (domain, verb) pair for a Python-CLI or bootstrap argv."""
+    offset = 1 if argv and str(argv[0]).endswith("larch.sh") else 2
+    return tuple(argv[offset : offset + 2])
 
 
 def _value_after(argv: Sequence[str], flag: str) -> str:
@@ -144,6 +146,15 @@ def _make_stub_plugin(tmp_path: Path) -> Path:
     root = tmp_path / "stub-plugin"
     (root / "python").mkdir(parents=True)
     (root / "python" / "cli.py").write_text("# stub\n", encoding="utf-8")
+    # Rust-owned verbs enter through the bootstrap script, which this stub root
+    # forwards into the same stub dispatcher the Python verbs use.
+    (root / "scripts").mkdir(parents=True)
+    bootstrap = root / "scripts" / "larch.sh"
+    bootstrap.write_text(
+        '#!/usr/bin/env bash\nexec python3 "$(dirname "$0")/../python/cli.py" "$@"\n',
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o755)
     return root
 
 
@@ -167,8 +178,11 @@ def _install_harness(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, review: Pa
 
 def _assert_stub_plugin_root_on_calls(harness: FakeHarness, stub_root: Path) -> None:
     cli_path = str(stub_root / "python" / "cli.py")
+    bootstrap = str(stub_root / "scripts" / "larch.sh")
     for call in harness.run_calls:
-        assert call[1] == cli_path
+        # Python verbs enter through the stub dispatcher; Rust-owned verbs enter
+        # through the same stub root's verified bootstrap script.
+        assert call[1] == cli_path if call[0] != bootstrap else call[0] == bootstrap
     parse_calls = [call for call in harness.run_calls if _verb(call) == ("voting", "parse-rate-retry")]
     for parse_call in parse_calls:
         assert _value_after(parse_call, "--plugin-root") == str(stub_root)

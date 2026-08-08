@@ -93,7 +93,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-check-scope-reduction-marker test-read-result-env test-design-multi-round-integration test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose test-git-commit-only test-launch-claude-subprocess test-launch-claude-review step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-check-scope-reduction-marker test-read-result-env test-design-multi-round-integration test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose test-git-commit-only test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-no-grouped-reuse-guard step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
@@ -888,7 +888,7 @@ test-degraded-tools-gate:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands degraded_tools_gate
 
 test-no-grouped-reuse-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py -k grouped_reuse_guard
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse
 
 test-external-tool-registry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-external-tool-registry.sh
@@ -907,7 +907,7 @@ test-launch-claude-review:
 
 
 test-dispatch-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/agents/test_agent_waterfall.py
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands
 
 test-agent-model-args:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k model_args

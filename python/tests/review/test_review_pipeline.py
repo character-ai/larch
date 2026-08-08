@@ -3075,6 +3075,9 @@ def test_dispatch_panel_materializes_panel_prompt_sizes(tmp_path: Path) -> None:
         env={
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
             "LARCH_QUIET_DISABLE": "1",
+            # The waterfall is Rust-owned; a Python-only run reaches it through
+            # the verified bootstrap backed by the shared test double.
+            "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
             "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
             "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
             "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
@@ -3912,6 +3915,9 @@ def test_dispatch_panel_reuse_scout_parse_failed_missing_status(tmp_path: Path) 
         env={
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
             "LARCH_QUIET_DISABLE": "1",
+            # The waterfall is Rust-owned; a Python-only run reaches it through
+            # the verified bootstrap backed by the shared test double.
+            "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
             "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
             "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
         },

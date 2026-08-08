@@ -608,7 +608,7 @@ def test_synthesize_redacts_and_is_idempotent(tmp_path: Path, monkeypatch: pytes
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         nonlocal calls
-        if list(argv[2:4]) != ["agent", "dispatch-waterfall"]:
+        if list(argv[1:3]) != ["agent", "dispatch-waterfall"]:
             return original_run(argv)
         calls += 1
         output = tmp_path / config.DEBATE_SYNTHESIS_OUTPUT_FILENAME
@@ -648,7 +648,7 @@ def test_synthesis_rejects_plan_grammar_and_remains_retriable(
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         nonlocal attempts
-        if list(argv[2:4]) != ["agent", "dispatch-waterfall"]:
+        if list(argv[1:3]) != ["agent", "dispatch-waterfall"]:
             return original_run(argv)
         attempts += 1
         body = forbidden if attempts == 1 else "A valid body.\n"
@@ -692,7 +692,7 @@ def test_synthesis_waterfall_exhaustion_is_retriable(
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         nonlocal attempts
-        if list(argv[2:4]) != ["agent", "dispatch-waterfall"]:
+        if list(argv[1:3]) != ["agent", "dispatch-waterfall"]:
             return original_run(argv)
         attempts += 1
         if attempts == 1:
@@ -722,7 +722,7 @@ def test_publish_prepare_is_local_and_idempotent(
     original_run = proc.run
 
     def synthesize_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        if list(argv[2:4]) != ["agent", "dispatch-waterfall"]:
+        if list(argv[1:3]) != ["agent", "dispatch-waterfall"]:
             return original_run(argv)
         output = tmp_path / config.DEBATE_SYNTHESIS_OUTPUT_FILENAME
         paths = tmp_path / "synthesizer-paths.txt"
@@ -790,7 +790,7 @@ def test_new_debate_verbs_emit_machine_envelopes(
     original_run = proc.run
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        if list(argv[2:4]) != ["agent", "dispatch-waterfall"]:
+        if list(argv[1:3]) != ["agent", "dispatch-waterfall"]:
             return original_run(argv)
         output = tmp_path / config.DEBATE_SYNTHESIS_OUTPUT_FILENAME
         paths = tmp_path / "synthesizer-paths.txt"

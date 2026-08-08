@@ -6,12 +6,13 @@ import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from larch.agents import agent_voters
-from larch.agents import agent_waterfall
+from larch.agents import slot_manifest
 from larch.agents import agents
 from larch.calibration import difficulty
 from larch.state import bootstrap
@@ -394,59 +395,6 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     assert seen_policy == ["review.panel"]
 
 
-def test_agent_waterfall_cursor_model_row_validation_and_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cursor_row = json.dumps(
-        {
-            "slot": "correctness",
-            "tool": "cursor",
-            "output": str(tmp_path / "out.txt"),
-            "prompt_file": str(tmp_path / "prompt.txt"),
-            "cursor_model": "sentinel-cursor-model",
-        }
-    )
-    slot = agent_waterfall._parse_slot_row(cursor_row)  # pyright: ignore[reportPrivateUsage]
-    assert slot.cursor_model == "sentinel-cursor-model"
-    assert slot.tool == "cursor"
-
-    for invalid_row in (
-        {**json.loads(cursor_row), "cursor_model": ""},
-        {**json.loads(cursor_row), "cursor_model": "bad\nmodel"},
-        {**json.loads(cursor_row), "tool": "codex", "cursor_model": "sentinel-cursor-model"},
-    ):
-        with pytest.raises(agent_waterfall.ValidationError):
-            agent_waterfall._parse_slot_row(json.dumps(invalid_row))  # pyright: ignore[reportPrivateUsage]
-
-    captured_argv: list[str] = []
-
-    class _FakePopen:
-        def __init__(self, argv: list[str], **_kwargs: object) -> None:
-            captured_argv.extend(argv)
-            self.pid = 1234
-
-    prompt = tmp_path / "prompt.txt"
-    prompt.write_text("prompt\n", encoding="utf-8")
-    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
-    monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
-    monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
-    opts = agent_waterfall.Options(
-        slots_file=str(tmp_path / "slots.ndjson"),
-        codex_present=True,
-        cursor_present=True,
-        mode="diff",
-    )
-
-    agent_waterfall._launch_slot(  # pyright: ignore[reportPrivateUsage]
-        idx=0,
-        phase="phase1",
-        tool="cursor",
-        output=str(tmp_path / "out.txt"),
-        slots=[slot],
-        opts=opts,
-    )
-
-    assert captured_argv[captured_argv.index("--cursor-model") + 1] == "sentinel-cursor-model"
-
-
 def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch) -> None:
     original = external_defaults.voter_policies
 
@@ -463,8 +411,8 @@ def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest
         reloaded = importlib.reload(agent_voters)
         state = reloaded._state_from_bindings(
             bindings={
-                "voter-2": agent_waterfall.SlotOutputBinding(path="v2.txt", tool="cursor"),
-                "voter-3": agent_waterfall.SlotOutputBinding(path="v3.txt", tool="codex"),
+                "voter-2": slot_manifest.SlotOutputBinding(path="v2.txt", tool="cursor"),
+                "voter-3": slot_manifest.SlotOutputBinding(path="v3.txt", tool="codex"),
             },
             launched_policies=reloaded.VOTER_SLOT_POLICIES,
         )

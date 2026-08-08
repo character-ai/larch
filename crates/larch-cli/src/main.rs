@@ -64,6 +64,7 @@ mod stall_recovery_commands;
 mod stall_recovery_reporting;
 mod state_commands;
 mod test_shards;
+mod waterfall_commands;
 
 use agent_commands::AgentCommand;
 use ci_timing::CiTimingCommand;

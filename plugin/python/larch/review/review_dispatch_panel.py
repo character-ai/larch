@@ -871,7 +871,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     result = (
         review_pipeline_shared.run_capture([dispatch_override, *waterfall_args], env=panel_env)
         if dispatch_override
-        else review_pipeline_shared.run_python_cli(
+        else review_pipeline_shared.run_larch(
             ["agent", "dispatch-waterfall", *waterfall_args], env=panel_env
         )
     )
