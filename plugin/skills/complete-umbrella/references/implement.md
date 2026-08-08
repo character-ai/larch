@@ -1,5 +1,11 @@
 # Implement Phase
 
+**Consumer**: The second fresh general-purpose Agent spawned by the `/complete-umbrella` leaf orchestrator.
+
+**Contract**: Implement from the bounded design and leaf inputs, run focused checks, commit the change, and persist the diff and summary handoffs.
+
+**When to load**: **MANDATORY: READ ENTIRE FILE** only for the primary implement phase.
+
 Read `phase-common.md` in this directory in full before acting.
 
 Read only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/leaf-issue.md` as initial task inputs. Do not read the umbrella issue again. Do not repeat broad repository exploration. Open only the source, tests, and companion files named by the brief, plus narrow dependencies needed to edit them safely.

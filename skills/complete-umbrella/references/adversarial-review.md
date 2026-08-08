@@ -1,5 +1,11 @@
 # Adversarial Review Phase
 
+**Consumer**: The third fresh general-purpose Agent spawned by the `/complete-umbrella` leaf orchestrator.
+
+**Contract**: Independently review the implementation against the brief, repair every in-scope finding, prove stale-caller and parity-success coverage, and persist final review handoffs.
+
+**When to load**: **MANDATORY: READ ENTIRE FILE** only for the primary adversarial-review phase.
+
 Read `phase-common.md` in this directory in full before acting.
 
 Start from only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/implementation.diff`. Do not read the issue bodies or the prior phase summary. This is an independent review, not a continuation of the implementer's reasoning.

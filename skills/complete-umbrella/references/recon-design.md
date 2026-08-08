@@ -1,5 +1,11 @@
 # Recon and Design Phase
 
+**Consumer**: The first fresh general-purpose Agent spawned by the `/complete-umbrella` leaf orchestrator.
+
+**Contract**: Adopt the leaf lifecycle, gather bounded requirements and repository evidence, and write the implementation-ready design brief without returning large content.
+
+**When to load**: **MANDATORY: READ ENTIRE FILE** only for the primary recon-design phase.
+
 Read `phase-common.md` in this directory in full before acting.
 
 The spawn prompt supplies `REPOSITORY`, `UMBRELLA`, `LEAF`, `REPO_ROOT`, and `HANDOFF_ROOT`. Require positive numeric issue IDs, exact `OWNER/REPO` syntax, the current working directory as `REPO_ROOT`, and `HANDOFF_ROOT=$SESSION_TMPDIR`.

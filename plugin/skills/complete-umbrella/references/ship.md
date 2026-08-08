@@ -1,5 +1,11 @@
 # Ship Phase
 
+**Consumer**: The fourth fresh general-purpose Agent spawned by the `/complete-umbrella` leaf orchestrator.
+
+**Contract**: Route only through the deterministic leaf ship driver, spawn a bounded CI fixer only after an actual failed-check outcome, and verify terminal shipping state.
+
+**When to load**: **MANDATORY: READ ENTIRE FILE** only for the primary ship phase.
+
 Read `phase-common.md` in this directory in full before acting.
 
 Read `$SESSION_TMPDIR/review-summary.md`. Require its final HEAD to match the clean current branch. Do not read the issue bodies, design brief, implementation diff, or repository source.
