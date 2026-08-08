@@ -145,8 +145,8 @@ pub use issue::{
     leading_square_bracket_prefix, named_block_marker_allowed, neutralize_named_block_markers,
     open_issue_rows, parse_named_block, parse_open_issue_row, plan_named_block_write,
     redact_untrusted_stream, strip_lifecycle_prefix, strip_named_block,
-    title_has_archival_report_prefix, title_lifecycle_reject_marker, title_starts_with_brainstorm,
-    untrusted_content_block, xml_escape_attr,
+    title_has_archival_report_prefix, title_is_archival, title_lifecycle_reject_marker,
+    title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
 };
 pub use issue::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, ClassificationSource,
@@ -162,6 +162,10 @@ pub use issue::{
     normalize_diagnostic_path, parse_timestamp, percentile, realized_alignment_rate, run_dir_key,
     scan_ground_truth_corpus, strip_prefixes, strong_match, title_tokens, version_components,
     version_meets_floor,
+};
+pub use issue::{
+    CANDIDATE_CAP, CandidateAllocation, CandidateRowDefect, CandidateRowDrop, InputMode,
+    ParsedInput, ParsedItem, allocate_candidates, parse_issue_input,
 };
 pub use issue_mutation::{
     IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
@@ -299,7 +303,7 @@ pub use test_shards::{
 };
 pub use text::{
     balanced_fence_line_indices, ensure_ascii_json, is_python_whitespace, positive_integer,
-    split_lines_keep_ends, split_text_lines, tail_lines, truncate_utf8_bytes,
+    split_lines_keep_ends, split_text_lines, tail_lines, truncate_utf8_bytes, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{

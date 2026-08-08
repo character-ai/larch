@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "empty.md": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "▶ parse-input: 0 items parsed (mode=generic)\n"
+  },
+  "stdout": {
+    "text": "ITEMS_TOTAL=0\n"
+  }
+}

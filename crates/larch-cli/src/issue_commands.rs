@@ -11,7 +11,7 @@
 //! `emit_kv` (G-IO-2).
 
 use crate::{
-    argparse_compat::write_stdout,
+    argparse_compat::{absolute_path, write_stdout},
     blocker_commands::resolve_repo_for,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
@@ -22,7 +22,6 @@ use larch_core::{
     single_line,
 };
 use std::{
-    env,
     ffi::OsString,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -384,14 +383,6 @@ fn write_context_files(tmpdir: &Path, title: &str, body: &str) -> Result<(), Str
             .map_err(|error| write_failure(&error))?;
     }
     Ok(())
-}
-
-fn absolute_path(path: &Path) -> Result<PathBuf, std::io::Error> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
-    } else {
-        Ok(env::current_dir()?.join(path))
-    }
 }
 
 fn write_failure(error: &impl ToString) -> String {

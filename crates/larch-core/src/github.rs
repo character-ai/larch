@@ -282,6 +282,8 @@ pub struct GitHubIssue {
     pub labels: Vec<GitHubLabel>,
     pub comments: u32,
     pub created_at: String,
+    /// RFC 3339 close timestamp, empty while the issue is open.
+    pub closed_at: String,
     pub updated_at: String,
     pub is_pull_request: bool,
 }

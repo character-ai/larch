@@ -608,6 +608,7 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
         labels: Vec::new(),
         comments: 0,
         created_at: String::from(BEFORE),
+        closed_at: String::new(),
         updated_at: String::from(BEFORE),
         is_pull_request: false,
     };

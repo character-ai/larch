@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "WARN: gh api --paginate failed for repo o/r (network, auth, or rate limit)\n"
+  },
+  "stdout": {
+    "text": "LIST_STATUS=failed\n"
+  }
+}
