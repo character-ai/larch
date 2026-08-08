@@ -100,7 +100,7 @@ def test_retired_report_tokens_modules_are_not_importable() -> None:
 
 
 def test_report_tokens_analyze_is_not_a_python_command() -> None:
-    assert ("report-tokens", "analyze") not in cli._REGISTRY  # noqa: SLF001
+    assert cli.main(["report-tokens", "analyze", "--skill", "implement"]) == 2
 
 
 def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
