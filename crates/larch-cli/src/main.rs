@@ -16,6 +16,8 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions, private_atomic_write};
 
+use crate::argparse_compat::python_io_error;
+
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
@@ -60,6 +62,7 @@ mod release_prepare;
 mod release_publish;
 mod release_stage;
 mod release_version;
+mod rendering_commands;
 mod run_lifecycle_commands;
 mod run_log_cleanup_commands;
 mod run_log_commands;
@@ -181,6 +184,12 @@ enum Domain {
     /// Clone-scoped progress breadcrumbs and the larch statusline.
     #[command(subcommand)]
     Progress(ProgressCommand),
+    /// Generic ASCII Gantt rendering.
+    #[command(subcommand)]
+    Gantt(GanttCommand),
+    /// Issue-backlog report rendering.
+    #[command(subcommand, name = "analyze-issues")]
+    AnalyzeIssues(AnalyzeIssuesCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -381,6 +390,20 @@ enum TimingCommand {
     /// Print the canonical `--timing-task-kind` allow-list.
     #[command(name = "task-kinds", disable_help_flag = true)]
     TaskKinds(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum GanttCommand {
+    /// Render a rows TSV as a plain ASCII Gantt chart.
+    #[command(name = "render", disable_help_flag = true)]
+    Render(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum AnalyzeIssuesCommand {
+    /// Render the cumulative-growth chart from a bucketed TSV.
+    #[command(name = "render-chart", disable_help_flag = true)]
+    RenderChart(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1415,6 +1438,12 @@ fn run(
         Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
             Ok(object_store_commands::run(&arguments))
         }
+        Domain::Gantt(GanttCommand::Render(arguments)) => {
+            Ok(rendering_commands::gantt_render(&arguments.arguments))
+        }
+        Domain::AnalyzeIssues(AnalyzeIssuesCommand::RenderChart(arguments)) => {
+            Ok(rendering_commands::render_chart(&arguments.arguments))
+        }
         Domain::Progress(command) => Ok(match command {
             ProgressCommand::Activate(arguments) => {
                 progress_commands::activate(&arguments.arguments)
@@ -2207,15 +2236,6 @@ fn untracked_paths(status: &RepositoryStatus) -> BTreeSet<Vec<u8>> {
 
 fn fold_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn python_io_error(error: &std::io::Error, path: &Path) -> String {
-    let Some(code) = error.raw_os_error() else {
-        return error.to_string();
-    };
-    let rendered = error.to_string();
-    let detail = rendered.split(" (os error ").next().unwrap_or("I/O error");
-    format!("[Errno {code}] {detail}: '{}'", path.display())
 }
 
 /// Refuse a phantom-warning log path whose leaf or any ancestor is a symlink.

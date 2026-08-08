@@ -55,6 +55,42 @@ pub fn positive_integer(value: &str) -> Option<u64> {
     unsigned_integer(value).filter(|parsed| *parsed > 0)
 }
 
+/// Parse a signed decimal integer the way Python's `int(str)` does, within `i64`.
+///
+/// Python strips surrounding whitespace, accepts one leading sign, and allows
+/// single underscores between digits. It has no magnitude bound; this owner
+/// refuses a value outside `i64` rather than silently truncating it, and each
+/// caller documents that difference where it is observable.
+#[must_use]
+pub fn python_int(value: &str) -> Option<i64> {
+    let trimmed = trim_python_whitespace(value);
+    let (negative, digits) = trimmed.strip_prefix('-').map_or_else(
+        || (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+        |rest| (true, rest),
+    );
+    if digits.is_empty() || digits.starts_with('_') || digits.ends_with('_') {
+        return None;
+    }
+    let mut previous_underscore = false;
+    let mut cleaned = String::with_capacity(digits.len());
+    for character in digits.chars() {
+        if character == '_' {
+            if previous_underscore {
+                return None;
+            }
+            previous_underscore = true;
+            continue;
+        }
+        if !character.is_ascii_digit() {
+            return None;
+        }
+        previous_underscore = false;
+        cleaned.push(character);
+    }
+    let magnitude = cleaned.parse::<i128>().ok()?;
+    i64::try_from(if negative { -magnitude } else { magnitude }).ok()
+}
+
 /// Report whether `value` spells a positive decimal with no bound.
 ///
 /// Python's `str.isdecimal()` guards accepted non-ASCII digits and magnitudes

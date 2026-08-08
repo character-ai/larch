@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "rows.tsv": {
+      "text": "codex-arch\t10\t95\ncursor-edge\t0\t120\nclaude-security-specialist\t40\t60\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: --width must be positive\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

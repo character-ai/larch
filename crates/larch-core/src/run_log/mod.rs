@@ -2,7 +2,6 @@
 
 mod batch;
 mod completeness;
-mod diagram_capture;
 mod entry;
 mod execution_issue_append;
 mod execution_issue_records;
@@ -23,7 +22,6 @@ pub use batch::{
 pub use completeness::{
     CompletenessOutcome, ReachabilityContext, condition_reached, scan_required_files,
 };
-pub use diagram_capture::{sanitize_diagram_capture, strip_diagram_sections};
 pub use entry::{
     ExecutionIssueEntry, ExecutionIssueFormat, ExecutionIssueLedger, ExecutionIssueReadError,
     ExecutionIssueReadErrorKind,

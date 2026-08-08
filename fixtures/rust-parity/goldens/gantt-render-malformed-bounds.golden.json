@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "rows.tsv": {
+      "text": "label\tstart\t9\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: malformed row 1: start_s and end_s must be integers\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

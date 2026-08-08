@@ -291,8 +291,9 @@ pub use report::{
     render_issue_detail_block, render_session_transcript, replace_markdown_block,
     replace_markdown_block_with_warn, report_has_numeric_tokens, resolve_run_report,
     round_number_from_path, run_log_batch_spec, run_log_batch_specs, run_log_ledger_path,
-    run_record, safe_int, structured_body_dedupe_keys, summary_report, token_phase_rows,
-    token_report_basename, transcript_sources, vendor_totals_from_report,
+    run_record, safe_int, sanitize_diagram_capture, strip_diagram_sections,
+    structured_body_dedupe_keys, summary_report, token_phase_rows, token_report_basename,
+    transcript_sources, vendor_totals_from_report,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
@@ -320,9 +321,8 @@ pub use run_log::{
     execution_issue_sections, existing_execution_issue_keys, failure_retry_suffix,
     final_summary_terminal_heading, first_nonempty_line, glob_matches, implementation_plan_body,
     is_round_sidecar_file, lookup_batch, manifest_pr_evidence_matches, normalize_run_log_text,
-    normalized_body_sha256, redact_batch_payload, round_artifact_included,
-    sanitize_diagram_capture, scan_required_files, stage_round_artifact,
-    stale_bail_heading_with_pr_evidence, strip_diagram_sections, terminal_bail_skip_signal,
+    normalized_body_sha256, redact_batch_payload, round_artifact_included, scan_required_files,
+    stage_round_artifact, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
     validate_batch_payload, validate_failure_counts, validate_run_log_slug,
     validate_ship_outcome_record,
 };
@@ -372,7 +372,7 @@ pub use test_shards::{
 };
 pub use text::{
     balanced_fence_line_indices, ensure_ascii_json, is_positive_decimal, is_python_whitespace,
-    positive_integer, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
+    positive_integer, python_int, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
     trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};

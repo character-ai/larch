@@ -578,11 +578,12 @@ verb = "render-chart"
 python_module = "larch.rendering.render_chart"
 python_function = "render_chart_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8092
 
 [[commands]]
 domain = "analyze-issues"
@@ -2858,11 +2859,12 @@ verb = "render"
 python_module = "larch.rendering.gantt"
 python_function = "gantt_render_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8092
 
 [[commands]]
 domain = "generate"

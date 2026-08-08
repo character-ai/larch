@@ -1,13 +1,17 @@
-//! Shared report Markdown block, issue-detail, and run-log corpus helpers.
+//! Shared report Markdown block, issue-detail, run-log corpus, and rendering
+//! helpers.
 //!
 //! Library parity for Python `larch.report.markdown_block` and
 //! `larch.report.exec_issue_detail`, plus read-only parity for
-//! `larch.report.run_log_batch` and `larch.report.run_log_corpus`. No command
-//! changes owner in these leaves; Python remains the production owner until
-//! consumer cutover leaves move.
+//! `larch.report.run_log_batch` and `larch.report.run_log_corpus`. The
+//! [`gantt`], [`growth_chart`], and [`diagram_log`] modules own the migrated
+//! renderers and the bounded diagram failure log.
 
+mod diagram_log;
 mod exec_issue_detail;
 mod final_report;
+pub mod gantt;
+pub mod growth_chart;
 mod markdown_block;
 mod path_warning;
 mod run_log_corpus;
@@ -18,6 +22,10 @@ mod token_cost;
 mod token_report;
 mod token_scan;
 
+pub use diagram_log::{
+    bounded_diagram_warning_body, sanitize_diagram_capture, strip_diagram_sections,
+    write_bounded_diagram_failure_log,
+};
 pub use exec_issue_detail::{
     ASSESSMENT_TIMEOUT_SECONDS, DEFAULT_ASSESSMENT_MODEL, EMPTY_GROUPS,
     ENV_EXEC_ISSUE_ASSESSMENT_MODEL, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult,
