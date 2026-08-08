@@ -1,10 +1,6 @@
 {
   "exit_code": 2,
-  "files": {
-    "body.md": {
-      "text": "diagnosis\n"
-    }
-  },
+  "files": {},
   "side_effects": {},
   "stderr": {
     "text": "TRIAGE_FAILURE=validation\nERROR=triage root must be a canonical /tmp/claude-triage-* directory\n"

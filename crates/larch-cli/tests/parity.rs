@@ -5095,10 +5095,13 @@ const TRIAGE_CASES: &[TriageFixture] = &[
         name: "triage-apply-uncanonical-session-root",
         reference: "triage-apply",
         selector: &["triage", "apply"],
+        // The sandbox is created directly inside the canonical temporary root,
+        // so it proves the name half of the confinement without depending on
+        // whether the platform's `/tmp` is itself a symlink.
         arguments: &[
             "7", "--repo", "owner/repo", "--verdict", "valid",
-            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
-            "--body-file", "body.md", "--operator-invoked",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "{sandbox}",
+            "--body-file", "{sandbox}/body.md", "--operator-invoked",
         ],
         seeds: &[("body.md", "diagnosis\n")],
     },
@@ -5114,15 +5117,29 @@ const TRIAGE_CASES: &[TriageFixture] = &[
         seeds: &[("body.md", "diagnosis\n")],
     },
     TriageFixture {
-        name: "triage-apply-close-without-comment-artifact",
+        name: "triage-apply-close-session-root-confinement",
         reference: "triage-apply",
         selector: &["triage", "apply"],
+        // A close verdict takes the same confinement as a `valid` one, ahead of
+        // the artifact it would otherwise select.
         arguments: &[
             "7", "--repo", "owner/repo", "--verdict", "already-fixed",
-            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "/tmp",
+            "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root", "{sandbox}",
             "--operator-invoked",
         ],
         seeds: &[],
+    },
+    TriageFixture {
+        name: "triage-apply-absent-session-root",
+        reference: "triage-apply",
+        selector: &["triage", "apply"],
+        arguments: &[
+            "7", "--repo", "owner/repo", "--verdict", "valid",
+            "--expected-updated-at", "2026-07-12T10:00:00Z",
+            "--triage-root", "/larch-triage-root-missing",
+            "--body-file", "{sandbox}/body.md", "--operator-invoked",
+        ],
+        seeds: &[("body.md", "diagnosis\n")],
     },
     TriageFixture {
         name: "triage-apply-invalid-verdict-choice",

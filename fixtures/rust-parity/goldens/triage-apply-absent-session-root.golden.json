@@ -1,6 +1,10 @@
 {
   "exit_code": 2,
-  "files": {},
+  "files": {
+    "body.md": {
+      "text": "diagnosis\n"
+    }
+  },
   "side_effects": {},
   "stderr": {
     "text": "TRIAGE_FAILURE=validation\nERROR=triage root must be an existing regular directory\n"
