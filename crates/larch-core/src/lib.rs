@@ -23,6 +23,7 @@ mod message_error;
 mod object_store;
 mod ordered_json;
 mod outcome;
+mod plan_scope;
 mod process;
 mod process_identity;
 mod progress;
@@ -181,6 +182,7 @@ pub use object_store::{
 };
 pub use ordered_json::OrderedJson;
 pub use outcome::{ExitCode, WorkflowOutcome};
+pub use plan_scope::{SCOPE_PATH_FALLBACK, extract_scope_paths};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
     HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,

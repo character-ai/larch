@@ -586,7 +586,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     plan_path = preflight_tmpdir / "plan-from-issue.txt"
     plan_stdout = preflight_tmpdir / "plan-block.stdout"
     plan_stderr = preflight_tmpdir / "plan-block.stderr"
-    plan_argv = [sys.executable, str(cli_path), "plan-block", "read", "--issue", issue, "--output", str(plan_path)]
+    plan_argv = [str(larch_entrypoint(plugin_root)), "plan-block", "read", "--issue", issue, "--output", str(plan_path)]
     if repo:
         plan_argv.extend(["--repo", repo])
     plan_rc = _run_capture(argv=plan_argv, stdout_path=plan_stdout, stderr_path=plan_stderr, env=admission_env)

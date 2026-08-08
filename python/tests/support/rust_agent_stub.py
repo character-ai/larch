@@ -1594,6 +1594,102 @@ def _posix_pattern(raw: str) -> str:
     return translated
 
 
+
+# --------------------------------------------------------- issue-body wire verbs
+#
+# The `/design` to `/implement` wire verbs moved to the Rust owner in #8171, so
+# the Python callers that used to run them in process now spawn the bootstrap.
+# These doubles answer the exact rows and exit codes those callers branch on;
+# the byte-level contract itself is proven against the frozen reference in
+# `crates/larch-cli/tests/parity.rs`.
+
+
+def _wire_option(arguments: list[str], name: str) -> str:
+    """Read one `--name value` or `--name=value` option from a wire command line."""
+    prefix = f"{name}="
+    for index, argument in enumerate(arguments):
+        if argument == name and index + 1 < len(arguments):
+            return arguments[index + 1]
+        if argument.startswith(prefix):
+            return argument[len(prefix) :]
+    return ""
+
+
+def _issue_title_eligibility(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.issue import issue_wire  # noqa: PLC0415 - bound above, not at module import
+
+    title = _wire_option(arguments, "--title")
+    if not title:
+        print("issue title: --title is required", file=sys.stderr)
+        return 2
+    trimmed = title.lstrip()
+    marker = issue_wire.title_lifecycle_reject_marker(title)
+    print(f"LIFECYCLE_REJECT={'true' if marker else 'false'}")
+    if marker:
+        print(f"LIFECYCLE_MARKER={marker}")
+    archival = re.match(r"^\[.*report\] ", trimmed, re.IGNORECASE) is not None
+    print(f"ARCHIVAL_REPORT={'true' if archival else 'false'}")
+    brainstorm = re.match(r"^brainstorm([^A-Za-z]|$)", trimmed, re.IGNORECASE) is not None
+    print(f"BRAINSTORM={'true' if brainstorm else 'false'}")
+    return 0
+
+
+def _plan_scope_paths(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.issue import issue_wire  # noqa: PLC0415 - bound above, not at module import
+
+    plan_file = _wire_option(arguments, "--plan-file")
+    plan = Path(plan_file) if plan_file else None
+    if plan is None or not plan.is_file():
+        print(f"extract-plan-scope-paths.sh: plan file not found: {plan_file}", file=sys.stderr)
+        return 2
+    separator = "\0" if ("-z" in arguments or "--null" in arguments) else "\n"
+    paths = issue_wire.extract_scope_paths(plan_text=plan.read_text(encoding="utf-8", errors="replace"))
+    _ = sys.stdout.write(separator.join(paths) + separator)
+    return 0
+
+
+def _plan_block_strip_body(arguments: list[str]) -> int:
+    _bind_larch_package()
+    from larch.issue import issue_blocks  # noqa: PLC0415 - bound above, not at module import
+
+    source = _wire_option(arguments, "--file")
+    output = _wire_option(arguments, "--output")
+    body = Path(source).read_text(encoding="utf-8", errors="replace") if source else sys.stdin.read()
+    stripped, malformed = issue_blocks.strip_named_block(body=body, marker="plan")
+    if malformed:
+        if output:
+            _ = Path(output).write_text("", encoding="utf-8")
+        print(f"MALFORMED={malformed}")
+        return 1
+    if output:
+        _ = Path(output).write_text(stripped, encoding="utf-8")
+    else:
+        _ = sys.stdout.write(stripped)
+    return 0
+
+
+def _named_block_write(arguments: list[str]) -> int:
+    """Report a completed write without reaching GitHub.
+
+    The double never mutates an issue: callers only branch on the exit code and
+    the `WRITTEN=` envelope, and the real command's compare-and-swap has its own
+    Rust coverage.
+    """
+    content_file = _wire_option(arguments, "--content-file")
+    if content_file and not Path(content_file).is_file():
+        print("FAILED=true")
+        print(f"ERROR=content file not found: {content_file}")
+        return 1
+    body = Path(content_file).read_bytes() if content_file else b""
+    print("WRITTEN=true")
+    print("MODE=replaced" if content_file else "MODE=removed")
+    print("MARKERS_PRESENT=true")
+    print(f"BODY_BYTES={len(body)}")
+    return 0
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -1624,6 +1720,10 @@ def main(arguments: list[str]) -> int:
             ("run-log", "verify-completeness"): _run_log_verify_completeness,
             ("agent", "launch-claude-subprocess"): _launch_claude_subprocess,
             ("agent", "launch-claude-review"): _launch_claude_review,
+            ("issue", "title-eligibility"): _issue_title_eligibility,
+            ("named-block", "write"): _named_block_write,
+            ("plan", "scope-paths"): _plan_scope_paths,
+            ("plan-block", "strip-body"): _plan_block_strip_body,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

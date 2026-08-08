@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: plan-block-strip-body.sh [-h] [--file FILE] [--output OUTPUT]\nplan-block-strip-body.sh: error: unrecognized arguments: --bogus\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

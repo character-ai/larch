@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: plan-block-write.sh [-h] --issue ISSUE [--content-file CONTENT_FILE]                           [--delete] [--repo REPO]\nplan-block-write.sh: error: the following arguments are required: --issue\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

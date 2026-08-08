@@ -847,12 +847,12 @@ def step3_entry(argv: Sequence[str]) -> int:
     issue_body = tmpdir / "issue-body.txt"
     feature = tmpdir / "feature-description.txt"
     if issue_body.is_file() and issue_body.stat().st_size > 0:
-        proc = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(issue_body), "--output", str(stripped)])
+        proc = _run_command(argv=[str(larch_entrypoint(_plugin_root())), "plan-block", "strip-body", "--file", str(issue_body), "--output", str(stripped)])
         if proc.returncode != 0:
             _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "strip-body-failure"])
             return 1
     elif feature.is_file() and feature.stat().st_size > 0:
-        proc = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(feature), "--output", str(stripped)])
+        proc = _run_command(argv=[str(larch_entrypoint(_plugin_root())), "plan-block", "strip-body", "--file", str(feature), "--output", str(stripped)])
         if proc.returncode != 0:
             _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "strip-body-failure"])
             return 1

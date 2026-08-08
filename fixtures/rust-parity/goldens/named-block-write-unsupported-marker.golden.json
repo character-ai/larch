@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "named-block-write.sh: unsupported marker: bad\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

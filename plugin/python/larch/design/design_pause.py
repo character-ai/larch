@@ -180,8 +180,7 @@ def _clear_design_pause_marker(*, issue: str, repo: str) -> bool:
     """Delete the design-pause marker from the issue body. Best effort; returns True on success."""
     plugin_root = Path(__file__).resolve().parents[3]
     cmd = [
-        sys.executable,
-        str(plugin_root / "python" / "cli.py"),
+        str(repo_roots.larch_entrypoint(plugin_root)),
         "named-block",
         "write",
         "--marker",
@@ -289,8 +288,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         return 0
 
     marker_cmd = [
-        sys.executable,
-        str(plugin_root / "python" / "cli.py"),
+        str(repo_roots.larch_entrypoint(plugin_root)),
         "named-block",
         "write",
         "--marker",

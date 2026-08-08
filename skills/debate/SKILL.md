@@ -227,7 +227,7 @@ Skip this step only when the last validated envelope is already terminal. When i
   Require `ok=true`, the unchanged fingerprint, and the exact artifact path `$DEBATE_TMPDIR/adjudication-preview.json`. Then wrap that canonical artifact:
 
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" untrusted file-block \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" untrusted file-block \
     debate_adjudication "$DEBATE_TMPDIR/adjudication-preview.json"
   ```
 
@@ -274,7 +274,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate proposal-link \
 Require `$DEBATE_TMPDIR/proposal-linked-body.md`. Wrap the proposal title file before inspecting it:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" untrusted file-block \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" untrusted file-block \
   debate_proposal_title "$TITLE_FILE"
 ```
 

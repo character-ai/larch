@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "<evidence encoding=\"literal-redacted\">\npiped &lt;x&gt;&amp;\n\n</evidence>\n\n"
+  }
+}

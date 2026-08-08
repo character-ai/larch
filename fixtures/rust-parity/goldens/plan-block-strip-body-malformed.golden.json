@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "broken.md": {
+      "text": "<!-- larch:plan:start -->\nwork\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "MALFORMED=start-without-end\n"
+  }
+}

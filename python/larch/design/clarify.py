@@ -1134,7 +1134,7 @@ def _handle_design_clarify_publish(
         return _publish_failure(design_tmpdir=design_tmpdir, status="redact-empty", summary="failed-plan-write")
 
     repo_args = ["--repo", env["REPO"]] if env.get("REPO") else []
-    plan_write = _run_cli(
+    plan_write = _run_larch(
         plugin_root,
         env,
         "named-block",

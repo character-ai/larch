@@ -60,7 +60,7 @@ _scope_stripped="$(mktemp "${TMPDIR:-/tmp}/larch-plan-review-scope-stripped.XXXX
 }
 if [ -s "$DESIGN_TMPDIR/issue-body.txt" ]; then
   _had_issue_body=true
-  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-block strip-body \
+  if ! "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" plan-block strip-body \
     --file "$DESIGN_TMPDIR/issue-body.txt" \
     --output "$_scope_stripped" >/dev/null; then
     rm -f "$_scope_body" "$_scope_stripped"
@@ -78,7 +78,7 @@ fi
     cat "$_scope_stripped"
   elif [ "$_had_issue_body" != true ] && [ -s "$DESIGN_TMPDIR/feature-description.txt" ]; then
     _scope_fd_stripped="$(mktemp "${TMPDIR:-/tmp}/larch-plan-review-scope-fd.XXXXXX")" || true
-    if [ -n "${_scope_fd_stripped:-}" ] && python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-block strip-body \
+    if [ -n "${_scope_fd_stripped:-}" ] && "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" plan-block strip-body \
       --file "$DESIGN_TMPDIR/feature-description.txt" \
       --output "$_scope_fd_stripped" >/dev/null 2>&1 && [ -s "$_scope_fd_stripped" ]; then
       cat "$_scope_fd_stripped"

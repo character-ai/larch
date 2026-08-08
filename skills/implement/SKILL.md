@@ -234,7 +234,7 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
 | Code | When |
 |------|------|
 | **0** | Normal completion of the scripted skill path. |
-| **2** | Flag mutual-exclusion, verbal/non-numeric argv tail, missing/malformed `larch:plan` when not bypassed by `--force`, empty issue body and empty title under `--force` (nothing to implement), `gh` / `python/cli.py plan-block read` / admission hard failures (except `missing-designed-prefix` when bypassed by `--force`), semantic stale notice posted at Preflight item 6, `persist-implement-run-flags` validation failures, and other operator-visible hard errors where this file specifies exit **2**. |
+| **2** | Flag mutual-exclusion, verbal/non-numeric argv tail, missing/malformed `larch:plan` when not bypassed by `--force`, empty issue body and empty title under `--force` (nothing to implement), `gh` / `scripts/larch.sh plan-block read` / admission hard failures (except `missing-designed-prefix` when bypassed by `--force`), semantic stale notice posted at Preflight item 6, `persist-implement-run-flags` validation failures, and other operator-visible hard errors where this file specifies exit **2**. |
 | **3** | **Preflight audit refused** — `AUDIT=refuse` exits **3**. Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md` `## Clarify-request flow after AUDIT=refuse` for post, label, `STATE=ambiguous`, and `STATE=awaiting-response` behavior. **Force note**: `--force` skips the item 4 plan-adequacy audit before any `AUDIT=refuse` result exists, so this exit-**3** refuse path is unreachable under `--force`. |
 
 <!-- step:0 — Session Setup -->

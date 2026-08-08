@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "plan.txt": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILED=true\nERROR=could not determine repo\n"
+  }
+}

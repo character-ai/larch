@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: untrusted content-block [-h] [--text TEXT] tag\nuntrusted content-block: error: unrecognized arguments: b\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

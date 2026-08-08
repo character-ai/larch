@@ -13,7 +13,7 @@ The dirty-tree recovery resume fence moved to `skills/implement/references/boots
 - The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
 - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
 - The helper is invoked through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight`.
-- Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
+- Direct Preflight `plan-block read` and `gh issue view` Bash fences are forbidden, whichever entrypoint spells the command.
 - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed `larch-run.sh --print-plugin-root` fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
 - Step 0 initial and resume fences carry a `LARCH_CLAUDE_PID="$PPID"` environment-prefix assignment so the PID-keyed launcher matches later Bash-tool `$PPID` values.
