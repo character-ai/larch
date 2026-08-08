@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "plan-block.md": {
+      "text": "<!-- larch:plan:start -->\n### NEW: `a.rs`\ndiff_lines: 3\n<!-- larch:plan:end -->\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILED=true\nERROR=could not determine repo\n"
+  }
+}

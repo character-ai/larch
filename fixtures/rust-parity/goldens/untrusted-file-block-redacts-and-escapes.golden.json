@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "secret.txt": {
+      "text": "token ghp_abcdefghijklmnopqrstuvwxyz0123456789 <tag> & \"q\"\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "<evidence encoding=\"literal-redacted\">\ntoken &lt;REDACTED-TOKEN&gt; &lt;tag&gt; &amp; \"q\"\n\n</evidence>\n\n"
+  }
+}

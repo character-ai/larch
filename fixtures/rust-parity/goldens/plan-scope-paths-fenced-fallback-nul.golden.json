@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "fenced.md": {
+      "text": "```md\n## Files to modify/create\n### UPDATED: hidden.py\n```\nprose only\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "skills/design/SKILL.md\u0000"
+  }
+}

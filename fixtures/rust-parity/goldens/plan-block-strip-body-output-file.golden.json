@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "body.md": {
+      "text": "intro\n<!-- larch:plan:start -->\n### NEW: `x.rs`\ndiff_lines: 7\n<!-- larch:plan:end -->\ntail\n"
+    },
+    "stripped.md": {
+      "text": "intro\ntail\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

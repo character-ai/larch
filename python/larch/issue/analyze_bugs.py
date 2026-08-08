@@ -32,7 +32,7 @@ from larch.core.proc import Runner
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue.title_match import bug_title_match
-from larch.issue.issue_wire import strip_named_block
+from larch.issue.issue_blocks import strip_named_block
 from larch.report import analysis_state
 from larch.report.report_tokens_cost import rate_row
 

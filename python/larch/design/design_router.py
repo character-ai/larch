@@ -106,8 +106,7 @@ def route_main(argv: Sequence[str]) -> int:
                 error_lines.append("design-pause-load-failed")
     else:
         title_cmd = [
-            sys.executable,
-            str(Path(__file__).resolve().parents[2] / "cli.py"),
+            str(repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])),
             "issue",
             "title-eligibility",
             f"--title={required['--issue-title']}",

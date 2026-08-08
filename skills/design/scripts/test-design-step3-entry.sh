@@ -37,6 +37,28 @@ if [[ "\${1:-}" == session ]]; then
         require-plugin-root|validate-design-tmpdir) exit 0 ;;
     esac
 fi
+# The Rust owner strips the sole unfenced larch:plan block (#8171). The entry
+# script only reads the stripped artifact, so the double drops the marker pair
+# and the lines it bounds.
+if [[ "\${1:-}" == plan-block && "\${2:-}" == strip-body ]]; then
+    shift 2
+    _file=""
+    _output=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --file) _file="\${2:-}"; shift 2 ;;
+            --output) _output="\${2:-}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [[ -n "\$_file" && -n "\$_output" ]] || exit 2
+    awk '
+        \$0 == "<!-- larch:plan:start -->" { inside = 1; next }
+        \$0 == "<!-- larch:plan:end -->" { inside = 0; next }
+        !inside
+    ' "\$_file" >"\$_output" || exit 1
+    exit 0
+fi
 exit 2
 EOF_LARCH
 chmod +x "$LARCH_BINARY"

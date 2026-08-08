@@ -66,7 +66,7 @@ def old_target_kind(cmd):
         return 'structured-invocation'
     if 'python/cli.py' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'
-    if 'python/cli.py' in cmd and 'plan-block read' in cmd:
+    if ('python/cli.py' in cmd or 'larch.sh' in cmd) and 'plan-block read' in cmd:
         return 'preflight-plan-direct'
     if 'skills/implement/scripts/step-0-bootstrap.sh' in cmd and '--mode initial' in cmd:
         return 'step-0-initial'
@@ -189,7 +189,7 @@ for start, end, body in fences:
         if 'session read-key' in raw:
             errors.append(f'fence {start}-{end}: inline session read-key is not allowed')
             break
-    if 'python/cli.py' in body_text and 'plan-block read' in body_text:
+    if ('python/cli.py' in body_text or 'larch.sh' in body_text) and 'plan-block read' in body_text:
         errors.append(f'fence {start}-{end}: direct Preflight plan-block read call is forbidden')
     if 'gh issue view' in body_text:
         errors.append(f'fence {start}-{end}: direct Preflight gh issue view call is forbidden')

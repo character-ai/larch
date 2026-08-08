@@ -589,7 +589,7 @@ def scout_plan_archetypes(  # noqa: PLR0913,RUF100
     design_tmpdir = plan_canon.parent
     scope_list = design_tmpdir / "scout-plan-scope-files.txt"
     with scope_list.with_suffix(scope_list.suffix + ".tmp").open("w", encoding="utf-8") as handle:
-        scope_result: subprocess.CompletedProcess[bytes] = subprocess.run(["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "plan", "scope-paths", "--plan-file", str(plan_canon)], check=False, stdout=handle)  # noqa: S607
+        scope_result: subprocess.CompletedProcess[bytes] = subprocess.run([str(larch_entrypoint(PLUGIN_ROOT)), "plan", "scope-paths", "--plan-file", str(plan_canon)], check=False, stdout=handle)
     if scope_result.returncode != 0:
         raise UsageError("scope-files derivation failed")
     scope_list.with_suffix(scope_list.suffix + ".tmp").replace(scope_list)

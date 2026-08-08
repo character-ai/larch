@@ -1364,8 +1364,7 @@ def publish_core(argv: Sequence[str]) -> int:
 
     block = subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "named-block",
             "write",
             "--marker",

@@ -55,10 +55,22 @@ impl CleanInstallCase {
             // Neither `/block-issue` verb has a `--help` action either, so the
             // clean-install token reads as an unknown flag and each refuses
             // with its own usage exit code, which is the same `2` the terminal
-            // snapshot reports for its missing session directory.
+            // snapshot reports for its missing session directory, the three
+            // title verbs and four untrusted verbs report for the token they
+            // cannot use, and each write verb reports for its missing required
+            // option.
             "clean-install-block-issue-add-blocked-by"
             | "clean-install-block-issue-remove-blocked-by"
-            | "clean-install-run-log-prepare-terminal-snapshot" => 2,
+            | "clean-install-issue-insert-signal-marker"
+            | "clean-install-issue-title-archival-jq"
+            | "clean-install-issue-title-eligibility"
+            | "clean-install-named-block-write"
+            | "clean-install-plan-block-read"
+            | "clean-install-plan-block-write"
+            | "clean-install-run-log-prepare-terminal-snapshot"
+            | "clean-install-untrusted-file-block"
+            | "clean-install-untrusted-redact-stream"
+            | "clean-install-untrusted-xml-escape-attr" => 2,
             _ => 0,
         }
     }
@@ -197,6 +209,18 @@ fn admission_clean_install_arguments(id: &str) -> Option<&'static [&'static str]
         // reports for a field it does not serve; neither reaches the network.
         "clean-install-issue-state" => Some(&["--issue"]),
         "clean-install-issue-info" => Some(&["--issue", "1", "--field", "title"]),
+        // `content-block` and `scope-paths` print their `argparse` help and
+        // exit `0`; `strip-body` routes its help through the diagnostic writer
+        // and also exits `0`. The rest refuse the clean-install token, so each
+        // is given the exact line that proves dispatch without a GitHub read.
+        "clean-install-issue-insert-signal-marker"
+        | "clean-install-issue-title-archival-jq"
+        | "clean-install-issue-title-eligibility"
+        | "clean-install-untrusted-redact-stream"
+        | "clean-install-untrusted-xml-escape-attr" => Some(&["--clean-install"]),
+        "clean-install-untrusted-file-block" => Some(&["clean-install"]),
+        "clean-install-named-block-write" | "clean-install-plan-block-write" => Some(&["--delete"]),
+        "clean-install-plan-block-read" => Some(&["--issue", "1"]),
         _ => None,
     }
 }
@@ -366,6 +390,50 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "fetch-issue-details",
     ),
     CleanInstallCase::new("clean-install-issue-info", "issue", "info"),
+    CleanInstallCase::new(
+        "clean-install-issue-insert-signal-marker",
+        "issue",
+        "insert-signal-marker",
+    ),
+    CleanInstallCase::new(
+        "clean-install-issue-title-archival-jq",
+        "issue",
+        "title-archival-jq",
+    ),
+    CleanInstallCase::new(
+        "clean-install-issue-title-eligibility",
+        "issue",
+        "title-eligibility",
+    ),
+    CleanInstallCase::new("clean-install-named-block-write", "named-block", "write"),
+    CleanInstallCase::new("clean-install-plan-scope-paths", "plan", "scope-paths"),
+    CleanInstallCase::new("clean-install-plan-block-read", "plan-block", "read"),
+    CleanInstallCase::new(
+        "clean-install-plan-block-strip-body",
+        "plan-block",
+        "strip-body",
+    ),
+    CleanInstallCase::new("clean-install-plan-block-write", "plan-block", "write"),
+    CleanInstallCase::new(
+        "clean-install-untrusted-content-block",
+        "untrusted",
+        "content-block",
+    ),
+    CleanInstallCase::new(
+        "clean-install-untrusted-file-block",
+        "untrusted",
+        "file-block",
+    ),
+    CleanInstallCase::new(
+        "clean-install-untrusted-redact-stream",
+        "untrusted",
+        "redact-stream",
+    ),
+    CleanInstallCase::new(
+        "clean-install-untrusted-xml-escape-attr",
+        "untrusted",
+        "xml-escape-attr",
+    ),
     CleanInstallCase::new("clean-install-issue-list-issues", "issue", "list-issues"),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
@@ -4729,6 +4797,471 @@ const ISSUE_DEPENDENCY_CASES: &[IssueCreateFixture] = &[
         environment: &[],
     },
 ];
+
+/// One `issue_wire` parity case.
+///
+/// The wire verbs read stdin as often as they read a file, and several publish
+/// a caller-named artifact, so this fixture carries both a stdin payload and
+/// the seed tree the case runs against.
+struct IssueWireFixture {
+    name: &'static str,
+    reference: &'static str,
+    selector: &'static [&'static str],
+    arguments: &'static [&'static str],
+    stdin: &'static str,
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl IssueWireFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let python_program = Program::new(python)
+            .args(
+                std::iter::once(path_text(fixture))
+                    .chain(std::iter::once(self.reference))
+                    .chain(self.arguments.iter().copied()),
+            )
+            .stdin(self.stdin.as_bytes());
+        let rust_program = Program::new(rust)
+            .args(
+                self.selector
+                    .iter()
+                    .copied()
+                    .chain(self.arguments.iter().copied()),
+            )
+            .stdin(self.stdin.as_bytes());
+        ParityCase {
+            name: self.name,
+            python: python_program,
+            rust: rust_program,
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const PLAN_SEED: &str = concat!(
+    "## Plan\n",
+    "### UPDATED: `outside.txt`\n",
+    "## Files to modify/create\n",
+    "### MAY_UPDATE: `docs/optional.md`\n",
+    "### UPDATED: `a/b.py`, `c/d.md`\n",
+    "### REWRITTEN: skills/design/scripts/x.sh (legacy)\n",
+    "## UPDATED [README.md]\n",
+    "## Acceptance\n",
+);
+const FENCED_PLAN_SEED: &str = concat!(
+    "```md\n",
+    "## Files to modify/create\n",
+    "### UPDATED: hidden.py\n",
+    "```\n",
+    "prose only\n",
+);
+const PLAN_BODY_SEED: &str = concat!(
+    "intro\n",
+    "<!-- larch:plan:start -->\n",
+    "### NEW: `x.rs`\n",
+    "diff_lines: 7\n",
+    "<!-- larch:plan:end -->\n",
+    "tail\n",
+);
+const BROKEN_BODY_SEED: &str = "<!-- larch:plan:start -->\nwork\n";
+const SECRET_SEED: &str = "token ghp_abcdefghijklmnopqrstuvwxyz0123456789 <tag> & \"q\"\n";
+const PLAN_BODY_WITH_MARKUP: &str =
+    "<!-- larch:plan:start -->\n### NEW: `a.rs`\ndiff_lines: 3\n<!-- larch:plan:end -->\n";
+
+/// The three GitHub-backed verbs stop at repository resolution: the sandbox has
+/// no `gh`, no `git`, and no network, so every case here is offline.
+#[rustfmt::skip]
+const ISSUE_WIRE_CASES: &[IssueWireFixture] = &[
+    IssueWireFixture {
+        name: "untrusted-xml-escape-attr-stdin",
+        reference: "untrusted-xml-escape-attr",
+        selector: &["untrusted", "xml-escape-attr"],
+        arguments: &[],
+        stdin: "a<b>&\"c\"'d\n",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-xml-escape-attr-unknown-option",
+        reference: "untrusted-xml-escape-attr",
+        selector: &["untrusted", "xml-escape-attr"],
+        arguments: &["x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-redact-stream-secret",
+        reference: "untrusted-redact-stream",
+        selector: &["untrusted", "redact-stream"],
+        arguments: &[],
+        stdin: "ghp_abcdefghijklmnopqrstuvwxyz0123456789 <b>&\n",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-redact-stream-empty",
+        reference: "untrusted-redact-stream",
+        selector: &["untrusted", "redact-stream"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-file-block-redacts-and-escapes",
+        reference: "untrusted-file-block",
+        selector: &["untrusted", "file-block"],
+        arguments: &["evidence", "secret.txt"],
+        stdin: "",
+        seeds: &[("secret.txt", SECRET_SEED)],
+    },
+    IssueWireFixture {
+        name: "untrusted-file-block-usage",
+        reference: "untrusted-file-block",
+        selector: &["untrusted", "file-block"],
+        arguments: &["only-one"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-content-block-text",
+        reference: "untrusted-content-block",
+        selector: &["untrusted", "content-block"],
+        arguments: &["evidence", "--text", "a<b>&"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-content-block-stdin",
+        reference: "untrusted-content-block",
+        selector: &["untrusted", "content-block"],
+        arguments: &["evidence"],
+        stdin: "piped <x>&\n",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-content-block-help",
+        reference: "untrusted-content-block",
+        selector: &["untrusted", "content-block"],
+        arguments: &["--help"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-content-block-unrecognized",
+        reference: "untrusted-content-block",
+        selector: &["untrusted", "content-block"],
+        arguments: &["a", "b"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "untrusted-content-block-missing-tag",
+        reference: "untrusted-content-block",
+        selector: &["untrusted", "content-block"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-lifecycle",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &["--title", "  [dOnE] fix"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-archival-report",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &["--title=[Analysis Report] x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-brainstorm",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &["--title", "Brainstorm-mode"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-leading-hyphen",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &["--title", "-starts-with-hyphen"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-unknown-option",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &["--bogus"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-eligibility-missing-title",
+        reference: "issue-title-eligibility",
+        selector: &["issue", "title-eligibility"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-archival-jq-filter",
+        reference: "issue-title-archival-jq",
+        selector: &["issue", "title-archival-jq"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-title-archival-jq-unknown-option",
+        reference: "issue-title-archival-jq",
+        selector: &["issue", "title-archival-jq"],
+        arguments: &["x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-insert-signal-marker-after-lifecycle",
+        reference: "issue-insert-signal-marker",
+        selector: &["issue", "insert-signal-marker"],
+        arguments: &["--title", "[Debated] Mixed case", "--marker", "FALSE-POSITIVE"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-insert-signal-marker-idempotent",
+        reference: "issue-insert-signal-marker",
+        selector: &["issue", "insert-signal-marker"],
+        arguments: &["--title=[DONE] [OOS] x", "--marker=OOS"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "issue-insert-signal-marker-missing-marker",
+        reference: "issue-insert-signal-marker",
+        selector: &["issue", "insert-signal-marker"],
+        arguments: &["--title", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-scope-paths-section-bounded",
+        reference: "plan-scope-paths",
+        selector: &["plan", "scope-paths"],
+        arguments: &["--plan-file", "plan.md"],
+        stdin: "",
+        seeds: &[("plan.md", PLAN_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-scope-paths-fenced-fallback-nul",
+        reference: "plan-scope-paths",
+        selector: &["plan", "scope-paths"],
+        arguments: &["--plan-file", "fenced.md", "-z"],
+        stdin: "",
+        seeds: &[("fenced.md", FENCED_PLAN_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-scope-paths-missing-file",
+        reference: "plan-scope-paths",
+        selector: &["plan", "scope-paths"],
+        arguments: &["--plan-file", "absent.md"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-scope-paths-missing-option",
+        reference: "plan-scope-paths",
+        selector: &["plan", "scope-paths"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-scope-paths-help",
+        reference: "plan-scope-paths",
+        selector: &["plan", "scope-paths"],
+        arguments: &["--help"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-file",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &["--file", "body.md"],
+        stdin: "",
+        seeds: &[("body.md", PLAN_BODY_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-malformed",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &["--file", "broken.md"],
+        stdin: "",
+        seeds: &[("broken.md", BROKEN_BODY_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-stdin",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &[],
+        stdin: PLAN_BODY_SEED,
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-output-file",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &["--file", "body.md", "--output", "stripped.md"],
+        stdin: "",
+        seeds: &[("body.md", PLAN_BODY_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-malformed-output-file",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &["--file", "broken.md", "--output", "stripped.md"],
+        stdin: "",
+        seeds: &[("broken.md", BROKEN_BODY_SEED)],
+    },
+    IssueWireFixture {
+        name: "plan-block-strip-body-unrecognized",
+        reference: "plan-block-strip-body",
+        selector: &["plan-block", "strip-body"],
+        arguments: &["--bogus"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-read-invalid-issue",
+        reference: "plan-block-read",
+        selector: &["plan-block", "read"],
+        arguments: &["--issue", "0", "--output", "plan.txt"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-read-missing-output",
+        reference: "plan-block-read",
+        selector: &["plan-block", "read"],
+        arguments: &["--issue", "1"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-read-unresolvable-repo",
+        reference: "plan-block-read",
+        selector: &["plan-block", "read"],
+        arguments: &["--issue", "8171", "--output", "plan.txt"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-malformed-marker",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "Bad", "--issue", "1"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-unsupported-marker",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "bad", "--issue", "1"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-usage-without-content",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "plan", "--issue", "1"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-mutually-exclusive",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "plan", "--issue", "1", "--delete", "--content-file", "x"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-missing-content-file",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "plan", "--issue", "1", "--content-file", "absent.md"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-required-arguments",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "named-block-write-unresolvable-repo",
+        reference: "named-block-write",
+        selector: &["named-block", "write"],
+        arguments: &["--marker", "plan", "--issue", "8171", "--content-file", "plan-block.md"],
+        stdin: "",
+        seeds: &[("plan-block.md", PLAN_BODY_WITH_MARKUP)],
+    },
+    IssueWireFixture {
+        name: "plan-block-write-usage-without-content",
+        reference: "plan-block-write",
+        selector: &["plan-block", "write"],
+        arguments: &["--issue", "1"],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-write-required-arguments",
+        reference: "plan-block-write",
+        selector: &["plan-block", "write"],
+        arguments: &[],
+        stdin: "",
+        seeds: &[],
+    },
+    IssueWireFixture {
+        name: "plan-block-write-invalid-issue",
+        reference: "plan-block-write",
+        selector: &["plan-block", "write"],
+        arguments: &["--issue", "0", "--delete"],
+        stdin: "",
+        seeds: &[],
+    },
+];
+
+#[test]
+fn issue_wire_commands_have_reviewed_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("issue_wire_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in ISSUE_WIRE_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
 
 #[test]
 fn issue_dependency_commands_have_reviewed_parity() {

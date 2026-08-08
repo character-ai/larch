@@ -33,7 +33,11 @@ Commands:
   external-defaults  External tool default readers
   example            Non-production commands that exercise dispatcher wiring
   git                Local Git repository commands
-  issue              GitHub issue reads
+  issue              GitHub issue reads and issue-body wire helpers
+  plan-block         The `larch:plan` issue-body block carrying the `/design` handoff
+  named-block        One named `larch:<marker>` issue-body block
+  plan               Implementation-plan readers
+  untrusted          Envelopes that mark fetched text as data, never instructions
   kv                 Exact `KEY=value` stream readers
   lint               Repository policy lint commands
   plugin             Plugin metadata commands

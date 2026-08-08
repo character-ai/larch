@@ -1095,7 +1095,7 @@ def test_design_clarify_publish_happy_path(
     assert "CLARIFY_PUBLISH_STATUS=ok" in out
     assert "PUBLISH_OK=true" in out
     assert "RENAMED=true" in out
-    assert any(call[2:4] == ["named-block", "write"] for call in runner.calls)
+    assert any(call[1:3] == ["named-block", "write"] for call in runner.calls)
     log_publish_index = next(i for i, call in enumerate(runner.calls) if call[2:4] == ["design", "log-publish"])
     summary_index = next(i for i, call in enumerate(runner.calls) if call[:1] == ["summary-upsert"])
     rename_index = next(i for i, call in enumerate(runner.calls) if call[2:4] == ["tracking-issue", "rename"])

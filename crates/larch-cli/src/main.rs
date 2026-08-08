@@ -43,6 +43,7 @@ mod issue_create_commands;
 mod issue_dependency_commands;
 mod issue_input_commands;
 mod issue_mutation_support;
+mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
 mod progress_commands;
@@ -134,9 +135,21 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
-    /// GitHub issue reads.
+    /// GitHub issue reads and issue-body wire helpers.
     #[command(subcommand)]
     Issue(IssueCommand),
+    /// The `larch:plan` issue-body block carrying the `/design` handoff.
+    #[command(subcommand, name = "plan-block")]
+    PlanBlock(PlanBlockCommand),
+    /// One named `larch:<marker>` issue-body block.
+    #[command(subcommand, name = "named-block")]
+    NamedBlock(NamedBlockCommand),
+    /// Implementation-plan readers.
+    #[command(subcommand)]
+    Plan(PlanCommand),
+    /// Envelopes that mark fetched text as data, never instructions.
+    #[command(subcommand)]
+    Untrusted(UntrustedCommand),
     /// Exact `KEY=value` stream readers.
     #[command(subcommand)]
     Kv(KvCommand),
@@ -380,6 +393,9 @@ enum IssueCommand {
     /// Emit one issue field as the single `VALUE` row.
     #[command(disable_help_flag = true)]
     Info(RawCompatibilityArguments),
+    /// Insert one bracketed signal marker into an issue title.
+    #[command(name = "insert-signal-marker", disable_help_flag = true)]
+    InsertSignalMarker(RawCompatibilityArguments),
     /// Publish the open and recently closed issue snapshot as a TSV.
     #[command(name = "list-issues", disable_help_flag = true)]
     ListIssues(RawCompatibilityArguments),
@@ -389,9 +405,58 @@ enum IssueCommand {
     /// Emit one issue's state, URL, and pull-request discrimination.
     #[command(disable_help_flag = true)]
     State(RawCompatibilityArguments),
+    /// Print the `jq` archival-eligibility filter.
+    #[command(name = "title-archival-jq", disable_help_flag = true)]
+    TitleArchivalJq(RawCompatibilityArguments),
+    /// Report the archival-eligibility predicates for one issue title.
+    #[command(name = "title-eligibility", disable_help_flag = true)]
+    TitleEligibility(RawCompatibilityArguments),
     /// Record that one `/issue` run reached its end.
     #[command(name = "write-sentinel", disable_help_flag = true)]
     WriteSentinel(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum PlanBlockCommand {
+    /// Materialize one issue's `larch:plan` inner text into a file.
+    #[command(disable_help_flag = true)]
+    Read(RawCompatibilityArguments),
+    /// Remove the `larch:plan` block from a body file or stdin.
+    #[command(name = "strip-body", disable_help_flag = true)]
+    StripBody(RawCompatibilityArguments),
+    /// Write, replace, or delete one issue's `larch:plan` block.
+    #[command(disable_help_flag = true)]
+    Write(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum NamedBlockCommand {
+    /// Write, replace, or delete one named issue-body block.
+    #[command(disable_help_flag = true)]
+    Write(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum PlanCommand {
+    /// Publish the scope paths one implementation plan declares.
+    #[command(name = "scope-paths", disable_help_flag = true)]
+    ScopePaths(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum UntrustedCommand {
+    /// Wrap `--text` or stdin in a labelled, redacted content block.
+    #[command(name = "content-block", disable_help_flag = true)]
+    ContentBlock(RawCompatibilityArguments),
+    /// Wrap one file's contents in a labelled, redacted content block.
+    #[command(name = "file-block", disable_help_flag = true)]
+    FileBlock(RawCompatibilityArguments),
+    /// Redact stdin and escape its markup delimiters.
+    #[command(name = "redact-stream", disable_help_flag = true)]
+    RedactStream(RawCompatibilityArguments),
+    /// Escape stdin for an XML attribute.
+    #[command(name = "xml-escape-attr", disable_help_flag = true)]
+    XmlEscapeAttr(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1034,6 +1099,15 @@ fn run(
                 issue_input_commands::fetch_issue_details(&arguments.arguments)
             }
             IssueCommand::Info(arguments) => issue_commands::info(&arguments.arguments),
+            IssueCommand::InsertSignalMarker(arguments) => {
+                issue_wire_commands::insert_signal_marker_command(&arguments.arguments)
+            }
+            IssueCommand::TitleArchivalJq(arguments) => {
+                issue_wire_commands::title_archival_jq(&arguments.arguments)
+            }
+            IssueCommand::TitleEligibility(arguments) => {
+                issue_wire_commands::title_eligibility(&arguments.arguments)
+            }
             IssueCommand::ListIssues(arguments) => {
                 issue_input_commands::list_issues(&arguments.arguments)
             }
@@ -1043,6 +1117,37 @@ fn run(
             IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
             IssueCommand::WriteSentinel(arguments) => {
                 issue_create_commands::write_sentinel(&arguments.arguments)
+            }
+        }),
+        Domain::PlanBlock(command) => Ok(match command {
+            PlanBlockCommand::Read(arguments) => {
+                issue_wire_commands::plan_block_read(&arguments.arguments)
+            }
+            PlanBlockCommand::StripBody(arguments) => {
+                issue_wire_commands::plan_block_strip_body(&arguments.arguments)
+            }
+            PlanBlockCommand::Write(arguments) => {
+                issue_wire_commands::plan_block_write(&arguments.arguments)
+            }
+        }),
+        Domain::NamedBlock(NamedBlockCommand::Write(arguments)) => {
+            Ok(issue_wire_commands::named_block_write(&arguments.arguments))
+        }
+        Domain::Plan(PlanCommand::ScopePaths(arguments)) => {
+            Ok(issue_wire_commands::scope_paths(&arguments.arguments))
+        }
+        Domain::Untrusted(command) => Ok(match command {
+            UntrustedCommand::ContentBlock(arguments) => {
+                issue_wire_commands::untrusted_content_block(&arguments.arguments)
+            }
+            UntrustedCommand::FileBlock(arguments) => {
+                issue_wire_commands::untrusted_file_block(&arguments.arguments)
+            }
+            UntrustedCommand::RedactStream(arguments) => {
+                issue_wire_commands::untrusted_redact_stream(&arguments.arguments)
+            }
+            UntrustedCommand::XmlEscapeAttr(arguments) => {
+                issue_wire_commands::untrusted_xml_escape_attr(&arguments.arguments)
             }
         }),
         Domain::Kv(KvCommand::Get(arguments)) => Ok(state_commands::kv_get(&arguments.arguments)),

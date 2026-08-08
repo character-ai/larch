@@ -1,42 +1,33 @@
 # pyright: reportUnusedCallResult=false
-"""Issue-body wire helpers for plan blocks, named blocks, titles, and untrusted text."""
+"""In-process issue-body wire helpers for plan blocks, titles, and untrusted text.
+
+The twelve wire commands moved to the Rust owner in #8171
+(`crates/larch-cli/src/issue_wire_commands.rs`). What stays here is the library
+half Python callers still consume in process: the canonical owner block, the
+implementation-lease marker, the executable-plan validator, the scope-path
+reader over `larch.design.plan_grammar`, and the untrusted envelope the
+prompt renderers compose directly.
+"""
 
 from __future__ import annotations
 
-import argparse
 import html
 import os
 import re
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
-from larch.git import gh
 from larch.issue import issue_blocks
 from larch.issue import issue_mutation
-from larch.issue.issue_blocks import classify_named_block_lines, parse_named_block, strip_named_block
+from larch.issue.issue_blocks import parse_named_block
 from larch.design import plan_grammar
 from larch.core import config
-from larch.core import logging_util
-from larch.core import proc
 from larch.core import redact
 from larch.errors import ShipError
-from larch.core.proc import Runner
 
 _ALLOWED_MARKERS = {"plan", "design-pause"}
-_MALFORMED_TOKENS = {
-    "multiple-start",
-    "multiple-end",
-    "start-without-end",
-    "end-without-start",
-    "end-before-start",
-}
-
-# Byte-compatible with the legacy title-eligibility shell helper.
-ARCHIVAL_JQ_FILTER = 'select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
-ARCHIVAL_REPORT_RE = re.compile(r"^\[.*report\] ", re.IGNORECASE)
 _LIFECYCLE_REJECT_STATES = (
     "IMPLEMENTING",
     "DONE",
@@ -48,7 +39,6 @@ LIFECYCLE_REJECT_RE = re.compile(
     rf"^\[({'|'.join(_LIFECYCLE_REJECT_STATES)})\]",
     re.IGNORECASE,
 )
-BRAINSTORM_RE = re.compile(r"^brainstorm([^A-Za-z]|$)", re.IGNORECASE)
 _SCOPE_PATH_FALLBACK = ["skills/design/SKILL.md"]
 _LIFECYCLE_INSERT_PREFIXES = (
     *config.DEBATE_TITLE_STATES,
@@ -326,13 +316,6 @@ def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
     return issue_blocks.named_block_marker_re(marker=marker, kind=kind)
 
 
-class _DiagnosticArgumentParser(argparse.ArgumentParser):
-    def _print_message(self, message: str, file: object | None = None) -> None:
-        _ = file
-        if message:
-            logging_util.diagnostic(message)
-
-
 def compose_named_block(*, marker: str, inner: str) -> str:
     stripped = inner.rstrip("\n")
     block = f"<!-- larch:{marker}:start -->\n"
@@ -381,75 +364,6 @@ def neutralize_named_block_markers(*, text: str, marker: str) -> str:
     return pattern.sub(lambda match: match.group(0).replace("<!--", "<!--\u200b", 1), text)
 
 
-def _single_line_redacted(text: str) -> str:
-    if not text:
-        return ""
-    redacted = redact.redact_secrets_only(text)
-    if "[content truncated" in redacted:
-        return "gh stderr redaction unavailable"
-    return redacted.replace("\n", " ")[:500]
-
-
-def _emit_failed(error: str) -> None:
-    logging_util.emit_kv(key="FAILED", value="true")
-    logging_util.emit_kv(key="ERROR", value=error)
-
-
-def _resolve_issue_wire_repo(*, runner: Runner, explicit: str | None) -> tuple[str | None, str]:
-    if explicit:
-        return explicit, ""
-    try:
-        repo = gh.resolve_repo(runner)
-    except ShipError:
-        return None, "could not determine repo"
-    if not repo:
-        return None, "could not determine repo"
-    return repo, ""
-
-
-def _validate_positive_issue(*, prog: str, issue: str) -> bool:
-    if not issue.isdecimal() or issue == "0":
-        logging_util.diagnostic(f"{prog}: --issue must be a positive integer")
-        return False
-    return True
-
-
-def _bool_str(value: object) -> str:
-    return "true" if value else "false"
-
-
-def _reject_empty_plan_content(*, marker: str, content: str) -> None:
-    if marker == "plan" and not content.strip():
-        raise ShipError("empty-plan-content")
-
-
-def _verify_named_block_post_write(
-    *,
-    runner: Runner,
-    marker: str,
-    issue: str,
-    repo: str,
-    delete: bool,
-) -> None:
-    """Re-read the issue body and require a parseable unfenced named block.
-
-    Fenced marker examples (decompose/split placeholders) are ignored by
-    ``parse_named_block``, matching /implement preflight. A write that leaves
-    only fenced markers must fail closed so /design cannot report success when
-    /implement would still see ``BLOCK_PRESENT=false`` (#7402, #7212).
-    """
-    if delete:
-        return
-    verified_body = gh.issue_view_body(runner, issue, repo=repo)
-    inner, malformed = parse_named_block(body=verified_body, marker=marker)
-    if malformed:
-        raise ShipError(f"post-write-verify-malformed:{malformed}")
-    if inner is None:
-        raise ShipError("post-write-verify-missing")
-    if marker == "plan" and not inner.strip():
-        raise ShipError("post-write-verify-empty")
-
-
 def named_block_lease(*, marker: str) -> issue_mutation.ImplementationLease | None:
     """Build a named-block lease from the active or rehydrated run identity."""
     run_id = (
@@ -462,227 +376,6 @@ def named_block_lease(*, marker: str) -> issue_mutation.ImplementationLease | No
         if run_id
         else None
     )
-
-
-def named_block_write(
-    *, runner: Runner,
-    marker: str,
-    issue: str,
-    repo: str,
-    content: str | None,
-    delete: bool,
-) -> dict[str, object]:
-    if marker not in _ALLOWED_MARKERS:
-        msg = f"unsupported marker: {marker}"
-        raise ValueError(msg)
-    current_body = gh.issue_view_body(runner, issue, repo=repo).rstrip("\n")
-    _, malformed = parse_named_block(body=current_body, marker=marker)
-    if malformed:
-        return {"malformed": malformed}
-
-    markers_present = parse_named_block(body=current_body, marker=marker)[0] is not None
-    if delete:
-        if markers_present:
-            composed, strip_malformed = strip_named_block(body=current_body, marker=marker)
-            if strip_malformed:
-                return {"malformed": strip_malformed}
-            mode = "removed"
-        else:
-            composed = current_body
-            mode = "absent-noop"
-    else:
-        if content is None:
-            msg = "content is required unless delete is true"
-            raise ValueError(msg)
-        _reject_empty_plan_content(marker=marker, content=content)
-        block = compose_named_block(marker=marker, inner=content)
-        if markers_present:
-            _stripped, strip_malformed = strip_named_block(body=current_body, marker=marker)
-            if strip_malformed:
-                return {"malformed": strip_malformed}
-            lines = current_body.splitlines(keepends=True)
-            span = classify_named_block_lines(lines=lines, marker=marker)
-            assert span.start is not None
-            assert span.end is not None
-            composed = "".join([*lines[: span.start], block, *lines[span.end + 1 :]])
-            mode = "replaced"
-        else:
-            composed = block if not current_body else current_body + "\n\n" + block
-            mode = "appended"
-
-    if mode == "absent-noop":
-        return {
-            "written": False,
-            "mode": mode,
-            "markers_present": markers_present,
-            "body_bytes": len(current_body.encode("utf-8")),
-        }
-
-    try:
-        redacted_body = redact.redact_secrets_only(composed)
-    except Exception as exc:  # pragma: no cover - defensive seam for monkeypatch tests
-        msg = f"redaction:{exc}"
-        raise ShipError(msg) from exc
-    _ = issue_mutation.update_named_block(
-        runner,
-        repository=repo,
-        issue=issue,
-        marker=marker,
-        body=redacted_body,
-        lease=named_block_lease(marker=marker),
-    )
-    _verify_named_block_post_write(
-        runner=runner, marker=marker, issue=issue, repo=repo, delete=delete,
-    )
-    return {
-        "written": True,
-        "mode": mode,
-        "markers_present": markers_present,
-        "body_bytes": len(redacted_body.encode("utf-8")),
-    }
-
-
-def _content_file_text(path: str) -> tuple[str | None, str]:
-    p = Path(path)
-    if not p.is_file():
-        return None, f"content file not found: {path}"
-    return p.read_text(encoding="utf-8", errors="replace"), ""
-
-
-def _named_block_arg_parser(*, prog: str, include_marker: bool) -> argparse.ArgumentParser:
-    parser = _DiagnosticArgumentParser(prog=prog, add_help=True)
-    if include_marker:
-        parser.add_argument("--marker", required=True)
-    parser.add_argument("--issue", required=True)
-    parser.add_argument("--content-file")
-    parser.add_argument("--delete", action="store_true")
-    parser.add_argument("--repo")
-    return parser
-
-
-def _run_named_block_cli(*, argv: list[str], prog: str, marker_default: str | None) -> int:
-    logging_util.quiet_init(argv0=prog)
-    parser = _named_block_arg_parser(prog=prog, include_marker=marker_default is None)
-    args = parser.parse_args(argv)
-    marker = marker_default or args.marker
-    if marker not in _ALLOWED_MARKERS:
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", marker or ""):
-            logging_util.diagnostic(f"{prog}: --marker must match ^[a-z0-9][a-z0-9-]*$")
-            return 1
-        logging_util.diagnostic(f"{prog}: unsupported marker: {marker}")
-        return 1
-    if not _validate_positive_issue(prog=prog, issue=args.issue):
-        return 1
-    if args.delete and args.content_file:
-        logging_util.diagnostic(f"{prog}: --delete and --content-file are mutually exclusive")
-        return 1
-    if not args.delete and not args.content_file:
-        parser.print_usage()
-        return 1
-    content = None
-    if args.content_file:
-        content, content_error = _content_file_text(args.content_file)
-        if content_error:
-            _emit_failed(content_error)
-            return 1
-    if args.repo and not gh.validate_repo_slug(args.repo):
-        _emit_failed("invalid-repo")
-        return 1
-    runner: Runner = proc
-    repo, repo_error = _resolve_issue_wire_repo(runner=runner, explicit=args.repo)
-    if repo_error or repo is None:
-        _emit_failed(repo_error or "could not determine repo")
-        return 2
-    if not gh.validate_repo_slug(repo):
-        _emit_failed("invalid-repo")
-        return 1
-    try:
-        result = named_block_write(runner=runner, marker=marker, issue=args.issue, repo=repo, content=content, delete=args.delete)
-    except ShipError as exc:
-        message = str(exc)
-        if message.startswith("redaction:"):
-            _emit_failed(message)
-            return 3
-        _emit_failed(_single_line_redacted(message))
-        return 2
-    malformed = result.get("malformed")
-    if isinstance(malformed, str) and malformed:
-        logging_util.emit_kv(key="MALFORMED", value=malformed)
-        return 1
-    logging_util.emit_kv(key="WRITTEN", value="true")
-    logging_util.emit_kv(key="MODE", value=str(result["mode"]))
-    logging_util.emit_kv(key="MARKERS_PRESENT", value=_bool_str(bool(result["markers_present"])))
-    logging_util.emit_kv(key="BODY_BYTES", value=str(result["body_bytes"]))
-    return 0
-
-
-def named_block_write_main(argv: list[str]) -> int:
-    return _run_named_block_cli(argv=argv, prog="named-block-write.sh", marker_default=None)
-
-
-def plan_block_write_main(argv: list[str]) -> int:
-    return _run_named_block_cli(argv=argv, prog="plan-block-write.sh", marker_default="plan")
-
-
-def plan_block_read_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="plan-block-read.sh")
-    parser = _DiagnosticArgumentParser(prog="plan-block-read.sh", add_help=True)
-    parser.add_argument("--issue", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--repo")
-    args = parser.parse_args(argv)
-    if not _validate_positive_issue(prog="plan-block-read.sh", issue=args.issue):
-        return 1
-    out_path = Path(args.output)
-    runner: Runner = proc
-    repo, repo_error = _resolve_issue_wire_repo(runner=runner, explicit=args.repo)
-    if repo_error or repo is None:
-        out_path.write_text("", encoding="utf-8")
-        _emit_failed(repo_error or "could not determine repo")
-        return 2
-    try:
-        body = gh.issue_view_body(runner, args.issue, repo=repo)
-    except ShipError as exc:
-        out_path.write_text("", encoding="utf-8")
-        _emit_failed(_single_line_redacted(str(exc)))
-        return 2
-    inner, malformed = parse_named_block(body=body, marker="plan")
-    if malformed:
-        out_path.write_text("", encoding="utf-8")
-        logging_util.emit_kv(key="MALFORMED", value=malformed)
-        return 1
-    if inner is None:
-        out_path.write_text("", encoding="utf-8")
-        logging_util.emit_kv(key="BLOCK_PRESENT", value="false")
-        return 0
-    out_path.write_text(inner, encoding="utf-8")
-    logging_util.emit_kv(key="BLOCK_PRESENT", value="true")
-    logging_util.emit_kv(key="OUTPUT", value=args.output)
-    return 0
-
-
-def plan_block_strip_body_main(argv: list[str]) -> int:
-    parser = _DiagnosticArgumentParser(prog="plan-block-strip-body.sh", add_help=True)
-    parser.add_argument("--file")
-    parser.add_argument("--output")
-    args = parser.parse_args(argv)
-    try:
-        body = Path(args.file).read_text(encoding="utf-8", errors="replace") if args.file else sys.stdin.read()
-    except OSError as exc:
-        logging_util.diagnostic(f"plan-block-strip-body.sh: {exc}")
-        return 1
-    stripped, malformed = strip_named_block(body=body, marker="plan")
-    if malformed:
-        if args.output:
-            Path(args.output).write_text("", encoding="utf-8")
-        logging_util.quiet_init(argv0="plan-block-strip-body.sh")
-        logging_util.emit_kv(key="MALFORMED", value=malformed)
-        return 1
-    if args.output:
-        Path(args.output).write_text(stripped, encoding="utf-8")
-    else:
-        sys.stdout.write(stripped)
-    return 0
 
 
 def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
@@ -721,30 +414,6 @@ def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_op
     return []
 
 
-def plan_scope_paths_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="extract-plan-scope-paths.sh", add_help=True)
-    parser.add_argument("--plan-file", required=True)
-    parser.add_argument("-z", "--null", action="store_true")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return 2 if int(exc.code or 0) != 0 else 0
-    path = Path(args.plan_file)
-    if not path.is_file():
-        print(f"extract-plan-scope-paths.sh: plan file not found: {args.plan_file}", file=sys.stderr)
-        return 2
-    try:
-        paths = extract_scope_paths(plan_text=path.read_text(encoding="utf-8", errors="replace"))
-    except OSError as exc:
-        print(f"extract-plan-scope-paths.sh: {exc}", file=sys.stderr)
-        return 2
-    sep = "\0" if args.null else "\n"
-    sys.stdout.write(sep.join(paths))
-    if paths:
-        sys.stdout.write(sep)
-    return 0
-
-
 def _trim_leading_ws(title: str) -> str:
     return title.lstrip()
 
@@ -754,14 +423,6 @@ def title_lifecycle_reject_marker(title: str) -> str | None:
     if match is None:
         return None
     return f"[{match.group(1).upper()}]"
-
-
-def title_has_archival_report_prefix(title: str) -> bool:
-    return ARCHIVAL_REPORT_RE.match(_trim_leading_ws(title)) is not None
-
-
-def title_starts_with_brainstorm(title: str) -> bool:
-    return BRAINSTORM_RE.match(_trim_leading_ws(title)) is not None
 
 
 def insert_signal_marker(*, title: str, marker: str) -> str:
@@ -785,83 +446,6 @@ def insert_signal_marker(*, title: str, marker: str) -> str:
     return f"[{marker}] {title}"
 
 
-def _parse_title_marker_args(*, argv: list[str], want_marker: bool = False) -> tuple[str | None, str | None, int]:
-    title: str | None = None
-    marker: str | None = None
-    idx = 0
-    while idx < len(argv):
-        arg = argv[idx]
-        if arg == "--title":
-            if idx + 1 >= len(argv):
-                print("issue title: --title requires a value", file=sys.stderr)
-                return None, None, 2
-            title = argv[idx + 1]
-            idx += 2
-        elif arg.startswith("--title="):
-            title = arg.split("=", 1)[1]
-            idx += 1
-        elif want_marker and arg == "--marker":
-            if idx + 1 >= len(argv):
-                print("issue title: --marker requires a value", file=sys.stderr)
-                return None, None, 2
-            marker = argv[idx + 1]
-            idx += 2
-        elif want_marker and arg.startswith("--marker="):
-            marker = arg.split("=", 1)[1]
-            idx += 1
-        else:
-            print(f"issue title: unknown option: {arg}", file=sys.stderr)
-            return None, None, 2
-    if title is None:
-        print("issue title: --title is required", file=sys.stderr)
-        return None, None, 2
-    if want_marker and marker is None:
-        print("issue title: --marker is required", file=sys.stderr)
-        return None, None, 2
-    return title, marker, 0
-
-
-def issue_title_eligibility_main(argv: list[str]) -> int:
-    title, _, rc = _parse_title_marker_args(argv=argv)
-    if rc:
-        return rc
-    assert title is not None
-    marker = title_lifecycle_reject_marker(title)
-    print(f"LIFECYCLE_REJECT={_bool_str(marker is not None)}")
-    if marker is not None:
-        print(f"LIFECYCLE_MARKER={marker}")
-    print(f"ARCHIVAL_REPORT={_bool_str(title_has_archival_report_prefix(title))}")
-    print(f"BRAINSTORM={_bool_str(title_starts_with_brainstorm(title))}")
-    return 0
-
-
-def issue_title_archival_jq_main(argv: list[str]) -> int:
-    if argv:
-        print(f"issue title-archival-jq: unknown option: {argv[0]}", file=sys.stderr)
-        return 2
-    print(ARCHIVAL_JQ_FILTER)
-    return 0
-
-
-def issue_insert_signal_marker_main(argv: list[str]) -> int:
-    title, marker, rc = _parse_title_marker_args(argv=argv, want_marker=True)
-    if rc:
-        return rc
-    assert title is not None
-    assert marker is not None
-    print(insert_signal_marker(title=title, marker=marker), end="")
-    return 0
-
-
-def xml_escape_attr(text: str) -> str:
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-
 def redact_untrusted_stream(text: str) -> str:
     return html.escape(redact.redact(text), quote=False)
 
@@ -872,38 +456,3 @@ def emit_untrusted_file_block(*, tag: str, path: Path) -> str:
 
 def emit_untrusted_content_block(*, tag: str, text: str) -> str:
     return f'<{tag} encoding="literal-redacted">\n{redact_untrusted_stream(text)}\n</{tag}>\n\n'
-
-
-def untrusted_xml_escape_attr_main(argv: list[str]) -> int:
-    if argv:
-        print(f"untrusted xml-escape-attr: unknown option: {argv[0]}", file=sys.stderr)
-        return 2
-    sys.stdout.write(xml_escape_attr(sys.stdin.read()))
-    return 0
-
-
-def untrusted_redact_stream_main(argv: list[str]) -> int:
-    if argv:
-        print(f"untrusted redact-stream: unknown option: {argv[0]}", file=sys.stderr)
-        return 2
-    sys.stdout.write(redact_untrusted_stream(sys.stdin.read()))
-    return 0
-
-
-def untrusted_file_block_main(argv: list[str]) -> int:
-    expected_arg_count = 2
-    if len(argv) != expected_arg_count:
-        print("untrusted file-block: usage: untrusted file-block TAG PATH", file=sys.stderr)
-        return 2
-    sys.stdout.write(emit_untrusted_file_block(tag=argv[0], path=Path(argv[1])))
-    return 0
-
-
-def untrusted_content_block_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="untrusted content-block", add_help=True)
-    parser.add_argument("tag")
-    parser.add_argument("--text")
-    args = parser.parse_args(argv)
-    text = args.text if args.text is not None else sys.stdin.read()
-    sys.stdout.write(emit_untrusted_content_block(tag=args.tag, text=text))
-    return 0

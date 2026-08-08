@@ -3,7 +3,7 @@
 This document is the **LIVE** normative wire format for exchanging a plan
 through a GitHub **issue body** and completing a **clarification round-trip** in
 issue **comments** before `/implement` proceeds. Helpers under
-`python/cli.py plan-block ...`, `python/cli.py named-block write`, `python/clarify.py`, and the
+`scripts/larch.sh plan-block ...`, `scripts/larch.sh named-block write`, `python/clarify.py`, and the
 `python/cli.py clarify` state, comment-post, and label verbs are what
 `/design` and `/implement` use:
 `/implement` **Preflight** (`skills/implement/SKILL.md` — issue-anchored
@@ -15,7 +15,7 @@ refuse posts a clarify request and label via
 `/implement --force` skips the in-prompt plan-adequacy audit and may bypass the
 `[DESIGNED]` title prefix, but still requires a valid `larch:plan` block;
 semantic materiality still fires under force mode. `/design`
-writes the plan block via `python/cli.py named-block write --marker plan` and posts matching clarify
+writes the plan block via `scripts/larch.sh named-block write --marker plan` and posts matching clarify
 responses.
 
 ## Plan grammar ownership
@@ -26,8 +26,10 @@ It accepts level-two and level-three colon or bracket headings for `NEW`,
 `UPDATED`, `REWRITTEN`, and `MAY_UPDATE`. Its fence-aware iterators ignore
 heading-like text inside Markdown fences. The module also owns trailer keys,
 subsets, final contiguous-block parsing, and canonical ordering.
-`python/larch/issue/issue_wire.py` remains the sole owner of issue-body
-`larch:plan` markers.
+`crates/larch-core/src/issue/body.rs` owns the issue-body `larch:plan`
+marker grammar, and `crates/larch-cli/src/issue_wire_commands.rs` owns every
+command over it. `python/larch/issue/issue_wire.py` keeps only the in-process
+readers Python callers still consume.
 
 ### Executable-plan contract
 
@@ -366,7 +368,7 @@ operator-visible “finish the existing clarify thread first” outcome instead
 
 - Do **not** hand-edit `session-env.sh` or `finalize-state.sh` from orchestrator
   prose — sanctioned writers only (`skills/implement/SKILL.md` NEVER #13–#14).
-- Plan body updates belong to `/design` (`python/cli.py named-block write --marker plan`) except for
+- Plan body updates belong to `/design` (`scripts/larch.sh named-block write --marker plan`) except for
   mechanical merges documented elsewhere; avoid concurrent manual edits to the
   same `larch:plan` markers while a run holds `IMPLEMENTING` on the tracking issue.
 
@@ -435,13 +437,13 @@ out of scope:
 
 Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/preflight-plan-audit.md` (fixed Preflight rubric), and `skills/implement/SKILL.md` (Preflight orchestration + Step 0 plan materialization).
 
-**Plan probe placement**: Direct `/implement` reads `larch:plan` markers in **Preflight** via `python/cli.py plan-block read` (after the admission gate). Step 0 copies the already-extracted plan from the Preflight tmpdir into `$IMPLEMENT_TMPDIR/plan.txt` — it does not re-run a separate legacy lock-and-probe sequence.
+**Plan probe placement**: Direct `/implement` reads `larch:plan` markers in **Preflight** via `scripts/larch.sh plan-block read` (after the admission gate). Step 0 copies the already-extracted plan from the Preflight tmpdir into `$IMPLEMENT_TMPDIR/plan.txt` — it does not re-run a separate legacy lock-and-probe sequence.
 
 ## See also
 
 - **`skills/implement/references/preflight-plan-audit.md`** — fixed Preflight plan adequacy rubric.
-- **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `python/cli.py plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
-- **`skills/design/SKILL.md`** — `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.
+- **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `scripts/larch.sh plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
+- **`skills/design/SKILL.md`** — `/design`, `scripts/larch.sh named-block write --marker plan`, and clarify **response** posting after plan updates.
 
 ## /implement firm-heading coverage
 

@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: extract-plan-scope-paths.sh [-h] --plan-file PLAN_FILE [-z]\nextract-plan-scope-paths.sh: error: the following arguments are required: --plan-file\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
