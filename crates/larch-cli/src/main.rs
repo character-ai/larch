@@ -40,7 +40,9 @@ mod gitleaks;
 mod implement_launcher_commands;
 mod issue_commands;
 mod issue_create_commands;
+mod issue_dependency_commands;
 mod issue_input_commands;
+mod issue_mutation_support;
 mod kill_background;
 mod launcher_support;
 mod progress_commands;
@@ -105,6 +107,9 @@ enum Domain {
     /// Issue blocker discovery.
     #[command(subcommand)]
     Blocker(BlockerCommand),
+    /// Native issue blocked-by dependency mutations.
+    #[command(subcommand, name = "block-issue")]
+    BlockIssue(BlockIssueCommand),
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
@@ -340,7 +345,23 @@ enum BlockerCommand {
 }
 
 #[derive(Subcommand)]
+enum BlockIssueCommand {
+    /// Record `ISSUE_A` as blocked by `ISSUE_B` and verify the relation.
+    #[command(name = "add-blocked-by", disable_help_flag = true)]
+    AddBlockedBy(RawCompatibilityArguments),
+    /// Drop the `ISSUE_A` blocked-by `ISSUE_B` relation and verify its absence.
+    #[command(name = "remove-blocked-by", disable_help_flag = true)]
+    RemoveBlockedBy(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum IssueCommand {
+    /// Record one issue as blocked by another and prove the edge by read-back.
+    #[command(name = "add-blocked-by", disable_help_flag = true)]
+    AddBlockedBy(RawCompatibilityArguments),
+    /// Attach one direct native sub-issue and prove it by read-back.
+    #[command(name = "add-sub-issue", disable_help_flag = true)]
+    AddSubIssue(RawCompatibilityArguments),
     /// Allocate the bounded Phase 2 dedup candidate set from stdin rows.
     #[command(name = "allocate-candidates", disable_help_flag = true)]
     AllocateCandidates(RawCompatibilityArguments),
@@ -985,8 +1006,20 @@ fn run(
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {
             Ok(blocker_commands::all_open(&arguments.arguments))
         }
+        Domain::BlockIssue(BlockIssueCommand::AddBlockedBy(arguments)) => Ok(
+            issue_dependency_commands::block_issue_add(&arguments.arguments),
+        ),
+        Domain::BlockIssue(BlockIssueCommand::RemoveBlockedBy(arguments)) => Ok(
+            issue_dependency_commands::block_issue_remove(&arguments.arguments),
+        ),
         Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Issue(command) => Ok(match command {
+            IssueCommand::AddBlockedBy(arguments) => {
+                issue_dependency_commands::add_blocked_by(&arguments.arguments)
+            }
+            IssueCommand::AddSubIssue(arguments) => {
+                issue_dependency_commands::add_sub_issue(&arguments.arguments)
+            }
             IssueCommand::AllocateCandidates(arguments) => {
                 issue_input_commands::allocate_candidates(&arguments.arguments)
             }

@@ -27,7 +27,6 @@ from larch.git import gh
 from larch.issue import issue_mutation
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 from larch.issue import file_oos
-from larch.issue import issue_create
 from larch.issue import oos_priority
 from larch.report import run_log_manifest
 from larch.review.review_types import is_security_block_text, parse_canonical_heading
@@ -797,13 +796,14 @@ def _apply_intra_batch_edges(
         blocked_number = issue_numbers.get(blocked_index, "")
         if not blocker_number.isdigit() or not blocked_number.isdigit():
             continue
-        intra = issue_create.add_blocked_by(
+        intra = rust_runtime.issue_add_blocked_by(
+            proc.ProcRunner(),
             client=blocked_number,
             blocker=blocker_number,
             repo=repo,
-            context_file=context_file,
+            context_file=str(context_file) if context_file else "",
             run_id=run_id,
-            trusted_root=tmpdir,
+            trusted_root=str(tmpdir),
         )
         if intra.exit_code != 0 or not intra.added:
             detail = intra.error or "intra-batch add-blocked-by failed"
@@ -926,13 +926,14 @@ def _run_issue_batch(
             if part_index == 1 and number.isdigit():
                 issue_numbers[item_index] = number
             if issue_number and number.isdigit():
-                blocked = issue_create.add_blocked_by(
+                blocked = rust_runtime.issue_add_blocked_by(
+                    proc.ProcRunner(),
                     client=number,
                     blocker=issue_number,
                     repo=repo,
-                    context_file=context_file,
+                    context_file=str(context_file) if context_file else "",
                     run_id=run_id,
-                    trusted_root=tmpdir,
+                    trusted_root=str(tmpdir),
                 )
                 if blocked.exit_code != 0 or not blocked.added:
                     detail = blocked.error or "add-blocked-by failed"

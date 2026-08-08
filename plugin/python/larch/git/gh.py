@@ -1436,52 +1436,6 @@ def issue_blocking_read(
     )
 
 
-def issue_sub_issues_read(
-    runner: Runner,
-    parent_issue: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    """Read native direct sub-issues for one parent issue."""
-    return _retry_read(
-        runner,
-        ["api", f"repos/{repo}/issues/{parent_issue}/sub_issues", "--paginate"],
-        cwd=cwd,
-    )
-
-
-def issue_add_sub_issue(
-    runner: Runner,
-    parent_issue: str,
-    child_issue_id: int,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    """Add one native sub-issue using a file-backed GitHub API payload."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as handle:
-        _ = handle.write(json.dumps({"sub_issue_id": child_issue_id}))
-        path = handle.name
-    try:
-        return _gh(
-            runner,
-            [
-                "api",
-                f"repos/{repo}/issues/{parent_issue}/sub_issues",
-                "-X",
-                "POST",
-                "--input",
-                path,
-            ],
-            cwd=cwd,
-        )
-    finally:
-        Path(path).unlink(missing_ok=True)
-
-
 def issue_list_read(
     runner: Runner,
     *,

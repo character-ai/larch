@@ -1319,7 +1319,7 @@ def _add_block_relation(
         repo,
     ]
     args.extend(_session_mutation_auth_args(tmpdir))
-    result = _run_cli(args)
+    result = _run_larch(args)
     _ = _require_cli_success(result, label="issue add-blocked-by")
 
 

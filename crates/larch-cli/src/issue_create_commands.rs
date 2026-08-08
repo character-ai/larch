@@ -26,33 +26,28 @@ use crate::{
     blocker_commands::resolve_repo_for,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
+    issue_mutation_support::{
+        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, MUTATION_REFUSAL_STATUS,
+        authorization_request, authorized, flat_error, sanitized_line,
+    },
 };
 use chrono::Utc;
 use larch_adapters::{
     PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain,
-    github::{IssueCreateFailure, IssueMutationOwner, LiveMutationRequest},
+    github::{IssueCreateFailure, IssueMutationOwner},
     runtime::Cancellation,
 };
 use larch_core::{
     CreatedIssue, GitHubRepositoryRef, GitHubService, IssueCreateRequest, emit_kv,
-    is_python_whitespace, normalize_title_prefix, redact_issue_text_outbound, unsigned_integer,
+    normalize_title_prefix, redact_issue_text_outbound, unsigned_integer,
 };
 use std::{
-    env,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-/// Exit code reserved for a refused live mutation, shared with Python config.
-const EXIT_MUTATION_REFUSED: u8 = 5;
-/// Row a caller reads to tell a refused mutation from any other failure.
-const MUTATION_REFUSAL_STATUS: &str = "mutation-refused";
-/// Reason token every refused live mutation prefixes its detail with.
-const MUTATION_REFUSAL_REASON: &str = "unauthorized-mutation";
-/// Environment override that denies session-inherited authorization in tests.
-const MUTATION_TEST_DENY_KEY: &str = "LARCH_ISSUE_MUTATION_DENY";
 /// The heading an OOS body opens with, which forces the `[OOS]` title prefix.
 const OOS_BODY_HEADING: &str = "## Out-of-Scope Observation";
 /// How many characters of a diagnostic survive into a contract row.
@@ -148,7 +143,7 @@ impl CreateFailure {
     /// Build a refusal, collapsing and redacting its diagnostic first.
     fn new(message: &str, code: u8) -> Self {
         Self {
-            error: flat_error(message),
+            error: flat_error(message, ERROR_CHARS),
             code,
         }
     }
@@ -393,7 +388,7 @@ fn create_refusal(
         Some((orphan, Err(detail))) => {
             eprintln!(
                 "ROLLBACK_FAILED: could not close orphan issue #{orphan} in {repo}: {}. Manually close.",
-                flat_error(&detail)
+                flat_error(&detail, ERROR_CHARS)
             );
         }
     }
@@ -641,70 +636,17 @@ fn parse_cleanup_arguments(arguments: &[OsString]) -> Result<(String, String), (
 /// Publish the cleanup envelope every `/issue` failure path parses.
 fn emit_cleanup(issue: &str, closed: bool, error: &str) -> ExitCode {
     emit_kv("CLOSED", if closed { "true" } else { "false" });
-    emit_kv("ISSUE", &flat_error(issue));
+    emit_kv("ISSUE", &flat_error(issue, ERROR_CHARS));
     if !error.is_empty() {
-        emit_kv("ERROR", &flat_error(error));
+        emit_kv("ERROR", &flat_error(error, ERROR_CHARS));
     }
     ExitCode::SUCCESS
-}
-
-// ----------------------------------------------------------------------- shared
-
-/// Build the live-mutation authorization request for one command line.
-fn authorization_request<'a>(
-    context_file: &'a str,
-    run_id: &'a str,
-    trusted_root: &'a str,
-    operator_invoked: bool,
-) -> LiveMutationRequest<'a> {
-    LiveMutationRequest {
-        context_file: (!context_file.is_empty()).then(|| Path::new(context_file)),
-        operator_mode: operator_invoked,
-        run_id,
-        trusted_root: (!trusted_root.is_empty()).then(|| Path::new(trusted_root)),
-        test_deny: env::var(MUTATION_TEST_DENY_KEY).as_deref() == Ok("true"),
-    }
-}
-
-/// Report the gate's decision as the reason token the error line carries.
-fn authorized(request: &LiveMutationRequest<'_>) -> Result<(), &'static str> {
-    let decision = larch_adapters::github::check_live_mutation_auth(request);
-    if decision.is_authorized() {
-        Ok(())
-    } else {
-        Err(decision.reason())
-    }
-}
-
-/// Strip C0 controls and DEL from one line, as the Python emitter did.
-fn sanitized_line(text: &str) -> String {
-    text.chars()
-        .filter(|character| *character >= ' ' && *character != '\u{7f}')
-        .collect()
-}
-
-/// Collapse, redact, and bound one diagnostic into a single contract value.
-///
-/// Whitespace collapse removes the newlines a row cannot carry, redaction runs
-/// before the value is published, and the control strip keeps the row printable.
-fn flat_error(message: &str) -> String {
-    let redacted =
-        redact_issue_text_outbound(message).unwrap_or_else(|error| error.reason().to_owned());
-    let bounded = redacted
-        .split(is_python_whitespace)
-        .filter(|piece| !piece.is_empty())
-        .collect::<Vec<&str>>()
-        .join(" ")
-        .chars()
-        .take(ERROR_CHARS)
-        .collect::<String>();
-    sanitized_line(&bounded)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        CreateArguments, CreateFailure, SentinelRequest, flat_error, is_oos_issue_body,
+        CreateArguments, CreateFailure, SentinelRequest, is_oos_issue_body,
         parse_cleanup_arguments, parse_create_arguments, parse_sentinel_arguments,
         publish_sentinel, read_body,
     };
@@ -988,16 +930,5 @@ mod tests {
             parse_cleanup_arguments(&arguments(&["--repo"])).expect_err("a refusal"),
             ("unknown".to_owned(), "--repo".to_owned())
         );
-    }
-
-    #[test]
-    fn a_diagnostic_is_collapsed_redacted_bounded_and_control_free() {
-        assert_eq!(flat_error("one\n  two\tthree\n"), "one two three");
-        assert_eq!(
-            flat_error("token ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
-            "token <REDACTED-TOKEN>"
-        );
-        assert_eq!(flat_error("a\u{0}b\u{7f}c"), "abc");
-        assert_eq!(flat_error(&"x".repeat(600)).len(), 500);
     }
 }

@@ -25,6 +25,7 @@ from larch.issue.open_rows import (
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
 
 _GROUPS = ("DESIGNING", "DESIGNED", "IMPLEMENTING", "REGULAR")
@@ -873,8 +874,8 @@ def apply_main(argv: list[str] | None = None) -> int:
                 skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": reason})
                 warnings.append(_warning(f"Skipped dependency #{client} blocked by #{blocker_issue}: {reason}", code="edge_apply_skipped"))
                 continue
-            cli_path = Path(__file__).resolve().parents[2] / "cli.py"
-            result = proc.run([sys.executable, str(cli_path), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo, "--operator-invoked"])
+            entrypoint = larch_entrypoint(Path(__file__).resolve().parents[3])
+            result = proc.run([str(entrypoint), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo, "--operator-invoked"])
             if result.returncode == 0:
                 applied.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue})
                 batch_edges.add((client, blocker_issue))

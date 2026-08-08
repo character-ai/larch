@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from larch.core import config
 from larch.errors import ShipError
-from larch import io as larch_io
 from larch.issue import file_oos
 from larch.core import rust_runtime
 from larch.issue import issue_create
@@ -172,6 +171,7 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     original_parse = rust_runtime.parse_issue_input
     original_create_one = rust_runtime.issue_create_one
     original_cleanup_failed = rust_runtime.issue_cleanup_failed
+    original_add_blocked_by = rust_runtime.issue_add_blocked_by
     original_stamp = oos_filer._stamp_manifest
 
     class _FakeRunner:
@@ -186,23 +186,8 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     def issue_create_one(_runner: object, **kwargs: object) -> rust_runtime.IssueCreateOutput:
         return original_create_one(_FakeRunner(), **kwargs)  # type: ignore[arg-type]
 
-    def add_blocked_by(*, client: str, blocker: str, repo: str = "", **kwargs: object) -> issue_create.BlockedByResult:
-        args = ["issue", "add-blocked-by", "--client-issue", client, "--blocker-issue", blocker, *([] if not repo else ["--repo", repo])]
-        context_file = kwargs.get("context_file")
-        if isinstance(context_file, Path):
-            args.extend(
-                [
-                    "--context-file",
-                    str(context_file),
-                    "--run-id",
-                    str(kwargs.get("run_id", "")),
-                    "--trusted-root",
-                    str(kwargs.get("trusted_root", "")),
-                ]
-            )
-        completed = fake(args)
-        fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
-        return issue_create.BlockedByResult(client=client, blocker=blocker, added=not completed.returncode and fields.get("BLOCKED_BY_FAILED") != "true", error=fields.get("ERROR", ""), exit_code=completed.returncode)
+    def issue_add_blocked_by(_runner: object, **kwargs: object) -> rust_runtime.IssueEdgeOutput:
+        return original_add_blocked_by(_FakeRunner(), **kwargs)  # type: ignore[arg-type]
 
     def issue_cleanup_failed(_runner: object, **kwargs: object) -> bool:
         return original_cleanup_failed(_FakeRunner(), **kwargs)  # type: ignore[arg-type]
@@ -227,7 +212,7 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     monkeypatch.setattr(oos_filer.rust_runtime, "parse_issue_input", parse_issue_input)
     monkeypatch.setattr(oos_filer.rust_runtime, "issue_create_one", issue_create_one)
     monkeypatch.setattr(oos_filer.rust_runtime, "issue_cleanup_failed", issue_cleanup_failed)
-    monkeypatch.setattr(issue_create, "add_blocked_by", add_blocked_by)
+    monkeypatch.setattr(oos_filer.rust_runtime, "issue_add_blocked_by", issue_add_blocked_by)
     monkeypatch.setattr(oos_filer, "_run_disposition_checkpoint", checkpoint)
     monkeypatch.setattr(oos_filer, "_file_conflict_deps", conflict_deps)
     monkeypatch.setattr(oos_filer, "_stamp_manifest", stamp_manifest)
@@ -260,7 +245,7 @@ def test_oos_filer_keeps_cli_reentry_only_for_external_codex() -> None:
     assert "rust_runtime.parse_issue_input(" in source
     assert "rust_runtime.issue_create_one(" in source
     assert "rust_runtime.issue_cleanup_failed(" in source
-    assert "issue_create.add_blocked_by(" in source
+    assert "rust_runtime.issue_add_blocked_by(" in source
 
 
 def test_single_item_files_issue_and_writes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

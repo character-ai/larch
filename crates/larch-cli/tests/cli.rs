@@ -25,6 +25,7 @@ Commands:
   admission          `/implement` entry admission, preflight, and fork bootstrap
   agent              Vendor-agent launch and diagnostic commands
   blocker            Issue blocker discovery
+  block-issue        Native issue blocked-by dependency mutations
   bgjob              Durable background-job compatibility commands
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue

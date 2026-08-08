@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Usage: add-blocked-by <ISSUE_A> <ISSUE_B> [--repo owner/name] --operator-invoked [--triage-controlled --expected-updated-at TIMESTAMP]\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
