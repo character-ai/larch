@@ -513,7 +513,7 @@ def test_autonomous_adjudication_uses_dispatch_voters_and_writes_local_tally(
     original_run = proc.run
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        if list(argv[2:4]) != ["agent", "dispatch-voters"]:
+        if list(argv[1:3]) != ["agent", "dispatch-voters"]:
             return original_run(argv)
         calls.append(list(argv))
         voter_root = tmp_path / config.DEBATE_STALEMATE_VOTER_DIRNAME

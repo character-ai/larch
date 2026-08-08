@@ -400,6 +400,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "agent",
         "dispatch-waterfall",
     ),
+    CleanInstallCase::new(
+        "clean-install-agent-dispatch-voters",
+        "agent",
+        "dispatch-voters",
+    ),
     CleanInstallCase::new("clean-install-agent-model-args", "agent", "model-args"),
     CleanInstallCase::new(
         "clean-install-agent-read-claude-model",

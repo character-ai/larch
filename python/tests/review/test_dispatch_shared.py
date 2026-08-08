@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from larch.agents import _launch_failure, agent_voters, slot_manifest
+from larch.agents import _launch_failure
 from larch.core import config, proc
 from larch.review import _voting_calibration, dispatch_shared, plan_review_panel, voting
 
@@ -75,18 +75,6 @@ def test_dispatch_state_and_path_wire_preserve_absence(tmp_path: Path) -> None:
     assert state.voter_1_path == vote
     assert dispatch_shared.path_for_wire(state.voter_2_path) == ""
     assert dispatch_shared.path_for_wire(None) != "."
-
-
-def test_code_review_binding_absence_is_none() -> None:
-    policies = agent_voters.VOTER_SLOT_POLICIES
-    state = agent_voters._state_from_bindings(  # pyright: ignore[reportPrivateUsage]
-        bindings={"voter-1": slot_manifest.SlotOutputBinding(dropped=True)},
-        launched_policies=policies[:1],
-    )
-    assert state.voter_1_path is None
-    assert state.voter_2_path is None
-    assert state.voter_3_path is None
-    assert state.voter_2_status == "skipped"
 
 
 def test_plan_review_binding_absence_keeps_placeholder_paths(tmp_path: Path) -> None:

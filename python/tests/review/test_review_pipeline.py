@@ -779,7 +779,7 @@ def test_emit_review_core_result_stdout_order_matches_rows(
     _assert_emit_stdout_matches_rows(result, capsys)
 
 
-def test_review_core_default_dispatches_voters_through_python_cli() -> None:
+def test_review_core_default_dispatches_voters_through_the_bootstrap() -> None:
     assert rts.review_core_uses_agent_dispatch_voters_by_default()
 
 

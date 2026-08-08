@@ -65,7 +65,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
 | `python/cli.py plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
-| `python/cli.py agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
+| `scripts/larch.sh agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
 | `scripts/larch.sh agent dispatch-waterfall` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
 | `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
 | `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `scripts/larch.sh agent launch-claude-subprocess` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
@@ -90,7 +90,7 @@ the carrier into its `run-log append-failure` source and (b) call
    give-up already do this).
 3. `python3 python/cli.py agent launch-codex-exec` preflight / no-wrapper branches: ordering-A carrier
    compose before exit.
-4. `dispatch-plan-voters.sh` / `python/cli.py agent dispatch-voters` /
+4. `dispatch-plan-voters.sh` / `scripts/larch.sh agent dispatch-voters` /
    `agent dispatch-waterfall` dropped-slot give-up: resolve from `VOTER_*_PATH`
    then batch-append; expose the dropped-slot output path.
 5. `review-and-fix CLI` `run_coder_dispatch_*` give-up: explicit per-tool sinks +

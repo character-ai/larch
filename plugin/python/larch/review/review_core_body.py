@@ -34,8 +34,8 @@ from larch.review.review_pipeline_shared import (
     _manifest_rows,
     _parse_args,
     _run_command_string,
-    _run_python_cli,
     _write_text,
+    run_larch,
 )
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus
@@ -673,7 +673,7 @@ def _dispatch_voters_for_ballot(ctx: ReviewCoreBranchContext) -> tuple[list[str]
         voter_args.extend(["--diff-file", ctx.diff_file])
     if ctx.plan_file:
         voter_args.extend(["--plan-file", ctx.plan_file])
-    voters_result = _run_command_string(command=ctx.commands.dispatch_voters, args=voter_args) if ctx.commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args])
+    voters_result = _run_command_string(command=ctx.commands.dispatch_voters, args=voter_args) if ctx.commands.dispatch_voters else run_larch(["agent", "dispatch-voters", *voter_args])
     voters = _kv_parse(voters_result.stdout)
     _write_text(path=ctx.review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
     voter_files: list[str] = []
@@ -1139,7 +1139,7 @@ def _review_core_body(
     if _get(parsed=parsed, key="--plan-file"):
         voter_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
     _progress_note(tmpdir=progress_tmpdir, step="5", text=f"round {round_num}: dispatching 3 voters")
-    voters_result = _run_command_string(command=commands.dispatch_voters, args=voter_args) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args])
+    voters_result = _run_command_string(command=commands.dispatch_voters, args=voter_args) if commands.dispatch_voters else run_larch(["agent", "dispatch-voters", *voter_args])
     voters = _kv_parse(voters_result.stdout)
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
     voter_files: list[str] = []

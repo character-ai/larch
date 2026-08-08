@@ -324,6 +324,39 @@ pub fn valid_model_token(value: &str) -> bool {
         && !value.chars().any(is_control_character)
 }
 
+/// Reject a dispatch `--site` label that cannot name a workflow surface.
+///
+/// Every panel dispatcher forwards this label into artifact rows and prompt
+/// text, so a blank, flag-shaped, or control-bearing value is refused once.
+///
+/// # Errors
+/// Returns the caller-prefixed refusal the retired dispatchers printed.
+pub fn validate_site(prog: &str, site: &str) -> Result<(), String> {
+    if site.trim().is_empty() || site.starts_with("--") {
+        return Err(format!(
+            "{prog}: --site requires a non-empty, non-flag-like value"
+        ));
+    }
+    if site.chars().any(is_control_character) {
+        return Err(format!(
+            "{prog}: --site must not contain control characters"
+        ));
+    }
+    Ok(())
+}
+
+/// Decode one `true`/`false` vendor-presence flag.
+///
+/// # Errors
+/// Returns the caller-prefixed refusal for any other spelling.
+pub fn parse_presence(prog: &str, flag: &str, raw: &str) -> Result<bool, String> {
+    match raw {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("{prog}: {flag} must be true or false")),
+    }
+}
+
 /// Return whether a character is an ASCII control character.
 #[must_use]
 pub const fn is_control_character(character: char) -> bool {

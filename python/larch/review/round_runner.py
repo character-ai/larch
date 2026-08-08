@@ -791,7 +791,7 @@ def _run_under_quorum_revote(
         dispatch_result = (
             review_core_body._run_command_string(command=commands.dispatch_voters, args=dispatch_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
             if commands.dispatch_voters
-            else review_core_body._run_python_cli(["agent", "dispatch-voters", *dispatch_args])  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+            else review_core_body.run_larch(["agent", "dispatch-voters", *dispatch_args])
         )
         _write_text(path=revote_dir / "review-core-voters.env", text=dispatch_result.stdout)
         dispatch_env = _parse_env_file(revote_dir / "review-core-voters.env")
