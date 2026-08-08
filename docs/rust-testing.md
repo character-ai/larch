@@ -257,68 +257,101 @@ tests. The separate doctest command stays required even when the workspace
 currently has no doctests. Nextest's slow-test status and final status output
 remain visible in the job log.
 
-### Pull-request Rust selection observation
+### Pull-request Rust selection
 
-`rust-selection-observation` runs only for pull requests. It checks out the
-pull-request head with full history, then invokes the stdlib-only
-`python3 python/cli.py ci rust-select` command with the GitHub event base and
-head SHAs. The command verifies both commits and the checked-out head. It uses
-the event base only when it is an ancestor of the head; a non-ancestor base
-proposes `full` instead of diffing from a merge base whose resulting merge tree
-could have dependencies absent from head metadata. A missing commit, shallow
-history, empty or malformed diff, unsupported status, metadata parse failure,
-or internal selector error proposes `full`.
+`rust-selection` runs only for pull requests. It checks out GitHub's tested
+merge candidate with full history, creates a detached worktree at the pull
+request base, and executes the stdlib-only selector from that trusted base
+worktree. The selector inspects the candidate checkout only as data. A pull
+request therefore cannot change selector code and use that change to choose a
+narrower path; changes to the selector, CI workflow, coverage action, or its
+redaction/process dependencies are global inputs and run `full`.
 
-The observer emits one deterministic JSON result, uploads it as the
-`rust-ci-selection-observation` artifact, and renders a step summary. Before
-either egress surface, the Python core redaction boundary scrubs every dynamic
-string and rescans it; a scrub failure emits a static `full` result with no
-changed-path data. The summary HTML-escapes the already-redacted fields. It
-records the proposed mode, comparison base and head, changed paths, affected
-packages, reverse dependents, and a full-run trigger or skip proof. Its output
-is evidence only: it has no `needs` edge into `rust-lint`,
-  `rust-deny`, `rust-coverage`, `rust-coverage-benchmark`, or `rust-gate`. Those
-lanes still run in full on every pull request during the observation window.
+The selector verifies both commits, the candidate checkout, and base ancestry
+before it reads the diff. A missing commit, shallow history, non-ancestor base,
+empty or malformed diff, unsupported status, metadata parse failure, unknown
+path, unsupported workspace shape, or internal error selects `full`. It emits
+one redacted deterministic JSON result as the `rust-ci-selection` artifact and
+renders a concise step summary. Every dynamic field crosses the Python core
+redaction boundary and a residual-secret rescan; a scrub failure emits a static
+`full` result with no changed-path data. The summary HTML-escapes the redacted
+data. The artifact preserves the classifier's `mode` as `proposed_mode` and
+records the lane's `effective_mode`, reason, `rollout_state`, and
+`observation_only` value after trusted-cache validation and any
+`full-rust-ci` override; the summary shows both proposed and effective
+execution decisions.
 
-The selector has three modes:
+`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are deliberately
+`false` in the initial rollout. A proposed `partial` or `skip` decision then
+records `partial-observation-window-open` or `skip-observation-window-open` as
+its effective full-mode reason. The full lane therefore remains the backstop
+while live evidence is collected; neither non-full job executes merely because
+the selector proposed it.
 
-- `full` retains the complete current Rust surface, including coverage,
-  doctests, repository policy, plugin validation, Linux artifact production,
-  format, Clippy, and dependency policy.
-- `partial` is proposed only for a Rust-source-only diff whose changed packages
-  and every transitive reverse dependent are proven from `cargo metadata
-  --no-deps --locked --offline`. Normal, build, and dev path-dependency edges
-  all contribute to that closure. A `.rs` extension alone is insufficient: each
-  path must also fall under a Cargo-metadata target source root. Proposed
-  commands use sorted package names,
-  `--all-targets --all-features --locked` Clippy, locked all-feature tests, and
-  a separate locked all-feature doctest command for affected library packages.
-  A partial result neither runs nor claims the full-workspace coverage threshold.
-  Changes to `larch-cli`, or to any package in its local normal, build, or dev
-  dependency closure (including `larch-test-support`), instead propose `full`:
-  the current partial command plan does not reproduce the verified executable,
-  repository policy and plugin validation, artifact upload, or Python
-  integration consumers those packages affect.
-- `skip` is reserved for an audited supplementary-only allowlist whose every
-  path family has a named required validation owner. The allowlist is empty in
-  this rollout because `larch lint all` examines repository-wide content. Thus
-  every non-Rust or mixed change set currently proposes `full`, not `skip`.
+After the live observation criteria below are met, the workflow supports these
+enforced modes:
 
-`Cargo.lock`, root or crate manifests, `rust-toolchain.toml`, `.cargo/`, build
-scripts, the Rust CI workflow, selector files, test-profile files, `deny.toml`,
-and Makefiles are global inputs and always propose `full`. Unknown paths do the
-same. `rust-deny` remains required for every actual workflow run; a future
-enforcement change may omit it only when the selector proves that no Cargo,
-license, advisory, source-policy, or deny input changed.
+- `full` runs format, full Clippy, dependency policy, full coverage, doctests,
+  repository policy, plugin projection validation, and the Linux artifact for
+  Python integration tests. Pushes to `main`, manual dispatches, scheduled,
+  merge-queue, and unknown events always take this path.
+- `partial` accepts only Rust-source changes whose Cargo-metadata package
+  closure is a strict subset of the workspace and contains `larch-cli`. The
+  closure includes every transitive normal, build, and dev reverse dependency edge,
+  has deterministic ordering, and every changed path must belong to exactly one
+  Cargo target source root. `rust-lint` runs workspace format plus selected
+  locked all-feature Clippy. `rust-partial` runs selected locked all-feature
+  tests and applicable library doctests, builds the candidate `larch` binary,
+  runs repository policy and plugin projection validation with it, and uploads
+  it for Python integration. It does not claim or enforce the full-workspace
+  coverage threshold. Dependency policy is skipped only because manifests,
+  lockfile, Cargo configuration, and deny inputs are all global `full` inputs.
+- `skip` accepts only supplementary paths with explicit owners: root
+  documentation/configuration files, `.claude/`, `agents/`, `docs/`, `plugin/`,
+  `python/`, and `skills/`. The selector records every applicable owner. The
+  normal lint, agent, Python, and plugin checks still validate their owned
+  content. Rust repository policy and plugin validation run through a verified
+  trusted-main executable; Python integration receives that same verified
+  executable. No pull-request Rust binary runs in this path.
 
-Do not enable partial or skip enforcement from this observation data alone. A
-follow-up must record an observation window in which every proposed partial or
-skip result is compared with the successful full lane and no false-safe
-classification appears. `main`, manual dispatch, scheduled, merge-queue, and
-unknown-event runs remain unsharded full runs. The current pull-request escape
-hatch is therefore immediate: rerun the pull-request workflow and it still runs
-the full Rust surface. `main` is the periodic full-run backstop that any future
-enforcement must preserve.
+For `skip`, a successful `main` full lane publishes an immutable
+`trusted-main-rust-policy` cache entry. Its key and metadata bind the Linux
+binary to tracked crate Rust sources (never generated target output), root and
+crate manifests, root or crate build scripts, lockfile, toolchain, and
+`.cargo/` inputs. The cache has no broad fallback. The selection job verifies
+regular-file shape, content checksum, input identity, `refs/heads/main`
+provenance, source-SHA shape, and executable version before it permits an
+enforced `skip`. The `rust-skip` job verifies the downloaded handoff again. A
+cache miss or any validation failure selects `full` before another lane can
+rely on it.
+
+`Cargo.lock`, any Cargo manifest, `rust-toolchain.toml`, `.cargo/`, build
+scripts, Makefiles, `deny.toml`, Rust CI/profile files, and selector machinery
+are global inputs and always select `full`. `rust-coverage` remains the stable
+required status: it aggregates exactly one successful execution producer
+(`rust-full`, `rust-partial`, or `rust-skip`). An unavailable selector defaults
+to `full`, and the aggregate passes only when that full path succeeds. `main`
+is the periodic full-run backstop. To force the full
+path while debugging a pull request, apply the `full-rust-ci` label; label and
+unlabel events rerun CI, and that label can only narrow toward the safer
+`full` mode.
+
+Promotion is intentionally manual and class-specific. Keep both enforcement
+values `false` until the live record has at least three independent pull
+requests with proposed non-full decisions, every retained full backstop is
+successful, and the class being promoted has no false-safe result. A reviewed
+workflow change may then set only that proven class to `true`; a selector
+result, cache result, label, or pull-request-controlled input can never flip
+the value. The promoting change must add the selected-path timing evidence and
+must leave the other class in observation until its evidence meets the same
+rule.
+
+The independent historical classifier replays are recorded in
+[`rust-ci-selection-observation.md`](rust-ci-selection-observation.md). They
+show useful decisions and successful historical full backstops, but do not
+substitute for live selected-path results. Future changes to a selector,
+ownership rule, policy-binary identity, or cache schema start fresh classifier
+and live selected-path comparisons rather than inheriting this record.
 
 ### Coverage-profile measurement contract
 

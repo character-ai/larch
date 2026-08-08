@@ -34,6 +34,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/run-logs.md",
     "docs/rust-async-runtime.md",
     "docs/rust-parity-harness.md",
+    "docs/rust-ci-selection-observation.md",
     "docs/rust-testing.md",
     "docs/security/README.md",
     "docs/skills.md",
@@ -429,6 +430,7 @@ mod tests {
         assert!(paths.contains("docs/progress-reporting.md"));
         assert!(paths.contains("docs/rust-async-runtime.md"));
         assert!(paths.contains("docs/rust-parity-harness.md"));
+        assert!(paths.contains("docs/rust-ci-selection-observation.md"));
         assert!(paths.contains("docs/rust-testing.md"));
         assert!(paths.contains("docs/security/README.md"));
         assert!(paths.contains("docs/security/workflow.md"));
@@ -556,6 +558,7 @@ mod tests {
                 "docs/progress-reporting.md",
                 "docs/rust-async-runtime.md",
                 "docs/rust-parity-harness.md",
+                "docs/rust-ci-selection-observation.md",
                 "docs/rust-testing.md",
             ],
         );
@@ -564,7 +567,7 @@ mod tests {
         assert_eq!(
             runtime_paths(&root),
             Err(
-                "plugin runtime projection inputs are missing: docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-testing.md"
+                "plugin runtime projection inputs are missing: docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
                     .to_owned()
             )
         );

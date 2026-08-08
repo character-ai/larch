@@ -357,9 +357,14 @@ runs:
           sha256sum larch > larch.sha256
         )
         printf '%s\n' "$GITHUB_SHA" > "$artifact_dir/source-sha"
+        test -n "$RUST_POLICY_INPUTS_SHA256"
+        printf '%s\n' "$RUST_POLICY_INPUTS_SHA256" > "$artifact_dir/rust-inputs-sha256"
+        printf '%s\n' current-checkout > "$artifact_dir/producer-ref"
         "$artifact_dir/larch" --version > "$artifact_dir/version"
         test -s "$artifact_dir/larch.sha256"
         test -s "$artifact_dir/source-sha"
+        test -s "$artifact_dir/rust-inputs-sha256"
+        test -s "$artifact_dir/producer-ref"
         test -s "$artifact_dir/version"
     - name: Upload coverage-built Rust executable for cross-language integration tests
       if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'

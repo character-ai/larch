@@ -162,37 +162,12 @@ def _workspace(root: Path) -> str:
         _package(
             root,
             identifier="cli",
-            name="workspace-cli",
+            name="larch-cli",
             relative_root="crates/cli",
             dependencies=(("crates/adapters", "dev"),),
-        ),
-    ]
-    return _metadata(root, packages)
-
-
-def _required_consumer_workspace(root: Path) -> str:
-    packages = [
-        _package(root, identifier="core", name="larch-core", relative_root="crates/larch-core"),
-        _package(root, identifier="lint", name="larch-lint", relative_root="crates/larch-lint"),
-        _package(
-            root,
-            identifier="adapters",
-            name="larch-adapters",
-            relative_root="crates/larch-adapters",
-            dependencies=(("crates/larch-core", None),),
-        ),
-        _package(
-            root,
-            identifier="cli",
-            name="larch-cli",
-            relative_root="crates/larch-cli",
-            dependencies=(
-                ("crates/larch-adapters", None),
-                ("crates/larch-core", None),
-                ("crates/larch-lint", "build"),
-            ),
             has_library=False,
         ),
+        _package(root, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
     ]
     return _metadata(root, packages)
 
@@ -355,8 +330,12 @@ def test_advanced_base_with_a_dependent_absent_from_head_metadata_selects_full(t
         (".cargo/config.toml", "global-input:cargo-configuration"),
         ("crates/core/build.rs", "global-input:build-script"),
         (".github/workflows/ci.yaml", "global-input:rust-ci-workflow"),
+        (".github/actions/rust-coverage/action.yaml", "global-input:rust-ci-workflow"),
         ("Makefile", "global-input:rust-makefile"),
         ("deny.toml", "global-input:dependency-policy"),
+        ("python/cli.py", "global-input:rust-selector"),
+        ("python/larch/core/proc.py", "global-input:rust-selector"),
+        ("python/larch/core/redact.py", "global-input:rust-selector"),
         ("python/larch/implement/rust_ci_selection.py", "global-input:rust-selector"),
         ("nextest.toml", "global-input:test-profile"),
     ],
@@ -376,10 +355,72 @@ def test_global_inputs_select_full_and_preserve_changed_path(
     assert not any(call[0] == "cargo" for call in runner.calls)
 
 
+@pytest.mark.parametrize(
+    ("path", "owner"),
+    [
+        ("README.md", "lint plus trusted-main repository policy and plugin validation"),
+        ("docs/rust-testing.md", "lint plus trusted-main repository policy and plugin validation"),
+        ("python/larch/issue/example.py", "python-tests, python-pyright, and trusted-main repository policy"),
+        ("skills/example/SKILL.md", "agent-lint, lintlang, and trusted-main repository policy"),
+    ],
+)
+def test_audited_supplementary_paths_select_skip_without_cargo_metadata(
+    tmp_path: Path,
+    path: str,
+    owner: str,
+) -> None:
+    runner = _runner_for_pull_request(tmp_path, diff=_diff(("M", path)))
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "skip"
+    assert result.skip_proof == "all changed paths have audited non-Rust validation owners"
+    assert result.validation_owners == (owner,)
+    assert not result.partial_commands
+    assert not result.dependency_policy_required
+    assert not result.format_required
+    assert not any(call[0] == "cargo" for call in runner.calls)
+
+
+def test_mixed_audited_supplementary_paths_select_skip_with_all_owners(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "docs/rust-testing.md"), ("M", "python/larch/issue/example.py")),
+    )
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "skip"
+    assert result.validation_owners == (
+        "lint plus trusted-main repository policy and plugin validation",
+        "python-tests, python-pyright, and trusted-main repository policy",
+    )
+
+
+def test_unknown_supplementary_path_selects_full(tmp_path: Path) -> None:
+    runner = _runner_for_pull_request(tmp_path, diff=_diff(("M", "scripts/new-helper.py")))
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "unknown-path-has-no-named-validation-owner"
+
+
 def test_root_package_rust_source_can_select_partial(tmp_path: Path) -> None:
     metadata = _metadata(
         tmp_path,
-        [_package(tmp_path, identifier="root", name="root-package", relative_root="")],
+        [
+            _package(tmp_path, identifier="root", name="root-package", relative_root=""),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("", None),),
+                has_library=False,
+            ),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
+        ],
     )
     runner = _runner_for_pull_request(
         tmp_path,
@@ -390,7 +431,7 @@ def test_root_package_rust_source_can_select_partial(tmp_path: Path) -> None:
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("root-package",)
+    assert result.affected_packages == ("larch-cli", "root-package")
 
 
 def test_overlapping_root_and_member_target_sources_select_full(tmp_path: Path) -> None:
@@ -417,6 +458,26 @@ def test_overlapping_root_and_member_target_sources_select_full(tmp_path: Path) 
 
     assert result.mode == "full"
     assert result.full_run_trigger == "ambiguous-workspace-package-ownership"
+
+
+def test_partial_requires_the_policy_consumer_in_a_strict_reverse_closure(tmp_path: Path) -> None:
+    metadata = _metadata(
+        tmp_path,
+        [
+            _package(tmp_path, identifier="library", name="library", relative_root="crates/library"),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
+        ],
+    )
+    runner = _runner_for_pull_request(
+        tmp_path,
+        diff=_diff(("M", "crates/library/src/lib.rs")),
+        metadata=metadata,
+    )
+
+    result = _select(tmp_path, runner)
+
+    assert result.mode == "full"
+    assert result.full_run_trigger == "partial-does-not-build-policy-consumer"
 
 
 def test_rust_path_outside_a_metadata_target_source_selects_full(tmp_path: Path) -> None:
@@ -447,30 +508,49 @@ def test_missing_cargo_target_source_path_selects_full(tmp_path: Path) -> None:
     assert result.full_run_trigger == "cargo-metadata-invalid-target-source"
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "crates/larch-cli/src/main.rs",
-        "crates/larch-core/src/lib.rs",
-        "crates/larch-lint/src/lib.rs",
-        "crates/larch-adapters/src/lib.rs",
-    ],
-)
-def test_required_ci_consumer_or_normal_build_upstream_change_selects_full(tmp_path: Path, path: str) -> None:
+def test_complete_required_consumer_closure_selects_full(tmp_path: Path) -> None:
+    metadata = _metadata(
+        tmp_path,
+        [
+            _package(tmp_path, identifier="core", name="larch-core", relative_root="crates/larch-core"),
+            _package(
+                tmp_path,
+                identifier="lint",
+                name="larch-lint",
+                relative_root="crates/larch-lint",
+                dependencies=(("crates/larch-core", None),),
+            ),
+            _package(
+                tmp_path,
+                identifier="adapters",
+                name="larch-adapters",
+                relative_root="crates/larch-adapters",
+                dependencies=(("crates/larch-core", None),),
+            ),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("crates/larch-adapters", None), ("crates/larch-lint", "build")),
+                has_library=False,
+            ),
+        ],
+    )
     runner = _runner_for_pull_request(
         tmp_path,
-        diff=_diff(("M", path)),
-        metadata=_required_consumer_workspace(tmp_path),
+        diff=_diff(("M", "crates/larch-core/src/lib.rs")),
+        metadata=metadata,
     )
 
     result = _select(tmp_path, runner)
 
     assert result.mode == "full"
-    assert result.full_run_trigger == "required-ci-consumer-closure"
+    assert result.full_run_trigger == "partial-closure-covers-entire-workspace"
     assert not result.partial_commands
 
 
-def test_larch_test_support_dev_dependency_of_cli_selects_full(tmp_path: Path) -> None:
+def test_larch_test_support_dev_dependency_of_cli_selects_partial_when_the_closure_is_strict(tmp_path: Path) -> None:
     metadata = _metadata(
         tmp_path,
         [
@@ -490,6 +570,7 @@ def test_larch_test_support_dev_dependency_of_cli_selects_full(tmp_path: Path) -
                 dependencies=(("crates/larch-test-support", "dev"),),
                 has_library=False,
             ),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
         ],
     )
     runner = _runner_for_pull_request(
@@ -500,9 +581,9 @@ def test_larch_test_support_dev_dependency_of_cli_selects_full(tmp_path: Path) -
 
     result = _select(tmp_path, runner)
 
-    assert result.mode == "full"
-    assert result.full_run_trigger == "required-ci-consumer-closure"
-    assert not result.partial_commands
+    assert result.mode == "partial"
+    assert result.affected_packages == ("larch-cli", "larch-test-support")
+    assert result.reverse_dependents == ("larch-cli",)
 
 
 def test_reverse_dependency_closure_is_transitive_and_deterministic(tmp_path: Path) -> None:
@@ -515,8 +596,8 @@ def test_reverse_dependency_closure_is_transitive_and_deterministic(tmp_path: Pa
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("larch-adapters", "larch-core", "workspace-cli")
-    assert result.reverse_dependents == ("larch-adapters", "workspace-cli")
+    assert result.affected_packages == ("larch-adapters", "larch-cli", "larch-core")
+    assert result.reverse_dependents == ("larch-adapters", "larch-cli")
 
 
 def test_build_and_dev_edges_are_included_in_reverse_dependency_closure(tmp_path: Path) -> None:
@@ -538,6 +619,15 @@ def test_build_and_dev_edges_are_included_in_reverse_dependency_closure(tmp_path
                 relative_root="crates/dev-consumer",
                 dependencies=(("crates/build-consumer", "dev"),),
             ),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("crates/dev-consumer", None),),
+                has_library=False,
+            ),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
         ],
     )
     runner = _runner_for_pull_request(
@@ -549,8 +639,8 @@ def test_build_and_dev_edges_are_included_in_reverse_dependency_closure(tmp_path
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("base", "build-consumer", "dev-consumer")
-    assert result.reverse_dependents == ("build-consumer", "dev-consumer")
+    assert result.affected_packages == ("base", "build-consumer", "dev-consumer", "larch-cli")
+    assert result.reverse_dependents == ("build-consumer", "dev-consumer", "larch-cli")
 
 
 @pytest.mark.parametrize(
@@ -567,7 +657,7 @@ def test_additions_deletions_and_renames_are_classified(tmp_path: Path, record: 
     result = _select(tmp_path, runner)
 
     assert result.mode == "partial"
-    assert result.affected_packages == ("larch-adapters", "larch-core", "workspace-cli")
+    assert result.affected_packages == ("larch-adapters", "larch-cli", "larch-core")
     assert result.changed_paths[0].status == record[0]
 
 
@@ -629,12 +719,20 @@ def test_partial_commands_are_locked_all_feature_and_coverage_free(tmp_path: Pat
         tmp_path,
         [
             _package(tmp_path, identifier="library", name="library", relative_root="crates/library"),
-            _package(tmp_path, identifier="binary", name="binary", relative_root="crates/binary", has_library=False),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("crates/library", None),),
+                has_library=False,
+            ),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
         ],
     )
     runner = _runner_for_pull_request(
         tmp_path,
-        diff=_diff(("M", "crates/library/src/lib.rs"), ("M", "crates/binary/src/main.rs")),
+        diff=_diff(("M", "crates/library/src/lib.rs")),
         metadata=metadata,
     )
 
@@ -647,7 +745,7 @@ def test_partial_commands_are_locked_all_feature_and_coverage_free(tmp_path: Pat
         "cargo",
         "clippy",
         "--package",
-        "binary",
+        "larch-cli",
         "--package",
         "library",
         "--all-targets",
@@ -661,7 +759,7 @@ def test_partial_commands_are_locked_all_feature_and_coverage_free(tmp_path: Pat
         "cargo",
         "test",
         "--package",
-        "binary",
+        "larch-cli",
         "--package",
         "library",
         "--all-targets",
@@ -691,6 +789,15 @@ def test_output_order_is_deterministic_across_diff_and_metadata_order(tmp_path: 
             relative_root="crates/consumer",
             dependencies=(("crates/core", None),),
         ),
+        _package(
+            tmp_path,
+            identifier="cli",
+            name="larch-cli",
+            relative_root="crates/larch-cli",
+            dependencies=(("crates/consumer", None),),
+            has_library=False,
+        ),
+        _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
     ]
     first = _runner_for_pull_request(
         tmp_path,
@@ -700,16 +807,22 @@ def test_output_order_is_deterministic_across_diff_and_metadata_order(tmp_path: 
     second = _runner_for_pull_request(
         tmp_path,
         diff=_diff(("M", "crates/core/src/lib.rs"), ("M", "crates/consumer/src/lib.rs")),
-        metadata=_metadata(tmp_path, list(reversed(packages)), members=["consumer", "core"]),
+        metadata=_metadata(
+            tmp_path,
+            list(reversed(packages)),
+            members=["unrelated", "cli", "consumer", "core"],
+        ),
     )
 
     first_result = _select(tmp_path, first)
     second_result = _select(tmp_path, second)
 
+    assert first_result.mode == "partial"
+    assert second_result.mode == "partial"
     assert first_result.to_json() == second_result.to_json()
 
 
-def test_summary_escapes_untrusted_paths_and_declares_observation_only() -> None:
+def test_summary_escapes_untrusted_paths_and_declares_proposed_mode() -> None:
     secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
     secret_path = f"src/{secret}.rs"
     result = selection.Selection(
@@ -734,7 +847,9 @@ def test_summary_escapes_untrusted_paths_and_declares_observation_only() -> None
 
     summary = selection.render_summary(result)
 
-    assert "Full Rust CI remains required during the observation window." in summary
+    assert "enforcement" not in result.as_json()
+    assert "observation_only" not in result.as_json()
+    assert "Proposed mode: <code>full</code>. Non-full modes retain their named validation owners" in summary
     assert "src/&lt;untrusted&gt;.rs" in summary
     assert "src/<untrusted>.rs" not in summary
     assert secret not in summary
@@ -750,7 +865,18 @@ def test_secret_shaped_selector_fields_are_redacted_from_artifact_and_summary(
     source_path = f"crates/secret/src/{secret}.rs"
     metadata = _metadata(
         tmp_path,
-        [_package(tmp_path, identifier="secret", name=secret, relative_root="crates/secret")],
+        [
+            _package(tmp_path, identifier="secret", name="secret-package", relative_root="crates/secret"),
+            _package(
+                tmp_path,
+                identifier="cli",
+                name="larch-cli",
+                relative_root="crates/larch-cli",
+                dependencies=(("crates/secret", None),),
+                has_library=False,
+            ),
+            _package(tmp_path, identifier="unrelated", name="unrelated", relative_root="crates/unrelated"),
+        ],
     )
     result = _select(
         tmp_path,
@@ -809,3 +935,32 @@ def test_invalid_summary_result_falls_back_to_a_full_summary(tmp_path: Path, cap
     captured = capsys.readouterr()
     assert "Proposed mode: <code>full</code>" in captured.out
     assert "selector-result-unavailable-or-invalid" in captured.out
+
+
+def test_summary_accepts_previous_selector_schema(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    result = selection.Selection(
+        mode="full",
+        event_name="pull_request",
+        base_sha=BASE_SHA,
+        head_sha=HEAD_SHA,
+        base_source="github-pr-base",
+        changed_paths=(),
+        affected_packages=(),
+        reverse_dependents=(),
+        full_run_trigger="selector-workflow-failed",
+        skip_proof=None,
+        partial_commands=(),
+        dependency_policy_required=True,
+        dependency_policy_reason="full-mode-requires-the-existing-rust-deny-lane",
+        format_required=True,
+    )
+    payload = result.as_json()
+    payload["schema_version"] = 1
+    del payload["doctest_packages"]
+    del payload["validation_owners"]
+    result_file = tmp_path / "selector-v1.json"
+    _ = result_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert selection.rust_select_summary_main(["--result-file", str(result_file)]) == 0
+
+    assert "Proposed mode: <code>full</code>" in capsys.readouterr().out

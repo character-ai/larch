@@ -1,8 +1,9 @@
-"""Fail-closed, observation-only Rust CI change selection.
+"""Fail-closed Rust CI change selection.
 
-The selector intentionally proposes a mode without changing which CI jobs run.
-It is the sole owner of the future partial-command construction so observation
-evidence and eventual enforcement cannot drift apart.
+The selector is the sole owner of partial-command construction and audited
+supplementary-path ownership. CI runs this module from the trusted pull-request
+base checkout, then passes its proposal to the workflow's effective-mode
+resolver for the candidate checkout.
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ from larch.core import redact
 from larch.core.proc import CommandResult, ProcRunner, Runner
 
 
-_SCHEMA_VERSION: Final = 1
+_SCHEMA_VERSION: Final = 2
+_SUPPORTED_SCHEMA_VERSIONS: Final = frozenset({1, _SCHEMA_VERSION})
 _MAX_CHANGED_PATHS: Final = 200
 _MAX_PATH_LENGTH: Final = 512
 _GIT_TIMEOUT_SECONDS: Final = 30.0
@@ -31,9 +33,35 @@ _PACKAGE_NAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _CHANGE_STATUS_RE: Final = re.compile(r"^(?:A|M|D|R[0-9]+|C[0-9]+)$")
 _LIBRARY_TARGET_KINDS: Final = frozenset({"lib", "proc-macro"})
 _REQUIRED_CONSUMER_PACKAGE_NAME: Final = "larch-cli"
-_REQUIRED_CONSUMER_POLICY_DEPENDENCY_KINDS: Final = frozenset({"normal", "build", "dev"})
 _PUBLIC_REDACTION_FAILURE_TRIGGER: Final = "public-output-redaction-failed"
 _REDACTION_TRUNCATION_MARKER: Final = "[content truncated"
+
+# These root and prefix rules are deliberately ownership-based rather than
+# extension-based. The named required jobs below still validate the changed
+# content when Rust compilation is skipped.
+_SKIP_EXACT_PATH_OWNERS: Final = {
+    "AGENTS.md": "agent-lint plus trusted-main repository policy",
+    "ARCHITECTURAL_GUIDELINES.md": "agent-lint plus trusted-main repository policy",
+    "ARCHITECTURAL_INVARIANTS.md": "agent-lint plus trusted-main repository policy",
+    "BASH_AUTHORING.md": "agent-lint plus trusted-main repository policy",
+    "CLAUDE.md": "agent-lint plus trusted-main repository policy",
+    "KARPATHY_CLAUDE.md": "agent-lint plus trusted-main repository policy",
+    "README.md": "lint plus trusted-main repository policy and plugin validation",
+    "SECURITY.md": "lint plus trusted-main repository policy and plugin validation",
+    ".agnix.toml": "agent-lint plus trusted-main repository policy",
+    ".gitleaks.toml": "lint plus trusted-main repository policy",
+    ".markdownlint.json": "lint plus trusted-main repository policy",
+    ".markdownlintignore": "lint plus trusted-main repository policy",
+    "agent-lint.toml": "agent-lint plus trusted-main repository policy",
+}
+_SKIP_PREFIX_PATH_OWNERS: Final = (
+    (".claude/", "agent-lint plus trusted-main repository policy"),
+    ("agents/", "agent-lint plus trusted-main repository policy"),
+    ("docs/", "lint plus trusted-main repository policy and plugin validation"),
+    ("plugin/", "trusted-main plugin projection validation"),
+    ("python/", "python-tests, python-pyright, and trusted-main repository policy"),
+    ("skills/", "agent-lint, lintlang, and trusted-main repository policy"),
+)
 
 
 class _SelectionError(Exception):
@@ -90,7 +118,7 @@ class _Dependency:
 
 @dataclass(frozen=True)
 class Selection:
-    """The complete deterministic selector result consumed by CI observation."""
+    """The complete deterministic selector result consumed by CI."""
 
     mode: str
     event_name: str
@@ -106,6 +134,8 @@ class Selection:
     dependency_policy_required: bool
     dependency_policy_reason: str
     format_required: bool
+    doctest_packages: tuple[str, ...] = ()
+    validation_owners: tuple[str, ...] = ()
 
     def as_json(self) -> dict[str, object]:
         return _selection_as_json(_public_selection(self))
@@ -218,17 +248,42 @@ def _select_pull_request(
         head_sha=resolved_head,
     )
     try:
+        skip_owners = _skip_validation_owners(changes)
+        if skip_owners is not None:
+            return Selection(
+                mode="skip",
+                event_name=event_name,
+                base_sha=resolved_base,
+                head_sha=resolved_head,
+                base_source="github-pr-base",
+                changed_paths=changes,
+                affected_packages=(),
+                reverse_dependents=(),
+                full_run_trigger=None,
+                skip_proof="all changed paths have audited non-Rust validation owners",
+                partial_commands=(),
+                dependency_policy_required=False,
+                dependency_policy_reason="supplementary-only diff proves no dependency-policy input changed",
+                format_required=False,
+                validation_owners=skip_owners,
+            )
         _require_rust_source_only(changes)
         packages = _read_workspace_packages(runner, repo_root=repo_root)
         changed_package_ids = _changed_package_ids(changes, packages=packages)
         closure_ids = _reverse_dependency_closure(changed_package_ids, packages=packages)
-        if changed_package_ids.intersection(_required_consumer_upstream_closure(packages)):
-            raise _SelectionError("required-ci-consumer-closure")
         packages_by_id = {package.identifier: package for package in packages}
+        required_consumer = next(
+            (package for package in packages if package.name == _REQUIRED_CONSUMER_PACKAGE_NAME),
+            None,
+        )
+        if required_consumer is None or required_consumer.identifier not in closure_ids:
+            raise _SelectionError("partial-does-not-build-policy-consumer")
+        if len(closure_ids) == len(packages):
+            raise _SelectionError("partial-closure-covers-entire-workspace")
         affected_packages = tuple(sorted(packages_by_id[identifier].name for identifier in closure_ids))
         changed_packages = {packages_by_id[identifier].name for identifier in changed_package_ids}
         reverse_dependents = tuple(name for name in affected_packages if name not in changed_packages)
-        partial_commands = _partial_commands(
+        partial_commands, doctest_packages = _partial_commands(
             affected_packages=affected_packages,
             packages_by_id=packages_by_id,
             closure_ids=closure_ids,
@@ -248,6 +303,11 @@ def _select_pull_request(
             dependency_policy_required=False,
             dependency_policy_reason="rust-source-only-diff-proves-no-dependency-policy-input",
             format_required=True,
+            doctest_packages=doctest_packages,
+            validation_owners=(
+                "rust-lint: workspace format plus selected-package Clippy",
+                "rust-partial: selected tests, doctests, PR-built larch repository policy, plugin validation, and Python artifact",
+            ),
         )
     except _SelectionError as exc:
         return _full_selection(
@@ -293,6 +353,11 @@ def _full_selection(  # noqa: PLR0913 - each field is a required, independently 
         dependency_policy_required=True,
         dependency_policy_reason="full-mode-requires-the-existing-rust-deny-lane",
         format_required=True,
+        validation_owners=(
+            "rust-lint: workspace format and Clippy",
+            "rust-deny: dependency policy",
+            "rust-full: coverage, doctests, repository policy, plugin validation, and Python artifact",
+        ),
     )
 
 
@@ -320,6 +385,8 @@ def _redact_public_selection(selection: Selection) -> Selection:
         dependency_policy_required=selection.dependency_policy_required,
         dependency_policy_reason=_redact_public_text(selection.dependency_policy_reason),
         format_required=selection.format_required,
+        doctest_packages=tuple(_redact_public_text(package) for package in selection.doctest_packages),
+        validation_owners=tuple(_redact_public_text(owner) for owner in selection.validation_owners),
     )
 
 
@@ -386,18 +453,19 @@ def _selection_as_json(selection: Selection) -> dict[str, object]:
             "reason": selection.dependency_policy_reason,
             "required": selection.dependency_policy_required,
         },
+        "doctest_packages": list(selection.doctest_packages),
         "event_name": selection.event_name,
         "format_required": selection.format_required,
         "full_run_trigger": selection.full_run_trigger,
         "head_sha": selection.head_sha,
         "mode": selection.mode,
-        "observation_only": True,
         "partial_commands": [
             {"argv": list(command.argv), "name": command.name} for command in selection.partial_commands
         ],
         "reverse_dependents": list(selection.reverse_dependents),
         "schema_version": _SCHEMA_VERSION,
         "skip_proof": selection.skip_proof,
+        "validation_owners": list(selection.validation_owners),
     }
 
 
@@ -532,13 +600,46 @@ def _require_rust_source_only(changes: tuple[ChangedPath, ...]) -> None:
                 raise _SelectionError("unknown-path-has-no-named-validation-owner")
 
 
+def _skip_validation_owners(changes: tuple[ChangedPath, ...]) -> tuple[str, ...] | None:
+    """Return named owners for a supplementary-only diff, if every path is safe."""
+    owners: set[str] = set()
+    for change in changes:
+        for path in change.paths:
+            trigger = _global_input_trigger(path)
+            if trigger is not None:
+                raise _SelectionError(trigger)
+            if path.endswith(".rs"):
+                return None
+            owner = _skip_validation_owner(path)
+            if owner is None:
+                return None
+            owners.add(owner)
+    if not owners:
+        raise _SelectionError("empty-supplementary-validation-owner-set")
+    return tuple(sorted(owners))
+
+
+def _skip_validation_owner(path: str) -> str | None:
+    exact = _SKIP_EXACT_PATH_OWNERS.get(path)
+    if exact is not None:
+        return exact
+    for prefix, owner in _SKIP_PREFIX_PATH_OWNERS:
+        if path.startswith(prefix):
+            return owner
+    return None
+
+
 _GLOBAL_PATH_TRIGGERS: Final = {
     "Cargo.lock": "global-input:cargo-lock",
     "rust-toolchain.toml": "global-input:rust-toolchain",
     "deny.toml": "global-input:dependency-policy",
     ".github/workflows/ci.yaml": "global-input:rust-ci-workflow",
+    ".github/actions/rust-coverage/action.yaml": "global-input:rust-ci-workflow",
+    "python/cli.py": "global-input:rust-selector",
     "python/larch/cli.py": "global-input:rust-selector",
     "python/larch/implement/rust_ci_selection.py": "global-input:rust-selector",
+    "python/larch/core/proc.py": "global-input:rust-selector",
+    "python/larch/core/redact.py": "global-input:rust-selector",
 }
 _GLOBAL_FILENAME_TRIGGERS: Final = {
     "Cargo.toml": "global-input:cargo-manifest",
@@ -780,36 +881,12 @@ def _reverse_dependency_closure(
     return frozenset(closure)
 
 
-def _required_consumer_upstream_closure(packages: tuple[_Package, ...]) -> frozenset[str]:
-    """Return larch-cli and every local dependency needed by CI policy."""
-    by_name = {package.name: package for package in packages}
-    consumer = by_name.get(_REQUIRED_CONSUMER_PACKAGE_NAME)
-    if consumer is None:
-        return frozenset()
-    by_id = {package.identifier: package for package in packages}
-    by_root = {package.root_parts: package.identifier for package in packages}
-    closure = {consumer.identifier}
-    pending = [consumer.identifier]
-    while pending:
-        current = by_id[pending.pop()]
-        for dependency in current.dependencies:
-            if dependency.kind not in _REQUIRED_CONSUMER_POLICY_DEPENDENCY_KINDS:
-                continue
-            dependency_id = by_root.get(dependency.root_parts)
-            if dependency_id is None:
-                raise _SelectionError("unmapped-local-workspace-dependency")
-            if dependency_id not in closure:
-                closure.add(dependency_id)
-                pending.append(dependency_id)
-    return frozenset(closure)
-
-
 def _partial_commands(
     *,
     affected_packages: tuple[str, ...],
     packages_by_id: dict[str, _Package],
     closure_ids: frozenset[str],
-) -> tuple[CommandPlan, ...]:
+) -> tuple[tuple[CommandPlan, ...], tuple[str, ...]]:
     if not affected_packages:
         raise _SelectionError("empty-rust-package-selection")
     package_args = tuple(argument for package in affected_packages for argument in ("--package", package))
@@ -845,7 +922,7 @@ def _partial_commands(
                 argv=("cargo", "test", "--doc", *doctest_args, "--all-features", "--locked"),
             )
         )
-    return tuple(commands)
+    return tuple(commands), library_packages
 
 
 def _run_required(
@@ -879,9 +956,9 @@ def render_summary(selection: Selection) -> str:
     base = _html_code(selection.base_sha or "unavailable")
     head = _html_code(selection.head_sha or "unavailable")
     lines = [
-        "## Rust CI selection (observation)",
+        "## Rust CI selection",
         "",
-        f"Proposed mode: {mode}. Full Rust CI remains required during the observation window.",
+        f"Proposed mode: {mode}. Non-full modes retain their named validation owners; main remains a full-run backstop.",
         "",
         f"- Base: {base} ({_html_code(selection.base_source)})",
         f"- Head: {head}",
@@ -895,6 +972,14 @@ def render_summary(selection: Selection) -> str:
         lines.append(f"- Affected packages: {_html_code(', '.join(selection.affected_packages))}")
     if selection.reverse_dependents:
         lines.append(f"- Reverse dependents: {_html_code(', '.join(selection.reverse_dependents))}")
+    if selection.doctest_packages:
+        lines.append(f"- Doctest packages: {_html_code(', '.join(selection.doctest_packages))}")
+    if selection.validation_owners:
+        lines.extend(
+            ["", "<details><summary>Validation owners</summary>", ""]
+        )
+        lines.extend(f"- {_html_code(owner)}" for owner in selection.validation_owners)
+        lines.extend(["", "</details>"])
     lines.extend(_changed_paths_summary(selection.changed_paths))
     if selection.partial_commands:
         lines.extend(["", "<details><summary>Proposed partial commands</summary>", ""])
@@ -960,7 +1045,8 @@ def rust_select_summary_main(argv: list[str]) -> int:
 
 def _selection_from_json(payload: object) -> Selection:
     source = _object(payload, reason="selector-result-invalid")
-    if source.get("schema_version") != _SCHEMA_VERSION:
+    schema_version = source.get("schema_version")
+    if schema_version not in _SUPPORTED_SCHEMA_VERSIONS:
         raise _SelectionError("selector-result-invalid")
     mode = _required_string(source, "mode", reason="selector-result-invalid")
     if mode not in {"full", "partial", "skip"}:
@@ -985,6 +1071,12 @@ def _selection_from_json(payload: object) -> Selection:
     format_required = source.get("format_required")
     if not isinstance(format_required, bool):
         raise _SelectionError("selector-result-invalid")
+    if schema_version == _SCHEMA_VERSION:
+        doctest_packages = _string_tuple(source.get("doctest_packages"), reason="selector-result-invalid")
+        validation_owners = _string_tuple(source.get("validation_owners"), reason="selector-result-invalid")
+    else:
+        doctest_packages = ()
+        validation_owners = ()
     return Selection(
         mode=mode,
         event_name=event_name,
@@ -1000,6 +1092,8 @@ def _selection_from_json(payload: object) -> Selection:
         dependency_policy_required=required,
         dependency_policy_reason=policy_reason,
         format_required=format_required,
+        doctest_packages=doctest_packages,
+        validation_owners=validation_owners,
     )
 
 

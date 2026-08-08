@@ -179,11 +179,19 @@ There are four pre-commit-driven paths:
 
 - **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs, Ruff runs in `lint-local`, and Pyright runs in `python-pyright`. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the coverage execution lane owns the full workspace build and tests, doctests, coverage, repository policy, plugin projection validation, and Linux executable artifact. `rust-gate` requires `rust-lint`, `rust-deny`, and the protected `rust-coverage` status. CI runs regression harnesses through the `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-5`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit; it does **not** run `py-lint` or `py-test`. CI also runs `contains-pins`, `python-pyright`, and `python-tests`, with Pytest and harnesses parallelized.
 
-  Pull requests also run `rust-selection-observation`, a full-history,
-  fail-closed Python selector that publishes a redacted proposed mode and JSON artifact.
-  It has no gate dependency or enforcement effect: the full Rust lanes remain
-  required until a separately documented observation window proves selection
-  safe.
+  Pull requests run the `rust-selection` observation job before the Rust
+  lanes. It runs the selector from the trusted pull-request base and publishes
+  a redacted proposed/effective decision artifact. Both non-full enforcement
+  values start `false`, so proposed `partial` or `skip` results still run the
+  full Rust backstop while the independent-PR observation window is collected.
+  After a reviewed class-specific promotion, `partial` retains selected package
+  tests, Clippy, doctests, candidate-built repository policy, plugin
+  validation, and the Python artifact; `skip` keeps non-Rust owners and uses a
+  checksum-verified, input-keyed trusted-main policy executable. Missing trust
+  evidence falls back to `full`. The stable `rust-coverage` status aggregates
+  the one effective execution path, while `main` remains the full backstop.
+  See [Rust testing](rust-testing.md) for ownership, cache identity, the
+  `full-rust-ci` escape hatch, and the recorded observation window.
 - **Relevant checks CLI (`python/cli.py checks run-relevant`)** — The Python dispatcher finds branch, staged, unstaged, and untracked changes; filters existing regular files for `pre-commit run --files`; and runs the contains-pin scanner. The scoped pre-commit phase carries ruff autofix (`ruff check --fix`) for changed Python files. Pyright and agent/config scans are manual or dedicated-CI work. For Rust paths, the filename-aware hook selects and logs the exact Cargo packages and targets, then runs one bounded Clippy configuration. A deleted or otherwise non-regular Rust path skips that hook and uses the same bounded entry point once as a compatibility fallback. A missing proof marker fails closed. The CLI never follows pre-commit with `make rust-check`, `cargo check`, a full-repository `agent-lint`, tests, or coverage. A no-change run is a fast freshness check. `/implement` and `/review` use the CLI to capture verbose output under the session tmpdir and emit a one-line `RELEVANT_CHECKS_OK=true ...` green-path envelope when checks succeed. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. On failure, orchestrators read `DIGEST_FILE` first when the helper envelope includes it, then fall back to `REDACTED_LOG_FILE`; folded composite stdout may place those keys after leading file or git KVs, so consumers must scan the full composite stdout for both keys. `REDACTED_LOG_FILE` remains the full-log fallback and repair-loop input.
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
 - **Manual pre-commit stage** — Run `pre-commit run --hook-stage manual --all-files` only when deliberately requesting repository-wide policy, agent/config, secret, or type scans. It is not part of relevant checks or the default git hook.

@@ -87,13 +87,35 @@ the coverage-target executable at `target/llvm-cov-target/debug/larch` is
 runnable and reports its version. The same executable runs repository policy
 and plugin projection validation before either it or the LCOV report is
 uploaded. The artifact contains the executable plus its SHA-256, source SHA,
-and reported version. The required `python-rust-integration` job publishes the
-stable `python-tests-gate` check. It verifies both prerequisite results,
-rejects missing, symlinked, checksum-mismatched, stale-source, or
-version-mismatched artifact contents, and only then runs the Rust-backed Python
-tests. The stub-safe `python-tests` matrix has no Rust artifact dependency. The
+reported version, Rust-input digest, and producer reference. The required
+`python-rust-integration` job publishes the stable `python-tests-gate` check.
+It verifies both prerequisite results, regular-file shape, checksum, Rust-input
+identity, producer-specific source identity, and version before it runs the
+Rust-backed Python tests. A candidate-built artifact must name the current
+checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
+The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
 being treated as a successful handoff.
+
+The `trusted-main-rust-policy` cache is a distinct executable cache, not a
+compiler-output cache or an artifact-provenance substitute. Only a successful
+full `push` to `refs/heads/main` may save it, and only after the coverage-built
+binary completed repository policy and plugin validation. Its exact key binds
+the runner OS and architecture plus tracked crate Rust sources (not generated
+target output), root and crate manifests, root or crate build scripts, lockfile,
+toolchain, and Cargo configuration. It has no restore-key fallback.
+Before a pull request may use it, CI checks every expected member is a regular,
+non-symlink file; verifies the executable checksum; matches the Rust-input
+digest; requires `refs/heads/main` provenance; validates the recorded source
+SHA shape; and compares the executable's reported version. The skip lane
+repeats those checks after artifact handoff. A miss, corruption, or metadata
+mismatch is a `full` selection, never a skipped Rust-policy check.
+
+The initial workflow keeps skip enforcement disabled while its independent
+pull-request observation window is open. Cache restoration and verification do
+not authorize execution by themselves: the effective mode remains `full` until
+a reviewed promotion records the required live evidence. Once enabled, the
+same cache checks are required at both the selection and handoff boundaries.
 
 ### Release provenance and attestations
 
