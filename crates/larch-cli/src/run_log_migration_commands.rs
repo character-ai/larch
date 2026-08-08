@@ -15,7 +15,10 @@ use std::{
 
 use chrono::{SecondsFormat, Utc};
 use flate2::read::GzDecoder;
-use larch_adapters::{run_lifecycle, runtime::LarchRuntime, s3_storage::S3Storage};
+use larch_adapters::{
+    absolute_lexical, assert_no_symlink_path_or_ancestors, run_lifecycle, runtime::LarchRuntime,
+    s3_storage::S3Storage,
+};
 use larch_core::{
     ObjectStore, ObjectStoreError, OrderedJson, RemoteObject, RunLogSlug, StorageBase,
     parse_storage_base_uri, validate_client_repo,
@@ -576,12 +579,15 @@ fn round_money(value: f64) -> f64 {
 }
 
 fn trusted_root(root: &Path) -> Result<PathBuf, String> {
-    let metadata = fs::symlink_metadata(root)
+    let absolute = absolute_lexical(root);
+    assert_no_symlink_path_or_ancestors(&absolute)
+        .map_err(|error| format!("configured run-log root is unsafe: {error}"))?;
+    let metadata = fs::symlink_metadata(&absolute)
         .map_err(|error| format!("configured run-log root is unavailable: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err("configured run-log root must be a real directory".to_owned());
     }
-    fs::canonicalize(root)
+    fs::canonicalize(&absolute)
         .map_err(|error| format!("configured run-log root is unavailable: {error}"))
 }
 
@@ -702,6 +708,7 @@ fn read_regular_utf8_lossy(path: &Path) -> Result<String, String> {
 }
 
 fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    assert_no_symlink_path_or_ancestors(path)?;
     if !is_regular_nonsymlink(path) {
         return Err("refusing to replace a non-regular run-log file".to_owned());
     }
@@ -727,6 +734,7 @@ fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .as_file()
         .set_permissions(permissions)
         .map_err(|error| format!("could not set run-log temporary mode: {error}"))?;
+    assert_no_symlink_path_or_ancestors(path)?;
     temporary
         .persist(path)
         .map_err(|error| format!("could not atomically replace run-log file: {}", error.error))?;
@@ -1192,9 +1200,12 @@ fn store_error(operation: &str, _error: ObjectStoreError) -> String {
 }
 
 fn ensure_work_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path)
+    let absolute = absolute_lexical(path);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
+    fs::create_dir_all(&absolute)
         .map_err(|error| format!("could not create migration work directory: {error}"))?;
-    let metadata = fs::symlink_metadata(path)
+    assert_no_symlink_path_or_ancestors(&absolute)?;
+    let metadata = fs::symlink_metadata(&absolute)
         .map_err(|error| format!("could not inspect migration work directory: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err("migration work directory is unsafe".to_owned());
@@ -1215,6 +1226,7 @@ fn safe_snapshot_path(
     if !path.starts_with(&base) {
         return Err("snapshot path escapes its client root".to_owned());
     }
+    assert_no_symlink_path_or_ancestors(&absolute_lexical(&path))?;
     Ok(path)
 }
 
@@ -1224,6 +1236,8 @@ async fn ensure_snapshot(
     remote: &RemoteArchive,
     destination: &Path,
 ) -> Result<PathBuf, String> {
+    let absolute = absolute_lexical(destination);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
     if destination.is_symlink() {
         return Err("snapshot archive path is a symlink".to_owned());
     }
@@ -1243,6 +1257,7 @@ async fn ensure_snapshot(
         .ok_or_else(|| "snapshot parent is missing".to_owned())?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("could not create snapshot directory: {error}"))?;
+    assert_no_symlink_path_or_ancestors(&absolute)?;
     if fs::symlink_metadata(parent)
         .map_err(|error| format!("could not inspect snapshot directory: {error}"))?
         .file_type()
@@ -1294,14 +1309,18 @@ fn canonical_json(value: &Value) -> Result<Vec<u8>, String> {
 
 fn write_json_atomic(path: &Path, value: &Value) -> Result<(), String> {
     let bytes = canonical_json(value)?;
-    let parent = path
+    let absolute = absolute_lexical(path);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
+    let parent = absolute
         .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
         .ok_or_else(|| "migration JSON output parent is missing".to_owned())?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("could not create migration JSON directory: {error}"))?;
+    assert_no_symlink_path_or_ancestors(&absolute)?;
     let metadata = fs::symlink_metadata(parent)
         .map_err(|error| format!("could not inspect migration JSON directory: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() || path.is_symlink() {
+    if metadata.file_type().is_symlink() || !metadata.is_dir() || absolute.is_symlink() {
         return Err("refusing unsafe migration JSON output path".to_owned());
     }
     let mut temporary = NamedTempFile::new_in(parent)
@@ -1312,7 +1331,7 @@ fn write_json_atomic(path: &Path, value: &Value) -> Result<(), String> {
         .and_then(|()| temporary.as_file().sync_all())
         .map_err(|error| format!("could not write migration JSON temporary: {error}"))?;
     temporary
-        .persist(path)
+        .persist(&absolute)
         .map_err(|error| format!("could not atomically write migration JSON: {}", error.error))?;
     Ok(())
 }
@@ -1910,8 +1929,10 @@ fn candidate_archive(
         .join(client_repo)
         .join("run-logs")
         .join(&remote.skill);
+    assert_no_symlink_path_or_ancestors(&absolute_lexical(&candidate_parent))?;
     fs::create_dir_all(&candidate_parent)
         .map_err(|error| format!("could not create legacy candidate directory: {error}"))?;
+    assert_no_symlink_path_or_ancestors(&absolute_lexical(&candidate_parent))?;
     if fs::symlink_metadata(&candidate_parent)
         .map_err(|error| format!("could not inspect legacy candidate directory: {error}"))?
         .file_type()
@@ -1920,29 +1941,23 @@ fn candidate_archive(
         return Err("legacy candidate directory is unsafe".to_owned());
     }
     let candidate = candidate_parent.join(format!("{}.tar.gz", remote.run_id));
-    if candidate.exists() {
-        if !is_regular_nonsymlink(&candidate) {
-            return Err("legacy candidate archive is unsafe".to_owned());
-        }
-    } else {
-        let temporary = TempDir::new_in(work_dir)
-            .map_err(|error| format!("could not create legacy conversion directory: {error}"))?;
-        let staging = temporary.path().join("staging");
-        materialize_legacy_to_staging(source_archive, legacy, &staging)?;
-        let created = run_lifecycle::archive_run_directory(
-            &staging,
-            &candidate_parent,
-            &remote.skill,
-            &remote.run_id,
-        )
-        .map_err(|error| error.to_string())?;
-        let created_path = fs::canonicalize(&created.archive_path)
-            .map_err(|error| format!("could not resolve legacy candidate archive: {error}"))?;
-        let expected_path = fs::canonicalize(&candidate)
-            .map_err(|error| format!("could not resolve legacy candidate archive: {error}"))?;
-        if created_path != expected_path {
-            return Err("legacy candidate path is unexpected".to_owned());
-        }
+    let temporary = TempDir::new_in(work_dir)
+        .map_err(|error| format!("could not create legacy conversion directory: {error}"))?;
+    let staging = temporary.path().join("staging");
+    materialize_legacy_to_staging(source_archive, legacy, &staging)?;
+    let created = run_lifecycle::archive_run_directory(
+        &staging,
+        &candidate_parent,
+        &remote.skill,
+        &remote.run_id,
+    )
+    .map_err(|error| error.to_string())?;
+    let created_path = fs::canonicalize(&created.archive_path)
+        .map_err(|error| format!("could not resolve legacy candidate archive: {error}"))?;
+    let expected_path = fs::canonicalize(&candidate)
+        .map_err(|error| format!("could not resolve legacy candidate archive: {error}"))?;
+    if created_path != expected_path {
+        return Err("legacy candidate path is unexpected".to_owned());
     }
     let check = materialize_modern_for_check(&candidate, remote, work_dir)?;
     Ok((candidate, check))
@@ -1984,6 +1999,8 @@ async fn download_fresh(
     destination: &Path,
     expected_size: u64,
 ) -> Result<PathBuf, String> {
+    let absolute = absolute_lexical(destination);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
     if destination.exists() {
         if !is_regular_nonsymlink(destination) {
             return Err("download snapshot path is unsafe".to_owned());
@@ -1996,6 +2013,7 @@ async fn download_fresh(
         .ok_or_else(|| "target snapshot parent is missing".to_owned())?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("could not create target snapshot directory: {error}"))?;
+    assert_no_symlink_path_or_ancestors(&absolute)?;
     store
         .download(&root.base.bucket, &root.key(key)?, destination)
         .await
@@ -2667,8 +2685,10 @@ async fn load_legacy_inventory(
     }
     validate_object_relative(&descriptor.inventory_key)?;
     let directory = work_dir.join("inventory").join(&mapping.client_repo);
+    assert_no_symlink_path_or_ancestors(&absolute_lexical(&directory))?;
     fs::create_dir_all(&directory)
         .map_err(|error| format!("could not create migration inventory directory: {error}"))?;
+    assert_no_symlink_path_or_ancestors(&absolute_lexical(&directory))?;
     if fs::symlink_metadata(&directory)
         .map_err(|error| format!("could not inspect migration inventory directory: {error}"))?
         .file_type()
@@ -3677,6 +3697,22 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn retro_sweeps_reject_a_symlinked_root_ancestor() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let outside = tempfile::tempdir().expect("outside directory");
+        fs::create_dir_all(outside.path().join("root")).expect("real root");
+        let linked_parent = directory.path().join("linked-parent");
+        symlink(outside.path(), &linked_parent).expect("symlink fixture");
+        let linked_root = linked_parent.join("root");
+
+        assert!(retro_v3_sweep_impl(&linked_root, true).is_err());
+        assert!(retro_fix_cursor_impl(&linked_root, true, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn retro_sweeps_reject_a_symlinked_log_subtree() {
         use std::os::unix::fs::symlink;
 
@@ -3687,6 +3723,19 @@ mod tests {
         symlink(outside.path(), directory.path().join("larch-logs")).expect("symlink fixture");
         assert!(retro_v3_sweep_impl(directory.path(), true).is_err());
         assert!(retro_fix_cursor_impl(directory.path(), true, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_work_dir_rejects_a_symlinked_ancestor() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let outside = tempfile::tempdir().expect("outside directory");
+        let linked = directory.path().join("linked-work");
+        symlink(outside.path(), &linked).expect("symlink fixture");
+
+        assert!(super::ensure_work_dir(&linked.join("work")).is_err());
     }
 
     #[test]
@@ -4204,6 +4253,14 @@ mod tests {
             ))
             .expect("plan");
         assert_eq!(super::plan_archive_count(&plan).expect("plan rows"), 3);
+        let stale_candidate = work_dir.join("candidates/larch/run-logs/design/legacy-run.tar.gz");
+        fs::create_dir_all(stale_candidate.parent().expect("candidate parent"))
+            .expect("candidate directory");
+        fs::write(
+            &stale_candidate,
+            modern_archive(directory.path(), "design", "legacy-run", b"wrong!\n"),
+        )
+        .expect("stale candidate");
         let first_report = runtime
             .block_on(apply_layout(&store, &plan_path, &report_path, &work_dir))
             .expect("first apply");
@@ -4226,6 +4283,19 @@ mod tests {
         assert_ne!(
             store.bytes("larch/larch/run-logs/design/legacy-run.tar.gz"),
             legacy_archive
+        );
+        let target_path = directory.path().join("legacy-target.tar.gz");
+        fs::write(
+            &target_path,
+            store.bytes("larch/larch/run-logs/design/legacy-run.tar.gz"),
+        )
+        .expect("target archive");
+        let materialized = directory.path().join("materialized").join("legacy-run");
+        run_lifecycle::materialize_run_archive(&target_path, &materialized, "design", "legacy-run")
+            .expect("materialize target");
+        assert_eq!(
+            fs::read(materialized.join("result.txt")).expect("target content"),
+            legacy_content
         );
         assert_eq!(
             store.bytes("larch/larch/run-logs/issue/modern-run.tar.gz"),

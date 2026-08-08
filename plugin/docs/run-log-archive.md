@@ -253,9 +253,9 @@ Rust owns `run-log archive`, `run-log materialize`, `run-log publish`,
 including terminal archive publication and cache promotion. Configuration
 resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
 R2 use the official AWS SDK through `S3Storage`. Python keeps only typed local
-cache consumers and the separate historical layout-migration owner; it has no
-publication, synchronization, archive, or provider fallback. Both runtimes
-preserve the same credential-free error classes.
+cache consumers; it has no publication, synchronization, archive, provider, or
+layout-migration fallback. Both runtimes preserve the same credential-free error
+classes.
 
 When remaining run-log commands migrate, follow `docs/python-migration.md` and
 I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
