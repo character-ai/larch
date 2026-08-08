@@ -76,6 +76,9 @@ pub enum AgentCommand {
     /// Launch one Codex or Cursor reviewer with legacy-compatible artifacts.
     #[command(name = "launch-review", disable_help_flag = true)]
     LaunchReview(AgentRawArguments),
+    /// Collect, validate, and retry external reviewer outputs.
+    #[command(name = "collect-results", disable_help_flag = true)]
+    CollectResults(AgentRawArguments),
     /// Dispatch one slot manifest through the three-phase review waterfall.
     #[command(name = "dispatch-waterfall", disable_help_flag = true)]
     DispatchWaterfall(AgentRawArguments),
@@ -216,6 +219,9 @@ pub fn run(command: AgentCommand) -> ExitCode {
         AgentCommand::ExternalToolRegistry(arguments) => external_tool_registry(&arguments),
         AgentCommand::ModelArgs(arguments) => model_args(&arguments),
         AgentCommand::LaunchReview(arguments) => crate::agent_review::launch_review(&arguments),
+        AgentCommand::CollectResults(arguments) => {
+            crate::collector_commands::collect_results(&arguments)
+        }
         AgentCommand::DispatchWaterfall(arguments) => {
             crate::waterfall_commands::dispatch_waterfall(&arguments)
         }
@@ -901,7 +907,7 @@ fn wait_reviewers(arguments: &AgentRawArguments) -> ExitCode {
         eprintln!("Error: {POLL_INTERVAL_ENV} must be a positive number, got '{raw_poll}'");
         return ExitCode::from(1);
     };
-    let mut host = SystemWaitHost::new();
+    let mut host = SystemWaitHost::new(WaitBreadcrumbs::Stderr);
     let result = wait_for_reviewers(
         &mut host,
         &parsed.sentinels,
@@ -992,14 +998,32 @@ fn parse_poll_interval(raw: &str) -> Option<Duration> {
         .flatten()
 }
 
-struct SystemWaitHost {
+/// Where one reviewer wait's progress breadcrumbs go.
+///
+/// The command publishes them so an operator sees a long wait advance. A
+/// caller that waits inside a larger command discards them, matching the
+/// retired collector, which captured its wait child's streams and dropped them.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WaitBreadcrumbs {
+    /// Write each breadcrumb fragment to standard error.
+    Stderr,
+    /// Drop every breadcrumb fragment.
+    Discard,
+}
+
+/// The single system-clock, real-filesystem reviewer wait host.
+pub struct SystemWaitHost {
     started: Instant,
+    breadcrumbs: WaitBreadcrumbs,
 }
 
 impl SystemWaitHost {
-    fn new() -> Self {
+    /// Start one wait host with the caller's breadcrumb policy.
+    #[must_use]
+    pub fn new(breadcrumbs: WaitBreadcrumbs) -> Self {
         Self {
             started: Instant::now(),
+            breadcrumbs,
         }
     }
 }
@@ -1018,7 +1042,9 @@ impl ReviewerWaitHost for SystemWaitHost {
     }
 
     fn diagnostic(&mut self, text: &str) {
-        eprint!("{text}");
+        if self.breadcrumbs == WaitBreadcrumbs::Stderr {
+            eprint!("{text}");
+        }
     }
 }
 

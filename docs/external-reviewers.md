@@ -67,7 +67,7 @@ Validation happens in two layers. The first layer (default collector behavior) a
 
 ### Default collector behavior (always on)
 
-After the sentinel file exists, `python/cli.py agent collect-results` performs:
+After the sentinel file exists, `scripts/larch.sh agent collect-results` performs:
 
 1. Read the output file.
 2. Check that it is non-empty.
@@ -75,7 +75,7 @@ After the sentinel file exists, `python/cli.py agent collect-results` performs:
 4. If the initial row is `FAILED`, `TIMED_OUT`, or `SENTINEL_TIMEOUT` with a transient-network diagnostic, retry once through the same `.meta` replay path.
 5. If still empty after retry, if retry also fails, or if the initial failure is not retry-eligible, emit `STATUS=EMPTY_OUTPUT` / `STATUS=FAILED` / `STATUS=TIMED_OUT` / `STATUS=SENTINEL_TIMEOUT` and the caller falls back per its skill-specific contract (typically Runtime Timeout Fallback — see `skills/shared/external-reviewers.md`).
 
-Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do not use `EXIT_CODE` alone. `EXIT_CODE=0` can still appear on retry-failure rows when the retry sentinel was `0` but the retry output stayed empty (`STATUS=EMPTY_OUTPUT`). See `python/larch/agents/collect_results.py` for the full retry-row exit-code semantics.
+Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do not use `EXIT_CODE` alone. `EXIT_CODE=0` can still appear on retry-failure rows when the retry sentinel was `0` but the retry output stayed empty (`STATUS=EMPTY_OUTPUT`). See `crates/larch-cli/src/collector_commands.rs` for the full retry-row exit-code semantics.
 
 ### Opt-in substantive-content check
 
@@ -92,7 +92,7 @@ The optional `--validation-mode` modifier forwards `--validation-mode` to the va
 | `/review` Step 3a code review | `--substantive-validation --validation-mode` |
 | `/design` Step 3 plan review | `--substantive-validation --validation-mode` |
 
-Authoritative flag documentation lives in the `--substantive-validation` / `--validation-mode` stanza of the `python/cli.py agent collect-results` CLI implementation; update both this section and that header in lockstep when adding a new caller.
+Authoritative flag documentation lives in the usage line and option grammar of `crates/larch-cli/src/collector_commands.rs`; update both this section and that module in lockstep when adding a new caller.
 
 ## Timeout Handling
 

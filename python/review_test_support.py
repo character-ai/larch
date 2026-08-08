@@ -27,10 +27,10 @@ def run_review(
         merged["LARCH_QUIET_DISABLE"] = "1"
     else:
         _ = merged.pop("LARCH_QUIET_DISABLE", None)
+    if args and args[0] in {"gather-context", "dispatch-panel"}:
+        merged["LARCH_BINARY"] = str(RUST_AGENT_STUB)
     if env:
         merged.update(env)
-    if args and args[0] in {"gather-context", "dispatch-panel", "collect-findings"}:
-        _ = merged.setdefault("LARCH_BINARY", str(RUST_AGENT_STUB))
     return subprocess.run(
         [sys.executable, str(CLI), "review", *args],
         cwd=cwd or ROOT,

@@ -1,14 +1,15 @@
 # pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
-import json
 import io
+import json
 import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from larch.core import config
 from larch.core import proc
@@ -22,6 +23,9 @@ from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
 from test_support import RecordingRunner, make_committed_repo
+
+if TYPE_CHECKING:
+    from tests.support.shell_fixtures import FakeBinDirFactory
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -3523,6 +3527,43 @@ cat >/dev/null
 printf '{"type":"result","subtype":"success","is_error":false,"result":"claude review","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\\n'
 """,
     )
+
+
+def test_dispatch_panel_rust_stub_does_not_execute_vendor_binaries(
+    tmp_path: Path, fake_bin_dir: FakeBinDirFactory
+) -> None:
+    case_dir = tmp_path / "stub-no-vendors"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    fake_bin = fake_bin_dir()
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "PATH": f"{fake_bin.path}{os.pathsep}{os.environ.get('PATH', '')}",
+            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert fake_bin.invocations() == []
 
 
 def test_dispatch_panel_core_both_vendor_passes_no_fallback(tmp_path: Path) -> None:

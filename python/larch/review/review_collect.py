@@ -28,6 +28,7 @@ from larch.review.review_pipeline_shared import (
     _run_capture,
     _run_python_cli,
     _write_text,
+    run_larch,
 )
 from larch.review.review_types import FOCUS_AREA_SET
 
@@ -228,7 +229,7 @@ def collect_findings(argv: list[str]) -> int:
     collector_results.parent.mkdir(parents=True, exist_ok=True)
     collector_results.write_text("", encoding="utf-8")
     if external_files:
-        result = _run_python_cli(
+        result = run_larch(
             ["agent", "collect-results", "--timeout", timeout, "--substantive-validation", "--validation-mode", *map(str, external_files)],
             env={"LARCH_QUIET_DISABLE": "1"},
         )

@@ -73,14 +73,12 @@ _FORBIDDEN_MODULES = frozenset(
         "larch.agents.agents",
         "larch.agents._claude_runner",
         "larch.agents._ci_launcher",
-        "larch.agents.collect_results",
     }
 )
 
 _PRODUCTION_LAUNCHERS = (
     "agents.py",
     "_claude_runner.py",
-    "collect_results.py",
 )
 
 # Launchers migrated to the shared vendor descriptor table and run_vendor_launch.

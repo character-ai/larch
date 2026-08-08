@@ -15,13 +15,17 @@ from typing import TYPE_CHECKING, Any, Final, Self, TypeVar, cast
 if TYPE_CHECKING:
     import pytest
 
-from larch.agents import collect_results
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 from larch.implement import scope_disposition
 
 from tests.support.repo_contract import ROOT, repo_root
-from tests.support.review_wire import plan_review_slot_line, slot_manifest_ndjson
+from tests.support.review_wire import (
+    CollectorRecord,
+    collector_text,
+    plan_review_slot_line,
+    slot_manifest_ndjson,
+)
 
 CLI = ROOT / "python" / "cli.py"
 T = TypeVar("T")
@@ -649,7 +653,7 @@ def make_zero_findings_plan_review_fake_cli(
     identical block here keeps it from tripping the R0801 duplicate-code gate.
     """
 
-    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:  # noqa: PLR0911 - explicit command stubs fail closed on fallthrough.
         del env
         if argv[:2] == ["plan-review", "panel-dispatch"]:
             paths_file = design / "plan-review-panel-paths.txt"
@@ -669,20 +673,27 @@ def make_zero_findings_plan_review_fake_cli(
             _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
-                reviewer_file=str(reviewer_file),
-                tool="cursor",
-                status="OK",
-                exit_code="0",
+            block = collector_text(
+                [
+                    CollectorRecord(
+                        reviewer_file=str(reviewer_file),
+                        tool="cursor",
+                        status="OK",
+                        exit_code="0",
+                    )
+                ]
             )
-            blocks = ["\n".join(record.fields())]
-            return subprocess.CompletedProcess(argv, 0, "\n\n".join(blocks) + "\n", "")
+            return subprocess.CompletedProcess(argv, 0, block, "")
         if argv[:2] == ["review", "aggregate-findings"]:
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=ok\n", "")
+        if argv[:2] == ["run-log", "append-failure"]:
+            return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
         if argv[:2] == ["plan-review", "tally"]:
             return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected argv: {argv}")
 
     return fake_run_cli

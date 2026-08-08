@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from larch.agents import _vendor, collect_results
+from larch.agents import _vendor
 from larch.core import config
 from larch.implement import (
     checks_lint_fix,
@@ -52,7 +52,7 @@ def test_collector_records_last_wins_within_block_and_ignores_preamble() -> None
         "REVIEWER_FILE=b.md\n"
         "STATUS=only\n"
     )
-    assert collect_results.parse_collector_records(text) == [
+    assert review_pipeline_shared.parse_collector_records(text) == [
         {"REVIEWER_FILE": "a.md", "STATUS": "new"},
         {"REVIEWER_FILE": "b.md", "STATUS": "only"},
     ]

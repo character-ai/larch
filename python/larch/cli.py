@@ -14,7 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("agent", "collect-results"): ("larch.agents.collect_results", "collect_results_main", False),
     ("status", "check"): ("larch.agents.agents", "status_check_main", False),
     ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
     ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
