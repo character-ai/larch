@@ -1540,9 +1540,20 @@ mod tests {
         cell::RefCell,
         collections::{BTreeMap, HashSet},
         fs,
-        path::{Path, PathBuf},
+        path::Path,
     };
     use tempfile::TempDir;
+
+    /// The one surface a scripted gateway refuses, if any.
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+    enum Refuse {
+        #[default]
+        Nothing,
+        Edge,
+        LabelProvision,
+        LabelApply,
+        Probe,
+    }
 
     /// One scripted gateway, recording what the driver asked it to do.
     #[derive(Default)]
@@ -1553,17 +1564,13 @@ mod tests {
         labelled: RefCell<Vec<String>>,
         next_number: RefCell<u64>,
         create_fails_at: Option<usize>,
-        edge_fails: bool,
-        label_provision_fails: bool,
-        label_apply_fails: bool,
-        probe_fails: bool,
+        refuse: Refuse,
         checkpoint_code: u8,
-        codex: bool,
     }
 
     impl FilingGateway for FakeGateway {
         fn probe_blocker(&self, _repo: &str, _issue_number: &str) -> Result<(), String> {
-            if self.probe_fails {
+            if self.refuse == Refuse::Probe {
                 Err("probe refused".to_owned())
             } else {
                 Ok(())
@@ -1585,7 +1592,7 @@ mod tests {
         }
 
         fn link_blocked_by(&self, _repo: &str, client: u64, blocker: u64) -> Result<(), String> {
-            if self.edge_fails {
+            if self.refuse == Refuse::Edge {
                 return Err("edge refused".to_owned());
             }
             self.edges.borrow_mut().push((client, blocker));
@@ -1597,7 +1604,7 @@ mod tests {
         }
 
         fn ensure_priority_label(&self, _repo: &str) -> Result<(), String> {
-            if self.label_provision_fails {
+            if self.refuse == Refuse::LabelProvision {
                 Err("label provisioning refused".to_owned())
             } else {
                 Ok(())
@@ -1605,7 +1612,7 @@ mod tests {
         }
 
         fn apply_priority_label(&self, _repo: &str, url: &str) -> Result<(), String> {
-            if self.label_apply_fails {
+            if self.refuse == Refuse::LabelApply {
                 return Err("label application refused".to_owned());
             }
             self.labelled.borrow_mut().push(url.to_owned());
@@ -1613,7 +1620,7 @@ mod tests {
         }
 
         fn codex_available(&self) -> bool {
-            self.codex
+            false
         }
 
         fn combine(
@@ -1826,7 +1833,7 @@ mod tests {
             "### OOS_1: Correctness risk\n- **Description**: alpha\n- **focus-area**: correctness\n",
         );
         let gateway = FakeGateway {
-            label_provision_fails: true,
+            refuse: Refuse::LabelProvision,
             ..FakeGateway::default()
         };
         let (code, payload) = drive(&run_for(&tmpdir), &gateway);
@@ -1844,7 +1851,7 @@ mod tests {
             "### OOS_1: Correctness risk\n- **Description**: alpha\n- **focus-area**: correctness\n",
         );
         let gateway = FakeGateway {
-            label_apply_fails: true,
+            refuse: Refuse::LabelApply,
             ..FakeGateway::default()
         };
         let (code, payload) = drive(&run_for(&tmpdir), &gateway);
@@ -1888,7 +1895,7 @@ mod tests {
         let combined = tmpdir.path().join("combined.md");
         fs::write(&combined, "### OOS_1: One\n- **Description**: a\n").expect("write combined");
         let gateway = FakeGateway {
-            probe_fails: true,
+            refuse: Refuse::Probe,
             ..FakeGateway::default()
         };
         let result = run_issue_batch(
@@ -1915,7 +1922,7 @@ mod tests {
         let combined = tmpdir.path().join("combined.md");
         fs::write(&combined, "### OOS_1: One\n- **Description**: a\n").expect("write combined");
         let gateway = FakeGateway {
-            edge_fails: true,
+            refuse: Refuse::Edge,
             ..FakeGateway::default()
         };
         let result = run_issue_batch(
@@ -1972,7 +1979,7 @@ mod tests {
             "### OOS_1: Correctness risk\n- **Description**: alpha\n- **focus-area**: correctness\n- **Filed URL**: https://github.com/o/r/issues/7\n",
         );
         let gateway = FakeGateway {
-            label_provision_fails: true,
+            refuse: Refuse::LabelProvision,
             ..FakeGateway::default()
         };
         let (code, payload) = drive(&run_for(&tmpdir), &gateway);
@@ -2018,9 +2025,5 @@ mod tests {
     #[test]
     fn accepted_blocks_default_to_no_priority() {
         assert!(!AcceptedBlock::default().priority);
-        assert_eq!(
-            PathBuf::from("x").file_name().map(|n| n.to_owned()),
-            Some("x".into())
-        );
     }
 }
