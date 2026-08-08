@@ -11,7 +11,20 @@ runs:
         timing_file="$RUNNER_TEMP/rust-coverage-phases.tsv"
         printf 'phase\tseconds\toutcome\tdetail\n' > "$timing_file"
         target_inventory="$RUNNER_TEMP/coverage-target-cache-inventory.tsv"
-        printf 'kind\tvalue\npolicy\tdisabled-unmeasured\n' > "$target_inventory"
+        case "${COVERAGE_TARGET_CACHE_ENABLED:?}" in
+          true|false) ;;
+          *) printf 'invalid coverage target cache enabled value: %s\n' "$COVERAGE_TARGET_CACHE_ENABLED" >&2; exit 1 ;;
+        esac
+        case "${COVERAGE_TARGET_CACHE_PUBLICATION:?}" in
+          main-push|main-dispatch-benchmark) ;;
+          *) printf 'invalid coverage target cache publication: %s\n' "$COVERAGE_TARGET_CACHE_PUBLICATION" >&2; exit 1 ;;
+        esac
+        if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
+          target_cache_policy="$COVERAGE_TARGET_CACHE_PUBLICATION"
+        else
+          target_cache_policy=disabled-unmeasured
+        fi
+        printf 'kind\tvalue\npolicy\t%s\n' "$target_cache_policy" > "$target_inventory"
         {
           printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file"
           printf 'COVERAGE_TARGET_CACHE_INVENTORY=%s\n' "$target_inventory"
@@ -70,7 +83,7 @@ runs:
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: target/llvm-cov-target
-        key: coverage-target-deps-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-${{ env.CARGO_LLVM_COV_VERSION }}-opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-incremental${{ env.CARGO_INCREMENTAL }}-features${{ env.RUST_COVERAGE_FEATURE_MODE }}-linker${{ env.RUST_COVERAGE_LINKER }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', '.cargo/**') }}
+        key: ${{ env.COVERAGE_TARGET_CACHE_KEY_PREFIX }}-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-${{ env.CARGO_LLVM_COV_VERSION }}-opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-incremental${{ env.CARGO_INCREMENTAL }}-features${{ env.RUST_COVERAGE_FEATURE_MODE }}-linker${{ env.RUST_COVERAGE_LINKER }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', '.cargo/**') }}
     - name: Record Rust coverage cache restore timing
       if: always()
       shell: bash
@@ -340,9 +353,10 @@ runs:
         if-no-files-found: error
     - name: Prepare coverage-built Rust integration artifact
       # The direct production lane supplies the sole artifact consumed by the
-      # focused Python integration job. Benchmark jobs do not race it with a
-      # duplicate upload. Keep the source SHA, checksum, and version beside the
-      # executable so the consumer can reject a missing, stale, or altered handoff.
+      # focused Python integration job. A benchmark uses a distinct artifact
+      # name so its upload cost remains measurable without racing that handoff.
+      # Keep the source SHA, checksum, and version beside the executable so the
+      # consumer can reject a missing, stale, or altered handoff.
       if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       shell: bash
       run: |
@@ -370,7 +384,7 @@ runs:
       if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: larch-linux-test-binary
+        name: ${{ env.COVERAGE_PYTHON_ARTIFACT_NAME }}
         path: ${{ runner.temp }}/larch-linux-test-binary
         if-no-files-found: error
     # Artifacts and correctness checks above are intentionally complete
@@ -421,6 +435,17 @@ runs:
         case "$COVERAGE_TARGET_CACHE_MAX_BYTES" in
           ''|*[!0-9]*) printf 'invalid coverage target cache bound: %s\n' "$COVERAGE_TARGET_CACHE_MAX_BYTES" >&2; exit 1 ;;
         esac
+        if [ "$COVERAGE_TARGET_CACHE_PUBLICATION" = main-dispatch-benchmark ]; then
+          benchmark_max_bytes_cap="${COVERAGE_TARGET_CACHE_MAX_BYTES_CAP:?}"
+          case "$benchmark_max_bytes_cap" in
+            ''|*[!0-9]*) printf 'invalid coverage target cache benchmark cap: %s\n' "$benchmark_max_bytes_cap" >&2; exit 1 ;;
+          esac
+          if [ "${#COVERAGE_TARGET_CACHE_MAX_BYTES}" -gt "${#benchmark_max_bytes_cap}" ] \
+            || { [ "${#COVERAGE_TARGET_CACHE_MAX_BYTES}" -eq "${#benchmark_max_bytes_cap}" ] && [[ "$COVERAGE_TARGET_CACHE_MAX_BYTES" > "$benchmark_max_bytes_cap" ]]; }; then
+            printf 'coverage target cache benchmark bound exceeds cap: %s > %s\n' "$COVERAGE_TARGET_CACHE_MAX_BYTES" "$benchmark_max_bytes_cap" >&2
+            exit 1
+          fi
+        fi
         cache_size_bytes="$((cache_size_kib * 1024))"
         {
           printf 'post-prune-bytes\t%s\n' "$cache_size_bytes"
@@ -510,7 +535,12 @@ runs:
         fi
     - name: Save coverage dependencies
       id: coverage-target-cache-save
-      if: success() && env.COVERAGE_TARGET_CACHE_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.coverage-target-cache.outputs.cache-hit != 'true' && steps.coverage-target-cache-prune.outcome == 'success' && env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'
+      if: >-
+        success() && env.COVERAGE_TARGET_CACHE_ENABLED == 'true' &&
+        ((env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-push' && github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-dispatch-benchmark' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) &&
+        steps.coverage-target-cache.outputs.cache-hit != 'true' && steps.coverage-target-cache-prune.outcome == 'success' &&
+        env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'
       uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: target/llvm-cov-target
@@ -552,27 +582,61 @@ runs:
         event_name="${{ github.event_name }}"
         ref_name="${{ github.ref }}"
         job_status="${{ job.status }}"
+        cache_publication="${COVERAGE_TARGET_CACHE_PUBLICATION:?}"
         cache_hits="cargo-inputs=${{ steps.cargo-inputs-cache.outputs.cache-hit }};cargo-nextest=${{ steps.nextest-cache.outputs.cache-hit }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outputs.cache-hit }}"
+        target_cache_hit="${{ steps.coverage-target-cache.outputs.cache-hit }}"
         save_outcomes="cargo-inputs=${{ steps.cargo-inputs-save.outcome }};cargo-nextest=${{ steps.nextest-cache-save.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-save.outcome }};coverage-target=${{ steps.coverage-target-cache-save.outcome }}"
-        if [ "$event_name" = workflow_dispatch ]; then
-          outcome=skipped
-          detail="workflow_dispatch-read-only;${cache_hits}"
-        elif [ "$event_name" != push ] || [ "$ref_name" != refs/heads/main ]; then
-          outcome=skipped
-          detail="pull-request-or-other-read-only;${cache_hits}"
-        elif [ "$job_status" != success ]; then
-          outcome=skipped
-          detail="job-not-success;${cache_hits}"
-        elif [ "$cache_hits" = 'cargo-inputs=true;cargo-nextest=true;cargo-llvm-cov=true' ]; then
-          outcome=skipped
-          detail="all-primary-keys-hit;${cache_hits}"
-        elif [[ "$save_outcomes" == *failure* ]]; then
-          outcome=failure
-          detail="$save_outcomes"
-        else
-          outcome=success
-          detail="$save_outcomes"
-        fi
+        case "$cache_publication" in
+          main-push)
+            if [ "$event_name" = workflow_dispatch ]; then
+              outcome=skipped
+              detail="workflow_dispatch-read-only;${cache_hits}"
+            elif [ "$event_name" != push ] || [ "$ref_name" != refs/heads/main ]; then
+              outcome=skipped
+              detail="pull-request-or-other-read-only;${cache_hits}"
+            elif [ "$job_status" != success ]; then
+              outcome=skipped
+              detail="job-not-success;${cache_hits}"
+            elif [ "$cache_hits" = 'cargo-inputs=true;cargo-nextest=true;cargo-llvm-cov=true' ]; then
+              outcome=skipped
+              detail="all-primary-keys-hit;${cache_hits}"
+            elif [[ "$save_outcomes" == *failure* ]]; then
+              outcome=failure
+              detail="$save_outcomes"
+            else
+              outcome=success
+              detail="$save_outcomes"
+            fi
+            ;;
+          main-dispatch-benchmark)
+            if [ "$event_name" != workflow_dispatch ] || [ "$ref_name" != refs/heads/main ]; then
+              outcome=skipped
+              detail="benchmark-main-dispatch-required;${cache_hits}"
+            elif [ "$job_status" != success ]; then
+              outcome=skipped
+              detail="job-not-success;${cache_hits}"
+            elif [[ "$save_outcomes" == *failure* ]]; then
+              outcome=failure
+              detail="$save_outcomes"
+            elif [ "$target_cache_hit" = true ]; then
+              outcome=success
+              detail="workflow_dispatch-main-benchmark-hit;${cache_hits}"
+            elif [ "$COVERAGE_TARGET_CACHE_SAVE_ALLOWED" != true ]; then
+              outcome=skipped
+              detail="workflow_dispatch-main-benchmark-no-save;reason=${COVERAGE_TARGET_CACHE_SAVE_REASON}"
+            elif [ "${{ steps.coverage-target-cache-save.outcome }}" = success ]; then
+              outcome=success
+              detail="workflow_dispatch-main-benchmark-save;${cache_hits}"
+            else
+              outcome=failure
+              detail="unexpected-benchmark-save-state;${save_outcomes}"
+            fi
+            ;;
+          *)
+            printf 'invalid coverage target cache publication: %s\n' "$cache_publication" >&2
+            exit 1
+            ;;
+        esac
         printf 'cache-save\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" "$detail" \
           >> "$COVERAGE_TIMING_FILE"
     - name: Record total Rust coverage job timing

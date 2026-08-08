@@ -16,6 +16,16 @@ on:
         options:
           - ubuntu-24.04
           - large_ubuntu_4cpu
+      coverage_target_cache_benchmark:
+        description: Run the isolated main-only coverage target-cache comparison job
+        required: false
+        default: false
+        type: boolean
+      coverage_target_cache_benchmark_max_bytes:
+        description: Exact measured dependency-only byte bound for the target-cache benchmark (0 measures only)
+        required: false
+        default: "0"
+        type: string
   pull_request:
     branches:
       - main
@@ -763,12 +773,15 @@ jobs:
       COVERAGE_LCOV_ARTIFACT_SUFFIX: ""
       COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"
       COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
+      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"
       # A target cache is opt-in only after three comparable warm-cache main
       # samples beat a no-target-cache control end to end. Zero is deliberately
       # not a size bound: it makes an accidental enablement save nothing until
       # a measured dependency-only size bound is reviewed in this workflow.
       COVERAGE_TARGET_CACHE_ENABLED: "false"
       COVERAGE_TARGET_CACHE_SCHEMA: "v1"
+      COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
+      COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"
       COVERAGE_TARGET_CACHE_MAX_BYTES: "0"
       RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
       RUST_COVERAGE_FEATURE_MODE: "all-features"
@@ -1120,8 +1133,11 @@ jobs:
       COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}
       COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}
       COVERAGE_PRODUCES_PYTHON_ARTIFACT: "false"
+      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-profile-benchmark"
       COVERAGE_TARGET_CACHE_ENABLED: "false"
       COVERAGE_TARGET_CACHE_SCHEMA: "v1"
+      COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
+      COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"
       COVERAGE_TARGET_CACHE_MAX_BYTES: "0"
       RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
       RUST_COVERAGE_FEATURE_MODE: "all-features"
@@ -1140,6 +1156,86 @@ jobs:
       - uses: ./.github/actions/rust-coverage
       # Keep the installed-Git check in the workflow, where the ownership
       # inventory verifies this production Git surface.
+      - name: Verify generated plugin runtime projection is clean
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- plugin
+          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
+          if [ -n "$untracked_plugin_paths" ]; then
+            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
+            printf '%s\n' "$untracked_plugin_paths"
+            exit 1
+          fi
+
+  # This manual job supplies matched cache-on measurements while rust-full in
+  # the same dispatch remains the cache-off control. Its cache key is isolated
+  # from production and may only be published by this explicitly requested
+  # main-ref benchmark, never by a pull request or normal dispatch.
+  rust-coverage-target-cache-benchmark:
+    if: github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark && github.ref == 'refs/heads/main'
+    name: rust-coverage-target-cache-benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_NEXTEST_VERSION: "0.9.137"
+      CARGO_NEXTEST_ARCHIVE_SHA256: "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311"
+      CARGO_NEXTEST_BINARY_SHA256: "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550"
+      CARGO_LLVM_COV_VERSION: "0.8.7"
+      CARGO_LLVM_COV_ARCHIVE_SHA256: "9a75fe29538d3800b3da57f6f6efb64cba5c720a257bf0cb8b51f39d495a9168"
+      CARGO_LLVM_COV_BINARY_SHA256: "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042"
+      RUST_COVERAGE_MIN_LINES: "88.000"
+      RUST_COVERAGE_IGNORE_REGEX: '(^|/)(crates/larch-test-support|tests|fixtures)(/|$)|/build\.rs$'
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_TEST_OPT_LEVEL: "0"
+      NEXTEST_TEST_THREADS: "16"
+      COVERAGE_PROFILE_BENCHMARK: "false"
+      COVERAGE_PROFILE_SAMPLE: "target-cache-benchmark"
+      COVERAGE_LCOV_ARTIFACT_SUFFIX: "-target-cache-benchmark"
+      COVERAGE_TIMING_ARTIFACT_SUFFIX: "-target-cache-benchmark"
+      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
+      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-target-cache-benchmark"
+      COVERAGE_TARGET_CACHE_ENABLED: "true"
+      COVERAGE_TARGET_CACHE_SCHEMA: "v1"
+      COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps-benchmark"
+      COVERAGE_TARGET_CACHE_PUBLICATION: "main-dispatch-benchmark"
+      COVERAGE_TARGET_CACHE_MAX_BYTES: ${{ inputs.coverage_target_cache_benchmark_max_bytes }}
+      COVERAGE_TARGET_CACHE_MAX_BYTES_CAP: "2147483648"
+      RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
+      RUST_COVERAGE_FEATURE_MODE: "all-features"
+      RUST_COVERAGE_LINKER: "runner-default"
+    steps:
+      - name: Validate coverage target cache benchmark bound
+        shell: bash
+        run: |
+          set -euo pipefail
+          max_bytes="${COVERAGE_TARGET_CACHE_MAX_BYTES:?}"
+          max_bytes_cap="${COVERAGE_TARGET_CACHE_MAX_BYTES_CAP:?}"
+          case "$max_bytes" in
+            ''|*[!0-9]*) printf 'invalid coverage target cache benchmark bound: %s\n' "$max_bytes" >&2; exit 1 ;;
+          esac
+          case "$max_bytes_cap" in
+            ''|*[!0-9]*) printf 'invalid coverage target cache benchmark cap: %s\n' "$max_bytes_cap" >&2; exit 1 ;;
+          esac
+          if [ "${#max_bytes}" -gt "${#max_bytes_cap}" ] \
+            || { [ "${#max_bytes}" -eq "${#max_bytes_cap}" ] && [[ "$max_bytes" > "$max_bytes_cap" ]]; }; then
+            printf 'coverage target cache benchmark bound exceeds cap: %s > %s\n' \
+              "$max_bytes" "$max_bytes_cap" >&2
+            exit 1
+          fi
+      - name: Start Rust coverage job timing
+        run: |
+          set -euo pipefail
+          printf 'COVERAGE_JOB_TIMING_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/rust-coverage
+        env:
+          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
       - name: Verify generated plugin runtime projection is clean
         run: |
           set -euo pipefail

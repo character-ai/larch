@@ -290,6 +290,14 @@ cache stays disabled unless independent end-to-end measurements prove it helps.
 Neither a cache restore nor its diagnostic metadata waives the coverage,
 artifact, executable, repository-policy, or plugin-validation gates.
 
+The manual target-cache benchmark is isolated from that production cache
+contract. Its fixed workflow condition requires a direct `workflow_dispatch`
+of `refs/heads/main`, its benchmark-only key cannot be restored by the normal
+coverage lane, and its decimal size input is capped before the shared action
+can save. It exists only to collect the independent warm-cache comparison; it
+does not authorize a pull request or normal manual run to publish compiler
+output.
+
 ### CI Rust selection trust
 
 The pull-request `rust-selection` job has read-only workflow permissions. It

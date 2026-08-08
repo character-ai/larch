@@ -250,6 +250,11 @@ follows:
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
   the protected production path and does not upload a competing Python artifact.
+- `rust-coverage-target-cache-benchmark` runs only when a manual dispatch on
+  `main` sets `coverage_target_cache_benchmark=true`. It runs beside the normal
+  cache-off `rust-full` control, uses the same coverage action and profile, and
+  uploads a uniquely named verification artifact rather than competing with the
+  Python handoff.
 
 The coverage job installs checksum-verified pinned `cargo-nextest` and
 `cargo-llvm-cov` binaries without a source-install fallback. Normal local
@@ -516,6 +521,19 @@ data and workspace products from `target/llvm-cov-target`, then publishes its
 directory inventory as a separate artifact. A cache hit never replaces the
 coverage report, executable smoke test, repository policy, plugin validation,
 or Python-artifact handoff.
+
+The target-cache benchmark uses a separate
+`coverage-target-deps-benchmark-*` key, never the production key. It runs only
+from an explicitly selected `workflow_dispatch` on `refs/heads/main`; pull
+requests and ordinary manual runs cannot restore or save it. Its first dispatch
+uses a zero bound to publish the dependency-only inventory without saving. A
+later dispatch must pass that measured byte bound, capped at 2 GiB, to seed the
+benchmark cache. Three subsequent dispatches provide matched pairs: the normal
+`rust-full` lane is the no-target-cache control and the benchmark lane is the
+warm candidate. The benchmark key cannot activate or supply the production
+cache. Its timing and inventory artifacts use the `-target-cache-benchmark`
+suffix, and its verification executable uses a distinct artifact name, so they
+remain distinguishable from the control artifacts while retaining upload cost.
 
 This workflow does not garbage-collect GitHub Actions caches. Add that behavior
 only after a repository cache inventory demonstrates quota pressure or useful
