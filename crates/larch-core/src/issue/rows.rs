@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::text::positive_integer;
+use crate::text::{positive_integer, python_str};
 
 /// One open GitHub issue, normalized for the combine and deps consumers.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,20 +89,6 @@ fn json_positive_integer(value: &Value) -> Option<u64> {
     match value {
         Value::String(text) => positive_integer(text),
         other => other.as_u64().filter(|number| *number > 0),
-    }
-}
-
-/// Render a field the way Python's `str(value) if value else ""` did.
-///
-/// The consumers wrote through `str()` rather than requiring a JSON string, so
-/// a numeric or boolean field still normalizes instead of vanishing, and every
-/// falsy spelling collapses to `""`.
-fn python_str(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Bool(true)) => "True".to_owned(),
-        Some(Value::Number(number)) if number.as_f64() != Some(0.0) => number.to_string(),
-        _ => String::new(),
     }
 }
 

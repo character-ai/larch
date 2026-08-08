@@ -27,6 +27,7 @@
 use crate::report::run_log_corpus::{
     RunLogCorpus, RunLogCorpusEvent, RunLogCorpusIter, RunLogRun, RunLogSelection,
 };
+use crate::text::python_str as truthy_text;
 use crate::vendor_model::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_MODEL,
     CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
@@ -186,15 +187,6 @@ fn int_field(fields: &Map<String, Value>, key: &str) -> i64 {
 
 fn object_field<'a>(fields: &'a Map<String, Value>, key: &str) -> Option<&'a Map<String, Value>> {
     fields.get(key).and_then(Value::as_object)
-}
-
-fn truthy_text(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(text)) if !text.is_empty() => text.clone(),
-        Some(Value::Bool(true)) => "True".to_owned(),
-        Some(Value::Number(number)) if number.as_f64() != Some(0.0) => number.to_string(),
-        _other => String::new(),
-    }
 }
 
 /// Aggregated token counts for one vendor lane.
@@ -1321,40 +1313,7 @@ pub enum TokenScanWarningKind {
 }
 
 /// A non-fatal, structured scan warning.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TokenScanWarning {
-    kind: TokenScanWarningKind,
-    path: PathBuf,
-    message: String,
-}
-
-impl TokenScanWarning {
-    fn new(kind: TokenScanWarningKind, path: PathBuf, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            path,
-            message: message.into(),
-        }
-    }
-
-    /// Return the stable warning kind.
-    #[must_use]
-    pub const fn kind(&self) -> TokenScanWarningKind {
-        self.kind
-    }
-
-    /// Return the affected path.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Return the operator-facing diagnostic.
-    #[must_use]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
+pub type TokenScanWarning = super::PathWarning<TokenScanWarningKind>;
 
 /// One priced run selected from a run-log corpus.
 #[derive(Clone, Debug)]

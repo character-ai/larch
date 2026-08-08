@@ -325,36 +325,7 @@ pub enum RunLogCorpusWarningKind {
     WindowTimestampUnavailable,
 }
 /// A non-fatal, structured corpus-walk warning.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RunLogCorpusWarning {
-    kind: RunLogCorpusWarningKind,
-    path: PathBuf,
-    message: String,
-}
-impl RunLogCorpusWarning {
-    fn new(kind: RunLogCorpusWarningKind, path: PathBuf, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            path,
-            message: message.into(),
-        }
-    }
-    /// Return the stable warning kind.
-    #[must_use]
-    pub const fn kind(&self) -> RunLogCorpusWarningKind {
-        self.kind
-    }
-    /// Return the skipped path.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-    /// Return a diagnostic compatible with the Python reader's warning role.
-    #[must_use]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
+pub type RunLogCorpusWarning = super::PathWarning<RunLogCorpusWarningKind>;
 /// One result from a streaming corpus selection.
 #[derive(Clone, Debug)]
 pub enum RunLogCorpusEvent {
@@ -1030,7 +1001,7 @@ fn safe_child_directories(root: &Path) -> ChildDirectoryScan {
         directories.push(path);
     }
     directories.sort();
-    warnings.sort_by(|left, right| left.path.cmp(&right.path));
+    warnings.sort_by(|left, right| left.path().cmp(right.path()));
     ChildDirectoryScan {
         directories,
         warnings,

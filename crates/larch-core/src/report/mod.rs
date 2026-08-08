@@ -8,6 +8,7 @@
 
 mod exec_issue_detail;
 mod markdown_block;
+mod path_warning;
 mod run_log_corpus;
 pub mod timing;
 mod token_scan;
@@ -22,6 +23,7 @@ pub use markdown_block::{
     BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, replace_markdown_block,
     replace_markdown_block_with_warn,
 };
+pub use path_warning::PathWarning;
 pub use run_log_corpus::{
     RunLogBatchArtifact, RunLogBatchMode, RunLogBatchSanitizer, RunLogBatchSpec, RunLogCorpus,
     RunLogCorpusEvent, RunLogCorpusIter, RunLogCorpusWarning, RunLogCorpusWarningKind,
