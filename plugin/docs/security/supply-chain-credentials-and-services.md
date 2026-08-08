@@ -87,13 +87,13 @@ the coverage-target executable at `target/llvm-cov-target/debug/larch` is
 runnable and reports its version. The same executable runs repository policy
 and plugin projection validation before either it or the LCOV report is
 uploaded. The artifact contains the executable plus its SHA-256, source SHA,
-and reported version. The required `python-rust-integration` job waits for the
-stable `rust-coverage` result, rejects missing, symlinked, checksum-mismatched,
-stale-source, or version-mismatched artifact contents, and only then runs the
-Rust-backed Python tests. The stub-safe `python-tests` matrix has no Rust
-artifact dependency; `python-tests-gate` requires both jobs. The producer's
-`if-no-files-found: error` prevents an absent producer artifact from being
-treated as a successful handoff.
+and reported version. The required `python-rust-integration` job publishes the
+stable `python-tests-gate` check. It verifies both prerequisite results,
+rejects missing, symlinked, checksum-mismatched, stale-source, or
+version-mismatched artifact contents, and only then runs the Rust-backed Python
+tests. The stub-safe `python-tests` matrix has no Rust artifact dependency. The
+producer's `if-no-files-found: error` prevents an absent producer artifact from
+being treated as a successful handoff.
 
 ### Release provenance and attestations
 

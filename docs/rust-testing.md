@@ -218,10 +218,11 @@ follows:
   repository policy and plugin projection validation, and uploads the Linux
   executable artifact. The 20-shard `python-tests` matrix runs stub-safe tests
   without waiting for Rust coverage. The required `python-rust-integration`
-  job waits for `rust-coverage`, verifies the coverage-produced
-  `larch-linux-test-binary` checksum, source SHA, and version, then runs the
-  marker-selected tests that exercise Rust-backed paths. `python-tests-gate`
-  requires both jobs.
+  job publishes the stable `python-tests-gate` check. It waits for
+  `rust-coverage`, checks both prerequisite results, verifies the
+  coverage-produced `larch-linux-test-binary` checksum, source SHA, and
+  version, then runs the marker-selected Rust-backed tests directly. This
+  avoids a second post-integration runner tail.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
   the protected production path and does not upload a competing Python artifact.
