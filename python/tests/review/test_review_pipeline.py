@@ -20,6 +20,7 @@ from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
+from tests.support.shell_fixtures import FakeBinDirFactory
 
 from test_support import RecordingRunner, make_committed_repo
 
@@ -3526,7 +3527,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
 
 
 def test_dispatch_panel_rust_stub_does_not_execute_vendor_binaries(
-    tmp_path: Path, fake_bin_dir
+    tmp_path: Path, fake_bin_dir: FakeBinDirFactory
 ) -> None:
     case_dir = tmp_path / "stub-no-vendors"
     case_dir.mkdir()
