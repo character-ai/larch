@@ -3785,9 +3785,22 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     rust_coverage = (
         repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
     ).read_text(encoding="utf-8")
+    python_pyproject = (repo_root / "python" / "pyproject.toml").read_text(encoding="utf-8")
+    lifecycle_consumer = (
+        repo_root / "python" / "tests" / "report" / "test_run_lifecycle_consumer.py"
+    ).read_text(encoding="utf-8")
+    pr_body_tests = (
+        repo_root / "python" / "tests" / "git" / "test_pr_body.py"
+    ).read_text(encoding="utf-8")
     rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
     python_tests = workflow.split("\n  python-tests:", 1)[1].split(
+        "\n  python-rust-integration:", 1
+    )[0]
+    python_rust_integration = workflow.split("\n  python-rust-integration:", 1)[1].split(
         "\n  python-tests-gate:", 1
+    )[0]
+    python_tests_gate = workflow.split("\n  python-tests-gate:", 1)[1].split(
+        "\n  gitleaks:", 1
     )[0]
     gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
@@ -4037,11 +4050,19 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_binary_artifact = rust_coverage.split(
         "Upload coverage-built Rust executable for cross-language integration tests", 1
     )[1].split("Start Rust coverage cache save timing", 1)[0]
-    assert f"path: {coverage_binary}" in rust_coverage
+    assert "Prepare coverage-built Rust integration artifact" in rust_coverage
     assert "name: larch-linux-test-binary" in coverage_binary_artifact
-    assert f"path: {coverage_binary}" in coverage_binary_artifact
+    assert "path: ${{ runner.temp }}/larch-linux-test-binary" in coverage_binary_artifact
     assert "if-no-files-found: error" in coverage_binary_artifact
     assert "env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'" in coverage_binary_artifact
+    prepared_artifact = rust_coverage.split(
+        "Prepare coverage-built Rust integration artifact", 1
+    )[1].split("Upload coverage-built Rust executable for cross-language integration tests", 1)[0]
+    assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in prepared_artifact
+    for artifact_file in ("larch", "larch.sha256", "source-sha", "version"):
+        assert artifact_file in prepared_artifact
+    assert 'printf \'%s\\n\' "$GITHUB_SHA"' in prepared_artifact
+    assert "sha256sum larch > larch.sha256" in prepared_artifact
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
     )
@@ -4091,16 +4112,37 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "build_test_result" not in rust_gate
     assert "if: always()" in rust_gate
 
-    assert "needs: [rust-coverage]" in python_tests
+    assert "needs:" not in python_tests
     assert "needs: [rust-build-test]" not in python_tests
-    assert "LARCH_TEST_RUST_BINARY" in python_tests
-    assert "name: larch-linux-test-binary" in python_tests
-    assert "path: .ci-bin" in python_tests
-    assert "chmod 755 .ci-bin/larch" in python_tests
+    assert "LARCH_TEST_RUST_BINARY" not in python_tests
+    assert "larch-linux-test-binary" not in python_tests
+    assert "PYTEST_ADDOPTS: '-m \"not rust_integration\"'" in python_tests
     python_test_execution = python_tests.split(
         "Run Python tests (shard ${{ matrix.shard }} of 20)", 1
     )[1]
-    assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in python_test_execution
+    assert "LLVM_PROFILE_FILE" not in python_test_execution
+
+    assert "needs: [rust-coverage]" in python_rust_integration
+    assert "LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch" in python_rust_integration
+    assert "name: larch-linux-test-binary" in python_rust_integration
+    assert "path: .ci-bin" in python_rust_integration
+    assert "Verify coverage-built Rust integration artifact" in python_rust_integration
+    assert "sha256sum --check --strict larch.sha256" in python_rust_integration
+    assert 'test "$source_sha" = "$GITHUB_SHA"' in python_rust_integration
+    assert 'test "$actual_version" = "$expected_version"' in python_rust_integration
+    assert "LARCH_TEST_RUST_BINARY_SHA256" in python_rust_integration
+    integration_execution = python_rust_integration.split(
+        "Run Rust-backed Python integration tests", 1
+    )[1]
+    assert 'PYTEST_ADDOPTS: "-m rust_integration"' in integration_execution
+    assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in integration_execution
+
+    assert "needs: [python-tests, python-rust-integration]" in python_tests_gate
+    assert "unit_result" in python_tests_gate
+    assert "integration_result" in python_tests_gate
+    assert "rust_integration: requires the coverage-built Rust larch executable" in python_pyproject
+    assert "@pytest.mark.rust_integration\ndef test_consumer_reaches_rust_through_its_bootstrap" in lifecycle_consumer
+    assert "@pytest.mark.rust_integration\ndef test_write_final_report_renders_panel_failed_merge_downgrade" in pr_body_tests
 
 
 def test_rust_ci_change_selection_observation_contract() -> None:

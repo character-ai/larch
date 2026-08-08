@@ -8,4 +8,5 @@ pythonpath = ["."]
 markers = [
     "record_timing: Step 5 record-round-timing contract tests",
     "commit_fixes: review-and-fix commit-fixes contract tests",
+    "rust_integration: requires the coverage-built Rust larch executable",
 ]

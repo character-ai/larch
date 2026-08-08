@@ -338,14 +338,35 @@ runs:
         name: rust-repository-policy-rule-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}
         path: ${{ runner.temp }}/rust-repository-policy-rules-*.tsv
         if-no-files-found: error
+    - name: Prepare coverage-built Rust integration artifact
+      # The direct production lane supplies the sole artifact consumed by the
+      # focused Python integration job. Benchmark jobs do not race it with a
+      # duplicate upload. Keep the source SHA, checksum, and version beside the
+      # executable so the consumer can reject a missing, stale, or altered handoff.
+      if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
+        artifact_dir="$RUNNER_TEMP/larch-linux-test-binary"
+        test -x "$coverage_larch"
+        mkdir -p "$artifact_dir"
+        install -m 0755 "$coverage_larch" "$artifact_dir/larch"
+        (
+          cd "$artifact_dir"
+          sha256sum larch > larch.sha256
+        )
+        printf '%s\n' "$GITHUB_SHA" > "$artifact_dir/source-sha"
+        "$artifact_dir/larch" --version > "$artifact_dir/version"
+        test -s "$artifact_dir/larch.sha256"
+        test -s "$artifact_dir/source-sha"
+        test -s "$artifact_dir/version"
     - name: Upload coverage-built Rust executable for cross-language integration tests
-      # The direct production lane supplies the sole artifact consumed by
-      # Python tests. Benchmark jobs do not race it with a duplicate upload.
       if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: larch-linux-test-binary
-        path: target/llvm-cov-target/debug/larch
+        path: ${{ runner.temp }}/larch-linux-test-binary
         if-no-files-found: error
     # Artifacts and correctness checks above are intentionally complete
     # before this cache-only cleanup path. cargo clean removes workspace

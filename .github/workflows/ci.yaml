@@ -813,17 +813,18 @@ jobs:
       - name: Run Python typecheck
         run: make py-typecheck
 
-  # Python unit tests, sharded across a matrix to speed up CI. conftest.py
-  # round-robins the collected tests by index using PYTEST_SHARD_ID /
-  # PYTEST_SHARD_COUNT (see python/pytest_sharding.py); the matrix `shard` list
-  # below is the source of truth for shard count. `make py-test` runs pytest
-  # with --durations=0 so shards can be rebalanced by wall time later.
+  # Stub-safe Python unit tests, sharded across a matrix to speed up CI. They
+  # deliberately have no Rust dependency: the marker-selected cross-language
+  # test runs in python-rust-integration below. conftest.py round-robins the
+  # collected tests by index using PYTEST_SHARD_ID / PYTEST_SHARD_COUNT (see
+  # python/pytest_sharding.py); the matrix `shard` list below is the source of
+  # truth for shard count. `make py-test` runs pytest with --durations=0 so
+  # shards can be rebalanced by wall time later.
   python-tests:
-    needs: [rust-coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch
+      PYTEST_ADDOPTS: '-m "not rust_integration"'
     strategy:
       fail-fast: false
       matrix:
@@ -847,13 +848,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: python/requirements-test.txt
-      - name: Download Rust executable for cross-language integration tests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: larch-linux-test-binary
-          path: .ci-bin
-      - name: Mark the Rust integration-test executable runnable
-        run: chmod 755 .ci-bin/larch
       - name: Resolve interpreter site-packages
         id: site-packages
         run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
@@ -873,8 +867,78 @@ jobs:
         env:
           PYTEST_SHARD_ID: ${{ matrix.shard }}
           PYTEST_SHARD_COUNT: "20"
+        run: make py-test
+
+  # This is the only Python test that executes the coverage-built Rust binary.
+  # It validates the same-run artifact before exercising the bootstrap, so a
+  # missing, stale, or altered binary is a hard failure rather than a skip.
+  python-rust-integration:
+    needs: [rust-coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/design/
+            !/larch-logs/shared/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        id: setup-python
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/requirements-test.txt
+      - name: Download Rust executable for cross-language integration tests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: larch-linux-test-binary
+          path: .ci-bin
+      - name: Verify coverage-built Rust integration artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$GITHUB_WORKSPACE/.ci-bin"
+          for artifact_file in larch larch.sha256 source-sha version; do
+            test -f "$artifact_dir/$artifact_file"
+            test ! -L "$artifact_dir/$artifact_file"
+          done
+          chmod 755 "$artifact_dir/larch"
+          (
+            cd "$artifact_dir"
+            sha256sum --check --strict larch.sha256
+          )
+          read -r binary_sha artifact_name < "$artifact_dir/larch.sha256"
+          test "$artifact_name" = larch
+          read -r source_sha < "$artifact_dir/source-sha"
+          test "$source_sha" = "$GITHUB_SHA"
+          expected_version="$(<"$artifact_dir/version")"
+          actual_version="$("$artifact_dir/larch" --version)"
+          test "$actual_version" = "$expected_version"
+          printf 'LARCH_TEST_RUST_BINARY_SHA256=%s\n' "$binary_sha" >> "$GITHUB_ENV"
+      - name: Resolve interpreter site-packages
+        id: site-packages
+        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
+      - name: Cache installed Python packages
+        id: cache-site-packages
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ runner.os }}-pip-site-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('python/requirements-test.txt') }}
+      - name: Install Python test dependencies
+        if: steps.cache-site-packages.outputs.cache-hit != 'true'
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
+        run: pip install -r python/requirements-test.txt
+      - name: Run Rust-backed Python integration tests
+        env:
+          PYTEST_ADDOPTS: "-m rust_integration"
           # The coverage-instrumented executable must not leave profraw files
-          # in the temporary repositories owned by Python integration tests.
+          # in the temporary repository owned by this integration test.
           LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw
         run: make py-test
 
@@ -882,11 +946,13 @@ jobs:
   # rationale: one stable required check independent of shard count).
   python-tests-gate:
     name: python-tests-gate
-    needs: [python-tests]
+    needs: [python-tests, python-rust-integration]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require all python-tests shards to pass
+      - name: Require Python unit and Rust integration tests to pass
         run: |
-          result="${{ needs.python-tests.result }}"
-          [ "$result" = success ] || { echo "::error::python-tests result=$result"; exit 1; }
+          unit_result="${{ needs.python-tests.result }}"
+          integration_result="${{ needs.python-rust-integration.result }}"
+          [ "$unit_result" = success ] || { echo "::error::python-tests result=$unit_result"; exit 1; }
+          [ "$integration_result" = success ] || { echo "::error::python-rust-integration result=$integration_result"; exit 1; }
