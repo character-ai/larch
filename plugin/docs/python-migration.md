@@ -282,7 +282,7 @@ Most release, audit-runs, combine-issues fetch/apply, and analyze-issues helper 
 
 ## Decision log — F3e tracking issue lifecycle
 
-- Tracking issue read/write/summary helpers now live behind `python3 python/cli.py tracking-issue ...` verbs.
+- Tracking issue read/write/summary verbs live behind `scripts/larch.sh tracking-issue ...` in Rust (#8175); `python/larch/issue/tracking_issue.py` keeps only the in-process library.
 - `tracking-issue read` preserves stdout failure envelopes for shell-level usage and validation failures; parser-level missing option values remain stderr-only.
 - Write-verb usage errors remain stderr-only. `tracking-issue upsert-summary` keeps non-usage failure envelopes on stderr so existing stderr capture files remain authoritative.
 - Retired shell helper paths are recorded in `python/migrated-scripts.tsv`; keep future prose on the live CLI surface so `make lint-retired-scripts` stays path-clean.

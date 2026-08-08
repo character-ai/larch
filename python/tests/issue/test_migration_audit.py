@@ -224,7 +224,7 @@ def test_stale_lease_includes_exact_cleanup_command(tmp_path: Path) -> None:
         {
             "category": "stale_implementation_lease",
             "cleanup_command": (
-                "python3 python/cli.py tracking-issue rename --issue 10 "
+                "scripts/larch.sh tracking-issue rename --issue 10 "
                 "--state stalled --repo owner/repo --run-id run-10"
             ),
             "issue": 10,

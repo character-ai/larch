@@ -188,7 +188,7 @@ Run rounds 1 and 2 in order, stopping early only when a validated operation enve
 5. Report the round with the fixed `📊 Panel: | Cursor: ... | Codex: ... | Claude: ... |` format from `skills/shared/progress-reporting.md`. Preserve unavailable slots as `⊘` and failed slots with only their stable drop class. Then Write a fixed, path-free round digest to `$DEBATE_TMPDIR/round-<ROUND>-comment.md`. It may state the round number, live slot names, and stable drop classes, but must not quote reasons or raw output. Upsert it on the source issue with marker `<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->` through `tracking-issue upsert-summary`. Require a verified comment result before the next round.
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" tracking-issue upsert-summary \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" tracking-issue upsert-summary \
      --issue "$SOURCE_ISSUE" --repo "$REPO" \
      --marker "<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->" \
      --content-file "$DEBATE_TMPDIR/round-$ROUND-comment.md"
@@ -294,7 +294,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called \
 Write a fixed forward-link comment naming only the verified proposal number and URL. Upsert it on the source issue with marker `<!-- larch:debate-proposal runid=$RUN_ID -->`. Require verified read-back. The proposal body now links to the source and the source comment links to the proposal.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" tracking-issue upsert-summary \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" tracking-issue upsert-summary \
   --issue "$SOURCE_ISSUE" --repo "$REPO" \
   --marker "<!-- larch:debate-proposal runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/proposal-comment.md"
@@ -333,7 +333,7 @@ If `TITLE_ADOPTED=true`, call `debate title-transition --mode restore`. The type
 For every failure or cancellation after title adoption, Write one fixed sanitized sentence to `$DEBATE_TMPDIR/aborted-comment.md`: `The debate ended before proposal publication. No outcome was adopted.` Upsert it exactly once with marker `<!-- larch:debate-aborted runid=$RUN_ID -->`. Do not include an exception, prompt, ledger, path, issue body, or vendor output. Upsert identity makes retries update the same comment instead of creating another.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" tracking-issue upsert-summary \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" tracking-issue upsert-summary \
   --issue "$SOURCE_ISSUE" --repo "$REPO" \
   --marker "<!-- larch:debate-aborted runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/aborted-comment.md"

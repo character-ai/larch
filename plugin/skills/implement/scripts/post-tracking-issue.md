@@ -42,6 +42,6 @@ Output:
 - `ERROR=<message>` on failure
 
 The script writes `summary-metadata.md` under `IMPLEMENT_TMPDIR` and calls
-`python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary` with the
+`"$PLUGIN_ROOT/scripts/larch.sh" tracking-issue upsert-summary` with the
 `<!-- larch:metadata v1 runid=<R> -->` marker. Failures emit `FAILED=true` and
 `ERROR=<message>` on stderr.

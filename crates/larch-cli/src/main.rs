@@ -76,6 +76,7 @@ mod stall_recovery_reporting;
 mod state_commands;
 mod test_shards;
 mod timing_commands;
+mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
 mod voter_dispatch_commands;
@@ -151,6 +152,9 @@ enum Domain {
     /// Implementation-plan readers.
     #[command(subcommand)]
     Plan(PlanCommand),
+    /// The tracking issue's lifecycle: reads, comments, titles, and summaries.
+    #[command(subcommand, name = "tracking-issue")]
+    TrackingIssue(TrackingIssueCommand),
     /// Pre-`/design` issue verification: evidence, probes, and the one write.
     #[command(subcommand)]
     Triage(TriageCommand),
@@ -492,6 +496,28 @@ enum PlanCommand {
     /// Publish the scope paths one implementation plan declares.
     #[command(name = "scope-paths", disable_help_flag = true)]
     ScopePaths(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum TrackingIssueCommand {
+    /// Render one issue and its human comments into a task file.
+    #[command(disable_help_flag = true)]
+    Read(RawCompatibilityArguments),
+    /// File one tracking issue from a drafted title and body file.
+    #[command(name = "create-issue", disable_help_flag = true)]
+    CreateIssue(RawCompatibilityArguments),
+    /// Append one comment, optionally tagged with a lifecycle marker.
+    #[command(name = "append-comment", disable_help_flag = true)]
+    AppendComment(RawCompatibilityArguments),
+    /// Move one tracking title to the prefix a lifecycle state names.
+    #[command(disable_help_flag = true)]
+    Rename(RawCompatibilityArguments),
+    /// Tag one title as a disproved finding.
+    #[command(name = "mark-false-positive", disable_help_flag = true)]
+    MarkFalsePositive(RawCompatibilityArguments),
+    /// Keep exactly one marker-keyed summary comment on the issue.
+    #[command(name = "upsert-summary", disable_help_flag = true)]
+    UpsertSummary(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1228,6 +1254,26 @@ fn run(
         Domain::Plan(PlanCommand::ScopePaths(arguments)) => {
             Ok(issue_wire_commands::scope_paths(&arguments.arguments))
         }
+        Domain::TrackingIssue(command) => Ok(match command {
+            TrackingIssueCommand::Read(arguments) => {
+                tracking_issue_commands::read(&arguments.arguments)
+            }
+            TrackingIssueCommand::CreateIssue(arguments) => {
+                tracking_issue_commands::create_issue(&arguments.arguments)
+            }
+            TrackingIssueCommand::AppendComment(arguments) => {
+                tracking_issue_commands::append_comment(&arguments.arguments)
+            }
+            TrackingIssueCommand::Rename(arguments) => {
+                tracking_issue_commands::rename(&arguments.arguments)
+            }
+            TrackingIssueCommand::MarkFalsePositive(arguments) => {
+                tracking_issue_commands::mark_false_positive(&arguments.arguments)
+            }
+            TrackingIssueCommand::UpsertSummary(arguments) => {
+                tracking_issue_commands::upsert_summary(&arguments.arguments)
+            }
+        }),
         Domain::Triage(command) => Ok(match command {
             TriageCommand::Inspect(arguments) => triage_commands::inspect(&arguments.arguments),
             TriageCommand::Probe(arguments) => triage_commands::probe(&arguments.arguments),

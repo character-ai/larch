@@ -182,8 +182,10 @@ pub use issue::{
     version_meets_floor,
 };
 pub use issue::{
-    CANDIDATE_CAP, CandidateAllocation, CandidateRowDefect, CandidateRowDrop, InputMode,
-    ParsedInput, ParsedItem, allocate_candidates, parse_issue_input,
+    CANDIDATE_CAP, CandidateAllocation, CandidateRowDefect, CandidateRowDrop, ImplementationLease,
+    InputMode, LeaseDefect, ParsedInput, ParsedItem, allocate_candidates,
+    parse_implementation_lease, parse_issue_input, render_implementation_lease,
+    upsert_implementation_lease,
 };
 pub use issue::{
     MAX_TRIAGE_EVIDENCE_BYTES, MAX_TRIAGE_PROBE_BYTES, TRIAGE_MARKER_END, TRIAGE_MARKER_START,

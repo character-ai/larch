@@ -1050,7 +1050,7 @@ def _patch_summary_upsert(
         runner.calls.append(["summary-upsert", *args])
         return _result(argv=tuple(args), rc=rc)
 
-    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli)
 
 
 def test_design_clarify_publish_happy_path(
@@ -1098,7 +1098,7 @@ def test_design_clarify_publish_happy_path(
     assert any(call[1:3] == ["named-block", "write"] for call in runner.calls)
     log_publish_index = next(i for i, call in enumerate(runner.calls) if call[2:4] == ["design", "log-publish"])
     summary_index = next(i for i, call in enumerate(runner.calls) if call[:1] == ["summary-upsert"])
-    rename_index = next(i for i, call in enumerate(runner.calls) if call[2:4] == ["tracking-issue", "rename"])
+    rename_index = next(i for i, call in enumerate(runner.calls) if call[1:3] == ["tracking-issue", "rename"])
     log_publish_call = runner.calls[log_publish_index]
     assert log_publish_call[log_publish_call.index("--outcome") + 1] == "cancelled-clarify"
     summary_call = runner.calls[summary_index]
@@ -1120,7 +1120,7 @@ def test_upsert_final_summary_from_disk_validates_and_calls_tracking_issue(
         calls.append(args)
         return _result(argv=tuple(args), rc=0)
 
-    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli)
     assert design_summary.upsert_final_summary_from_disk(
         design_tmpdir=tmp_path,
         issue="7",
@@ -1155,7 +1155,7 @@ def test_upsert_final_summary_from_disk_fails_closed(
     empty.write_text("", encoding="utf-8")
     assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
     empty.write_text("summary\n", encoding="utf-8")
-    monkeypatch.setattr(design_summary, "_run_cli", lambda *args: calls.append(args) or _result(argv=tuple(args), rc=9))
+    monkeypatch.setattr(design_summary, "_run_larch", lambda *args: calls.append(args) or _result(argv=tuple(args), rc=9))
     assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
     assert calls
 
@@ -1239,7 +1239,7 @@ def test_design_clarify_publish_empty_session_warns_and_skips_publish(
     assert "SESSION_ID missing" in out
     assert "PUBLISH_OK=false" in out
     assert not any(call[2:4] == ["design", "log-publish"] for call in runner.calls)
-    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+    assert not any(call[1:3] == ["tracking-issue", "rename"] for call in runner.calls)
 
 
 def test_design_clarify_publish_invalid_request_id_exits_2_without_result_env(
@@ -1452,7 +1452,7 @@ def test_design_clarify_publish_summary_upsert_failure_blocks_rename(
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "PUBLISH_OK=false\n" in result
     assert "CLARIFY_PUBLISH_STATUS=summary-upsert-failed\n" in result
-    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+    assert not any(call[1:3] == ["tracking-issue", "rename"] for call in runner.calls)
 
 
 def test_design_clarify_publish_missing_final_summary_blocks_rename(
@@ -1484,7 +1484,7 @@ def test_design_clarify_publish_missing_final_summary_blocks_rename(
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "PUBLISH_OK=false\n" in result
     assert "CLARIFY_PUBLISH_STATUS=summary-upsert-failed\n" in result
-    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+    assert not any(call[1:3] == ["tracking-issue", "rename"] for call in runner.calls)
 
 
 def test_design_clarify_publish_recovery_branch_blocks_rename(
@@ -1517,7 +1517,7 @@ def test_design_clarify_publish_recovery_branch_blocks_rename(
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "PUBLISH_OK=false\n" in result
     assert "CLARIFY_PUBLISH_STATUS=log-publish-recovery\n" in result
-    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+    assert not any(call[1:3] == ["tracking-issue", "rename"] for call in runner.calls)
 
 
 def test_design_clarify_publish_label_remove_failure_publishes_with_session(

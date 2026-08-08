@@ -231,8 +231,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     rename = subprocess.run(
         [
-            sys.executable,
-            str(root / "python" / "cli.py"),
+            str(repo_roots.larch_entrypoint(root)),
             "tracking-issue",
             "rename",
             "--issue",
@@ -253,7 +252,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
         )
     else:
         warn_lines.append(
-            "**⚠ 0b: [DESIGNING] rename failed (python3 python/cli.py tracking-issue rename); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
+            "**⚠ 0b: [DESIGNING] rename failed (scripts/larch.sh tracking-issue rename); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
         )
 
     write_params = subprocess.run(

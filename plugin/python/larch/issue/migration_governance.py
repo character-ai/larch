@@ -1117,7 +1117,7 @@ def audit_stale_implementation_leases_snapshot(
             LeaseAuditFinding(
                 token=f"stale-implementation-lease issue=#{row.number} age_hours={age_hours}",
                 cleanup_command=(
-                    "python3 python/cli.py tracking-issue rename "
+                    "scripts/larch.sh tracking-issue rename "
                     f"--issue {row.number} --state stalled --repo {repo} --run-id {lease.run_id}"
                 ),
             )

@@ -50,7 +50,7 @@ Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-imp
 - Step 7a writes `$IMPLEMENT_TMPDIR/code-flow-section.md` only when `generate-code-flow-diagram.sh` reports `STATUS=ok`. The file contains the `## Code Flow Diagram` section passed to `python/cli.py diagrams upsert`.
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
+- `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `scripts/larch.sh tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
 - The local execution-issues checkpoint runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still staging pending issues when inputs allow.
 - Step 7a does not render terminal token, timing, vendor, or transcript batches and never invokes the retired `run-log commit` command. Step 18 owns that complete snapshot.
 - The helper does not write a `diagrams` larch-log batch.

@@ -91,7 +91,7 @@ def test_chief_comment_uses_the_stable_renderer_and_exact_marker() -> None:
     comment = _step_body(workflow, "Refresh the Chief report comment")
 
     assert "if: ${{ steps.audit.outputs.report_ready == 'true' }}" in comment
-    assert "python3 python/cli.py tracking-issue upsert-summary" in comment
+    assert "scripts/larch.sh tracking-issue upsert-summary" in comment
     assert "--issue 7687" in comment
     assert f"--marker '{MARKER}'" in comment
     assert '--content-file "$RUNNER_TEMP/migration-governance-comment.md"' in comment
@@ -104,7 +104,7 @@ def test_no_other_repository_or_issue_mutation_is_reachable() -> None:
     workflow = _workflow()
     cli_calls = set(
         re.findall(r"python3 python/cli\.py ([a-z0-9-]+) ([a-z0-9-]+)", workflow)
-    )
+    ) | set(re.findall(r"scripts/larch\.sh ([a-z0-9-]+) ([a-z0-9-]+)", workflow))
     actions = set(re.findall(r"(?m)^        uses: (\S+)", workflow))
     forbidden = (
         "--title",

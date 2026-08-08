@@ -104,7 +104,7 @@ count=0
 
 args=(upsert-summary --issue "$ISSUE" --marker "<!-- larch:metadata v1 runid=$RUN_ID -->" --content-file "$summary")
 [ -z "$REPO" ] || args+=(--repo "$REPO")
-if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$IMPLEMENT_TMPDIR/refresh-execution-issues.out" 2>"$IMPLEMENT_TMPDIR/refresh-execution-issues.err"; then
+if CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" tracking-issue "${args[@]}" >"$IMPLEMENT_TMPDIR/refresh-execution-issues.out" 2>"$IMPLEMENT_TMPDIR/refresh-execution-issues.err"; then
     emit_kv REFRESHED true
     exit 0
 fi

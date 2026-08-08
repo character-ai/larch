@@ -7549,11 +7549,13 @@ verb = "append-comment"
 python_module = "larch.issue.tracking_issue"
 python_function = "append_comment_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-append-comment"
 
 [[commands]]
 domain = "tracking-issue"
@@ -7561,11 +7563,13 @@ verb = "create-issue"
 python_module = "larch.issue.tracking_issue"
 python_function = "create_issue_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-create-issue"
 
 [[commands]]
 domain = "tracking-issue"
@@ -7573,11 +7577,13 @@ verb = "mark-false-positive"
 python_module = "larch.issue.tracking_issue"
 python_function = "mark_false_positive_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-mark-false-positive"
 
 [[commands]]
 domain = "tracking-issue"
@@ -7585,11 +7591,13 @@ verb = "read"
 python_module = "larch.issue.tracking_issue"
 python_function = "read_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-read"
 
 [[commands]]
 domain = "tracking-issue"
@@ -7597,11 +7605,13 @@ verb = "rename"
 python_module = "larch.issue.tracking_issue"
 python_function = "rename_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-rename"
 
 [[commands]]
 domain = "tracking-issue"
@@ -7609,11 +7619,13 @@ verb = "upsert-summary"
 python_module = "larch.issue.tracking_issue"
 python_function = "upsert_summary_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8175
+clean_install_test = "clean-install-tracking-issue-upsert-summary"
 
 [[commands]]
 domain = "triage"
@@ -8248,8 +8260,8 @@ rust = ["lint gitleaks"]
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"
 kind = "ci"
-python = ["issue migration-audit", "tracking-issue upsert-summary"]
-rust = []
+python = ["issue migration-audit"]
+rust = ["tracking-issue upsert-summary"]
 
 [[callers]]
 path = ".github/workflows/rust-release-assets.yaml"
@@ -8396,12 +8408,6 @@ python = []
 rust = ["agent dispatch-voters", "agent dispatch-waterfall"]
 
 [[callers]]
-path = "python/larch/design/clarify.py"
-kind = "python-runtime"
-python = ["tracking-issue rename"]
-rust = []
-
-[[callers]]
 path = "python/larch/design/decompose.py"
 kind = "python-runtime"
 python = []
@@ -8441,13 +8447,13 @@ rust = []
 path = "python/larch/design/design_publish.py"
 kind = "python-runtime"
 python = ["diagrams upsert"]
-rust = ["named-block write", "run-log append-failure", "run-log write", "session write-design-env"]
+rust = ["named-block write", "run-log append-failure", "run-log write", "session write-design-env", "tracking-issue rename"]
 
 [[callers]]
 path = "python/larch/design/design_router.py"
 kind = "python-runtime"
-python = ["tracking-issue rename"]
-rust = ["issue title-eligibility", "session write-design-env", "session write-run-params"]
+python = []
+rust = ["issue title-eligibility", "session write-design-env", "session write-run-params", "tracking-issue rename"]
 
 [[callers]]
 path = "python/larch/design/design_session.py"
@@ -8604,12 +8610,6 @@ path = "python/larch/issue/execution_issues.py"
 kind = "python-runtime"
 python = []
 rust = ["run-log append"]
-
-[[callers]]
-path = "python/larch/issue/migration_governance.py"
-kind = "python-runtime"
-python = ["tracking-issue rename"]
-rust = []
 
 [[callers]]
 path = "python/larch/issue/oos_filer.py"
@@ -8878,8 +8878,8 @@ rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo
 [[callers]]
 path = "skills/debate/SKILL.md"
 kind = "skill"
-python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "session setup", "tracking-issue upsert-summary", "verify skill-called"]
-rust = ["run-log lifecycle-start", "untrusted file-block"]
+python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "session setup", "verify skill-called"]
+rust = ["run-log lifecycle-start", "tracking-issue upsert-summary", "untrusted file-block"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"
@@ -9130,8 +9130,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9172,7 +9172,7 @@ rust = ["bgjob wait", "stall-recovery record-escalation"]
 [[callers]]
 path = "skills/implement/references/codex-manifest-schema.md"
 kind = "skill"
-python = ["difficulty render-rubric", "implement step2-dispatch", "redact secrets", "tracking-issue *"]
+python = ["difficulty render-rubric", "implement step2-dispatch", "redact secrets"]
 rust = []
 
 [[callers]]
@@ -9340,19 +9340,19 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/post-tracking-issue.md"
 kind = "skill"
-python = ["tracking-issue upsert-summary"]
-rust = []
+python = []
+rust = ["tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/scripts/post-tracking-issue.sh"
 kind = "skill"
-python = ["tracking-issue *"]
+python = []
 rust = ["kv get", "plugin read-version"]
 
 [[callers]]
 path = "skills/implement/scripts/refresh-execution-issues.sh"
 kind = "skill"
-python = ["tracking-issue *"]
+python = []
 rust = ["kv get", "plugin read-version"]
 
 [[callers]]
@@ -9466,8 +9466,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-7a.md"
 kind = "skill"
-python = ["diagrams upsert", "tracking-issue upsert-summary"]
-rust = []
+python = ["diagrams upsert"]
+rust = ["tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/scripts/step-7a.sh"
@@ -9616,8 +9616,8 @@ rust = []
 [[callers]]
 path = "skills/research/references/eval-set.md"
 kind = "skill"
-python = ["eval research", "plan-review run", "tracking-issue upsert-summary"]
-rust = ["admission gate", "push rebase"]
+python = ["eval research", "plan-review run"]
+rust = ["admission gate", "push rebase", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/research/references/research-phase.md"
@@ -9688,8 +9688,8 @@ rust = []
 [[callers]]
 path = "skills/shared/mermaid-safe-content.md"
 kind = "skill"
-python = ["diagrams upsert", "mermaid sanitize", "tracking-issue upsert-summary"]
-rust = []
+python = ["diagrams upsert", "mermaid sanitize"]
+rust = ["tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/shared/orchestrator-never.md"

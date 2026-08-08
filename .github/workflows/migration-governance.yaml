@@ -96,7 +96,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 python/cli.py tracking-issue upsert-summary \
+          scripts/larch.sh tracking-issue upsert-summary \
             --issue 7687 \
             --marker '<!-- larch:migration-governance v1 chief=7687 -->' \
             --content-file "$RUNNER_TEMP/migration-governance-comment.md" \
