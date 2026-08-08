@@ -313,7 +313,10 @@ enforced modes:
   normal lint, agent, Python, and plugin checks still validate their owned
   content. Rust repository policy and plugin validation run through a verified
   trusted-main executable; Python integration receives that same verified
-  executable. No pull-request Rust binary runs in this path.
+  executable. No pull-request Rust binary runs in this path. The `rust-skip`
+  job's elapsed duration is the selected execution-path measurement;
+  `rust-coverage` and `rust-gate` prove required status coverage but do not
+  replace that duration.
 
 For `skip`, a successful `main` full lane publishes an immutable
 `trusted-main-rust-policy` cache entry. Its key and metadata bind the Linux

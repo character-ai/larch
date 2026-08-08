@@ -70,7 +70,7 @@ include:
 - successful `rust-full`, `rust-coverage`, and `rust-gate` job links;
 - an explicit false-safe or false-full comparison result; and
 - the full-backstop duration plus, when the class is later enabled, the
-  selected-path duration on a comparable runner and cache class.
+  selected-path duration with its runner and cache conditions.
 
 ### Completed skip observation window
 
@@ -92,11 +92,10 @@ Each full backstop passed, so this window has zero observed false-safe results
 for `skip`. A green full backstop is not false-full evidence while the full lane
 is intentionally effective.
 
-The reviewed skip promotion that records this window is a global `full` input,
-so it does not pretend to supply a selected skip duration. The next ordinary
-eligible skip pull request must record that duration against this control; the
-partial class remains in observation until it independently meets the same
-rule.
+The reviewed skip promotion that recorded this window was a global `full`
+input, so it did not pretend to supply a selected skip duration. The ordinary
+eligible pull request below provides that measurement. The partial class remains
+in observation until it independently meets the same rule.
 
 ### Live-row collection
 
@@ -122,17 +121,45 @@ duration or turn the row into false-full evidence.
 
 Record the runner image, tool and cache class, and the full `rust-full` job
 duration for every live row. After a class is enabled, compare its selected-path
-duration only with full rows on the same runner image, with the same Rust-input
-identity, and in the same cold or warm tool/cache class. The lightweight
-aggregate jobs confirm required dependencies; they do not replace the selected
-execution-path duration.
+duration only with full rows on the same runner image and with the same
+Rust-input identity. Distinguish cold from warm runs and explicitly name when
+the lanes intentionally use different cache mechanisms, such as Cargo/tool
+caches for `full` and a verified trusted-main artifact for `skip`; do not call
+those different mechanisms the same cache class. The lightweight aggregate jobs
+confirm required dependencies; they do not replace the selected execution-path
+duration.
+
+### Enforced skip measurement
+
+| PR | Tested merge candidate | Enforced decision | Selected path and required statuses | Result |
+|---|---|---|---|---|
+| [#8252](https://github.com/character-ai/larch/pull/8252) | `b98d5e4b2669f79f6f1516ed307afef8c5ad78c4` | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/31249895522/job/93084462058): proposed/effective `skip`; `selector-proposed-skip`; `rollout_state=enforced`; `observation_only=false` | [`rust-skip`, 71 s](https://github.com/character-ai/larch/actions/runs/31249895522/job/93084512640); [`rust-coverage` success](https://github.com/character-ai/larch/actions/runs/31249895522/job/93084626961); [`rust-gate` success](https://github.com/character-ai/larch/actions/runs/31249895522/job/93084645746); [`rust-full` skipped](https://github.com/character-ai/larch/actions/runs/31249895522/job/93084512895) | verified trusted-main artifact, repository policy, and plugin validation all succeeded |
+
+The selected `rust-skip` job completed trusted-main artifact verification,
+repository policy, and plugin validation before it succeeded. Its 71-second
+duration is the selected execution-path measurement. The required Rust path
+from `rust-selection` completion through `rust-gate` completion took 92 seconds.
+The comparable full controls were 362 seconds (#8247), 370 seconds (#8248),
+and 368 seconds (#8249), for a 368-second median; the enforced skip path is
+therefore 276 seconds (75%) shorter on that measured Rust PR critical path.
+
+All four runs used `ubuntu-24.04` and the same Rust-input identity. The full
+controls restored warm Cargo-inputs, cargo-nextest, and cargo-llvm-cov caches
+with the coverage-target cache disabled. The selected skip lane instead used a
+verified trusted-main policy artifact, so this is a class-specific cache
+comparison rather than a claim that both lanes restored the same cache. Its
+successful repository-policy and plugin-validation step retains the coverage
+that makes this skip decision safe.
 
 Do not count a label-forced run, selector failure fallback, or a historical
 replay as a live observation. A class may be promoted only if every live row
 for that class has zero false-safe results. A false-safe result keeps that class
 on `full`; a false-full result may improve the classifier but does not justify
 promotion. Any selector, ownership, trusted-binary, cache-schema, or workflow
-change starts a fresh live window for the affected class.
+change that changes selection or the trust contract starts a fresh live window
+for the affected class. The reviewed class-specific enforcement toggle that
+follows a completed window does not change the classifier or its trusted-input
+contract.
 
 ## Timing interpretation and rollback
 
