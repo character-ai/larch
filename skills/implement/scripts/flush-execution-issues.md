@@ -38,9 +38,9 @@ Invariants:
   later archive-tail helpers know the pre-publication checkpoint already ran.
 - Idempotency uses both `$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha` and an
   existing batch `source_sha256` probe. When the sentinel is missing, the batch
-  probe matches the normalized per-section hashes that `write_execution_issues_records`
-  stores, with a whole-file SHA fallback for backward compatibility.
-- Records are composed by `python/cli.py execution-issues flush` with
+  probe matches the normalized per-entry hashes the record composer stores,
+  with a whole-file SHA fallback for backward compatibility.
+- Records are composed by `scripts/larch.sh execution-issues flush` with
   `step="7a"` and `source="execution-issues.md pre-bump"` (historical label;
   no version bump occurs — kept for data contract compatibility) unless
   overridden by `--step-label` / `--source-label`.
@@ -53,13 +53,14 @@ Invariants:
   failure if desired.
 
 Makefile wiring: `make test-flush-execution-issues`, included in
-`test-harnesses-3` alongside `test-implement-finalize`.
+`test-harnesses-4`.
 
 Harness coverage: empty input, single-section record composition, multi-section
-record composition, idempotent rerun, and `run-log` failure logging.
+record composition, idempotent rerun, partial-flush retry, and `run-log` failure
+logging, all in `crates/larch-cli/src/execution_issue_commands.rs`.
 
 Edit In Sync:
 
-- `python/larch/issue/execution_issues.py`
+- `crates/larch-cli/src/execution_issue_commands.rs`
 - `python3 python/cli.py implement-finalize`
 - `skills/implement/SKILL.md`

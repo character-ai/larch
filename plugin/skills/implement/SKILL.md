@@ -776,7 +776,7 @@ Any path that ends in ship re-entry uses the Step 8 bgjob start/wait pair, inclu
 When `ship-pr-exit-matrix.md` requires tracking metadata projection refresh, run this fence; skip it when `ISSUE_NUMBER` is empty or `0`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 > **Continue to Step 15.** The active Python ship driver owns this transition after postmerge cleanup.

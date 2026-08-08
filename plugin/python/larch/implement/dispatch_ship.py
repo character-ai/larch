@@ -15,7 +15,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import oos_filer
 from larch import io as larch_io
@@ -1177,7 +1176,19 @@ def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
     ok, _run_id = _step8_oos_checkpoint_bookkeeping(implement_tmpdir)
     if ok:
         with contextlib.suppress(Exception):
-            execution_issues.refresh_execution_issues(implement_tmpdir, best_effort=True)
+            # lint-subprocess-via-runner: ok the Rust owner publishes its own
+            # KEY=value envelope, which must not reach this command's stdout.
+            subprocess.run(
+                [
+                    str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+                    "execution-issues", "refresh",
+                    "--implement-tmpdir", str(implement_tmpdir),
+                    "--best-effort",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         _emit_kv(key="OOS_CHECKPOINT_RC", value=0)
         _emit_kv(key="NEXT_ACTION", value="reship")
     else:

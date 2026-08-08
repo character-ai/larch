@@ -20,7 +20,6 @@ from larch.core import proc
 from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.git import pr_body
-from larch.issue import execution_issues
 from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.report import run_log_batch
 
@@ -153,14 +152,27 @@ def _checkpoint_execution_issues(implement_tmpdir: Path, *, run_id: str) -> str:
     issue_log = implement_tmpdir / "execution-issues.md"
     if not run_id:
         return "skip"
-    rc, status, _records, _append_log = execution_issues.flush_execution_issues(
-        log_root=log_root,
-        run_id=run_id,
-        issue_log=issue_log,
-        step_label="7a",
-        source_label="execution-issues.md Step 7a checkpoint",
+    # lint-subprocess-via-runner: ok the Rust owner reports its outcome as a
+    # captured KEY=value envelope, not on this command's own contract stream.
+    flush = subprocess.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "execution-issues", "flush",
+            "--log-root", str(log_root),
+            "--run-id", run_id,
+            "--issue-log", str(issue_log),
+            "--step-label", "7a",
+            "--source-label", "execution-issues.md Step 7a checkpoint",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
     )
-    if rc == 0 and status in {"ok", "skip", "already-flushed", "no-records"}:
+    status = next(
+        (line.split("=", 1)[1] for line in flush.stdout.splitlines() if line.startswith("FLUSH_STATUS=")),
+        "",
+    )
+    if flush.returncode == 0 and status in {"ok", "skip", "already-flushed", "no-records"}:
         return "ok"
     return "degraded"
 

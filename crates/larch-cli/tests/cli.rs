@@ -30,6 +30,7 @@ Commands:
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
   dirty-tree         Working-tree checkpoint and scope compatibility commands
+  execution-issues   The `/implement` execution-issue ledger lifecycle
   external-defaults  External tool default readers
   example            Non-production commands that exercise dispatcher wiring
   git                Local Git repository commands

@@ -2708,11 +2708,13 @@ verb = "append"
 python_module = "larch.issue.execution_issues"
 python_function = "append_execution_issue_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8176
+clean_install_test = "clean-install-execution-issues-append"
 
 [[commands]]
 domain = "execution-issues"
@@ -2720,11 +2722,13 @@ verb = "flush"
 python_module = "larch.issue.execution_issues"
 python_function = "flush_execution_issues_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8176
+clean_install_test = "clean-install-execution-issues-flush"
 
 [[commands]]
 domain = "execution-issues"
@@ -2732,11 +2736,13 @@ verb = "flush-safety-net"
 python_module = "larch.issue.execution_issues"
 python_function = "flush_execution_issues_safety_net_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8176
+clean_install_test = "clean-install-execution-issues-flush-safety-net"
 
 [[commands]]
 domain = "execution-issues"
@@ -2744,11 +2750,13 @@ verb = "refresh"
 python_module = "larch.issue.execution_issues"
 python_function = "refresh_execution_issues_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8176
+clean_install_test = "clean-install-execution-issues-refresh"
 
 [[commands]]
 domain = "external-defaults"
@@ -8573,7 +8581,7 @@ rust = ["git commit", "timing mark"]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
 python = ["oos disposition-checkpoint"]
-rust = ["stall-recovery seed-terminal-state"]
+rust = ["execution-issues refresh", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_step18.py"
@@ -8591,7 +8599,7 @@ rust = ["admission gate", "gh resolve-repo", "plan-block read"]
 path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
-rust = ["timing mark"]
+rust = ["execution-issues flush", "timing mark"]
 
 [[callers]]
 path = "python/larch/issue/analyze_bugs.py"
@@ -8604,12 +8612,6 @@ path = "python/larch/issue/deps_audit.py"
 kind = "python-runtime"
 python = []
 rust = ["block-issue add-blocked-by"]
-
-[[callers]]
-path = "python/larch/issue/execution_issues.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log append"]
 
 [[callers]]
 path = "python/larch/issue/oos_filer.py"
@@ -9130,8 +9132,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "git current-branch", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "git current-branch", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9226,8 +9228,8 @@ rust = ["bgjob wait", "timing telemetry-mark"]
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["execution-issues flush", "final-report write", "pr checks", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
-rust = []
+python = ["final-report write", "pr checks", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
+rust = ["execution-issues flush"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-oos-checkpoint-router.md"
@@ -9286,14 +9288,14 @@ rust = ["session cleanup-tmpdir"]
 [[callers]]
 path = "skills/implement/scripts/flush-execution-issues.md"
 kind = "skill"
-python = ["execution-issues flush", "implement-finalize *"]
-rust = []
+python = ["implement-finalize *"]
+rust = ["execution-issues flush"]
 
 [[callers]]
 path = "skills/implement/scripts/flush-execution-issues.sh"
 kind = "skill"
-python = ["execution-issues flush"]
-rust = []
+python = []
+rust = ["execution-issues flush"]
 
 [[callers]]
 path = "skills/implement/scripts/generate-code-flow-diagram.md"

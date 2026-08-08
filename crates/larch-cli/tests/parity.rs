@@ -90,7 +90,14 @@ impl CleanInstallCase {
             | "clean-install-umbrella-verify"
             | "clean-install-umbrella-verify-completion"
             | "clean-install-untrusted-redact-stream"
-            | "clean-install-untrusted-xml-escape-attr" => 2,
+            | "clean-install-untrusted-xml-escape-attr"
+            // None of the four execution-issue verbs declares a `--help`
+            // action, so the clean-install token reads as an unrecognized
+            // argument and each refuses with the same usage exit code.
+            | "clean-install-execution-issues-append"
+            | "clean-install-execution-issues-flush"
+            | "clean-install-execution-issues-flush-safety-net"
+            | "clean-install-execution-issues-refresh" => 2,
             _ => 0,
         }
     }
@@ -658,6 +665,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-agent-resolve-model-pins",
         "agent",
         "resolve-model-pins",
+    ),
+    CleanInstallCase::new(
+        "clean-install-execution-issues-append",
+        "execution-issues",
+        "append",
+    ),
+    CleanInstallCase::new(
+        "clean-install-execution-issues-flush",
+        "execution-issues",
+        "flush",
+    ),
+    CleanInstallCase::new(
+        "clean-install-execution-issues-flush-safety-net",
+        "execution-issues",
+        "flush-safety-net",
+    ),
+    CleanInstallCase::new(
+        "clean-install-execution-issues-refresh",
+        "execution-issues",
+        "refresh",
     ),
     CleanInstallCase::new(
         "clean-install-external-defaults-docs",

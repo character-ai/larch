@@ -5,6 +5,7 @@ mod completeness;
 mod diagram_capture;
 mod entry;
 mod execution_issue_append;
+mod execution_issue_records;
 mod layout;
 mod lifecycle;
 mod manifest;
@@ -30,6 +31,11 @@ pub use entry::{
 pub use execution_issue_append::{
     EXECUTION_ISSUE_CATEGORIES, FAILURE_CATEGORIES, FailureEntry, compose_execution_issue,
     compose_failure_entry, failure_retry_suffix, validate_failure_counts,
+};
+pub use execution_issue_records::{
+    RecordLabels, RedactionRefusal, batch_contains_all_sections, execution_issue_body_keys,
+    execution_issue_chunks, execution_issue_records, execution_issue_sections,
+    existing_execution_issue_keys, normalized_body_sha256, redact_batch_payload,
 };
 pub use layout::{BatchName, RunLogLayout};
 pub use lifecycle::{

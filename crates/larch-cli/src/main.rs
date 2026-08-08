@@ -31,6 +31,7 @@ mod collector_commands;
 mod complete_umbrella_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
+mod execution_issue_commands;
 mod external_agent;
 mod external_defaults_commands;
 mod git_commands;
@@ -131,6 +132,9 @@ enum Domain {
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
+    /// The `/implement` execution-issue ledger lifecycle.
+    #[command(subcommand, name = "execution-issues")]
+    ExecutionIssues(ExecutionIssuesCommand),
     /// External tool default readers.
     #[command(subcommand, name = "external-defaults")]
     ExternalDefaults(ExternalDefaultsCommand),
@@ -640,6 +644,22 @@ enum SessionCommand {
     /// Resolve a design session-env pointer to its trusted target.
     #[command(disable_help_flag = true)]
     ResolveTrustedDesignEnv(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ExecutionIssuesCommand {
+    /// Add one entry under its category heading, exactly once.
+    #[command(disable_help_flag = true)]
+    Append(RawCompatibilityArguments),
+    /// Publish the pending ledger tail and clear the ledger.
+    #[command(disable_help_flag = true)]
+    Flush(RawCompatibilityArguments),
+    /// Publish the pending ledger tail without clearing the ledger.
+    #[command(name = "flush-safety-net", disable_help_flag = true)]
+    FlushSafetyNet(RawCompatibilityArguments),
+    /// Project the pending count onto the tracking issue's metadata comment.
+    #[command(disable_help_flag = true)]
+    Refresh(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1170,6 +1190,20 @@ fn run(
             DirtyTreeCommand::ScopeMarker(arguments) => {
                 let raw = dirty_tree_raw_arguments("scope-marker");
                 dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+        }),
+        Domain::ExecutionIssues(command) => Ok(match command {
+            ExecutionIssuesCommand::Append(arguments) => {
+                execution_issue_commands::append(&arguments.arguments)
+            }
+            ExecutionIssuesCommand::Flush(arguments) => {
+                execution_issue_commands::flush(&arguments.arguments)
+            }
+            ExecutionIssuesCommand::FlushSafetyNet(arguments) => {
+                execution_issue_commands::flush_safety_net(&arguments.arguments)
+            }
+            ExecutionIssuesCommand::Refresh(arguments) => {
+                execution_issue_commands::refresh(&arguments.arguments)
             }
         }),
         Domain::ExternalDefaults(command) => Ok(external_defaults_commands::run(command)),
