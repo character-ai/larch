@@ -102,7 +102,8 @@ fn file_slug(label: &str) -> String {
 
 /// Draw the title, the value-axis caption, and the two axis spines.
 fn draw_frame(canvas: &mut Canvas, title: &str) {
-    let title_left = (i32::try_from(WIDTH).unwrap_or(i32::MAX) - text_width(title, TITLE_SCALE)) / 2;
+    let title_left =
+        (i32::try_from(WIDTH).unwrap_or(i32::MAX) - text_width(title, TITLE_SCALE)) / 2;
     canvas.text((title_left.max(0), 16), title, TITLE_SCALE, INK);
     canvas.text((10, PLOT_TOP - 18), "USD", LABEL_SCALE, INK);
     canvas.line((PLOT_LEFT, PLOT_TOP), (PLOT_LEFT, PLOT_BOTTOM), INK);
@@ -195,7 +196,9 @@ fn draw_date_axis(canvas: &mut Canvas, points: &[(String, f64)]) {
         return;
     };
     let per_label = (widest + LABEL_GAP).max(1);
-    let fits = usize::try_from((PLOT_RIGHT - PLOT_LEFT) / per_label).unwrap_or(1).max(1);
+    let fits = usize::try_from((PLOT_RIGHT - PLOT_LEFT) / per_label)
+        .unwrap_or(1)
+        .max(1);
     let stride = points.len().div_ceil(fits).max(1);
     for (index, (date, _cost)) in points.iter().enumerate().step_by(stride) {
         let x = point_column(index, points.len());

@@ -71,7 +71,8 @@ fn the_image_data_inflates_to_filtered_rgb_scanlines() {
         "every scanline uses filter type 0"
     );
     assert!(
-        raw.chunks(stride).any(|row| row[1..].iter().any(|&b| b != 0xFF)),
+        raw.chunks(stride)
+            .any(|row| row[1..].iter().any(|&b| b != 0xFF)),
         "the chart painted something over the white canvas"
     );
 }
@@ -112,7 +113,9 @@ fn a_label_cannot_walk_out_of_the_plot_directory() {
         );
         assert!(name.starts_with("larch-report-tokens-"));
         assert_eq!(
-            std::path::Path::new(&name).extension().and_then(|e| e.to_str()),
+            std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str()),
             Some("png")
         );
     }

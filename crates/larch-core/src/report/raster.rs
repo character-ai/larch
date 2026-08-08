@@ -32,6 +32,7 @@ type Glyph = [u8; GLYPH_HEIGHT];
 const BLANK: Glyph = [0; GLYPH_HEIGHT];
 
 /// `0` through `9`.
+#[rustfmt::skip]
 const DIGITS: [Glyph; 10] = [
     [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
     [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
@@ -46,6 +47,7 @@ const DIGITS: [Glyph; 10] = [
 ];
 
 /// `A` through `Z`.
+#[rustfmt::skip]
 const UPPERCASE: [Glyph; 26] = [
     [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
     [0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110],
@@ -76,6 +78,7 @@ const UPPERCASE: [Glyph; 26] = [
 ];
 
 /// `a` through `z`.
+#[rustfmt::skip]
 const LOWERCASE: [Glyph; 26] = [
     [0b00000, 0b00000, 0b01110, 0b00001, 0b01111, 0b10001, 0b01111],
     [0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b11110],
@@ -110,6 +113,7 @@ const LOWERCASE: [Glyph; 26] = [
 /// The font covers exactly what larch's chart labels contain: ASCII letters,
 /// digits, and the four separators a series label, a tick value, or an ISO date
 /// can carry.
+#[rustfmt::skip]
 const fn glyph(character: char) -> Glyph {
     match character {
         '0'..='9' => DIGITS[character as usize - '0' as usize],
@@ -209,7 +213,12 @@ impl Canvas {
     pub fn text(&mut self, origin: (i32, i32), text: &str, scale: i32, color: Color) {
         for (index, character) in text.chars().enumerate() {
             let advance = i32::try_from(index).unwrap_or(i32::MAX) * ADVANCE * scale;
-            self.glyph((origin.0 + advance, origin.1), glyph(character), scale, color);
+            self.glyph(
+                (origin.0 + advance, origin.1),
+                glyph(character),
+                scale,
+                color,
+            );
         }
     }
 
