@@ -343,6 +343,7 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
     assert "**Warnings**: 1" in body
 
 
+@pytest.mark.rust_integration
 def test_write_final_report_renders_panel_failed_merge_downgrade(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

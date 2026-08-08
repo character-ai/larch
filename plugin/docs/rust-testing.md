@@ -216,8 +216,12 @@ follows:
   tests, runs workspace doctests against the same instrumented target, enforces
   the workspace line baseline, writes `target/llvm-cov/lcov.info`, runs
   repository policy and plugin projection validation, and uploads the Linux
-  executable artifact. `python-tests` waits for that status and downloads the
-  coverage-produced `larch-linux-test-binary`.
+  executable artifact. The 20-shard `python-tests` matrix runs stub-safe tests
+  without waiting for Rust coverage. The required `python-rust-integration`
+  job waits for `rust-coverage`, verifies the coverage-produced
+  `larch-linux-test-binary` checksum, source SHA, and version, then runs the
+  marker-selected tests that exercise Rust-backed paths. `python-tests-gate`
+  requires both jobs.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
   the protected production path and does not upload a competing Python artifact.

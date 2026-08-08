@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -13,12 +14,19 @@ import pytest
 from larch.report import run_lifecycle
 
 
+@pytest.mark.rust_integration
 def test_consumer_reaches_rust_through_its_bootstrap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     binary = os.environ.get("LARCH_TEST_RUST_BINARY", "")
     if not binary:
         pytest.skip("CI Rust test binary is unavailable")
+    expected_sha256 = os.environ.get("LARCH_TEST_RUST_BINARY_SHA256", "")
+    assert expected_sha256, "integration job must provide the verified Rust binary checksum"
+    binary_path = Path(binary)
+    assert binary_path.is_file()
+    assert os.access(binary_path, os.X_OK)
+    assert hashlib.sha256(binary_path.read_bytes()).hexdigest() == expected_sha256
 
     repo = tmp_path / "client"
     repo.mkdir()
@@ -51,7 +59,7 @@ def test_consumer_reaches_rust_through_its_bootstrap(
     # the ambient redirect for the coverage-built executable.
     environment = {
         "HOME": str(tmp_path / "home"),
-        "LARCH_BINARY": binary,
+        "LARCH_BINARY": str(binary_path),
         "PATH": os.environ["PATH"],
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
