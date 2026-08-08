@@ -99,10 +99,11 @@ the active old-session root as the executable owner.
 
 `larch lint rule reporting-python-free` pins the closed #7683 command set:
 the 45 rows that still name the umbrella as their roadmap owner plus the nine
-rows its leaves migrated for an earlier owner (`run-log lifecycle-*` under
-#7826, `run-log checkpoint` and `run-log prepare-terminal-snapshot` under
-#7995, `gantt render` under #7680, and `analyze-issues render-chart` under
-#7682). Every pinned row must stay Rust-owned, or retired for `run-log flush`,
+rows its leaves migrated for an earlier owner: `run-log lifecycle-*` under
+issue 7826, `run-log checkpoint` and `run-log prepare-terminal-snapshot` under
+issue 7995, `gantt render` under issue 7680, and `analyze-issues render-chart`
+under issue 7682. Every pinned row must stay Rust-owned, or retired for
+`run-log flush`,
 with complete parity, consumer cutover, and Python removal, and must keep its
 exact migration leaf and its retired Python target. The rule rejects a restored
 Python registration in `python/larch/cli.py`, a restored module-level Python

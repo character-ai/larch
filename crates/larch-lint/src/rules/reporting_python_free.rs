@@ -18,6 +18,7 @@ const NAME: &str = "reporting-python-free";
 const DESCRIPTION: &str =
     "Enforce Rust-only run-log, report, and rendering ownership for umbrella #7683";
 const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.toml";
+const REPORTING_AUTHORITY_PATH: &str = "crates/larch-cli/src/run_log_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7683;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -160,8 +161,17 @@ impl Rule for ReportingPythonFreeRule {
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
+        let authority_present = repository
+            .paths()
+            .binary_search(&RepoPath::from_trusted(REPORTING_AUTHORITY_PATH))
+            .is_ok();
         let registry_path = RepoPath::from_trusted(COMMAND_REGISTRY_PATH);
         if repository.paths().binary_search(&registry_path).is_err() {
+            if authority_present {
+                return Err(LintError::new(format!(
+                    "{COMMAND_REGISTRY_PATH}: required file is missing"
+                )));
+            }
             return Ok(RuleOutput::default());
         }
         let source = repository.read_utf8(&registry_path)?;
@@ -173,6 +183,10 @@ impl Rule for ReportingPythonFreeRule {
             .and_then(Value::as_array)
             .ok_or_else(|| LintError::new(format!("{COMMAND_REGISTRY_PATH}: missing commands")))?;
 
+        if !authority_present && !commands.iter().any(is_in_scope_row) {
+            return Ok(RuleOutput::default());
+        }
+
         let mut findings = Vec::new();
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
@@ -181,6 +195,14 @@ impl Rule for ReportingPythonFreeRule {
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn is_in_scope_row(value: &Value) -> bool {
+    value.as_table().is_some_and(|table| {
+        let field = |name: &str| table.get(name).and_then(Value::as_str).unwrap_or_default();
+        expected_command(&format!("{} {}", field("domain"), field("verb"))).is_some()
+            || table.get("planning_issue").and_then(Value::as_integer) == Some(UMBRELLA_ISSUE)
+    })
 }
 
 fn expected_command(selector: &str) -> Option<&'static ExpectedCommand> {
