@@ -140,15 +140,18 @@ pub use issue::{
     ACCEPTED_OOS_FILENAMES, BlockBoundary, CanonicalHeading, ConflictPlan, DispositionCounters,
     DispositionState, FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP,
     FileConflictEdge, FileConflictError, FileConflictRecord, HIGH_RISK_FOCUS_VALUES,
-    INLINE_TRIAGE_MARKER, INLINE_TRIAGE_SOURCES, OOS_CORRECTNESS_LABEL,
-    OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION, OosBlock, OosDispositionCounts,
-    OosItemKind, SerializedOos, analyze_run_dir, count_filed_urls_union_files,
-    count_inline_triage_hits, count_non_security_blocks, count_non_security_oos_blocks,
-    count_rejected_oos_markers_from_ndjson, is_canonical_heading, is_high_risk_oos_block,
-    is_oos_eligible_block, is_security_block_text, issue_number_from_url, issue_url_pattern,
-    item_file_records, label_create_argv, normalize_oos_block_header, parse_canonical_heading,
-    parse_conflict_cap, parse_intra_batch_deps, parse_oos_blocks, plan_file_conflict_deps,
-    render_deps_tsv, serialize_accepted_oos, topological_create_order,
+    INLINE_TRIAGE_MARKER, INLINE_TRIAGE_SOURCES, IssueCapError, ManifestObservation,
+    OOS_CORRECTNESS_LABEL, OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION,
+    OosBlock, OosDispositionCounts, OosItemKind, SerializedOos, analyze_run_dir, apply_issue_cap,
+    count_filed_urls_strict_files, count_filed_urls_union_files, count_inline_triage_hits,
+    count_inline_triage_occurrences, count_non_security_blocks, count_non_security_oos_blocks,
+    count_rejected_oos_markers_from_ndjson, description_lines, existing_oos_titles,
+    is_canonical_heading, is_high_risk_oos_block, is_oos_eligible_block, is_security_block_text,
+    issue_number_from_url, issue_url_pattern, item_file_records, label_create_argv,
+    next_oos_number, normalize_oos_block_header, normalize_title, observation_is_security,
+    parse_canonical_heading, parse_conflict_cap, parse_intra_batch_deps, parse_oos_blocks,
+    plan_file_conflict_deps, read_universal_newlines, render_deps_tsv, sanitize_public_text,
+    serialize_accepted_oos, topological_create_order, validate_issue_cap_input,
 };
 pub use issue::{
     ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
@@ -369,8 +372,8 @@ pub use test_shards::{
 };
 pub use text::{
     balanced_fence_line_indices, ensure_ascii_json, is_positive_decimal, is_python_whitespace,
-    positive_integer, split_lines_keep_ends, split_text_lines, tail_lines, trim_python_whitespace,
-    truncate_utf8_bytes, universal_newlines, unsigned_integer,
+    positive_integer, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
+    trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{

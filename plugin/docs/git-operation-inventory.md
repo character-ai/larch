@@ -53,6 +53,7 @@ crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
 python/larch/calibration/difficulty.py	later-domain	#7686	diff
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse
 python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
@@ -82,7 +83,6 @@ python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/analyze_bugs.py	later-domain	#7682	cat-file,diff,diff-tree,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/audit_runs.py	later-domain	#7682	branch,config,fetch,pull,rev-parse,status
-python/larch/issue/file_oos.py	later-domain	#7682	log,merge-base,rev-list,rev-parse
 python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7682	dynamic

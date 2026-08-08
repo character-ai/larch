@@ -821,21 +821,7 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
         encoding="utf-8",
     )
 
-    def fake_subprocess_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        if argv[:3] == ["git", "merge-base", "HEAD"]:
-            return _cp(argv, stdout="base\n")
-        if argv[:3] == ["git", "-C", str(tmp_path)]:
-            return _cp(argv)
-        if argv[:2] == ["git", "rev-parse"]:
-            return _cp(argv, stdout=str(tmp_path) + "\n")
-        if argv[:3] == ["git", "-C", str(tmp_path)]:
-            return _cp(argv)
-        if argv[:2] == ["git", "log"] or (len(argv) > 3 and argv[0] == "git" and argv[2] == "log"):
-            return _cp(argv, stdout="")
-        return _cp(argv)
-
     fake = FakeCli(tmp_path)
-    monkeypatch.setattr(file_oos.subprocess, "run", fake_subprocess_run)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     accepted = tmp_path / "oos-accepted-main-agent.md"

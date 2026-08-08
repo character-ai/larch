@@ -11,11 +11,19 @@
 //! only make the gate stricter, and an unparseable batch is reported as a
 //! parse error rather than silently reducing the rejected count to zero.
 //!
-//! The rejected-marker reader follows `larch.issue.oos_disposition`, which is
-//! marginally stricter than the copy inside `larch.issue.file_oos`: it ends the
-//! rejected section only on a `##` heading followed by whitespace, and it looks
-//! for the section marker without folding case. The gate leaf reconciles the
-//! two deliberately rather than inheriting whichever one it happened to call.
+//! Python carried two rejected-marker readers that disagreed, and #8178
+//! reconciled them here into one. The reader now folds case in the outer
+//! presence check, because the per-line scan below it always folded case and a
+//! gate that disagrees with its own scan returns zero for a body it can read.
+//! The presence check remains a narrowing fast path: it looks for the literal
+//! section text, so a heading spaced more widely than the scan requires is
+//! skipped. That direction only under-counts rejections, which blocks the gate
+//! rather than clearing it.
+//! It ends the rejected section on any line opening with exactly two `#`,
+//! rather than only on `##` followed by whitespace, because a bare `##Accepted`
+//! is a section boundary in every artifact that writes one and reading past it
+//! would count an accepted item as rejected — the one direction that lets an
+//! undisposed run look disposed.
 
 use crate::issue::oos_record::count_non_security_blocks;
 use crate::text::{python_str, split_text_lines, trim_python_whitespace, universal_newlines};
@@ -41,7 +49,16 @@ pub const INLINE_TRIAGE_MARKER: &str = "Inline-triage rule";
 static REJECTED_MARKER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"OOS_[0-9]+").expect("rejected marker expression"));
 static REJECTED_SECTION_END_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^##[ \t]+").expect("rejected section end expression"));
+    LazyLock::new(|| Regex::new(r"^##[^#]|^##$").expect("rejected section end expression"));
+static STRICT_FILED_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s\x1c-\x1f]+/issues/[0-9]+)(?:[ \t].*)?$",
+    )
+    .expect("strict filed url expression")
+});
+static REJECTED_SECTION_START_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^##[\s\x1c-\x1f]*rejected").expect("rejected section start expression")
+});
 
 /// What one run directory recorded about its OOS disposition.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -184,8 +201,11 @@ pub fn issue_url_pattern(gh_host: &str) -> Regex {
 ///
 /// Undecodable bytes are replaced rather than failing the read, and line
 /// endings are translated, because every counter here ports a reader that
-/// opened in universal-newline mode.
-fn read_lossy(path: &Path) -> Option<String> {
+/// opened in universal-newline mode. Public because the OOS verbs read the same
+/// artifacts and must not define a second reader that could drift from this
+/// one.
+#[must_use]
+pub fn read_universal_newlines(path: &Path) -> Option<String> {
     if !path.is_file() {
         return None;
     }
@@ -200,7 +220,7 @@ pub fn count_filed_urls_union_files(paths: &[&Path], gh_host: &str) -> usize {
     let pattern = issue_url_pattern(gh_host);
     let mut urls: BTreeSet<String> = BTreeSet::new();
     for path in paths {
-        let Some(text) = read_lossy(path) else {
+        let Some(text) = read_universal_newlines(path) else {
             continue;
         };
         urls.extend(
@@ -212,10 +232,40 @@ pub fn count_filed_urls_union_files(paths: &[&Path], gh_host: &str) -> usize {
     urls.len()
 }
 
+/// Count the distinct structured `- **Filed URL**:` rows across `paths`.
+///
+/// This is the strict half of the gate's evidence. A URL pasted into prose is
+/// not disposition; only a URL written as this field is, because that is the
+/// field the filer writes and the audit reads back.
+#[must_use]
+pub fn count_filed_urls_strict_files(paths: &[&Path]) -> usize {
+    let mut urls: BTreeSet<String> = BTreeSet::new();
+    for path in paths {
+        let Some(text) = read_universal_newlines(path) else {
+            continue;
+        };
+        urls.extend(
+            STRICT_FILED_URL_RE
+                .captures_iter(&text)
+                .map(|found| found[1].to_owned()),
+        );
+    }
+    urls.len()
+}
+
+/// Count inline-triage breadcrumbs in one commit-message blob.
+///
+/// Occurrences are counted, not lines and not distinct texts, because a commit
+/// may triage several items and each breadcrumb covers exactly one record.
+#[must_use]
+pub fn count_inline_triage_occurrences(commit_messages: &str) -> usize {
+    commit_messages.matches(INLINE_TRIAGE_MARKER).count()
+}
+
 /// Count non-security accepted OOS records in one Markdown file.
 #[must_use]
 pub fn count_non_security_oos_blocks(path: &Path) -> usize {
-    read_lossy(path)
+    read_universal_newlines(path)
         .as_deref()
         .map_or(0, count_non_security_blocks)
 }
@@ -226,14 +276,17 @@ pub fn count_non_security_oos_blocks(path: &Path) -> usize {
 /// heading, so a later section's mention of an item never reads as a
 /// rejection of it.
 fn rejected_markers_in_body(body: &str, markers: &mut BTreeSet<String>) {
-    if !body.contains("Rejected / Out-of-Scope") && !body.contains("## Rejected") {
+    let lowered_body = body.to_lowercase();
+    if !lowered_body.contains("rejected / out-of-scope") && !lowered_body.contains("## rejected") {
         return;
     }
     let mut in_rejected = false;
     let mut tail: Vec<&str> = Vec::new();
     for line in split_text_lines(body) {
         let lowered = line.to_lowercase();
-        if lowered.starts_with("## rejected") || lowered.contains("rejected / out-of-scope") {
+        if REJECTED_SECTION_START_RE.is_match(&lowered)
+            || lowered.contains("rejected / out-of-scope")
+        {
             in_rejected = true;
             continue;
         }
@@ -259,7 +312,7 @@ fn rejected_markers_in_body(body: &str, markers: &mut BTreeSet<String>) {
 /// undisposed run look disposed.
 #[must_use]
 pub fn count_rejected_oos_markers_from_ndjson(path: &Path) -> (usize, bool) {
-    let Some(text) = read_lossy(path).filter(|text| !text.is_empty()) else {
+    let Some(text) = read_universal_newlines(path).filter(|text| !text.is_empty()) else {
         return (0, false);
     };
     let mut markers: BTreeSet<String> = BTreeSet::new();
@@ -283,7 +336,7 @@ pub fn count_rejected_oos_markers_from_ndjson(path: &Path) -> (usize, bool) {
 pub fn count_inline_triage_hits(run_dir: &Path) -> usize {
     let mut lines: BTreeSet<String> = BTreeSet::new();
     for name in INLINE_TRIAGE_SOURCES {
-        let Some(text) = read_lossy(&run_dir.join(name)) else {
+        let Some(text) = read_universal_newlines(&run_dir.join(name)) else {
             continue;
         };
         lines.extend(
@@ -322,8 +375,9 @@ pub fn analyze_run_dir(run_dir: &Path, gh_host: &str) -> OosDispositionCounts {
 #[cfg(test)]
 mod tests {
     use super::{
-        DispositionCounters, DispositionState, analyze_run_dir, count_filed_urls_union_files,
-        count_inline_triage_hits, count_rejected_oos_markers_from_ndjson, issue_url_pattern,
+        DispositionCounters, DispositionState, analyze_run_dir, count_filed_urls_strict_files,
+        count_filed_urls_union_files, count_inline_triage_hits, count_inline_triage_occurrences,
+        count_rejected_oos_markers_from_ndjson, issue_url_pattern,
     };
     use std::fs;
     use std::path::Path;
@@ -460,6 +514,64 @@ mod tests {
             "## Rejected / Out-of-Scope\\n- OOS_1 no\\n- OOS_1 again\\n## Accepted\\n- OOS_9 yes";
         fs::write(&path, format!("{{\"body\": \"{body}\"}}\n\n")).expect("write");
         assert_eq!(count_rejected_oos_markers_from_ndjson(&path), (1, false));
+    }
+
+    #[test]
+    fn the_reconciled_reader_folds_case_and_stops_at_a_bare_section() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("oos-issues.ndjson");
+        // Upper-cased marker: the outer presence check must agree with the
+        // per-line scan, which always folded case.
+        fs::write(&path, "{\"body\": \"## REJECTED\\n- OOS_4 no\"}\n").expect("write");
+        assert_eq!(count_rejected_oos_markers_from_ndjson(&path), (1, false));
+        // A bare `##Accepted` still ends the section, so an accepted item is
+        // never counted as a rejection.
+        fs::write(
+            &path,
+            "{\"body\": \"## Rejected\\n- OOS_1 no\\n##Accepted\\n- OOS_2 yes\"}\n",
+        )
+        .expect("write");
+        assert_eq!(count_rejected_oos_markers_from_ndjson(&path), (1, false));
+        // A third-level heading is payload inside the section, not a boundary.
+        fs::write(
+            &path,
+            "{\"body\": \"## Rejected\\n### Detail\\n- OOS_5 no\"}\n",
+        )
+        .expect("write");
+        assert_eq!(count_rejected_oos_markers_from_ndjson(&path), (1, false));
+        // The cheap presence check is narrower than the scan below it, so a
+        // widely spaced heading is skipped. That direction only under-counts
+        // rejections, which blocks the gate rather than clearing it.
+        fs::write(&path, "{\"body\": \"##  Rejected\\n- OOS_6 no\"}\n").expect("write");
+        assert_eq!(count_rejected_oos_markers_from_ndjson(&path), (0, false));
+    }
+
+    #[test]
+    fn only_a_structured_filed_url_row_counts_as_strict_evidence() {
+        let dir = tempdir().expect("tempdir");
+        let strict = dir.path().join("accepted.md");
+        fs::write(
+            &strict,
+            format!("- **Filed URL**: {URL}\n- **Filed URL**: {URL} trailing\nprose {URL}\n"),
+        )
+        .expect("write");
+        let missing = dir.path().join("gone.md");
+        assert_eq!(
+            count_filed_urls_strict_files(&[strict.as_path(), missing.as_path()]),
+            1
+        );
+        assert_eq!(count_filed_urls_strict_files(&[]), 0);
+    }
+
+    #[test]
+    fn inline_triage_breadcrumbs_are_counted_per_occurrence() {
+        assert_eq!(
+            count_inline_triage_occurrences(
+                "Inline-triage rule 1: x\nbody\nInline-triage rule 1: x\n"
+            ),
+            2
+        );
+        assert_eq!(count_inline_triage_occurrences(""), 0);
     }
 
     #[test]

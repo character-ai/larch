@@ -53,7 +53,7 @@ const DISABLED_STORAGE_REASONS: [&str; 3] = [
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    argparse_compat::parse_with_flags,
+    argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
     child_process::{bounded_request, run_bounded},
     python_verb::plugin_root_directory,
     run_log_entry_commands::write_run_log_file,
@@ -78,6 +78,11 @@ const FLUSHED_SENTINEL: &str = ".execution-issues-flushed.sha";
 const STEP7A_SENTINEL: &str = ".execution-issues-step7a-reached";
 /// Longest transport diagnostic one refresh row carries.
 const ERROR_LIMIT: usize = 500;
+
+/// Publish one `argparse`-shaped usage refusal at this crate's usage code.
+fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
+    argparse_usage_error(usage, program, error, VALIDATION_FAILED_RC)
+}
 
 const APPEND_USAGE: &str =
     "usage: cli.py execution-issues append [-h] --log LOG [--category CATEGORY] --entry ENTRY";
@@ -1054,25 +1059,6 @@ fn report_flush(outcome: &FlushOutcome) -> ExitCode {
         );
     }
     ExitCode::from(outcome.rc)
-}
-
-/// Render the `argparse` message for the required options that were absent.
-fn missing(options: &[(&str, bool)]) -> String {
-    let absent: Vec<&str> = options
-        .iter()
-        .filter(|(_name, present)| !present)
-        .map(|(name, _present)| *name)
-        .collect();
-    format!(
-        "the following arguments are required: {}",
-        absent.join(", ")
-    )
-}
-
-/// Publish one `argparse`-shaped usage refusal.
-fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
-    eprintln!("{usage}\n{program}: error: {error}");
-    ExitCode::from(VALIDATION_FAILED_RC)
 }
 
 /// Render the provider-neutral run identity one public summary carries.

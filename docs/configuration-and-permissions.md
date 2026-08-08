@@ -592,7 +592,7 @@ Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, t
 ### `OOS_ISSUES_PER_RUN_CAP`
 
 Default `1` (positive integer). `/implement` Step 9a.1 uses
-`python/cli.py oos issue-cap` and `python/larch/issue/file_oos.py` to cap the number of
+`scripts/larch.sh oos issue-cap` and `python/larch/issue/file_oos.py` to cap the number of
 accepted out-of-scope issues filed in a single run. When the accepted item count
 exceeds the cap, the helper keeps the first `cap - 1` items and rolls the
 remaining items into one summary issue; `OOS_ISSUES_PER_RUN_CAP=1` (the default)

@@ -48,6 +48,7 @@ mod issue_mutation_support;
 mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
+mod oos_commands;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
@@ -183,6 +184,9 @@ enum Domain {
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
+    /// Composition, capping, ordering, and disposition of a run's OOS batch.
+    #[command(subcommand)]
+    Oos(OosCommand),
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
@@ -677,6 +681,25 @@ enum ExecutionIssuesCommand {
     /// Project the pending count onto the tracking issue's metadata comment.
     #[command(disable_help_flag = true)]
     Refresh(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum OosCommand {
+    /// Materialize external implementer observations into accepted-OOS blocks.
+    #[command(name = "materialize-manifest", disable_help_flag = true)]
+    MaterializeManifest(RawCompatibilityArguments),
+    /// Bound how many OOS issues one run may file.
+    #[command(name = "issue-cap", disable_help_flag = true)]
+    IssueCap(RawCompatibilityArguments),
+    /// Emit the intra-batch dependency rows two conflicting items require.
+    #[command(name = "file-conflict-deps", disable_help_flag = true)]
+    FileConflictDeps(RawCompatibilityArguments),
+    /// Refuse a run that silently dropped an accepted OOS record.
+    #[command(name = "disposition-gate", disable_help_flag = true)]
+    DispositionGate(RawCompatibilityArguments),
+    /// Resolve the gate's inputs from one session directory and record them.
+    #[command(name = "disposition-checkpoint", disable_help_flag = true)]
+    DispositionCheckpoint(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1207,6 +1230,21 @@ fn run(
             DirtyTreeCommand::ScopeMarker(arguments) => {
                 let raw = dirty_tree_raw_arguments("scope-marker");
                 dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+        }),
+        Domain::Oos(command) => Ok(match command {
+            OosCommand::MaterializeManifest(arguments) => {
+                oos_commands::materialize_manifest(&arguments.arguments)
+            }
+            OosCommand::IssueCap(arguments) => oos_commands::issue_cap(&arguments.arguments),
+            OosCommand::FileConflictDeps(arguments) => {
+                oos_commands::file_conflict_deps(&arguments.arguments)
+            }
+            OosCommand::DispositionGate(arguments) => {
+                oos_commands::disposition_gate(&arguments.arguments)
+            }
+            OosCommand::DispositionCheckpoint(arguments) => {
+                oos_commands::disposition_checkpoint(&arguments.arguments)
             }
         }),
         Domain::ExecutionIssues(command) => Ok(match command {

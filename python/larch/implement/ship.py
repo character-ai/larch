@@ -59,6 +59,7 @@ from larch.implement import ci
 from larch.implement import main_health
 from larch.implement import scope_disposition
 from larch.core import config
+from larch.implement.dispatch_helpers import _invoke_larch
 from larch.issue import file_oos
 from larch.state import finalize
 from larch.git import gh
@@ -1525,7 +1526,16 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
             ):
                 if manifest and manifest.is_file():
                     with suppress(Exception):
-                        _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
+                        _ = _invoke_larch(
+                            [
+                                "oos",
+                                "materialize-manifest",
+                                "--manifest-path",
+                                str(manifest),
+                                "--implement-tmpdir",
+                                str(tmp_path),
+                            ]
+                        )
                     break
 
             security_sidecar = tmp_path / "security-oos-observations.md"

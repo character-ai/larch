@@ -58,7 +58,10 @@ impl CleanInstallCase {
             | "clean-install-tracking-issue-mark-false-positive"
             | "clean-install-tracking-issue-read"
             | "clean-install-tracking-issue-rename"
-            | "clean-install-tracking-issue-upsert-summary" => 1,
+            | "clean-install-tracking-issue-upsert-summary"
+            // `oos file-conflict-deps` parses its own option line and reports
+            // its own usage exit rather than the `argparse` one.
+            | "clean-install-oos-file-conflict-deps" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
@@ -102,7 +105,14 @@ impl CleanInstallCase {
             | "clean-install-execution-issues-append"
             | "clean-install-execution-issues-flush"
             | "clean-install-execution-issues-flush-safety-net"
-            | "clean-install-execution-issues-refresh" => 2,
+            | "clean-install-execution-issues-refresh"
+            // No `oos` verb declares a `--help` action either: the two hand
+            // rolled option lines report their own usage exit `1`, and the
+            // three `argparse`-shaped ones refuse the token with `2`.
+            | "clean-install-oos-materialize-manifest"
+            | "clean-install-oos-issue-cap"
+            | "clean-install-oos-disposition-gate"
+            | "clean-install-oos-disposition-checkpoint" => 2,
             _ => 0,
         }
     }
@@ -690,6 +700,27 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-execution-issues-refresh",
         "execution-issues",
         "refresh",
+    ),
+    CleanInstallCase::new(
+        "clean-install-oos-materialize-manifest",
+        "oos",
+        "materialize-manifest",
+    ),
+    CleanInstallCase::new("clean-install-oos-issue-cap", "oos", "issue-cap"),
+    CleanInstallCase::new(
+        "clean-install-oos-file-conflict-deps",
+        "oos",
+        "file-conflict-deps",
+    ),
+    CleanInstallCase::new(
+        "clean-install-oos-disposition-gate",
+        "oos",
+        "disposition-gate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-oos-disposition-checkpoint",
+        "oos",
+        "disposition-checkpoint",
     ),
     CleanInstallCase::new(
         "clean-install-external-defaults-docs",

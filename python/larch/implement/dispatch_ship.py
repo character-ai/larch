@@ -29,7 +29,6 @@ from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
-    _current_cli_path,
     _emit_kv,
     _emit_phantom_probe_with_warn,
     _env_value,
@@ -1114,7 +1113,7 @@ def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: P
             "--site",
             site,
             "--tool",
-            "python/cli.py oos disposition-checkpoint",
+            "larch oos disposition-checkpoint",
             "--exit-code",
             str(rc),
             "--category",
@@ -1161,10 +1160,14 @@ def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     err = implement_tmpdir / "oos-disposition-checkpoint.stderr.log"
-    args = ["oos", "disposition-checkpoint", "--implement-tmpdir", str(implement_tmpdir)]
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "oos", "disposition-checkpoint",
+        "--implement-tmpdir", str(implement_tmpdir),
+    ]
     if os.environ.get("DESIGN_TMPDIR"):
-        args.extend(["--design-tmpdir", os.environ["DESIGN_TMPDIR"]])
-    result = subprocess.run([sys.executable, str(_current_cli_path()), *args], capture_output=True, text=True, check=False)
+        argv.extend(["--design-tmpdir", os.environ["DESIGN_TMPDIR"]])
+    result = subprocess.run(argv, capture_output=True, text=True, check=False)
     if result.stderr:
         existing = err.read_text(encoding="utf-8", errors="replace") if err.is_file() else ""
         err.write_text(existing + result.stderr, encoding="utf-8")

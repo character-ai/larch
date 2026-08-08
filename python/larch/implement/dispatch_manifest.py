@@ -18,7 +18,6 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import redact
 from larch.calibration import difficulty
-from larch.issue import file_oos
 from larch.implement.dispatch_helpers import (
     _emit_kv,
     _git,
@@ -471,7 +470,7 @@ def _append_materialize_oos_failure(*, st: DispatchState, log: Path, exit_code: 
         "--site",
         "step2-materialize-manifest-oos",
         "--tool",
-        "cli.py oos materialize-manifest",
+        "larch oos materialize-manifest",
         "--exit-code",
         str(exit_code),
         "--category",
@@ -497,19 +496,38 @@ def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = Fal
     count_str = ""
     materialize_failed = False
 
-    try:
-        count_result = file_oos.materialize_manifest_oos(st.manifest_path, st.tmpdir, count_only=True)
-        count_str = str(count_result)
-        count_rc = 0
-    except (TypeError, ValueError, RuntimeError, OSError) as exc:
-        log.write_text(str(exc) + "\n", encoding="utf-8")
-        count_rc = 1
+    count = _invoke_larch(
+        [
+            "oos",
+            "materialize-manifest",
+            "--count-only",
+            "--manifest-path",
+            str(st.manifest_path),
+            "--implement-tmpdir",
+            str(st.tmpdir),
+        ],
+        cwd=st.repo_root,
+    )
+    count_rc = count.returncode
+    if count_rc == 0:
+        count_str = count.stdout.strip()
+    else:
+        log.write_text(count.stderr, encoding="utf-8")
 
-    try:
-        _ = file_oos.materialize_manifest_oos(st.manifest_path, st.tmpdir, count_only=False)
-    except (TypeError, ValueError, RuntimeError, OSError) as exc:
+    full = _invoke_larch(
+        [
+            "oos",
+            "materialize-manifest",
+            "--manifest-path",
+            str(st.manifest_path),
+            "--implement-tmpdir",
+            str(st.tmpdir),
+        ],
+        cwd=st.repo_root,
+    )
+    if full.returncode != 0:
         with log.open("a", encoding="utf-8") as handle:
-            handle.write(str(exc) + "\n")
+            _ = handle.write(full.stderr)
         materialize_failed = True
 
     if materialize_failed:
