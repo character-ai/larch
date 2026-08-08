@@ -12,12 +12,12 @@ use crate::{
 
 use super::larch_runtime_entrypoint::is_production_surface;
 use super::production_cargo_run::executable_index;
+use super::python_boundary::{check_python_registry, check_retired_entrypoints, offset_line_number};
 
 const NAME: &str = "release-python-free";
 const DESCRIPTION: &str =
     "Enforce Rust-only release and upgrade ownership, callers, and implementations";
 const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.toml";
-const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
 const RELEASE_AUTHORITY_PATH: &str = "crates/larch-cli/src/release_assets.rs";
 const BOOTSTRAP_PATH: &str = "scripts/larch.sh";
 const RELEASE_WORKFLOW_PATH: &str = ".github/workflows/rust-release-assets.yaml";
@@ -89,12 +89,6 @@ static PYTHON_GH_PROCESS: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("Python gh process expression is valid")
 });
-static PYTHON_REGISTRATION: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"\(\s*[\"'](?P<domain>release|upgrade-larch|plugin)[\"']\s*,\s*[\"'](?P<verb>[a-z0-9-]+)[\"']\s*\)\s*:"#,
-    )
-    .expect("Python release registration expression is valid")
-});
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
@@ -146,7 +140,7 @@ impl Rule for ReleasePythonFreeRule {
 
         let mut findings = Vec::new();
         let python_targets = check_registry_rows(commands, &mut findings);
-        check_python_registry(repository, &mut findings)?;
+        check_python_registrations(repository, &mut findings)?;
         check_python_implementations(repository, &python_targets, &mut findings)?;
         check_runtime_callers(repository, &mut findings)?;
         check_release_gh_fallbacks(repository, &mut findings)?;
@@ -262,25 +256,16 @@ fn expected_python_target(domain: &str, verb: &str) -> Option<(&'static str, &'s
     }
 }
 
-fn check_python_registry(
+fn check_python_registrations(
     repository: &Repository,
     findings: &mut Vec<Finding>,
 ) -> Result<(), LintError> {
-    let path = RepoPath::from_trusted(PYTHON_REGISTRY_PATH);
-    if repository.paths().binary_search(&path).is_err() {
-        return Ok(());
-    }
-    let source = repository.read_utf8(&path)?;
-    for captures in PYTHON_REGISTRATION.captures_iter(&source) {
-        if is_in_scope(&captures["domain"], &captures["verb"]) {
-            findings.push(Finding::new(
-                PYTHON_REGISTRY_PATH,
-                offset_line_number(&source, captures.get(0).expect("whole capture").start()),
-                "release-owned command remains registered in Python",
-            ));
-        }
-    }
-    Ok(())
+    check_python_registry(
+        repository,
+        &|domain, verb| is_in_scope(domain, verb),
+        &|_domain, _verb| "release-owned command remains registered in Python".to_owned(),
+        findings,
+    )
 }
 
 fn row_has_final_state(table: &toml::Table) -> bool {
@@ -299,27 +284,14 @@ fn check_python_implementations(
     targets: &[(String, String)],
     findings: &mut Vec<Finding>,
 ) -> Result<(), LintError> {
-    for (module, function) in targets {
-        let module_path = format!("python/{}.py", module.replace('.', "/"));
-        let path = RepoPath::from_trusted(&module_path);
-        if repository.paths().binary_search(&path).is_err() {
-            continue;
-        }
-        let source = repository.read_utf8(&path)?;
-        let definition = Regex::new(&format!(
-            r"(?m)^\s*(?:async\s+)?def\s+{}\s*\(",
-            regex::escape(function)
-        ))
-        .expect("escaped Python function expression is valid");
-        for matched in definition.find_iter(&source) {
-            findings.push(Finding::new(
-                &module_path,
-                offset_line_number(&source, matched.start()),
-                format!("superseded release Python implementation remains: {module}.{function}"),
-            ));
-        }
-    }
-    Ok(())
+    check_retired_entrypoints(
+        repository,
+        targets,
+        &|module, function| {
+            format!("superseded release Python implementation remains: {module}.{function}")
+        },
+        findings,
+    )
 }
 
 fn check_runtime_callers(
@@ -461,7 +433,3 @@ fn line_number(index: usize) -> u32 {
     u32::try_from(index + 1).unwrap_or(u32::MAX)
 }
 
-fn offset_line_number(source: &str, offset: usize) -> u32 {
-    u32::try_from(source[..offset].bytes().filter(|byte| *byte == b'\n').count() + 1)
-        .unwrap_or(u32::MAX)
-}
