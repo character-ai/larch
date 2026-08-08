@@ -17,6 +17,7 @@ mod body;
 mod candidates;
 mod ground_truth;
 mod input;
+mod lease;
 mod report_core;
 mod rows;
 mod title;
@@ -46,6 +47,10 @@ pub use ground_truth::{
     scan_ground_truth_corpus, strong_match, version_components, version_meets_floor,
 };
 pub use input::{InputMode, ParsedInput, ParsedItem, parse_issue_input};
+pub use lease::{
+    ImplementationLease, LeaseDefect, parse_implementation_lease, render_implementation_lease,
+    upsert_implementation_lease,
+};
 pub use report_core::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, CoverageStats,
     IssueCategory, IssueLifecycle, IssueSummary, STRIPPED_TITLE_PREFIXES, categorize,

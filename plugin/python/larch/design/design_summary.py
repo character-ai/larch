@@ -718,7 +718,7 @@ def upsert_final_summary_from_disk(
     ]
     if repo_args:
         ups_args.extend(repo_args)
-    return _run_cli(*ups_args).returncode == 0
+    return _run_larch(*ups_args).returncode == 0
 
 
 def render_final_summary_main(argv: Sequence[str]) -> int:

@@ -1289,7 +1289,7 @@ def _handle_design_clarify_publish(
 
     renamed = ""
     if session_id and publish_ok == "true":
-        rename = _run_cli(
+        rename = _run_larch(
             plugin_root,
             env,
             "tracking-issue",
@@ -1315,7 +1315,7 @@ def _handle_design_clarify_publish(
                 design_tmpdir=design_tmpdir,
                 env=env,
                 site="design Step 0b clarify rename",
-                tool="python/cli.py tracking-issue rename",
+                tool="scripts/larch.sh tracking-issue rename",
                 exit_code=rename.returncode,
                 output_file=design_tmpdir / "clarify-rename.stderr",
             )

@@ -582,7 +582,7 @@ def test_stale_lease_watchdog_is_report_only_and_checks_open_pr() -> None:
     assert len(findings) == 1
     assert findings[0].token == "stale-implementation-lease issue=#8 age_hours=13"
     assert findings[0].cleanup_command == (
-        "python3 python/cli.py tracking-issue rename --issue 8 "
+        "scripts/larch.sh tracking-issue rename --issue 8 "
         "--state stalled --repo o/r --run-id run-1"
     )
     assert not any(call[1:3] == ["issue", "edit"] for call in runner.calls)

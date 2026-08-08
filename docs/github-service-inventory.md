@@ -65,9 +65,20 @@ drives the shared issue-mutation owner's field-scoped compare-and-swap, and the
 managed-to-umbrella carve-out is the conversion field that owner already
 validates. The same leaf moved `umbrella verify` and
 `umbrella verify-completion` to Rust; both prove a completed run entirely from
-recorded artifacts and reach no GitHub service, so neither joins a row. The
-rows that still name Python-owned issue commands enumerate them instead of
-claiming the whole domain.
+recorded artifacts and reach no GitHub service, so neither joins a row.
+
+The two `tracking-issue-*` rows record the #8175 cutover of the six
+tracking-issue lifecycle verbs. `tracking-issue-comments` covers the three that
+read and publish comments — `read` renders the issue and its human comments
+into an untrusted-input task file, `append-comment` adds one note, and
+`upsert-summary` keeps exactly one comment per marker.
+`tracking-issue-lifecycle` covers the three that change issue identity:
+`create-issue` files one through the mutation owner's redacting create, and
+`rename` and `mark-false-positive` apply a title as a freshness-checked
+compare-and-swap. `rename --run-id` and the `upsert-summary` lease heartbeat
+also refresh the implementation lease, which the same owner binds to the run
+that already holds it. The rows that still name Python-owned issue commands
+enumerate them instead of claiming the whole domain.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
@@ -75,7 +86,7 @@ claiming the whole domain.
 operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
 actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing pytest,gh run-logs,gh workflow-path
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
-comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify *,issue migration-audit,tracking-issue *
+comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify *,issue migration-audit
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	deps *
 issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	block-issue *,issue add-blocked-by
 issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	issue add-sub-issue
@@ -92,6 +103,8 @@ pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	
 pull-request-rust-selection	crates/larch-adapters/src/github/operations.rs	python	#8216	pending	pending	pending	ci rust-select,ci rust-select-summary
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
+tracking-issue-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
+tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename
 umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	umbrella mutate
 ```
 <!-- github-service-ownership:end -->

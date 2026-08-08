@@ -51,7 +51,7 @@
 - **question**: What is the relationship between `/implement` Step 0 tracking adoption (Branch 1 vs Branch 2) and the `parent-issue.md` sentinel file, and how does the sentinel preserve idempotency across resumed runs?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 2, RUN_ID, python3 python/cli.py tracking-issue upsert-summary
+- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 2, RUN_ID, scripts/larch.sh tracking-issue upsert-summary
 - **notes**: Architecture; should cover sentinel-reuse (Branch 1), positional `--issue` adoption (Branch 2), when `post-tracking-issue.sh` writes the sentinel after successful metadata publication, and how `RUN_ID` / manifest init interact on resume versus fresh adopt.
 
 ### eval-7: ci-fix-rebase-step12-interaction

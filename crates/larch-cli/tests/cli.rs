@@ -37,6 +37,7 @@ Commands:
   plan-block         The `larch:plan` issue-body block carrying the `/design` handoff
   named-block        One named `larch:<marker>` issue-body block
   plan               Implementation-plan readers
+  tracking-issue     The tracking issue's lifecycle: reads, comments, titles, and summaries
   triage             Pre-`/design` issue verification: evidence, probes, and the one write
   umbrella           Durable `/umbrella` preparation, record state, and completion proof
   untrusted          Envelopes that mark fetched text as data, never instructions

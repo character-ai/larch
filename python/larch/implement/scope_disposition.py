@@ -1194,11 +1194,6 @@ def _as_bool(value: object) -> bool:
     return False
 
 
-def _run_cli(argv: Sequence[str]) -> CommandResult:
-    cli = Path(__file__).resolve().parents[2] / "cli.py"
-    return proc.run([sys.executable, str(cli), *argv])
-
-
 def _run_larch(argv: Sequence[str]) -> CommandResult:
     """Invoke one Rust-owned command through the verified bootstrap script."""
     root = Path(__file__).resolve().parents[3]
@@ -1290,7 +1285,7 @@ def _append_cross_links(
         (tracking_issue_number, parent_body),
         (followup.number, child_body),
     ):
-        result = _run_cli(
+        result = _run_larch(
             [
                 "tracking-issue",
                 "append-comment",

@@ -658,7 +658,7 @@ def test_frozen_fallback_post_commit_provenance_retained(
     def fake_run_cli(argv: Sequence[str]) -> CommandResult:
         return CommandResult(tuple(argv), 0, "OK=true\n", "", 0.0)
 
-    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli)
     # `issue create-one`, `issue add-blocked-by`, and `run-log write` are
     # Rust-owned and route through the bootstrap runner.
     monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
@@ -885,7 +885,7 @@ def test_record_proceed_partial_is_durable_after_all_side_effects(
             return CommandResult(args, 0, "LOG_WRITTEN=true\n", "", 0.0)
         return CommandResult(args, 1, "", "unexpected", 0.0)
 
-    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli)
     # `issue create-one`, `issue add-blocked-by`, and `run-log write` are
     # Rust-owned and route through the bootstrap runner.
     monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
@@ -949,7 +949,7 @@ def test_record_proceed_partial_failure_leaves_no_disposition(
             return CommandResult(args, 1, "FAILED=true\nERROR=nope\n", "", 0.0)
         return CommandResult(args, 0, "OK=true\n", "", 0.0)
 
-    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli)
     # `issue create-one`, `issue add-blocked-by`, and `run-log write` are
     # Rust-owned and route through the bootstrap runner.
     monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
@@ -992,7 +992,7 @@ def test_record_proceed_partial_dedups_followup_on_matching_fingerprint(
         calls.append(args)
         return CommandResult(args, 0, "OK=true\n", "", 0.0)
 
-    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli)
     # `issue create-one`, `issue add-blocked-by`, and `run-log write` are
     # Rust-owned and route through the bootstrap runner.
     monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)
@@ -1370,7 +1370,7 @@ def test_create_followup_issue_passes_context_file(
             0.0,
         )
 
-    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli)
     # `issue create-one`, `issue add-blocked-by`, and `run-log write` are
     # Rust-owned and route through the bootstrap runner.
     monkeypatch.setattr(scope_disposition, "_run_larch", fake_run_cli, raising=False)

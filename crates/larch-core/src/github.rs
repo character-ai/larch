@@ -292,6 +292,8 @@ pub struct GitHubIssue {
 pub struct GitHubComment {
     pub id: u64,
     pub body: String,
+    /// Web URL of the comment, the anchor a caller republishes.
+    pub url: String,
     pub author: String,
     pub created_at: String,
     pub updated_at: String,

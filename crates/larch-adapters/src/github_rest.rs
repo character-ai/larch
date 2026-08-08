@@ -853,9 +853,12 @@ fn comment_from_model(
     let body = value.body.unwrap_or_default();
     validate_string(&body, policy)?;
     validate_string(&value.user.login, policy)?;
+    let url = value.html_url.to_string();
+    validate_string(&url, policy)?;
     Ok(GitHubComment {
         id: value.id.into_inner(),
         body,
+        url,
         author: value.user.login,
         created_at: value.created_at.to_rfc3339(),
         updated_at: value.updated_at.unwrap_or(value.created_at).to_rfc3339(),

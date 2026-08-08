@@ -49,7 +49,16 @@ impl CleanInstallCase {
             | "clean-install-issue-fetch-issue-details"
             | "clean-install-issue-parse-input"
             | "clean-install-issue-state"
-            | "clean-install-issue-write-sentinel" => 1,
+            | "clean-install-issue-write-sentinel"
+            // The six tracking-issue verbs declare no `--help` action either,
+            // so the clean-install token reads as an unrecognized argument and
+            // each refuses with the `argparse` usage exit code.
+            | "clean-install-tracking-issue-append-comment"
+            | "clean-install-tracking-issue-create-issue"
+            | "clean-install-tracking-issue-mark-false-positive"
+            | "clean-install-tracking-issue-read"
+            | "clean-install-tracking-issue-rename"
+            | "clean-install-tracking-issue-upsert-summary" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
@@ -448,6 +457,32 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "strip-body",
     ),
     CleanInstallCase::new("clean-install-plan-block-write", "plan-block", "write"),
+    CleanInstallCase::new(
+        "clean-install-tracking-issue-append-comment",
+        "tracking-issue",
+        "append-comment",
+    ),
+    CleanInstallCase::new(
+        "clean-install-tracking-issue-create-issue",
+        "tracking-issue",
+        "create-issue",
+    ),
+    CleanInstallCase::new(
+        "clean-install-tracking-issue-mark-false-positive",
+        "tracking-issue",
+        "mark-false-positive",
+    ),
+    CleanInstallCase::new("clean-install-tracking-issue-read", "tracking-issue", "read"),
+    CleanInstallCase::new(
+        "clean-install-tracking-issue-rename",
+        "tracking-issue",
+        "rename",
+    ),
+    CleanInstallCase::new(
+        "clean-install-tracking-issue-upsert-summary",
+        "tracking-issue",
+        "upsert-summary",
+    ),
     CleanInstallCase::new("clean-install-triage-apply", "triage", "apply"),
     CleanInstallCase::new("clean-install-triage-inspect", "triage", "inspect"),
     CleanInstallCase::new("clean-install-triage-probe", "triage", "probe"),

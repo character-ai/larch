@@ -779,6 +779,7 @@ mod tests {
 
     fn comment(author: &str, body: &str) -> GitHubComment {
         GitHubComment {
+            url: String::new(),
             id: 1,
             body: body.to_owned(),
             author: author.to_owned(),

@@ -1553,8 +1553,7 @@ def publish_core(argv: Sequence[str]) -> int:
 
     rename: subprocess.CompletedProcess[str] = subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "tracking-issue",
             "rename",
             "--issue",
