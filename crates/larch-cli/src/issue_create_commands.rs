@@ -28,7 +28,7 @@ use crate::{
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::{
         EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, MUTATION_REFUSAL_STATUS,
-        authorization_request, authorized, flat_error, sanitized_line,
+        authorization_request, authorized, create_with_rollback, flat_error, sanitized_line,
     },
 };
 use chrono::Utc;
@@ -348,22 +348,7 @@ fn file_issue(create: &LiveCreate) -> Result<CreatedIssue, CreateFailure> {
             body: create.body.clone(),
             labels: existing_labels(service, cancellation, create).await,
         };
-        let owner = IssueMutationOwner::new(service);
-        match owner.create(cancellation, &authorization, &request).await {
-            Ok(created) => Ok(Ok(created)),
-            Err(failure) => {
-                let rollback = match failure.orphan {
-                    None => None,
-                    Some(orphan) => Some((
-                        orphan,
-                        owner
-                            .close_not_planned(cancellation, &request.repository, orphan)
-                            .await,
-                    )),
-                };
-                Ok(Err((failure, rollback)))
-            }
-        }
+        Ok(create_with_rollback(service, cancellation, &authorization, &request).await)
     });
     match outcome {
         Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => {

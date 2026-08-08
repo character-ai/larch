@@ -8,8 +8,13 @@
 //! refusal token, the reserved exit code, or the redaction that runs before a
 //! diagnostic is published.
 
-use larch_adapters::github::LiveMutationRequest;
-use larch_core::{is_python_whitespace, redact_issue_text_outbound};
+use larch_adapters::{
+    github::{IssueCreateFailure, IssueMutationOwner, LiveMutationRequest, OctocrabGitHubService},
+    runtime::Cancellation,
+};
+use larch_core::{
+    CreatedIssue, IssueCreateRequest, is_python_whitespace, redact_issue_text_outbound,
+};
 use std::{env, path::Path};
 
 /// Exit code reserved for a refused live mutation, shared with Python config.
@@ -20,6 +25,44 @@ pub const MUTATION_REFUSAL_STATUS: &str = "mutation-refused";
 pub const MUTATION_REFUSAL_REASON: &str = "unauthorized-mutation";
 /// Environment override that denies session-inherited authorization in tests.
 const MUTATION_TEST_DENY_KEY: &str = "LARCH_ISSUE_MUTATION_DENY";
+
+/// A failed create and the orphan close it attempted, when there was one.
+pub type CreateRollback = (IssueCreateFailure, Option<(u64, Result<(), String>)>);
+
+/// Create one issue and close the orphan a failed create left behind.
+///
+/// GitHub can open the issue and still fail the call, which leaves a
+/// half-filed issue nobody asked for. Every caller that files an issue owes
+/// that rollback, so the attempt lives here rather than in each command: the
+/// create and the close then share one client and one credential acquisition,
+/// and no filing verb can quietly skip the cleanup.
+///
+/// # Errors
+/// Returns the failure and its rollback outcome when the create did not
+/// produce a usable issue.
+pub async fn create_with_rollback(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    authorization: &LiveMutationRequest<'_>,
+    request: &IssueCreateRequest,
+) -> Result<CreatedIssue, CreateRollback> {
+    let owner = IssueMutationOwner::new(service);
+    match owner.create(cancellation, authorization, request).await {
+        Ok(created) => Ok(created),
+        Err(failure) => {
+            let rollback = match failure.orphan {
+                None => None,
+                Some(orphan) => Some((
+                    orphan,
+                    owner
+                        .close_not_planned(cancellation, &request.repository, orphan)
+                        .await,
+                )),
+            };
+            Err((failure, rollback))
+        }
+    }
+}
 
 /// Build the live-mutation authorization request for one command line.
 pub fn authorization_request<'a>(

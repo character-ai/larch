@@ -22,7 +22,6 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::github::IssueMutationOwner;
 use larch_core::{
     GitHubRepositoryRef, IssueCreateRequest, RunLogSlug, redact, redact_secrets,
     report::{
@@ -36,7 +35,7 @@ use crate::{
     argparse_compat::parse_with_flags,
     github_repository_resolution::{ambient_repo, repository_ref, validate_repo_slug},
     github_service::{ServiceFailure, with_github_service},
-    issue_mutation_support::{authorization_request, authorized},
+    issue_mutation_support::{authorization_request, authorized, create_with_rollback},
     run_log_publication_commands::synchronized_corpus_root,
 };
 
@@ -333,26 +332,10 @@ fn post_issue(
             body,
             labels: Vec::new(),
         };
-        let owner = IssueMutationOwner::new(service);
-        match owner.create(cancellation, &authorization, &create).await {
-            Ok(created) => Ok(Ok(created)),
-            Err(failure) => {
-                // A create that fails after GitHub already opened the issue
-                // leaves an orphan. Closing it here is what keeps a failed
-                // report run from leaving a half-filed issue behind, matching
-                // the rollback `issue create-one` performs.
-                let rollback = match failure.orphan {
-                    None => None,
-                    Some(orphan) => Some((
-                        orphan,
-                        owner
-                            .close_not_planned(cancellation, &create.repository, orphan)
-                            .await,
-                    )),
-                };
-                Ok(Err((failure, rollback)))
-            }
-        }
+        // A create that fails after GitHub already opened the issue leaves an
+        // orphan, so this shares `issue create-one`'s rollback rather than
+        // leaving a half-filed report issue behind.
+        Ok(create_with_rollback(service, cancellation, &authorization, &create).await)
     });
     match outcome {
         Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => {
