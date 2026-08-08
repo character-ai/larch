@@ -146,6 +146,7 @@ Python consumer moves, the Python module remains the production owner.
 | `larch.report.run_log_batch` (registry/read subset; `larch_core::report`) | #8075 | `larch.report.run_logs`, `larch.report.run_log_manifest`, `larch.report.run_log_commit`, `larch.report.run_log_archive`, `larch.report.run_log_publish`, `larch.report.run_lifecycle`, and their producer helpers | #8073–#8080 and later report cutovers |
 | `larch.report.run_log_corpus` (`larch_core::report`) | #8075 | `larch.report.report_tokens_scan`, `larch.report.tokens`, `larch.issue.analyze_issues`, `larch.issue._ground_truth`, `larch.issue.audit_runs`, `larch.issue.rejected_analysis`, `larch.issue._oos`, `larch.issue.file_oos`, `larch.review._voting_calibration`, `larch.implement.checks_run_relevant` | #7684, #8086, #8088, and later report/analytics cutovers |
 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, and the extraction subset of `larch.report.tokens` (`larch_core::report` token scan) | #8086 | `larch.report.report_tokens_scan`, `larch.report.report_tokens_models`, `larch.report.tokens`, `larch.report.report_tokens_cost`, `larch.report.report_tokens_cli`, `larch.report.report_tokens_render` | #8087 (cost model), #8088 (`report-tokens analyze`) |
+| `larch.report.report_tokens_cost` and the pricing subset of `larch.report.tokens` (`larch_core::report` token cost) | #8087 | `larch.report.report_tokens_cost`, `larch.report.tokens`, `larch.report.report_tokens_cli`, `larch.report.report_tokens_render` | #8088 (`report-tokens analyze`), later `token cost` and `token render-cost-line` cutovers |
 | `larch.issue.issue_blocks`, `larch.issue.title_match`, and the wire subset of `larch.issue.issue_wire` and `larch.issue.open_rows` (`larch_core::issue`) | #8165 | `larch.issue.issue_blocks`, `larch.issue.title_match`, `larch.issue.open_rows`, `larch.issue.combine_issues`, `larch.issue.deps_audit`, `larch.issue.tracking_issue` | #8175 (tracking-issue titles), #8180 (`deps`), #8181 (`combine-issues`) |
 | `larch.issue.issue_wire.extract_scope_paths` (`larch_core::plan_scope`) | #8171 | `larch.design.decompose`, `larch.implement.dispatch_step2`, `larch.implement.scope_disposition` | #7680 (`/design` decompose), #7681 (`/implement` dispatch and scope disposition) |
 | `larch_core::vendor::waterfall` | #8110 | `larch.git.rebase`, `larch.implement.ci_monitor`, and compatibility-only `larch.agents._claude_runner` helpers | Later CI and waterfall cutovers |
@@ -160,6 +161,16 @@ a defaulted, normalized, unpinned, or unconsumed field is reported through
 single Rust owner of the `claude_sub` model default and the long-context ledger
 alias, which `larch_adapters::phase_detail` now reuses. Pricing stays with issue
 8087, and `report-tokens analyze` switches in issue 8088.
+
+Issue 8087 ports the pricing half: the per-model rate table, per-tier cache
+rates, environment rate overrides, the bucket-to-counts mapping, Python's
+rounding, and per-run cost aggregation. It adds no command either.
+`larch_core::report::RATE_TABLE` is the single Rust owner of every token rate,
+and `larch_core::vendor_model` gains the GLM main-agent id and its long-context
+alias. A model priced by another model's rate row, including a display bucket
+that folds one model onto another, is recorded as
+`TokenObservationKind::UnpricedModel` rather than passing silently. Python keeps
+`token cost` and `token render-cost-line` until a later cutover leaf moves them.
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python

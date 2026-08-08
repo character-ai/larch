@@ -29,6 +29,24 @@ pub const CLAUDE_SONNET_4_6_1M_MODEL: &str = "claude-sonnet-4-6[1m]";
 pub const CLAUDE_HAIKU_4_5_MODEL: &str = "claude-haiku-4-5";
 /// Claude Fable model id recorded in token ledgers.
 pub const CLAUDE_FABLE_5_MODEL: &str = "claude-fable-5";
+/// Z.ai GLM main-agent model id recorded in token ledgers.
+pub const CLAUDE_GLM_5_2_MODEL: &str = "glm-5.2";
+/// Z.ai GLM main-agent long-context alias recorded in token ledgers.
+pub const CLAUDE_GLM_5_2_1M_MODEL: &str = "glm-5.2[1m]";
+
+/// Fold the GLM main-agent long-context alias onto its canonical id.
+///
+/// Every other model string is returned unchanged, including a non-GLM `[1m]`
+/// variant. Use this only for main-agent rate lookup and final-summary GLM
+/// identity detection, never for subprocess `claude_sub` pricing.
+#[must_use]
+pub fn canonicalize_glm_main_model(model: &str) -> &str {
+    if model == CLAUDE_GLM_5_2_1M_MODEL {
+        CLAUDE_GLM_5_2_MODEL
+    } else {
+        model
+    }
+}
 
 /// Fold the Claude long-context alias onto its base id for ledger accounting.
 ///

@@ -11,6 +11,7 @@ mod markdown_block;
 mod path_warning;
 mod run_log_corpus;
 pub mod timing;
+mod token_cost;
 mod token_scan;
 
 pub use exec_issue_detail::{
@@ -30,6 +31,14 @@ pub use run_log_corpus::{
     RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
     RunLogTimeWindowError, parse_preterminal_outcome_label, round_number_from_path,
     run_log_batch_spec, run_log_batch_specs,
+};
+pub use token_cost::{
+    BLENDED_FALLBACK_WARNING, CODEX_MINI_MODELS, CURSOR_COMPOSER_BASE_RATES, CURSOR_GROK_MODELS,
+    CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M, ClaudeCounts, CodexCounts, CursorCounts, RATE_TABLE,
+    RateRow, RunCost, TokenCostError, TokenCostValues, TokenCounts, TokenRates,
+    aggregate_vendor_tokens, cursor_buckets_are_detailed, display_rates, exact_rate_row,
+    fallback_cost, format_money, price_counts, price_run, python_round, rate_row, render_cost_kv,
+    render_cost_line,
 };
 pub use token_scan::{
     CODEX_IMPLEMENT_RAW_LABEL, CURSOR_IMPLEMENT_RAW_LABEL, IMPLEMENT_STEP2_LABEL,

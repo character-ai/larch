@@ -370,6 +370,8 @@ pub enum TokenObservationKind {
     NormalizedModel,
     /// A recorded model id is not one of larch's pinned vendor models.
     UnpinnedModel,
+    /// A recorded model id was priced by another model's rate row.
+    UnpricedModel,
 }
 
 /// One structured extraction observation.
