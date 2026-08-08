@@ -348,10 +348,10 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           # The selector compares the tested merge candidate to the PR base.
-          # The selector proves its base ancestry below. Start with the two
-          # merge parents, then fetch full history only when that proof needs
-          # it; an unavailable proof remains a full-mode fallback.
-          fetch-depth: 2
+          # The selector proves its base ancestry below. Start with a bounded
+          # graph that covers nested generated merges, then fetch full history
+          # only when that proof needs it; an unavailable proof remains full.
+          fetch-depth: 8
           ref: ${{ github.sha }}
       - name: Select Rust CI mode from the trusted base
         id: proposed-selection
@@ -365,7 +365,7 @@ jobs:
           selector_result="$RUNNER_TEMP/rust-ci-selection.json"
           selector_root="$RUNNER_TEMP/rust-ci-selector-base"
           selector_worktree_added=false
-          selector_history_source=bounded-depth-2
+          selector_history_source=bounded-depth-8
           selector_worktree_milliseconds=0
           selector_command_milliseconds=0
           cleanup_selector_worktree() {
