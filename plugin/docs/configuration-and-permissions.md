@@ -569,7 +569,7 @@ Malformed env values, zero, and negative values fall through to the next alias o
 
 ### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
 
-Step duration threshold (in seconds) used by `python3 python/cli.py timing report --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.
+Step duration threshold (in seconds) used by `scripts/larch.sh timing report --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.
 
 ### `LARCH_VERBOSE_TOKENS`
 

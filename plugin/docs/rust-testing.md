@@ -133,6 +133,17 @@ report only differing channels. Prefer typed snapshot equality in tests; use
 semantic field. Test success, injected failure, interruption, and corruption
 separately so those states stay distinguishable.
 
+Token extraction has a second, narrower oracle. `crates/larch-core/tests/
+fixtures/token_scan/` holds ledger and transcript inputs beside the recorded
+output of the Python owner (`larch.report.tokens.build_report_from_ledgers`,
+`_full_json`, and `_summary_json`) over exactly those inputs, and
+`tests/token_scan.rs` asserts full JSON equality against them. Regenerate every
+recorded report from Python together, and review a changed byte as a Python
+contract change rather than a Rust detail. Scanning stays streaming: the scan
+reads one run at a time and both ledgers and transcripts line by line, so peak
+memory is bounded by the largest single run and not by corpus size, as
+`larch_core::report`'s token-scan module documents.
+
 `LocalObjectStore` is a filesystem double for the documented object-store
 operations (`preflight_prefix`, `list`, `upload_create`, `metadata`,
 `download`). It stays offline, rejects unsafe keys, and never contacts a
