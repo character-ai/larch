@@ -8,7 +8,7 @@ use super::{
     CAP_HIT_PAYLOAD, VendorArgvError, VendorCapCheckResult, VendorDescriptor, VendorLaunchOutcome,
     VendorLaunchRequest, VendorLaunchStatus, VendorProcessResult,
 };
-use crate::{SafeText, VendorProgram, split_text_lines, truncate_utf8_bytes};
+use crate::{SafeText, VendorProgram, is_positive_decimal, split_text_lines, truncate_utf8_bytes};
 use serde::Serialize;
 use std::{
     convert::Infallible,
@@ -537,12 +537,6 @@ pub fn check_token_budget_cap<E>(
             String::new()
         },
     })
-}
-
-fn is_positive_decimal(value: &str) -> bool {
-    !value.is_empty()
-        && value.bytes().all(|byte| byte.is_ascii_digit())
-        && value.bytes().any(|byte| byte != b'0')
 }
 
 /// Validated task-kind token used by the vendor timing command.

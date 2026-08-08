@@ -34,18 +34,18 @@ Create one flat `[UMBRELLA]` issue from one open issue number or a verbal task. 
 - `--skip-approve` bypasses only the question. It never bypasses proposal persistence, `/issue` counter parsing, sentinel verification, mutation authorization, or graph read-back.
 - In prepared-partition mode, `--skip-approve` consumes the parent's approval. Preserve the exact validated leaves and edges, then proceed without another question.
 - Default verbal input invokes `/issue` with normal deduplication. `--no-dedup` invokes `/issue` dependency-only mode: it suppresses duplicate reuse but still requires complete dependency analysis.
-- An existing compatible `[UMBRELLA]` resumes only from its protected proposal record. Create only recorded missing leaves; reconcile an `in-flight` leaf only when exactly one remote issue matches its persisted title and complete fixed opening. Otherwise fail closed before another create.
+- An existing compatible `[UMBRELLA]` resumes only from its protected proposal record. Create only recorded missing leaves; reconcile an `in-flight` leaf only through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella reconcile-in-flight`, which binds it only when exactly one remote issue matches its persisted title and complete fixed opening. Otherwise fail closed before another create.
 
 ## Step 1 — Scratch and proposal
 
 Create `$UMBRELLA_TMPDIR` with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-umbrella --skip-preflight --skip-branch-check --skip-repo-check`, then activate a fresh `umbrella-$PPID` sentinel under the deny-edit-write activation directory. Write all artifacts only below `$UMBRELLA_TMPDIR`.
 
-For an issue number, use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella prepare --repo "$REPO" --issue "$N" --output "$UMBRELLA_TMPDIR/snapshot.json"`. In prepared-partition mode, add `--managed-partition true`; this is the narrow helper-side carve-out for an exact `[DESIGNING]` or `[IMPLEMENTING]` source and an existing plan block. Treat a compatible `[UMBRELLA]` snapshot as a committed managed conversion: resume exclusively from its protected proposal record, require every recorded leaf to be resolved, use that record as the proposal source, and skip the managed mutation. A pending or in-flight leaf after managed conversion is inconsistent and fails closed. For verbal input, invoke `/issue` via the Skill tool normally unless `--no-dedup` was explicit, then validate the returned target with the same preparation command before conversion.
+For an issue number, use `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella prepare --repo "$REPO" --issue "$N" --output "$UMBRELLA_TMPDIR/snapshot.json"`. In prepared-partition mode, add `--managed-partition true`; this is the narrow helper-side carve-out for an exact `[DESIGNING]` or `[IMPLEMENTING]` source and an existing plan block. Treat a compatible `[UMBRELLA]` snapshot as a committed managed conversion: resume exclusively from its protected proposal record, require every recorded leaf to be resolved, use that record as the proposal source, and skip the managed mutation. A pending or in-flight leaf after managed conversion is inconsistent and fails closed. For verbal input, invoke `/issue` via the Skill tool normally unless `--no-dedup` was explicit, then validate the returned target with the same preparation command before conversion.
 
 For a still-managed source in prepared-partition mode, validate that the three input paths and the completion-sentinel parent are contained by `PREPARED_ROOT`, then persist the exact parent-approved batch and edge set through the canonical umbrella proposal owner:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella persist-proposal \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella persist-proposal \
   --snapshot "$UMBRELLA_TMPDIR/snapshot.json" \
   --prepared-root "$PREPARED_ROOT" \
   --prepared-input "$PREPARED_INPUT_FILE" \
@@ -62,7 +62,7 @@ Require `PROPOSAL_PERSISTED=true` and `LEAF_COUNT` between 2 and 30. This helper
 Outside prepared-partition mode, draft a bounded `proposal.json`: common context, deterministic leaf identities, complete leaf bodies, `pending` records, and dependency directions. Persist it before any leaf filing:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella persist-proposal \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella persist-proposal \
   --proposal "$UMBRELLA_TMPDIR/proposal.json" --output "$UMBRELLA_TMPDIR/proposal.json"
 ```
 
@@ -75,7 +75,7 @@ Show one `AskUserQuestion` containing the proposed umbrella and leaf titles. On 
 For each missing identity, persist `in-flight` before calling `/issue`:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" umbrella mark-in-flight \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella mark-in-flight \
   --proposal "$UMBRELLA_TMPDIR/proposal.json" --identity "$IDENTITY"
 ```
 
@@ -89,7 +89,7 @@ Mechanically require `ISSUES_FAILED=0`, all expected per-item records, and `VERI
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"
 ```
 
-Persist every successful leaf URL with `umbrella record-resolved` before native graph mutation. Keep each leaf bound to its exact `/issue` per-item result. A deduplicated result is reusable only when final title/body verification matches the recorded leaf; never substitute an unrelated duplicate.
+Persist every successful leaf URL with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella record-resolved` before native graph mutation. Keep each leaf bound to its exact `/issue` per-item result. A deduplicated result is reusable only when final title/body verification matches the recorded leaf; never substitute an unrelated duplicate.
 
 ## Step 4 — Wire and finalize
 

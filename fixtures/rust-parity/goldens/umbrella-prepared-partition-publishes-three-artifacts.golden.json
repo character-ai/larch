@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "files": {
+    "deps.tsv": {
+      "text": "1\t2\n"
+    },
+    "input.txt": {
+      "text": "### One\n\nFirst body.\n\n### Two\n\nSecond body.\n"
+    },
+    "issue-input.txt": {
+      "text": "### One\n\nThis is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nFirst body.\n### Two\n\nThis is a leaf of umbrella #12. Read the umbrella in full before acting.\n\nSecond body.\n"
+    },
+    "prepared-deps.tsv": {
+      "text": "1\t2\n"
+    },
+    "proposal.json": {
+      "text": "{\"common_context\":\"Shared context.\",\"dependency_edges\":[{\"blocked\":\"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c\",\"blocker\":\"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364\"}],\"expected_updated_at\":\"2026-08-03T00:00:00Z\",\"leaves\":[{\"body\":\"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nFirst body.\",\"identity\":\"8d0da119b1326b1d588637958269d8902ab475ef5a8521a848977daf3b42c364\",\"issue_id\":\"\",\"number\":\"\",\"state\":\"pending\",\"title\":\"[LEAF OF 12] One\",\"url\":\"\"},{\"body\":\"This is a leaf of umbrella #12. Read the umbrella in full before acting.\\n\\nSecond body.\",\"identity\":\"91c8ac2b09259690bdcebe4afd7ab76f27d050cbf59f65bf891fa9633516d33c\",\"issue_id\":\"\",\"number\":\"\",\"state\":\"pending\",\"title\":\"[LEAF OF 12] Two\",\"url\":\"\"}],\"prepared_deps_sha256\":\"0c944e60f2140df3aaa1c17f7e4ed1e3699bcf647cf9e38623180ff5e86ac971\",\"prepared_input_sha256\":\"ee3b6085286d69d3db1335a83442a017180cab8a5cef2948d1186c2a4e085c00\",\"repository\":\"owner/repo\",\"umbrella\":\"12\",\"version\":1}\n"
+    },
+    "snapshot.json": {
+      "text": "{\"repository\": \"owner/repo\", \"number\": \"12\", \"title\": \"[DESIGNING] Split\", \"body\": \"Shared context.\", \"state\": \"OPEN\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "PROPOSAL_PERSISTED=true\nLEAF_COUNT=2\n"
+  }
+}

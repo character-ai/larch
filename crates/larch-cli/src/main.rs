@@ -76,6 +76,7 @@ mod state_commands;
 mod test_shards;
 mod timing_commands;
 mod triage_commands;
+mod umbrella_commands;
 mod voter_dispatch_commands;
 mod waterfall_commands;
 
@@ -152,6 +153,9 @@ enum Domain {
     /// Pre-`/design` issue verification: evidence, probes, and the one write.
     #[command(subcommand)]
     Triage(TriageCommand),
+    /// Durable `/umbrella` preparation and proposal-record state.
+    #[command(subcommand)]
+    Umbrella(UmbrellaCommand),
     /// Envelopes that mark fetched text as data, never instructions.
     #[command(subcommand)]
     Untrusted(UntrustedCommand),
@@ -490,6 +494,25 @@ enum TriageCommand {
     /// Apply one verified verdict with compare-and-swap checks.
     #[command(disable_help_flag = true)]
     Apply(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum UmbrellaCommand {
+    /// Validate one source issue and publish its bounded snapshot.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Publish the durable proposal record before any leaf is filed.
+    #[command(name = "persist-proposal", disable_help_flag = true)]
+    PersistProposal(RawCompatibilityArguments),
+    /// Record that one named leaf was handed to `/issue`.
+    #[command(name = "mark-in-flight", disable_help_flag = true)]
+    MarkInFlight(RawCompatibilityArguments),
+    /// Bind one named leaf to the issue `/issue` created for it.
+    #[command(name = "record-resolved", disable_help_flag = true)]
+    RecordResolved(RawCompatibilityArguments),
+    /// Bind one in-flight leaf to the single remote issue carrying it.
+    #[command(name = "reconcile-in-flight", disable_help_flag = true)]
+    ReconcileInFlight(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1189,6 +1212,21 @@ fn run(
             TriageCommand::Inspect(arguments) => triage_commands::inspect(&arguments.arguments),
             TriageCommand::Probe(arguments) => triage_commands::probe(&arguments.arguments),
             TriageCommand::Apply(arguments) => triage_commands::apply(&arguments.arguments),
+        }),
+        Domain::Umbrella(command) => Ok(match command {
+            UmbrellaCommand::Prepare(arguments) => umbrella_commands::prepare(&arguments.arguments),
+            UmbrellaCommand::PersistProposal(arguments) => {
+                umbrella_commands::persist_proposal(&arguments.arguments)
+            }
+            UmbrellaCommand::MarkInFlight(arguments) => {
+                umbrella_commands::mark_in_flight(&arguments.arguments)
+            }
+            UmbrellaCommand::RecordResolved(arguments) => {
+                umbrella_commands::record_resolved(&arguments.arguments)
+            }
+            UmbrellaCommand::ReconcileInFlight(arguments) => {
+                umbrella_commands::reconcile_in_flight_command(&arguments.arguments)
+            }
         }),
         Domain::Untrusted(command) => Ok(match command {
             UntrustedCommand::ContentBlock(arguments) => {

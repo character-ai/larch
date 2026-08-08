@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "snapshot.json": {
+      "text": "{\"repository\": \"owner/repo\", \"number\": \"12\", \"title\": \"[DESIGNING] Split\", \"body\": \"Shared context.\", \"state\": \"OPEN\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UMBRELLA_FAILED=true\nREASON=usage\n"
+  }
+}

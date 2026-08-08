@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "record.json": {
+      "text": "{\"umbrella\": 12}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UMBRELLA_FAILED=true\nREASON=invalid-proposal-record\n"
+  }
+}
