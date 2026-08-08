@@ -3066,6 +3066,7 @@ name = "larch-core"
 version = "56.2.2"
 dependencies = [
  "chrono",
+ "flate2",
  "larch-test-support",
  "regex",
  "serde",

@@ -4,9 +4,10 @@
 //! Library parity for Python `larch.report.markdown_block` and
 //! `larch.report.exec_issue_detail`, plus read-only parity for
 //! `larch.report.run_log_batch` and `larch.report.run_log_corpus`. The
-//! [`gantt`], [`growth_chart`], and [`diagram_log`] modules own the migrated
-//! renderers and the bounded diagram failure log.
+//! [`gantt`], [`growth_chart`], [`cost_plot`], and [`diagram_log`] modules own
+//! the migrated renderers and the bounded diagram failure log.
 
+pub mod cost_plot;
 mod diagram_log;
 mod exec_issue_detail;
 mod final_report;
@@ -14,6 +15,7 @@ pub mod gantt;
 pub mod growth_chart;
 mod markdown_block;
 mod path_warning;
+mod raster;
 mod run_log_corpus;
 mod run_summary;
 mod session_transcript;
@@ -74,8 +76,8 @@ pub use token_cost::{
     render_cost_line,
 };
 pub use token_report::{
-    CACHE_BASENAME, EMPTY_REPORT_BODY, IssueBodyError, PricedRun, REPORT_HEADING, RenderedReport,
-    ReportSection, SectionPriority, assemble_issue_body, cache_ndjson, plot_input_json,
+    ALL_RUNS, CACHE_BASENAME, EMPTY_REPORT_BODY, IssueBodyError, PricedRun, REPORT_HEADING,
+    RenderedReport, ReportSection, SectionPriority, assemble_issue_body, cache_ndjson, daily_costs,
     render_report, title_for_skill,
 };
 pub use token_scan::{

@@ -1,4 +1,4 @@
-//! The `/report-tokens` analysis report: sections, cache rows, and plot input.
+//! The `/report-tokens` analysis report: sections, cache rows, and plot series.
 //!
 //! Rust parity for Python `larch.report.report_tokens_render`,
 //! `larch.report.report_tokens_issue`, and the series half of
@@ -6,11 +6,10 @@
 //! the corpus scan, the pricing pass, and every file the report advertises, so
 //! one rendered report is reproducible from its records alone.
 //!
-//! Two contracts travel with the text. The NDJSON cache rows and the plot
-//! input are machine-read, so they keep Python's key order, rounding, and
-//! `json.dumps` spacing. The Markdown is user-facing, and the issue body drops
-//! whole low-priority sections rather than cutting a table in half when GitHub's
-//! size limit bites.
+//! One contract travels with the text. The NDJSON cache rows are machine-read,
+//! so they keep Python's key order, rounding, and `json.dumps` spacing. The
+//! Markdown is user-facing, and the issue body drops whole low-priority
+//! sections rather than cutting a table in half when GitHub's size limit bites.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -35,8 +34,8 @@ const DATE_LEN: usize = 10;
 const TOP_RUNS: usize = 10;
 /// How many rows the phase-breakdown table lists.
 const PHASE_ROWS: usize = 20;
-/// The one workflow group both skills render.
-const ALL_RUNS: &str = "All runs";
+/// The one workflow group both skills render, and the one plotted series.
+pub const ALL_RUNS: &str = "All runs";
 /// Heading the report and the empty report both open with.
 pub const REPORT_HEADING: &str = "## Report Tokens Analysis";
 /// Body of the report emitted when no run carried a parseable token report.
@@ -709,40 +708,25 @@ pub fn cache_ndjson(runs: &[PricedRun]) -> String {
     rendered
 }
 
-/// Render the plot child's JSON input contract.
+/// Total cost per day, in ascending date order.
+///
+/// These are the points the trend chart plots. The retired matplotlib child
+/// read them from a `plot-input.json` the command wrote first; the chart is
+/// rendered in process now, so the aggregation hands them over directly. The
+/// two-decimal rounding is the one that file carried, so a plotted point still
+/// matches the number the report's tables print.
 #[must_use]
-pub fn plot_input_json(skill: &str, runs: &[PricedRun]) -> String {
+pub fn daily_costs(runs: &[PricedRun]) -> Vec<(String, f64)> {
     let mut by_day: BTreeMap<String, f64> = BTreeMap::new();
     for run in runs {
         if let Some(day) = record_date(run) {
             *by_day.entry(day).or_insert(0.0) += run.cost.total_cost;
         }
     }
-    let points: Vec<OrderedJson> = by_day
+    by_day
         .into_iter()
-        .map(|(day, cost)| {
-            OrderedJson::Object(vec![
-                (
-                    "cost".to_owned(),
-                    OrderedJson::Number(
-                        Number::from_f64(python_round(cost, 2)).unwrap_or_else(|| Number::from(0)),
-                    ),
-                ),
-                ("date".to_owned(), OrderedJson::String(day)),
-            ])
-        })
-        .collect();
-    let series = OrderedJson::Array(vec![OrderedJson::Object(vec![
-        ("label".to_owned(), OrderedJson::String(ALL_RUNS.to_owned())),
-        ("points".to_owned(), OrderedJson::Array(points)),
-    ])]);
-    // Python emitted `json.dumps(..., sort_keys=True)`; these keys are sorted.
-    let document = OrderedJson::Object(vec![
-        ("series".to_owned(), series),
-        ("skill".to_owned(), OrderedJson::String(skill.to_owned())),
-        ("version".to_owned(), OrderedJson::Number(Number::from(1))),
-    ]);
-    python_json_dumps(&document).unwrap_or_default()
+        .map(|(day, cost)| (day, python_round(cost, 2)))
+        .collect()
 }
 
 /// Join the kept sections into one issue body.
