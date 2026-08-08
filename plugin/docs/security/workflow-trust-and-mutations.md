@@ -292,37 +292,52 @@ artifact, executable, repository-policy, or plugin-validation gates.
 
 ### CI Rust selection trust
 
-The pull-request `rust-selection-observation` job has read-only workflow
-permissions and only observes a proposed mode. It checks out the pull-request
-head with full history, supplies the event base and head SHA to the Python
-selector, and keeps every required Rust lane independent of its result. The
-selector validates commit identity and checked-out state before inspecting a
-diff. It accepts the GitHub base only when it is an ancestor; a non-ancestor
-base is `full` because metadata from the checked-out head cannot prove the
-dependency closure of a merge tree. Missing history, a malformed or empty diff,
-unknown path, metadata failure, or unsupported workspace shape is a `full`
-result.
+The pull-request `rust-selection` job has read-only workflow permissions. It
+checks out GitHub's tested merge candidate with full history, then creates a
+base worktree and executes the selector code from that trusted base. Candidate
+code can supply the tree being classified, but cannot author the classifier
+that authorizes a non-full lane. Selector, workflow, coverage-action, and
+selector-redaction/process changes are explicit global `full` triggers.
 
-The only narrower proposal is a Rust-source-only package closure. It is derived
-from locked offline Cargo metadata and includes normal, build, and dev reverse
-dependency edges. Package names and commands are validated and sorted before
-rendering. Every dynamic JSON and summary string passes through the Python core
-redaction boundary and a residual-secret rescan; redaction failure emits a
-static `full` result without changed-path data. The step summary then
-HTML-escapes those redacted fields, and the structured result is an artifact
-for audit, not an authorization token. Current `skip` ownership is intentionally
-empty: no supplementary path is skipped while repository-wide policy lacks a
-separately proven required validation owner. Changes to `larch-cli` and its
-local normal, build, or dev dependency closure (including
-`larch-test-support`) are also `full` until a partial plan reproduces the
-verified executable, repository and plugin validation, artifact upload, and
-Python integration consumers.
+The selector validates commit identity, checked-out state, and base ancestry
+before it inspects a diff. Missing history, a malformed or empty diff, unknown
+path, metadata failure, unsupported workspace shape, and selector failure all
+become `full`. The partial decision is a strict Rust-source package closure
+derived from locked offline Cargo metadata. It includes normal, build, and dev
+reverse dependency edges; it must contain `larch-cli` and be smaller than the
+workspace. The selected lane builds that candidate executable, runs repository
+policy and plugin validation, and supplies the Python artifact, so it does not
+mistake an all-workspace closure for a partial path.
 
-Observation never suppresses `rust-lint`, `rust-deny`, coverage, artifact,
-repository-policy, plugin-validation, or Python-artifact handoff. Enforcement
-requires a later reviewed change with recorded full-lane comparisons and no
-false-safe classification. Main, manual, scheduled, merge-queue, and unknown
-events continue to run the full lane, which is also the required backstop.
+Skip ownership is explicit rather than extension-based. Each root or path
+family in the allowlist names the normal lint, agent, Python, plugin, and/or
+trusted-main repository-policy job that continues to validate it. The
+`trusted-main-rust-policy` cache trust contract is canonical in
+[Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-rust-tool-bootstrap-and-caches).
+The selection job and skip job both verify that content-derived identity before
+they execute it. A cache miss or failed verification selects `full`; no
+pull-request-provided Rust binary is accepted for `skip`.
+
+Both non-full enforcement values are initially `false`. A proposed `partial`
+or `skip` result is recorded with an observation-window effective `full` mode,
+and the complete full backstop runs. Only a reviewed workflow update may set a
+class-specific value to `true`, after the durable live observation record shows
+at least three independent non-full proposals, successful full backstops, and
+zero false-safe results for that class. A candidate checkout, selector output,
+cache result, or pull-request label cannot promote a class.
+
+Every dynamic JSON and summary string passes through the Python core redaction
+boundary and a residual-secret rescan; redaction failure emits a static `full`
+result without changed-path data. The step summary HTML-escapes those redacted
+fields. The structured result preserves the classifier proposal and adds the
+effective execution mode, reason, rollout state, and observation flag after
+cache validation and any safe override; it is an artifact for audit, not an
+authorization token. The stable required `rust-coverage` status accepts only
+one successful producer (`rust-full`, `rust-partial`, or `rust-skip`). An
+unavailable selector requires the full producer, which must succeed before the
+stable status can pass. Main, manual, scheduled, merge-queue, and unknown
+events continue to run the full lane. The `full-rust-ci` label is a
+safe pull-request override because it can only force that same full path.
 
 ### Design
 

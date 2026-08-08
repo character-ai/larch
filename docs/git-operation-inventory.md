@@ -24,7 +24,7 @@ surface	owner	issue	operations
 .claude/skills/larch-size/scripts/larch_size.py	later-domain	#7685	ls-files,rev-parse
 .claude/skills/rebalance-tests/scripts/rebalance.py	later-domain	#7685	checkout
 .claude/skills/release/SKILL.md	later-domain	#7674	add,checkout,commit,fetch,merge,merge-base,rev-parse
-.github/workflows/ci.yaml	later-domain	#7685	diff,merge-base,rev-parse
+.github/workflows/ci.yaml	later-domain	#7685	diff,ls-files,merge-base,rev-parse,worktree
 .github/workflows/rust-release-assets.yaml	later-domain	#7685	rev-parse
 .pre-commit-config.yaml	later-domain	#7686	rev-parse
 agents/_implementer-base.md	later-domain	#7678	commit

@@ -3696,7 +3696,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
     rust_coverage = (
         repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
     ).read_text(encoding="utf-8")
@@ -3776,7 +3776,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
+    rust_full_job = workflow.split("\n  rust-full:", 1)[1].split(
+        "\n  rust-partial:", 1
+    )[0]
     rust_coverage_job = workflow.split("\n  rust-coverage:", 1)[1].split(
         "\n  rust-coverage-benchmark:", 1
     )[0]
@@ -3876,7 +3879,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', "
         "'crates/**/Cargo.toml', '.cargo/**') }}"
     )
-    for coverage_job in (rust_coverage_job, rust_coverage_benchmark):
+    for coverage_job in (rust_full_job, rust_coverage_benchmark):
         assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in coverage_job
@@ -3914,7 +3917,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage-target-cache-restore" in rust_coverage
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
-    assert "Start Rust coverage job timing" in rust_coverage_job
+    assert "Start Rust coverage job timing" in rust_full_job
     assert "Start Rust coverage job timing" in rust_coverage_benchmark
     assert "job-total-after-runner-setup" in rust_coverage
     assert "restored_bytes=unavailable" in rust_coverage
@@ -3951,7 +3954,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "9a75fe29538d3800b3da57f6f6efb64cba5c720a257bf0cb8b51f39d495a9168",
         "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042",
     ):
-        assert checksum in rust_coverage_job
+        assert checksum in rust_full_job
         assert checksum in rust_coverage_benchmark
     assert "--retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120" in rust_coverage
     assert 'test "$(tar -tzf "$nextest_archive")" = "cargo-nextest"' in rust_coverage
@@ -3964,29 +3967,29 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage_profile_runner:" in workflow
     assert "large_ubuntu_4cpu" in workflow
     assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage_benchmark
-    assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_coverage_job
-    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: ""' in rust_coverage_job
-    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"' in rust_coverage_job
+    assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_full_job
+    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: ""' in rust_full_job
+    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"' in rust_full_job
     assert rust_coverage_benchmark.count(
         "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
     ) == 1
     assert rust_coverage_benchmark.count(
         "COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
     ) == 1
-    assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_job
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_full_job
     assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_benchmark
     assert "NEXTEST_TEST_THREADS=16" in rust_testing
     assert "Post-policy nextest-tail candidate evidence" in rust_testing
     assert "if: github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark" in rust_coverage_benchmark
     assert 'test_opt_level: ["0", "1"]' in rust_coverage_benchmark
     assert "sample: [1, 2, 3]" in rust_coverage_benchmark
-    assert 'CARGO_INCREMENTAL: "0"' in rust_coverage_job
-    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_coverage_job
-    assert "timeout-minutes: 15" in rust_coverage_job
+    assert 'CARGO_INCREMENTAL: "0"' in rust_full_job
+    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_full_job
+    assert "timeout-minutes: 15" in rust_full_job
     assert "timeout-minutes: 60" in rust_coverage_benchmark
-    assert "strategy:" not in rust_coverage_job
-    assert "needs:" not in rust_coverage_job
-    assert "uses: ./.github/actions/rust-coverage" in rust_coverage_job
+    assert "strategy:" not in rust_full_job
+    assert "needs: [rust-selection]" in rust_full_job
+    assert "uses: ./.github/actions/rust-coverage" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
@@ -4028,8 +4031,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert '"$coverage_larch" release plugin-runtime' in rust_coverage
     assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
     assert "git diff --exit-code -- plugin" not in rust_coverage
-    assert "git diff --exit-code -- plugin" in rust_coverage_job
+    assert "git diff --exit-code -- plugin" in rust_full_job
     assert "git diff --exit-code -- plugin" in rust_coverage_benchmark
+    assert "git ls-files --others --exclude-standard -- plugin" in rust_full_job
+    assert "git ls-files --others --exclude-standard -- plugin" in rust_coverage_benchmark
     repository_policy = rust_coverage.split("run_repository_policy() (", 1)[1].split(
         'thread_counts="$NEXTEST_TEST_THREADS"', 1
     )[0]
@@ -4057,9 +4062,17 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Prepare coverage-built Rust integration artifact", 1
     )[1].split("Upload coverage-built Rust executable for cross-language integration tests", 1)[0]
     assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in prepared_artifact
-    for artifact_file in ("larch", "larch.sha256", "source-sha", "version"):
+    for artifact_file in (
+        "larch",
+        "larch.sha256",
+        "producer-ref",
+        "rust-inputs-sha256",
+        "source-sha",
+        "version",
+    ):
         assert artifact_file in prepared_artifact
     assert 'printf \'%s\\n\' "$GITHUB_SHA"' in prepared_artifact
+    assert 'printf \'%s\\n\' "$RUST_POLICY_INPUTS_SHA256"' in prepared_artifact
     assert "sha256sum larch > larch.sha256" in prepared_artifact
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
@@ -4104,6 +4117,12 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Save cargo-nextest binary"
     )
 
+    assert "needs: [rust-selection, rust-full, rust-partial, rust-skip]" in rust_coverage_job
+    assert "if: always()" in rust_coverage_job
+    assert "Require the selected Rust execution path to pass" in rust_coverage_job
+    for execution_result in ("FULL_RESULT", "PARTIAL_RESULT", "SELECTION_RESULT", "SKIP_RESULT"):
+        assert execution_result in rust_coverage_job
+
     assert "needs: [rust-lint, rust-deny, rust-coverage]" in rust_gate
     for result_name in ("lint_result", "deny_result", "coverage_result"):
         assert result_name in rust_gate
@@ -4126,11 +4145,16 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "unit_result" in python_rust_integration
     assert "coverage_result" in python_rust_integration
     assert "LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch" in python_rust_integration
+    assert "RUST_CI_MODE: ${{ needs.rust-coverage.outputs.mode }}" in python_rust_integration
+    assert "RUST_POLICY_INPUTS_SHA256" in python_rust_integration
     assert "name: larch-linux-test-binary" in python_rust_integration
     assert "path: .ci-bin" in python_rust_integration
-    assert "Verify coverage-built Rust integration artifact" in python_rust_integration
+    assert "Verify selected Rust integration artifact" in python_rust_integration
     assert "sha256sum --check --strict larch.sha256" in python_rust_integration
+    assert "producer-ref" in python_rust_integration
+    assert "rust-inputs-sha256" in python_rust_integration
     assert 'test "$source_sha" = "$GITHUB_SHA"' in python_rust_integration
+    assert 'test "$RUST_CI_MODE" = skip' in python_rust_integration
     assert 'test "$actual_version" = "$expected_version"' in python_rust_integration
     assert "LARCH_TEST_RUST_BINARY_SHA256" in python_rust_integration
     integration_execution = python_rust_integration.split(
@@ -4165,58 +4189,136 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ]
 
 
-def test_rust_ci_change_selection_observation_contract() -> None:
+def test_rust_ci_change_selection_rollout_contract() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
     rust_testing = (repo_root / "docs" / "rust-testing.md").read_text(encoding="utf-8")
     workflow_trust = (
         repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
-    observer = workflow.split("\n  rust-selection-observation:", 1)[1].split("\n  rust-lint:", 1)[0]
+    supply_chain = (
+        repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    evidence = (repo_root / "docs" / "rust-ci-selection-observation.md").read_text(encoding="utf-8")
+    selector_job = workflow.split("\n  rust-selection:", 1)[1].split("\n  rust-lint:", 1)[0]
+    rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
+    rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
+    rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[0]
+    rust_skip = workflow.split("\n  rust-skip:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_coverage = workflow.split("\n  rust-coverage:", 1)[1].split("\n  rust-coverage-benchmark:", 1)[0]
 
-    assert "if: github.event_name == 'pull_request'" in observer
-    assert "runs-on: ubuntu-24.04" in observer
-    assert "timeout-minutes: 5" in observer
-    assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in observer
-    assert "fetch-depth: 0" in observer
-    assert "ref: ${{ github.event.pull_request.head.sha }}" in observer
-    assert "RUST_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in observer
-    assert "RUST_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in observer
-    assert "python3 python/cli.py ci rust-select" in observer
-    assert "python3 python/cli.py ci rust-select-summary" in observer
-    assert '--repo-root "$GITHUB_WORKSPACE"' in observer
-    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in observer
-    assert "name: rust-ci-selection-observation" in observer
-    assert "if-no-files-found: error" in observer
-    assert "needs:" not in observer
-    assert "does not yet change any required lane" in workflow
+    assert "if: github.event_name == 'pull_request'" in selector_job
+    assert "permissions:" in selector_job
+    assert "contents: read" in selector_job
+    assert "runs-on: ubuntu-24.04" in selector_job
+    assert "timeout-minutes: 10" in selector_job
+    assert 'RUST_CI_PARTIAL_ENFORCEMENT: "false"' in workflow
+    assert 'RUST_CI_SKIP_ENFORCEMENT: "false"' in workflow
+    assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in selector_job
+    assert "fetch-depth: 0" in selector_job
+    assert "ref: ${{ github.sha }}" in selector_job
+    assert "git worktree add --detach" in selector_job
+    assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select' in selector_job
+    assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select-summary' in selector_job
+    assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
+    assert "trusted-main-rust-policy-v1" in selector_job
+    assert "'build.rs'" in selector_job
+    assert "'crates/**/*.rs'" in selector_job
+    assert "'**/*.rs'" not in selector_job
+    assert "sha256sum --check --strict larch.sha256" in selector_job
+    assert "TRUSTED_POLICY_VALID" in selector_job
+    assert "RUST_CI_FORCE_FULL" in selector_job
+    assert "full-rust-ci" in selector_job
+    assert "RUST_CI_PARTIAL_ENFORCEMENT" in selector_job
+    assert "RUST_CI_SKIP_ENFORCEMENT" in selector_job
+    assert "partial-observation-window-open" in selector_job
+    assert "skip-observation-window-open" in selector_job
+    assert ".rollout_state = $rollout_state" in selector_job
+    assert ".observation_only = $observation_only" in selector_job
+    assert ".proposed_mode = .mode" in selector_job
+    assert ".effective_mode = $effective_mode" in selector_job
+    assert ".effective_mode_reason = $effective_reason" in selector_job
+    assert "fallback_selection()" in selector_job
+    assert "selector-workflow-failed" in selector_job
+    assert "schema_version: 1" in selector_job
+    assert "Rust selector result was malformed; using the full Rust CI fallback" in selector_job
+    assert selector_job.count("|| return 1") >= 3
+    assert "all($doctests[];" in selector_job
+    assert "name: rust-ci-selection" in selector_job
+    assert "name: trusted-main-rust-policy" in selector_job
+    assert "rust-selection-observation" not in workflow
+
+    for selected_lane in (rust_lint, rust_deny, rust_full):
+        assert "needs: [rust-selection]" in selected_lane
+    assert "RUST_CI_MODE" in rust_lint
+    assert "Run selected Clippy with warnings denied" in rust_lint
+    assert "if: env.RUST_CI_MODE == 'full'" in rust_deny
+    assert "partial-closure-covers-entire-workspace" in (
+        repo_root / "python" / "larch" / "implement" / "rust_ci_selection.py"
+    ).read_text(encoding="utf-8")
+    assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
+    assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
+    assert "cargo test --doc" in rust_partial
+    assert "cargo build --package larch-cli --bin larch --all-features --locked" in rust_partial
+    assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
+    assert "Download verified trusted main policy binary" in rust_skip
+    assert 'chmod 755 "$policy_dir/larch"' in rust_skip
+    assert "git ls-files --others --exclude-standard -- plugin" in rust_partial
+    assert "git ls-files --others --exclude-standard -- plugin" in rust_skip
+    assert "refs/heads/main" in rust_skip
+    assert "needs: [rust-selection, rust-full, rust-partial, rust-skip]" in rust_coverage
+    assert "Require the selected Rust execution path to pass" in rust_coverage
+    assert 'if [ "$EVENT_NAME" = pull_request ] && [ "$SELECTION_RESULT" = success ]; then' in rust_coverage
+    assert "mode=full" in rust_coverage
+    assert "requiring the full Rust path" in rust_coverage
+
     for required_detail in (
-        "Pull-request Rust selection observation",
+        "Pull-request Rust selection",
         "stdlib-only",
-        "Normal, build, and dev path-dependency edges",
-        "The allowlist is empty",
-        "full-workspace coverage threshold",
+        "normal, build, and dev reverse dependency edge",
+        "strict subset of the workspace",
+        "trusted-main-rust-policy",
+        "full-workspace\n  coverage threshold",
         "non-ancestor base",
-        "local normal, build, or dev",
-        "larch-test-support",
         "redaction boundary",
-        "static `full` result",
-        "Do not enable partial or skip enforcement",
+        "a scrub failure emits a static",
+        "full-rust-ci",
         "periodic full-run backstop",
+        "observation-window-open",
+        "Promotion is intentionally manual and class-specific",
     ):
         assert required_detail in rust_testing
     for required_detail in (
         "CI Rust selection trust",
-        "read-only workflow",
-        "structured result is an artifact",
-        "no supplementary path",
-        "local normal, build, or dev dependency closure",
-        "larch-test-support",
+        "read-only workflow permissions",
+        "it is an artifact for audit",
+        "strict Rust-source package closure",
+        "Skip ownership is explicit",
         "residual-secret rescan",
-        "static `full` result",
-        "false-safe classification",
+        "redaction failure emits a static",
+        "trusted-main-rust-policy",
+        "Both non-full enforcement values are initially `false`",
     ):
         assert required_detail in workflow_trust
+    for required_detail in (
+        "Only a successful\nfull `push` to `refs/heads/main` may save it",
+        "exact key binds",
+        "The skip lane\nrepeats those checks",
+        "skip enforcement disabled",
+    ):
+        assert required_detail in supply_chain
+    for evidence_detail in (
+        "six independent pull requests",
+        "three `partial` and three\n`skip`",
+        "zero historical full-backstop failures",
+        "not a claim that the final",
+        "The live window is open",
+        "Do not count a label-forced run",
+        "#8002",
+        "#8039",
+    ):
+        assert evidence_detail in evidence
 
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
