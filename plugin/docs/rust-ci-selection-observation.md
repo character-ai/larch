@@ -80,6 +80,15 @@ a job from a different merge candidate separately, but do not let it replace
 the original row or satisfy the distinct-pull-request requirement. A
 label-forced run is not eligible evidence.
 
+### Comparison outcome
+
+For a proposed non-full row, record `false-safe: none observed` only when the
+same run's full backstop is green. A full-backstop failure is inconclusive until
+its scope is investigated: mark it false-safe when it exposes required work
+that the proposed path would omit, and otherwise record the failure without
+promoting the class. A green full backstop does not establish a selected-path
+duration or turn the row into false-full evidence.
+
 Do not count a label-forced run, selector failure fallback, or a historical
 replay as a live observation. A class may be promoted only if every live row
 for that class has zero false-safe results. A false-safe result keeps that class
