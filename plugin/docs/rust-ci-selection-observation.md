@@ -89,6 +89,15 @@ that the proposed path would omit, and otherwise record the failure without
 promoting the class. A green full backstop does not establish a selected-path
 duration or turn the row into false-full evidence.
 
+### Timing comparability
+
+Record the runner image, tool and cache class, and the full `rust-full` job
+duration for every live row. After a class is enabled, compare its selected-path
+duration only with full rows on the same runner image, with the same Rust-input
+identity, and in the same cold or warm tool/cache class. The lightweight
+aggregate jobs confirm required dependencies; they do not replace the selected
+execution-path duration.
+
 Do not count a label-forced run, selector failure fallback, or a historical
 replay as a live observation. A class may be promoted only if every live row
 for that class has zero false-safe results. A false-safe result keeps that class
