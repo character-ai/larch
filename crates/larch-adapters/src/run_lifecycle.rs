@@ -2433,8 +2433,18 @@ fn extract_pending_archive(
         let raw_name = std::str::from_utf8(path_bytes.as_ref())
             .map_err(|_| LifecycleError::new("archive member path is not UTF-8"))?;
         let path = normalized_member_path(Path::new(raw_name))?;
-        if path != raw_name {
-            return Err(LifecycleError::new("archive member path is not canonical"));
+        let canonical_raw_name = if entry.header().entry_type().is_dir() {
+            raw_name.strip_suffix('/').unwrap_or(raw_name)
+        } else {
+            raw_name
+        };
+        if path != canonical_raw_name {
+            let archive_name = archive_path.to_string_lossy();
+            return Err(LifecycleError::new(format!(
+                "archive member path is not canonical: archive={}, member={}",
+                archive_name.escape_default(),
+                raw_name.escape_default(),
+            )));
         }
         if previous
             .as_ref()
