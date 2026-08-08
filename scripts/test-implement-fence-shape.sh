@@ -171,7 +171,7 @@ def validate_new(start, end, body):
         errors.append(f'fence {start}-{end}: launcher target must be a .sh or .py path: {target}')
     if target.endswith('.py'):
         saw_py_launcher = True
-    best_effort_timing = stripped == '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true'
+    best_effort_timing = stripped == '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true'
     if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', stripped) and not best_effort_timing:
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {stripped}')
     if re.search(r'/(?:token-ledger|timing-ledger|token-report|timing-report)\.sh\b', stripped):

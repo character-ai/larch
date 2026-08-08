@@ -299,8 +299,8 @@ def _maybe_mark_step2_telemetry(
         if token_result.returncode != 0:
             return False
     timing_result = _run(
-        [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", config.IMPLEMENT_STEP2_LABEL],
-        env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
+        [str(larch_entrypoint(plugin_root)), "timing", "mark", config.IMPLEMENT_STEP2_LABEL],
+        env={**larch_entrypoint_env(plugin_root, base=env), "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
     )
     if timing_result.returncode != 0:
         return False

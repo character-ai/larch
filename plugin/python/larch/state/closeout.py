@@ -166,7 +166,7 @@ def step_16(argv: list[str] | None = None) -> int:
     if not run_id:
         run_id = _read_key(path=tmpdir / "finalize-state.sh", key="RUN_ID", default="")
     cli = str(plugin_root / "python" / "cli.py")
-    _run([sys.executable, cli, "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 16 — rejected findings"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run([str(larch_entrypoint(plugin_root)), "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 16 — rejected findings"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _run([sys.executable, cli, "review-and-fix", "write-rejected", "--implement-tmpdir", str(tmpdir), "--run-id", run_id, "--log-root", str(tmpdir / "larch-logs")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return 0
 
@@ -269,7 +269,7 @@ def step_17(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
-    _run([sys.executable, cli, "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 17 — final report"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run([str(larch_entrypoint(plugin_root)), "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 17 — final report"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     summary = tmpdir / "summary-final.md"
     log = tmpdir / "step17-write-final-report.failure.log"
     with suppress(OSError):

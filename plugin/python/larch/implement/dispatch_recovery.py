@@ -13,7 +13,7 @@ from pathlib import Path
 
 from larch.core import config
 from larch.core import logging_util
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.implement.dispatch_helpers import (
     RecoveryParse,
     _capture_postlaunch_porcelain,
@@ -202,9 +202,9 @@ def _rehydrate_commit_session_from_tmpdir() -> None:
 
 def _mark_commit_timing() -> None:
     _invoke_cli(["token", "mark", "Step 4 — commit implementation"])
-    env = os.environ.copy()
+    env = larch_entrypoint_env(_current_cli_path().parents[1])
     env["LARCH_TIMING_SKILL"] = "implement"
-    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 4 — commit implementation"], env=env, check=False)
+    subprocess.run([str(larch_entrypoint(_current_cli_path().parents[1])), "timing", "mark", "Step 4 — commit implementation"], env=env, check=False)
 
 
 def _build_commit_args(args: argparse.Namespace) -> list[str]:

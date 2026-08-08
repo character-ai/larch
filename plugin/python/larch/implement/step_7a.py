@@ -18,7 +18,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
 from larch.core import rust_runtime
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.git import pr_body
 from larch.issue import execution_issues
 from larch.implement.dispatch_helpers import result_env_capture_rows
@@ -143,9 +143,9 @@ def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
 
 def _checkpoint_execution_issues(implement_tmpdir: Path, *, run_id: str) -> str:
     _run_cli("token", "mark", "Step 8 — ship PR")
-    env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
+    env = {**larch_entrypoint_env(Path(__file__).resolve().parents[3]), "LARCH_TIMING_SKILL": "implement"}
     subprocess.run(
-        [sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), "timing", "mark", "Step 8 — ship PR"],
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 8 — ship PR"],
         env=env,
         check=False,
     )
@@ -271,7 +271,7 @@ def _run_step7a_inner(
     _run_cli("token", "mark", "Step 7a — pre-ship")
     # lint-subprocess-via-runner: ok timing-mark needs LARCH_TIMING_SKILL env; _run_cli does not support custom env
     subprocess.run(
-        [sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), "timing", "mark", "Step 7a — pre-ship"],
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 7a — pre-ship"],
         env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
         check=False,
     )

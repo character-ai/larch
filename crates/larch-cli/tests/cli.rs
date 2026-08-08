@@ -48,6 +48,7 @@ Commands:
   slack              Slack announcement helpers
   stall-recovery     Stall-recovery state and validation commands
   test-shard         Pack and rewrite deterministic test-shard assignments
+  timing             Timing-ledger marks, records, dumps, and reports
   gh                 GitHub workflow helper commands
   push               Push commands with typed Git network operations
   run-log            Committed run-log identity and layout helpers

@@ -74,6 +74,7 @@ mod stall_recovery_commands;
 mod stall_recovery_reporting;
 mod state_commands;
 mod test_shards;
+mod timing_commands;
 mod voter_dispatch_commands;
 mod waterfall_commands;
 
@@ -179,6 +180,9 @@ enum Domain {
     /// Pack and rewrite deterministic test-shard assignments.
     #[command(subcommand)]
     TestShard(TestShardCommand),
+    /// Timing-ledger marks, records, dumps, and reports.
+    #[command(subcommand)]
+    Timing(TimingCommand),
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
@@ -301,6 +305,34 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum TimingCommand {
+    /// Record one step mark in the resolved timing ledger.
+    #[command(disable_help_flag = true)]
+    Mark(RawCompatibilityArguments),
+    /// Record one vendor task in the resolved timing ledger.
+    #[command(name = "record-vendor-task", disable_help_flag = true)]
+    RecordVendorTask(RawCompatibilityArguments),
+    /// Record one review round in the resolved timing ledger.
+    #[command(name = "record-round", disable_help_flag = true)]
+    RecordRound(RawCompatibilityArguments),
+    /// Print the resolved ledger path and its raw rows.
+    #[command(disable_help_flag = true)]
+    Dump(RawCompatibilityArguments),
+    /// Render the timing report for the resolved ledger.
+    #[command(disable_help_flag = true)]
+    Report(RawCompatibilityArguments),
+    /// Run one command and publish its wall-clock duration.
+    #[command(name = "harness-mark", disable_help_flag = true)]
+    HarnessMark(RawCompatibilityArguments),
+    /// Mark one `/implement` step in the token and timing ledgers.
+    #[command(name = "telemetry-mark", disable_help_flag = true)]
+    TelemetryMark(RawCompatibilityArguments),
+    /// Print the canonical `--timing-task-kind` allow-list.
+    #[command(name = "task-kinds", disable_help_flag = true)]
+    TaskKinds(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1196,6 +1228,26 @@ fn run(
         Domain::Slack(command) => Ok(slack_commands::run(command)),
         Domain::StallRecovery(arguments) => Ok(stall_recovery_commands::run(&arguments.arguments)),
         Domain::TestShard(command) => Ok(test_shards::run(command)),
+        Domain::Timing(command) => Ok(match command {
+            TimingCommand::Mark(arguments) => timing_commands::mark(&arguments.arguments),
+            TimingCommand::RecordVendorTask(arguments) => {
+                timing_commands::record_vendor_task(&arguments.arguments)
+            }
+            TimingCommand::RecordRound(arguments) => {
+                timing_commands::record_round(&arguments.arguments)
+            }
+            TimingCommand::Dump(arguments) => timing_commands::dump(&arguments.arguments),
+            TimingCommand::Report(arguments) => timing_commands::report(&arguments.arguments),
+            TimingCommand::HarnessMark(arguments) => {
+                timing_commands::harness_mark(&arguments.arguments)
+            }
+            TimingCommand::TelemetryMark(arguments) => {
+                timing_commands::telemetry_mark(&arguments.arguments)
+            }
+            TimingCommand::TaskKinds(arguments) => {
+                timing_commands::task_kinds(&arguments.arguments)
+            }
+        }),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)

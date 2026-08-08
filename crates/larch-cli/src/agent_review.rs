@@ -2244,26 +2244,22 @@ fn record_timing(
     output: &Path,
     exit_code: i32,
 ) {
-    let _ignored = run_python(
-        session,
-        [
-            OsString::from("timing"),
-            OsString::from("record-vendor-task"),
-            OsString::from("--vendor"),
-            OsString::from(vendor.executable()),
-            OsString::from("--task-kind"),
-            OsString::from(task_kind),
-            OsString::from("--start-s"),
-            OsString::from(start.to_string()),
-            OsString::from("--end-s"),
-            OsString::from(epoch_seconds().to_string()),
-            OsString::from("--output"),
-            output.as_os_str().to_owned(),
-            OsString::from("--exit-code"),
-            OsString::from(exit_code.to_string()),
-            OsString::from("--status"),
-            OsString::from(if exit_code == 0 { "complete" } else { "signal" }),
-        ],
+    let overrides: Vec<(&str, OsString)> = session
+        .child_environment
+        .iter()
+        .map(|(key, value)| (key.name(), value.clone()))
+        .collect();
+    let _ignored = crate::timing_commands::record_vendor_task_with_environment(
+        &crate::timing_commands::vendor_timing_arguments(
+            vendor.executable(),
+            task_kind,
+            start,
+            epoch_seconds(),
+            output,
+            exit_code,
+            if exit_code == 0 { "complete" } else { "signal" },
+        ),
+        &overrides,
     );
 }
 

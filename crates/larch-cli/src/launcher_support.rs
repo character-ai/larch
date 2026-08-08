@@ -37,7 +37,8 @@ use crate::external_agent::{
     BareVendorOutput, BareVendorRun, ExternalAgentLaunch, ExternalAgentRouting,
     ExternalAgentStallWatch, platform_name, run_bare_vendor, shared_startup_lock_root,
 };
-use crate::python_verb::{record_vendor_timing, run_python_verb_best_effort};
+use crate::python_verb::run_python_verb_best_effort;
+use crate::timing_commands::record_vendor_timing;
 use crate::run_log_entry_commands::{FailureRecordRequest, record_execution_failure};
 
 /// Default cap on one vendor failure-diagnostic part, in bytes.

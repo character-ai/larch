@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from larch.report import progress_file
-from larch.report import timing
 
 
 def test_resolve_persisted_run_returns_frozen_named_fields(tmp_path: Path) -> None:
@@ -616,24 +615,6 @@ def test_clear_active_run_removes_prior_pointer(tmp_path: Path, monkeypatch: pyt
 
     assert progress_file.clear_active_run(repo)
     assert progress_file.read_active_run_id(repo) is None
-
-
-def test_timing_mark_appends_progress_breadcrumb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    ledger = tmp_path / "timing.tsv"
-    monkeypatch.chdir(repo)
-    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
-    monkeypatch.setenv("LARCH_RUN_ID", "design-20260708.1")
-    progress_file.activate_run(repo, "design-20260708.1")
-
-    assert timing.timing_mark_main(["--ledger", str(ledger), "design Step 2b: plan"]) == 0
-
-    assert progress_file.run_progress_path(repo, "design-20260708.1").read_text(encoding="utf-8") == (
-        "[design 2b] design Step 2b: plan started\n"
-    )
-    assert not progress_file.progress_path(repo).exists()
 
 
 def test_sessionstart_statusline_harness() -> None:

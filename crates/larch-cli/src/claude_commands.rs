@@ -5,7 +5,8 @@ use crate::external_agent::{
     read_external_agent_text, read_external_agent_text_tail, remove_external_agent_stale,
     spawn_error_exit_code,
 };
-use crate::python_verb::{plugin_root_directory, record_vendor_timing, run_python_verb};
+use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::timing_commands::record_vendor_timing;
 use larch_adapters::{
     NoopProcessObserver, PathIntent, ProcessFileRouting, ProcessStdinRouting, SecureTempFile,
     TemporaryRoot, TokioProcessRunner, atomic_write_utf8_in, ensure_directory_chain,

@@ -170,6 +170,22 @@ impl CleanInstallCase {
                 "--claude-pid",
                 "4242",
             ],
+            // Every timing verb resolves no session ledger in a clean install, so
+            // each dispatch proves the whole route and still writes nothing.
+            "clean-install-timing-dump"
+            | "clean-install-timing-task-kinds"
+            | "clean-install-timing-telemetry-mark" => &[],
+            "clean-install-timing-mark" => &["clean-install"],
+            "clean-install-timing-report" => &["--summary"],
+            "clean-install-timing-record-round" => &[
+                "--skill", "implement", "--step", "clean-install", "--round", "1",
+                "--start-s", "0", "--end-s", "1", "--accepted", "0", "--rejected", "0",
+            ],
+            "clean-install-timing-record-vendor-task" => &[
+                "--vendor", "codex", "--task-kind", "codex-review",
+                "--start-s", "0", "--end-s", "1", "--output", "clean-install.log",
+            ],
+            "clean-install-timing-harness-mark" => &["--label", "clean-install", "--", "/usr/bin/true"],
             _ => &["--help"],
         }
     }
@@ -692,6 +708,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new("clean-install-timing-dump", "timing", "dump"),
+    CleanInstallCase::new(
+        "clean-install-timing-harness-mark",
+        "timing",
+        "harness-mark",
+    ),
+    CleanInstallCase::new("clean-install-timing-mark", "timing", "mark"),
+    CleanInstallCase::new("clean-install-timing-record-round", "timing", "record-round"),
+    CleanInstallCase::new(
+        "clean-install-timing-record-vendor-task",
+        "timing",
+        "record-vendor-task",
+    ),
+    CleanInstallCase::new("clean-install-timing-report", "timing", "report"),
+    CleanInstallCase::new("clean-install-timing-task-kinds", "timing", "task-kinds"),
+    CleanInstallCase::new(
+        "clean-install-timing-telemetry-mark",
+        "timing",
+        "telemetry-mark",
+    ),
     CleanInstallCase::new("clean-install-test-shard-pack", "test-shard", "pack"),
     CleanInstallCase::new(
         "clean-install-test-shard-read-makefile",

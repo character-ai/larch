@@ -264,8 +264,8 @@ fn cap_and_timing_argv_preserve_exact_legacy_keys() {
         exit_code: 7,
     };
     assert_eq!(
-        build_record_launch_timing_argv("/python", "/plugin/python/cli.py", &record).join(" "),
-        "/python /plugin/python/cli.py timing record-vendor-task --vendor codex --task-kind codex-review --start-s 100 --end-s 120 --output /tmp/out --exit-code 7 --status signal"
+        build_record_launch_timing_argv("/plugin/scripts/larch.sh", &record).join(" "),
+        "/plugin/scripts/larch.sh timing record-vendor-task --vendor codex --task-kind codex-review --start-s 100 --end-s 120 --output /tmp/out --exit-code 7 --status signal"
     );
 }
 

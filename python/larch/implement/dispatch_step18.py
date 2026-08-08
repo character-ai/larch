@@ -13,7 +13,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.errors import ShipError
 from larch.implement.dispatch_helpers import (
     _emit_kv,
@@ -461,10 +461,14 @@ def _step18_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
         reason = wfr_error or "render failed (no reason surfaced)"
         print(f"**⚠ Step 18: final report render failed (WFR_RC={wfr_rc}): {reason}.**", file=sys.stderr)
     _ = _invoke_cli(["token", "report", "--since-last-mark", "--terse"])
-    timing_env = {**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}
-    _ = _run_cli_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
+    timing_env = {
+        **larch_entrypoint_env(Path(__file__).resolve().parents[3]),
+        "DESIGN_TMPDIR": "",
+        "LARCH_TIMING_SKILL": "implement",
+    }
+    _ = _run_larch_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
     _ = _invoke_cli(["token", "mark", "Step 18 — logs flush"])
-    _ = _run_cli_capture(["timing", "mark", "Step 18 — logs flush"], env=timing_env)
+    _ = _run_larch_capture(["timing", "mark", "Step 18 — logs flush"], env=timing_env)
 
     run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")
     run_log_rc = _complete_terminal_run_log(

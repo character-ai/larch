@@ -543,8 +543,8 @@ def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
 def _refresh_final_reports(design_tmpdir: Path) -> None:
     _run_cli("token", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
              "--output", str(design_tmpdir / "token-report-final.json"))
-    _run_cli("timing", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
-             "--output", str(design_tmpdir / "timing-report-final.json"))
+    _run_larch("timing", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
+               "--output", str(design_tmpdir / "timing-report-final.json"))
 
 
 

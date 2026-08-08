@@ -6,6 +6,6 @@ Regression harness for `scripts/cleanup-sessionstart.sh`, the SessionStart wrapp
 
 **Executable precondition:** The harness fails first if `scripts/cleanup-sessionstart.sh` is missing or not executable (`100755`). Hooks invoke the script directly, so this is part of the runtime contract.
 
-**Makefile target:** `make test-cleanup-sessionstart` wraps this harness through `python3 python/cli.py timing harness-mark` and is included in the bash harness shards.
+**Makefile target:** `make test-cleanup-sessionstart` wraps this harness through the Rust-owned `timing harness-mark` verb (Makefile `HARNESS_MARK`) and is included in the bash harness shards.
 
 **Edit-in-sync:** Update this harness when changing the hook command, matcher, timeout, CLI verb, detached-launch contract, or skip behavior documented in `scripts/cleanup-sessionstart.md`.

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from larch.report import markdown_block, timing, tokens
+from larch.report import markdown_block, tokens
 
 
 def _run_tokens(target: Path, block: str) -> None:
@@ -16,17 +16,12 @@ def _run_tokens(target: Path, block: str) -> None:
     )
 
 
-def _run_timing(target: Path, block: str) -> None:
-    timing._replace_block(target=target, block=block)  # pyright: ignore[reportPrivateUsage]  # calling the private _replace_block wrapper to exercise the public delegation contract
-
-
-# Each caller's private _replace_block wrapper, the diagnostic label it passes,
-# and its marker pair. The table cases below use {B}/{E} placeholders that are
-# rendered with each caller's marker comment so the same input shape runs through
-# both public caller paths.
+# The remaining caller's private _replace_block wrapper, the diagnostic label it
+# passes, and its marker pair. The table cases below use {B}/{E} placeholders
+# rendered with the caller's marker comment so the same input shape runs through
+# the public caller path.
 CALLERS: dict[str, tuple[object, str, str, str]] = {
     "tokens": (_run_tokens, "token report", "token-report-begin", "token-report-end"),
-    "timing": (_run_timing, "timing report", "timing-report-begin", "timing-report-end"),
 }
 
 
@@ -247,10 +242,9 @@ def test_callers_delegate_without_local_marker_or_temp_logic(
 
 def test_callers_drop_inlined_state_machine() -> None:
     # Ratchet: the marker-index state machine and the bare temp-write/replace
-    # must live only in the shared helper, never in the two caller modules.
+    # must live only in the shared helper, never in the caller module.
     assert tokens.__file__ is not None
-    assert timing.__file__ is not None
-    for source_path in (Path(tokens.__file__), Path(timing.__file__)):
+    for source_path in (Path(tokens.__file__),):
         source = source_path.read_text(encoding="utf-8")
         assert "begin_idx" not in source, f"caller {source_path} retained marker-index logic"
         assert "splitlines(keepends=True)" not in source, (

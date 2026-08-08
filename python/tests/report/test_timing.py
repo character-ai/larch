@@ -1,4 +1,8 @@
-"""Tests for timing.py."""
+"""Tests for the timing library surface Python runtime modules still import.
+
+The `timing` commands are Rust-owned since issue #8083; their coverage lives in
+`crates/larch-core/src/report/timing.rs` and `crates/larch-cli/tests/timing.rs`.
+"""
 
 from __future__ import annotations
 
@@ -7,183 +11,89 @@ import os
 import stat
 from dataclasses import FrozenInstanceError
 from pathlib import Path
-from typing import cast
-
-from larch.report import progress_file
 
 import pytest
 
 from larch.report import timing
 
 
-def test_typed_timing_entry_points_return_frozen_results(tmp_path: Path) -> None:
+def test_mark_returns_a_frozen_result_and_appends_one_row(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    env = {"TMPDIR": str(tmp_path), "IMPLEMENT_TMPDIR": str(tmp_path)}
+    result = timing.mark(label="Step 0", ledger=str(ledger), env=env)
+    assert result.marked is True
+    assert result.ledger_path == ledger
+    with pytest.raises(FrozenInstanceError):
+        result.marked = False  # pyright: ignore[reportAttributeAccessIssue]  # frozen dataclass write is the assertion
+    parts = ledger.read_text(encoding="utf-8").splitlines()[0].split("\t")
+    assert parts[:2] == ["v1", "mark"]
+    assert parts[3:5] == ["implement", "Step 0"]
+    assert len(parts) == timing.TIMING_VENDOR_MIN_COLS
+
+
+def test_mark_without_a_resolvable_ledger_reports_no_write(tmp_path: Path) -> None:
+    result = timing.mark(label="Step 0", env={"TMPDIR": str(tmp_path)})
+    assert result == timing.TimingMarkResult(ledger_path=None, marked=False)
+
+
+def test_mark_if_latest_differs_skips_only_an_identical_latest_label(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     env = {"TMPDIR": str(tmp_path)}
-
-    marked = timing.mark(label="Step 1", ledger=str(ledger), env=env)
-    vendor = timing.record_vendor_task(
-        request=timing.VendorTaskRequest(
-            vendor="codex", task_kind="codex-review", start_s=1, end_s=2, output="out.txt",
-        ),
-        ledger=str(ledger),
-        env=env,
-    )
-    round_result = timing.record_round(
-        request=timing.RoundRequest(
-            skill="implement", step="Step 1", round_n=1, start_s=1, end_s=2, accepted=1, rejected=0,
-        ),
-        ledger=str(ledger),
-        env=env,
-    )
-    report = timing.render_report(mode="full", ledger=str(ledger), env=env)
-
-    assert marked.marked
-    assert vendor.recorded
-    assert round_result.recorded
-    assert report.status == "rendered"
-    assert report.rendered is not None
-    with pytest.raises(FrozenInstanceError):
-        marked.marked = False  # type: ignore[misc]
+    assert timing.mark(label="Step 5", ledger=str(ledger), env=env, if_latest_differs=True).marked
+    assert not timing.mark(label="Step 5", ledger=str(ledger), env=env, if_latest_differs=True).marked
+    assert timing.mark(label="Step 6", ledger=str(ledger), env=env, if_latest_differs=True).marked
+    steps = [line.split("\t")[4] for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert steps == ["Step 5", "Step 6"]
 
 
-def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:
+def test_record_vendor_task_writes_the_basename_and_normalizes_status(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     timing.TimingLedger(ledger).record_vendor_task(
         vendor="claude",
         task_kind="claude-review",
         start_s=10,
-        end_s=15,
-        output="/tmp/secret/out.txt",
+        end_s=25,
+        output=str(tmp_path / "nested" / "claude.log"),
+        status="TIMEOUT",
     )
-    text = ledger.read_text(encoding="utf-8")
-    assert "\tclaude\tclaude-review\t" in text
-    assert "\tout.txt\t" in text
-    assert "/tmp/secret" not in text
+    parts = ledger.read_text(encoding="utf-8").splitlines()[0].split("\t")
+    assert parts[5:7] == ["claude", "claude-review"]
+    assert parts[7:10] == ["10", "25", "15"]
+    assert parts[10] == "claude.log"
+    assert parts[12] == "signal"
 
 
-def test_timing_vendor_task_accepts_gate_b_apply(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_record_vendor_task_rejects_an_unknown_vendor_and_malformed_kind(tmp_path: Path) -> None:
+    ledger = timing.TimingLedger(tmp_path / "timing-ledger.tsv")
+    with pytest.raises(ValueError, match="vendor must be codex, cursor, or claude"):
+        ledger.record_vendor_task(vendor="gemini", task_kind="codex-review", start_s=0, end_s=1, output="o")
+    with pytest.raises(ValueError, match="malformed task-kind"):
+        ledger.record_vendor_task(vendor="codex", task_kind="Codex Review", start_s=0, end_s=1, output="o")
+    with pytest.raises(ValueError, match="--status must be"):
+        ledger.record_vendor_task(vendor="codex", task_kind="codex-review", start_s=0, end_s=1, output="o", status="weird")
+
+
+def test_record_vendor_task_warns_on_an_unknown_task_kind(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
-    timing.TimingLedger(ledger, skill="design").record_vendor_task(
-        vendor="claude",
-        task_kind="gate-b-apply",
-        start_s=20,
-        end_s=35,
-        output="gate-b-apply-round-1.out",
+    timing.TimingLedger(ledger).record_vendor_task(
+        vendor="codex", task_kind="codex-not-registered", start_s=0, end_s=1, output="o"
     )
-    assert "unknown task-kind" not in capsys.readouterr().err
-    row = ledger.read_text(encoding="utf-8").strip().split("\t")
-    assert row[0:2] == ["v1", "vendor"]
-    assert row[3] == "design"
-    assert row[5:11] == ["claude", "gate-b-apply", "20", "35", "15", "gate-b-apply-round-1.out"]
+    assert "unknown task-kind: codex-not-registered" in capsys.readouterr().err
 
 
-def test_timing_vendor_task_accepts_voter_dispatch_prep(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    # Issue #7166: the serial voter pre-dispatch phase is recorded as its own vendor row so the
-    # Gantt shows it instead of a blank gap between the aggregator and the voters.
+def test_record_vendor_task_clamps_a_reversed_window_to_unknown(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
-    timing.TimingLedger(ledger, skill="implement").record_vendor_task(
-        vendor="claude",
-        task_kind="voter-dispatch-prep",
-        start_s=40,
-        end_s=207,
-        output="voter-dispatch-prep-round-2.out",
+    timing.TimingLedger(ledger).record_vendor_task(
+        vendor="codex", task_kind="codex-review", start_s=50, end_s=10, output="o"
     )
-    assert "unknown task-kind" not in capsys.readouterr().err
-    row = ledger.read_text(encoding="utf-8").strip().split("\t")
-    assert row[0:2] == ["v1", "vendor"]
-    assert row[5:11] == ["claude", "voter-dispatch-prep", "40", "207", "167", "voter-dispatch-prep-round-2.out"]
+    parts = ledger.read_text(encoding="utf-8").splitlines()[0].split("\t")
+    assert parts[9] == "0"
+    assert parts[12] == "unknown"
 
 
-def test_timing_vendor_task_accepts_reviewer_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    # Issue #7179: the reviewers-to-aggregator collection phase is recorded as its own vendor row
-    # so the Gantt shows it instead of a blank gap between the reviewers and the aggregator.
-    ledger = tmp_path / "timing-ledger.tsv"
-    timing.TimingLedger(ledger, skill="implement").record_vendor_task(
-        vendor="claude",
-        task_kind="reviewer-collect",
-        start_s=164,
-        end_s=348,
-        output="reviewer-collect-round-2.out",
-    )
-    assert "unknown task-kind" not in capsys.readouterr().err
-    row = ledger.read_text(encoding="utf-8").strip().split("\t")
-    assert row[0:2] == ["v1", "vendor"]
-    assert row[5:11] == ["claude", "reviewer-collect", "164", "348", "184", "reviewer-collect-round-2.out"]
-
-
-def test_timing_report_design_omits_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t10\tdesign\tdesign Step 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
-    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "30")
-    data = timing.TimingReport(ledger).render_json()
-    assert "workflow_path" not in data
-
-
-def test_timing_report_json_and_design_totals(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t10\tdesign\tdesign Step 0\t-\t-\t-\t-\t-\t-\t-\t-\n"
-        "v1\tmark\t20\tdesign\tdesign Step 1\t-\t-\t-\t-\t-\t-\t-\t-\n"
-        "v1\tvendor\t18\tdesign\t-\tcodex\tcodex-review\t11\t18\t7\tout.log\t0\tcomplete\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
-    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "30")
-    data = timing.TimingReport(ledger).render_json()
-    assert "workflow_path" not in data
-    assert data["total_seconds"] == 10
-    assert data["vendor_task_averages"]
-
-
-def test_timing_rejects_symlink_ledger(tmp_path: Path) -> None:
-    target = tmp_path / "target.tsv"
-    _ = target.write_text("", encoding="utf-8")
-    link = tmp_path / "link.tsv"
-    link.symlink_to(target)
-    with pytest.raises(ValueError, match="symlink"):
-        timing.TimingLedger(link).mark("bad")
-
-
-def test_timing_rejects_non_regular_ledger(tmp_path: Path) -> None:
-    fifo = tmp_path / "fifo"
-    if hasattr(stat, "S_IFIFO"):
-        os.mkfifo(fifo)
-        with pytest.raises(ValueError, match="not a regular file"):
-            timing.TimingLedger(fifo).mark("bad")
-
-
-def test_timing_summary_counts_vendors_by_end_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t20\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n"
-        "v1\tvendor\t30\timplement\t-\tcodex\tcodex-review\t5\t15\t10\tout.log\t0\tcomplete\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
-    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "100")
-    summary = timing.TimingReport(ledger).render(mode="summary")
-    assert "vendor-tasks=0" in summary
-
-
-def test_timing_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> None:
-    target = tmp_path / "body.md"
-    _ = target.write_text(
-        "See <!-- timing-report-begin --> in docs\n\n"
-        "<!-- timing-report-begin -->\nold\n<!-- timing-report-end -->\n",
-        encoding="utf-8",
-    )
-    timing._replace_block(target=target, block="BLOCK\n")  # pyright: ignore[reportPrivateUsage]
-    text = target.read_text(encoding="utf-8")
-    assert "See <!-- timing-report-begin --> in docs" in text
-    assert "BLOCK" in text
-    assert "old" not in text
-
-
-def test_timing_ledger_record_round_clamps_negative_duration(tmp_path: Path) -> None:
+def test_record_round_clamps_negative_duration_and_keeps_oos(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     timing.TimingLedger(ledger).record_round(
         skill="design",
@@ -195,13 +105,12 @@ def test_timing_ledger_record_round_clamps_negative_duration(tmp_path: Path) -> 
         rejected=1,
         oos=4,
     )
-    row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tround\t" in line)
-    parts = row.split("\t")
+    parts = ledger.read_text(encoding="utf-8").splitlines()[0].split("\t")
     assert parts[8] == "0"
     assert parts[11] == "4"
 
 
-def test_timing_ledger_record_round_writes_incrementing_attempt(tmp_path: Path) -> None:
+def test_record_round_writes_incrementing_attempt(tmp_path: Path) -> None:
     # Issue #5504: a stall recovery reruns the same round in one session; each rerun must
     # record a distinct 1-based attempt index in the reserved trailing column so the progress
     # report can split the Gantt per attempt instead of merging both windows into one span.
@@ -211,118 +120,38 @@ def test_timing_ledger_record_round_writes_incrementing_attempt(tmp_path: Path) 
     led.record_round(skill="implement", step="Step 5 — code review", round_n=1, start_s=300, end_s=400, accepted=2, rejected=1)
     led.record_round(skill="implement", step="Step 5 — code review", round_n=2, start_s=500, end_s=600, accepted=0, rejected=0)
     rounds = [line.split("\t") for line in ledger.read_text(encoding="utf-8").splitlines() if "\tround\t" in line]
-    # Two attempts for round 1, then round 2 restarts the counter at 1.
     assert [parts[5] for parts in rounds] == ["1", "1", "2"]
     assert [parts[12] for parts in rounds] == ["1", "2", "1"]
-    # The attempt index reuses the reserved column, so the parser's fixed 13-column width holds.
     assert all(len(parts) == 13 for parts in rounds)
 
 
-def test_timing_report_unknown_format_raises(tmp_path: Path) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text("v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="unknown format"):
-        _ = timing.TimingReport(ledger).render(mode="full", fmt="yaml")
+def test_record_round_rejects_an_unknown_skill(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--skill must be implement or design"):
+        timing.TimingLedger(tmp_path / "timing-ledger.tsv").record_round(
+            skill="review", step="s", round_n=1, start_s=0, end_s=1, accepted=0, rejected=0
+        )
 
 
-def test_timing_report_implement_hides_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t0\timplement\tStep 1 — design plan\t-\t-\t-\t-\t-\t-\t-\t-\n"
-        "v1\tmark\t10\timplement\tStep 2 — implementation\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
-    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "100")
-    markdown = timing.TimingReport(ledger).render(mode="full", fmt="markdown")
-    assert "**Workflow path**:" not in markdown
-    data = timing.TimingReport(ledger).render_json()
-    assert "workflow_path" not in data
-
-
-def test_timing_harness_mark_missing_executable_emits_sentinel(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = timing.harness_mark(label="smoke", argv=["does-not-exist"])
-    assert rc == 127
-    out = capsys.readouterr().out.strip()
-    assert out.startswith("LARCH_HARNESS_TIMING\tsmoke\t")
-    assert out.endswith("s")
-
-
-def test_timing_telemetry_mark_rejects_missing_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    assert timing.timing_telemetry_mark_main(["--label", "noop"]) == 0
-    assert timing.timing_telemetry_mark_main(["--implement-tmpdir", "", "--label", "noop"]) == 0
-    assert timing.timing_telemetry_mark_main(["--implement-tmpdir", "relative", "--label", "noop"]) == 0
-
-
-def test_timing_harness_mark_runs_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    script = tmp_path / "ok.sh"
-    _ = script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
-    rc = timing.harness_mark(label="fixture", argv=["bash", str(script)])
-    assert rc == 0
-    out = capsys.readouterr().out.strip()
-    assert out.startswith("LARCH_HARNESS_TIMING\tfixture\t")
-    assert out.endswith("s")
-
-    fail_script = tmp_path / "fail.sh"
-    _ = fail_script.write_text("#!/usr/bin/env bash\nexit 42\n", encoding="utf-8")
-    fail_script.chmod(0o755)
-    rc_fail = timing.harness_mark(label="fail-fixture", argv=["bash", str(fail_script)])
-    assert rc_fail == 42
-    fail_out = capsys.readouterr().out.strip()
-    assert fail_out.startswith("LARCH_HARNESS_TIMING\tfail-fixture\t")
-    assert fail_out.endswith("s")
-
-
-def test_timing_mark_if_latest_differs_appends_on_differing_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t10\timplement\tStep 4 — commit\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
-    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
-    assert rc == 0
-    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
-    assert len(rows) == 2
-    assert rows[-1].split("\t")[4] == "Step 5 — code review"
-
-
-def test_timing_mark_if_latest_differs_skips_on_identical_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t10\timplement\tStep 5 — code review\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
-    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
-    assert rc == 0
-    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
-    assert len(rows) == 1
-
-
-def test_timing_mark_if_latest_differs_appends_on_empty_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
-    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
-    assert rc == 0
-    assert ledger.is_file()
-    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
-    assert len(rows) == 1
-    assert rows[0].split("\t")[4] == "Step 5 — code review"
-
-
-def test_timing_mark_main_catches_invalid_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    fifo = tmp_path / "fifo.tsv"
+def test_ledger_rejects_a_symlink_or_non_regular_target(tmp_path: Path) -> None:
+    target = tmp_path / "target.tsv"
+    _ = target.write_text("", encoding="utf-8")
+    link = tmp_path / "link.tsv"
+    link.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        timing.TimingLedger(link).mark("bad")
+    fifo = tmp_path / "fifo"
     if hasattr(stat, "S_IFIFO"):
         os.mkfifo(fifo)
-        rc = timing.timing_mark_main(["--ledger", str(fifo), "Step 0"])
-        assert rc == 1
-        assert "not a regular file" in capsys.readouterr().err
+        with pytest.raises(ValueError, match="not a regular file"):
+            timing.TimingLedger(fifo).mark("bad")
+
+
+def test_ledger_rows_sanitize_embedded_separators(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger).mark("Step\t1\nnext")
+    assert ledger.read_text(encoding="utf-8").splitlines() == [
+        "\t".join(["v1", "mark", ledger.read_text(encoding="utf-8").split("\t")[2], "implement", "Step<NUL>1<NUL>next", *(["-"] * 8)])
+    ]
 
 
 def test_validate_ledger_path_rejects_symlink_escape_before_mkdir(
@@ -341,229 +170,12 @@ def test_validate_ledger_path_rejects_symlink_escape_before_mkdir(
     assert not (outside / "nested").exists()
 
 
-def test_timing_record_vendor_task_rejects_invalid_vendor(tmp_path: Path) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    with pytest.raises(ValueError, match="vendor must be codex"):
-        timing.TimingLedger(ledger).record_vendor_task(
-            vendor="gemini",
-            task_kind="vendor-misc",
-            start_s=1,
-            end_s=2,
-            output="x.log",
-        )
-
-
-def test_timing_record_vendor_task_warns_unknown_task_kind(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    timing.TimingLedger(ledger).record_vendor_task(
-        vendor="codex",
-        task_kind="totally-unknown-kind",
-        start_s=1,
-        end_s=2,
-        output="x.log",
-    )
-    assert "unknown task-kind" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("task_kind", ["codex-ci", "cursor-ci", "claude-ci"])
-def test_timing_record_vendor_task_accepts_live_ci_task_kinds(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    task_kind: str,
-) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    vendor = task_kind.split("-", 1)[0]
-    timing.TimingLedger(ledger).record_vendor_task(
-        vendor=vendor,
-        task_kind=task_kind,
-        start_s=1,
-        end_s=2,
-        output="ci.out",
-    )
-    assert "unknown task-kind" not in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("task_kind", ["codex-review-fix", "cursor-review-fix", "claude-review-fix"])
-def test_timing_record_vendor_task_accepts_review_fix_task_kinds(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    task_kind: str,
-) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    vendor = task_kind.split("-", 1)[0]
-    timing.TimingLedger(ledger).record_vendor_task(
-        vendor=vendor,
-        task_kind=task_kind,
-        start_s=1,
-        end_s=2,
-        output=f"{vendor}-apply.log",
-    )
-    assert "unknown task-kind" not in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("task_kind", ["claude-relevant-checks", "claude-lint-fix"])
-def test_timing_record_vendor_task_accepts_checks_task_kinds(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    task_kind: str,
-) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    timing.TimingLedger(ledger).record_vendor_task(
-        vendor="claude",
-        task_kind=task_kind,
-        start_s=1,
-        end_s=2,
-        output=f"{task_kind}.txt",
-    )
-    assert "unknown task-kind" not in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("task_kind", ["codex-architectural-assessment", "cursor-architectural-assessment"])
-def test_timing_record_vendor_task_rejects_retired_assessment_lane_kinds(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    task_kind: str,
-) -> None:
-    # The per-lane architectural-assessment timing kinds retired with the vendor
-    # waterfall (#7193); the assessor subagent bills to the main Claude session.
-    ledger = tmp_path / "timing-ledger.tsv"
-    vendor = task_kind.split("-", 1)[0]
-    timing.TimingLedger(ledger).record_vendor_task(
-        vendor=vendor,
-        task_kind=task_kind,
-        start_s=1,
-        end_s=2,
-        output=f"{vendor}-architectural-assessment.out",
-    )
-    assert "unknown task-kind" in capsys.readouterr().err
-
-
-def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    for status, _expected in (("OK", "complete"), ("ERROR", "signal"), ("TIMEOUT", "signal")):
-        timing.TimingLedger(ledger).record_vendor_task(
-            vendor="codex",
-            task_kind="codex-review",
-            start_s=1,
-            end_s=2,
-            output="x.log",
-            status=status,
-        )
-    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tvendor\t" in line]
-    assert [row.split("\t")[-1] for row in rows] == ["complete", "signal", "signal"]
-
-
-def test_timing_record_vendor_task_main_skips_ledger_oserror(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def fail_record_vendor_task(_self: timing.TimingLedger, **_kwargs: object) -> None:
-        raise PermissionError("blocked ledger")
-
-    monkeypatch.setattr(timing.TimingLedger, "record_vendor_task", fail_record_vendor_task)
-    rc = timing.timing_record_vendor_task_main([
-        "--ledger",
-        str(tmp_path / "timing-ledger.tsv"),
-        "--vendor",
-        "claude",
-        "--task-kind",
-        "claude-review",
-        "--start-s",
-        "1",
-        "--end-s",
-        "2",
-        "--output",
-        "out.txt",
-    ])
-    err = capsys.readouterr().err
-    assert rc == 0
-    assert "timing record-vendor-task: WARNING: ledger write skipped" in err
-    assert "blocked ledger" in err
-
-
-def test_timing_telemetry_mark_writes_ledgers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    implement_tmpdir = Path("/tmp") / f"larch-telemetry-{tmp_path.name}"
-    implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    timing_ledger = implement_tmpdir / "timing-ledger.tsv"
-    _ = (implement_tmpdir / "session-env.sh").write_text(
-        f"LARCH_TIMING_LEDGER={timing_ledger}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("TMPDIR", "/tmp")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(implement_tmpdir))
-    rc = timing.step_telemetry_mark(implement_tmpdir=implement_tmpdir, label="telemetry-fixture")
-    assert rc == 0
-    token_ledgers = list(implement_tmpdir.glob("larch-tokens-*.jsonl"))
-    assert token_ledgers
-    token_dump = token_ledgers[0].read_text(encoding="utf-8")
-    timing_dump = timing_ledger.read_text(encoding="utf-8")
-    assert "telemetry-fixture" in token_dump
-    assert "telemetry-fixture" in timing_dump
-
-
-def test_timing_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text(
-        "v1\tmark\t10\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
-        encoding="utf-8",
-    )
-    rc = timing.timing_report_main(["--terse", "--ledger", str(ledger)])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Step 0:" in out
-    assert "elapsed=" in out
-
-
-def test_timing_report_main_preserves_design_environment_without_internal_flag(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, str] = {}
-
-    def fake_render_report(**kwargs: object) -> timing.TimingReportResult:
-        report_env = cast("dict[object, object]", kwargs["env"])
-        typed_env = {
-            key: value
-            for key, value in report_env.items()
-            if isinstance(key, str) and isinstance(value, str)
-        }
-        assert len(typed_env) == len(report_env)
-        captured.update(typed_env)
-        return timing.TimingReportResult(
-            ledger_path=tmp_path / "timing-ledger.tsv",
-            rendered="design report",
-            status="rendered",
-        )
-
-    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
-    monkeypatch.setattr(timing, "render_report", fake_render_report)
-
-    rc = timing.timing_report_main(["--terse", "--ledger", str(tmp_path / "timing-ledger.tsv")])
-
-    assert rc == 0
-    assert captured["DESIGN_TMPDIR"] == str(tmp_path)
-    assert captured["LARCH_TIMING_SKILL"] == "design"
-
-
-def test_timing_report_full_without_marks(tmp_path: Path) -> None:
-    ledger = tmp_path / "timing-ledger.tsv"
-    _ = ledger.write_text("", encoding="utf-8")
-    rendered = timing.TimingReport(ledger).render(mode="full", fmt="markdown")
-    assert rendered == "Timing report unavailable: no step marks in ledger"
-
-
-def test_timing_dump_main_rejects_invalid_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    fifo = tmp_path / "fifo.tsv"
-    if hasattr(stat, "S_IFIFO"):
-        os.mkfifo(fifo)
-        rc = timing.timing_dump_main(["--ledger", str(fifo)])
-        assert rc == 1
-        assert "timing dump:" in capsys.readouterr().err
+def test_validate_ledger_path_rejects_empty_and_parent_traversal(tmp_path: Path) -> None:
+    env = {"TMPDIR": str(tmp_path)}
+    with pytest.raises(ValueError, match="must not be empty or contain"):
+        _ = timing.validate_ledger_path("", env=env)
+    with pytest.raises(ValueError, match="must not be empty or contain"):
+        _ = timing.validate_ledger_path(str(tmp_path / ".." / "x.tsv"), env=env)
 
 
 def test_validate_ledger_path_empty_tmpdir_uses_system_tmp(
@@ -577,7 +189,31 @@ def test_validate_ledger_path_empty_tmpdir_uses_system_tmp(
     assert resolved == Path("/tmp/ledger.tsv") or resolved == Path("/private/tmp/ledger.tsv")
 
 
-def test_timing_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_timing_ledger_path_prefers_tmpdir_keys_in_order(tmp_path: Path) -> None:
+    implement = tmp_path / "implement"
+    design = tmp_path / "design"
+    implement.mkdir()
+    design.mkdir()
+    env = {"TMPDIR": str(tmp_path), "IMPLEMENT_TMPDIR": str(implement), "DESIGN_TMPDIR": str(design)}
+    assert timing.resolve_timing_ledger_path(env=env) == implement.resolve() / "timing-ledger.tsv"
+    assert timing.resolve_timing_ledger_path(env={k: v for k, v in env.items() if k != "IMPLEMENT_TMPDIR"}) == (
+        design.resolve() / "timing-ledger.tsv"
+    )
+    assert timing.resolve_timing_ledger_path(env={"TMPDIR": str(tmp_path)}) is None
+
+
+def test_resolve_timing_ledger_path_ignores_an_unusable_env_ledger(tmp_path: Path) -> None:
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    env = {
+        "TMPDIR": str(tmp_path),
+        "IMPLEMENT_TMPDIR": str(implement),
+        "LARCH_TIMING_LEDGER": "/etc/timing-ledger.tsv",
+    }
+    assert timing.resolve_timing_ledger_path(env=env) == implement.resolve() / "timing-ledger.tsv"
+
+
+def test_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text("", encoding="utf-8")
     times = iter([0.0, 10.0])
@@ -590,49 +226,3 @@ def test_timing_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(fcntl_mod, "flock", _blocked_flock)
     timing.TimingLedger(ledger).mark("blocked")
     assert ledger.read_text(encoding="utf-8") == ""
-
-
-def test_append_progress_mark_uses_run_aware_breadcrumb(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """_append_progress_mark uses append_breadcrumb_for_run with the owned run ID."""
-    monkeypatch.setenv("LARCH_RUN_ID", "timing-run-55")
-    monkeypatch.chdir(tmp_path)
-
-    breadcrumb_calls: list[tuple[str, str, str, str]] = []
-
-    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
-        breadcrumb_calls.append((run_id, skill, step, text))
-        return True
-
-    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append)
-
-    timing._append_progress_mark(skill="implement", label="ship PR")  # pyright: ignore[reportPrivateUsage]
-
-    assert len(breadcrumb_calls) == 1
-    run_id, skill, _step, text = breadcrumb_calls[0]
-    assert run_id == "timing-run-55"
-    assert skill == "implement"
-    assert "started" in text
-
-
-def test_append_progress_mark_skips_when_no_run_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """_append_progress_mark does not call append_breadcrumb_for_run when no run ID is set."""
-    monkeypatch.delenv("LARCH_RUN_ID", raising=False)
-    monkeypatch.chdir(tmp_path)
-
-    breadcrumb_calls: list[object] = []
-
-    def fake_append_no_id(
-        _repo: object, run_id: str, skill: str, step: str, text: str
-    ) -> bool:
-        breadcrumb_calls.append((run_id, skill, step, text))
-        return True
-
-    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append_no_id)
-
-    timing._append_progress_mark(skill="implement", label="CI monitor")  # pyright: ignore[reportPrivateUsage]
-
-    assert len(breadcrumb_calls) == 0

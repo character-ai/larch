@@ -545,7 +545,7 @@ def _step5_review_worker(implement_tmpdir: Path) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
+    _invoke_larch(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
     dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "1"
     if dynamic_cap not in {"0", "1"}:
         print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
@@ -1591,8 +1591,8 @@ def _step5_resume_commit_phase() -> int | None:
 
 
 def _record_step5_handoff_timing(*, implement_tmpdir: Path, final_round_num: str) -> None:
-    # lint-subprocess-via-runner: ok timing-mark needs custom DESIGN_TMPDIR/LARCH_TIMING_SKILL env; _invoke_cli does not support custom env
-    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 5: review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
+    # lint-subprocess-via-runner: ok timing-mark needs custom DESIGN_TMPDIR/LARCH_TIMING_SKILL env; _invoke_larch does not support custom env
+    subprocess.run([str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 5: review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
     round_start_file = implement_tmpdir / f"round-{final_round_num}" / "round-start-s"
     if round_start_file.is_file():
         start_s = round_start_file.read_text(encoding="utf-8", errors="replace").strip()

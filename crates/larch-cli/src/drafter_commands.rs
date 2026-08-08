@@ -46,7 +46,7 @@ use crate::external_agent::{
     run_external_agent_with_auth_retries,
 };
 use crate::python_verb::{
-    plugin_root_directory, record_vendor_timing as record_python_vendor_timing, run_python_verb,
+    plugin_root_directory, run_python_verb,
     run_python_verb_best_effort,
 };
 
@@ -340,7 +340,7 @@ fn record_vendor_timing(
     output: &Path,
     exit_code: i32,
 ) {
-    record_python_vendor_timing(
+    crate::timing_commands::record_vendor_timing(
         vendor,
         task_kind,
         start,

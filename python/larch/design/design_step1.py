@@ -20,7 +20,6 @@ from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_en
 from larch.design.design_router import _extract_args, _normalize_step, _parse_stdout_kv
 from larch.design.design_step0 import (
     _append_failure,
-    _cli_cmd,
     _derive_binary_found,
     _require_design_tmpdir,
     _run_best_effort,
@@ -132,7 +131,7 @@ def _step1d5_entry_main(*, plugin_root: Path, design_tmpdir: Path, env: Mapping[
     print(f"STEP1D5_ACTION={action}")
     if skip_kind:
         print(f"STEP1D5_SKIP_KIND={skip_kind}")
-    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=[str(larch_entrypoint(plugin_root)), "timing", "mark", "design Step 1d.5 — brainstorm"], env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     return 0
 
 

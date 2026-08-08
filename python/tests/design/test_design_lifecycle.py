@@ -941,7 +941,7 @@ def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fa
     timing_idx = next(
         index
         for index, cmd in enumerate(commands)
-        if cmd[2:5] == ["timing", "mark", "design Step 0: session setup"]
+        if cmd[1:4] == ["timing", "mark", "design Step 0: session setup"]
     )
     progress_cmd = commands[progress_idx]
     assert _cmd_arg(progress_cmd, "--run-id") == "explicit-run"

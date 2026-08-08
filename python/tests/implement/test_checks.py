@@ -3536,7 +3536,7 @@ def test_run_relevant_checks_marks_step6_ledger(
     )
     ledger_calls = [
         call for call, _kw in runner.calls
-        if any("cli.py" in name for name in call)
+        if any("cli.py" in name or "larch.sh" in name for name in call)
         and "record-vendor-task" not in call
     ]
     assert len(ledger_calls) == 2

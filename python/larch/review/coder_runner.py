@@ -169,7 +169,7 @@ def _record_coder_vendor_task(
 ) -> None:
     with contextlib.suppress(Exception):
         _run([
-            "python3", str(_plugin_root() / "python" / "cli.py"),
+            str(larch_entrypoint(_plugin_root())),
             "timing", "record-vendor-task",
             "--ledger", str(ledger),
             "--vendor", vendor,

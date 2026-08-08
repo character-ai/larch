@@ -3,8 +3,11 @@
 
 PYTHON ?= python3
 CARGO_DENY_VERSION ?= 0.20.2
+# `timing harness-mark` is Rust-owned (#8083). Developer and CI harnesses reach
+# it through cargo, the same way `make lint` reaches the other Rust verbs.
+HARNESS_MARK ?= cargo run --quiet --locked --package larch-cli -- timing harness-mark
 
-.PHONY: py-lint py-typecheck py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-anti-improvised-wakeup test-audit-runs test-sessionstart test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-refresh-run-logs  test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-pause-skill test-fluff-analysis test-rejected-analysis
+.PHONY: py-lint py-typecheck py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-anti-improvised-wakeup test-audit-runs test-sessionstart test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-refresh-run-logs  test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-pause-skill test-fluff-analysis test-rejected-analysis
 
 .PHONY: test-findings-classification test-review-findings-classification test-review-and-fix-step5-starting-round test-bug-structure test-learn-from-bugs-structure
 .PHONY: test-prompt-template-invariants
@@ -14,7 +17,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 .PHONY: test-git-commit-only
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
 .PHONY: agent-sync
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: test-step-7a step-7a-py-harness step-7a-bash-harness test-step-8-oos-checkpoint
@@ -102,457 +105,453 @@ test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-st
 test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-file-failure-report-cross-repo test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip test-check-mid-run-dirty-tree test-check-phantom-dirty test-phantom-probe-with-warn
 
 test-pipe-sigpipe-safety:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'not (scrub_log_secrets or tmpdir or operator)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'not (scrub_log_secrets or tmpdir or operator)'
 
 test-scrub-log-secrets:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k scrub_log_secrets
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k scrub_log_secrets
 
 test-redact-tmpdir-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'tmpdir or operator'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'tmpdir or operator'
 
 test-reviewer-prune:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k reviewer_prune
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k reviewer_prune
 
 test-lib-prune-decision:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'prune and not reviewer_prune'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'prune and not reviewer_prune'
 
 test-append-tool-failure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/issue/test_execution_issues.py -k 'not (flush or refresh)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/issue/test_execution_issues.py -k 'not (flush or refresh)'
 
 test-validate-research-output:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
 
 
 
 test-collect-agent-results:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test collector_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test collector_commands
 
 test-analyze:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_analyze_issues.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_analyze_issues.py -q
 
 test-fluff-analysis:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
 
 test-rejected-analysis:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/rejected-analysis/scripts/test-rejected-analysis.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/rejected-analysis/scripts/test-rejected-analysis.sh
 
 test-difficulty-calibration:
 	python3 -m pytest python/tests/calibration/test_difficulty_calibration.py
 
 test-voter-calibration:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh
 
 test-fluff-analysis-corpus:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-fetch-combinable-issues-filter:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_combine_issues.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_combine_issues.py -q
 
 test-legacy-title-prefix-literals-scope:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
 
 test-blocker:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_blocker.py -x -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_blocker.py -x -q
 
 test-anti-improvised-wakeup:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
 
 test-audit-runs:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_audit_runs.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_audit_runs.py -q
 
 
 test-sessionstart:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-sessionstart-health.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-sessionstart-health.sh
 
 test-cleanup-sessionstart:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cleanup-sessionstart.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-cleanup-sessionstart.sh
 
 test-check-clean-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state
 
 test-check-main-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_check_main_sync.py python/tests/git/test_git.py -q -k 'check_main_sync'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_check_main_sync.py python/tests/git/test_git.py -q -k 'check_main_sync'
 
 
 
 test-check-scope-reduction-marker:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test dirty_tree scope_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test dirty_tree scope_
 
 test-plan-review:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status or write_atomic'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status or write_atomic'
 
 test-plan-review-panel:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'not ((panel_dispatch and not usage) or (voter_dispatch and not usage))'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'not ((panel_dispatch and not usage) or (voter_dispatch and not usage))'
 
 test-plan-review-scope-anchor:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'scope_anchor and not persist_retally'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'scope_anchor and not persist_retally'
 
 test-lib-scope-anchor-handoff:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/rendering/test_rendering.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/rendering/test_rendering.py -q
 
 test-clarify-comment:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_clarify.py -q -k comment
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_clarify.py -q -k comment
 
 test-clarify-state:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_clarify.py -q -k 'not comment'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_clarify.py -q -k 'not comment'
 
 test-check-stale-plugin:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-stale-plugin.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-check-stale-plugin.sh
 
 
 test-cache-root-validation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-root-validation.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-cache-root-validation.sh
 
 test-cache-key-discipline:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-key-discipline.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k cleanup_target_ok
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k cleanup_target_ok
 
 
 test-audit-edit-write:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-audit-edit-write.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-audit-edit-write.sh
 
 test-block-submodule:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-block-submodule-edit.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-block-submodule-edit.sh
 
 
 test-deny-edit-write:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-deny-edit-write.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-deny-edit-write.sh
 
 
 
 
 test-token-tally:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k tally
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k tally
 
 test-token-ledger:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k ledger
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k ledger
 
 test-token-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k token_report
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k token_report
 
 test-token-report-dedup:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k dedupe
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k dedupe
 
 test-token-cost-per-bucket:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k bucket
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k bucket
 
 test-render-cost-line-realism:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k 'not (render_cost_line or token_cost or bucket)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k 'not (render_cost_line or token_cost or bucket)'
 
 test-render-cost-line-callsites:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-cost-line-callsites.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-render-cost-line-callsites.sh
 
 test-token-report-summary-format:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k 'not (compute_pr_line_counts or claude_source or ledger or tally or dedupe or token_report)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k 'not (compute_pr_line_counts or claude_source or ledger or tally or dedupe or token_report)'
 
 test-timing-ledger:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q -k 'not harness_mark and not telemetry_mark and not report'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q
 
 test-review-and-fix-record-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k record_timing
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k record_timing
 
 test-review-and-fix-step5-loop-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k loop_timing
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'record_round_timing or persist_round_start_s'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'record_round_timing or persist_round_start_s'
 
-test-step-telemetry-mark:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q -k telemetry_mark
 
-test-timing-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q -k report
 
 test-token-vendor-scrapers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-token-vendor-scrapers.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-token-vendor-scrapers.sh
 
 test-token-claude-source:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k claude_source
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k claude_source
 
 test-verify-skill-called:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/core/test_verify_skill.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_verify_skill.py
 
 
 test-extinct-notification-stack:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-extinct-notification-stack.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-extinct-notification-stack.sh
 
 test-hook-anti-read-poll:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-anti-read-poll.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-hook-anti-read-poll.sh
 
 
 test-sessionstart-statusline:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-sessionstart-statusline.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-sessionstart-statusline.sh
 
 test-hook-stop-fail-close:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-stop-fail-close.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-hook-stop-fail-close.sh
 
 
 test-hook-deny-run-in-background:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-deny-run-in-background.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-hook-deny-run-in-background.sh
 
 
 # These Rust integration-test entry points are standalone aliases, not
 # test-harnesses prerequisites; see CARVE_OUTS in
 # scripts/test-harness-shards-coverage.sh.
 test-bgjob:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test bgjob
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test bgjob
 
 test-classify-bump:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_prepare
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test release_prepare
 
 test-release-prepare:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_prepare
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test release_prepare
 
 test-release-set-version:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_version
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test release_version
 
 test-release-finish:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests
-	python3 python/cli.py timing harness-mark --label $@-verify-main -- python3 -m pytest python/tests/release/test_release.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests
+	$(HARNESS_MARK) --label $@-verify-main -- python3 -m pytest python/tests/release/test_release.py -q
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-promote-release:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests::promotion
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests::promotion
 
 
 test-git-push:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
 
 
 test-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-halt-banners.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-anti-halt-banners.sh
 
 test-orchestrator-scope-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-orchestrator-scope-sync.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-orchestrator-scope-sync.sh
 
 
 test-alias-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'alias_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'alias_structure' -q
 
 test-bug-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'bug_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'bug_structure' -q
 
 test-learn-from-bugs-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'learn_from_bugs_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'learn_from_bugs_structure' -q
 
 test-design-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'design_structure_pin or design_structure_specialized' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'design_structure_pin or design_structure_specialized' -q
 
 test-design-pause-resume:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_pause.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_pause.py
 
 test-pause-skill:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k '(panel or degraded) and not aggregate'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k '(panel or degraded) and not aggregate'
 
 test-decompose-aggregator:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k aggregate
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k aggregate
 
 test-decompose-file-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k 'prepare or annotate or close_original'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k 'prepare or annotate or close_original'
 
 test-design-step2b-drafter:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_design_lifecycle.py -k 'step2a or step2b or guideline or dialectic_instructions or postplan_decide or postplan_executor'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_design_lifecycle.py -k 'step2a or step2b or guideline or dialectic_instructions or postplan_decide or postplan_executor'
 
 test-design-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'
 
 test-design-clarify:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-clarify.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-clarify.sh
 
 test-design-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_publish.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_publish.py
 
 test-design-postplan-emit:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_postplan.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_postplan.py
 
 test-read-result-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-read-result-env.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-read-result-env.sh
 
 test-parse-design-argv:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_argv.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_argv.py
 
 
 test-invoke-plan-validator:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
 
 test-file-design-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_oos.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_oos.py
 
 test-design-log-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_log_publish_flow.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_log_publish_flow.py
 
 
 
 test-emit-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k emit_plan
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k emit_plan
 
 test-gate-b-dedup-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k gate_b_dedup
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k gate_b_dedup
 
 test-gate-b-apply-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
 
 test-trailer-helpers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k optional_trailer
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k optional_trailer
 
 test-emit-design-plan-preview:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k preview
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k preview
 test-check-plan-size:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k check_plan_size
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k check_plan_size
 
 test-auto-fix-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k auto_fix
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k auto_fix
 
 
 test-parse-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k parse_plan_commands
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k parse_plan_commands
 
 
 test-validate-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
 
 test-tally-plan-review:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'tally_plan_review or tally_error_rollback or degraded_empty or cap_reached'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'tally_plan_review or tally_error_rollback or degraded_empty or cap_reached'
 
 test-findings-classification:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-findings-classification.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-findings-classification.sh
 
 test-review-findings-classification:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k findings_classification
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k findings_classification
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or run_round_body_in_process or (continuation and not step3_state)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or run_round_body_in_process or (continuation and not step3_state)'
 
 test-lib-design-round-artifacts:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k round_artifact
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k round_artifact
 
 test-design-multi-round-integration:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-multi-round-integration.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-design-multi-round-integration.sh
 
 test-step3-review-cap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
 
 test-persist-retally-step3-env:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k persist_retally
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k persist_retally
 
 test-run-step3-review:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k record_report_evidence
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k record_report_evidence
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'legacy_assets_removed or phase_driver_write_result_env_refuses_symlink or step3_loop_persist_envelope or postplan_validator or emits_round_provenance or zero_findings_degraded_stop'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'legacy_assets_removed or phase_driver_write_result_env_refuses_symlink or step3_loop_persist_envelope or postplan_validator or emits_round_provenance or zero_findings_degraded_stop'
 
 test-step3-orchestrator-fence:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
 
 test-design-step3-mav:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'step3_state or step3_normalize or step3_read_result_env'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'step3_state or step3_normalize or step3_read_result_env'
 
 test-finalize-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k finalize
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k finalize
 
 test-step0b-router-flag-recovery:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k design_route
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k design_route
 
 test-brainstorm-prompts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-launch-codex-exec:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands codex_exec
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test drafter_commands codex_exec
 
 test-scout-plan-archetypes-wrapper:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
 
 test-dispatch-plan-review-panel:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'panel_dispatch and not usage'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'panel_dispatch and not usage'
 
 test-render-final-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_summary.py -k render_final_summary
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_summary.py -k render_final_summary
 
 test-render-final-summary-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_summary.py -k 'not render_final_summary'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_summary.py -k 'not render_final_summary'
 
 test-implement-rebase-macro:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-rebase-macro.sh
 
 test-phantom-probe-with-warn:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli phantom_probe
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test cli phantom_probe
 
 test-implement-step2-routing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-step2-routing.sh
 
 test-implement-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'implement_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'implement_structure' -q
 
 
 test-implement-step8-exit3-first-fixer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
 
 test-oos-disposition-gate: oos-disposition-gate-py-harness oos-disposition-gate-bash-harness
 
 oos-disposition-gate-py-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'disposition_gate'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'disposition_gate'
 
 # Delegation smoke for oos-disposition-gate.sh; behavior lives in oos-disposition-gate-py-harness.
 oos-disposition-gate-bash-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-disposition-gate.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-oos-disposition-gate.sh
 
 test-oos-file-conflict-deps:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'file_conflict_deps'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'file_conflict_deps'
 
 test-oos-issue-cap:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'issue_cap'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'issue_cap'
 
 test-plan-adequacy-audit:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-adequacy-audit.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-plan-adequacy-audit.sh
 
 test-implement-preflight:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_preflight.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_preflight.py -q
 
 test-implement-positional-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-positional-issue.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-positional-issue.sh
 
 test-implement-fence-shape:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-fence-shape.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-fence-shape.sh
 
 test-architectural-guidelines-step:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-architectural-guidelines-step.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-architectural-guidelines-step.sh
 
 test-implement-timing-rehydration:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-timing-rehydration.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-timing-rehydration.sh
 
 test-implement-cleanup-roundtrip:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-cleanup-roundtrip.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-cleanup-roundtrip.sh
 
 
 test-implement-relevant-checks-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
 
 test-implement-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-anti-halt.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-anti-halt.sh
 
 
 test-run-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k 'not (step2_dispatch or codex_launcher or cursor_launcher or commit_main)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k 'not (step2_dispatch or codex_launcher or cursor_launcher or commit_main)'
 
 test-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step2_dispatch
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step2_dispatch
 
 # test-stall-recovery-report runs the remaining Python lint test and the focused Rust
 # core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;
@@ -560,288 +559,286 @@ test-step2-dispatch:
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-core stall_recovery
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-core stall_recovery
 
 test-stall-recovery-report-3:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-adapters stall_recovery
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-adapters stall_recovery
 
 test-resolve-upstream-larch-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
 
 test-file-failure-report-cross-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
 
 
 
 test-step-18b-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k step18b
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k step18b
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-implement-launchers:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test implement_launcher_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_launcher_commands
 
 
 test-git-commit-only:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content
 
 # `run-log refresh` is Rust-owned (#8078), so this is a standalone
 # Rust integration-test alias, not a test-harnesses prerequisite; see CARVE_OUTS
 # in scripts/test-harness-shards-coverage.sh.
 test-refresh-run-logs:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test run_log_flush refresh_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test run_log_flush refresh_
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-launch-ci-fixers:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test ci_launcher_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test ci_launcher_commands
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-launch-drafters:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands drafter
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test drafter_commands drafter
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-run-negotiation-round:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test drafter_commands negotiation_round
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test drafter_commands negotiation_round
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-run-external-agent-args:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent_rejects_invalid_arguments_before_creating_sidecars
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent_rejects_invalid_arguments_before_creating_sidecars
 
 test-quick-mode-docs-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'not cleanup'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'not cleanup'
 
 test-implement-bootstrap:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
 
 test-implement-bootstrap-invoke:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper or absorbed_degraded or absorbed_1r or degraded_prompt_required or phantom_stdout'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper or absorbed_degraded or absorbed_1r or degraded_prompt_required or phantom_stdout'
 
 test-parse-bootstrap-routing-envelope:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
 
 test-flush-execution-issues: flush-execution-issues-py-harness flush-execution-issues-bash-harness
 
 flush-execution-issues-py-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_execution_issues.py -q -k flush
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_execution_issues.py -q -k flush
 
 # Delegation smoke for flush-execution-issues.sh; behavior lives in flush-execution-issues-py-harness.
 flush-execution-issues-bash-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
 
 test-step-7a: step-7a-py-harness step-7a-bash-harness
 
 step-7a-py-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_step_7a.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_step_7a.py -q
 
 # Delegation smoke for step-7a.sh; behavior lives in step-7a-py-harness.
 step-7a-bash-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-step-7a.sh
 
 
 test-step-8-oos-checkpoint:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-8-oos-checkpoint.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-step-8-oos-checkpoint.sh
 
 test-post-tracking-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k post_tracking
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k post_tracking
 
 test-commit-implementation:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k commit_main
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k commit_main
 
 test-review-and-fix-commit-fixes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k commit_fixes
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k commit_fixes
 
 test-generate-code-flow-diagram:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k generate_code_flow
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k generate_code_flow
 
 test-refresh-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_execution_issues.py -q -k refresh
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_execution_issues.py -q -k refresh
 
 test-review-and-fix-write-rejected:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k write_rejected
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k write_rejected
 
 test-slack-issue-announce:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k slack_issue_announce
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k slack_issue_announce
 
 test-step-16-17:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_closeout.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_closeout.py -q
 
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
 write-final-report-py-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
 
 # Delegation smoke for write-final-report.sh; behavior lives in write-final-report-py-harness.
 write-final-report-bash-harness:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
 
 test-token-cost:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k token_cost
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k token_cost
 
 lint-retired-scripts:
 	cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
 
 test-render-cost-line:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
 
 test-harness-shards-coverage:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh --self-test
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-harness-shards-coverage.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-harness-shards-coverage.sh --self-test
 
-test-harness-timer:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q -k harness_mark
 
 test-references-headers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-references-headers.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-references-headers.sh
 
 test-research-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'research_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'research_structure' -q
 
 .PHONY: test-triage-structure
 test-triage-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-triage-structure.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-triage-structure.sh
 
 test-review-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'review_structure' -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'review_structure' -q
 
 test-gather-context:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k gather_context
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k gather_context
 
 test-review-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
 
 test-dispatch-panel-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_core or generic_codex_static_row'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_core or generic_codex_static_row'
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir or producer_scout_warning or synthesize_dynamic_slots or generic_codex_static_row'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir or producer_scout_warning or synthesize_dynamic_slots or generic_codex_static_row'
 
 test-dispatch-panel-reuse:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_reuse
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_reuse
 
 test-dispatch-panel-limits:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_limits
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_limits
 
 test-scout-dynamic-archetypes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'
 
 test-dispatch-plan-voters:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'voter_dispatch and not usage'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'voter_dispatch and not usage'
 
 test-prompt-template-invariants:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-prompt-template-invariants.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-prompt-template-invariants.sh
 
 
 test-collect-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k collect_findings
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k collect_findings
 
 test-aggregate-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py
 
 test-prune-nit-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py -k 'prune_nit'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py -k 'prune_nit'
 
 test-tally-code-votes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot or ledger_reason) and not emit_tally'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot or ledger_reason) and not emit_tally'
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or static_coverage_reason'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or static_coverage_reason'
 
 .PHONY: test-dispatch-code-voters
 test-dispatch-code-voters:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test voter_dispatch_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test voter_dispatch_commands
 
 test-emit-tally:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k emit_tally
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k emit_tally
 
 test-log-phase:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k log_phase
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k log_phase
 
 # test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
 # prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four
 # section targets below instead: dispatch, convergence, parsers, and step5-starting-round.
 test-review-and-fix:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q
 
 test-review-and-fix-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k dispatch
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k dispatch
 
 test-review-and-fix-convergence:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k convergence
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k convergence
 
 test-review-and-fix-parsers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k parsers
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k parsers
 
 test-review-and-fix-step5-starting-round:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k starting_round
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k starting_round
 
 test-review-and-fix-step5:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k step5
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k step5
 
 test-render-findings-batch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/research/test_research.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/research/test_research.py
 
 test-synthesis-subagent:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-synthesis-subagent.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/research/scripts/test-synthesis-subagent.sh
 
 test-research-angle-prompts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-research-angle-prompts.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/research/scripts/test-research-angle-prompts.sh
 
 test-subskill-anchors:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-subskill-anchors.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-subskill-anchors.sh
 
 test-larch-log:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k larch_log_commit
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k larch_log_commit
 
 test-larch-log-write-round:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k 'not (execution_issues or refresh_run_logs or larch_log_commit or capture_transcript or verify_completeness or manifest or batch or batches)'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k 'not (execution_issues or refresh_run_logs or larch_log_commit or capture_transcript or verify_completeness or manifest or batch or batches)'
 
 # `run-log capture-transcript` is Rust-owned (#8078), so this is a
 # standalone Rust integration-test alias, not a test-harnesses prerequisite;
 # see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-capture-session-transcript:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test run_log_flush capture_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test run_log_flush capture_
 
 # `run-log verify-completeness` is Rust-owned (#8073), so this is a standalone
 # Rust integration-test alias, not a test-harnesses prerequisite; see CARVE_OUTS
 # in scripts/test-harness-shards-coverage.sh.
 test-verify-run-log-completeness:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test run_log_entry verify_completeness
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test run_log_entry verify_completeness
 
 test-larch-logs-manifest:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k manifest
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k manifest
 
 test-larch-logs-batches:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k '(batch or batches) and not execution_issues'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k '(batch or batches) and not execution_issues'
 
 test-compose-plan-goals-test:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k compose_plan_goals_test
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k compose_plan_goals_test
 
 test-run-step1-plan-log:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_step_log.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_step_log.py
 
 test-compose-collector-failure-log:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands compose_collector_failure_log_redacts_and_writes_sections
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands compose_collector_failure_log_redacts_and_writes_sections
 
 test-compute-pr-line-counts:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
 
 test-compose-review-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_compose_review.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_compose_review.py
 
 
 
@@ -850,49 +847,49 @@ test-compose-review-findings:
 
 
 test-review-and-fix-check-changes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k check_changes
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k check_changes
 
 test-check-mid-run-dirty-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test dirty_tree
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test dirty_tree
 
 test-check-phantom-dirty:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty
 
 # Rust CLI smoke aliases remain standalone; see CARVE_OUTS in
 # scripts/test-harness-shards-coverage.sh.
 test-check-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands
 
 test-degraded-tools-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands degraded_tools_gate
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test reviewer_availability_commands degraded_tools_gate
 
 test-no-grouped-reuse-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse
 
 test-external-tool-registry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-external-tool-registry.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-external-tool-registry.sh
 
 test-launch-review:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_launch_review.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/agents/test_launch_review.py
 
 
 test-launch-claude-subprocess:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test claude_commands -- subprocess_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test claude_commands -- subprocess_
 
 test-launch-claude-review:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test claude_commands -- review_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test claude_commands -- review_
 
 
 
 
 test-dispatch-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands
 
 test-agent-model-args:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k model_args
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k model_args
 
 test-effort-prose:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-effort-prose.sh
+	$(HARNESS_MARK) --label $@ -- bash scripts/test-effort-prose.sh
 
 
 
@@ -905,17 +902,17 @@ test-lib-design-tmpdir:
 # Rust integration aliases remain standalone; see CARVE_OUTS in
 # scripts/test-harness-shards-coverage.sh.
 test-wait-for-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands wait_reviewers_preserves_validation_and_completion_rows
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands wait_reviewers_preserves_validation_and_completion_rows
 
 test-classify-diff-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands classify_diff_covers_modes_mixed_changes_and_bad_manifests
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands classify_diff_covers_modes_mixed_changes_and_bad_manifests
 
 test-gather-branch-context:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands gather_branch_context
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands gather_branch_context
 
 test-run-external-agent:
-	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands run_external_agent
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
 
 agent-sync:
 	python3 python/cli.py generate check
@@ -937,7 +934,7 @@ eval-research:
 # from CI. The structural test is itself cheap (no API cost) but kept
 # standalone for symmetry. See python/tests/research/test_research_eval.py.
 test-eval-set-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
 
 # Standalone offline regression harness for the `--baseline` flag handling
 # in python/cli.py eval research (closes #441). NOT a `test-harnesses`
@@ -948,7 +945,7 @@ test-eval-set-structure:
 # so it works on machines without the real binaries.
 # See python/tests/research/test_research_eval.py.
 test-eval-research-baseline-flag:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py
 
 shellcheck:
 	pre-commit run shellcheck --all-files
@@ -986,44 +983,44 @@ setup:
 .PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3b-entry test-design-step3-entry test-design-small-session-entries test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract or clarify_hard_halt'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract or clarify_hard_halt'
 
 test-design-failure-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k failure_report
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k failure_report
 
 test-design-step-final-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step_final_summary
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step_final_summary
 
 test-design-step3-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
 
 test-design-step3b-tail:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh
 
 test-design-step3b-entry:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_step3b.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_step3b.py
 
 test-design-step3-entry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
 test-design-small-session-entries:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_small_session_entries.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_small_session_entries.py
 
 test-design-step0-init:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or decode_bash_percent_q or degraded_tools or relay_degraded or require_design or resolve_repo or wrapper or core_style_ctx'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or decode_bash_percent_q or degraded_tools or relay_degraded or require_design or resolve_repo or wrapper or core_style_ctx'
 
 test-design-step5c:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step5c.sh
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step5c
+	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step5c.sh
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step5c
 
 test-design-step6:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step6
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step6
 
 test-design-step-validator-autofix:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validator_autofix
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validator_autofix
 
 test-design-step1d5:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step1d5'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step1d5'
 
 test-design-log-ship:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_log_ship.py
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_log_ship.py
