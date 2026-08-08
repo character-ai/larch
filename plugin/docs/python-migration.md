@@ -276,7 +276,7 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - Audit predicates accept the renamed aggregator warning plus historical wording.
 - POSIX ERE patterns are translated for Python `re`.
 - Per-phase launch-all-then-collect-once concurrency, phase-3 failure finalization, and tail `collect-results` replay are preserved.
-- `python/test_agent_waterfall.py` pins the aggregate alternation gate and grouped-reuse artifact guard.
+- The aggregate alternation gate and grouped-reuse artifact guard were pinned by the Python waterfall harness; both moved to `crates/larch-cli/tests/waterfall_commands.rs` when #8116 made the dispatcher Rust-owned.
 
 ### G5 design Step 2 drafter and validator cutover
 

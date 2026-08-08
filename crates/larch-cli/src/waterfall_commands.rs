@@ -34,7 +34,7 @@ use larch_adapters::{
 };
 use larch_core::{
     ChildEnvironment, DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram,
-    LauncherArtifactKind, ParseOptions, ProcessRequest, emit_kv,
+    LauncherArtifactKind, ParseOptions, ProcessRequest, SafeText, emit_kv,
 };
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -231,13 +231,13 @@ pub fn dispatch_waterfall(arguments: &AgentRawArguments) -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(ParsedArguments::Unknown(option)) => {
-            eprintln!("{PROG}: unknown option: {option}");
+            refuse(&format!("{PROG}: unknown option: {option}"));
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
         Ok(ParsedArguments::Options(options)) => run_dispatch(&options),
         Err(message) => {
-            eprintln!("{message}");
+            refuse(&message);
             ExitCode::from(2)
         }
     }
@@ -250,10 +250,15 @@ fn run_dispatch(options: &Options) -> ExitCode {
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("{message}");
+            refuse(&message);
             ExitCode::from(2)
         }
     }
+}
+
+/// Report one operator-facing refusal, redacted like the retired diagnostic.
+fn refuse(message: &str) {
+    eprintln!("{}", SafeText::diagnostic(message));
 }
 
 // ---------------------------------------------------------------------------
@@ -1568,7 +1573,9 @@ fn apply_result_gates(
 
 fn readable_result(check_file: &str, flag: &str) -> Option<String> {
     if !Path::new(check_file).is_file() {
-        eprintln!("{PROG}: result file not readable for {flag} check: {check_file}");
+        refuse(&format!(
+            "{PROG}: result file not readable for {flag} check: {check_file}"
+        ));
         return None;
     }
     read_lossy(Path::new(check_file))
