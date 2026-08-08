@@ -178,7 +178,13 @@ pub fn execution_issue_identity(category: &str, body: &str) -> String {
     hex_lower(&hasher.finalize())
 }
 
-fn normalize_body_for_hash(body: &str) -> String {
+/// Normalize one entry body before hashing it.
+///
+/// The ledger's identity ignores a leading `### ` heading and any blank
+/// framing, so the same problem hashes alike whether it was recorded with its
+/// section heading or without it.
+#[must_use]
+pub fn normalize_body_for_hash(body: &str) -> String {
     let mut lines: Vec<&str> = split_text_lines(body);
     if lines.first().is_some_and(|line| line.starts_with("### ")) {
         lines.remove(0);

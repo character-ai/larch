@@ -13,11 +13,12 @@ use larch_adapters::{
     run_log_manifest::{ManifestStore, utc_now}, stall_recovery::normalize_outcome,
 }; use larch_core::{
     DuplicatePolicy, KvDocument, ManifestDocument, ManifestRecord, ManifestUpdate, ManifestV2Seed,
-    ParseOptions, RunLogLayout, RunLogSlug, emit_kv, is_terminal_merge_result,
+    ParseOptions, RecordLabels, RunLogLayout, RunLogSlug, emit_kv, is_terminal_merge_result,
     parse_preterminal_outcome_label, redact,
 }; use serde_json::Value; use sha2::{Digest as _, Sha256}; use tempfile::NamedTempFile;
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_with_flags},
+    execution_issue_commands::write_execution_issue_records,
     python_verb::{plugin_root_directory, run_python_verb},
     run_log_commands::resolve_log_root,
     run_log_entry_commands::{
@@ -827,22 +828,13 @@ fn flush_execution_issues(
     let record_path = record.path().to_path_buf();
     record.close().map_err(|error| error.to_string())?;
     let result = (|| {
-    let output = run_python_verb(
-        [
-            os("execution-issues"), os("flush-safety-net"), os("--log-root"),
-            context.log_root.as_os_str().to_owned(), os("--run-id"), os(&context.run_id),
-            os("--issue-log"), issue_log.as_os_str().to_owned(), os("--step-label"), os(step),
-            os("--source-label"), os(source), os("--record-file"),
-            record_path.as_os_str().to_owned(),
-        ], PYTHON_TIMEOUT,
-    )?; let values = parse_kv_output(output.stdout()); if !output.status().success()
-        || values
-            .get("FLUSH_STATUS") .is_none_or(|status| status != "rendered")
-    {
-        return Err(format!(
-            "execution-issues checkpoint failed: {}", safe_process_error(&output)
-        ));
-    } let rendered = record_path.metadata().is_ok_and(|metadata| metadata.len() > 0);
+    // The checkpoint stages the composed rows itself, so it asks the ledger
+    // owner for records only; it never lets that owner publish or clear.
+    write_execution_issue_records(
+        &issue_log, &record_path, Some(&batch),
+        RecordLabels { step, source },
+    ) .map_err(|error| format!("execution-issues checkpoint failed: {error}"))?;
+    let rendered = record_path.metadata().is_ok_and(|metadata| metadata.len() > 0);
     if rendered {
         stage_append_batch(
             &context.log_root, "implement", &context.run_id, "execution-issues", &record_path,

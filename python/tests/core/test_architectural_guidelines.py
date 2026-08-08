@@ -15,7 +15,6 @@ import pytest
 from larch.core import architectural_guidelines as ag
 from larch.core.assessment_kind import GUIDELINES, INVARIANTS, AssessmentKind
 from larch.implement import ship_guidelines
-from larch.issue import execution_issues
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -2450,16 +2449,15 @@ def test_append_deviation_note_dedupes_against_ndjson_batch(tmp_path: Path) -> N
     batch_dir = tmpdir / "larch-logs" / "implement" / run_id
     batch_dir.mkdir(parents=True)
     batch = batch_dir / "execution-issues.ndjson"
-    records = tmpdir / "execution-issue-records.ndjson"
-    assert execution_issues.write_execution_issues_records(
-        input_file=issue_log,
-        record_file=records,
-        sha=execution_issues.sha256_file(issue_log),
-        batch_path=batch,
-        step_label="pre-push",
-        source_label="test",
-    ) == 1
-    _ = batch.write_text(records.read_text(encoding="utf-8"), encoding="utf-8")
+    _ = batch.write_text(
+        json.dumps(
+            {"category": "Warnings", "body": note, "phase": "implement", "step": "pre-push"},
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     batch_rows = [
         json.loads(line)
         for line in batch.read_text(encoding="utf-8").splitlines()

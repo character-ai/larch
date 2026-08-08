@@ -1,4 +1,6 @@
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 import subprocess
 
@@ -153,18 +155,16 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
         calls.append(args)
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    def fake_subprocess_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    flushes: list[list[str]] = []
+
+    def fake_subprocess_run(*args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        argv: list[str] = [str(part) for part in cast("Sequence[str]", args[0])] if args else []
+        if "execution-issues" in argv:
+            flushes.append(argv[argv.index("execution-issues"):])
+            return subprocess.CompletedProcess(argv, 0, "FLUSH_STATUS=ok\nRECORDS=0\n", "")
         return subprocess.CompletedProcess(["python"], 0, "", "")
 
-    def fake_flush_execution_issues(**_kwargs: object) -> tuple[int, str, int, str]:
-        return 0, "ok", 0, ""
-
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
-    monkeypatch.setattr(
-        step_7a.execution_issues,
-        "flush_execution_issues",
-        fake_flush_execution_issues,
-    )
     monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
 
     status = step_7a._checkpoint_execution_issues(  # pyright: ignore[reportPrivateUsage]
@@ -173,6 +173,38 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
 
     assert status == "ok"
     assert calls == [("token", "mark", "Step 8 — ship PR")]
+    assert flushes == [[
+        "execution-issues", "flush",
+        "--log-root", str(tmp_path / "larch-logs"),
+        "--run-id", "run-1",
+        "--issue-log", str(tmp_path / "execution-issues.md"),
+        "--step-label", "7a",
+        "--source-label", "execution-issues.md Step 7a checkpoint",
+    ]]
+
+
+def test_step7a_checkpoint_reports_degraded_when_the_rust_flush_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = (tmp_path / "execution-issues.md").write_text("### Warnings\n- one\n", encoding="utf-8")
+
+    def fake_subprocess_run(*args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        argv: list[str] = [str(part) for part in cast("Sequence[str]", args[0])] if args else []
+        if "execution-issues" in argv:
+            return subprocess.CompletedProcess(argv, 1, "FLUSH_STATUS=failed\nRECORDS=0\n", "")
+        return subprocess.CompletedProcess(["python"], 0, "", "")
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
+
+    status = step_7a._checkpoint_execution_issues(  # pyright: ignore[reportPrivateUsage]
+        tmp_path, run_id="run-1"
+    )
+
+    assert status == "degraded"
 
 
 def test_step7a_main_empty_tmpdir_argv_falls_back_to_env(
@@ -472,7 +504,6 @@ def test_step7a_does_not_capture_terminal_transcript(tmp_path: Path) -> None:
     with (
         patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
         patch.object(step_7a, "_run_cli", side_effect=fake_run_cli),
-        patch.object(step_7a.execution_issues, "flush_execution_issues", return_value=(0, "ok", 0, "")),
         patch.object(step_7a, "subprocess"),
         patch.object(
             step_7a.rust_runtime,

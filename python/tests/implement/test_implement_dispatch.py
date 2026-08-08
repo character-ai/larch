@@ -526,6 +526,28 @@ def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout
     monkeypatch.setattr(subprocess, "run", selective_run)
 
 
+def _capture_refresh_execution_issues(
+    monkeypatch: pytest.MonkeyPatch, *, rc: int = 0, error: Exception | None = None
+) -> list[list[str]]:
+    """Record the Rust `execution-issues refresh` argv the checkpoint reaches for."""
+    original = subprocess.run
+    calls: list[list[str]] = []
+
+    def selective_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        cmd = [str(part) for part in cast("Sequence[str]", args[0] if args else kwargs.get("args", []))]
+        if "disposition-checkpoint" in " ".join(cmd):
+            return subprocess.CompletedProcess(["checkpoint"], 0, "", "")
+        if "execution-issues" in cmd:
+            if error is not None:
+                raise error
+            calls.append(cmd[cmd.index("execution-issues"):])
+            return subprocess.CompletedProcess(cmd, rc, "REFRESHED=true\n", "")
+        return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
+
+    monkeypatch.setattr(subprocess, "run", selective_run)
+    return calls
+
+
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step2-dispatch")][:2] == ("larch.implement.implement_dispatch", "step2_dispatch_main")
     assert _REGISTRY[("implement", "run-dispatch")][:2] == ("larch.implement.implement_dispatch", "run_dispatch_main")
@@ -556,7 +578,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("ship", "pre-driver")][:2] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
     assert _REGISTRY[("ship", "route-exit")][:2] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
-    assert _REGISTRY[("execution-issues", "flush-safety-net")][:2] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
+    assert ("execution-issues", "flush-safety-net") not in _REGISTRY
 
 
 @pytest.mark.parametrize("tool", ["codex", "cursor"])
@@ -2117,19 +2139,12 @@ def test_step8_oos_checkpoint_success_refreshes_execution_issues(
     run_dir = tmp / "larch-logs" / "implement" / "run"
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _mock_disposition_checkpoint_only(monkeypatch)
-    calls: list[tuple[Path, bool]] = []
-
-    def fake_refresh(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
-        calls.append((implement_tmpdir, best_effort))
-        return 0, True, ""
-
-    monkeypatch.setattr(implement_dispatch.execution_issues, "refresh_execution_issues", fake_refresh)
+    calls = _capture_refresh_execution_issues(monkeypatch, rc=0)
 
     assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
 
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert calls == [(tmp, True)]
+    assert calls == [["execution-issues", "refresh", "--implement-tmpdir", str(tmp), "--best-effort"]]
 
 
 def test_step8_oos_checkpoint_refresh_failure_still_reships(
@@ -2143,13 +2158,7 @@ def test_step8_oos_checkpoint_refresh_failure_still_reships(
     run_dir = tmp / "larch-logs" / "implement" / "run"
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _mock_disposition_checkpoint_only(monkeypatch)
-
-    def fake_refresh(_implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
-        _ = best_effort
-        raise RuntimeError("refresh failed")
-
-    monkeypatch.setattr(implement_dispatch.execution_issues, "refresh_execution_issues", fake_refresh)
+    _ = _capture_refresh_execution_issues(monkeypatch, error=RuntimeError("refresh failed"))
 
     assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
 
@@ -2168,17 +2177,10 @@ def test_step8_oos_checkpoint_stall_does_not_refresh(
         "run",
         lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 1, "", ""),
     )
-    calls: list[Path] = []
-    monkeypatch.setattr(
-        implement_dispatch.execution_issues,
-        "refresh_execution_issues",
-        lambda implement_tmpdir, **_kwargs: calls.append(implement_tmpdir),
-    )
 
     assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
 
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=1\nNEXT_ACTION=stall\n"
-    assert not calls
 
 
 def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pending(

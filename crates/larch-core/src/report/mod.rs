@@ -18,7 +18,7 @@ mod token_scan;
 pub use exec_issue_detail::{
     EMPTY_GROUPS, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN,
     MAX_DISPLAY_LEN, WARN_CATEGORY, build_issue_detail_section, count_issue_groups,
-    count_load_result, execution_issue_identity, load_issue_detail_groups,
+    count_load_result, execution_issue_identity, load_issue_detail_groups, normalize_body_for_hash,
     parse_markdown_execution_issues, render_issue_detail_block, structured_body_dedupe_keys,
 };
 pub use markdown_block::{
