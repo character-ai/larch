@@ -51,6 +51,7 @@ mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
 mod oos_commands;
+mod oos_file_commands;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
@@ -723,6 +724,9 @@ enum OosCommand {
     /// Resolve the gate's inputs from one session directory and record them.
     #[command(name = "disposition-checkpoint", disable_help_flag = true)]
     DispositionCheckpoint(RawCompatibilityArguments),
+    /// File the run's accepted out-of-scope observations as public issues.
+    #[command(disable_help_flag = true)]
+    File(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1266,6 +1270,7 @@ fn run(
             OosCommand::DispositionGate(arguments) => {
                 oos_commands::disposition_gate(&arguments.arguments)
             }
+            OosCommand::File(arguments) => oos_file_commands::file(&arguments.arguments),
             OosCommand::DispositionCheckpoint(arguments) => {
                 oos_commands::disposition_checkpoint(&arguments.arguments)
             }

@@ -15,7 +15,6 @@ import time
 
 from larch.issue import execution_issues
 from larch.issue import file_oos
-from larch.issue import oos_filer
 from larch.implement import ship
 
 # --- foundational helpers and primitives ---

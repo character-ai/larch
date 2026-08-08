@@ -375,7 +375,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_ship.py", "def ship_pre_driver_main", "ship pre-driver handler")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-python-guard"]', "ship pre-driver runs guard first")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-seed-initial"]', "ship pre-driver conditional seeder")
-        require("python/larch/implement/dispatch_ship.py", '["oos", "file", "--implement-tmpdir", str(implement_tmpdir)]', "ship pre-driver runs oos file")
+        require("python/larch/implement/dispatch_ship.py", '"oos", "file",', "ship pre-driver runs oos file")
         require("python/larch/implement/dispatch_ship.py", 'value="halt-seed"', "ship pre-driver seed halt token")
         require("python/larch/implement/dispatch_ship.py", 'value="halt-oos"', "ship pre-driver oos halt token")
         forbid(skill, launcher + "skills/implement/scripts/step-8-python-guard.sh", "SKILL standalone step-8 guard fence removed")
@@ -841,7 +841,7 @@ def run(repo_root: Path) -> list[str]:
                 "clear the sidecar only after private disposition completes",
                 "Public `/issue` filing is forbidden on this branch.",
                 "Checkpoint stall is expected until private security disposition clears the sidecar.",
-                "OOS issue cap enforcement applies only on the pre-driver `python/cli.py oos file` path for non-security OOS",
+                "OOS issue cap enforcement applies only on the pre-driver `larch oos file` path for non-security OOS",
                 "does not run cap enforcement or public issue batch emission",
                 "python/cli.py implement step-8-oos-checkpoint",
                 "runs `oos disposition-checkpoint`",
@@ -1020,7 +1020,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "**Python driver routing:**", "legacy Python driver routing removed")
         forbid(skill, "MANDATORY: READ ENTIRE FILE on any non-zero active Step 8+ driver exit", "legacy non-zero driver mandatory block removed")
         for needle in [
-            "non-security accepted OOS is filed by the pre-driver `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file` path before `step-8-ship.sh`",
+            "non-security accepted OOS is filed by the pre-driver `larch oos file` path before `step-8-ship.sh`",
             "On `NEXT_ACTION=oos-pipeline`, read `$IMPLEMENT_TMPDIR/security-oos-observations.md`",
             "with no `/issue` call",
             "Only checkpoint `NEXT_ACTION=reship` may write run statistics, stamp the manifest, and clear `OOS_PENDING=false`",

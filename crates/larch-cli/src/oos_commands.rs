@@ -68,6 +68,8 @@ const EXECUTION_ISSUES_FILE: &str = "execution-issues.md";
 const CHECKPOINT_STDERR_LOG: &str = "oos-disposition-checkpoint.stderr.log";
 /// Stderr breadcrumb the gate leaves for its caller.
 const GATE_STDERR_LOG: &str = "oos-disposition-gate.stderr.log";
+/// The ledger site every `oos file` tool failure is recorded under.
+pub const FAILURE_SITE: &str = "step-9a1-oos-file";
 
 const MATERIALIZE_USAGE: &str = "usage: cli.py oos materialize-manifest [-h] [--count-only] --manifest-path MANIFEST_PATH --implement-tmpdir IMPLEMENT_TMPDIR";
 const ISSUE_CAP_USAGE: &str =
@@ -87,7 +89,7 @@ const GATE_USAGE: &str = concat!(
 /// The temporary carries the target's own `.tmp` suffix and is removed on every
 /// path, so a failed write never leaves a half-written batch behind and never
 /// leaves the temporary where a later reader could mistake it for output.
-fn atomic_write(target: &Path, text: &str) -> Result<(), String> {
+pub fn atomic_write(target: &Path, text: &str) -> Result<(), String> {
     let temporary = temporary_sibling(target);
     let result = fs::write(&temporary, text)
         .and_then(|()| fs::rename(&temporary, target))
@@ -104,7 +106,7 @@ fn temporary_sibling(target: &Path) -> PathBuf {
 }
 
 /// Append one `### Tool Failures` row to the run's problem ledger.
-fn append_failure_log(log: &Path, site: &str, tool: &str, rc: i32, output: &str) {
+pub fn append_failure_log(log: &Path, site: &str, tool: &str, rc: i32, output: &str) {
     if let Some(parent) = log.parent() {
         let _created = fs::create_dir_all(parent);
     }
@@ -123,7 +125,7 @@ fn append_failure_log(log: &Path, site: &str, tool: &str, rc: i32, output: &str)
 /// privately leaves one breadcrumb rather than one per observation. Recording
 /// is best effort: the owner refuses only when the ledger path is not a regular
 /// file, and materialization must not fail on a hostile session directory.
-fn append_run_log_warning(tmpdir: &Path, entry: &str) {
+pub fn append_run_log_warning(tmpdir: &Path, entry: &str) {
     let _recorded = append_execution_issue(&tmpdir.join(EXECUTION_ISSUES_FILE), "Warnings", entry);
 }
 
@@ -198,7 +200,7 @@ fn read_observation(item: &Value, index: usize) -> ManifestObservation {
 ///
 /// Returns how many observations the manifest carried, which is what the
 /// caller's counter reports whether or not any of them were new.
-fn materialize(manifest: &Path, tmpdir: &Path, count_only: bool) -> Result<usize, String> {
+pub fn materialize(manifest: &Path, tmpdir: &Path, count_only: bool) -> Result<usize, String> {
     let observations = manifest_observations(manifest, count_only)?;
     if count_only || observations.is_empty() {
         return Ok(observations.len());
@@ -315,14 +317,14 @@ pub fn materialize_manifest(arguments: &[OsString]) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 /// Read the per-run cap, refusing every spelling that is not a positive count.
-fn issue_cap_value() -> Result<usize, String> {
+pub fn issue_cap_value() -> Result<usize, String> {
     let raw = env::var("OOS_ISSUES_PER_RUN_CAP").unwrap_or_else(|_missing| "1".to_owned());
     parse_conflict_cap(&raw)
         .ok_or_else(|| "OOS_ISSUES_PER_RUN_CAP must be a positive integer".to_owned())
 }
 
 /// Apply the cap to `input`, writing the result to `output` or back in place.
-fn cap_batch(input: &Path, output: Option<&Path>, cap: usize) -> Result<(), String> {
+pub fn cap_batch(input: &Path, output: Option<&Path>, cap: usize) -> Result<(), String> {
     if !input.is_file() {
         return Err(format!("input file not found: {}", input.display()));
     }
@@ -407,7 +409,7 @@ fn clear_stale_output(input: &Path, output: Option<&Path>) {
 // ---------------------------------------------------------------------------
 
 /// Read one positive cap knob, naming the knob in its refusal.
-fn conflict_cap(name: &str, default: usize) -> Result<usize, String> {
+pub fn conflict_cap(name: &str, default: usize) -> Result<usize, String> {
     let raw = env::var(name).unwrap_or_else(|_missing| default.to_string());
     parse_conflict_cap(&raw)
         .ok_or_else(|| format!("ERROR: {name} must be a positive integer (got: '{raw}')"))
@@ -466,7 +468,7 @@ fn parse_conflict_arguments(arguments: &[OsString]) -> Option<(PathBuf, PathBuf)
 }
 
 /// Plan and write the dependency rows for one batch.
-fn write_conflict_deps(
+pub fn write_conflict_deps(
     input: &Path,
     output: &Path,
     cluster_cap: usize,
@@ -760,7 +762,7 @@ pub fn disposition_gate(arguments: &[OsString]) -> ExitCode {
 /// The legacy grammar is deliberate: these files are written by shell and by
 /// Python across several steps, so a malformed line is skipped rather than
 /// failing the whole read.
-fn read_state(path: &Path) -> Vec<(String, String)> {
+pub fn read_state(path: &Path) -> Vec<(String, String)> {
     let Some(text) = read_universal_newlines(path) else {
         return Vec::new();
     };
@@ -771,7 +773,7 @@ fn read_state(path: &Path) -> Vec<(String, String)> {
 }
 
 /// Return the value of `key` across the run's two state files.
-fn state_value(state: &[(String, String)], key: &str) -> String {
+pub fn state_value(state: &[(String, String)], key: &str) -> String {
     state
         .iter()
         .rev()
@@ -821,7 +823,7 @@ fn resolve_run_id(tmpdir: &Path, state: &[(String, String)]) -> String {
 }
 
 /// Resolve the accepted design artifact in the order the pipeline agreed on.
-fn resolve_design_path(tmpdir: &Path, design_tmpdir: Option<&Path>) -> PathBuf {
+pub fn resolve_design_path(tmpdir: &Path, design_tmpdir: Option<&Path>) -> PathBuf {
     if let Some(design) = design_tmpdir {
         let candidate = design.join("oos-accepted-design.md");
         if candidate.is_file() {
@@ -836,10 +838,10 @@ fn resolve_design_path(tmpdir: &Path, design_tmpdir: Option<&Path>) -> PathBuf {
 }
 
 /// Record one checkpoint refusal in both the breadcrumb and the ledger.
-fn refuse(tmpdir: &Path, site: &str, tool: &str, rc: i32, message: &str) -> ExitCode {
+fn refuse(tmpdir: &Path, site: &str, tool: &str, rc: i32, message: &str) -> u8 {
     let _written = fs::write(tmpdir.join(CHECKPOINT_STDERR_LOG), format!("{message}\n"));
     append_failure_log(&tmpdir.join(EXECUTION_ISSUES_FILE), site, tool, rc, message);
-    ExitCode::from(u8::try_from(rc).unwrap_or(VALIDATION_FAILED_RC))
+    u8::try_from(rc).unwrap_or(VALIDATION_FAILED_RC)
 }
 
 /// Run `oos disposition-checkpoint`.
@@ -859,13 +861,13 @@ pub fn disposition_checkpoint(arguments: &[OsString]) -> ExitCode {
         // parse, so a caller that mis-spelled an option still finds the refusal
         // where it looks for it.
         if let Some(hint) = preparse_tmpdir(arguments) {
-            return refuse(
+            return ExitCode::from(refuse(
                 &hint,
                 "step-8-oos-checkpoint-validation",
                 "oos-disposition-checkpoint",
                 i32::from(VALIDATION_FAILED_RC),
                 "oos-disposition-checkpoint: invalid arguments",
-            );
+            ));
         }
         eprintln!("{CHECKPOINT_USAGE}");
         return ExitCode::from(VALIDATION_FAILED_RC);
@@ -879,7 +881,16 @@ pub fn disposition_checkpoint(arguments: &[OsString]) -> ExitCode {
         .map(PathBuf::from)
         .or_else(|| env::var("DESIGN_TMPDIR").ok().map(PathBuf::from))
         .filter(|path| !path.as_os_str().is_empty());
-    checkpoint(&tmpdir, design_tmpdir.as_deref(), &RepositoryGateGit)
+    ExitCode::from(checkpoint_with(
+        &tmpdir,
+        design_tmpdir.as_deref(),
+        &RepositoryGateGit,
+    ))
+}
+
+/// Evaluate one session directory's OOS disposition against the live clone.
+pub fn checkpoint(tmpdir: &Path, design_tmpdir: Option<&Path>) -> u8 {
+    checkpoint_with(tmpdir, design_tmpdir, &RepositoryGateGit)
 }
 
 /// Recover `--implement-tmpdir` from a command line that did not parse.
@@ -896,7 +907,7 @@ fn preparse_tmpdir(arguments: &[OsString]) -> Option<PathBuf> {
 }
 
 /// Evaluate one session directory's OOS disposition.
-fn checkpoint(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn GateGit) -> ExitCode {
+pub fn checkpoint_with(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn GateGit) -> u8 {
     let mut state = read_state(&tmpdir.join("ship-pr-state.sh"));
     state.extend(read_state(&tmpdir.join("finalize-state.sh")));
     let forked = state_value(&state, "FORKED_TARGET") == "true";
@@ -950,7 +961,7 @@ fn checkpoint(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn GateGit) ->
         }
     }
     if forked || repo_unavailable {
-        return ExitCode::SUCCESS;
+        return 0;
     }
     let inputs = GateInputs {
         accepted: &accepted,
@@ -986,7 +997,7 @@ fn checkpoint(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn GateGit) ->
                 i32::from(GATE_BLOCKED_RC),
                 "",
             );
-            ExitCode::from(GATE_BLOCKED_RC)
+            GATE_BLOCKED_RC
         }
         DispositionState::SecuritySidecarPending => refuse(
             tmpdir,
@@ -995,14 +1006,14 @@ fn checkpoint(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn GateGit) ->
             i32::from(SECURITY_SIDECAR_RC),
             "implement: security sidecar present; non-security OOS disposition cleared, private security disposition still required",
         ),
-        DispositionState::Cleared => ExitCode::SUCCESS,
+        DispositionState::Cleared => 0,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        GateGit, GateInputs, checkpoint, disposition_gate, file_conflict_deps, gate_counters,
+        GateGit, GateInputs, checkpoint_with, disposition_gate, file_conflict_deps, gate_counters,
         issue_cap, materialize_manifest, read_state, resolve_run_id, run_issue_cap,
     };
     use std::ffi::OsString;
@@ -1446,10 +1457,7 @@ mod tests {
             &dir.path().join("ship-pr-state.sh"),
             "FORKED_TARGET=false\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::SUCCESS
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 0);
     }
 
     #[test]
@@ -1460,18 +1468,12 @@ mod tests {
             &dir.path().join("oos-accepted-main-agent.md"),
             "### OOS_1: a\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::SUCCESS
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 0);
         write(
             &dir.path().join("ship-pr-state.sh"),
             "FORKED_TARGET=false\nREPO_UNAVAILABLE=true\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::SUCCESS
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 0);
     }
 
     #[test]
@@ -1485,10 +1487,7 @@ mod tests {
             &dir.path().join("oos-accepted-main-agent.md"),
             "### OOS_1: a\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::from(2)
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 2);
         let breadcrumb =
             fs::read_to_string(dir.path().join("oos-disposition-checkpoint.stderr.log"))
                 .expect("read");
@@ -1510,10 +1509,7 @@ mod tests {
                 .join("larch-logs/implement/run-1/oos-issues.ndjson"),
             "{\"body\": \"nothing\"}\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::from(1)
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 1);
         let gate =
             fs::read_to_string(dir.path().join("oos-disposition-gate.stderr.log")).expect("read");
         assert!(gate.starts_with("oos-disposition-gate: FAIL non_security_oos=1 filed_urls=0"));
@@ -1527,10 +1523,7 @@ mod tests {
             &dir.path().join("security-oos-observations.md"),
             "### Security OOS: x\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::from(3)
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 3);
         let breadcrumb =
             fs::read_to_string(dir.path().join("oos-disposition-checkpoint.stderr.log"))
                 .expect("read");
@@ -1550,10 +1543,7 @@ mod tests {
                 .join("larch-logs/implement/run-2/oos-issues.ndjson"),
             "",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::from(2)
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 2);
         let breadcrumb =
             fs::read_to_string(dir.path().join("oos-disposition-checkpoint.stderr.log"))
                 .expect("read");
@@ -1570,17 +1560,14 @@ mod tests {
             "### OOS_1: a\n",
         );
         assert_eq!(
-            checkpoint(dir.path(), Some(design.path()), &FixedGit::new("")),
-            ExitCode::from(2)
+            checkpoint_with(dir.path(), Some(design.path()), &FixedGit::new("")),
+            2
         );
         write(
             &dir.path().join("design-export/oos-accepted-design.md"),
             "### OOS_1: a\n",
         );
-        assert_eq!(
-            checkpoint(dir.path(), None, &FixedGit::new("")),
-            ExitCode::from(2)
-        );
+        assert_eq!(checkpoint_with(dir.path(), None, &FixedGit::new("")), 2);
     }
 
     #[test]

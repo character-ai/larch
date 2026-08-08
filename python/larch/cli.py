@@ -523,7 +523,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("redact", "scrub-log-secrets"): ("larch.core.redact", "main_scrub_log_secrets", False),
     ("redact", "scrub-submodule-paths"): ("larch.core.redact", "main_scrub_submodule_paths", False),
     ("verify", "skill-called"): ("larch.core.verify_skill", "main", False),
-    ("oos", "file"): ("larch.issue.oos_filer", "cmd_file", True),
     ("stall-recovery", "lint"): ("larch.state.stall_recovery", "lint_main", True),
     ("implement", "step-7a"): ("larch.implement.step_7a", "main", True),
     ("implement", "preflight"): ("larch.implement.preflight", "preflight_main", True),

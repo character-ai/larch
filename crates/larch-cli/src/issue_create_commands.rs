@@ -394,6 +394,43 @@ fn create_refusal(
     CreateFailure::new(&message, code)
 }
 
+/// One in-process create, as its caller composes it.
+///
+/// `create-one` is a command line; this is the same filing for a caller that
+/// already holds the request. Both go through [`plan_create`] and
+/// [`file_issue`], so redaction, the label probe, the live-mutation gate, and
+/// the orphan rollback are the same code on both paths.
+pub struct CreateSpec<'a> {
+    pub title: &'a str,
+    pub title_prefix: &'a str,
+    pub body_file: &'a Path,
+    pub labels: &'a [String],
+    pub repo: &'a str,
+    pub context_file: &'a str,
+    pub run_id: &'a str,
+    pub trusted_root: &'a str,
+}
+
+/// File one issue in process and report its identity or a flat refusal.
+pub fn create_issue(spec: &CreateSpec<'_>) -> Result<CreatedIssue, String> {
+    let arguments = CreateArguments {
+        title: spec.title.to_owned(),
+        title_prefix: spec.title_prefix.to_owned(),
+        labels: spec.labels.to_vec(),
+        body_file: spec.body_file.to_string_lossy().into_owned(),
+        repo: spec.repo.to_owned(),
+        context_file: spec.context_file.to_owned(),
+        run_id: spec.run_id.to_owned(),
+        trusted_root: spec.trusted_root.to_owned(),
+        dry_run: false,
+        operator_invoked: false,
+    };
+    match plan_create(&arguments).map_err(|failure| failure.error)? {
+        CreatePlan::DryRun { .. } => Err("create refused: unexpected dry run".to_owned()),
+        CreatePlan::Live(create) => file_issue(&create).map_err(|failure| failure.error),
+    }
+}
+
 // -------------------------------------------------------- issue write-sentinel
 
 /// Record that one `/issue` run reached its end, atomically.
