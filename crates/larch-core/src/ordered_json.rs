@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{MapAccess, SeqAccess, Visitor},
+    de::{Error as _, MapAccess, SeqAccess, Visitor},
     ser::{SerializeMap, SerializeSeq},
 };
 use serde_json::Number;
@@ -59,11 +59,53 @@ impl<'de> Deserialize<'de> for OrderedJson {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_any(OrderedJsonVisitor)
+        deserializer.deserialize_any(OrderedJsonVisitor {
+            duplicate_policy: DuplicatePolicy::KeepLast,
+        })
     }
 }
 
-struct OrderedJsonVisitor;
+impl OrderedJson {
+    /// Parse JSON while rejecting duplicate object keys at every depth.
+    ///
+    /// The default [`Deserialize`] implementation retains the first key's
+    /// position and its last value, which is appropriate for ordered
+    /// transcript rewrites. Security-sensitive schema parsers can opt into
+    /// this strict variant instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source JSON error when `input` is malformed or contains a
+    /// duplicate object key.
+    pub fn parse_unique(input: &str) -> serde_json::Result<Self> {
+        serde_json::from_str::<UniqueOrderedJson>(input).map(|value| value.0)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DuplicatePolicy {
+    KeepLast,
+    Reject,
+}
+
+struct OrderedJsonVisitor {
+    duplicate_policy: DuplicatePolicy,
+}
+
+struct UniqueOrderedJson(OrderedJson);
+
+impl<'de> Deserialize<'de> for UniqueOrderedJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_any(OrderedJsonVisitor {
+                duplicate_policy: DuplicatePolicy::Reject,
+            })
+            .map(Self)
+    }
+}
 
 impl<'de> Visitor<'de> for OrderedJsonVisitor {
     type Value = OrderedJson;
@@ -142,7 +184,12 @@ impl<'de> Visitor<'de> for OrderedJsonVisitor {
         A: SeqAccess<'de>,
     {
         let mut values = Vec::new();
-        while let Some(value) = sequence.next_element()? {
+        while let Some(value) = match self.duplicate_policy {
+            DuplicatePolicy::KeepLast => sequence.next_element::<OrderedJson>()?,
+            DuplicatePolicy::Reject => sequence
+                .next_element::<UniqueOrderedJson>()?
+                .map(|value| value.0),
+        } {
             values.push(value);
         }
         Ok(OrderedJson::Array(values))
@@ -153,9 +200,19 @@ impl<'de> Visitor<'de> for OrderedJsonVisitor {
         A: MapAccess<'de>,
     {
         let mut values = Vec::new();
-        while let Some((key, value)) = map.next_entry::<String, OrderedJson>()? {
+        while let Some((key, value)) = match self.duplicate_policy {
+            DuplicatePolicy::KeepLast => map.next_entry::<String, OrderedJson>()?,
+            DuplicatePolicy::Reject => map
+                .next_entry::<String, UniqueOrderedJson>()?
+                .map(|(key, value)| (key, value.0)),
+        } {
             if let Some((_, prior)) = values.iter_mut().find(|(prior_key, _)| *prior_key == key) {
-                *prior = value;
+                match self.duplicate_policy {
+                    DuplicatePolicy::KeepLast => *prior = value,
+                    DuplicatePolicy::Reject => {
+                        return Err(A::Error::custom(format!("duplicate JSON key: {key}")));
+                    }
+                }
             } else {
                 values.push((key, value));
             }
@@ -194,5 +251,11 @@ mod tests {
         assert!(
             matches!(&values[1].1, OrderedJson::Number(number) if number.to_string() == "123456789012345678901234567890")
         );
+    }
+
+    #[test]
+    fn strict_parser_rejects_duplicate_keys_at_any_depth() {
+        assert!(OrderedJson::parse_unique(r#"{"outer":{"same":1,"same":2}}"#).is_err());
+        assert!(OrderedJson::parse_unique(r#"[{"same":1,"same":2}]"#).is_err());
     }
 }

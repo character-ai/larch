@@ -60,9 +60,7 @@ const PYTHON_SCOPE_INCLUDES: [&str; 3] = [
     "skills/voter-calibration/scripts/voter-calibration.py",
 ];
 const PYTHON_OWNER: &str = "python/larch/report/run_log_corpus.py";
-const PYTHON_EXEMPTIONS: [&str; 3] = [
-    "python/larch/report/retro_fix_cursor.py",
-    "python/larch/report/retro_v3_sweep.py",
+const PYTHON_EXEMPTIONS: [&str; 1] = [
     "python/larch/report/cleanup_implement_logs.py",
 ];
 const SUPPRESSION_TOKEN: &str = "lint-run-log-corpus-walkers";

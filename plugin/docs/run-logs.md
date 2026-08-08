@@ -36,8 +36,9 @@ corpus.
 
 ## Tool-first layout migration
 
-Issue `character-ai/larch#7966` migrates the retained repository-first S3
-corpora to the tool-first layout:
+Issue `character-ai/larch#8081` owns the Rust command that migrates the
+retained repository-first S3 corpora to the tool-first layout (the historical
+program is #7966):
 
 ```text
 s3://zhupanov/larch/run-logs/

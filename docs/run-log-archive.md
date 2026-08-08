@@ -229,10 +229,10 @@ repair fails. Interrupted download, materialization, promotion, and quarantine
 entries are removed before the next attempt.
 
 Normal synchronization accepts only manifest-bearing archives. It does not read
-a legacy migration descriptor, inventory, or basename-keyed cache. The retained
-legacy descriptor parser is an explicit operator API for the coordinated
-historical migration only; it does not discover repository configuration or
-participate in normal sync.
+a legacy migration descriptor, inventory, or basename-keyed cache. The
+Rust-owned layout migration command retains the descriptor parser as an
+explicit operator API for the coordinated historical migration only; it does
+not discover repository configuration or participate in normal sync.
 
 Cut over while runs are frozen: land and release this runtime, drain v1 pending
 publications, complete and verify the object migration, commit the new config,

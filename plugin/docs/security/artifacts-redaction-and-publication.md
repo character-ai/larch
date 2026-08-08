@@ -241,14 +241,15 @@ Cloud run-log retention is append-only. No shipped runtime deletes or slims
 run-log content, creates a run-log Git branch, commit, push, or pull request,
 or configures remote lifecycle expiration.
 
-The operator-only `run-log migrate-layout` command is a bounded exception for
-creating the tool-first copies required by `character-ai/larch#7966`. Live mode
-accepts only the issue's exact S3 roots. It uses create-only writes, never
-deletes or overwrites remote objects, and verifies every downloaded target.
-Its published report contains identities, hashes, sizes, aggregate counts, and
-fixed status tokens. It excludes credentials, provider diagnostics, archive
-contents, and local absolute paths. The retained old prefixes remain rollback
-evidence until the separate cleanup issue passes its retention gates.
+The Rust-owned, operator-only `run-log migrate-layout` command is a bounded
+exception for creating the tool-first copies required by
+`character-ai/larch#8081`. Live mode accepts only the issue's exact S3 roots.
+It uses create-only writes, never deletes or overwrites remote objects, and
+verifies every downloaded target. Its published report contains identities,
+hashes, sizes, aggregate counts, and fixed status tokens. It excludes
+credentials, provider diagnostics, archive contents, and local absolute paths.
+The retained old prefixes remain rollback evidence until the separate cleanup
+issue passes its retention gates.
 
 The shared Rust run lifecycle, reached only through `scripts/larch.sh`, is the
 sole terminal archive publisher. Specialized
@@ -277,7 +278,7 @@ copied depth and rejects an unsafe or untrimmed artifact instead of copying it.
 
 The complete selection rules, per-round allowlists, batch schemas, and
 retention rules live in [Larch Run Logs](../run-logs.md),
-[Run-log Python CLI contract](../run-log-cli.md), and
+[Run-log CLI contract](../run-log-cli.md), and
 [Run-log batch registry](../run-log-batches.md). Those documents describe what
 is published. This document owns why every transition must stay filtered,
 bounded, and fail-closed.

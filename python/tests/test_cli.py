@@ -147,6 +147,12 @@ def test_run_log_publication_entrypoints_are_retired(verb: str) -> None:
     assert ("run-log", verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("verb", ["migrate-layout", "retro-fix-cursor", "retro-v3-sweep"])
+def test_run_log_historical_maintenance_entrypoints_are_retired(verb: str) -> None:
+    assert ("run-log", verb) not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("run-log", verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize(
     "verb",
     [

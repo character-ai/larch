@@ -705,6 +705,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "run-log",
         "materialize",
     ),
+    CleanInstallCase::new(
+        "clean-install-run-log-migrate-layout",
+        "run-log",
+        "migrate-layout",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-retro-fix-cursor",
+        "run-log",
+        "retro-fix-cursor",
+    ),
+    CleanInstallCase::new(
+        "clean-install-run-log-retro-v3-sweep",
+        "run-log",
+        "retro-v3-sweep",
+    ),
     CleanInstallCase::new("clean-install-run-log-sync", "run-log", "sync"),
     CleanInstallCase::new(
         "clean-install-run-log-validate-run-id",
