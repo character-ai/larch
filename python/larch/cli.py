@@ -147,6 +147,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main", True),
     ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main", True),
     ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main", True),
+    ("architectural-assessment", "final-report-sections"): (
+        "larch.implement.architectural_assessment",
+        "final_report_sections_main",
+        True,
+    ),
     ("architectural-assessment", "sanitize-detail"): (
         "larch.implement.architectural_assessment",
         "sanitize_detail_main",
@@ -538,8 +543,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement-finalize", "postbump"): ("larch.state.finalize", "implement_finalize_postbump_main", True),
     ("implement-finalize", "postmerge"): ("larch.state.finalize", "implement_finalize_postmerge_main", True),
     ("implement-finalize", "teardown"): ("larch.state.finalize", "implement_finalize_teardown_main", True),
-    ("final-report", "write"): ("larch.report.final_report", "write_final_report_main", True),
-    ("final-report", "step18b"): ("larch.report.final_report", "step18b_final_report_main", True),
     ("tracking", "post-issue"): ("larch.git.pr_body", "post_tracking_issue_main", True),
     ("diagram", "code-flow"): ("larch.git.pr_body", "generate_code_flow_diagram_main", True),
     ("render", "run-summary"): ("larch.git.pr_body", "render_run_summary_main", True),

@@ -25,6 +25,14 @@ pub const WARN_CATEGORY: &str = "Warnings";
 pub const MAX_DISPLAY_LEN: usize = 200;
 /// Maximum dedupe-key length before truncation.
 pub const MAX_DEDUPE_KEY_LEN: usize = 500;
+/// Maximum rendered length of one returned materiality assessment.
+pub const MAX_ASSESSMENT_LEN: usize = 260;
+/// Seconds the exec-issue assessment subprocess may run.
+pub const ASSESSMENT_TIMEOUT_SECONDS: u64 = 12;
+/// Default model for the exec-issue materiality assessment.
+pub const DEFAULT_ASSESSMENT_MODEL: &str = "claude-haiku-4-5";
+/// Environment override for the exec-issue assessment model.
+pub const ENV_EXEC_ISSUE_ASSESSMENT_MODEL: &str = "LARCH_EXEC_ISSUE_ASSESSMENT_MODEL";
 
 static BOLD_BULLET_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"^- \*\*([^*]+)\*\*:?(.*)$").expect("static bold bullet regex must compile")
@@ -240,6 +248,18 @@ fn redact_outbound(text: &str) -> String {
     } else {
         scrubbed.trim_end_matches('\n').to_owned()
     }
+}
+
+/// Redact and bound one issue-detail string for an outbound assessment prompt.
+#[must_use]
+pub fn assessment_prompt_text(raw: &str) -> String {
+    truncate(&redact_outbound(raw), MAX_DISPLAY_LEN)
+}
+
+/// Bound one returned assessment sentence to its rendered length.
+#[must_use]
+pub fn assessment_sentence(raw: &str) -> String {
+    truncate(raw, MAX_ASSESSMENT_LEN)
 }
 
 fn display_from_raw(raw: &str) -> String {

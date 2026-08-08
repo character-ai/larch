@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib
 import json
 import os
 import re
@@ -916,63 +915,6 @@ def compose_pr_summary_main(argv: list[str] | None = None) -> int:
         return 2
     return 0
 
-
-# ---------------------------------------------------------------------------
-# Final report compatibility wrappers
-# ---------------------------------------------------------------------------
-
-
-def _final_report_module() -> object:
-    return importlib.import_module("larch.report.final_report")
-
-
-def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-    name = "_final_report_token_fields"
-    return getattr(_final_report_module(), name)(implement_tmpdir, run_id)
-
-
-def _refresh_issue_counts(*, implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
-    name = "_refresh_issue_counts"
-    return getattr(_final_report_module(), name)(implement_tmpdir, run_id)
-
-
-def write_final_report(
-    implement_tmpdir: Path,
-    *,
-    comment_only: bool = False,
-    print_stdout: bool = False,
-    skip_tracking_upsert: bool = False,
-) -> FinalReportResult:
-    delegated = cast(
-        "tuple[int, str, str]",
-        _final_report_module().write_final_report(  # type: ignore[attr-defined]
-            implement_tmpdir,
-            comment_only=comment_only,
-            print_stdout=print_stdout,
-            skip_tracking_upsert=skip_tracking_upsert,
-        ),
-    )
-    exit_code, comment_url, error = delegated
-    return FinalReportResult(exit_code, comment_url, error)
-
-
-def write_final_report_main(argv: list[str] | None = None) -> int:
-    return _final_report_module().write_final_report_main(argv)  # type: ignore[attr-defined]
-
-
-def step18b_final_report(
-    implement_tmpdir: Path,
-    *,
-    step17_emitted: bool | None = None,
-) -> tuple[bool, int, bool, str, str]:
-    return _final_report_module().step18b_final_report(  # type: ignore[attr-defined]
-        implement_tmpdir,
-        step17_emitted=step17_emitted,
-    )
-
-
-def step18b_final_report_main(argv: list[str] | None = None) -> int:
-    return _final_report_module().step18b_final_report_main(argv)  # type: ignore[attr-defined]
 
 def post_tracking_issue(
     implement_tmpdir: Path,

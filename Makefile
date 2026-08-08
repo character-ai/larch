@@ -578,8 +578,10 @@ test-file-failure-report-cross-repo:
 
 
 
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-step-18b-final-report:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k step18b
+	$(HARNESS_MARK) --label $@ -- cargo test -p larch-cli --bin larch final_report_commands
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
@@ -679,7 +681,7 @@ test-step-16-17:
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
 write-final-report-py-harness:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k 'render_run_summary or post_tracking or generate_code_flow'
 
 # Delegation smoke for write-final-report.sh; behavior lives in write-final-report-py-harness.
 write-final-report-bash-harness:

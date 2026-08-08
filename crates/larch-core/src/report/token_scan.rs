@@ -1257,7 +1257,7 @@ pub fn run_log_ledger_path(run_dir: &Path) -> Option<PathBuf> {
     (ledgers.len() == 1).then(|| ledgers.remove(0))
 }
 
-fn is_ledger_name(path: &Path) -> bool {
+pub(super) fn is_ledger_name(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with("larch-tokens-"))

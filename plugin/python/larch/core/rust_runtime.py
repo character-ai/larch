@@ -292,6 +292,47 @@ def normalized_stall_outcome_values(
     return {key: value for key, value in parsed.items() if key in _STALL_OUTCOME_KEYS}
 
 
+@dataclass(frozen=True)
+class FinalReportOutput:
+    """Validated envelope from the Rust-owned ``final-report write`` command."""
+
+    exit_code: int
+    comment_url: str = ""
+    error: str = ""
+
+
+def final_report_write(
+    runner: Runner,
+    *,
+    implement_tmpdir: str,
+    comment_only: bool = False,
+    print_stdout: bool = False,
+    skip_tracking_upsert: bool = False,
+) -> FinalReportOutput:
+    """Invoke the Rust final-report owner and validate its fixed KV envelope."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "final-report",
+        "write",
+        "--implement-tmpdir",
+        implement_tmpdir,
+    ]
+    for flag, enabled in (
+        ("--comment-only", comment_only),
+        ("--print-stdout", print_stdout),
+        ("--skip-tracking-upsert", skip_tracking_upsert),
+    ):
+        if enabled:
+            argv.append(flag)
+    result = runner.run(argv)
+    parsed = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    return FinalReportOutput(
+        exit_code=result.returncode,
+        comment_url=parsed.get("COMMENT_URL", ""),
+        error=parsed.get("ERROR", ""),
+    )
+
+
 def checkpoint_probe(  # noqa: PLR0913 - mirrors the checkpoint-probe CLI arg surface (step, name, forked, base) plus the injected runner
     runner: Runner,
     *,

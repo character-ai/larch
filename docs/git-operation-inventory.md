@@ -69,14 +69,15 @@ python/larch/git/merge.py	later-domain	#7681	fetch,log,show
 python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
+python/larch/implement/architectural_assessment.py	later-domain	#7681	rev-parse
 python/larch/implement/checks_lint_fix.py	later-domain	#7681	checkout,diff,merge-base,reset,rev-parse
 python/larch/implement/checks_result_identity.py	later-domain	#7681	dynamic
-python/larch/implement/rust_ci_selection.py	later-domain	#7681	diff,merge-base,rev-parse
-python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbolic-ref
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
 python/larch/implement/dispatch_recovery.py	later-domain	#7681	rev-parse
 python/larch/implement/dispatch_step2.py	later-domain	#7681	rev-parse
+python/larch/implement/rust_ci_selection.py	later-domain	#7681	diff,merge-base,rev-parse
+python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/analyze_bugs.py	later-domain	#7682	cat-file,diff,diff-tree,fetch,grep,log,merge-base,rev-parse,show
@@ -88,7 +89,6 @@ python/larch/issue/rejected_analysis.py	later-domain	#7682	dynamic
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
-python/larch/report/final_report.py	later-domain	#7683	rev-parse
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic
 python/larch/research/research_eval.py	later-domain	#7684	dynamic

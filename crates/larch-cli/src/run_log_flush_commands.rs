@@ -12,8 +12,8 @@ use std::{
 use larch_adapters::{
     run_log_manifest::{ManifestStore, utc_now}, stall_recovery::normalize_outcome,
 }; use larch_core::{
-    DuplicatePolicy, KvDocument, ManifestDocument, ManifestRecord, ManifestUpdate, ManifestV2Seed,
-    ParseOptions, RecordLabels, RunLogLayout, RunLogSlug, emit_kv, is_terminal_merge_result,
+    ManifestDocument, ManifestRecord, ManifestUpdate, ManifestV2Seed, RecordLabels,
+    RunLogLayout, RunLogSlug, emit_kv, is_terminal_merge_result,
     parse_preterminal_outcome_label, redact,
 }; use serde_json::Value; use sha2::{Digest as _, Sha256}; use tempfile::NamedTempFile;
 use crate::{
@@ -546,13 +546,7 @@ fn write_final_report(
         arguments.push(OsString::from("--strict-stalled-summary"));
     } let cost_overrides = token_cost_overrides(); if cost_overrides != "{}" {
         arguments.extend([OsString::from("--cost-overrides-json"), OsString::from(cost_overrides)]);
-    } let output = run_python_verb(arguments, PYTHON_TIMEOUT)?;
-    let values = parse_kv_output(output.stdout());
-    if output.status().success() && values.get("STATUS").is_some_and(|value| value == "ok") {
-        return Ok(());
-    } Err(values
-        .get("ERROR") .cloned() .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| safe_process_error(&output)))
+    } crate::final_report_commands::write_report(&arguments[2..])
 }
 
 fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), String> {
@@ -1036,12 +1030,6 @@ fn record_terminal_failure(context: &FlushContext, message: &str) {
     ); let _ignored = append_execution_issue(&context.issue_log(), "Tool Failures", &entry);
     let _ignored =
         flush_execution_issues(context, "18", "execution-issues.md terminal snapshot", true);
-}
-
-fn parse_kv_output(bytes: &[u8]) -> BTreeMap<String, String> {
-    KvDocument::parse(&String::from_utf8_lossy(bytes), ParseOptions::legacy())
-        .map(|document| document.select(DuplicatePolicy::Last))
-        .unwrap_or_default()
 }
 
 fn safe_process_error(output: &larch_core::ProcessOutput) -> String {

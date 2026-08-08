@@ -396,8 +396,13 @@ fn terminal_flush_is_complete_atomic_and_idempotent() {
     }
     assert_eq!(
         format!("{:x}", golden.finalize()),
-        "5975e42e3fb5fececfd70a685572991d1a24cb14a9890dc5b4d596e853e948c4",
-        "terminal snapshot bytes drifted from the retired Python owner",
+        "18fb26c1f237f8887839815f3fee0d650faf07ff2133bdd7291c10970a4b08d8",
+        // Re-pinned for issue 8090: the terminal report is Rust-owned, so the
+        // review-phase prefix renders in process instead of through a child
+        // that this sandbox cannot launch, and the priced cost degrades to
+        // `N/A` because the still-Python `token report` verb is unreachable
+        // here. Every other byte is unchanged from the retired Python owner.
+        "terminal snapshot bytes drifted from the Rust final-report owner",
     );
     let second = fixture.terminal();
     assert!(

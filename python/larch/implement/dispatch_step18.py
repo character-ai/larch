@@ -25,7 +25,7 @@ from larch.implement.dispatch_helpers import (
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
 )
-from larch.implement.dispatch_leg import _run_cli_capture, _run_larch_capture
+from larch.implement.dispatch_leg import _run_larch_capture
 from larch.issue import execution_issues
 from larch.report import run_log_batch
 from larch.state import finalize
@@ -427,7 +427,7 @@ def _step18_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
     step18b_err = implement_tmpdir / "step18b-final-report.stderr"
     with contextlib.suppress(OSError):
         step18b_err.write_text("", encoding="utf-8")
-    result = _run_cli_capture([
+    result = _run_larch_capture([
         "final-report", "step18b",
         "--implement-tmpdir", str(implement_tmpdir),
         "--step17-emitted", step17_emitted,
@@ -448,7 +448,7 @@ def _step18_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
         _append_failure_best_effort(
             implement_tmpdir=implement_tmpdir,
             site="Step 18b — final-report",
-            tool="python/cli.py final-report step18b",
+            tool="scripts/larch.sh final-report step18b",
             rc=result.returncode,
             log=step18b_err,
         )

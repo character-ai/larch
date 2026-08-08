@@ -34,6 +34,7 @@ mod drafter_commands;
 mod execution_issue_commands;
 mod external_agent;
 mod external_defaults_commands;
+mod final_report_commands;
 mod git_commands;
 mod github_repository_resolution;
 mod github_service;
@@ -185,6 +186,9 @@ enum Domain {
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
+    /// Terminal `/implement` final-report composition and publication.
+    #[command(subcommand, name = "final-report")]
+    FinalReport(FinalReportCommand),
     /// Token-cost analysis over the synchronized run-log corpus.
     #[command(subcommand, name = "report-tokens")]
     ReportTokens(ReportTokensCommand),
@@ -325,6 +329,16 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum FinalReportCommand {
+    /// Compose and publish the terminal report for one run.
+    #[command(disable_help_flag = true)]
+    Write(RawCompatibilityArguments),
+    /// Refresh the terminal report during Step 18b.
+    #[command(disable_help_flag = true)]
+    Step18b(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1389,6 +1403,14 @@ fn run(
             }
         }),
         Domain::Release(command) => run_release(command),
+        Domain::FinalReport(command) => Ok(match command {
+            FinalReportCommand::Write(arguments) => {
+                final_report_commands::write(&arguments.arguments)
+            }
+            FinalReportCommand::Step18b(arguments) => {
+                final_report_commands::step18b(&arguments.arguments)
+            }
+        }),
         Domain::ReportTokens(command) => Ok(match command {
             ReportTokensCommand::Analyze(arguments) => {
                 report_tokens_commands::analyze(&arguments.arguments)

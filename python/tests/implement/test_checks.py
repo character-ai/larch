@@ -3793,9 +3793,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     lifecycle_consumer = (
         repo_root / "python" / "tests" / "report" / "test_run_lifecycle_consumer.py"
     ).read_text(encoding="utf-8")
-    pr_body_tests = (
-        repo_root / "python" / "tests" / "git" / "test_pr_body.py"
-    ).read_text(encoding="utf-8")
     rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
     python_tests = workflow.split("\n  python-tests:", 1)[1].split(
         "\n  python-rust-integration:", 1
@@ -4165,15 +4162,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap"
         in integration_execution
     )
-    assert (
-        "tests/git/test_pr_body.py::test_write_final_report_renders_panel_failed_merge_downgrade"
-        in integration_execution
-    )
     assert "LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw" in integration_execution
 
     assert "rust_integration: requires the coverage-built Rust larch executable" in python_pyproject
     assert "@pytest.mark.rust_integration\ndef test_consumer_reaches_rust_through_its_bootstrap" in lifecycle_consumer
-    assert "@pytest.mark.rust_integration\ndef test_write_final_report_renders_panel_failed_merge_downgrade" in pr_body_tests
     marker_paths = sorted(
         path.relative_to(repo_root).as_posix()
         for path in (repo_root / "python" / "tests").rglob("test_*.py")
@@ -4183,10 +4175,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
             re.MULTILINE,
         )
     )
-    assert marker_paths == [
-        "python/tests/git/test_pr_body.py",
-        "python/tests/report/test_run_lifecycle_consumer.py",
-    ]
+    assert marker_paths == ["python/tests/report/test_run_lifecycle_consumer.py"]
 
 
 def test_rust_ci_change_selection_rollout_contract() -> None:

@@ -7,19 +7,33 @@
 //! consumer cutover leaves move.
 
 mod exec_issue_detail;
+mod final_report;
 mod markdown_block;
 mod path_warning;
 mod run_log_corpus;
+mod run_summary;
 pub mod timing;
 mod token_cost;
 mod token_report;
 mod token_scan;
 
 pub use exec_issue_detail::{
-    EMPTY_GROUPS, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN,
-    MAX_DISPLAY_LEN, WARN_CATEGORY, build_issue_detail_section, count_issue_groups,
-    count_load_result, execution_issue_identity, load_issue_detail_groups, normalize_body_for_hash,
+    ASSESSMENT_TIMEOUT_SECONDS, DEFAULT_ASSESSMENT_MODEL, EMPTY_GROUPS,
+    ENV_EXEC_ISSUE_ASSESSMENT_MODEL, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult,
+    MAX_ASSESSMENT_LEN, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN, WARN_CATEGORY, assessment_prompt_text,
+    assessment_sentence, build_issue_detail_section, count_issue_groups, count_load_result,
+    execution_issue_identity, load_issue_detail_groups, normalize_body_for_hash,
     parse_markdown_execution_issues, render_issue_detail_block, structured_body_dedupe_keys,
+};
+pub use final_report::{
+    DIFFICULTY_RECORD_BASENAME, LINE_COUNT_STATE_KEYS, MANIFEST_STATUS_DONE,
+    MANIFEST_STATUS_IN_PROGRESS, MERGE_COMPLETED_OUTCOMES, NORMALIZED_OUTCOMES,
+    architectural_section, count_code_review_findings, derive_oos_fields, derive_review_line,
+    difficulty_line, difficulty_summary_line, dynamic_archetypes_line, final_report_duration,
+    join_prefixed_summary, json_object, latest_token_ledger, manifest_only_recovered_outcome,
+    merged_line_count_state, needs_user_execution_entry, outcome_with_manifest_only_backstop,
+    read_state_kv, reconciled_stalled_summary, stalled_summary_manifest_reconciliation_needed,
+    state_file_has_rows, summary_heading_is_stalled, token_argv_from_report,
 };
 pub use markdown_block::{
     BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, replace_markdown_block,
@@ -32,6 +46,10 @@ pub use run_log_corpus::{
     RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
     RunLogTimeWindowError, parse_preterminal_outcome_label, round_number_from_path,
     run_log_batch_spec, run_log_batch_specs,
+};
+pub use run_summary::{
+    GLM_TOKEN_TO_PLAN_DIVISOR, RunSummaryCost, RunSummaryFields, RunSummaryIdentity,
+    map_outcome_display, render_run_summary,
 };
 pub use token_cost::{
     BLENDED_FALLBACK_WARNING, CODEX_MINI_MODELS, CURSOR_COMPOSER_BASE_RATES, CURSOR_GROK_MODELS,

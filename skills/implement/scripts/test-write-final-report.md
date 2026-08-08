@@ -8,12 +8,12 @@ The smoke tests only the wrapper contract:
 
 1. Repository-root fallback when `CLAUDE_PLUGIN_ROOT` is unset.
 2. Explicit `CLAUDE_PLUGIN_ROOT` selection.
-3. Exact `python/cli.py final-report write` routing and argument forwarding.
+3. Exact `scripts/larch.sh final-report write` routing and argument forwarding.
 4. Stdout, stderr, and exit-status passthrough.
 
 ## Behavioral authority
 
-`python/tests/report/test_final_report.py` owns final-report write behavior. It covers the outcome matrix, `--comment-only` preservation of tracked `final-summary.md`, manifest reconcile stamp and failure, upsert and missing-arg failures, token-cost unavailable variants, Claude-subprocess cost lines, force-flag rendering, PR line-count cache/recompute, review-phase live-dir mismatch (#3794), and the happy-path summary shape. Shared renderer and tracking surfaces also live under `python/tests/git/test_pr_body.py` (`render_run_summary`, `post_tracking`, `write_final_report`).
+`crates/larch-cli/tests/final_report.rs` owns final-report write behavior. It covers the outcome matrix, `--comment-only` preservation of tracked `final-summary.md`, manifest reconcile stamp and failure, upsert and missing-arg failures, token-cost unavailable variants, Claude-subprocess cost lines, force-flag rendering, PR line-count cache/recompute, review-phase live-dir mismatch (#3794), and the happy-path summary shape. Shared renderer and tracking surfaces also live under `python/tests/git/test_pr_body.py` (`render_run_summary`, `post_tracking`, `write_final_report`).
 
 ## Assertion parity
 

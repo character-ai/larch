@@ -43,7 +43,7 @@ append_section() {
 # The carve-out list is consumed by every awk program in this script via the
 # CARVE_OUTS environment variable; do NOT hardcode names in additional awk
 # blocks.
-CARVE_OUTS="test-bgjob test-eval-set-structure test-eval-research-baseline-flag test-review-and-fix test-stall-recovery-report test-stall-recovery-report-2 test-stall-recovery-report-3 test-lib-design-tmpdir test-classify-bump test-promote-release test-release-prepare test-release-set-version test-compose-collector-failure-log test-wait-for-reviewers test-classify-diff-mode test-gather-branch-context test-run-external-agent-args test-launch-codex-exec test-launch-drafters test-launch-ci-fixers test-implement-launchers test-run-negotiation-round test-check-reviewers test-degraded-tools-gate test-refresh-run-logs test-capture-session-transcript test-verify-run-log-completeness"
+CARVE_OUTS="test-bgjob test-eval-set-structure test-eval-research-baseline-flag test-review-and-fix test-stall-recovery-report test-stall-recovery-report-2 test-stall-recovery-report-3 test-lib-design-tmpdir test-classify-bump test-promote-release test-release-prepare test-release-set-version test-compose-collector-failure-log test-wait-for-reviewers test-classify-diff-mode test-gather-branch-context test-run-external-agent-args test-launch-codex-exec test-launch-drafters test-launch-ci-fixers test-implement-launchers test-step-18b-final-report test-run-negotiation-round test-check-reviewers test-degraded-tools-gate test-refresh-run-logs test-capture-session-transcript test-verify-run-log-completeness"
 
 # Awk snippet (used as -v CARVE=... -v COVERAGE=... and a BEGIN block) that
 # returns 1 from is_carve_out(name) for any name matching the aggregate, the

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Delegation smoke for write-final-report.sh.
-# Behavioral coverage lives in python/tests/report/test_final_report.py.
+# Behavioral coverage lives in crates/larch-cli/tests/final_report.rs.
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
@@ -11,13 +11,17 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 write_cli() {
     local root=$1
-    mkdir -p "$root/python"
-    cat >"$root/python/cli.py" <<'PY'
+    mkdir -p "$root/scripts"
+    cat >"$root/scripts/larch.sh" <<'SH'
+#!/usr/bin/env bash
+python3 - "$0" "$@" <<'PY'
 import json, os, sys
 from pathlib import Path
-Path(os.environ["WFR_CAPTURE"]).write_text(json.dumps({"program": sys.argv[0], "argv": sys.argv[1:]}), encoding="utf-8")
+Path(os.environ["WFR_CAPTURE"]).write_text(json.dumps({"program": sys.argv[1], "argv": sys.argv[2:]}), encoding="utf-8")
 sys.stdout.write("wrapper stdout\n"); sys.stderr.write("wrapper stderr\n"); raise SystemExit(23)
 PY
+SH
+    chmod +x "$root/scripts/larch.sh"
 }
 
 assert_case() {
@@ -33,7 +37,7 @@ assert_case() {
 import json, sys
 from pathlib import Path
 record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-if Path(record["program"]).resolve() != (Path(sys.argv[2]) / "python" / "cli.py").resolve() or record["argv"] != ["final-report", "write", "--implement-tmpdir", sys.argv[3], "--comment-only"]:
+if Path(record["program"]).resolve() != (Path(sys.argv[2]) / "scripts" / "larch.sh").resolve() or record["argv"] != ["final-report", "write", "--implement-tmpdir", sys.argv[3], "--comment-only"]:
     raise SystemExit(f"unexpected delegation: {record!r}")
 PY
 }

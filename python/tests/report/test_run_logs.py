@@ -16,7 +16,6 @@ import pytest
 from larch.core import rust_runtime
 from larch.core import config
 from larch import io as larch_io
-from larch.report import final_report
 from larch.report import run_log_batch, run_log_commit, run_log_manifest, run_logs
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch, _append_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import tokens
@@ -61,7 +60,7 @@ def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:
 
 def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep Python-only checkpoint tests isolated from the Rust bootstrap."""
-    original_run = final_report.subprocess.run
+    original_run = subprocess.run
 
     def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if "run-log" not in argv or "manifest" not in argv:
@@ -90,7 +89,7 @@ def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(final_report.subprocess, "run", run_manifest_in_process)
+    monkeypatch.setattr(subprocess, "run", run_manifest_in_process)
 
 
 def test_validate_run_id_slug() -> None:
@@ -165,8 +164,6 @@ def test_write_batch_uses_cache_scratch_when_log_root_is_under_repo(
     assert unchanged is False
     assert path.is_file()
     assert cache.is_dir()
-
-
 
 
 def test_capture_transcript_scratch_dir_uses_active_checkout_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,8 +245,6 @@ def test_guideline_outcome_batch_rejects_schema_mismatches(
         )
 
 
-
-
 def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: dict[str, Any] = {}
 
@@ -260,20 +255,6 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     run_log_batch._atomic_write(path=tmp_path / "manifest.json", content="{}")  # pyright: ignore[reportPrivateUsage]
     assert calls["prefix"] == ".manifest-"
     assert calls["nofollow"] is True
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
@@ -385,12 +366,6 @@ def test_manifest_status_read_only_uses_effective_run_id_path(tmp_path: Path) ->
     assert run_log_manifest.manifest_status(ctx) == ""
 
 
-
-
-
-
-
-
 def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -404,15 +379,9 @@ def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
     assert manifest.steps_ran.get("recovered") is True
 
 
-
-
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
     assert not run_logs.path_under_repo(repo_root=tmp_path, rel_path="../outside")
     assert run_logs.path_under_repo(repo_root=tmp_path, rel_path="docs/plan.md")
-
-
-
-
 
 
 def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
@@ -425,257 +394,6 @@ def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
     assert not run_log_batch.is_placeholder_run_id("larch-implement-AbC123")
     assert not run_log_batch.is_placeholder_run_id("run")
     assert not run_log_batch.is_placeholder_run_id("")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@pytest.mark.parametrize("heading_separator", [": ", " — "])
-def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcome(
-    tmp_path: Path,
-    heading_separator: str,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        f"## /implement run run-abc{heading_separator}stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
-
-    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: ✅ DONE" in text
-    assert "- **Outcome**: stalled" not in text
-    assert "- **Outcome**: STALLED" not in text
-    assert "- **Outcome**: ❌ STALLED" not in text
-
-
-def test_manifest_only_stalled_summary_reconciliation_rewrites_uppercase_outcome(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc: stalled\n\n- **Outcome**: STALLED\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
-
-    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: ✅ DONE" in text
-    assert "- **Outcome**: stalled" not in text
-    assert "- **Outcome**: STALLED" not in text
-    assert "- **Outcome**: ❌ STALLED" not in text
-
-
-def test_manifest_only_stalled_summary_reconciliation_rewrites_emoji_outcome(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc: stalled\n\n- **Outcome**: ❌ STALLED\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
-
-    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: ✅ DONE" in text
-    assert "- **Outcome**: stalled" not in text
-    assert "- **Outcome**: STALLED" not in text
-    assert "- **Outcome**: ❌ STALLED" not in text
-
-
-def test_manifest_only_stalled_summary_reconciliation_rewrites_legacy_done_outcome(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc: stalled\n\n- **Outcome**: DONE\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
-
-    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: ✅ DONE" in text
-    assert "- **Outcome**: DONE" not in text
-
-
-def test_manifest_only_stalled_summary_reconciliation_scans_prelude(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "Preface line\n\n## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
-    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
-
-    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert text.startswith("Preface line\n\n")
-    assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: ✅ DONE" in text
-    assert "- **Outcome**: stalled" not in text
-    assert "- **Outcome**: STALLED" not in text
-    assert "- **Outcome**: ❌ STALLED" not in text
-
-
-def test_manifest_only_stalled_summary_outcome_bullet_without_heading_does_not_reconcile(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    body = "Prelude\n\n- **Outcome**: stalled\n- **PR**: #12\n"
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
-
-    assert not final_report.summary_heading_is_stalled(body)
-    heading_index = final_report._summary_stalled_heading_index(  # pyright: ignore[reportPrivateUsage]
-        body.splitlines(keepends=True),
-    )
-    assert heading_index is None
-    assert not final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
-    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
-    assert (run_dir / "final-summary.md").read_text(encoding="utf-8") == body
-
-
-def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_IN_PROGRESS,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-
-    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
-    assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
-
-
-def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
-    tmp_path: Path,
-) -> None:
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    manifest: dict[str, object] = {
-        "schema_version": 2,
-        "skill": "implement",
-        "run_id": "run-abc",
-        "steps_ran": {},
-        "status": config.MANIFEST_STATUS_DONE,
-        "pr_number": 12,
-    }
-    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / "ship-pr-state.sh").write_text("BAIL_REASON=ci-failed\n", encoding="utf-8")
-
-    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
-    assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
@@ -691,8 +409,6 @@ def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_bytes(b"\xff\xfe")
     assert run_log_manifest.read_state_kv(state_file=str(state), key="RUN_ID") == ""
-
-
 
 
 def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
@@ -1121,10 +837,6 @@ def test_debate_append_rejection_preserves_prior_content(
             record_file=str(bad),
         )
     assert path.read_text(encoding="utf-8") == before
-
-
-
-
 
 
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
@@ -1596,18 +1308,6 @@ def test_design_completed_step3_without_plan_review_does_not_reach_round_require
     assert not run_log_manifest._design_plan_review_reached(run_dir)  # pyright: ignore[reportPrivateUsage]
     assert ok is True
     assert missing == []
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
