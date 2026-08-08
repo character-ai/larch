@@ -1158,45 +1158,17 @@ impl TriageSession<'_> {
             .map_err(|error| {
                 TriageError::new(format!("issue snapshot failed: {error}"), EXIT_MUTATION)
             })?;
-        if subject.number != issue || subject.updated_at.is_empty() {
-            return Err(TriageError::new(
-                "issue snapshot is missing required identity fields",
-                EXIT_POSTCONDITION,
-            ));
-        }
-        let expected = format!(
-            "/{}/{}/issues/{issue}",
-            repository.owner(),
-            repository.name()
-        );
-        if url_path(&subject.url).trim_end_matches('/') != expected {
-            return Err(TriageError::new(
-                "issue snapshot repository or issue identity did not match",
-                EXIT_PROTECTED,
-            ));
-        }
         let comments = self
             .service
             .list_comments(repository, issue, self.cancellation)
             .await
             .map_err(|_| TriageError::new("issue comments could not be read", EXIT_PROTECTED))?;
-        Ok(TriageSnapshot {
-            snapshot: IssueMutationSnapshot {
-                repository: repository.clone(),
-                issue,
-                title: subject.title,
-                body: subject.body,
-                labels: subject
-                    .labels
-                    .iter()
-                    .map(|label| label.name.clone())
-                    .collect(),
-                state: subject.state,
-                updated_at: subject.updated_at,
-            },
-            url: subject.url,
-            comments: comments.into_iter().map(|comment| comment.body).collect(),
-        })
+        compose_snapshot(
+            repository,
+            issue,
+            subject,
+            comments.into_iter().map(|comment| comment.body).collect(),
+        )
     }
 
     /// Refuse the whole verdict when the first snapshot is not mutable.
@@ -1232,24 +1204,7 @@ impl TriageSession<'_> {
         allow_stale_title: bool,
     ) -> Result<TriageSnapshot, TriageError> {
         let current = self.read_snapshot(self.request.issue).await?;
-        if current.updated_at() != snapshot.updated_at() {
-            return Err(TriageError::new(
-                "issue changed before the next mutation",
-                EXIT_STALE,
-            ));
-        }
-        if is_security_sensitive(&current) {
-            return Err(TriageError::new(
-                "security-sensitive issue cannot be mutated publicly",
-                EXIT_PROTECTED,
-            ));
-        }
-        if has_protected_state(&current, allow_stale_title)? {
-            return Err(TriageError::new(
-                "issue has protected lifecycle state",
-                EXIT_PROTECTED,
-            ));
-        }
+        recheck_verdict(&current, snapshot, allow_stale_title)?;
         Ok(current)
     }
 
@@ -1259,56 +1214,19 @@ impl TriageSession<'_> {
         previous: &TriageSnapshot,
     ) -> Result<TriageSnapshot, TriageError> {
         let current = self.read_snapshot(self.request.issue).await?;
-        if current.updated_at() == previous.updated_at() {
-            return Err(TriageError::new(
-                "mutation did not advance the issue snapshot",
-                EXIT_POSTCONDITION,
-            ));
-        }
+        advanced(&current, previous)?;
         Ok(current)
     }
 
     /// Publish the verified diagnosis into the issue body and tag the title.
     async fn apply_valid(&self, snapshot: TriageSnapshot) -> Result<TriageSnapshot, TriageError> {
-        let block =
-            sanitize_triage_outbound(&self.request.artifact_text, true).map_err(sanitize_error)?;
-        let new_body = replace_triage_block(snapshot.body(), &block)
-            .map_err(|_| TriageError::new("malformed helper-owned triage block", EXIT_PROTECTED))?;
-        let new_title = triaged_title(snapshot.title());
-        if new_body == snapshot.body() && new_title == snapshot.title() {
+        let Some(plan) = plan_valid_update(&snapshot, &self.request.artifact_text)? else {
             return Ok(snapshot);
-        }
+        };
         let snapshot = self.recheck(&snapshot, false).await?;
-        let mut fields = BTreeSet::new();
-        if new_title != snapshot.title() {
-            fields.insert(IssueMutationField::Title);
-        }
-        if new_body != snapshot.body() {
-            fields.insert(IssueMutationField::Body);
-        }
-        self.mutate(&snapshot, |base| IssueMutationRequest {
-            repository: base.snapshot.repository.clone(),
-            issue: base.snapshot.issue,
-            expected_updated_at: base.snapshot.updated_at.clone(),
-            expected_state: base.snapshot.state,
-            fields: fields.clone(),
-            title: (new_title != base.snapshot.title).then(|| new_title.clone()),
-            body: (new_body != base.snapshot.body).then(|| new_body.clone()),
-            labels: None,
-            marker: None,
-            lease: None,
-        })
-        .await?;
+        self.mutate(&valid_mutation(&snapshot, &plan)).await?;
         let current = self.read_after_mutation(&snapshot).await?;
-        if current.body() != new_body
-            || current.title() != new_title
-            || current.snapshot.state != GitHubIssueState::Open
-        {
-            return Err(TriageError::new(
-                "triage body update failed exact read-back",
-                EXIT_POSTCONDITION,
-            ));
-        }
+        valid_read_back(&current, &plan)?;
         Ok(current)
     }
 
@@ -1327,22 +1245,10 @@ impl TriageSession<'_> {
             self.verify_canonical(canonical).await?;
             snapshot = self.recheck(&snapshot, true).await?;
         }
-        let marker = format!(
-            "{TRIAGE_VERDICT_COMMENT_PREFIX}{} -->",
-            self.request.verdict
-        );
-        let mut comment =
-            sanitize_triage_outbound(&self.request.artifact_text, false).map_err(sanitize_error)?;
-        if let Some(canonical) = self
-            .request
-            .canonical
-            .filter(|_| self.request.verdict == "duplicate")
-            && !comment.contains(&format!("#{canonical}"))
-        {
-            comment = format!("Duplicate of #{canonical}.\n\n{comment}");
-        }
-        let published = format!("{marker}\n{}", comment.trim());
-        snapshot = self.ensure_comment(snapshot, &marker, &published).await?;
+        let plan = plan_close_comment(self.request)?;
+        snapshot = self
+            .ensure_comment(snapshot, &plan.marker, &plan.published)
+            .await?;
         snapshot = self.restore_title(snapshot).await?;
         snapshot = self.recheck(&snapshot, true).await?;
         self.owner
@@ -1359,12 +1265,7 @@ impl TriageSession<'_> {
                 )
             })?;
         let current = self.read_after_mutation(&snapshot).await?;
-        if current.snapshot.state != GitHubIssueState::Closed {
-            return Err(TriageError::new(
-                "issue close failed state/reason read-back",
-                EXIT_POSTCONDITION,
-            ));
-        }
+        close_read_back(&current)?;
         Ok(current)
     }
 
@@ -1377,15 +1278,7 @@ impl TriageSession<'_> {
             ));
         }
         let duplicate = self.read_snapshot(canonical).await?;
-        if duplicate.snapshot.issue != canonical
-            || duplicate.snapshot.state != GitHubIssueState::Open
-        {
-            return Err(TriageError::new(
-                "canonical duplicate could not be verified",
-                EXIT_PROTECTED,
-            ));
-        }
-        Ok(())
+        canonical_is_open(&duplicate, canonical)
     }
 
     /// Publish the verdict comment exactly once, proving it by read-back.
@@ -1395,18 +1288,8 @@ impl TriageSession<'_> {
         marker: &str,
         published: &str,
     ) -> Result<TriageSnapshot, TriageError> {
-        if snapshot.comments.iter().any(|body| body == published) {
+        if classify_comment(&snapshot.comments, marker, published)? == CommentAction::Present {
             return Ok(snapshot);
-        }
-        if snapshot
-            .comments
-            .iter()
-            .any(|body| body.starts_with(marker))
-        {
-            return Err(TriageError::new(
-                "conflicting triage verdict marker already exists",
-                EXIT_POSTCONDITION,
-            ));
         }
         let snapshot = self.recheck(&snapshot, true).await?;
         self.service
@@ -1424,35 +1307,17 @@ impl TriageSession<'_> {
                 )
             })?;
         let current = self.read_after_mutation(&snapshot).await?;
-        if !current.comments.iter().any(|body| body == published) {
-            return Err(TriageError::new(
-                "triage comment failed exact read-back",
-                EXIT_POSTCONDITION,
-            ));
-        }
+        comment_read_back(&current, published)?;
         Ok(current)
     }
 
     /// Peel a stale lifecycle prefix off a title before the issue is closed.
     async fn restore_title(&self, snapshot: TriageSnapshot) -> Result<TriageSnapshot, TriageError> {
-        let restored = strip_triage_lifecycle_prefixes(snapshot.title());
-        if restored == snapshot.title() {
+        let Some(restored) = restored_title(snapshot.title()) else {
             return Ok(snapshot);
-        }
+        };
         let snapshot = self.recheck(&snapshot, true).await?;
-        self.mutate(&snapshot, |base| IssueMutationRequest {
-            repository: base.snapshot.repository.clone(),
-            issue: base.snapshot.issue,
-            expected_updated_at: base.snapshot.updated_at.clone(),
-            expected_state: base.snapshot.state,
-            fields: BTreeSet::from([IssueMutationField::Title]),
-            title: Some(restored.clone()),
-            body: None,
-            labels: None,
-            marker: None,
-            lease: None,
-        })
-        .await?;
+        self.mutate(&title_mutation(&snapshot, &restored)).await?;
         let current = self.read_after_mutation(&snapshot).await?;
         if current.title() != restored {
             return Err(TriageError::new(
@@ -1464,18 +1329,283 @@ impl TriageSession<'_> {
     }
 
     /// Drive one compare-and-swap through the shared issue-mutation owner.
-    async fn mutate(
-        &self,
-        snapshot: &TriageSnapshot,
-        build: impl FnOnce(&TriageSnapshot) -> IssueMutationRequest,
-    ) -> Result<(), TriageError> {
+    ///
+    /// The command line already passed the live-mutation gate, so the owner's
+    /// own check is satisfied here in operator mode rather than re-deriving a
+    /// session context this verb never receives.
+    async fn mutate(&self, request: &IssueMutationRequest) -> Result<(), TriageError> {
         let authorization = authorization_request("", "", "", true);
         self.owner
-            .apply(self.cancellation, &authorization, &build(snapshot))
+            .apply(self.cancellation, &authorization, request)
             .await
             .map(|_| ())
             .map_err(|error| TriageError::new(error.to_string(), EXIT_MUTATION))
     }
+}
+
+// ------------------------------------------------------- verdict decisions
+//
+// Every judgement one verdict makes lives here as a pure function over the
+// snapshot it read, so the session above is only the request order and the
+// `.await` points. That keeps the fail-closed rules — freshness, security,
+// idempotency, and every read-back proof — readable and directly testable.
+
+/// Compose one canonical snapshot, proving it names the requested issue.
+fn compose_snapshot(
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+    subject: larch_core::GitHubIssue,
+    comments: Vec<String>,
+) -> Result<TriageSnapshot, TriageError> {
+    if subject.number != issue || subject.updated_at.is_empty() {
+        return Err(TriageError::new(
+            "issue snapshot is missing required identity fields",
+            EXIT_POSTCONDITION,
+        ));
+    }
+    let expected = format!(
+        "/{}/{}/issues/{issue}",
+        repository.owner(),
+        repository.name()
+    );
+    if url_path(&subject.url).trim_end_matches('/') != expected {
+        return Err(TriageError::new(
+            "issue snapshot repository or issue identity did not match",
+            EXIT_PROTECTED,
+        ));
+    }
+    Ok(TriageSnapshot {
+        snapshot: IssueMutationSnapshot {
+            repository: repository.clone(),
+            issue,
+            title: subject.title,
+            body: subject.body,
+            labels: subject
+                .labels
+                .iter()
+                .map(|label| label.name.clone())
+                .collect(),
+            state: subject.state,
+            updated_at: subject.updated_at,
+        },
+        url: subject.url,
+        comments,
+    })
+}
+
+/// The body, title, and fields one `valid` verdict would publish.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ValidPlan {
+    body: String,
+    title: String,
+    fields: BTreeSet<IssueMutationField>,
+}
+
+/// Compose the `valid` update, or report that the issue already carries it.
+fn plan_valid_update(
+    snapshot: &TriageSnapshot,
+    artifact: &str,
+) -> Result<Option<ValidPlan>, TriageError> {
+    let block = sanitize_triage_outbound(artifact, true).map_err(sanitize_error)?;
+    let body = replace_triage_block(snapshot.body(), &block)
+        .map_err(|_| TriageError::new("malformed helper-owned triage block", EXIT_PROTECTED))?;
+    let title = triaged_title(snapshot.title());
+    if body == snapshot.body() && title == snapshot.title() {
+        return Ok(None);
+    }
+    let mut fields = BTreeSet::new();
+    if title != snapshot.title() {
+        fields.insert(IssueMutationField::Title);
+    }
+    if body != snapshot.body() {
+        fields.insert(IssueMutationField::Body);
+    }
+    Ok(Some(ValidPlan {
+        body,
+        title,
+        fields,
+    }))
+}
+
+/// Build the compare-and-swap the `valid` plan swaps against.
+fn valid_mutation(snapshot: &TriageSnapshot, plan: &ValidPlan) -> IssueMutationRequest {
+    IssueMutationRequest {
+        repository: snapshot.snapshot.repository.clone(),
+        issue: snapshot.snapshot.issue,
+        expected_updated_at: snapshot.snapshot.updated_at.clone(),
+        expected_state: snapshot.snapshot.state,
+        fields: plan.fields.clone(),
+        title: plan
+            .fields
+            .contains(&IssueMutationField::Title)
+            .then(|| plan.title.clone()),
+        body: plan
+            .fields
+            .contains(&IssueMutationField::Body)
+            .then(|| plan.body.clone()),
+        labels: None,
+        marker: None,
+        lease: None,
+    }
+}
+
+/// Build the title-only compare-and-swap a stale prefix restoration swaps against.
+fn title_mutation(snapshot: &TriageSnapshot, title: &str) -> IssueMutationRequest {
+    IssueMutationRequest {
+        repository: snapshot.snapshot.repository.clone(),
+        issue: snapshot.snapshot.issue,
+        expected_updated_at: snapshot.snapshot.updated_at.clone(),
+        expected_state: snapshot.snapshot.state,
+        fields: BTreeSet::from([IssueMutationField::Title]),
+        title: Some(title.to_owned()),
+        body: None,
+        labels: None,
+        marker: None,
+        lease: None,
+    }
+}
+
+/// Prove the published issue carries exactly the planned body, title, and state.
+fn valid_read_back(current: &TriageSnapshot, plan: &ValidPlan) -> Result<(), TriageError> {
+    if current.body() != plan.body
+        || current.title() != plan.title
+        || current.snapshot.state != GitHubIssueState::Open
+    {
+        return Err(TriageError::new(
+            "triage body update failed exact read-back",
+            EXIT_POSTCONDITION,
+        ));
+    }
+    Ok(())
+}
+
+/// The marker and the exact comment body one close verdict would publish.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClosePlan {
+    marker: String,
+    published: String,
+}
+
+/// Compose the marked verdict comment, naming the canonical duplicate once.
+fn plan_close_comment(request: &ApplyRequest) -> Result<ClosePlan, TriageError> {
+    let marker = format!("{TRIAGE_VERDICT_COMMENT_PREFIX}{} -->", request.verdict);
+    let mut comment =
+        sanitize_triage_outbound(&request.artifact_text, false).map_err(sanitize_error)?;
+    if let Some(canonical) = request.canonical.filter(|_| request.verdict == "duplicate")
+        && !comment.contains(&format!("#{canonical}"))
+    {
+        comment = format!("Duplicate of #{canonical}.\n\n{comment}");
+    }
+    let published = format!("{marker}\n{}", comment.trim());
+    Ok(ClosePlan { marker, published })
+}
+
+/// Whether the verdict comment still has to be published.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommentAction {
+    /// The exact comment is already published, so the step is a no-op.
+    Present,
+    /// No comment carries the marker yet.
+    Publish,
+}
+
+/// Decide whether to publish the verdict comment, or refuse a conflicting one.
+///
+/// A different comment already carrying this verdict's marker means another
+/// writer reached the issue first, and overwriting or duplicating it would lose
+/// that verdict, so the whole apply refuses.
+fn classify_comment(
+    comments: &[String],
+    marker: &str,
+    published: &str,
+) -> Result<CommentAction, TriageError> {
+    if comments.iter().any(|body| body == published) {
+        return Ok(CommentAction::Present);
+    }
+    if comments.iter().any(|body| body.starts_with(marker)) {
+        return Err(TriageError::new(
+            "conflicting triage verdict marker already exists",
+            EXIT_POSTCONDITION,
+        ));
+    }
+    Ok(CommentAction::Publish)
+}
+
+/// Prove the published comment came back byte for byte.
+fn comment_read_back(current: &TriageSnapshot, published: &str) -> Result<(), TriageError> {
+    if current.comments.iter().any(|body| body == published) {
+        return Ok(());
+    }
+    Err(TriageError::new(
+        "triage comment failed exact read-back",
+        EXIT_POSTCONDITION,
+    ))
+}
+
+/// Return the title with every stale lifecycle prefix peeled, when that changes it.
+fn restored_title(title: &str) -> Option<String> {
+    let restored = strip_triage_lifecycle_prefixes(title);
+    (restored != title).then_some(restored)
+}
+
+/// Re-prove freshness, classification, and lifecycle state before a mutation.
+fn recheck_verdict(
+    current: &TriageSnapshot,
+    previous: &TriageSnapshot,
+    allow_stale_title: bool,
+) -> Result<(), TriageError> {
+    if current.updated_at() != previous.updated_at() {
+        return Err(TriageError::new(
+            "issue changed before the next mutation",
+            EXIT_STALE,
+        ));
+    }
+    if is_security_sensitive(current) {
+        return Err(TriageError::new(
+            "security-sensitive issue cannot be mutated publicly",
+            EXIT_PROTECTED,
+        ));
+    }
+    if has_protected_state(current, allow_stale_title)? {
+        return Err(TriageError::new(
+            "issue has protected lifecycle state",
+            EXIT_PROTECTED,
+        ));
+    }
+    Ok(())
+}
+
+/// Prove the mutation advanced the issue's own timestamp.
+fn advanced(current: &TriageSnapshot, previous: &TriageSnapshot) -> Result<(), TriageError> {
+    if current.updated_at() == previous.updated_at() {
+        return Err(TriageError::new(
+            "mutation did not advance the issue snapshot",
+            EXIT_POSTCONDITION,
+        ));
+    }
+    Ok(())
+}
+
+/// Prove the close landed.
+fn close_read_back(current: &TriageSnapshot) -> Result<(), TriageError> {
+    if current.snapshot.state == GitHubIssueState::Closed {
+        return Ok(());
+    }
+    Err(TriageError::new(
+        "issue close failed state/reason read-back",
+        EXIT_POSTCONDITION,
+    ))
+}
+
+/// Prove the cited canonical duplicate is the open issue it claims to be.
+fn canonical_is_open(duplicate: &TriageSnapshot, canonical: u64) -> Result<(), TriageError> {
+    if duplicate.snapshot.issue == canonical && duplicate.snapshot.state == GitHubIssueState::Open {
+        return Ok(());
+    }
+    Err(TriageError::new(
+        "canonical duplicate could not be verified",
+        EXIT_PROTECTED,
+    ))
 }
 
 /// Return whether the issue reads as a security report anywhere.
@@ -1532,11 +1662,20 @@ fn url_path(url: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        TriageSnapshot, flat, github_slug, has_protected_state, is_security_sensitive,
-        is_utc_timestamp, pull_request_head, url_path,
+        ApplyRequest, CommentAction, EXIT_POSTCONDITION, EXIT_PROTECTED, EXIT_REDACTION,
+        EXIT_STALE, TriageSnapshot, advanced, canonical_duplicate, canonical_is_open,
+        classify_comment, close_read_back, comment_read_back, compose_snapshot, flat, github_slug,
+        has_protected_state, is_security_sensitive, is_utc_timestamp, plan_close_comment,
+        plan_valid_update, pull_request_head, recheck_verdict, restored_title, title_mutation,
+        url_path, valid_mutation, valid_read_back,
     };
-    use larch_core::{DONE_PREFIX, GitHubIssueState, GitHubRepositoryRef, IssueMutationSnapshot};
-    use std::collections::BTreeSet;
+    use crate::argparse_compat::parse_with_flags;
+    use larch_core::{
+        BUG_PREFIX, DONE_PREFIX, GitHubIssue, GitHubIssueState, GitHubLabel, GitHubRepositoryRef,
+        IssueMutationField, IssueMutationSnapshot, TRIAGE_MARKER_END, TRIAGE_MARKER_START,
+        TRIAGED_TAG,
+    };
+    use std::{collections::BTreeSet, ffi::OsString};
 
     fn snapshot(title: &str, body: &str, labels: &[&str], comments: &[&str]) -> TriageSnapshot {
         TriageSnapshot {
@@ -1555,6 +1694,325 @@ mod tests {
             url: "https://github.com/owner/repo/issues/7".to_owned(),
             comments: comments.iter().map(|body| (*body).to_owned()).collect(),
         }
+    }
+
+    fn repository() -> GitHubRepositoryRef {
+        GitHubRepositoryRef::new("owner", "repo").expect("a usable slug")
+    }
+
+    fn subject(number: u64, url: &str) -> GitHubIssue {
+        GitHubIssue {
+            id: 1,
+            number,
+            title: "Bug report".to_owned(),
+            body: "Original report".to_owned(),
+            state: GitHubIssueState::Open,
+            url: url.to_owned(),
+            author: "reporter".to_owned(),
+            labels: vec![GitHubLabel {
+                id: 2,
+                name: "bug".to_owned(),
+                color: String::new(),
+                description: String::new(),
+            }],
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: "2026-07-12T10:00:00Z".to_owned(),
+            is_pull_request: false,
+        }
+    }
+
+    fn request(verdict: &str, artifact: &str, canonical: Option<u64>) -> ApplyRequest {
+        ApplyRequest {
+            issue: 7,
+            repository: repository(),
+            verdict: verdict.to_owned(),
+            expected_updated_at: "2026-07-12T10:00:00Z".to_owned(),
+            artifact_text: artifact.to_owned(),
+            canonical,
+        }
+    }
+
+    fn moved(snapshot: &TriageSnapshot, updated_at: &str) -> TriageSnapshot {
+        let mut moved = snapshot.clone();
+        moved.snapshot.updated_at = updated_at.to_owned();
+        moved
+    }
+
+    #[test]
+    fn a_snapshot_is_composed_only_from_a_matching_identity() {
+        let composed = compose_snapshot(
+            &repository(),
+            7,
+            subject(7, "https://github.com/owner/repo/issues/7"),
+            vec!["hello".to_owned()],
+        )
+        .unwrap_or_else(|_| panic!("a matching identity"));
+
+        assert_eq!(composed.title(), "Bug report");
+        assert_eq!(
+            composed.snapshot.labels.iter().next().map(String::as_str),
+            Some("bug")
+        );
+        assert_eq!(composed.comments, vec!["hello".to_owned()]);
+        // A different issue number, an absent timestamp, and a URL naming
+        // another repository each refuse rather than mutate the wrong issue.
+        assert_eq!(
+            compose_snapshot(
+                &repository(),
+                8,
+                subject(7, "https://github.com/owner/repo/issues/7"),
+                Vec::new()
+            )
+            .unwrap_err()
+            .code,
+            EXIT_POSTCONDITION
+        );
+        let mut undated = subject(7, "https://github.com/owner/repo/issues/7");
+        undated.updated_at = String::new();
+        assert_eq!(
+            compose_snapshot(&repository(), 7, undated, Vec::new())
+                .unwrap_err()
+                .code,
+            EXIT_POSTCONDITION
+        );
+        assert_eq!(
+            compose_snapshot(
+                &repository(),
+                7,
+                subject(7, "https://github.com/other/repo/issues/7"),
+                Vec::new()
+            )
+            .unwrap_err()
+            .code,
+            EXIT_PROTECTED
+        );
+    }
+
+    #[test]
+    fn a_valid_plan_splices_the_block_and_tags_the_title() {
+        let base = snapshot(&format!("{BUG_PREFIX} Crash"), "Original report", &[], &[]);
+        let plan = plan_valid_update(&base, "## Summary\n\nCorrected.")
+            .unwrap_or_else(|_| panic!("a usable artifact"))
+            .unwrap_or_else(|| panic!("a change"));
+
+        assert_eq!(plan.title, format!("{BUG_PREFIX} {TRIAGED_TAG} Crash"));
+        assert!(
+            plan.body.starts_with("Original report\n\n"),
+            "{}",
+            plan.body
+        );
+        assert!(plan.body.contains(TRIAGE_MARKER_START), "{}", plan.body);
+        assert!(plan.body.contains(TRIAGE_MARKER_END), "{}", plan.body);
+        assert_eq!(
+            plan.fields,
+            BTreeSet::from([IssueMutationField::Title, IssueMutationField::Body])
+        );
+
+        // The write is idempotent: re-running against the published issue plans
+        // no mutation at all.
+        let published = snapshot(&plan.title, &plan.body, &[], &[]);
+        assert_eq!(
+            plan_valid_update(&published, "## Summary\n\nCorrected."),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn a_valid_plan_refuses_a_malformed_body_and_a_multi_block_artifact() {
+        let broken = snapshot("x", &format!("half {TRIAGE_MARKER_START}"), &[], &[]);
+        assert_eq!(
+            plan_valid_update(&broken, "notes").unwrap_err().code,
+            EXIT_PROTECTED
+        );
+        let base = snapshot("x", "report", &[], &[]);
+        let two_blocks = format!("lead {TRIAGE_MARKER_START}\nnotes\n{TRIAGE_MARKER_END}");
+        assert_eq!(
+            plan_valid_update(&base, &two_blocks).unwrap_err().code,
+            EXIT_REDACTION
+        );
+    }
+
+    #[test]
+    fn a_valid_mutation_swaps_only_the_planned_fields() {
+        let base = snapshot("Bug report", "Original report", &[], &[]);
+        let plan = plan_valid_update(&base, "notes")
+            .unwrap_or_else(|_| panic!("a usable artifact"))
+            .unwrap_or_else(|| panic!("a change"));
+        let mutation = valid_mutation(&base, &plan);
+
+        assert_eq!(mutation.issue, 7);
+        assert_eq!(mutation.expected_updated_at, "2026-07-12T10:00:00Z");
+        assert_eq!(mutation.expected_state, GitHubIssueState::Open);
+        assert_eq!(mutation.title.as_deref(), Some(plan.title.as_str()));
+        assert_eq!(mutation.body.as_deref(), Some(plan.body.as_str()));
+        // No named block, no lease, and no labels: this is an ordinary
+        // title-and-body swap the owner validates as one.
+        assert!(mutation.marker.is_none() && mutation.lease.is_none());
+        assert!(mutation.labels.is_none());
+
+        let title_only = title_mutation(&base, "Bug report");
+        assert_eq!(
+            title_only.fields,
+            BTreeSet::from([IssueMutationField::Title])
+        );
+        assert_eq!(title_only.body, None);
+    }
+
+    #[test]
+    fn the_valid_read_back_demands_the_exact_published_state() {
+        let base = snapshot("Bug report", "Original report", &[], &[]);
+        let plan = plan_valid_update(&base, "notes")
+            .unwrap_or_else(|_| panic!("a usable artifact"))
+            .unwrap_or_else(|| panic!("a change"));
+        let published = snapshot(&plan.title, &plan.body, &[], &[]);
+        assert_eq!(valid_read_back(&published, &plan), Ok(()));
+
+        let wrong_body = snapshot(&plan.title, "something else", &[], &[]);
+        assert_eq!(
+            valid_read_back(&wrong_body, &plan).unwrap_err().code,
+            EXIT_POSTCONDITION
+        );
+        let mut closed = published;
+        closed.snapshot.state = GitHubIssueState::Closed;
+        assert_eq!(
+            valid_read_back(&closed, &plan).unwrap_err().code,
+            EXIT_POSTCONDITION
+        );
+    }
+
+    #[test]
+    fn a_close_comment_carries_its_marker_and_names_the_duplicate_once() {
+        let plan = plan_close_comment(&request("already-fixed", "  verified fixed  ", None))
+            .unwrap_or_else(|_| panic!("a usable artifact"));
+        assert_eq!(plan.marker, "<!-- larch:triage-verdict:already-fixed -->");
+        assert_eq!(plan.published, format!("{}\nverified fixed", plan.marker));
+
+        let duplicate = plan_close_comment(&request("duplicate", "same as before", Some(42)))
+            .unwrap_or_else(|_| panic!("a usable artifact"));
+        assert!(
+            duplicate.published.contains("Duplicate of #42."),
+            "{duplicate:?}"
+        );
+
+        // A comment that already names the canonical issue is not prefixed twice.
+        let named = plan_close_comment(&request("duplicate", "same as #42", Some(42)))
+            .unwrap_or_else(|_| panic!("a usable artifact"));
+        assert!(!named.published.contains("Duplicate of #42."), "{named:?}");
+    }
+
+    #[test]
+    fn the_comment_step_is_idempotent_and_refuses_a_conflicting_marker() {
+        let marker = "<!-- larch:triage-verdict:invalid -->";
+        let published = format!("{marker}\nnot a defect");
+        assert_eq!(
+            classify_comment(&[], marker, &published),
+            Ok(CommentAction::Publish)
+        );
+        assert_eq!(
+            classify_comment(std::slice::from_ref(&published), marker, &published),
+            Ok(CommentAction::Present)
+        );
+        let conflicting = format!("{marker}\nsomeone else's verdict");
+        assert_eq!(
+            classify_comment(&[conflicting], marker, &published)
+                .unwrap_err()
+                .code,
+            EXIT_POSTCONDITION
+        );
+    }
+
+    #[test]
+    fn every_read_back_proof_refuses_what_it_cannot_see() {
+        let base = snapshot("x", "y", &[], &["published".to_owned().as_str()]);
+        assert_eq!(comment_read_back(&base, "published"), Ok(()));
+        assert_eq!(
+            comment_read_back(&base, "missing").unwrap_err().code,
+            EXIT_POSTCONDITION
+        );
+        assert_eq!(close_read_back(&base).unwrap_err().code, EXIT_POSTCONDITION);
+        let mut closed = base.clone();
+        closed.snapshot.state = GitHubIssueState::Closed;
+        assert_eq!(close_read_back(&closed), Ok(()));
+        assert_eq!(
+            advanced(&moved(&base, "2026-07-12T11:00:00Z"), &base),
+            Ok(())
+        );
+        assert_eq!(advanced(&base, &base).unwrap_err().code, EXIT_POSTCONDITION);
+        assert_eq!(canonical_is_open(&base, 7), Ok(()));
+        assert_eq!(
+            canonical_is_open(&base, 8).unwrap_err().code,
+            EXIT_PROTECTED
+        );
+        assert_eq!(
+            canonical_is_open(&closed, 7).unwrap_err().code,
+            EXIT_PROTECTED
+        );
+    }
+
+    #[test]
+    fn the_recheck_refuses_a_moved_reclassified_or_protected_issue() {
+        let base = snapshot("Bug report", "report", &[], &[]);
+        assert_eq!(recheck_verdict(&base, &base, false), Ok(()));
+        assert_eq!(
+            recheck_verdict(&moved(&base, "2026-07-12T11:00:00Z"), &base, false)
+                .unwrap_err()
+                .code,
+            EXIT_STALE
+        );
+        let sensitive = snapshot("Bug report", "an RCE in the parser", &[], &[]);
+        assert_eq!(
+            recheck_verdict(&sensitive, &sensitive, true)
+                .unwrap_err()
+                .code,
+            EXIT_PROTECTED
+        );
+        let stale_title = snapshot(&format!("{DONE_PREFIX}Bug report"), "report", &[], &[]);
+        assert_eq!(
+            recheck_verdict(&stale_title, &stale_title, false)
+                .unwrap_err()
+                .code,
+            EXIT_PROTECTED
+        );
+        assert_eq!(recheck_verdict(&stale_title, &stale_title, true), Ok(()));
+    }
+
+    #[test]
+    fn a_canonical_duplicate_must_name_a_positive_issue() {
+        let line = |values: &[&str]| {
+            parse_with_flags(
+                &values.iter().map(OsString::from).collect::<Vec<OsString>>(),
+                &["--canonical-duplicate"],
+                &[],
+                0,
+            )
+        };
+        assert_eq!(canonical_duplicate(&line(&[])), Ok(None));
+        assert_eq!(
+            canonical_duplicate(&line(&["--canonical-duplicate", "42"])),
+            Ok(Some(42))
+        );
+        // `argparse` accepted `0` and a negative number as integers, so the
+        // refusal is the verdict the canonical read would have reported.
+        for unusable in ["0", "-1"] {
+            assert_eq!(
+                canonical_duplicate(&line(&["--canonical-duplicate", unusable]))
+                    .unwrap_err()
+                    .code,
+                EXIT_PROTECTED,
+                "{unusable}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stale_prefix_is_restored_only_when_it_is_present() {
+        assert_eq!(
+            restored_title(&format!("{DONE_PREFIX}Bug report")).as_deref(),
+            Some("Bug report")
+        );
+        assert_eq!(restored_title("Bug report"), None);
     }
 
     #[test]
