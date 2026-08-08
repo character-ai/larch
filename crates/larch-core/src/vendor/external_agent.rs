@@ -394,7 +394,12 @@ fn json_is_falsey(value: &OrderedJson) -> bool {
     }
 }
 
-fn python_json_dumps(value: &OrderedJson) -> Result<String, serde_json::Error> {
+/// Render ordered JSON with the spacing used by Python's default `json.dumps`.
+///
+/// # Errors
+///
+/// Returns a serialization error when an embedded JSON string cannot render.
+pub fn python_json_dumps(value: &OrderedJson) -> Result<String, serde_json::Error> {
     let mut rendered = String::new();
     write_python_json(value, &mut rendered)?;
     Ok(rendered)

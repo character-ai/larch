@@ -52,9 +52,10 @@ mod release_publish;
 mod release_stage;
 mod release_version;
 mod run_lifecycle_commands;
+mod run_log_cleanup_commands;
 mod run_log_commands;
 mod run_log_entry_commands;
-mod run_log_migration_commands;
+pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
@@ -215,6 +216,9 @@ enum RunLogCommand {
     /// Plan, apply, and independently verify the one-time run-log layout migration.
     #[command(name = "migrate-layout", disable_help_flag = true)]
     MigrateLayout(RawCompatibilityArguments),
+    /// Clean redundant artifacts from completed historical implement run logs.
+    #[command(name = "cleanup-implement-logs", disable_help_flag = true)]
+    CleanupImplementLogs(RawCompatibilityArguments),
     /// Publish one immutable completed run archive and verified local cache.
     #[command(name = "publish", disable_help_flag = true)]
     Publish(RawCompatibilityArguments),
@@ -1040,6 +1044,9 @@ fn run(
         }
         Domain::RunLog(RunLogCommand::MigrateLayout(arguments)) => Ok(
             run_log_migration_commands::migrate_layout(&arguments.arguments),
+        ),
+        Domain::RunLog(RunLogCommand::CleanupImplementLogs(arguments)) => Ok(
+            run_log_cleanup_commands::cleanup_implement_logs(&arguments.arguments),
         ),
         Domain::RunLog(RunLogCommand::Publish(arguments)) => {
             Ok(run_log_publication_commands::publish(&arguments.arguments))

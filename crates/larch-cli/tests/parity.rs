@@ -716,6 +716,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "materialize",
     ),
     CleanInstallCase::new(
+        "clean-install-run-log-cleanup-implement-logs",
+        "run-log",
+        "cleanup-implement-logs",
+    ),
+    CleanInstallCase::new(
         "clean-install-run-log-migrate-layout",
         "run-log",
         "migrate-layout",

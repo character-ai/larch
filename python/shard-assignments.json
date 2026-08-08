@@ -186,7 +186,6 @@
   "tests/design/test_clarify.py::test_design_clarify_fetch_failure_tokens_include_summary[clean--unexpected-state]": 10,
   "tests/design/test_clarify.py::test_design_clarify_publish_failure_paths": 18,
   "tests/design/test_clarify.py::test_design_clarify_route_state_failure_is_phase_split": 1,
-  "tests/report/test_cleanup_implement_logs.py::test_strip_tally_body_skips_symlink_escape": 3,
   "tests/test_cli.py::test_all_registry_targets_resolve_to_callable_mains": 10,
   "tests/test_cli.py::test_subprocess_help": 4,
   "tests/test_cli.py::test_subprocess_lint_clean_manifest": 18,

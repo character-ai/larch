@@ -50,7 +50,8 @@ pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
 pub use external_agent::{
     CODEX_POLICY_REJECTION_EXCERPT_BYTES, CODEX_POLICY_REJECTION_TAIL_BYTES,
     CodexSessionParseError, ExternalAuthVerdict, codex_policy_rejection_excerpt,
-    external_auth_verdict, parse_codex_session_id, sanitize_tool_label, strip_codex_config,
+    external_auth_verdict, parse_codex_session_id, python_json_dumps, sanitize_tool_label,
+    strip_codex_config,
 };
 pub use lifecycle::{
     CursorStallRecord, LaunchTimingRecord, SyncLauncherHooks, TimeoutStallRecord, TimingTaskKind,

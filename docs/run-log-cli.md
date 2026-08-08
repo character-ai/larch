@@ -38,6 +38,7 @@ make a log public-safe. See the canonical
 - `run-log migrate-layout plan|apply|verify`
 - `run-log retro-v3-sweep [--root <repo-root>] [--dry-run]`
 - `run-log retro-fix-cursor [--root <repo-root>] [--run-id <id>] [--dry-run]`
+- `run-log cleanup-implement-logs [--execute] [--run-dir <run-dir>]`
 
 The two retro sweeps enumerate only regular files below the configured root;
 they reject a symlinked root or run ID that could escape it. A dry run emits a
@@ -45,6 +46,16 @@ they reject a symlinked root or run ID that could escape it. A dry run emits a
 invocation emits the matching `CHANGED_PATH=` rows before its established
 summary line. Re-running either sweep converges without rewriting already
 correct files.
+
+`run-log cleanup-implement-logs` is an operator-only local cleanup. It uses
+the shared corpus reader below `<cwd>/larch-logs/implement`, and it changes
+only manifest-accepted runs with `status=done`. A present durability marker
+must say `state=committed`; a run configured for publication also requires that
+marker. Partial, active, unpublished, malformed, and symlinked runs are
+skipped. The default dry run emits a `DRY_RUN_PATH=` row for every exact local
+file a live `--execute` invocation would change, while live mode emits the
+matching `CHANGED_PATH=` rows. It never removes a run directory, archive,
+cache entry, or any path outside the configured run-log root.
 
 ## Rust-owned publication and synchronization
 
