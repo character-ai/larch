@@ -8,8 +8,10 @@
 
 mod exec_issue_detail;
 mod markdown_block;
+mod path_warning;
 mod run_log_corpus;
 pub mod timing;
+mod token_scan;
 
 pub use exec_issue_detail::{
     EMPTY_GROUPS, IssueDetail, IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN,
@@ -21,10 +23,23 @@ pub use markdown_block::{
     BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, replace_markdown_block,
     replace_markdown_block_with_warn,
 };
+pub use path_warning::PathWarning;
 pub use run_log_corpus::{
     RunLogBatchArtifact, RunLogBatchMode, RunLogBatchSanitizer, RunLogBatchSpec, RunLogCorpus,
     RunLogCorpusEvent, RunLogCorpusIter, RunLogCorpusWarning, RunLogCorpusWarningKind,
     RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
     RunLogTimeWindowError, parse_preterminal_outcome_label, round_number_from_path,
     run_log_batch_spec, run_log_batch_specs,
+};
+pub use token_scan::{
+    CODEX_IMPLEMENT_RAW_LABEL, CURSOR_IMPLEMENT_RAW_LABEL, IMPLEMENT_STEP2_LABEL,
+    IMPLEMENT_STEP2_PREFIX, TOKEN_VENDORS, TokenCorpusScan, TokenObservation, TokenObservationKind,
+    TokenObservations, TokenPhaseRow, TokenReportError, TokenReportInputs, TokenRunRecord,
+    TokenScanEvent, TokenScanWarning, TokenScanWarningKind, TokenStepMark, TokenUsageRow,
+    TokenVendor, VendorTotals, build_report_from_ledgers, claude_effective_cache_create,
+    claude_usage_rows, effective_vendor_total, full_report, full_report_with_observations,
+    ledger_step_marks, ledger_vendor_rows, parse_epoch, read_ledger, read_report_inputs,
+    report_has_numeric_tokens, resolve_run_report, run_log_ledger_path, run_record, safe_int,
+    summary_report, token_phase_rows, token_report_basename, transcript_sources,
+    vendor_totals_from_report,
 };

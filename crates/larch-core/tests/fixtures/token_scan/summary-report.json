@@ -1,0 +1,30 @@
+{
+  "claude": {
+    "cache_read": 0,
+    "cache_write_1h": 0,
+    "cache_write_5m": 4,
+    "input": 15,
+    "output": 3
+  },
+  "claude_sub": {
+    "cache_read": 3,
+    "cache_write_1h": 0,
+    "cache_write_5m": 9,
+    "input": 70,
+    "output": 13
+  },
+  "claude_sub_ledger_total": 95,
+  "codex": {
+    "cached_input": 501,
+    "input": 1007,
+    "output": 13
+  },
+  "codex_ledger_total": 1521,
+  "cursor": {
+    "cache_read": 2,
+    "input": 20,
+    "output": 5
+  },
+  "cursor_ledger_total": 27,
+  "token_total": 1677
+}

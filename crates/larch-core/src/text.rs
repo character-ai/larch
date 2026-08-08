@@ -1,5 +1,6 @@
 //! Text framing shared by the ported Python line readers.
 
+use serde_json::Value;
 use std::{collections::BTreeSet, fmt::Write as _};
 
 /// Escape non-ASCII scalars in already-serialized JSON text.
@@ -225,6 +226,21 @@ pub fn tail_lines<'a>(lines: &[&'a str], count: usize) -> Vec<&'a str> {
         return lines.to_vec();
     }
     lines[lines.len().saturating_sub(count)..].to_vec()
+}
+
+/// Render one JSON field the way Python's `str(value) if value else ""` did.
+///
+/// The ported readers wrote through `str()` rather than requiring a JSON
+/// string, so a numeric or boolean field still normalizes instead of vanishing,
+/// and every falsy spelling collapses to `""`.
+#[must_use]
+pub fn python_str(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Bool(true)) => "True".to_owned(),
+        Some(Value::Number(number)) if number.as_f64() != Some(0.0) => number.to_string(),
+        _other => String::new(),
+    }
 }
 
 #[cfg(test)]

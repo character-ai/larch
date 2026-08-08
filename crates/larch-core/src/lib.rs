@@ -230,16 +230,25 @@ pub use redaction::{
     redact_run_log_payload, redact_secrets, redact_sensitive_paths,
 };
 pub use report::{
-    BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, EMPTY_GROUPS, IssueDetail,
-    IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN,
-    RunLogBatchArtifact, RunLogBatchMode, RunLogBatchSanitizer, RunLogBatchSpec, RunLogCorpus,
-    RunLogCorpusEvent, RunLogCorpusIter, RunLogCorpusWarning, RunLogCorpusWarningKind,
-    RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
-    RunLogTimeWindowError, WARN_CATEGORY, build_issue_detail_section, count_issue_groups,
-    count_load_result, execution_issue_identity, load_issue_detail_groups,
-    parse_markdown_execution_issues, parse_preterminal_outcome_label, render_issue_detail_block,
-    replace_markdown_block, replace_markdown_block_with_warn, round_number_from_path,
-    run_log_batch_spec, run_log_batch_specs, structured_body_dedupe_keys,
+    BlockMarkers, BlockMarkersError, BlockMarkersErrorKind, CODEX_IMPLEMENT_RAW_LABEL,
+    CURSOR_IMPLEMENT_RAW_LABEL, EMPTY_GROUPS, IMPLEMENT_STEP2_LABEL, IMPLEMENT_STEP2_PREFIX,
+    IssueDetail, IssueDetailGroups, IssueEvent, LoadResult, MAX_DEDUPE_KEY_LEN, MAX_DISPLAY_LEN,
+    PathWarning, RunLogBatchArtifact, RunLogBatchMode, RunLogBatchSanitizer, RunLogBatchSpec,
+    RunLogCorpus, RunLogCorpusEvent, RunLogCorpusIter, RunLogCorpusWarning,
+    RunLogCorpusWarningKind, RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun,
+    RunLogSelection, RunLogTimeWindow, RunLogTimeWindowError, TOKEN_VENDORS, TokenCorpusScan,
+    TokenObservation, TokenObservationKind, TokenObservations, TokenPhaseRow, TokenReportError,
+    TokenReportInputs, TokenRunRecord, TokenScanEvent, TokenScanWarning, TokenScanWarningKind,
+    TokenStepMark, TokenUsageRow, TokenVendor, VendorTotals, WARN_CATEGORY,
+    build_issue_detail_section, build_report_from_ledgers, claude_effective_cache_create,
+    claude_usage_rows, count_issue_groups, count_load_result, effective_vendor_total,
+    execution_issue_identity, full_report, full_report_with_observations, ledger_step_marks,
+    ledger_vendor_rows, load_issue_detail_groups, parse_epoch, parse_markdown_execution_issues,
+    parse_preterminal_outcome_label, read_ledger, read_report_inputs, render_issue_detail_block,
+    replace_markdown_block, replace_markdown_block_with_warn, report_has_numeric_tokens,
+    resolve_run_report, round_number_from_path, run_log_batch_spec, run_log_batch_specs,
+    run_log_ledger_path, run_record, safe_int, structured_body_dedupe_keys, summary_report,
+    token_phase_rows, token_report_basename, transcript_sources, vendor_totals_from_report,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
@@ -405,10 +414,12 @@ pub use vendor_failure::{
     parse_launcher_exit_text, parse_launcher_failure_class, resolve_launcher_exit,
 };
 pub use vendor_model::{
-    CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
-    CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL, CodexModelRole,
-    DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL, ModelArgError, ModelArgResult, ModelTool,
-    claude_model_from_transcript, is_posix_cntrl, resolve_model_args,
+    CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL,
+    CLAUDE_SONNET_4_6_1M_MODEL, CLAUDE_SONNET_4_6_MODEL, CODEX_DEFAULT_MODEL,
+    CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT, CODEX_VOTE_MODEL_DEFAULT,
+    CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL, CodexModelRole, DEBATE_CODEX_MODEL,
+    DEBATE_CURSOR_MODEL, ModelArgError, ModelArgResult, ModelTool, claude_model_from_transcript,
+    claude_sub_default_model, is_posix_cntrl, normalize_claude_ledger_model, resolve_model_args,
     transcript_path_from_claude_source, validate_emitted_token,
 };
 pub use vendor_usage::{

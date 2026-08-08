@@ -1,0 +1,5 @@
+{"type": "assistant", "requestId": "r1", "timestamp": "2026-06-25T00:00:30Z", "message": {"id": "m1", "usage": {"input_tokens": 5, "cache_read_input_tokens": 50, "cache_creation": {"ephemeral_5m_input_tokens": 7, "ephemeral_1h_input_tokens": 2}, "output_tokens": 11, "weird_field": 3}}}
+{"type": "assistant", "requestId": "r1", "timestamp": "2026-06-25T00:00:40Z", "message": {"id": "m1", "usage": {"input_tokens": 6, "output_tokens": 1}}}
+{"type": "assistant", "timestamp": "2026-06-25T00:01:30Z", "attributionSkill": "review", "usage": {"input_tokens": 9, "cache_creation_input_tokens": 4, "output_tokens": 2}}
+{"type": "assistant", "timestamp": "2026-06-25T00:01:31Z", "usage": {"input_tokens": 9, "cache_creation_input_tokens": 4, "output_tokens": 2}}
+{"type": "user", "text": "no usage"}

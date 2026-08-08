@@ -8,7 +8,7 @@
 use crate::{TemporaryRoot, atomic_write_utf8_in, read_kv_raw, read_optional_utf8_lossy};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
-use larch_core::{KvDocument, ParseOptions, ensure_ascii_json};
+use larch_core::{KvDocument, ParseOptions, claude_sub_default_model, ensure_ascii_json};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1735,7 +1735,7 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
             }
             "cursor" => &mut cursor,
             "claude_sub" => match if model.is_empty() {
-                claude_sub_model(&raw)
+                claude_sub_default_model(&raw).to_owned()
             } else {
                 model
             }
@@ -1911,15 +1911,6 @@ fn env_rate_any(names: &[&str], default: f64) -> f64 {
                 .filter(|value| *value > 0.0 && value.is_finite())
         })
         .unwrap_or(default)
-}
-
-fn claude_sub_model(raw: &str) -> String {
-    match raw {
-        "claude_review" | "claude_vote" | "claude_scout" | "claude_draft" | "claude_ci_fix"
-        | "claude_review_fix" => "claude-sonnet-4-6".to_owned(),
-        "claude_lint_fix" => "claude-opus-4-8".to_owned(),
-        _other => "claude-opus-4-8".to_owned(),
-    }
 }
 
 fn format_hms(seconds: Option<i64>) -> String {
