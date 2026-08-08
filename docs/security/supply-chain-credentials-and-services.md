@@ -111,11 +111,11 @@ SHA shape; and compares the executable's reported version. The skip lane
 repeats those checks after artifact handoff. A miss, corruption, or metadata
 mismatch is a `full` selection, never a skipped Rust-policy check.
 
-The initial workflow keeps skip enforcement disabled while its independent
-pull-request observation window is open. Cache restoration and verification do
-not authorize execution by themselves: the effective mode remains `full` until
-a reviewed promotion records the required live evidence. Once enabled, the
-same cache checks are required at both the selection and handoff boundaries.
+Skip enforcement is enabled only after its independent pull-request observation
+window records the required live evidence. Cache restoration and verification
+do not authorize execution by themselves: an unavailable or invalid trusted
+main artifact leaves the effective mode `full`. Once enabled, the same cache
+checks are required at both the selection and handoff boundaries.
 
 ### Release provenance and attestations
 

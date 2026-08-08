@@ -4214,7 +4214,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "runs-on: ubuntu-24.04" in selector_job
     assert "timeout-minutes: 10" in selector_job
     assert 'RUST_CI_PARTIAL_ENFORCEMENT: "false"' in workflow
-    assert 'RUST_CI_SKIP_ENFORCEMENT: "false"' in workflow
+    assert 'RUST_CI_SKIP_ENFORCEMENT: "true"' in workflow
     assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in selector_job
     assert "fetch-depth: 0" in selector_job
     assert "ref: ${{ github.sha }}" in selector_job
@@ -4259,6 +4259,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     ).read_text(encoding="utf-8")
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
     assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
+    assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_partial
     assert "cargo test --doc" in rust_partial
     assert "cargo build --package larch-cli --bin larch --all-features --locked" in rust_partial
     assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
@@ -4298,14 +4299,15 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "residual-secret rescan",
         "redaction failure emits a static",
         "trusted-main-rust-policy",
-        "Both non-full enforcement values are initially `false`",
+        "`RUST_CI_PARTIAL_ENFORCEMENT` remains `false`",
+        "`RUST_CI_SKIP_ENFORCEMENT` is `true`",
     ):
         assert required_detail in workflow_trust
     for required_detail in (
         "Only a successful\nfull `push` to `refs/heads/main` may save it",
         "exact key binds",
         "The skip lane\nrepeats those checks",
-        "skip enforcement disabled",
+        "Skip enforcement is enabled only after",
     ):
         assert required_detail in supply_chain
     for evidence_detail in (
@@ -4313,7 +4315,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "three `partial` and three\n`skip`",
         "zero historical full-backstop failures",
         "not a claim that the final",
-        "The live window is open",
+        "Completed skip observation window",
+        "#8247",
+        "345 seconds, 352 seconds, and 346 seconds",
         "Do not count a label-forced run",
         "#8002",
         "#8039",
