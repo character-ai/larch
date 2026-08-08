@@ -365,7 +365,7 @@ pub use vendor::{
     parse_cursor_model_list, parse_drafter_output, plan_capture_cursor_dirty_baseline,
     plan_contains_standalone_scout_manifest, plan_cursor_result_write, plan_retry_artifact_reset,
     plan_stream_reset, probe_attempt_rc, probe_cache_user, probe_stamp_contents,
-    probe_stamp_file_name, read_codex_prompt_sentinel, render_cap_hit_artifacts,
+    probe_stamp_file_name, python_json_dumps, read_codex_prompt_sentinel, render_cap_hit_artifacts,
     render_clean_readonly_dirty_tree, render_codex_gate_detail, render_codex_prompt_sidecar,
     render_cursor_degraded_diag, render_cursor_empty_response, render_cursor_no_work_diag,
     render_cursor_stall_json, render_drafter_dirty_tree, render_drafter_status,

@@ -336,13 +336,16 @@ fn transform_transcript(path: &Path, dry_run: bool) -> Result<TranscriptStatus, 
     Ok(TranscriptStatus::Transformed)
 }
 
-fn ordered_field<'a>(object: &'a [(String, OrderedJson)], field: &str) -> Option<&'a OrderedJson> {
+pub fn ordered_field<'a>(
+    object: &'a [(String, OrderedJson)],
+    field: &str,
+) -> Option<&'a OrderedJson> {
     object
         .iter()
         .find_map(|(key, value)| (key == field).then_some(value))
 }
 
-fn ordered_insert(object: &mut Vec<(String, OrderedJson)>, field: &str, value: OrderedJson) {
+pub fn ordered_insert(object: &mut Vec<(String, OrderedJson)>, field: &str, value: OrderedJson) {
     if let Some((_, existing)) = object.iter_mut().find(|(key, _)| key == field) {
         *existing = value;
     } else {
@@ -354,7 +357,7 @@ fn ordered_number_is_three(value: Option<&OrderedJson>) -> bool {
     matches!(value, Some(OrderedJson::Number(number)) if number.as_f64() == Some(3.0))
 }
 
-fn ordered_value_is_truthy(value: &OrderedJson) -> bool {
+pub fn ordered_value_is_truthy(value: &OrderedJson) -> bool {
     match value {
         OrderedJson::Null => false,
         OrderedJson::Bool(value) => *value,

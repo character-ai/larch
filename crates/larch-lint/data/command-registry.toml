@@ -6017,11 +6017,13 @@ verb = "cleanup-implement-logs"
 python_module = "larch.report.cleanup_implement_logs"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8082
+clean_install_test = "clean-install-run-log-cleanup-implement-logs"
 
 [[commands]]
 domain = "run-log"
@@ -8528,12 +8530,6 @@ path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []
 rust = ["agent classify-diff", "run-log append-entry"]
-
-[[callers]]
-path = "python/larch/report/cleanup_implement_logs.py"
-kind = "python-runtime"
-python = ["run-log cleanup-implement-logs"]
-rust = []
 
 [[callers]]
 path = "python/larch/report/exec_issue_detail.py"

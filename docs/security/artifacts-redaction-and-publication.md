@@ -238,8 +238,13 @@ after sanitization. Treat them as sensitive even when every redaction and
 scanner passes. Current workflows do not store run logs in Git.
 
 Cloud run-log retention is append-only. No shipped runtime deletes or slims
-run-log content, creates a run-log Git branch, commit, push, or pull request,
-or configures remote lifecycle expiration.
+remote archive content, creates a run-log Git branch, commit, push, or pull
+request, or configures remote lifecycle expiration. The local,
+operator-only `run-log cleanup-implement-logs` command is the narrow exception:
+it may remove only redundant files inside a manifest-accepted, completed local
+implement run. A present durability marker must be committed, and publication
+configured runs require that marker. It never deletes a run directory, archive,
+cache entry, or external path.
 
 The Rust-owned, operator-only `run-log migrate-layout` command is a bounded
 exception for creating the tool-first copies required by

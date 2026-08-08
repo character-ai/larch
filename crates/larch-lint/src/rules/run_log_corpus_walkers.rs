@@ -60,9 +60,7 @@ const PYTHON_SCOPE_INCLUDES: [&str; 3] = [
     "skills/voter-calibration/scripts/voter-calibration.py",
 ];
 const PYTHON_OWNER: &str = "python/larch/report/run_log_corpus.py";
-const PYTHON_EXEMPTIONS: [&str; 1] = [
-    "python/larch/report/cleanup_implement_logs.py",
-];
+const PYTHON_EXEMPTIONS: [&str; 0] = [];
 const SUPPRESSION_TOKEN: &str = "lint-run-log-corpus-walkers";
 const CLASSIFICATION_MARKER: &str = "findings-classification";
 const CLASSIFICATION_ROOTS: [&str; 3] = ["design/", "implement/", "review/"];
