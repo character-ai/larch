@@ -1,12 +1,12 @@
-"""Shared owner for typed open-issue rows and the JSON CLI helpers that
-``combine_issues.py`` and ``deps_audit.py`` previously duplicated.
+"""Shared owner for typed open-issue rows and the JSON CLI helpers
+``combine_issues.py`` consumes.
 
 ``open_issue_rows_read`` centralizes the ``gh issue list`` open-state read plus
-tolerant row normalization into frozen :class:`OpenIssueRow` values, so the two
-consumers stop reconstructing the returned row contract by hand. ``load_json_file``,
-``positive_int_value``, and ``emit_json`` are the file-input, number-parsing, and
-JSON-emit helpers both modules shared verbatim; they live here so the definitions
-exist once.
+tolerant row normalization into frozen :class:`OpenIssueRow` values, so the
+consumer stops reconstructing the returned row contract by hand.
+``load_json_file``, ``positive_int_value``, and ``emit_json`` are the
+file-input, number-parsing, and JSON-emit helpers it shares with the Rust
+``deps`` owner's model; they live here so the definitions exist once.
 """
 
 from __future__ import annotations

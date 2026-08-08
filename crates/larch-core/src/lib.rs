@@ -213,6 +213,16 @@ pub use issue::{
     upsert_implementation_lease,
 };
 pub use issue::{
+    DEPS_GROUPS, DepsEdge, DepsFetchArtifacts, DepsFetchedIssue, DepsIssueMap, DepsLiveIssue,
+    DepsMutation, DepsPartialAudit, DepsPlanInputs, GH_ERROR_CHARS, MUTATION_ERROR_CHARS,
+    deps_compact_json, deps_edge_would_cycle, deps_explicit_refs, deps_failed_fetch,
+    deps_fetch_artifacts, deps_flat_error, deps_group_for_title, deps_is_mutable_regular,
+    deps_issue_map, deps_issue_title, deps_normal_edge, deps_partial_audit, deps_plan,
+    deps_plan_writes_allowed, deps_pretty_json, deps_proposal_edges, deps_proposal_mutations,
+    deps_revalidate_edge, deps_sanitize_outbound_body, deps_snapshot_numbers,
+    deps_validate_snapshot_membership, deps_warning, json_positive_integer, parse_prose_blocks,
+};
+pub use issue::{
     MAX_TRIAGE_EVIDENCE_BYTES, MAX_TRIAGE_PROBE_BYTES, TRIAGE_MARKER_END, TRIAGE_MARKER_START,
     TRIAGE_PROBE_TIMEOUT_SECONDS, TRIAGE_TMP_PREFIX, TRIAGE_VERDICT_COMMENT_PREFIX, TRIAGED_TAG,
     TriageBlockDefect, TriageProbe, TriageProbeError, TriageSanitizeError,

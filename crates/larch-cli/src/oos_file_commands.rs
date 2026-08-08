@@ -50,7 +50,7 @@ use crate::{
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
     issue_create_commands::{CreateSpec, create_issue},
-    issue_dependency_commands::{LiveEdge, apply_blocked_by},
+    issue_dependency_commands::{EdgeAuthorization, apply_blocked_by, in_process_edge},
     issue_mutation_support::authorization_request,
     oos_commands::{
         FAILURE_SITE, append_failure_log, append_run_log_warning, atomic_write, cap_batch,
@@ -192,17 +192,16 @@ impl FilingGateway for LiveFiling {
     }
 
     fn link_blocked_by(&self, repo: &str, client: u64, blocker: u64) -> Result<(), String> {
-        let repository = Self::repository(repo)?;
-        apply_blocked_by(&LiveEdge {
-            repository,
-            subject: client,
-            object: blocker,
-            object_id: None,
-            context_file: self.context_file.clone(),
-            run_id: self.run_id.clone(),
-            trusted_root: self.trusted_root.clone(),
-            operator_invoked: false,
-        })
+        apply_blocked_by(&in_process_edge(
+            Self::repository(repo)?,
+            client,
+            blocker,
+            EdgeAuthorization::Session {
+                context_file: &self.context_file,
+                run_id: &self.run_id,
+                trusted_root: &self.trusted_root,
+            },
+        ))
     }
 
     fn close_orphan(&self, repo: &str, issue: u64) {

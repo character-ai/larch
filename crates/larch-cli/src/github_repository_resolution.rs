@@ -136,6 +136,19 @@ pub fn ambient_repo() -> Option<String> {
         .map(str::to_owned)
 }
 
+/// Resolve one configured remote of the current checkout to its `OWNER/REPO`.
+///
+/// Returns `None` when the checkout has no such remote or its URL does not name
+/// a GitHub repository, which callers report as "no match" rather than as a
+/// failure.
+#[must_use]
+pub fn remote_slug(remote: &str) -> Option<String> {
+    match resolve_remote_repo(remote, open_cwd_repository().as_ref()) {
+        RemoteRepoResult::Ok { repo } => Some(repo),
+        RemoteRepoResult::Usage | RemoteRepoResult::ParseFailure => None,
+    }
+}
+
 /// Return the fetch URL configured for one remote in `repository`.
 #[must_use]
 pub fn repository_remote_fetch_url(repository: &GixRepository, remote: &str) -> Option<String> {

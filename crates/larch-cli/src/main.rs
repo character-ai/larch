@@ -31,6 +31,7 @@ mod ci_timing;
 pub(crate) mod claude_commands;
 mod collector_commands;
 mod complete_umbrella_commands;
+mod deps_audit_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod execution_issue_commands;
@@ -138,6 +139,9 @@ enum Domain {
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
+    /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
+    #[command(subcommand)]
+    Deps(DepsCommand),
     /// The `/implement` execution-issue ledger lifecycle.
     #[command(subcommand, name = "execution-issues")]
     ExecutionIssues(ExecutionIssuesCommand),
@@ -689,6 +693,28 @@ enum SessionCommand {
     /// Resolve a design session-env pointer to its trusted target.
     #[command(disable_help_flag = true)]
     ResolveTrustedDesignEnv(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DepsCommand {
+    /// Resolve the audited repository and report whether `origin` matches it.
+    #[command(name = "resolve-repo", disable_help_flag = true)]
+    ResolveRepo(RawCompatibilityArguments),
+    /// Read every open issue, its comments, and its dependency edges.
+    #[command(disable_help_flag = true)]
+    Fetch(RawCompatibilityArguments),
+    /// Scan fetched issue prose for explicit dependency declarations.
+    #[command(name = "explicit-refs", disable_help_flag = true)]
+    ExplicitRefs(RawCompatibilityArguments),
+    /// Validate and record the operator's proposal document.
+    #[command(name = "write-proposals", disable_help_flag = true)]
+    WriteProposals(RawCompatibilityArguments),
+    /// Compose the one plan the operator approves.
+    #[command(disable_help_flag = true)]
+    Plan(RawCompatibilityArguments),
+    /// Apply exactly the mutations the approved plan carries.
+    #[command(disable_help_flag = true)]
+    Apply(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1274,6 +1300,20 @@ fn run(
             OosCommand::DispositionCheckpoint(arguments) => {
                 oos_commands::disposition_checkpoint(&arguments.arguments)
             }
+        }),
+        Domain::Deps(command) => Ok(match command {
+            DepsCommand::ResolveRepo(arguments) => {
+                deps_audit_commands::resolve_repo(&arguments.arguments)
+            }
+            DepsCommand::Fetch(arguments) => deps_audit_commands::fetch(&arguments.arguments),
+            DepsCommand::ExplicitRefs(arguments) => {
+                deps_audit_commands::explicit_refs(&arguments.arguments)
+            }
+            DepsCommand::WriteProposals(arguments) => {
+                deps_audit_commands::write_proposals(&arguments.arguments)
+            }
+            DepsCommand::Plan(arguments) => deps_audit_commands::plan(&arguments.arguments),
+            DepsCommand::Apply(arguments) => deps_audit_commands::apply(&arguments.arguments),
         }),
         Domain::ExecutionIssues(command) => Ok(match command {
             ExecutionIssuesCommand::Append(arguments) => {
