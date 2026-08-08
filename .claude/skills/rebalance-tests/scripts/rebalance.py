@@ -1107,6 +1107,7 @@ def _verify_python(
     *,
     repo: str,
     pr_url: str,
+    plan: PythonPlan,
 ) -> int:
     print(
         "\n[verify:python] Collecting python-tests timing and verifying shard balance …"
@@ -1131,7 +1132,7 @@ def _verify_python(
         return 1
 
     totals = report.shard_medians
-    expected = set(range(1, args.n_python_shards + 1))
+    expected = set(range(1, plan.n_shards + 1))
     missing = sorted(expected - set(totals))
     if missing:
         print(
@@ -1230,7 +1231,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         if plan.harness is not None:
             _verify_harness(args, verify_run_ids, repo=repo, plan=plan.harness)
         if plan.python is not None:
-            result = _verify_python(args, verify_run_ids, repo=repo, pr_url=pr.url)
+            result = _verify_python(
+                args,
+                verify_run_ids,
+                repo=repo,
+                pr_url=pr.url,
+                plan=plan.python,
+            )
             if result != 0:
                 return result
 

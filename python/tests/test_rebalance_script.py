@@ -444,7 +444,13 @@ def test_python_verification_zero_rows_fails_with_pr_url(
     monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
-    result = rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr")
+    result = rebalance._verify_python(
+        args,
+        [1],
+        repo="o/r",
+        pr_url="https://pr",
+        plan=_sample_python_plan(),
+    )
 
     captured = capsys.readouterr()
     assert result == 1
@@ -467,7 +473,13 @@ def test_python_verification_incomplete_coverage_fails(
     monkeypatch.setattr(rebalance, "_run_ci_timing", fake_run_ci_timing)
     args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
-    assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
+    assert rebalance._verify_python(
+        args,
+        [1],
+        repo="o/r",
+        pr_url="https://pr",
+        plan=_sample_python_plan(n_shards=3),
+    ) == 1
     assert "missing shard ids" in capsys.readouterr().err
 
 
@@ -497,7 +509,13 @@ def test_python_verification_spread_over_threshold_fails(
         ]
     )
 
-    assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
+    assert rebalance._verify_python(
+        args,
+        [1],
+        repo="o/r",
+        pr_url="https://pr",
+        plan=_sample_python_plan(),
+    ) == 1
     assert "exceeds" in capsys.readouterr().err
 
 
@@ -517,7 +535,13 @@ def test_python_verification_within_threshold_passes(
         argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"]
     )
 
-    assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 0
+    assert rebalance._verify_python(
+        args,
+        [1],
+        repo="o/r",
+        pr_url="https://pr",
+        plan=_sample_python_plan(),
+    ) == 0
 
 
 def _sample_harness_plan():
@@ -527,11 +551,11 @@ def _sample_harness_plan():
     return rebalance.HarnessPlan(current, new, medians, 2, 1.0)
 
 
-def _sample_python_plan():
+def _sample_python_plan(*, n_shards: int = 2):
     return rebalance.PythonPlan(
         assignments={"pkg/test_a.py::test_x": 1, "pkg/test_b.py::test_y": 2},
         medians={"pkg/test_a.py::test_x": 1.0, "pkg/test_b.py::test_y": 2.0},
-        n_shards=2,
+        n_shards=n_shards,
     )
 
 

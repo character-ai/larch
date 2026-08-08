@@ -148,11 +148,6 @@ if command -v jq >/dev/null 2>&1; then
     cat > "$LCI_BIN/cursor" <<'STUB_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-: "${STUB_MANIFEST_PATH:?}"
-cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
-{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
-JSON
-mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
 printf '{"result":"stub","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n'
 STUB_EOF
     chmod +x "$LCI_BIN/cursor"
@@ -160,7 +155,6 @@ STUB_EOF
     cat > "$LCI_BIN/codex" <<'STUB_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-: "${STUB_MANIFEST_PATH:?}"
 output_path=""
 last=""
 for arg in "$@"; do
@@ -169,10 +163,6 @@ for arg in "$@"; do
 done
 [[ -n "$output_path" ]] || exit 9
 printf 'stub codex transcript payload\n' > "$output_path"
-cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
-{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
-JSON
-mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
 printf '{"type":"token_usage","usage":{"input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}}\n'
 STUB_EOF
     chmod +x "$LCI_BIN/codex"
@@ -226,7 +216,6 @@ STUB_EOF
         RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
         LARCH_CURSOR_MODEL="stub-model" \
         LARCH_CODEX_MODEL="stub-codex-model" \
-        STUB_MANIFEST_PATH="$MF" \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
             "${LAUNCHER_ARGS[@]}" \
                 --transcript-path "$TR" \
@@ -241,13 +230,13 @@ STUB_EOF
         if [[ ! -s "$LCI_LEDGER" ]]; then
             case "$variant" in
                 cursor)
-                    fail "agent launch-cursor-implement produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor stub, and PATH wiring)"
+                    fail "agent launch-cursor-implement produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor usage stub, and PATH wiring)"
                     ;;
                 codex)
-                    fail "agent launch-codex-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex stub on PATH, $LCI_SCRATCH wiring, and that the stub writes a parseable manifest.json)"
+                    fail "agent launch-codex-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex usage stub on PATH and $LCI_SCRATCH wiring)"
                     ;;
                 *)
-                    fail "agent launch-${variant}-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} stub on PATH, scratch dir wiring, and that the stub writes a parseable manifest.json)"
+                    fail "agent launch-${variant}-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} usage stub on PATH and scratch dir wiring)"
                     ;;
             esac
             rm -f "$LCI_LEDGER"

@@ -3,11 +3,10 @@
 
 CI-fixer code paths in agents.py resolve their output target from ambient
 session-routing env vars (IMPLEMENT_TMPDIR, SESSION_ENV_PATH, DESIGN_TMPDIR,
-REVIEW_TMPDIR, LARCH_EXECUTION_ISSUES_LOG). When `make py-test` runs inside an
-/implement or /design session those vars point at the real session tmpdir, so
-simulated CI-fixer failures leaked into the committed run log and the tracking
-issue's execution-issues summary. The autouse isolation in conftest.py scrubs
-those vars; these tests prove it.
+REVIEW_TMPDIR, LARCH_EXECUTION_ISSUES_LOG, LARCH_DYNAMIC_ARCHETYPES_MAX). When
+`make py-test` runs inside an /implement or /design session those vars can alter
+test routing or point at the real session tmpdir. The autouse isolation in
+conftest.py scrubs those vars; these tests prove it.
 
 The module-scoped fixture mimics the bug's ambient condition
 (`IMPLEMENT_TMPDIR=$(mktemp -d) make py-test`): module scope instantiates before
@@ -36,6 +35,7 @@ _SESSION_ROUTING_VARS = (
     "LARCH_EXECUTION_ISSUES_LOG",
     "CLAUDE_PLUGIN_ROOT",
     "LARCH_CLAUDE_PLUGIN_ROOT",
+    "LARCH_DYNAMIC_ARCHETYPES_MAX",
 )
 
 
@@ -60,6 +60,7 @@ def _ambient_live_session(
     os.environ["LARCH_EXECUTION_ISSUES_LOG"] = str(session_dir / "execution-issues.md")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(session_dir / "plugin-root")
     os.environ["LARCH_CLAUDE_PLUGIN_ROOT"] = str(session_dir / "larch-plugin-root")
+    os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = "1"
     try:
         yield session_dir
     finally:
