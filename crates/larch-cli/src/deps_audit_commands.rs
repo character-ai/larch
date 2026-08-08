@@ -30,13 +30,14 @@ use larch_adapters::{
 };
 use larch_core::{
     DepsEdge, DepsFetchedIssue, DepsIssueMap, DepsLiveIssue, DepsPlanInputs, GH_ERROR_CHARS,
-    GitHubIssueList, GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef,
-    GitHubService as _, IssueMutationField, IssueMutationRequest, MUTATION_ERROR_CHARS,
-    deps_compact_json, deps_explicit_refs, deps_failed_fetch, deps_fetch_artifacts,
-    deps_flat_error, deps_issue_map, deps_normal_edge, deps_plan, deps_plan_writes_allowed,
-    deps_pretty_json, deps_proposal_edges, deps_proposal_mutations, deps_revalidate_edge,
-    deps_sanitize_outbound_body, deps_snapshot_numbers, deps_validate_snapshot_membership,
-    deps_warning, emit_kv, json_positive_integer, python_str,
+    GitHubIssue, GitHubIssueList, GitHubIssueState, GitHubOperationError, GitHubOperationErrorKind,
+    GitHubRepositoryRef, GitHubService as _, IssueMutationField, IssueMutationRequest,
+    IssueMutationSnapshot, MUTATION_ERROR_CHARS, deps_compact_json, deps_explicit_refs,
+    deps_failed_fetch, deps_fetch_artifacts, deps_flat_error, deps_issue_map, deps_normal_edge,
+    deps_plan, deps_plan_writes_allowed, deps_pretty_json, deps_proposal_edges,
+    deps_proposal_mutations, deps_revalidate_edge, deps_sanitize_outbound_body,
+    deps_snapshot_numbers, deps_validate_snapshot_membership, deps_warning, emit_kv,
+    json_positive_integer, python_str,
 };
 use serde_json::{Value, json};
 
@@ -156,12 +157,76 @@ impl LiveDeps {
     fn repository(repo: &str) -> Result<GitHubRepositoryRef, String> {
         repository_ref(repo).map_err(|()| format!("repository slug is invalid: {repo}"))
     }
+}
 
-    fn edge_numbers(refs: &[DependencyRef]) -> Vec<u64> {
-        let mut numbers: Vec<u64> = refs.iter().map(DependencyRef::issue_number).collect();
-        numbers.sort_unstable();
-        numbers.dedup();
-        numbers
+/// Reduce one issue-graph read to its distinct, sorted issue numbers.
+fn edge_numbers(refs: &[DependencyRef]) -> Vec<u64> {
+    let mut numbers: Vec<u64> = refs.iter().map(DependencyRef::issue_number).collect();
+    numbers.sort_unstable();
+    numbers.dedup();
+    numbers
+}
+
+/// Classify one failed open-issue read into the warning the snapshot publishes.
+///
+/// Python distinguished a `gh` failure from an unparseable response; the typed
+/// adapter reports the latter as a malformed response, so the two codes survive.
+fn read_failure(error: &GitHubOperationError) -> DepsReadFailure {
+    DepsReadFailure {
+        code: match error.kind() {
+            GitHubOperationErrorKind::MalformedResponse => "json_invalid",
+            _other => "gh_api_failed",
+        },
+        detail: deps_flat_error(&error.to_string(), GH_ERROR_CHARS),
+    }
+}
+
+/// Normalize one listed issue set into the rows the audit reads.
+///
+/// The REST list returns pull requests alongside issues, where `gh issue list`
+/// did not, so they are dropped here.
+fn open_rows_from(listed: Vec<GitHubIssue>) -> Vec<DepsOpenIssue> {
+    let mut rows: Vec<DepsOpenIssue> = listed
+        .into_iter()
+        .filter(|issue| !issue.is_pull_request && issue.state == GitHubIssueState::Open)
+        .map(|issue| DepsOpenIssue {
+            number: issue.number,
+            title: issue.title,
+            body: issue.body,
+            labels: issue
+                .labels
+                .into_iter()
+                .map(|label| label.name)
+                .filter(|name| !name.is_empty())
+                .collect(),
+        })
+        .collect();
+    rows.sort_by_key(|row| row.number);
+    rows
+}
+
+/// Spell one live issue state the way the apply-time predicates read it.
+fn live_state(state: GitHubIssueState) -> String {
+    match state {
+        GitHubIssueState::Open => "open".to_owned(),
+        GitHubIssueState::Closed => "closed".to_owned(),
+        GitHubIssueState::All => String::new(),
+    }
+}
+
+/// Compose the body-only compare-and-swap one approved rewrite applies.
+fn body_mutation_request(snapshot: &IssueMutationSnapshot, body: &str) -> IssueMutationRequest {
+    IssueMutationRequest {
+        repository: snapshot.repository.clone(),
+        issue: snapshot.issue,
+        expected_updated_at: snapshot.updated_at.clone(),
+        expected_state: snapshot.state,
+        fields: BTreeSet::from([IssueMutationField::Body]),
+        title: None,
+        body: Some(body.to_owned()),
+        labels: None,
+        marker: None,
+        lease: None,
     }
 }
 
@@ -185,29 +250,8 @@ impl DepsGateway for LiveDeps {
         let listed = self
             .runtime
             .block_on(async { self.service.list_issues(&request, &self.cancellation).await })
-            .map_err(|error| DepsReadFailure {
-                code: match error.kind() {
-                    GitHubOperationErrorKind::MalformedResponse => "json_invalid",
-                    _other => "gh_api_failed",
-                },
-                detail: deps_flat_error(&error.to_string(), GH_ERROR_CHARS),
-            })?;
-        let mut rows: Vec<DepsOpenIssue> = listed
-            .into_iter()
-            .filter(|issue| !issue.is_pull_request && issue.state == GitHubIssueState::Open)
-            .map(|issue| DepsOpenIssue {
-                number: issue.number,
-                title: issue.title,
-                body: issue.body,
-                labels: issue
-                    .labels
-                    .into_iter()
-                    .map(|label| label.name)
-                    .filter(|name| !name.is_empty())
-                    .collect(),
-            })
-            .collect();
-        rows.sort_by_key(|row| row.number);
+            .map_err(|error| read_failure(&error))?;
+        let rows = open_rows_from(listed);
         if rows.len() >= bound {
             // A truncated snapshot would silently narrow the audit's reach, and
             // a bounded read is not a failed one, so it is reported rather than
@@ -260,7 +304,7 @@ impl DepsGateway for LiveDeps {
                         .await
                 }
             })
-            .map(|refs| Self::edge_numbers(&refs))
+            .map(|refs| edge_numbers(&refs))
             .map_err(|error| deps_flat_error(&error.to_string(), GH_ERROR_CHARS))
     }
 
@@ -276,11 +320,7 @@ impl DepsGateway for LiveDeps {
             .ok()?;
         Some(DepsLiveIssue {
             title: live.title,
-            state: match live.state {
-                GitHubIssueState::Open => "open".to_owned(),
-                GitHubIssueState::Closed => "closed".to_owned(),
-                GitHubIssueState::All => String::new(),
-            },
+            state: live_state(live.state),
         })
     }
 
@@ -292,18 +332,7 @@ impl DepsGateway for LiveDeps {
                 .read_snapshot(&repository, issue, &self.cancellation)
                 .await
                 .map_err(|error| deps_flat_error(&error.to_string(), MUTATION_ERROR_CHARS))?;
-            let request = IssueMutationRequest {
-                repository: repository.clone(),
-                issue,
-                expected_updated_at: snapshot.updated_at.clone(),
-                expected_state: snapshot.state,
-                fields: BTreeSet::from([IssueMutationField::Body]),
-                title: None,
-                body: Some(body.to_owned()),
-                labels: None,
-                marker: None,
-                lease: None,
-            };
+            let request = body_mutation_request(&snapshot, body);
             owner
                 .apply(
                     &self.cancellation,
@@ -509,15 +538,12 @@ fn resolve_machine_fetch(fetch_file: &str, fetch: &Value) -> Result<Value, Strin
         .parent()
         .map(Path::to_path_buf)
         .ok_or("fetch-file: machine_fetch_file is required")?;
+    // Only the file name survives, so the pointer always resolves to a sibling
+    // of the snapshot that named it however much traversal it tried to carry.
     let Some(name) = Path::new(named).file_name() else {
         return Err("fetch-file: machine_fetch_file is required".to_owned());
     };
-    let candidate = absolute(&directory.join(name));
-    if candidate.parent() != Some(directory.as_path()) {
-        return Err(
-            "machine-fetch-file must be a sibling under the fetch output directory".to_owned(),
-        );
-    }
+    let candidate = directory.join(name);
     let machine = load_json(&candidate.to_string_lossy(), "machine-fetch-file")?;
     if machine.get("status") == Some(&Value::String("ok".to_owned())) {
         Ok(machine)

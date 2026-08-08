@@ -16,10 +16,17 @@ mod deps_audit_tests {
     use tempfile::TempDir;
 
     use super::super::{
-        ApplyScope, DepsGateway, DepsOpenIssue, DepsOrigin, DepsReadFailure, absolute,
-        load_apply_plan, load_json, refresh_dependency_graph, resolve_machine_fetch, run_apply,
-        run_fetch, run_plan, run_resolve_repo, validated_proposals,
+        ApplyScope, DepsGateway, DepsOpenIssue, DepsOrigin, DepsReadFailure, absolute, apply,
+        body_mutation_request, edge_numbers, explicit_refs, fetch, live_state, load_apply_plan,
+        load_json, open_rows_from, plan as plan_verb, read_failure, refresh_dependency_graph,
+        resolve_machine_fetch, resolve_repo, run_apply, run_fetch, run_plan, run_resolve_repo,
+        validated_proposals, write_proposals,
     };
+    use larch_core::{
+        GitHubIssue, GitHubIssueState, GitHubLabel, GitHubOperationError, GitHubOperationErrorKind,
+        GitHubRepositoryRef, IssueMutationField, IssueMutationSnapshot,
+    };
+    use std::{ffi::OsString, process::ExitCode};
 
     /// One scripted gateway: it records every call and answers from its tables.
     #[derive(Default)]
@@ -890,5 +897,491 @@ mod deps_audit_tests {
             warnings[0]["message"],
             json!("open issue JSON invalid: bad")
         );
+    }
+
+    // ------------------------------------------------------- command lines
+
+    fn arguments(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    /// Every verb answers `--help` with exit `0`, the way `argparse` did.
+    #[test]
+    fn each_verb_answers_the_help_action_before_anything_else() {
+        for verb in [
+            resolve_repo as fn(&[OsString]) -> ExitCode,
+            fetch,
+            explicit_refs,
+            write_proposals,
+            plan_verb,
+            apply,
+        ] {
+            assert_eq!(
+                exit_code(verb(&arguments(&["--help"]))),
+                exit_code(ExitCode::SUCCESS)
+            );
+            // The action wins even beside options the verb would otherwise
+            // refuse for being unusable.
+            assert_eq!(
+                exit_code(verb(&arguments(&["--repo", "-h"]))),
+                exit_code(ExitCode::SUCCESS)
+            );
+        }
+    }
+
+    /// Every verb refuses a line it cannot use with the `argparse` exit code.
+    #[test]
+    fn each_verb_refuses_its_own_unusable_line() {
+        for (verb, line) in [
+            (
+                resolve_repo as fn(&[OsString]) -> ExitCode,
+                &["--bogus", "x"][..],
+            ),
+            (fetch, &[][..]),
+            (
+                fetch,
+                &["--repo", "o/r", "--output-file", "out.json", "extra"][..],
+            ),
+            (explicit_refs, &[][..]),
+            (write_proposals, &[][..]),
+            (plan_verb, &[][..]),
+            (
+                plan_verb,
+                &[
+                    "--fetch-file",
+                    "f",
+                    "--proposals-file",
+                    "p",
+                    "--pair-cap",
+                    "x",
+                ][..],
+            ),
+            (plan_verb, &["--repo"][..]),
+            (apply, &[][..]),
+        ] {
+            assert_eq!(
+                exit_code(verb(&arguments(line))),
+                exit_code(ExitCode::from(2)),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_verbs_that_reach_no_network_run_end_to_end_from_their_command_lines() {
+        let directory = TempDir::new().expect("temp directory");
+        let fetch_file = snapshot(
+            &directory,
+            "character-ai/larch",
+            &json!([
+                {"number": 1, "title": "one", "body": "Blocked by #2", "comments": []},
+                {"number": 2, "title": "two", "body": "", "comments": []},
+            ]),
+            &json!([]),
+        );
+        let refs_file = directory.path().join("refs.json");
+        assert_eq!(
+            exit_code(explicit_refs(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--output-file",
+                &refs_file.to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::SUCCESS)
+        );
+        let refs = load_json(&refs_file.to_string_lossy(), "refs").expect("the written refs");
+        assert_eq!(refs["counts"]["explicit_edges"], json!(1));
+
+        let proposals_file = directory.path().join("proposals.json");
+        assert_eq!(
+            exit_code(plan_verb(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--proposals-file",
+                &proposals_file.to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::from(1)),
+            "a missing proposals file is a failed plan, not a crash"
+        );
+        fs::write(
+            &proposals_file,
+            r#"{"desired_edges": [{"client_issue": 1, "blocker_issue": 2}]}"#,
+        )
+        .expect("write proposals");
+        assert_eq!(
+            exit_code(plan_verb(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--proposals-file",
+                &proposals_file.to_string_lossy(),
+                "--pair-cap",
+                "2",
+            ]))),
+            exit_code(ExitCode::from(1)),
+            "a capped pass without its metadata is refused"
+        );
+        assert_eq!(
+            exit_code(plan_verb(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--proposals-file",
+                &proposals_file.to_string_lossy(),
+                "--pair-cap",
+                "-1",
+            ]))),
+            exit_code(ExitCode::from(1))
+        );
+        assert_eq!(
+            exit_code(plan_verb(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--proposals-file",
+                &proposals_file.to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::SUCCESS)
+        );
+    }
+
+    #[test]
+    fn write_proposals_reads_its_document_from_the_command_line_and_stdin() {
+        let directory = TempDir::new().expect("temp directory");
+        let fetch_file = snapshot(
+            &directory,
+            "o/r",
+            &json!([{"number": 1, "title": "one"}]),
+            &json!([]),
+        );
+        let output = directory.path().join("proposals.json");
+        // Stdin is empty under the test harness, which reads as `{}`.
+        assert_eq!(
+            exit_code(write_proposals(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--output-file",
+                &output.to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::SUCCESS)
+        );
+        assert_eq!(
+            fs::read_to_string(&output).expect("the document"),
+            "{}
+"
+        );
+    }
+
+    #[test]
+    fn the_two_live_verbs_refuse_before_they_build_a_client() {
+        let directory = TempDir::new().expect("temp directory");
+        assert_eq!(
+            exit_code(fetch(&arguments(&[
+                "--repo",
+                "../escape",
+                "--output-file",
+                &directory.path().join("out.json").to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::from(1))
+        );
+        assert_eq!(
+            exit_code(apply(&arguments(&[
+                "--repo",
+                "o/r",
+                "--plan-file",
+                "/nonexistent/plan.json",
+                "--rewrites-only",
+                "--edges-only",
+            ]))),
+            exit_code(ExitCode::from(1))
+        );
+        assert_eq!(
+            exit_code(apply(&arguments(&[
+                "--repo",
+                "o/r",
+                "--plan-file",
+                "/nonexistent/plan.json",
+            ]))),
+            exit_code(ExitCode::from(1))
+        );
+    }
+
+    #[test]
+    fn an_unwritable_output_path_is_reported_rather_than_panicking() {
+        let directory = TempDir::new().expect("temp directory");
+        let blocker = directory.path().join("file");
+        fs::write(&blocker, "not a directory").expect("write blocker");
+        let output = blocker.join("nested").join("refs.json");
+        let fetch_file = snapshot(
+            &directory,
+            "o/r",
+            &json!([{"number": 1, "title": "one"}]),
+            &json!([]),
+        );
+
+        assert_eq!(
+            exit_code(explicit_refs(&arguments(&[
+                "--fetch-file",
+                &fetch_file,
+                "--output-file",
+                &output.to_string_lossy(),
+            ]))),
+            exit_code(ExitCode::from(1))
+        );
+        let gateway = FakeGateway::default();
+        assert_eq!(
+            exit_code(run_fetch("o/r", &output.to_string_lossy(), &gateway)),
+            exit_code(ExitCode::from(1))
+        );
+    }
+
+    // ------------------------------------------------- effect-free gateway halves
+
+    fn listed_issue(
+        number: u64,
+        title: &str,
+        pull_request: bool,
+        state: GitHubIssueState,
+    ) -> GitHubIssue {
+        GitHubIssue {
+            id: number * 10,
+            number,
+            title: title.to_owned(),
+            body: "body".to_owned(),
+            state,
+            url: String::new(),
+            author: String::new(),
+            labels: vec![
+                GitHubLabel {
+                    id: 1,
+                    name: "bug".to_owned(),
+                    color: String::new(),
+                    description: String::new(),
+                },
+                GitHubLabel {
+                    id: 2,
+                    name: String::new(),
+                    color: String::new(),
+                    description: String::new(),
+                },
+            ],
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: String::new(),
+            is_pull_request: pull_request,
+        }
+    }
+
+    #[test]
+    fn the_listed_snapshot_drops_pull_requests_and_sorts_by_number() {
+        let rows = open_rows_from(vec![
+            listed_issue(9, "nine", false, GitHubIssueState::Open),
+            listed_issue(4, "a pull request", true, GitHubIssueState::Open),
+            listed_issue(2, "two", false, GitHubIssueState::Open),
+            listed_issue(3, "closed", false, GitHubIssueState::Closed),
+        ]);
+
+        assert_eq!(
+            rows.iter().map(|row| row.number).collect::<Vec<u64>>(),
+            vec![2, 9]
+        );
+        // An unnamed label never reaches the snapshot.
+        assert_eq!(rows[0].labels, vec!["bug".to_owned()]);
+        assert!(open_rows_from(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn a_dependency_read_reduces_to_distinct_sorted_numbers() {
+        assert!(edge_numbers(&[]).is_empty());
+    }
+
+    #[test]
+    fn only_a_malformed_response_reads_as_invalid_json() {
+        assert_eq!(
+            read_failure(&GitHubOperationError::new(
+                GitHubOperationErrorKind::MalformedResponse,
+                None,
+                None,
+                "bad body",
+            ))
+            .code,
+            "json_invalid"
+        );
+        let transport = read_failure(&GitHubOperationError::new(
+            GitHubOperationErrorKind::Transport,
+            None,
+            None,
+            "unreachable\nhost",
+        ));
+        assert_eq!(transport.code, "gh_api_failed");
+        assert_eq!(transport.detail, "unreachable host");
+    }
+
+    #[test]
+    fn every_live_state_has_one_spelling_the_predicates_read() {
+        assert_eq!(live_state(GitHubIssueState::Open), "open");
+        assert_eq!(live_state(GitHubIssueState::Closed), "closed");
+        assert_eq!(live_state(GitHubIssueState::All), "");
+    }
+
+    #[test]
+    fn a_rewrite_swaps_only_the_body_against_the_snapshot_it_read() {
+        let snapshot = IssueMutationSnapshot {
+            repository: GitHubRepositoryRef::new("o", "r").expect("a usable slug"),
+            issue: 12,
+            title: "one".to_owned(),
+            body: "old".to_owned(),
+            labels: BTreeSet::new(),
+            state: GitHubIssueState::Open,
+            updated_at: "2026-08-08T00:00:00Z".to_owned(),
+        };
+
+        let request = body_mutation_request(&snapshot, "fresh");
+
+        assert_eq!(request.issue, 12);
+        assert_eq!(request.body.as_deref(), Some("fresh"));
+        assert_eq!(request.expected_updated_at, "2026-08-08T00:00:00Z");
+        assert_eq!(request.fields, BTreeSet::from([IssueMutationField::Body]));
+        assert!(request.title.is_none() && request.labels.is_none());
+    }
+
+    // ------------------------------------------------------- remaining branches
+
+    #[test]
+    fn an_unreadable_input_path_is_refused_without_claiming_it_is_absent() {
+        let directory = TempDir::new().expect("temp directory");
+        let refusal = load_json(&directory.path().to_string_lossy(), "fetch-file")
+            .expect_err("a directory is not a document");
+        assert!(refusal.starts_with("fetch-file: cannot read:"), "{refusal}");
+    }
+
+    #[test]
+    fn a_leading_current_directory_segment_normalizes_away() {
+        let current = std::env::current_dir().expect("a working directory");
+        assert_eq!(absolute(std::path::Path::new("./x")), current.join("x"));
+    }
+
+    #[test]
+    fn each_verb_refuses_an_option_that_ends_the_line_without_its_value() {
+        for (verb, line) in [
+            (fetch as fn(&[OsString]) -> ExitCode, &["--repo"][..]),
+            (explicit_refs, &["--fetch-file"][..]),
+            (write_proposals, &["--output-file"][..]),
+            (plan_verb, &["--fetch-file"][..]),
+            (apply, &["--plan-file"][..]),
+        ] {
+            assert_eq!(
+                exit_code(verb(&arguments(line))),
+                exit_code(ExitCode::from(2)),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_verb_refuses_a_surplus_argument_after_its_required_options() {
+        let directory = TempDir::new().expect("temp directory");
+        let path = directory
+            .path()
+            .join("x.json")
+            .to_string_lossy()
+            .into_owned();
+        for (verb, line) in [
+            (
+                explicit_refs as fn(&[OsString]) -> ExitCode,
+                vec!["--fetch-file", &path, "--output-file", &path, "surplus"],
+            ),
+            (
+                write_proposals,
+                vec!["--output-file", &path, "--fetch-file", &path, "surplus"],
+            ),
+            (
+                plan_verb,
+                vec!["--fetch-file", &path, "--proposals-file", &path, "surplus"],
+            ),
+            (
+                apply,
+                vec!["--repo", "o/r", "--plan-file", &path, "surplus"],
+            ),
+        ] {
+            assert_eq!(
+                exit_code(verb(&arguments(&line))),
+                exit_code(ExitCode::from(2)),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_blocking_read_contributes_its_mirrored_edge_to_both_graphs() {
+        let gateway = FakeGateway {
+            open: Some(vec![open_issue(1, "one", ""), open_issue(2, "two", "")]),
+            dependencies: BTreeMap::from([((1, true), Ok(vec![2, 1])), ((2, false), Ok(vec![1]))]),
+            ..FakeGateway::default()
+        };
+
+        let (edges, warnings, complete) = refresh_dependency_graph("o/r", &gateway);
+
+        // `1 blocking 2` and `2 blocked by 1` are the same edge, and the
+        // self-reference is dropped.
+        assert_eq!(edges, BTreeSet::from([(2, 1)]));
+        assert!(warnings.is_empty() && complete);
+
+        let directory = TempDir::new().expect("temp directory");
+        let output = directory.path().join("fetch.json");
+        assert_eq!(
+            exit_code(run_fetch("o/r", &output.to_string_lossy(), &gateway)),
+            exit_code(ExitCode::SUCCESS)
+        );
+        let snapshot = load_json(&output.to_string_lossy(), "fetch").expect("the snapshot");
+        assert_eq!(snapshot["existing_edges"], json!([[2, 1]]));
+    }
+
+    #[test]
+    fn a_refused_graph_refresh_reports_the_gh_failure_class() {
+        let gateway = FakeGateway {
+            open_failure: Some(DepsReadFailure {
+                code: "gh_api_failed",
+                detail: "rate limited".to_owned(),
+            }),
+            ..FakeGateway::default()
+        };
+
+        let (_edges, warnings, complete) = refresh_dependency_graph("o/r", &gateway);
+
+        assert!(!complete);
+        assert_eq!(
+            warnings[0]["message"],
+            json!("open issue fetch failed: rate limited")
+        );
+    }
+
+    #[test]
+    fn a_plan_row_without_a_usable_issue_number_is_passed_over() {
+        let directory = TempDir::new().expect("temp directory");
+        let plan = json!({
+            "status": "ok",
+            "repo": "o/r",
+            "regular_refresh_allowed": true,
+            "snapshot_issue_numbers": [1],
+            "rewrites": [{"reason": "no issue at all"}, "not an object"],
+            "closes": [{"issue": 0}],
+        });
+        let plan_file = write_plan(&directory, &plan);
+        let gateway = FakeGateway {
+            origin: "o/r".to_owned(),
+            ..FakeGateway::default()
+        };
+
+        let receipt = run_apply(
+            "o/r",
+            &load_apply_plan(&plan_file, "o/r").expect("an approved plan"),
+            ApplyScope::default(),
+            &gateway,
+        );
+
+        assert_eq!(
+            receipt["counts"],
+            json!({"applied": 0, "skipped": 0, "failed": 0, "warnings": 0})
+        );
+        assert!(gateway.calls().is_empty());
     }
 }
