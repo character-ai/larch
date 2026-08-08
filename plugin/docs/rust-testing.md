@@ -211,21 +211,23 @@ follows:
 - `rust-lint` runs format and Clippy with incremental compilation and dev/test
   debug output disabled.
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
-- `rust-coverage-profile` is the coverage execution lane. It uses the selected
+- `rust-coverage` is the direct production coverage lane. It uses the selected
   `cargo llvm-cov nextest` profile for the full locked workspace build and
-  tests, runs workspace doctests separately, enforces the workspace line
-  baseline, writes `target/llvm-cov/lcov.info`, runs repository policy and
-  plugin projection validation, and uploads the Linux executable artifact.
-- Its non-matrix `rust-coverage` aggregator preserves the protected
-  required-check identity. `python-tests` waits for that status and downloads
-  the coverage-produced `larch-linux-test-binary`.
+  tests, runs workspace doctests against the same instrumented target, enforces
+  the workspace line baseline, writes `target/llvm-cov/lcov.info`, runs
+  repository policy and plugin projection validation, and uploads the Linux
+  executable artifact. `python-tests` waits for that status and downloads the
+  coverage-produced `larch-linux-test-binary`.
+- `rust-coverage-benchmark` runs only when a manual dispatch sets
+  `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
+  the protected production path and does not upload a competing Python artifact.
 
 The coverage job installs checksum-verified pinned `cargo-nextest` and
 `cargo-llvm-cov` binaries without a source-install fallback. Normal local
 checks use changed-path Clippy and do not install coverage tooling or create
 instrumented artifacts.
 
-The production candidate sets `CARGO_INCREMENTAL=0`,
+The direct production lane sets `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
 nextest with `NEXTEST_TEST_THREADS=16`. It cleans prior coverage state, builds
 one coverage-instrumented artifact set with `cargo nextest run --no-run` under
@@ -234,10 +236,12 @@ then builds the `larch` CLI with Cargo's `--profile test`, which resolves to
 `target/llvm-cov-target/debug/larch`; it does not compile a second CLI with
 the dev profile or build an uninstrumented `target/debug/larch`. The lane runs
 `cargo llvm-cov nextest --no-report` and a separate
-`cargo test --doc` command. `--no-report` preserves the coverage artifact
-set between normal-test phases; the stable toolchain runs doctests without
-cargo-llvm-cov's nightly-only doctest instrumentation. The report command
-retains the existing line threshold and filename exclusions. For each coverage
+`cargo test --doc --workspace --all-features --locked --target-dir
+target/llvm-cov-target` command under the same `cargo llvm-cov show-env`
+environment. `--no-report` preserves the coverage artifact set between normal
+test phases; the stable toolchain runs doctests without cargo-llvm-cov's
+nightly-only doctest instrumentation. The report command retains the existing
+line threshold and filename exclusions. For each coverage
 path, after nextest and before its report, the lane fails closed unless the
 coverage-target executable is runnable and reports its version, then uses it
 for exactly one `larch lint all` invocation. That invocation writes a sorted
@@ -268,7 +272,7 @@ changed-path data. The summary HTML-escapes the already-redacted fields. It
 records the proposed mode, comparison base and head, changed paths, affected
 packages, reverse dependents, and a full-run trigger or skip proof. Its output
 is evidence only: it has no `needs` edge into `rust-lint`,
-`rust-deny`, `rust-coverage-profile`, `rust-coverage`, or `rust-gate`. Those
+  `rust-deny`, `rust-coverage`, `rust-coverage-benchmark`, or `rust-gate`. Those
 lanes still run in full on every pull request during the observation window.
 
 The selector has three modes:
@@ -316,7 +320,8 @@ enforcement must preserve.
 A profile comparison uses the same commit, `ubuntu-24.04` runner, pinned
 toolchain, runner-provided linker, `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_TEST_DEBUG=0`, and the same cache class. A manual dispatch with
-`coverage_profile_benchmark=true` runs three samples of both test optimization
+`coverage_profile_benchmark=true` runs the dispatch-only
+`rust-coverage-benchmark` job with three samples of both test optimization
 levels and every nextest thread count from 4 through 16. It compiles one
 coverage-instrumented artifact set per profile, clears only `profraw` data
 between thread counts, runs one complete repository-policy scan after each
