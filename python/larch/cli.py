@@ -520,7 +520,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("voting", "ballot-parse"): ("larch.review.voting", "ballot_parse_main", False),
     ("voting", "tally-vote"): ("larch.review.voting", "tally_vote_main", False),
     ("voting", "scoreboard"): ("larch.review.voting", "scoreboard_main", False),
-    ("run-log", "render-session-transcript"): ("larch.rendering.render_session_transcript", "main", False),
     ("redact", "secrets"): ("larch.core.redact", "main_secrets", False),
     ("redact", "tmpdir-paths"): ("larch.core.redact", "main_tmpdir_paths", False),
     ("redact", "scrub-log-secrets"): ("larch.core.redact", "main_scrub_log_secrets", False),

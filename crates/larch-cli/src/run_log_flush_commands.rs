@@ -14,7 +14,7 @@ use larch_adapters::{
 }; use larch_core::{
     ManifestDocument, ManifestRecord, ManifestUpdate, ManifestV2Seed, RecordLabels,
     RunLogLayout, RunLogSlug, emit_kv, is_terminal_merge_result,
-    parse_preterminal_outcome_label, redact,
+    parse_preterminal_outcome_label, redact, render_session_transcript,
 }; use serde_json::Value; use sha2::{Digest as _, Sha256}; use tempfile::NamedTempFile;
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_with_flags},
@@ -921,27 +921,28 @@ fn capture_transcript_inner(
                 regular_file(&existing),
             );
         }
-    }; let render = run_python_verb(
-        [
-            os("run-log"), os("render-session-transcript"), os("--input"),
-            transcript.as_os_str().to_owned(), os("--output"),
-            rendered.path().as_os_str().to_owned(),
-        ], PYTHON_TIMEOUT,
-    ); match render {
-        Ok(output) if output.status().success() => {}, Ok(output) => {
-            return transcript_failure(
-                issues_log, step, "render-failed", &format!(
-                    "session-transcript render failed; transcript was not staged: {}",
-                    safe_process_error(&output)
-                ), true, regular_file(&existing),
-            );
-        } Err(message) => {
-            return transcript_failure(
-                issues_log, step, "render-failed",
-                &format!("session-transcript render failed; transcript was not staged: {message}"),
-                true, regular_file(&existing),
-            );
-        }
+    }; let document =
+        match render_session_transcript(&transcript, plugin_root_directory().as_deref()) {
+            Ok(document) => document, Err(error) => {
+                return transcript_failure(
+                    issues_log, step, "render-failed", &format!(
+                        "session-transcript render failed; transcript was not staged: {}",
+                        safe_detail(&error.to_string())
+                    ), true, regular_file(&existing),
+                );
+            }
+        }; for line in document.warnings.lines() {
+        let _recorded = transcript_warning(
+            issues_log, step, "render-bounded",
+            &format!("session-transcript renderer {line}."),
+        );
+    } if let Err(error) = fs::write(rendered.path(), document.text.as_bytes()) {
+        return transcript_failure(
+            issues_log, step, "write-failed", &format!(
+                "session-transcript scratch write failed; transcript was not staged: {}",
+                safe_detail(&error.to_string())
+            ), true, regular_file(&existing),
+        );
     } if !rendered
         .path() .metadata() .is_ok_and(|metadata| metadata.len() > 0)
     {
@@ -1030,6 +1031,11 @@ fn record_terminal_failure(context: &FlushContext, message: &str) {
     ); let _ignored = append_execution_issue(&context.issue_log(), "Tool Failures", &entry);
     let _ignored =
         flush_execution_issues(context, "18", "execution-issues.md terminal snapshot", true);
+}
+
+/// Reduce one local error message to a redacted, bounded, single-line detail.
+fn safe_detail(message: &str) -> String {
+    one_line(redact(message).text(), 300)
 }
 
 fn safe_process_error(output: &larch_core::ProcessOutput) -> String {

@@ -14,8 +14,6 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit and CI scans.
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
-- `render_session_transcript.py` — bounded Python run-log maintenance consumer
-  exposed as `python/cli.py run-log render-session-transcript`.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — token scan and pricing helpers still used by `larch.report.tokens`, `larch.git.pr_body`, `larch.report.final_report`, and the calibration analyzers. The `/report-tokens` render, plot, issue, and CLI modules retired with issue 8088.
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
