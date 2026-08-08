@@ -182,21 +182,21 @@ fn render(
 fn report_body_matches_the_python_owner() {
     let runs = runs();
     for (skill, actual, include, name) in [
-        ("design", None, false, "body-design-none-stdout.md"),
-        ("design", Some(2.5), false, "body-design-actual-stdout.md"),
-        ("design", Some(2.5), true, "body-design-actual-issue.md"),
-        ("implement", None, false, "body-implement-none-stdout.md"),
+        ("design", None, false, "body-design-none-stdout.txt"),
+        ("design", Some(2.5), false, "body-design-actual-stdout.txt"),
+        ("design", Some(2.5), true, "body-design-actual-issue.txt"),
+        ("implement", None, false, "body-implement-none-stdout.txt"),
         (
             "implement",
             Some(2.5),
             false,
-            "body-implement-actual-stdout.md",
+            "body-implement-actual-stdout.txt",
         ),
         (
             "implement",
             Some(2.5),
             true,
-            "body-implement-actual-issue.md",
+            "body-implement-actual-issue.txt",
         ),
     ] {
         let (body, _sections) = render(skill, &runs, actual, include);
@@ -208,10 +208,10 @@ fn report_body_matches_the_python_owner() {
 fn detailed_cursor_split_adds_its_vendor_rows() {
     let runs = runs();
     let (body, sections) = render("implement", &runs[..1], None, false);
-    assert_eq!(body, fixture("body-detailed.md"));
+    assert_eq!(body, fixture("body-detailed.txt"));
     let (issue, omitted) =
         assemble_issue_body(&sections, BODY_LIMIT, "implement").expect("assemble");
-    assert_eq!(issue, fixture("issue-detailed.md"));
+    assert_eq!(issue, fixture("issue-detailed.txt"));
     assert!(omitted.is_empty());
 }
 
@@ -219,14 +219,14 @@ fn detailed_cursor_split_adds_its_vendor_rows() {
 fn issue_body_matches_the_python_owner() {
     let runs = runs();
     for (skill, actual, include, name) in [
-        ("design", None, false, "issue-design-none-stdout.md"),
-        ("design", Some(2.5), true, "issue-design-actual-issue.md"),
-        ("implement", None, false, "issue-implement-none-stdout.md"),
+        ("design", None, false, "issue-design-none-stdout.txt"),
+        ("design", Some(2.5), true, "issue-design-actual-issue.txt"),
+        ("implement", None, false, "issue-implement-none-stdout.txt"),
         (
             "implement",
             Some(2.5),
             true,
-            "issue-implement-actual-issue.md",
+            "issue-implement-actual-issue.txt",
         ),
     ] {
         let (_body, sections) = render(skill, &runs, actual, include);
@@ -238,10 +238,7 @@ fn issue_body_matches_the_python_owner() {
 
 #[test]
 fn cache_rows_match_the_python_owner() {
-    assert_eq!(
-        cache_ndjson(&runs()),
-        fixture("cache-rows.ndjson")
-    );
+    assert_eq!(cache_ndjson(&runs()), fixture("cache-rows.ndjson"));
 }
 
 #[test]
