@@ -1,0 +1,29 @@
+{"type":"summary","summary":"session summary"}
+{"type":"user","message":{"role":"user","content":"<command-name>/design</command-name>"},"isMeta":true}
+{"type":"system","message":{"role":"user","content":"boot"}}
+{"type":"file-history-snapshot","message":{"role":"user","content":"snap"}}
+{"type":"user","message":{"role":"user","content":"<command-message>implement</command-message>\n<command-name>/implement</command-name>\n<command-args>8091 --merge</command-args>"}}
+{"type":"user","message":{"role":"user","content":"<command-name>/f</command-name>\n<command-args>  </command-args>"}}
+{"type":"user","message":{"role":"user","content":"<command-name>  </command-name>"}}
+{"type":"user","message":{"role":"user","content":"Please fix <system-reminder>hidden guidance</system-reminder> the build — now."}}
+{"type":"user","message":{"role":"user","content":"<system-reminder>only a reminder</system-reminder>"}}
+{"type":"user","message":"not a mapping"}
+{"type":"user","message":{"role":"tool","content":"ignored"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Base directory for this skill is /plugin/skills/design"},{"type":"thinking","thinking":"unreferenced worry"},{"type":"tool_use","id":"toolu_a","name":"Bash","input":{"command":"ls"}},"scalar block",{"type":"image","source":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"ok\n"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"  the build may be broken  "},{"type":"text","text":"Running the build.\n\n"},{"type":"text","text":"<system-reminder>drop me</system-reminder>   "},{"type":"tool_use","id":"toolu_b","name":"Bash","input":{"command":"make"}},{"type":"tool_use","id":"toolu_c","name":"Read","input":{"file_path":"skills/shared/topology.md"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_b","content":[{"type":"text","text":"Exit code 2\nmake: *** [all] Error 2"},{"type":"image","source":{}},{"type":"text","text":" — \"quoted\" \\ tail 🚀"},"loose"]}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_d","is_error":true,"content":"boom"}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","is_error":true,"content":"orphan failure"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"dropped: no kept result in this turn"},{"type":"tool_use","id":"toolu_e","name":"Read","input":{"file_path":"%REPO_ROOT%/skills/design/references/approval-gates.md"}},{"type":"tool_use","id":"toolu_f","name":"Read","input":{"file_path":"/home/operator/.claude/plugins/cache/larch-local/larch/56.2.2/skills/shared/topology.md"}},{"type":"tool_use","id":"toolu_g","name":"Read","input":{"file_path":"<OPERATOR_REPO_PATH>/skills/review/references/panel.md"}},{"type":"tool_use","id":"toolu_h","name":"Read","input":{"file_path":"docs/guide.md"}},{"type":"tool_use","id":"toolu_i","name":"Read","input":{"file_path":"skills/../skills/shared/topology.md"}},{"type":"tool_use","id":"toolu_j","name":"Read","input":{"file_path":"skills/shared/deep/nested.md"}},{"type":"tool_use","id":"toolu_k","name":"Read","input":{"file_path":"/etc/passwd.md"}},{"type":"tool_use","id":"toolu_l","name":"Read","input":{"file_path":"<OPERATOR_REPO_PATH>"}},{"type":"tool_use","id":"toolu_m","name":"Read","input":{"file_path":"skills/design/references/notes.txt"}},{"type":"tool_use","id":"toolu_n","name":"Read","input":{"file_path":17}},{"type":"tool_use","id":"toolu_u","name":"Read","input":{"file_path":"<DESIGN_TMPDIR>/skills/shared/topology.md"}},{"type":"tool_use","id":"toolu_v","name":"Read","input":{"file_path":"plugins/cache/larch-local/larch/56.2.2/skills/shared/orchestrator-never.md"}},{"type":"tool_use","id":"toolu_w","name":"Read","input":{"file_path":".claude/plugins/cache/larch-local/larch/56.2.2/docs/guide.md"}},{"type":"tool_use","id":"toolu_o","name":"Read","input":"not a mapping"},{"type":"tool_use","id":"toolu_p","name":"Grep","input":{"pattern":"x"}},{"type":"tool_use","id":"toolu_q","name":"Read","input":{"file_path":"/home/operator/plugins/cache/larch-local/larch/56.2.2/skills/shared/topology.md"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_r","name":"Bash","input":{"command":"cargo build"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_r","content":"note: WARNING: deprecated api"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_s","name":"Bash","input":{"command":"gh pr view"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_s","content":"prefix\nError: no pull request found"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_t","name":"Bash","input":{"command":"long"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_t","content":"pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp\nExit code 9"}]}}
+{not json
+
+   
+{"type":"assistant","message":{"role":"assistant","content":"plain string content"}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"ignored"},"scalar"]}}

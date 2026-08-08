@@ -1,0 +1,11 @@
+{"v":3,"source_basename":"raw-session.jsonl","turns":10,"policy":"prose-errors-and-reference-reads"}
+{"turn":1,"role":"user","blocks":[{"type":"command","name":"/implement","args":"8091 --merge"}]}
+{"turn":2,"role":"user","blocks":[{"type":"command","name":"/f"}]}
+{"turn":3,"role":"user","blocks":[{"type":"text","value":"Please fix  the build — now."}]}
+{"turn":4,"role":"assistant","blocks":[{"type":"thinking","value":"the build may be broken"},{"type":"text","value":"Running the build."},{"type":"tool_use","name":"Read","input":{"file_path":"skills/shared/topology.md"}}]}
+{"turn":5,"role":"user","blocks":[{"type":"tool_result","tool_use_id":"toolu_b","name":"Bash","text":"Exit code 2\nmake: *** [all] Error 2 — \"quoted\" \\ tail 🚀","error":true,"exit_code":2}]}
+{"turn":6,"role":"user","blocks":[{"type":"tool_result","tool_use_id":"toolu_d","name":"?","text":"boom","error":true}]}
+{"turn":7,"role":"user","blocks":[{"type":"tool_result","tool_use_id":"","name":"?","text":"orphan failure","error":true}]}
+{"turn":8,"role":"assistant","blocks":[{"type":"tool_use","name":"Read","input":{"file_path":"skills/design/references/approval-gates.md"}},{"type":"tool_use","name":"Read","input":{"file_path":"skills/shared/topology.md"}},{"type":"tool_use","name":"Read","input":{"file_path":"skills/review/references/panel.md"}},{"type":"tool_use","name":"Read","input":{"file_path":"skills/shared/orchestrator-never.md"}}]}
+{"turn":9,"role":"user","blocks":[{"type":"tool_result","tool_use_id":"toolu_r","name":"Bash","text":"note: WARNING: deprecated api","warning":true}]}
+{"turn":10,"role":"user","blocks":[{"type":"tool_result","tool_use_id":"toolu_s","name":"Bash","text":"prefix\nError: no pull request found","error":true}]}

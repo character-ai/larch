@@ -6298,11 +6298,13 @@ verb = "render-session-transcript"
 python_module = "larch.rendering.render_session_transcript"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 8091
+clean_install_test = "clean-install-run-log-render-session-transcript"
 
 [[commands]]
 domain = "run-log"

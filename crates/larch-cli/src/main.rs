@@ -280,6 +280,9 @@ enum RunLogCommand {
     /// Correct historical Cursor cost lines in committed run summaries.
     #[command(name = "retro-fix-cursor", disable_help_flag = true)]
     RetroFixCursor(RawCompatibilityArguments),
+    /// Render one raw Claude Code session JSONL as the committed chat view.
+    #[command(name = "render-session-transcript", disable_help_flag = true)]
+    RenderSessionTranscript(RawCompatibilityArguments),
     /// Rewrite historical session transcripts to the v3 redaction policy.
     #[command(name = "retro-v3-sweep", disable_help_flag = true)]
     RetroV3Sweep(RawCompatibilityArguments),
@@ -1542,6 +1545,9 @@ fn run(
         Domain::RunLog(RunLogCommand::Sync(arguments)) => {
             Ok(run_log_publication_commands::sync(&arguments.arguments))
         }
+        Domain::RunLog(RunLogCommand::RenderSessionTranscript(arguments)) => Ok(
+            run_log_commands::render_session_transcript(&arguments.arguments),
+        ),
         Domain::RunLog(RunLogCommand::RetroFixCursor(arguments)) => Ok(
             run_log_migration_commands::retro_fix_cursor(&arguments.arguments),
         ),

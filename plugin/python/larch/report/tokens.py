@@ -29,7 +29,6 @@ from larch.errors import ShipError
 from larch.report import analysis_state, markdown_block
 from larch.report import run_log_corpus, storage_config
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
-from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
 TOKEN_LOCK_TIMEOUT_S = 5.0
@@ -1867,6 +1866,24 @@ def _classify_md_tier(*, rel: str, tier1_imports: set[str]) -> str:
     if rel.startswith("larch-logs/"):
         return "tier-4-run-log"
     return "tier-3-other"
+
+
+def strip_plugin_cache_read_suffix(path: str) -> str | None:
+    """Return the repo-relative suffix after a known Claude plugin-cache root."""
+    parts = path.split("/")
+    for index, part in enumerate(parts):
+        if (
+            part == "plugins"
+            and index + 4 < len(parts)
+            and parts[index + 1 : index + 4] == ["cache", "larch-local", "larch"]
+            and parts[index + 4]
+        ):
+            if index == 0 or parts[index - 1] == ".claude":
+                suffix_parts = parts[index + 5 :]
+                if suffix_parts:
+                    return "/".join(suffix_parts)
+            return None
+    return None
 
 
 def _normalize_read_path(*, raw: object, repo: Path) -> str | None:

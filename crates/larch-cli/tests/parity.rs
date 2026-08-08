@@ -1136,6 +1136,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "prepare-terminal-snapshot",
     ),
     CleanInstallCase::new("clean-install-run-log-refresh", "run-log", "refresh"),
+    CleanInstallCase::new(
+        "clean-install-run-log-render-session-transcript",
+        "run-log",
+        "render-session-transcript",
+    ),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
     CleanInstallCase::new(

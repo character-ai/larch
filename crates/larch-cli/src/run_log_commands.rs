@@ -1,6 +1,7 @@
 //! `run-log` command boundary.
 
 use crate::argparse_compat::{ParsedCommandLine, parse, parse_with_flags};
+use crate::python_verb::plugin_root_directory;
 use larch_adapters::git::GixRepository;
 use larch_adapters::run_lifecycle;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};
@@ -9,9 +10,9 @@ use larch_adapters::s3_storage::{R2Endpoint, S3Storage};
 use larch_core::{
     ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
     ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
-    StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage,
-    format_preflight_stdout, repository_leaf_from_remote, resolve_run_log_storage,
-    validate_run_log_slug,
+    StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage, TranscriptError,
+    format_preflight_stdout, render_session_transcript as render_transcript,
+    repository_leaf_from_remote, resolve_run_log_storage, validate_run_log_slug,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -894,6 +895,77 @@ fn parse_storage_preflight(arguments: &[OsString]) -> ParseOutcome {
         value.clone_into(&mut repo_root);
     }
     ParseOutcome::Ok(repo_root)
+}
+
+const RENDER_TRANSCRIPT_OPTIONS: &[&str] = &["--input", "--output"];
+const RENDER_TRANSCRIPT_USAGE: &str = "usage: cli.py [-h] --input INPUT [--output OUTPUT]";
+const RENDER_TRANSCRIPT_HELP: &str = "usage: cli.py [-h] --input INPUT [--output OUTPUT]\n\nrender-session-transcript.py \u{2014} render a Claude Code session JSONL as a\nfiltered chat-view JSONL.\n\noptions:\n  -h, --help       show this help message and exit\n  --input INPUT    Path to raw Claude Code session JSONL\n  --output OUTPUT  Path to write filtered JSONL (default: stdout)";
+
+/// Run the Rust-owned `run-log render-session-transcript` command.
+///
+/// Exit codes carry the contract its callers branch on: `2` for a missing or
+/// unreadable input, `3` for an input that held no record, `4` for an input past
+/// the renderer's size bound, and `1` for a failed write.
+#[must_use]
+pub fn render_session_transcript(arguments: &[OsString]) -> ExitCode {
+    if has_help(arguments) {
+        println!("{RENDER_TRANSCRIPT_HELP}");
+        return ExitCode::SUCCESS;
+    }
+    let parsed = parse(arguments, RENDER_TRANSCRIPT_OPTIONS, 0);
+    if let Some(error) = parsed.error() {
+        return render_transcript_argument_failure(&error);
+    }
+    let Some(input) = parsed.value("--input") else {
+        return render_transcript_argument_failure("the following arguments are required: --input");
+    };
+    let rendered = match render_transcript(Path::new(input), plugin_root_directory().as_deref()) {
+        Ok(rendered) => rendered,
+        Err(error) => {
+            eprintln!("render-session-transcript: {error}");
+            return ExitCode::from(transcript_exit_code(&error));
+        }
+    };
+    for line in rendered.warnings.lines() {
+        eprintln!("render-session-transcript: {line}");
+    }
+    // An empty `--output` was falsy to the Python owner, which streamed instead.
+    match parsed.value("--output").filter(|output| !output.is_empty()) {
+        Some(output) => {
+            if let Err(error) = fs::write(Path::new(output), rendered.text.as_bytes()) {
+                eprintln!(
+                    "render-session-transcript: could not write {}: {}",
+                    Path::new(output).display(),
+                    error.to_string().replace(['\n', '\r'], " ")
+                );
+                return ExitCode::FAILURE;
+            }
+        }
+        None => {
+            if std::io::stdout()
+                .write_all(rendered.text.as_bytes())
+                .is_err()
+            {
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// Map one rendering refusal to the exit code its callers branch on.
+const fn transcript_exit_code(error: &TranscriptError) -> u8 {
+    match error {
+        TranscriptError::Missing(_) | TranscriptError::Unreadable { .. } => 2,
+        TranscriptError::NoRecords(_) => 3,
+        TranscriptError::Oversized { .. } => 4,
+    }
+}
+
+fn render_transcript_argument_failure(message: &str) -> ExitCode {
+    eprintln!("{RENDER_TRANSCRIPT_USAGE}");
+    eprintln!("cli.py: error: {message}");
+    ExitCode::from(2)
 }
 
 #[cfg(test)]

@@ -227,6 +227,31 @@ of `larch.implement.architectural_assessment`). Neither adds a second
 implementation of anything: the logic has exactly one home, and the Rust command
 consumes it.
 
+Issue 8091 moved `run-log render-session-transcript` to Rust and deleted
+`larch.rendering.render_session_transcript`.
+`larch_core::report::session_transcript` is the single Rust owner of the schema-v3
+chat view: record parsing, turn and block rendering, tool-result classification,
+and reference-read normalization. `run-log checkpoint` and `run-log refresh` now
+render in process instead of through the `python_verb` seam, so transcript
+capture no longer spawns a child. The prompt renderers in
+`larch.rendering.rendering` and `larch.rendering._rendering_generators` keep their
+Python owner; #7678 and #7679 move them.
+
+Three contract points changed deliberately, each named by the leaf's acceptance.
+Rendered strings escape `U+0085`, `U+2028`, and `U+2029`, which JSON leaves bare
+but Python's `str.splitlines` treats as record breaks, so transcript content can
+no longer forge a header or turn line; the recorded Python output for the hostile
+fixture does split into forged lines, and the parity test pins both halves. An
+input past 512 MiB is refused rather than rendered in part, and a record past
+8 MiB is skipped and counted. Records with invalid UTF-8 are still decoded with
+replacement, but the count now reaches stderr and the capture's execution-issue
+warnings instead of vanishing.
+
+`larch.report.tokens` kept the one helper it imported from the deleted module,
+`strip_plugin_cache_read_suffix`, as its own function. That is a Python-side
+move, not a second owner of anything Rust holds: the Rust renderer needs the same
+rule and states it once in `session_transcript`.
+
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python
 `assess_issue_details` remains until those consumers move.

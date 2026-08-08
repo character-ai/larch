@@ -12,6 +12,7 @@ mod markdown_block;
 mod path_warning;
 mod run_log_corpus;
 mod run_summary;
+mod session_transcript;
 pub mod timing;
 mod token_cost;
 mod token_report;
@@ -50,6 +51,11 @@ pub use run_log_corpus::{
 pub use run_summary::{
     GLM_TOKEN_TO_PLAN_DIVISOR, RunSummaryCost, RunSummaryFields, RunSummaryIdentity,
     map_outcome_display, render_run_summary,
+};
+pub use session_transcript::{
+    MAX_INPUT_BYTES as MAX_TRANSCRIPT_INPUT_BYTES, MAX_RECORD_BYTES as MAX_TRANSCRIPT_RECORD_BYTES,
+    RenderedTranscript, SCHEMA_VERSION as TRANSCRIPT_SCHEMA_VERSION, TRANSCRIPT_POLICY,
+    TranscriptError, TranscriptWarnings, render_session_transcript,
 };
 pub use token_cost::{
     BLENDED_FALLBACK_WARNING, CODEX_MINI_MODELS, CURSOR_COMPOSER_BASE_RATES, CURSOR_GROK_MODELS,
