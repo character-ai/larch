@@ -40,11 +40,10 @@ roadmap or completed-leaf issues, and every listed command must match the
 recorded owner and the three independent migration milestones. A command may
 appear in more than one row when it consumes several typed adapter operations.
 Issue-dependency adapter parity landed in #7841, and sub-issue adapter parity
-in #8164. The `issue-reads` row records the #7682 command cutovers so far:
-#8167 moved `issue state`, `issue info`, and `issue context` to Rust, and #8168
-added `issue list-issues` and `issue fetch-issue-details`. The rows that still
-name Python-owned issue commands enumerate them instead of claiming the whole
-domain.
+in #8164. The `issue-reads` row records the #7682 command cutovers so far: the
+issue query verbs moved to Rust in #8167, and `issue list-issues` plus
+`issue fetch-issue-details` followed in #8168. The rows that still name
+Python-owned issue commands enumerate them instead of claiming the whole domain.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
