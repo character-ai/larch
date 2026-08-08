@@ -112,7 +112,8 @@ impl CleanInstallCase {
             | "clean-install-oos-materialize-manifest"
             | "clean-install-oos-issue-cap"
             | "clean-install-oos-disposition-gate"
-            | "clean-install-oos-disposition-checkpoint" => 2,
+            | "clean-install-oos-disposition-checkpoint"
+            | "clean-install-oos-file" => 2,
             _ => 0,
         }
     }
@@ -722,6 +723,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "oos",
         "disposition-checkpoint",
     ),
+    CleanInstallCase::new("clean-install-oos-file", "oos", "file"),
     CleanInstallCase::new(
         "clean-install-external-defaults-docs",
         "external-defaults",

@@ -5,13 +5,14 @@
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from larch.issue import oos_filer
+from larch.issue import file_oos
 from larch.issue import oos_priority
 from larch.issue._util import (
     GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
@@ -23,7 +24,7 @@ from larch.core import proc
 from larch.git import gh
 from larch.report import run_log_corpus
 from larch.review import voting
-from larch.review.review_types import parse_blocks
+from larch.review.review_types import parse_blocks, parse_canonical_heading
 
 _GITHUB_ISSUE_URL_RE = re.compile(r"https://[^\s|)]+/[^/\s|)]+/[^/\s|)]+/issues/(\d+)")
 _COMBINED_AWAY_MARKER_RE = re.compile(r"<!--\s*larch:combined-away\s+source=#\d+\s+target=#\d+\s*-->", re.I)
@@ -199,8 +200,30 @@ def classify_oos_issue_fate(issue: Mapping[str, Any] | None) -> dict[str, Any]:
     return {"bucket": "provisional unknown", "adjusted": 1, "provisional": 1, "docked": False, "unknown": True}
 
 
+_BARE_OOS_ITEM_RE = re.compile(r"(?:[^:]+:)?((?:OOS|FINDING)_\d+)")
+
+
 def _bare_oos_item_suffix(stable_id: str) -> str | None:
-    return oos_filer._bare_oos_item_suffix(stable_id)  # pyright: ignore[reportPrivateUsage]
+    match = _BARE_OOS_ITEM_RE.fullmatch(stable_id)
+    return match.group(1) if match else None
+
+
+def _stable_source_key(path: Path) -> str:
+    return path.stem
+
+
+def _stable_identifier(title: str, body: str, *, source_key: str = "") -> str:
+    """Mint one accepted block's durable identity, canonical heading first."""
+    oos_heading = next(
+        (h for line in body.splitlines() for h in [parse_canonical_heading(line)] if h is not None and h.kind == "OOS"),
+        None,
+    )
+    if oos_heading is not None:
+        bare = oos_heading.item_id
+        return f"{source_key}:{bare}" if source_key else bare
+    normalized = file_oos.normalize_title(f"{title}\n{body}").lower()
+    digest = hashlib.sha256(normalized.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"{source_key}:{digest}" if source_key else digest
 
 
 def _canonical_stable_id( *,source_key: str, bare_id: str) -> str:
@@ -208,7 +231,7 @@ def _canonical_stable_id( *,source_key: str, bare_id: str) -> str:
 
 
 def _hash_stable_id( *,title: str, body: str, source_key: str) -> str:
-    return oos_filer._stable_identifier(title, body, source_key=source_key)  # pyright: ignore[reportPrivateUsage]
+    return _stable_identifier(title, body, source_key=source_key)
 
 
 def _stable_ids_cover( *,issue_stable_id: str, block_keys: set[Any], allow_main_agent_bridge: bool = False) -> bool:
@@ -266,7 +289,7 @@ def _parse_oos_accepted_blocks(path: Path, *, run_dir: Path) -> list[dict[str, A
     text = path.read_text(encoding="utf-8", errors="replace")
     parsed_blocks = parse_blocks(text, boundary="item-heading")
     blocks: list[dict[str, Any]] = []
-    source_key = oos_filer._stable_source_key(path)  # pyright: ignore[reportPrivateUsage]
+    source_key = _stable_source_key(path)
     try:
         artifact_relpath = path.relative_to(run_dir).as_posix()
     except ValueError:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -49,7 +48,7 @@ def test_parse_oos_blocks_stops_at_intervening_finding_heading() -> None:
         "last body\n"
     )
 
-    blocks = file_oos._parse_oos_blocks(text)  # pyright: ignore[reportPrivateUsage]
+    blocks = file_oos.parse_oos_blocks(text)
 
     assert [(block.number, block.body) for block in blocks] == [
         (1, "### OOS_1: first\nfirst body"),
@@ -261,45 +260,6 @@ def test_design_tmpdir_env_oos_path_resolution(
 
 
 
-def append_oos(path: Path, n: int, title: str, description: str) -> None:
-    with path.open("a", encoding="utf-8") as handle:
-        _ = handle.write(f"### OOS_{n}: {title}\n")
-        _ = handle.write(f"- **Description**: {description}\n")
-        _ = handle.write("- **Reviewer**: Test\n")
-        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
-        _ = handle.write("- **Phase**: implement\n\n")
-
-
-def make_issue_cap_input(tmp_path: Path, name: str) -> Path:
-    path = tmp_path / name / "input.md"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text("", encoding="utf-8")
-    return path
-
-
-def build_many_issue_cap_oos(path: Path, count: int) -> None:
-    _ = path.write_text("", encoding="utf-8")
-    for n in range(1, count + 1):
-        append_oos(path, n, f"Title {n}", f"Description for item {n} touching skills/foo/item-{n}.sh:{n}-{n + 1}")
-
-
-
-
-def assert_issue_cap_heading_count(path: Path, expected: int) -> None:
-    text = path.read_text(encoding="utf-8")
-    assert len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE)) == expected
-
-
-
-
-
-
-
-
-
-
-
-
 def test_issue_cap_warning_string_consistency_in_config_docs() -> None:
     config = (REPO_ROOT / "docs" / "configuration-and-permissions.md").read_text(encoding="utf-8")
     assert OOS_ISSUE_CAP_OPERATOR_WARNING in config
@@ -329,28 +289,6 @@ def test_issue_cap_warning_string_consistency_in_config_docs() -> None:
 
 
 
-
-
-
-
-
-
-def test_validate_issue_cap_excludes_fenced_oos_headings_under_shared_helper() -> None:
-    text = (
-        "### OOS_1: Real\n"
-        "- **Description**: Before fence\n"
-        "```markdown\n"
-        "### OOS_99: Fenced phantom\n"
-        "```\n"
-        "- **Phase**: implement\n"
-        "### OOS_2: Also real\n"
-        "- **Description**: After\n"
-        "~~~\n"
-        "### OOS_88: Tilde phantom\n"
-        "~~~\n"
-    )
-    items = file_oos._validate_issue_cap_input(text)  # pyright: ignore[reportPrivateUsage]
-    assert [item.title for item in items] == ["Real", "Also real"]
 
 
 

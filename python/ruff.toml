@@ -548,13 +548,6 @@ ignore = [
 "oos_disposition.py" = [
     "C901",
 ]
-"oos_filer.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "phantom.py" = [
     "PLR0911",
 ]

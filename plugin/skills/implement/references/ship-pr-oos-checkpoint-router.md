@@ -8,7 +8,7 @@
 
 `security-oos-observations.md` is private-disposition material. Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md` `## Security Findings in OOS Workflows` private disclosure with no public `/issue`, and clear the sidecar only after private disposition completes. Public `/issue` filing is forbidden on this branch. Checkpoint stall is expected until private security disposition clears the sidecar.
 
-OOS issue cap enforcement applies only on the pre-driver `python/cli.py oos file` path for non-security OOS; this branch does not run cap enforcement or public issue batch emission.
+OOS issue cap enforcement applies only on the pre-driver `larch oos file` path for non-security OOS; this branch does not run cap enforcement or public issue batch emission.
 
 `python/cli.py implement step-8-oos-checkpoint` runs `oos disposition-checkpoint`, owns success bookkeeping, and emits exactly one `NEXT_ACTION=` when routing succeeds. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no `NEXT_ACTION` is emitted. It never emits `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`.
 

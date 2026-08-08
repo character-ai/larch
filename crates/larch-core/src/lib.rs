@@ -184,6 +184,14 @@ pub use issue::{
     render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
 };
 pub use issue::{
+    AcceptedBlock, AcceptedSource, FiledIssue, LEGACY_PRIMARY_OOS_SOURCE, bare_oos_item_suffix,
+    combined_block_count, dedupe_filed, is_capped_rollup_body, issue_covers_stable_id,
+    ndjson_filed_evidence, normalized_title, priority_by_combined_item, priority_urls,
+    render_blocks, render_oos_ndjson, render_recovery_evidence, render_sentinel, sentinel_urls,
+    split_persisted_matches, split_to_github_limit, stable_identifier, stable_ids_by_combined_item,
+    summarize_to_github_limit, working_batch, wrap_oos_body,
+};
+pub use issue::{
     BODY_CAP, CategoryCount, CategoryIndex, CategoryLabel, CategoryMode, ClassificationSource,
     CorpusFilter, CorpusScanStats, CoverageStats, EvidenceIndex, EvidenceOrdering, EvidenceSource,
     GateFailure, GroundTruthAnalysis, GroundTruthCorpusScan, GroundTruthEvidence, GroundTruthMode,

@@ -690,7 +690,7 @@ def _parse_post_cap_combined_blocks(combined_path: Path) -> list[str]:
     if not combined_path.is_file():
         return []
     text = combined_path.read_text(encoding="utf-8", errors="replace")
-    blocks = file_oos._parse_oos_blocks(text)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    blocks = file_oos.parse_oos_blocks(text)
     return [block.body for block in blocks]
 
 

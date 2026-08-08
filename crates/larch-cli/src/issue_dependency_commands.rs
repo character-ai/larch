@@ -242,15 +242,15 @@ fn parse_edge_arguments(
 
 /// Everything the live path needs after validation and repository resolution.
 #[derive(Debug)]
-struct LiveEdge {
-    repository: GitHubRepositoryRef,
-    subject: u64,
-    object: u64,
-    object_id: Option<u64>,
-    context_file: String,
-    run_id: String,
-    trusted_root: String,
-    operator_invoked: bool,
+pub struct LiveEdge {
+    pub repository: GitHubRepositoryRef,
+    pub subject: u64,
+    pub object: u64,
+    pub object_id: Option<u64>,
+    pub context_file: String,
+    pub run_id: String,
+    pub trusted_root: String,
+    pub operator_invoked: bool,
 }
 
 /// Validate one scanned command line and resolve its repository.
@@ -368,7 +368,8 @@ pub fn add_blocked_by(arguments: &[OsString]) -> ExitCode {
         eprintln!("{}", BLOCKED_BY_OPTIONS.usage);
         return ExitCode::from(1);
     }
-    let outcome = plan_edge(&parsed, BLOCKED_BY_OPTIONS).and_then(|edge| apply_blocked_by(&edge));
+    let outcome =
+        plan_edge(&parsed, BLOCKED_BY_OPTIONS).and_then(|edge| apply_blocked_by_edge(&edge));
     report_edge(
         &outcome,
         "BLOCKED_BY_ADDED",
@@ -379,7 +380,14 @@ pub fn add_blocked_by(arguments: &[OsString]) -> ExitCode {
 }
 
 /// Add the dependency edge, resolving the blocker's database id when needed.
-fn apply_blocked_by(edge: &LiveEdge) -> Result<(), EdgeFailure> {
+///
+/// An in-process caller reads the refusal as its flat diagnostic; the command
+/// path keeps the per-class exit code the `/issue` scanners branch on.
+pub fn apply_blocked_by(edge: &LiveEdge) -> Result<(), String> {
+    apply_blocked_by_edge(edge).map_err(|failure| failure.error)
+}
+
+fn apply_blocked_by_edge(edge: &LiveEdge) -> Result<(), EdgeFailure> {
     let authorization = authorization_request(
         &edge.context_file,
         &edge.run_id,

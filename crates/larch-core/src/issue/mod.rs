@@ -21,6 +21,7 @@ mod lease;
 mod oos_batch;
 mod oos_conflict;
 mod oos_disposition;
+mod oos_filing;
 mod oos_priority;
 mod oos_record;
 mod report_core;
@@ -72,6 +73,14 @@ pub use oos_disposition::{
     count_filed_urls_union_files, count_inline_triage_hits, count_inline_triage_occurrences,
     count_non_security_oos_blocks, count_rejected_oos_markers_from_ndjson, issue_url_pattern,
     read_universal_newlines,
+};
+pub use oos_filing::{
+    AcceptedBlock, AcceptedSource, FiledIssue, LEGACY_PRIMARY_OOS_SOURCE, bare_oos_item_suffix,
+    combined_block_count, dedupe_filed, is_capped_rollup_body, issue_covers_stable_id,
+    ndjson_filed_evidence, normalized_title, priority_by_combined_item, priority_urls,
+    render_blocks, render_oos_ndjson, render_recovery_evidence, render_sentinel, sentinel_urls,
+    split_persisted_matches, split_to_github_limit, stable_identifier, stable_ids_by_combined_item,
+    summarize_to_github_limit, working_batch, wrap_oos_body,
 };
 pub use oos_priority::{
     HIGH_RISK_FOCUS_VALUES, OOS_CORRECTNESS_LABEL, OOS_CORRECTNESS_LABEL_COLOR,

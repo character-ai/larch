@@ -4254,11 +4254,13 @@ verb = "file"
 python_module = "larch.issue.oos_filer"
 python_function = "cmd_file"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8179
+clean_install_test = "clean-install-oos-file"
 
 [[commands]]
 domain = "oos"
@@ -8611,7 +8613,7 @@ rust = ["git commit", "timing mark"]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
 python = []
-rust = ["execution-issues refresh", "oos disposition-checkpoint", "stall-recovery seed-terminal-state"]
+rust = ["execution-issues refresh", "oos disposition-checkpoint", "oos file", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_step18.py"
@@ -8642,12 +8644,6 @@ path = "python/larch/issue/deps_audit.py"
 kind = "python-runtime"
 python = []
 rust = ["block-issue add-blocked-by"]
-
-[[callers]]
-path = "python/larch/issue/oos_filer.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-codex-exec", "oos disposition-checkpoint", "oos file-conflict-deps"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"

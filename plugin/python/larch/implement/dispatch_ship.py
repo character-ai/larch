@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.issue import file_oos
-from larch.issue import oos_filer
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
@@ -27,6 +26,7 @@ from larch.git import git, gh, rebase
 from larch.implement import ship
 from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
+from larch.report import run_log_manifest
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
     _emit_kv,
@@ -989,7 +989,16 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
             _emit_kv(key="NEXT_ACTION", value="halt-seed")
             return seed.returncode
 
-    oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
+    oos = subprocess.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "oos", "file",
+            "--implement-tmpdir", str(implement_tmpdir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if oos.returncode != 0:
         _forward_child_output_to_stderr(oos)
         payload: object
@@ -1124,11 +1133,44 @@ def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: P
         ])
 
 
+_OOS_NDJSON_FILED_URL_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://\S+/issues/\d+)", re.MULTILINE)
+_OOS_NDJSON_ANY_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
+
+
 def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) -> int:
+    """Count the distinct issue URLs the run's OOS batch already records."""
     ndjson = implement_tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
-    if ndjson.is_file():
-        return len(oos_filer._ndjson_filed_evidence(tmpdir=implement_tmpdir, run_id=run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-    return 0
+    if not ndjson.is_file():
+        return 0
+    urls: list[str] = []
+    for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            record: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        body = str(record.get("body", "")) if isinstance(record, dict) else ""
+        urls.extend(_OOS_NDJSON_FILED_URL_RE.findall(body) or _OOS_NDJSON_ANY_URL_RE.findall(body))
+    return len(dict.fromkeys(urls))
+
+
+def _stamp_step9a1(*, implement_tmpdir: Path, run_id: str, value: bool) -> bool:
+    """Stamp `steps_ran.step9a1` on the run manifest, if there is one."""
+    manifest = implement_tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
+    if not manifest.is_file():
+        return False
+    try:
+        run_log_manifest._update_manifest_v2(path=manifest, updates={"steps_ran.step9a1": value})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {str(exc)[:300]}") from exc
+    return True
+
+
+def _write_oos_run_statistics(*, implement_tmpdir: Path, run_id: str, filed_count: int) -> None:
+    path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"Run {run_id}: {filed_count} OOS issue(s) filed.\n", encoding="utf-8")
 
 
 def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str]:
@@ -1139,15 +1181,15 @@ def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str
     stats_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
     try:
         filed_count = _step8_oos_checkpoint_filed_count(implement_tmpdir=implement_tmpdir, run_id=run_id)
-        stamped = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=True)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        stamped = _stamp_step9a1(implement_tmpdir=implement_tmpdir, run_id=run_id, value=True)
         if not stamped:
             raise RuntimeError("manifest stamp returned false")
-        _ = oos_filer._write_run_statistics(tmpdir=implement_tmpdir, run_id=run_id, filed_count=filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        _write_oos_run_statistics(implement_tmpdir=implement_tmpdir, run_id=run_id, filed_count=filed_count)
         ship._patch_ship_state_keys(state_file=implement_tmpdir / "ship-pr-state.sh", patch={"OOS_PENDING": "false"})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     except Exception as exc:
         print(f"step-8-oos-checkpoint: bookkeeping failed: {exc}", file=sys.stderr)
         with contextlib.suppress(Exception):
-            _ = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=False)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            _ = _stamp_step9a1(implement_tmpdir=implement_tmpdir, run_id=run_id, value=False)
         with contextlib.suppress(OSError):
             if stats_path.is_file():
                 stats_path.unlink()

@@ -2205,7 +2205,7 @@ def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pendi
             raise RuntimeError("stamp failed")
         return True
 
-    monkeypatch.setattr(implement_dispatch.oos_filer, "_stamp_manifest", fake_stamp)
+    monkeypatch.setattr(dispatch_ship, "_stamp_step9a1", lambda *, implement_tmpdir, run_id, value: fake_stamp(implement_tmpdir, run_id, value=value))
 
     assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
 
@@ -2258,8 +2258,8 @@ def test_step8_oos_checkpoint_stats_write_failure_stalls(
     (tmp / "larch-logs" / "implement" / "run" / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
     _mock_disposition_checkpoint_only(monkeypatch)
     monkeypatch.setattr(
-        implement_dispatch.oos_filer,
-        "_write_run_statistics",
+        dispatch_ship,
+        "_write_oos_run_statistics",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("stats write failed")),
     )
 
@@ -2842,6 +2842,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 7
 
@@ -2849,6 +2850,25 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
     assert captured.out == "NEXT_ACTION=halt-seed\n"
     assert captured.err.endswith("seed stdout\nseed stderr\n")
     assert calls == [["implement", "step-8-python-guard"], ["implement", "step-8-seed-initial"]]
+
+
+
+def _patch_rust_oos_file(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[list[str]],
+    results: list[subprocess.CompletedProcess[str]],
+) -> None:
+    """Route the Rust-owned `oos file` spawn through the same script."""
+    real_run = subprocess.run
+
+    def fake_subprocess_run(args: Sequence[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        tail = [str(part) for part in args[1:]]
+        if tail[:2] != ["oos", "file"]:
+            return real_run(list(args), **kwargs)  # pyright: ignore[reportUnknownVariableType]
+        calls.append(tail)
+        return results.pop(0)
+
+    monkeypatch.setattr(dispatch_ship.subprocess, "run", fake_subprocess_run)
 
 
 def test_ship_pre_driver_oos_failure_uses_distinct_action(
@@ -2872,6 +2892,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 5
 
@@ -2911,6 +2932,7 @@ def test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 3
 
@@ -2945,6 +2967,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 0
 

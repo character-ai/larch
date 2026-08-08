@@ -16,7 +16,6 @@ orchestrator can avoid re-filing across same-session retries.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import re
@@ -24,15 +23,13 @@ from itertools import pairwise
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_log_corpus
-from larch.report.run_log_batch import append_execution_issue
 from larch.review import voting
-from larch.review.review_types import count_non_security_blocks, is_canonical_heading, parse_blocks
-from larch.design.plan_grammar import balanced_fence_line_indices
+from larch.review.review_types import count_non_security_blocks, parse_blocks
 from larch.issue.issue_create import ParsedItem, parse_issue_input
 from larch.core.redact import redact
 
@@ -44,19 +41,9 @@ INLINE_TRIAGE_MARKER: str = config.INLINE_TRIAGE_MARKER
 OOS_FILED_URL_FIELD: str = config.OOS_FILED_URL_FIELD
 
 
-class IssueCapInvalidEnv(ValueError):
-    """Raised when issue-cap environment knobs are invalid."""
-
 # ---------------------------------------------------------------------------
 # Regexes (ported from oos.py)
 # ---------------------------------------------------------------------------
-
-
-_FOCUS_AREA_LINE_RE = re.compile(
-    r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
-    r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
-    re.IGNORECASE | re.MULTILINE,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +191,6 @@ _FILE_REF_RE = re.compile(
 )
 
 
-def _strip_md_emphasis(text: str) -> str:
-    return text.replace("`", "").replace("*", "")
-
-
 def _sanitize_public_text(text: str) -> str:
     text = redact(text)
     text = _INTERNAL_URL_RE.sub("<INTERNAL-URL>", text)
@@ -217,155 +200,10 @@ def _sanitize_public_text(text: str) -> str:
     return _ACCOUNT_RE.sub("<REDACTED-PII>", text)
 
 
-def _normalize_title(text: object) -> str:
+def normalize_title(text: object) -> str:
     cleaned = _sanitize_public_text(str(text or ""))
     cleaned = re.sub(r"[\x00-\x1f\x7f]", " ", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
-
-
-def _write_description_lines(description: object) -> list[str]:
-    sanitized = _sanitize_public_text(str(description or ""))
-    lines = sanitized.splitlines() or [""]
-    out: list[str] = []
-    for index, line in enumerate(lines):
-        if index == 0:
-            out.append(f"- **Description**: {line}")
-        else:
-            out.append(f"  {line}")
-    return out
-
-
-def _security_signal(*, description: object, focus_area: object = "") -> bool:
-    if focus_area and _FOCUS_AREA_LINE_RE.search(f"- **focus-area**: {focus_area}\n"):
-        return True
-    return bool(_FOCUS_AREA_LINE_RE.search(_strip_md_emphasis(str(description or ""))))
-
-
-def _load_manifest_observations(path: Path, *, count_only: bool = False) -> list[dict[str, object]]:
-    try:
-        raw_data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"manifest must be readable JSON: {exc}") from exc
-    if not isinstance(raw_data, dict):
-        raise TypeError("manifest must be a JSON object")
-    data = cast("dict[str, object]", raw_data)
-    observations = data.get("oos_observations", [])
-    if observations is None:
-        observations = []
-    if not isinstance(observations, list):
-        raise TypeError("oos_observations must be an array")
-    observations = cast("list[object]", observations)
-    if count_only:
-        return cast("list[dict[str, object]]", observations)
-    out: list[dict[str, object]] = []
-    for index, item in enumerate(observations, start=1):
-        if not isinstance(item, dict):
-            raise TypeError(f"oos_observations[{index}] must be a JSON object")
-        out.append(cast("dict[str, object]", item))
-    return out
-
-
-def _existing_oos_titles(path: Path) -> set[str]:
-    if not path.is_file():
-        return set()
-    return {
-        _normalize_title(block.title).lower()
-        for block in parse_blocks(path.read_text(encoding="utf-8"), boundary="oos-heading")
-        if block.kind == "OOS"
-    }
-
-
-def _next_oos_number(path: Path) -> int:
-    if not path.is_file():
-        return 1
-    numbers = [
-        int(block.item_id.removeprefix("OOS_"))
-        for block in parse_blocks(path.read_text(encoding="utf-8"), boundary="oos-heading")
-        if block.kind == "OOS"
-    ]
-    return max(numbers, default=0) + 1
-
-
-def _security_audit_has_title(*, path: Path, title: str) -> bool:
-    if not path.is_file():
-        return False
-    wanted = f"### Security OOS: {title}"
-    return any(line == wanted for line in path.read_text(encoding="utf-8").splitlines())
-
-
-def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, count_only: bool = False) -> int:
-    observations = _load_manifest_observations(manifest_path, count_only=count_only)
-    if count_only:
-        return len(observations)
-    if not observations:
-        return 0
-    if os.environ.get("LARCH_TEST_MATERIALIZE_FORCE_FAIL") == "true":
-        raise RuntimeError("LARCH_TEST_MATERIALIZE_FORCE_FAIL")
-    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
-    cli_path = plugin_root / "python" / "cli.py"
-    if not cli_path.is_file():
-        raise RuntimeError(f"redact secrets missing or not executable: {cli_path}")
-    out = implement_tmpdir / "oos-accepted-main-agent.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.touch(exist_ok=True)
-    titles = _existing_oos_titles(out)
-    next_n = _next_oos_number(out)
-    blocks: list[str] = []
-    audit = implement_tmpdir / "security-oos-observations.md"
-    for index, item in enumerate(observations, start=1):
-        title = _normalize_title(item.get("title", ""))
-        description = item.get("description", "")
-        phase = _normalize_title(item.get("phase", "implement")) or "implement"
-        focus_area = item.get("Focus area", item.get("focus-area", item.get("focus_area", "")))
-        focus_area_s = _normalize_title(focus_area)
-        if not title:
-            title = f"Untitled external implementer OOS {index}"
-        if _security_signal(description=description, focus_area=focus_area_s):
-            if not _security_audit_has_title(path=audit, title=title):
-                had = audit.exists() and audit.stat().st_size > 0
-                lines = ([""] if had else []) + [f"### Security OOS: {title}"]
-                lines.extend(_write_description_lines(description))
-                lines.append(f"- **Phase**: {phase}")
-                if focus_area_s:
-                    lines.append(f"- **focus-area**: {focus_area_s}")
-                lines.append("- **Disposition**: security-routed; not materialized for public OOS filing")
-                audit.write_text((audit.read_text(encoding="utf-8") if audit.exists() else "") + "\n".join(lines) + "\n", encoding="utf-8")
-                _append_run_log_warning(tmpdir=implement_tmpdir, entry="- **cli.py oos materialize-manifest**: security-routed manifest OOS retained in security-oos-observations.md")
-            continue
-        key = title.lower()
-        if key in titles:
-            continue
-        lines = [f"### OOS_{next_n}: {title}"]
-        lines.extend(_write_description_lines(description))
-        lines.append("- **Reviewer**: External implementer")
-        lines.append("- **Vote tally**: N/A — auto-filed per policy")
-        lines.append(f"- **Phase**: {phase}")
-        if focus_area_s:
-            lines.append(f"- **focus-area**: {focus_area_s}")
-        blocks.append("\n".join(lines))
-        titles.add(key)
-        next_n += 1
-    if blocks:
-        existing = out.read_text(encoding="utf-8")
-        sep = "\n\n" if existing.strip() else ""
-        out.write_text(existing.rstrip() + sep + "\n\n".join(blocks) + "\n", encoding="utf-8")
-    return len(observations)
-
-
-def _append_run_log_warning(*, tmpdir: Path, entry: str) -> None:
-    log = tmpdir / "execution-issues.md"
-    try:
-        append_execution_issue(log_file=log, category="Warnings", entry=entry)
-        return
-    except Exception as exc:
-        _ = exc
-    text = log.read_text(encoding="utf-8") if log.exists() else ""
-    if entry in text:
-        return
-    if "### Warnings" not in text:
-        text = text.rstrip() + ("\n\n" if text.strip() else "") + "### Warnings\n"
-    text = text.rstrip() + f"\n{entry}\n"
-    log.write_text(text, encoding="utf-8")
 
 
 def _read_kv_file(path: Path) -> dict[str, str]:
@@ -402,14 +240,6 @@ def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, s
     return resolve_implement_run_id(tmpdir, state=state)
 
 
-def append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str) -> None:
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("a", encoding="utf-8") as handle:
-        handle.write(f"\n### Tool Failures\n- **{site}**: {tool} exited {rc}\n")
-        if output:
-            handle.write(output.rstrip() + "\n")
-
-
 @dataclass(frozen=True)
 class OosItem:
     number: int
@@ -417,148 +247,12 @@ class OosItem:
     body: str
 
 
-def _parse_oos_blocks(text: str) -> list[OosItem]:
+def parse_oos_blocks(text: str) -> list[OosItem]:
     return [
         OosItem(int(block.item_id.removeprefix("OOS_")), block.title, block.block.rstrip())
         for block in parse_blocks(text, boundary="item-heading")
         if block.kind == "OOS"
     ]
-
-
-def _normalize_rollup_text(text: str) -> str:
-    cleaned = re.sub(r"[\000-\010\013\014\016-\037\177]", "", text)
-    cleaned = re.sub(r"[\r\n\t]+", " ", cleaned)
-    cleaned = re.sub(r"^[ *_#`]+", "", cleaned)
-    cleaned = re.sub(r"[*`]+", "", cleaned)
-    return re.sub(r"\s+", " ", cleaned).strip()
-
-
-def _file_refs_from_body(body: str) -> str:
-    refs: list[str] = []
-    seen: set[str] = set()
-    for match in _FILE_REF_RE.finditer(body):
-        candidate = match.group(0).lstrip("*_#` ").rstrip("*_#` ")
-        if candidate and candidate not in seen:
-            seen.add(candidate)
-            refs.append(candidate)
-    return " ".join(refs)
-
-
-def _renumber_oos_headings(text: str) -> str:
-    idx = 0
-    out: list[str] = []
-    for line in text.splitlines():
-        if is_canonical_heading(line, kind="OOS"):
-            idx += 1
-            out.append(re.sub(r"^### OOS_\d+:", f"### OOS_{idx}:", line))
-        else:
-            out.append(line)
-    rendered = "\n".join(out)
-    return rendered + ("\n" if text.endswith("\n") else "")
-
-
-# Embedded rolled-up bodies are indented so their lines never match the
-# ^-anchored heading/field regexes in `parse_issue_input` (DESC/REVIEWER/VOTE/
-# PHASE and `### OOS_<N>:`), keeping the aggregate one parseable block while
-# preserving each combined item's full body verbatim.
-_ROLLED_BODY_INDENT = "    "
-
-
-def _indent_rolled_body(body: str) -> str:
-    return "\n".join(f"{_ROLLED_BODY_INDENT}{line}" if line.strip() else "" for line in body.splitlines())
-
-
-def _aggregate_block(seq: int, items: list[OosItem], *, cap: int) -> str:
-    surplus = len(items)
-    lines = [
-        f"### OOS_{seq}: Aggregated rollup of {surplus} capped OOS items",
-        (
-            f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} "
-            "items were rolled up by the per-run OOS issue cap. Each rolled-up item's full body is "
-            "preserved verbatim below:"
-        ),
-    ]
-    for item in items:
-        title = _normalize_rollup_text(item.title) or "(no title)"
-        file_refs = _file_refs_from_body(item.body)
-        lines.append(f"  - **{title}**:" + (f" [Files: {file_refs}]" if file_refs else ""))
-        body = item.body.rstrip()
-        lines.append(_indent_rolled_body(body) if body.strip() else f"{_ROLLED_BODY_INDENT}(body unavailable)")
-    lines.extend(
-        [
-            "- **Reviewer**: Combined: capped per-run rollup",
-            f"- **Vote tally**: N/A — capped rollup of {surplus} entries",
-            "- **Phase**: implement",
-            "",
-        ]
-    )
-    return "\n".join(lines)
-
-
-def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None = None) -> None:
-    if not input_file.is_file():
-        raise FileNotFoundError(f"input file not found: {input_file}")
-    if output is not None and input_file.resolve(strict=False) == output.resolve(strict=False):
-        raise ValueError("--input-file and --output resolve to the same path")
-    if cap is None:
-        raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
-        if not raw.isdigit() or int(raw) <= 0:
-            raise IssueCapInvalidEnv("OOS_ISSUES_PER_RUN_CAP must be a positive integer")
-        cap = int(raw)
-    text = input_file.read_text(encoding="utf-8")
-    parsed_items = _validate_issue_cap_input(text)
-    raw_items = _parse_oos_blocks(text)
-    target = output or input_file
-    if not raw_items or len(raw_items) <= cap:
-        if output:
-            tmp = target.with_suffix(target.suffix + ".tmp")
-            try:
-                tmp.write_text(text, encoding="utf-8")
-                tmp.replace(target)
-            finally:
-                with contextlib.suppress(FileNotFoundError):
-                    tmp.unlink()
-        return
-    keep_count = max(cap - 1, 0)
-    keep = raw_items[:keep_count]
-    parsed_roll = parsed_items[keep_count:]
-    raw_roll = raw_items[keep_count:]
-    roll: list[OosItem] = []
-    for index, raw in enumerate(raw_roll):
-        parsed = parsed_roll[index] if index < len(parsed_roll) else None
-        # Preserve the full raw block (heading + all fields) so the rollup never
-        # strips detail; an empty parsed body must not mask the real content.
-        roll.append(OosItem(raw.number, parsed.title if parsed else raw.title, raw.body))
-    blocks = [item.body for item in keep]
-    blocks.append(_aggregate_block(len(blocks) + 1, roll, cap=cap))
-    rendered = _renumber_oos_headings("\n\n".join(blocks).rstrip() + "\n")
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    try:
-        tmp.write_text(rendered, encoding="utf-8")
-        tmp.replace(target)
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            tmp.unlink()
-
-
-def _validate_issue_cap_input(text: str) -> list[ParsedItem]:
-    if not text.strip():
-        return []
-    items, _mode = parse_issue_input(text)
-    lines = text.splitlines()
-    fenced_lines = balanced_fence_line_indices(lines)
-    heading_count = sum(
-        1
-        for index, line in enumerate(lines)
-        if index not in fenced_lines and is_canonical_heading(line, kind="OOS")
-    )
-    if items and heading_count == 0:
-        msg = "input is not OOS-shaped (no '### OOS_<N>:' headings)"
-        raise ValueError(msg)
-    if heading_count and len(items) != heading_count:
-        msg = f"ITEMS_TOTAL ({len(items)}) != raw '### OOS_<N>:' heading count ({heading_count})"
-        raise ValueError(msg)
-    return items
 
 
 @dataclass(frozen=True)
