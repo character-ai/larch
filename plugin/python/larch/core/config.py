@@ -110,7 +110,7 @@ EXIT_GH_RUN_LOGS_HEALTH_BAIL: Final = 5
 # run-log commit refuses to publish a run tree whose required artifacts are
 # absent without committed execution-issue evidence.
 RUN_LOG_INCOMPLETE_RC: Final = 7
-# report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
+# The Rust report-tokens analyzer uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
 # Debate orchestration has a machine-readable exit partition.  Keep these

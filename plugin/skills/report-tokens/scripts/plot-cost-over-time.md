@@ -1,8 +1,10 @@
 # plot-cost-over-time.py contract
 
 `plot-cost-over-time.py` is the only `/report-tokens` helper that imports
-matplotlib. `python/larch/report/report_tokens_plot.py` invokes it in a subprocess so the
-runtime `python/` tree remains stdlib-only.
+matplotlib. Step 2 of `skills/report-tokens/SKILL.md` invokes it, reading the
+input file that `report-tokens analyze` writes. Keeping the launch in the skill
+is what lets the Rust CLI own the report without larch growing a general
+arbitrary-script process class.
 
 ## Input schema
 

@@ -476,7 +476,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("clarify", "comment-fetch"): ("larch.design.clarify", "clarify_comment_fetch_main", False),
     ("clarify", "comment-post"): ("larch.design.clarify", "clarify_comment_post_main", False),
     ("clarify", "label"): ("larch.design.clarify", "clarify_label_main", False),
-    ("report-tokens", "analyze"): ("larch.report.report_tokens_cli", "main", False),
     ("token", "mark"): ("larch.report.tokens", "token_mark_main", False),
     ("token", "record-vendor"): ("larch.report.tokens", "token_record_vendor_main", False),
     ("token", "dump"): ("larch.report.tokens", "token_dump_main", False),
