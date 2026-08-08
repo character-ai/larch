@@ -17,7 +17,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.issue import issue_mutation
 from larch.errors import ShipError
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.issue import file_oos
 from larch.issue import oos_priority
 from larch.review.review_types import is_security_block_text, parse_blocks
@@ -46,6 +46,18 @@ def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None)
         with stderr_path.open("w", encoding="utf-8") as stderr_handle:
             return subprocess.run(command, text=True, stdout=subprocess.DEVNULL, stderr=stderr_handle, check=False)
     return subprocess.run(command, text=True, check=False)
+
+
+def _run_larch(*args: str) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    root = plugin_root(Path(__file__).resolve().parents[3])
+    return subprocess.run(
+        [str(larch_entrypoint(root)), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=larch_entrypoint_env(root),
+    )
 
 
 def _require_design_tmpdir(argv: Sequence[str], *, prog: str) -> Path | None:
@@ -564,36 +576,34 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         return 0
     _ = order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
     capped = combined.with_suffix(".md.capped.tmp")
-    cap_result = _run_cli(
+    cap_result = _run_larch(
         "oos",
         "issue-cap",
         "--input-file",
         str(combined),
         "--output",
         str(capped),
-        capture=True,
     )
     if cap_result.returncode != 0:
-        print("file-design-oos: python/cli.py oos issue-cap failed", file=sys.stderr)
+        print("file-design-oos: larch oos issue-cap failed", file=sys.stderr)
         if cap_result.stderr:
             print(cap_result.stderr, end="", file=sys.stderr)
         capped.unlink(missing_ok=True)
         return 2
     _ = capped.replace(combined)
-    deps_result = _run_cli(
+    deps_result = _run_larch(
         "oos",
         "file-conflict-deps",
         "--input-file",
         str(combined),
         "--output",
         str(deps_tsv),
-        capture=True,
     )
     deps_available = deps_result.returncode == 0 and deps_tsv.is_file() and deps_tsv.stat().st_size > 0
     if not deps_available:
         deps_tsv.unlink(missing_ok=True)
         print(
-            f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode}: graceful-degrade (no caller TSV)",
+            f"file-design-oos: larch oos file-conflict-deps exit {deps_result.returncode}: graceful-degrade (no caller TSV)",
             file=sys.stderr,
         )
     logging_util.emit_kv(key="FILE_DESIGN_OOS_DEPS_AVAILABLE", value="true" if deps_available else "false")

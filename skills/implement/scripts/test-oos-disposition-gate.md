@@ -8,8 +8,8 @@ Delegation smoke for `oos-disposition-gate.sh` and `oos-disposition-checkpoint.s
 |-----------|----------|
 | `CLAUDE_PLUGIN_ROOT` override selects `$CLAUDE_PLUGIN_ROOT/python/cli.py` | smoke |
 | Repo-root fallback when `CLAUDE_PLUGIN_ROOT` is unset | smoke |
-| Exact route `python/cli.py oos disposition-gate` | smoke (gate) |
-| Exact route `python/cli.py oos disposition-checkpoint` | smoke (checkpoint) |
+| Exact route `scripts/larch.sh oos disposition-gate` | smoke (gate) |
+| Exact route `scripts/larch.sh oos disposition-checkpoint` | smoke (checkpoint) |
 | Argument forwarding (including multi-arg) | smoke |
 | Exit-status forwarding | smoke |
 | Stdout / stderr passthrough unchanged | smoke |

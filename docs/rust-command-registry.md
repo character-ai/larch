@@ -274,13 +274,17 @@ reviewer file-reference grammar ported from `larch.review.voting`. The
 ground-truth evidence reader and the OOS conflict model both compose it, and
 they differ only in whether extension matching folds case.
 
-One reader difference is load bearing and is not reconciled here.
-`larch.issue.oos_disposition` and `larch.issue.file_oos` count rejected OOS
-markers with slightly different section-end and case rules, and
-`larch.io.read_text` does not translate line endings where `Path.read_text`
-does. `larch_core` ports the `oos_disposition` spelling and exposes
-`larch_core::text::universal_newlines`, so #8178 chooses each reader's
-translation explicitly instead of inheriting one by accident.
+Issue 8178 moves the five OOS batch verbs to Rust and reconciles the
+rejected-marker reader #8177 left split. The single owner now folds case in the
+outer presence check, because the per-line scan below it always did and a check
+that disagrees with its own scan reports zero for a body it can read. It ends
+the rejected section on any line opening with exactly two number signs, because
+reading past a bare second-level heading with no space would count an accepted
+item as rejected, which is the one direction that lets an undisposed run look
+disposed. Line-ending translation is chosen per reader: the counters and the cap
+read the way `Path.read_text` did, and `oos file-conflict-deps` reads bytes the
+way `larch.io.read_text` did, because the batch grammar it feeds is byte
+oriented.
 
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content

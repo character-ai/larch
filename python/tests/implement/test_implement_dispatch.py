@@ -7527,6 +7527,11 @@ def test_step2_dispatch_completion_retries_exhaust_before_partial_disposition(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(
+        dispatch_manifest,
+        "_invoke_larch",
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 0, "0\n", ""),
+    )
 
     assert _run_step2(tmp) == 0
     out = capsys.readouterr().out
@@ -8151,14 +8156,16 @@ def test_materialize_oos_full_failure_with_observations_bails(tmp_path: Path, mo
     st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
     calls: list[bool] = []
 
-    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "materialize-manifest" not in args:
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        count_only = "--count-only" in args
         calls.append(count_only)
         if count_only:
-            return 1
-        raise RuntimeError("forced materialize failure")
+            return subprocess.CompletedProcess(list(args), 0, "1\n", "")
+        return subprocess.CompletedProcess(list(args), 1, "", "forced materialize failure\n")
 
-    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
     reason = implement_dispatch._materialize_oos(st, oos_observations_nonempty=True)
 
     assert reason == "manifest-oos-materialization-failed"
@@ -8204,11 +8211,11 @@ def test_materialize_oos_successful_dual_pass_positive_count_does_not_bail(
     st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
     calls: list[bool] = []
 
-    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
-        calls.append(count_only)
-        return 1
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append("--count-only" in args)
+        return subprocess.CompletedProcess(list(args), 0, "1\n", "")
 
-    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
 
     assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == ""
     assert calls == [True, False]
@@ -8221,13 +8228,14 @@ def test_materialize_oos_count_type_error_runs_full_pass_and_bails(
     st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
     calls: list[bool] = []
 
-    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        count_only = "--count-only" in args
         calls.append(count_only)
         if count_only:
-            raise TypeError("bad count")
-        return 0
+            return subprocess.CompletedProcess(list(args), 1, "", "bad count\n")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
 
-    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
 
     assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == "manifest-oos-materialization-failed"
     assert calls == [True, False]
@@ -8241,14 +8249,15 @@ def test_materialize_oos_preassignment_failure_and_full_failure_logs_both(
     st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
     calls: list[bool] = []
 
-    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "materialize-manifest" not in args:
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        count_only = "--count-only" in args
         calls.append(count_only)
-        if count_only:
-            raise TypeError("count boom")
-        raise RuntimeError("full boom")
+        detail = "count boom\n" if count_only else "full boom\n"
+        return subprocess.CompletedProcess(list(args), 1, "", detail)
 
-    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
 
     assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == "manifest-oos-materialization-failed"
     assert calls == [True, False]
@@ -8263,10 +8272,11 @@ def test_materialize_oos_count_result_is_bound_as_string(
 ) -> None:
     st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
 
-    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
-        return 1 if count_only else 0
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        stdout = "1\n" if "--count-only" in args else ""
+        return subprocess.CompletedProcess(list(args), 0, stdout, "")
 
-    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
 
     assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == ""
 

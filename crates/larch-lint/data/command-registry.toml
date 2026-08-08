@@ -4224,11 +4224,13 @@ verb = "disposition-checkpoint"
 python_module = "larch.issue.file_oos"
 python_function = "disposition_checkpoint_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8178
+clean_install_test = "clean-install-oos-disposition-checkpoint"
 
 [[commands]]
 domain = "oos"
@@ -4236,11 +4238,13 @@ verb = "disposition-gate"
 python_module = "larch.issue.file_oos"
 python_function = "disposition_gate_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8178
+clean_install_test = "clean-install-oos-disposition-gate"
 
 [[commands]]
 domain = "oos"
@@ -4260,11 +4264,13 @@ verb = "file-conflict-deps"
 python_module = "larch.issue.file_oos"
 python_function = "file_conflict_deps_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8178
+clean_install_test = "clean-install-oos-file-conflict-deps"
 
 [[commands]]
 domain = "oos"
@@ -4272,11 +4278,13 @@ verb = "issue-cap"
 python_module = "larch.issue.file_oos"
 python_function = "issue_cap_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8178
+clean_install_test = "clean-install-oos-issue-cap"
 
 [[commands]]
 domain = "oos"
@@ -4284,11 +4292,13 @@ verb = "materialize-manifest"
 python_module = "larch.issue.file_oos"
 python_function = "materialize_manifest_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8178
+clean_install_test = "clean-install-oos-materialize-manifest"
 
 [[commands]]
 domain = "oos"
@@ -8454,8 +8464,8 @@ rust = ["agent launch-claude-subprocess"]
 [[callers]]
 path = "python/larch/design/design_oos.py"
 kind = "python-runtime"
-python = ["design file-oos-annotate", "design file-oos-prepare", "oos file-conflict-deps", "oos issue-cap"]
-rust = []
+python = ["design file-oos-annotate", "design file-oos-prepare"]
+rust = ["oos file-conflict-deps", "oos issue-cap"]
 
 [[callers]]
 path = "python/larch/design/design_pause.py"
@@ -8598,8 +8608,8 @@ rust = ["git commit", "timing mark"]
 [[callers]]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
-python = ["oos disposition-checkpoint"]
-rust = ["execution-issues refresh", "stall-recovery seed-terminal-state"]
+python = []
+rust = ["execution-issues refresh", "oos disposition-checkpoint", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_step18.py"
@@ -8635,7 +8645,7 @@ rust = ["block-issue add-blocked-by"]
 path = "python/larch/issue/oos_filer.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-codex-exec"]
+rust = ["agent launch-codex-exec", "oos disposition-checkpoint", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"
@@ -9336,20 +9346,20 @@ rust = ["session resolve-implement-tmpdir"]
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.md"
 kind = "skill"
-python = ["oos disposition-checkpoint", "oos disposition-gate"]
-rust = []
+python = []
+rust = ["oos disposition-checkpoint", "oos disposition-gate"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.sh"
 kind = "skill"
-python = ["oos disposition-checkpoint"]
-rust = []
+python = []
+rust = ["oos disposition-checkpoint"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-gate.sh"
 kind = "skill"
-python = ["oos disposition-gate"]
-rust = []
+python = []
+rust = ["oos disposition-gate"]
 
 [[callers]]
 path = "skills/implement/scripts/post-tracking-issue.md"

@@ -246,6 +246,47 @@ impl GixRepository {
         Ok(count)
     }
 
+    /// Return the whole message of every commit reachable from `include` and
+    /// not from `exclude`, which is `git log --format=%B exclude..include`.
+    ///
+    /// `exclude` is optional so a caller can ask for everything reachable from
+    /// one revision, which is what a bare `HEAD` range means. Whole messages,
+    /// not subjects, because the breadcrumbs the disposition gate counts are
+    /// written in the commit body.
+    ///
+    /// # Errors
+    /// Returns a typed hash, missing-object, object-type, or repository read
+    /// failure.
+    pub fn commit_messages_range(
+        &self,
+        exclude: Option<&ObjectId>,
+        include: &ObjectId,
+    ) -> Result<Vec<Vec<u8>>, RepositoryError> {
+        let repository = self.local()?;
+        let start = gix_id(include, repository.object_hash())?;
+        let mut walk = repository.rev_walk([start]);
+        if let Some(exclude) = exclude {
+            walk = walk.with_hidden([gix_id(exclude, repository.object_hash())?]);
+        }
+        let walk = walk
+            .all()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let mut messages = Vec::new();
+        for info in walk {
+            let info = info.map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+            let commit = repository
+                .find_commit(info.id)
+                .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+            messages.push(
+                commit
+                    .message_raw()
+                    .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+                    .to_vec(),
+            );
+        }
+        Ok(messages)
+    }
+
     /// Return the raw first line of every commit reachable from `include` and
     /// not from `exclude` (`exclude..include`).
     ///

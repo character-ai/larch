@@ -246,6 +246,16 @@ def _render_blocks(blocks: list[AcceptedBlock]) -> str:
     return "\n\n".join(rendered).rstrip() + ("\n" if rendered else "")
 
 
+def _invoke_larch(args: list[str]) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    return subprocess.run(
+        [str(larch_entrypoint()), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def _append_tool_failure(*, tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
     file_oos._append_failure_log(log=tmpdir / "execution-issues.md", site=site, tool=tool, rc=rc, output=output)  # pyright: ignore[reportPrivateUsage]
 
@@ -395,7 +405,9 @@ def _materialize_sentinel_recovery_evidence(*, tmpdir: Path, filed: list[FiledIs
 
 
 def _run_disposition_checkpoint(tmpdir: Path) -> int:
-    return file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmpdir)])
+    return _invoke_larch(
+        ["oos", "disposition-checkpoint", "--implement-tmpdir", str(tmpdir)]
+    ).returncode
 
 
 def _after_checkpoint(
@@ -1106,18 +1118,12 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
 
 
 def _file_conflict_deps(*, input_file: Path, output_file: Path) -> tuple[int, str]:
-    """Materialize the in-process dependency plan with CLI-compatible failure data."""
-    try:
-        cluster_cap, global_cap = file_oos._file_conflict_caps()  # pyright: ignore[reportPrivateUsage]  # preserve the CLI's cap validation before writing
-        file_oos._write_file_conflict_deps(  # pyright: ignore[reportPrivateUsage]  # preserve the CLI's atomic write and stale-output cleanup contract
-            input_file,
-            output_file,
-            cluster_cap=cluster_cap,
-            global_cap=global_cap,
-        )
-    except (OSError, ValueError) as exc:
-        output_file.unlink(missing_ok=True)
-        return 1, str(exc)
+    """Ask the Rust owner for the dependency plan, keeping its failure data."""
+    result = _invoke_larch(
+        ["oos", "file-conflict-deps", "--input-file", str(input_file), "--output", str(output_file)]
+    )
+    if result.returncode != 0:
+        return result.returncode, result.stderr.strip()
     return 0, ""
 
 

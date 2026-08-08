@@ -47,6 +47,7 @@ Commands:
   plugin             Plugin metadata commands
   progress           Clone-scoped progress breadcrumbs and the larch statusline
   object-store       Narrow provider transports used by Python-owned run-log workflows
+  oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands
   final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
