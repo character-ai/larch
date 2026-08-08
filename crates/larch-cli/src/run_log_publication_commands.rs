@@ -267,6 +267,33 @@ pub fn sync(arguments: &[OsString]) -> ExitCode {
     sync_outcome(sync_with_store(&homes, storage, &environment))
 }
 
+/// Synchronize once and return the unpacked corpus root.
+///
+/// This is the in-process form of `run-log sync` that report and analytics
+/// commands need: they read the corpus themselves, so re-entering the CLI just
+/// to parse `CORPUS_ROOT=` back out would add a process and a parser for no
+/// gain. Disabled storage is a refusal here rather than an empty root, because
+/// a reader that silently scans nothing reports a $0.00 total that looks real.
+///
+/// # Errors
+/// Returns the refusal message for an unresolvable repository, disabled or
+/// misconfigured storage, a failed preflight, or a failed synchronization.
+pub fn synchronized_corpus_root(repo_root: &Path) -> Result<PathBuf, String> {
+    let (_repo_root, resolution, environment) =
+        resolve(repo_root).map_err(|(_code, message)| message)?;
+    let Some(storage) = resolution.storage() else {
+        return Err(format!(
+            "run-log storage is disabled; configure [larch].storage_base_uri or set \
+LARCH_STORAGE_BASE_URI ({})",
+            resolution.reason().as_str()
+        ));
+    };
+    preflight_enabled_storage(storage, &environment).map_err(|error| preflight_error(&error))?;
+    let homes =
+        LifecycleHomes::from_environment(&environment).map_err(|error| error.to_string())?;
+    sync_with_store(&homes, storage, &environment).map(|result| result.corpus_root)
+}
+
 fn sync_outcome(result: Result<RepositorySyncResult, String>) -> ExitCode {
     match result {
         Ok(result) => {
