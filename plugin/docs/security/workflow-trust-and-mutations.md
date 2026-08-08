@@ -293,11 +293,16 @@ artifact, executable, repository-policy, or plugin-validation gates.
 ### CI Rust selection trust
 
 The pull-request `rust-selection` job has read-only workflow permissions. It
-checks out GitHub's tested merge candidate with full history, then creates a
-base worktree and executes the selector code from that trusted base. Candidate
-code can supply the tree being classified, but cannot author the classifier
-that authorizes a non-full lane. Selector, workflow, coverage-action, and
-selector-redaction/process changes are explicit global `full` triggers.
+checks out GitHub's tested merge candidate at bounded depth 8, then proves the
+base commit, candidate commit, and base ancestry are locally available. If
+valid commit identities need more history, it fetches complete branch history
+and repeats the same proof; an invalid identity or unavailable history proof
+selects `full`. Only then does it create a base worktree and execute selector
+code from that trusted base. Candidate code can supply the tree being
+classified, but cannot
+author the classifier that authorizes a non-full lane. Selector, workflow,
+coverage-action, and selector-redaction/process changes are explicit global
+`full` triggers.
 
 The selector validates commit identity, checked-out state, and base ancestry
 before it inspects a diff. Missing history, a malformed or empty diff, unknown

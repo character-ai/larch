@@ -179,6 +179,70 @@ for the affected class. The reviewed class-specific enforcement toggle that
 follows a completed window does not change the classifier or its trusted-input
 contract.
 
+## Rust-selection critical-path measurement (2026-08-08)
+
+Issue #8274 compares three successful pull-request controls with three
+successful workflow attempts of the same immutable [#8288 pull-request merge
+candidate](https://github.com/character-ai/larch/pull/8288). The repeated
+attempts make scheduler and full-lane variation visible without changing the
+candidate. They are performance samples, not distinct live-observation rows.
+Every sample used `ubuntu-24.04`, proposed and ran `full` because this workflow
+change is a global input, had the coverage-target cache disabled, and completed
+`rust-full`, `rust-coverage`, and `rust-gate` successfully. The trusted-main
+policy restore and validation were skipped in every full-path control.
+
+The candidate assessment retained the base worktree: the pre-change controls
+showed only 0.21--0.24 seconds for its creation. Moving the trusted-main policy
+cache could not improve these full paths because its restore and validation were
+already skipped. Starting `rust-full` unconditionally was rejected because it
+would either run a second lane for selected `partial` or `skip` paths or weaken
+the `rust-coverage` assertion that exactly the selected lane passes. The safe
+reduction is a depth-eight checkout, followed by a proof of both commits and
+base ancestry. Valid identities with insufficient history fetch complete branch
+history and repeat that proof; an invalid identity or failed proof remains an
+explicit `full` fallback.
+
+### Depth-two candidate trial
+
+The first candidate used depth two. Its three reruns reduced the selector job
+to 8--10 seconds and the serialized prelude to 12--14 seconds, but they were
+not the final configuration. A later ordinary validation run on a generated
+merge candidate,
+[run 31282392390](https://github.com/character-ai/larch/actions/runs/31282392390/job/93165706666),
+needed the explicit `full-history-fallback`: its history preparation took
+13.156 seconds and its selection job took 22 seconds. That candidate placed the
+pull-request base three graph levels below the tested merge candidate, so depth
+two remained safe but did not reliably remove the serial checkout cost. Depth
+eight covers that observed nested merge shape while retaining the same proof
+and full-history fallback.
+
+| Group | Pull-request run | Selection job | Checkout | Trusted history | Base worktree | Selector command | Policy restore / validation | Artifact upload | Prelude to `rust-full` | Selection-to-gate critical path |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| Before | [run 31279643073](https://github.com/character-ai/larch/actions/runs/31279643073/job/93158778455) | 19 s | 14 s | full checkout | 0.24 s | 0.62 s remainder | skipped / skipped | 1 s | 22 s | 424 s |
+| Before | [run 31278658870](https://github.com/character-ai/larch/actions/runs/31278658870/job/93156285633) | 29 s | 14 s | full checkout | 0.21 s | 8.50 s remainder | skipped / skipped | 1 s | 33 s | 436 s |
+| Before | [run 31276770466](https://github.com/character-ai/larch/actions/runs/31276770466/job/93151508673) | 23 s | 16 s | full checkout | 0.23 s | 0.63 s remainder | skipped / skipped | 1 s | 27 s | 398 s |
+| Before median | three controls | 23 s | 14 s | full checkout | 0.23 s | 0.63 s remainder | skipped / skipped | 1 s | 27 s | 424 s |
+| After depth 8 | [#8288, attempt 1](https://github.com/character-ai/larch/actions/runs/31282787491/job/93166673167) | 10 s | 2 s | 0.007 s, `bounded-depth-8` | 0.227 s | 0.117 s | skipped / skipped | 1 s | 15 s | 441 s |
+| After depth 8 | [#8288, attempt 2](https://github.com/character-ai/larch/actions/runs/31282787491/job/93167602262) | 7 s | 2 s | 0.007 s, `bounded-depth-8` | 0.228 s | 0.109 s | skipped / skipped | 1 s | 10 s | 408 s |
+| After depth 8 | [#8288, attempt 3](https://github.com/character-ai/larch/actions/runs/31282787491/job/93168338371) | 9 s | 2 s | 0.006 s, `bounded-depth-8` | 0.222 s | 0.105 s | skipped / skipped | 1 s | 12 s | 410 s |
+| After depth 8 median | three attempts | 9 s | 2 s | 0.007 s, `bounded-depth-8` | 0.227 s | 0.109 s | skipped / skipped | 1 s | 12 s | 410 s |
+
+`Prelude to rust-full` measures from `rust-selection` start to `rust-full`
+start; the critical path measures from `rust-selection` start to `rust-gate`
+completion. GitHub's job and step timestamps are whole seconds; the history,
+worktree, and selector-command entries are the new millisecond measurements.
+Before the change, the combined selector step exposed only the remainder after
+worktree creation.
+
+Every final depth-eight sample used `bounded-depth-8`; none needed the
+full-history fallback. The median serialized prelude fell from 27 to 12 seconds,
+while selection job duration fell from 23 to 9 seconds. The three-sample
+end-to-end median changed from 424 to 410 seconds. Full Rust lane variation
+still dominates this aggregate, so the difference does not support another
+broad topology change. The bounded checkout is retained because it removes a
+measured serial cost while preserving trusted-base execution, artifact upload,
+and fail-closed behavior.
+
 ## Timing interpretation and rollback
 
 The historical full `rust-coverage` samples above are contextual baselines: the
