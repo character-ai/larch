@@ -167,8 +167,10 @@ The Rust-owned archive lifecycle verbs use their own machine envelopes.
 Provider failures
 use the normalized error set in the storage contract. `run-log sync`
 lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
-`LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
-`SYNC_OK=true`. See [Run-log storage contracts](run-log-archive.md).
+`LISTED_ARCHIVES`, `INVENTORY_SHA256`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`,
+`REPAIRED_RUNS`, and `SYNC_OK=true`. `INVENTORY_SHA256` is the opaque SHA-256
+identity of the sorted normalized archive key and listed-size inventory. It is
+empty when storage is disabled. See [Run-log storage contracts](run-log-archive.md).
 
 Storage preflight and lifecycle start resolve repository-root
 `tools-config.toml` plus the environment and derive the client repository from

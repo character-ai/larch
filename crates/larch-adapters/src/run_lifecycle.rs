@@ -1836,6 +1836,8 @@ pub struct SyncedRun {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositorySyncResult {
     pub corpus_root: PathBuf,
+    /// Opaque digest of the complete, normalized remote inventory that was synced.
+    pub inventory_sha256: String,
     pub runs: Vec<SyncedRun>,
 }
 
@@ -1904,13 +1906,33 @@ pub async fn sync_repository_run_logs(
         }
     }
     let inventory = validated_remote_inventory(objects, &object_prefix)?;
+    let inventory_sha256 = inventory_sha256(&inventory);
     let corpus_root = repository_cache_root(homes, storage);
     ensure_safe_directory(&corpus_root)?;
     let mut runs = Vec::with_capacity(inventory.len());
     for archive in &inventory {
         runs.push(sync_remote_archive(homes, storage, store, archive).await?);
     }
-    Ok(RepositorySyncResult { corpus_root, runs })
+    Ok(RepositorySyncResult {
+        corpus_root,
+        inventory_sha256,
+        runs,
+    })
+}
+
+fn inventory_sha256(inventory: &[RemoteRunArchive]) -> String {
+    let mut entries: Vec<&RemoteRunArchive> = inventory.iter().collect();
+    entries.sort_unstable_by(|left, right| left.remote_key.cmp(&right.remote_key));
+
+    let mut digest = Sha256::new();
+    digest.update(b"larch-run-log-inventory-v1\0");
+    digest.update((entries.len() as u64).to_be_bytes());
+    for archive in entries {
+        digest.update((archive.remote_key.len() as u64).to_be_bytes());
+        digest.update(archive.remote_key.as_bytes());
+        digest.update(archive.size.to_be_bytes());
+    }
+    format!("{:x}", digest.finalize())
 }
 
 fn repository_cache_root(homes: &LifecycleHomes, storage: &ToolRepositoryStorage) -> PathBuf {
@@ -3690,5 +3712,36 @@ mod tests {
                 .to_string_lossy()
                 .contains("storage-origins")
         );
+    }
+
+    #[test]
+    fn remote_inventory_identity_is_order_independent_and_detects_a_change() {
+        let first = RemoteRunArchive {
+            remote_key: "run-logs/review/first.tar.gz".to_owned(),
+            object_key: "larch/client/run-logs/review/first.tar.gz".to_owned(),
+            skill: "review".to_owned(),
+            run_id: "first".to_owned(),
+            size: 11,
+        };
+        let second = RemoteRunArchive {
+            remote_key: "run-logs/design/second.tar.gz".to_owned(),
+            object_key: "larch/client/run-logs/design/second.tar.gz".to_owned(),
+            skill: "design".to_owned(),
+            run_id: "second".to_owned(),
+            size: 17,
+        };
+        let forward = inventory_sha256(&[first.clone(), second.clone()]);
+        let reverse = inventory_sha256(&[second.clone(), first.clone()]);
+        assert_eq!(forward, reverse);
+        assert_eq!(forward.len(), 64);
+        assert!(
+            forward
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        );
+
+        let mut changed = second;
+        changed.size += 1;
+        assert_ne!(forward, inventory_sha256(&[first, changed]));
     }
 }

@@ -26,6 +26,7 @@ _ROUND_DIR_RE = re.compile(r"^round-(\d+)$")
 _ROUND_IN_NAME_RE = re.compile(r"round-(\d+)")
 _DESIGN_CLASSIFICATION_PARTS = 3
 _IMPLEMENT_CLASSIFICATION_PARTS = 2
+_INVENTORY_SHA256_LENGTH = 64
 
 
 class WalkWarningKind(StrEnum):
@@ -254,6 +255,7 @@ class RepositorySyncResult:
 
     corpus_root: Path
     listed_count: int
+    inventory_sha256: str
     present_count: int
     downloaded_count: int
     repaired_count: int
@@ -296,6 +298,7 @@ def _sync_with_rust(
         raise RunLogCorpusError("Rust run-log sync returned an invalid machine envelope")
     try:
         corpus_root = Path(values["CORPUS_ROOT"])
+        inventory_sha256 = values["INVENTORY_SHA256"]
         counts = tuple(
             int(values[key])
             for key in (
@@ -313,12 +316,14 @@ def _sync_with_rust(
     if (
         values.get("SYNC_OK") != "true"
         or not corpus_root.is_absolute()
+        or len(inventory_sha256) != _INVENTORY_SHA256_LENGTH
+        or any(character not in "0123456789abcdef" for character in inventory_sha256)
         or min(counts) < 0
         or present + downloaded != listed
         or repaired > downloaded
     ):
         raise RunLogCorpusError("Rust run-log sync returned an invalid machine envelope")
-    return RepositorySyncResult(corpus_root, *counts)
+    return RepositorySyncResult(corpus_root, listed, inventory_sha256, present, downloaded, repaired)
 
 
 def synchronize_run_log_corpus(

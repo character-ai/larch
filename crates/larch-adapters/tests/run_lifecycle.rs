@@ -804,10 +804,12 @@ async fn standalone_publication_retries_redacts_and_syncs_with_an_offline_store_
     assert_eq!(cold.listed_count(), 1);
     assert_eq!(cold.downloaded_count(), 1);
     assert_eq!(cold.repaired_count(), 0);
+    assert_eq!(cold.inventory_sha256.len(), 64);
     let warm = synchronize(&harness, &destination_homes, &store)
         .await
         .unwrap();
     assert_eq!(warm.present_count(), 1);
+    assert_eq!(cold.inventory_sha256, warm.inventory_sha256);
 }
 
 #[tokio::test]

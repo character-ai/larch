@@ -433,7 +433,7 @@ if [ "\${1:-}" = bootstrap ] && [ "\${2:-}" = self-check ]; then
   exit 0
 fi
 if [ "\${1:-}" = run-log ] && [ "\${2:-}" = sync ]; then
-  printf '%s\\n' 'RUN_LOG_STORAGE=disabled' 'RUN_LOG_STORAGE_REASON=config-file-missing' 'STORAGE_PREFLIGHT=skipped-disabled' 'CORPUS_ROOT=' 'LISTED_ARCHIVES=0' 'PRESENT_RUNS=0' 'DOWNLOADED_RUNS=0' 'REPAIRED_RUNS=0' 'SYNC_OK=true'
+  printf '%s\\n' 'RUN_LOG_STORAGE=disabled' 'RUN_LOG_STORAGE_REASON=config-file-missing' 'STORAGE_PREFLIGHT=skipped-disabled' 'CORPUS_ROOT=' 'LISTED_ARCHIVES=0' 'INVENTORY_SHA256=' 'PRESENT_RUNS=0' 'DOWNLOADED_RUNS=0' 'REPAIRED_RUNS=0' 'SYNC_OK=true'
   exit 0
 fi
 exit 2
