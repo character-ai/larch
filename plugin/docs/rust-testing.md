@@ -501,26 +501,21 @@ explicit save action. Pull requests and manual benchmark dispatches therefore
 use the same restore cache class but cannot publish Cargo inputs; none of the
 coverage lanes caches `target/` as a broad entry.
 
-The coverage dependency cache path is present but deliberately disabled:
-`COVERAGE_TARGET_CACHE_ENABLED=false` and a zero-byte bound prevent restore or
-publication until three comparable warm-cache `main` samples beat a
-no-target-cache control end to end. The zero value is an unmeasured sentinel,
-not an approved size limit. A later activation must set a measured
-dependency-only bound and retain the versioned exact key for the runner,
+The coverage dependency cache is enabled with a measured 1,350,000,000-byte
+dependency-only bound. Its versioned exact key includes the runner,
 architecture, target triple, toolchain, manifests and lockfile, coverage-tool
 version, selected compiler profile, feature mode, linker, Cargo configuration,
-and schema. It must not add a coverage-target `restore-keys` fallback. A bound
-above 2 GiB needs explicit transfer-cost evidence in that activating pull
-request.
+and schema. It has no coverage-target `restore-keys` fallback. A bound above
+2 GiB needs explicit transfer-cost evidence in the activating pull request.
 
-When that path is enabled, a pull request may restore only its exact default
-branch cache but can never save it. A save requires a successful `main` push,
-a primary-key miss, a completed artifact upload, a completed validation path,
-and a passing size guard. Before save, the workflow removes profile/report
-data and workspace products from `target/llvm-cov-target`, then publishes its
-directory inventory as a separate artifact. A cache hit never replaces the
-coverage report, executable smoke test, repository policy, plugin validation,
-or Python-artifact handoff.
+A pull request may restore only its exact default-branch cache but can never
+save it. A save requires a successful `main` push, a primary-key miss, a
+completed artifact upload, a completed validation path, and a passing size
+guard. Before save, the workflow removes profile/report data and workspace
+products from `target/llvm-cov-target`, then publishes its directory inventory
+as a separate artifact. A cache hit never replaces the coverage report,
+executable smoke test, repository policy, plugin validation, or Python-artifact
+handoff.
 
 The target-cache benchmark uses a separate
 `coverage-target-deps-benchmark-*` key, never the production key. It runs only
@@ -528,12 +523,12 @@ from an explicitly selected `workflow_dispatch` on `refs/heads/main`; pull
 requests and ordinary manual runs cannot restore or save it. Its first dispatch
 uses a zero bound to publish the dependency-only inventory without saving. A
 later dispatch must pass that measured byte bound, capped at 2 GiB, to seed the
-benchmark cache. Three subsequent dispatches provide matched pairs: the normal
-`rust-full` lane is the no-target-cache control and the benchmark lane is the
-warm candidate. The benchmark key cannot activate or supply the production
-cache. Its timing and inventory artifacts use the `-target-cache-benchmark`
-suffix, and its verification executable uses a distinct artifact name, so they
-remain distinguishable from the control artifacts while retaining upload cost.
+benchmark cache. During that dispatch, `rust-full` stays cache-off as the
+matched control and the benchmark lane is the warm candidate. The benchmark
+key cannot activate or supply the production cache. Its timing and inventory
+artifacts use the `-target-cache-benchmark` suffix, and its verification
+executable uses a distinct artifact name, so they remain distinguishable from
+the control artifacts while retaining upload cost.
 
 This workflow does not garbage-collect GitHub Actions caches. Add that behavior
 only after a repository cache inventory demonstrates quota pressure or useful
@@ -550,7 +545,8 @@ so it was unavailable to this workflow and does not affect the comparison.
 The lint lane may restore a manifest-keyed dependency cache under `target/debug`,
 then removes workspace products with `cargo clean --workspace` before a
 successful `main` push can save it. Pull requests do not publish that target
-cache. The coverage execution lane does not cache `target/`.
+cache. The coverage execution lane caches only its pruned dependency-only
+`target/llvm-cov-target` directory, never broad `target/`.
 
 The current CI floor is 88.000% lines. It is a no-regression floor, not a
 chosen repository target. Raise it when coverage improves. Lower it only with
