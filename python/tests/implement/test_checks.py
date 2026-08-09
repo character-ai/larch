@@ -3904,6 +3904,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "lcov.info",
         "rust-coverage-phases.tsv",
         "cargo metadata --no-deps --format-version 1",
+        'index("custom-build")',
+        "! -name '*.d'",
         "coverage target cache retained workspace product",
         "COVERAGE_TARGET_CACHE_MAX_BYTES",
         "COVERAGE_TARGET_CACHE_MAX_BYTES_CAP",
