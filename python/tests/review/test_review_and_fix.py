@@ -5161,17 +5161,27 @@ def test_step5_escalates_before_lower_tier_cap(tmp_path, monkeypatch, capsys):
 def test_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """review_and_fix._progress_note uses append_breadcrumb_for_run with owned run ID."""
+    """review_and_fix._progress_note uses the Rust breadcrumb seam with its run ID."""
     monkeypatch.setenv("LARCH_RUN_ID", "raf-run-33")
     monkeypatch.chdir(tmp_path)
 
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        skill: str,
+        step: str,
+        text: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    monkeypatch.setattr(review_and_fix.progress_file, "append_breadcrumb_for_run", fake_append)
+    monkeypatch.setattr(review_and_fix.rust_runtime, "progress_note", fake_append)
 
     review_and_fix._progress_note(step="5", text="round 1 done")  # pyright: ignore[reportPrivateUsage]
 

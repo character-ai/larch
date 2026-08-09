@@ -1487,9 +1487,26 @@ def _run_phase_infra_for_progress(
             codex_present="false", cursor_present="false", codex_binary_found="false", cursor_binary_found="false",
         )
 
-    def fake_activate(repo_root: str | Path, run_id: str) -> None:
-        _ = repo_root, activate_returncode
+    def fake_activate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
         calls.append(("activate", run_id))
+        return activate_returncode == 0
+
+    def fake_clear(
+        _runner: object,
+        *,
+        repo_root: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
+        calls.append(("clear",))
+        return True
 
     def fake_timing(*, label: str, env: dict[str, str] | None = None) -> None:
         _ = env
@@ -1510,7 +1527,8 @@ def _run_phase_infra_for_progress(
     monkeypatch.setattr(bootstrap.pr, "check_branch_state", fake_branch)
     monkeypatch.setattr(bootstrap, "_resolve_entry_gate", fake_gate)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
-    monkeypatch.setattr(bootstrap.progress_file, "activate_run", fake_activate)
+    monkeypatch.setattr(bootstrap.rust_runtime, "progress_activate", fake_activate)
+    monkeypatch.setattr(bootstrap.rust_runtime, "progress_clear", fake_clear)
     monkeypatch.setattr(bootstrap.timing, "mark", fake_timing)
     monkeypatch.setattr(bootstrap.proc, "run", fake_run)
     monkeypatch.setattr(bootstrap, "_write_claude_source_snapshot", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
@@ -1548,6 +1566,18 @@ def test_phase_infra_progress_activate_uses_explicit_run_id_before_timing(
     assert activate_call == ("activate", "explicit-run-id")
     assert calls.index(activate_call) < calls.index(timing_call)
     assert timing_call == ("timing", "Step 0 — preflight")
+
+
+def test_phase_infra_clears_prior_progress_before_branch_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _st, calls = _run_phase_infra_for_progress(tmp_path, monkeypatch)
+
+    clear_call = next(call for call in calls if call[0] == "clear")
+    branch_call = next(call for call in calls if call[0] == "branch")
+
+    assert calls.index(clear_call) < calls.index(branch_call)
 
 
 def test_phase_infra_progress_activate_uses_setup_session_id_fallback(

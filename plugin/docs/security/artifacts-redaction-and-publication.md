@@ -228,7 +228,9 @@ report renderer applies the public field contract described below.
 Clone-local statusline breadcrumbs are operator diagnostics stored under
 `~/.cache/larch/progress/`. Their one-line events avoid URLs and use GitHub
 numbers. They are not the published breadcrumb stream and are not public
-reports. See [Progress reporting](../progress-reporting.md).
+reports. Rust exclusively owns their pointer, breadcrumb, and stale-state
+mutations; Python may only resolve persisted session identity and cannot write
+or delete progress state. See [Progress reporting](../progress-reporting.md).
 
 ## Run Logs and Breadcrumbs
 
@@ -522,6 +524,7 @@ egress contract.
 | Python redaction | `python/larch/core/redact.py` |
 | Rust checksum-pinned scanner | `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
+| Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, and stale cleanup in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`; Python retains only persisted run-identity parsing in `python/larch/report/progress_file.py`. |
 | Mutable run-log flush and transcript staging | Rust owns checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/run_log_flush_commands.rs`. Atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. Until their named migration leaves cut over, Python final-report, token, timing, execution-issue, difficulty, and transcript commands retain their bounded leaf behavior under Rust orchestration. |
 | Run-log selection, trim, scrub, and publication | Rust owns standalone and lifecycle publication, tree redaction, durable retry, create-only remote verification, cache promotion, and breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and `crates/larch-cli/src/run_log_publication_commands.rs`. Python retains only bounded local-state compatibility consumers and `design_log_publish_flow.py`; neither can publish archives or call a provider. |
 | Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. |

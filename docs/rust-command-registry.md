@@ -98,7 +98,7 @@ the active old-session root as the executable owner.
 ## Run-log, report, and rendering boundary
 
 `larch lint rule reporting-python-free` pins the closed #7683 command set:
-the 45 rows that still name the umbrella as their roadmap owner plus the nine
+the 46 rows that still name the umbrella as their roadmap owner plus the nine
 rows its leaves migrated for an earlier owner: `run-log lifecycle-*` under
 issue 7826, `run-log checkpoint` and `run-log prepare-terminal-snapshot` under
 issue 7995, `gantt render` under issue 7680, and `analyze-issues render-chart`
@@ -109,9 +109,10 @@ exact migration leaf and its retired Python target. The rule rejects a restored
 Python registration in `python/larch/cli.py`, a restored module-level Python
 entrypoint, and any other ledger row that still names #7683 as its planning
 issue. It also rejects a production Python run-log manifest writer, direct use
-of the retired manifest mutation helpers, or a durable write from the Python
-manifest compatibility module; production callers must invoke the Rust
-`run-log manifest` entrypoint.
+of the retired manifest mutation helpers, a durable write from the Python
+manifest compatibility module, and every production Python progress-state
+writer or caller; production callers must invoke the Rust `run-log manifest`
+or `progress` entrypoint.
 
 That last check is what keeps a hand-off honest. #7683 owns no unmigrated
 command, so a row that still points at it is either a missed migration or a

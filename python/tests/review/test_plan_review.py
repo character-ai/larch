@@ -4338,17 +4338,27 @@ def test_tally_plan_review_rejected_oos_stays_out_of_aggregate_pool(tmp_path: Pa
 def test_plan_review_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """plan_review._progress_note uses append_breadcrumb_for_run with the owned run ID."""
+    """plan_review._progress_note uses the Rust breadcrumb seam with its run ID."""
     monkeypatch.setenv("LARCH_RUN_ID", "pr-run-11")
     monkeypatch.chdir(tmp_path)
 
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        skill: str,
+        step: str,
+        text: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    monkeypatch.setattr(plan_review.progress_file, "append_breadcrumb_for_run", fake_append)
+    monkeypatch.setattr(plan_review.rust_runtime, "progress_note", fake_append)
 
     plan_review._progress_note(step="3", text="dispatching reviewers")  # pyright: ignore[reportPrivateUsage]
 

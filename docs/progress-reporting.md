@@ -21,11 +21,13 @@ data, and repository content out of event text. See the canonical
 
 Breadcrumbs are scoped by clone and active run ID. The active pointer is `~/.cache/larch/progress/<clone-hash>/current`, and the active breadcrumb log is `~/.cache/larch/progress/<clone-hash>/<run-id>/breadcrumbs.log`.
 
-Default writers require a valid `current` pointer. When the clone progress directory, pointer, run ID, run directory, or log path is missing, invalid, unreadable, corrupt, or symlinked, default writes no-op fail silent. The explicit `progress note --run-id` override writes the named run log without changing `current`.
+The Rust-owned `progress activate`, `deactivate`, `clear`, `note`, and `cleanup` commands are the only progress-state mutation owner. Python may resolve a persisted session run ID, but never writes or deletes clone-local progress files. Default `progress note` writes require a valid `current` pointer. When the clone progress directory, pointer, run ID, run directory, or log path is missing, invalid, unreadable, corrupt, or symlinked, default writes no-op fail silent. The explicit `progress note --run-id` override writes the named run log without changing `current`.
 
 The reader follows `current` through a no-create fd-relative clone-directory traversal and tails only the active run log. Legacy flat `<clone-hash>.log` files are ignored. A fresh run starts empty because `activate_run` points `current` at a new run directory. Activation and deactivation share a clone-local lock. Deactivation requires the expected run ID and clears `current` only when that ID still owns the pointer, so delayed cleanup from an older run cannot remove a newer run.
 
 Fresh Claude session starts capture the active run ID and use the same compare-and-clear operation before statusline installation. This prevents stale prior-run breadcrumbs from appearing before a new run starts. The first visible larch statusline entry after a fresh session should come from the new run's first breadcrumb. Resume and compact events preserve `current` to avoid hiding active foreground work. Only a live, in-budget bgjob whose canonical clone and recorded run ID both match the active pointer protects that pointer from SessionStart reset. The reset deletes only `current`; run directories and `breadcrumbs.log` files remain available for cleanup and audit.
+
+`progress cleanup --retention-days DAYS` removes stale non-active run directories and legacy flat logs through pinned, no-follow directory descriptors. It preserves active runs and refuses symlinked progress ancestors, roots, and entries.
 
 Larch assumes one active larch run per clone. It does not add concurrency semantics for simultaneous `/design` and `/implement` runs in the same checkout.
 

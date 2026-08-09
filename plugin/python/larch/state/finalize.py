@@ -664,7 +664,12 @@ def teardown(*, runner: Runner, ctx: RunContext, cwd: str | None = None) -> Fina
     sentinel_written = False
     teardown_run_id = run_log_manifest.effective_run_id(ctx)
     if teardown_run_id and not bgjob_registry.has_live_entry(repo_root=persisted_repo_root, run_id=teardown_run_id):
-        _ = progress_file.deactivate_run(persisted_repo_root, teardown_run_id)
+        _ = rust_runtime.progress_deactivate(
+            runner,
+            repo_root=str(persisted_repo_root),
+            run_id=teardown_run_id,
+            cwd=cwd,
+        )
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:

@@ -23,8 +23,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from larch.core import logging_util
-from larch.core import config
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.report import progress_file
 from larch.design import design_session
 from larch.design.design_terminal import (
@@ -106,7 +105,14 @@ from larch.review.plan_review_normalize import (
 def _progress_note(*, step: str, text: str, tmpdir: Path | None = None) -> None:
     run_id = progress_file.resolve_owned_run_id(tmpdir=tmpdir)
     if run_id is not None:
-        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "design", step, text)
+        _ = rust_runtime.progress_note(
+            proc,
+            repo_root=str(Path.cwd()),
+            run_id=run_id,
+            skill="design",
+            step=step,
+            text=text,
+        )
 
 
 def _exec_pause_save(tmpdir: Path) -> int:

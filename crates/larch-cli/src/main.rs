@@ -416,6 +416,9 @@ enum ProgressCommand {
     /// Point the clone's active-run pointer at one run.
     #[command(disable_help_flag = true)]
     Activate(RawCompatibilityArguments),
+    /// Remove stale clone-scoped progress runs and legacy flat logs.
+    #[command(disable_help_flag = true)]
+    Cleanup(RawCompatibilityArguments),
     /// Clear the active-run pointer when the named run still owns it.
     #[command(disable_help_flag = true)]
     Deactivate(RawCompatibilityArguments),
@@ -1493,6 +1496,7 @@ fn run(
             ProgressCommand::Activate(arguments) => {
                 progress_commands::activate(&arguments.arguments)
             }
+            ProgressCommand::Cleanup(arguments) => progress_commands::cleanup(&arguments.arguments),
             ProgressCommand::Deactivate(arguments) => {
                 progress_commands::deactivate(&arguments.arguments)
             }

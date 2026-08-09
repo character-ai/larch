@@ -10,9 +10,9 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch.bgjob import registry
-from larch.core import logging_util, proc
+from larch.core import logging_util, proc, rust_runtime
 from larch.core.repo_roots import larch_entrypoint
-from larch.report.progress_file import deactivate_run, resolve_owned_run_id, resolve_persisted_repo_root
+from larch.report.progress_file import resolve_owned_run_id, resolve_persisted_repo_root
 from larch.state import session_env
 
 from larch.design.design_core import (
@@ -216,7 +216,11 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     if effective_run:
         repo_root = repo_root or Path.cwd()
         if not registry.has_live_entry(repo_root=repo_root, run_id=effective_run):
-            _ = deactivate_run(repo_root, effective_run)
+            _ = rust_runtime.progress_deactivate(
+                proc,
+                repo_root=str(repo_root),
+                run_id=effective_run,
+            )
     cleanup_rc = _remove_design_tmpdir(design_tmpdir)
     if cleanup_rc != 0:
         return cleanup_rc

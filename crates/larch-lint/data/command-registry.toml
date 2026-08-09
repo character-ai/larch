@@ -5086,6 +5086,20 @@ clean_install_test = "clean-install-progress-activate"
 
 [[commands]]
 domain = "progress"
+verb = "cleanup"
+python_module = "larch.report.progress_file"
+python_function = "cleanup_old_progress_files"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7683
+migration_issue = 8290
+clean_install_test = "clean-install-progress-cleanup"
+
+[[commands]]
+domain = "progress"
 verb = "clear"
 python_module = "larch.report.progress_file"
 python_function = "progress_clear_main"
@@ -8457,7 +8471,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"

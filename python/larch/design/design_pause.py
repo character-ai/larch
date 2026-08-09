@@ -16,7 +16,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.git import gh
-from larch.core import proc, redact, repo_roots
+from larch.core import proc, redact, repo_roots, rust_runtime
 from larch.report import (
     progress_file,
     run_lifecycle,
@@ -308,7 +308,11 @@ def pause_save_main(argv: Sequence[str]) -> int:
     effective_run = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir) or run_id
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
     if effective_run and repo_root is not None:
-        _ = progress_file.deactivate_run(repo_root, effective_run)
+        _ = rust_runtime.progress_deactivate(
+            proc,
+            repo_root=str(repo_root),
+            run_id=effective_run,
+        )
     _emit([("PAUSE_OK", "true"), ("STEP", step), ("RUN_ID", run_id)])
     return 0
 

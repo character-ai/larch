@@ -25,6 +25,7 @@ const PYTHON_RUNTIME_PREFIX: &str = "python/larch/";
 const PYTHON_MANIFEST_READER_PATH: &str = "python/larch/report/run_log_manifest.py";
 const PYTHON_RUN_LOG_FACADE_PATH: &str = "python/larch/report/run_logs.py";
 const PYTHON_SHIP_RECOVERY_PATH: &str = "python/larch/implement/ship_recovery.py";
+const PYTHON_PROGRESS_READER_PATH: &str = "python/larch/report/progress_file.py";
 const PYTHON_MANIFEST_WRITER_PATHS: &[&str] = &[
     PYTHON_MANIFEST_READER_PATH,
     PYTHON_RUN_LOG_FACADE_PATH,
@@ -53,6 +54,33 @@ static MANIFEST_WRITER_CALL: LazyLock<Regex> = LazyLock::new(|| {
 static MANIFEST_DURABLE_WRITE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:\.(?:write_text|write_bytes|replace|rename)\s*\()|(?:_?atomic_write\s*\()")
         .expect("manifest durable write expression is valid")
+});
+
+static PROGRESS_WRITER_DEFINITION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)^(?:async\s+)?def\s+(?P<function>activate_run|deactivate_run|clear_active_run|append_breadcrumb(?:_for_run)?|cleanup_old_progress_files)\s*\(",
+    )
+    .expect("progress writer definition expression is valid")
+});
+
+static PROGRESS_WRITER_CALL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        (?P<target>
+            (?:(?:_?progress_file)\s*\.\s*(?:activate_run|deactivate_run|clear_active_run|append_breadcrumb(?:_for_run)?|cleanup_old_progress_files))
+            |(?:activate_run|deactivate_run|clear_active_run|append_breadcrumb(?:_for_run)?|cleanup_old_progress_files)
+        )\s*\(",
+    )
+    .expect("progress writer call expression is valid")
+});
+
+static PROGRESS_DURABLE_WRITE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        \.(?:write_text|write_bytes|unlink|replace|rename|mkdir|touch)\s*\(
+        |os\s*\.\s*(?:open|unlink|mkdir|replace|remove|rmdir)\s*\(",
+    )
+    .expect("progress durable write expression is valid")
 });
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -112,15 +140,16 @@ impl ExpectedCommand {
 
 use ExpectedOwner::{Retired, Rust};
 
-/// The complete #7683 command set: 45 rows that still name the umbrella as
+/// The complete #7683 command set: 46 rows that still name the umbrella as
 /// their roadmap owner plus the nine rows its leaves migrated for an earlier
 /// roadmap owner.
-const EXPECTED_COMMANDS: [ExpectedCommand; 54] = [
+const EXPECTED_COMMANDS: [ExpectedCommand; 55] = [
     ExpectedCommand::new("analyze-issues", "render-chart", 8092, Rust, "larch.rendering.render_chart", "render_chart_main"),
     ExpectedCommand::new("final-report", "step18b", 8090, Rust, "larch.report.final_report", "step18b_final_report_main"),
     ExpectedCommand::new("final-report", "write", 8090, Rust, "larch.report.final_report", "write_final_report_main"),
     ExpectedCommand::new("gantt", "render", 8092, Rust, "larch.rendering.gantt", "gantt_render_main"),
     ExpectedCommand::new("progress", "activate", 8084, Rust, "larch.report.progress_file", "progress_activate_main"),
+    ExpectedCommand::new("progress", "cleanup", 8290, Rust, "larch.report.progress_file", "cleanup_old_progress_files"),
     ExpectedCommand::new("progress", "clear", 8084, Rust, "larch.report.progress_file", "progress_clear_main"),
     ExpectedCommand::new("progress", "deactivate", 8084, Rust, "larch.report.progress_file", "progress_deactivate_main"),
     ExpectedCommand::new("progress", "install-statusline", 8084, Rust, "larch.report.statusline_install", "install_statusline_main"),
@@ -226,6 +255,7 @@ impl Rule for ReportingPythonFreeRule {
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
         check_manifest_writer_boundary(repository, &mut findings)?;
+        check_progress_writer_boundary(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
@@ -280,6 +310,61 @@ fn check_manifest_writer_boundary(
                     relative,
                     super::python_boundary::offset_line_number(&source, matched.start()),
                     "production Python manifest compatibility module performs a durable write",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_progress_writer_boundary(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    for path in repository.paths() {
+        let relative = path.as_str();
+        if !relative.starts_with(PYTHON_RUNTIME_PREFIX)
+            || !Path::new(relative)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        if relative == PYTHON_PROGRESS_READER_PATH {
+            for matched in PROGRESS_WRITER_DEFINITION.captures_iter(&source) {
+                let whole = matched
+                    .get(0)
+                    .expect("whole progress writer definition capture");
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!(
+                        "production Python progress-state writer remains: {}",
+                        &matched["function"]
+                    ),
+                ));
+            }
+            for matched in PROGRESS_DURABLE_WRITE.find_iter(&source) {
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, matched.start()),
+                    "production Python progress compatibility module performs a durable write",
+                ));
+            }
+        } else {
+            for matched in PROGRESS_WRITER_CALL.captures_iter(&source) {
+                let whole = matched.get(0).expect("whole progress writer call capture");
+                let target: String = matched["target"]
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect();
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!(
+                        "production Python caller bypasses Rust progress-state owner: {target}"
+                    ),
                 ));
             }
         }

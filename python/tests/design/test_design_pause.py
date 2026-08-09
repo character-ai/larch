@@ -995,7 +995,7 @@ def test_pause_load_accepts_step5b5_marker(
 def test_pause_save_deactivates_run_on_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
-    """pause_save_main calls deactivate_run with the effective run ID on success."""
+    """pause_save_main calls the Rust deactivation seam on success."""
     _patch_enabled_pause_context(
         monkeypatch=monkeypatch,
         tmp_path=tmp_path,
@@ -1022,11 +1022,18 @@ def test_pause_save_deactivates_run_on_success(
 
     deactivate_calls: list[tuple[object, str]] = []
 
-    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+    def fake_deactivate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = cwd
         deactivate_calls.append((repo_root, run_id))
         return True
 
-    monkeypatch.setattr(design_pause.progress_file, "deactivate_run", fake_deactivate)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_pause.rust_runtime, "progress_deactivate", fake_deactivate)
 
     rc = design_pause.pause_save_main(
         ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from larch.state import finalize
-from larch.report import progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
@@ -167,9 +166,13 @@ def test_postmerge_stalls_when_local_branch_delete_fails(tmp_path: Path) -> None
     assert result.branch_deleted is False
 
 
-def test_teardown_stall_preserves_tmpdir_without_recreating_log_staging(tmp_path: Path) -> None:
+def test_teardown_stall_preserves_tmpdir_without_recreating_log_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
+    monkeypatch.setattr(finalize.rust_runtime, "progress_deactivate", lambda *_args, **_kwargs: True)
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
@@ -195,7 +198,7 @@ def test_teardown_stall_preserves_tmpdir_without_recreating_log_staging(tmp_path
 def test_teardown_does_not_create_run_log_staging(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
-    monkeypatch.setattr(progress_file, "deactivate_run", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(finalize.rust_runtime, "progress_deactivate", lambda *_args, **_kwargs: True)
 
     result = finalize.teardown(
         runner=RecordingRunner(),
@@ -802,18 +805,25 @@ def test_implement_finalize_accepts_cache_root_state_file(
 
 
 def test_teardown_deactivates_run_before_tmpdir_removal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Teardown calls deactivate_run with the effective run ID."""
+    """Teardown calls the Rust deactivation seam with the effective run ID."""
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
     _ = _write_partial_manifest(tmp_path)
 
-    deactivate_calls: list[tuple[object, str]] = []
+    deactivate_calls: list[tuple[str, str]] = []
 
-    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+    def fake_deactivate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = cwd
         deactivate_calls.append((repo_root, run_id))
         return True
 
-    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+    monkeypatch.setattr(finalize.rust_runtime, "progress_deactivate", fake_deactivate)
 
     def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
         return True
@@ -833,15 +843,31 @@ def test_teardown_uses_persisted_repo_root_outside_clone(tmp_path: Path, monkeyp
     outside.mkdir()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
     (tmp_path / "session-env.sh").write_text(f"REPO_ROOT={repo}\nLARCH_RUN_ID=run-abc\n", encoding="utf-8")
-    deactivate_calls: list[tuple[object, str]] = []
+    deactivate_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
-    monkeypatch.setattr(progress_file, "deactivate_run", lambda repo_root, run_id: deactivate_calls.append((repo_root, run_id)) or True)
+
+    def fake_deactivate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = cwd
+        deactivate_calls.append((repo_root, run_id))
+        return True
+
+    monkeypatch.setattr(
+        finalize.rust_runtime,
+        "progress_deactivate",
+        fake_deactivate,
+    )
 
     _ = finalize.teardown(runner=RecordingRunner(), ctx=ctx, cwd=str(outside))
 
-    assert deactivate_calls == [(repo.resolve(), "run-abc")]
+    assert deactivate_calls == [(str(repo.resolve()), "run-abc")]
 
 
 _STALE_LIVE = "coverage artifact does not match live repository inputs"
@@ -863,7 +889,7 @@ def _stub_teardown_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
     monkeypatch.setattr(finalize.rust_runtime, "issue_info", lambda *_a, **_k: "")
-    monkeypatch.setattr(progress_file, "deactivate_run", lambda *_a, **_k: True)
+    monkeypatch.setattr(finalize.rust_runtime, "progress_deactivate", lambda *_a, **_k: True)
     return crumbs
 
 

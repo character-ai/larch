@@ -42,7 +42,6 @@ from larch.design import plan_quality
 from larch.core import architectural_guidelines
 from larch.core import logging_util
 from larch.core.proc import CommandResult
-from larch.report import progress_file
 from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json, write_result_env
 from larch.core import proc as proc_module
 from larch.state import session_env
@@ -7032,7 +7031,7 @@ def test_step2b_drafter_cleans_rc12_rc13_sidecars_at_start(
 def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """step6_cleanup_core calls deactivate_run with the persisted run ID before cleanup."""
+    """step6_cleanup_core calls the Rust deactivation seam before cleanup."""
     design, env_path = _step6_design(tmp_path, monkeypatch)
     (design / "source-env.sh").write_text(
         "LARCH_RUN_ID=step6-run-77\n", encoding="utf-8"
@@ -7041,8 +7040,15 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
 
     deactivate_calls: list[tuple[object, str]] = []
 
-    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
-        deactivate_calls.append((_repo_root, run_id))
+    def fake_deactivate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = cwd
+        deactivate_calls.append((repo_root, run_id))
         return True
 
     def fake_cleanup(_design_tmpdir: Path) -> int:
@@ -7051,7 +7057,7 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
     def fake_reap(_pid: str) -> None:
         pass
 
-    monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)  # lint-monkeypatch-binding: ok direct-from-import-binding-in-design_step6
+    monkeypatch.setattr(design_step6.rust_runtime, "progress_deactivate", fake_deactivate)
     monkeypatch.setattr(design_step6, "_remove_design_tmpdir", fake_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
@@ -7075,11 +7081,18 @@ def test_step_final_summary_deactivates_run_on_rendered_path(
 
     deactivate_calls: list[str] = []
 
-    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
+    def fake_deactivate(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
         deactivate_calls.append(run_id)
         return True
 
-    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+    monkeypatch.setattr(design_terminal.rust_runtime, "progress_deactivate", fake_deactivate)
 
     def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:  # noqa: ARG001  # pylint: disable=unused-argument
         return 0

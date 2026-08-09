@@ -46,6 +46,63 @@ def test_phantom_probe_fails_closed_for_missing_envelope() -> None:
     assert result.lines == ("PHANTOM_STATUS=unknown", "PHANTOM_REASON=phantom-probe-failed")
 
 
+def test_progress_mutations_enter_through_the_typed_rust_owner() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "PROGRESS_REMOVED=3\n", "", 0.01),
+        ],
+    )
+
+    assert rust_runtime.progress_activate(runner, repo_root="/clone", run_id="run-1")
+    assert rust_runtime.progress_clear(runner, repo_root="/clone")
+    assert rust_runtime.progress_deactivate(runner, repo_root="/clone", run_id="run-1")
+    assert rust_runtime.progress_note(
+        runner,
+        repo_root="/clone",
+        run_id="run-1",
+        skill="implement",
+        step="8",
+        text="checks running",
+    )
+    assert rust_runtime.progress_cleanup(runner, retention_days=7) == 3
+
+    assert runner.calls[0][1:] == [
+        "progress",
+        "activate",
+        "--repo-root",
+        "/clone",
+        "--run-id",
+        "run-1",
+    ]
+    assert runner.calls[1][1:] == ["progress", "clear", "--repo-root", "/clone"]
+    assert runner.calls[2][1:] == [
+        "progress",
+        "deactivate",
+        "--repo-root",
+        "/clone",
+        "--run-id",
+        "run-1",
+    ]
+    assert runner.calls[3][1:] == [
+        "progress",
+        "note",
+        "--repo-root",
+        "/clone",
+        "--run-id",
+        "run-1",
+        "--skill",
+        "implement",
+        "--step",
+        "8",
+        "checks running",
+    ]
+    assert runner.calls[4][1:] == ["progress", "cleanup", "--retention-days", "7"]
+
+
 def test_dirty_tree_commands_relay_validated_rust_envelopes() -> None:
     runner = RecordingRunner(
         responses=[

@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from larch.core import config, logging_util, proc
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.calibration import difficulty
 from larch.report import progress_file
 from larch.report.timing import resolve_timing_ledger_path
@@ -65,7 +65,14 @@ def _review_commands() -> ReviewCommands:
 def _progress_note(*, step: str, text: str, tmpdir: Path | None = None) -> None:
     run_id = progress_file.resolve_owned_run_id(tmpdir=tmpdir)
     if run_id is not None:
-        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
+        _ = rust_runtime.progress_note(
+            proc,
+            repo_root=str(Path.cwd()),
+            run_id=run_id,
+            skill="implement",
+            step=step,
+            text=text,
+        )
 
 
 def _copy_to_parent(*, file: Path, name: str, session_env_path: str) -> None:
