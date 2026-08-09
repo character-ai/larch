@@ -8,7 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::UNIX_EPOCH,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tempfile::TempDir;
@@ -255,54 +255,70 @@ fn installation_publishes_a_bootstrap_launcher_and_stays_idempotent() {
     );
 }
 
-/// Pin the on-disk breadcrumb format across both live implementations.
-///
-/// `progress_file.py` survives this cutover as a library that Python-owned
-/// commands still call in process, so Python remains a writer while Rust is the
-/// only reader. This test writes with the live Python helpers and reads with the
-/// Rust binary, so a change to the clone hash, the pointer file, the directory
-/// layout, or the breadcrumb line shape on either side fails here instead of
-/// silently blanking the statusline. Retiring the Python writers is tracked
-/// separately; until then this is the seam that keeps them honest.
 #[test]
-fn python_written_breadcrumbs_are_readable_by_the_rust_statusline() {
+fn cleanup_reaps_stale_entries_without_following_legacy_symlinks() {
     let clone = Clone::create();
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("repository root");
-    // The clone path is interpolated as a JSON string, which is also a valid
-    // Python string literal for every character a temp path can contain.
-    let literal = serde_json::to_string(&clone.path.to_string_lossy()).expect("clone literal");
-    let program = format!(
-        "from larch.report import progress_file\n\
-         progress_file.activate_run({literal}, 'run-1')\n\
-         assert progress_file.append_breadcrumb_for_run({literal}, 'run-1', 'design', '3', 'python wrote this')\n"
+    let repo_root = clone.path.to_string_lossy().into_owned();
+    assert_eq!(
+        clone
+            .run(
+                &["activate", "--repo-root", &repo_root, "--run-id", "run-1"],
+                None,
+                None,
+            )
+            .code,
+        0
     );
-    let written = Command::new("python3")
-        .args(["-c", &program])
-        .current_dir(&repository)
-        .env("PYTHONPATH", repository.join("python"))
-        .env("LARCH_TEST_CACHE_HOME", clone.cache_home())
-        .env("HOME", clone.home())
-        .env("PATH", std::env::var("PATH").unwrap_or_default())
-        .output()
-        .expect("run the Python writer");
+    let clone_dir = clone
+        .breadcrumb_log()
+        .parent()
+        .and_then(Path::parent)
+        .expect("clone progress directory")
+        .to_path_buf();
+    let old_run = clone_dir.join("old-run");
+    let fresh_run = clone_dir.join("fresh-run");
+    for run in [&old_run, &fresh_run] {
+        fs::create_dir_all(run).expect("run directory");
+        fs::write(run.join("breadcrumbs.log"), "[implement 8] check\n").expect("log");
+    }
+    let progress_root = clone.cache_home().join("larch/progress");
+    let legacy = progress_root.join(format!("{}.log", "b".repeat(16)));
+    fs::write(&legacy, "legacy\n").expect("legacy log");
+    let outside = clone.root.join("outside.log");
+    fs::write(&outside, "outside\n").expect("outside log");
+    let linked = progress_root.join(format!("{}.log", "c".repeat(16)));
+    std::os::unix::fs::symlink(&outside, &linked).expect("legacy symlink");
 
+    let now = SystemTime::now();
+    let stale = now
+        .checked_sub(Duration::from_secs(8 * 86_400))
+        .expect("stale timestamp");
+    let fresh = now
+        .checked_sub(Duration::from_secs(86_400))
+        .expect("fresh timestamp");
+    for path in [old_run.join("breadcrumbs.log"), legacy] {
+        fs::File::open(path)
+            .expect("open stale entry")
+            .set_times(fs::FileTimes::new().set_modified(stale))
+            .expect("age stale entry");
+    }
+    fs::File::open(fresh_run.join("breadcrumbs.log"))
+        .expect("open fresh entry")
+        .set_times(fs::FileTimes::new().set_modified(fresh))
+        .expect("age fresh entry");
+
+    let cleanup = clone.run(&["cleanup", "--retention-days", "7"], None, None);
+    assert_eq!(cleanup.code, 0, "{}", cleanup.stdout);
+    assert_eq!(cleanup.stdout, "PROGRESS_REMOVED=2\n");
+    assert!(!old_run.exists());
+    assert!(fresh_run.is_dir());
     assert!(
-        written.status.success(),
-        "python writer failed: {}",
-        String::from_utf8_lossy(&written.stderr)
+        !progress_root
+            .join(format!("{}.log", "b".repeat(16)))
+            .exists()
     );
-
-    let rendered = clone
-        .run(&["statusline"], None, Some(&clone.payload()))
-        .stdout;
-
-    assert!(
-        rendered.contains("[design 3] python wrote this"),
-        "the Rust reader must see Python-written breadcrumbs, got {rendered:?}"
-    );
+    assert!(linked.is_symlink());
+    assert!(outside.exists());
 }
 
 #[test]

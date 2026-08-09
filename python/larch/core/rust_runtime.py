@@ -782,6 +782,120 @@ def install_statusline(
     return runner.run(argv, cwd=cwd).returncode == 0
 
 
+def _progress_command(
+    runner: Runner,
+    *,
+    verb: str,
+    arguments: Sequence[str],
+    cwd: str | None = None,
+) -> CommandResult:
+    return runner.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "progress",
+            verb,
+            *arguments,
+        ],
+        cwd=cwd,
+    )
+
+
+def progress_activate(
+    runner: Runner,
+    *,
+    repo_root: str,
+    run_id: str,
+    cwd: str | None = None,
+) -> bool:
+    """Activate one run through the sole Rust progress-state owner."""
+    return _progress_command(
+        runner,
+        verb="activate",
+        arguments=("--repo-root", repo_root, "--run-id", run_id),
+        cwd=cwd,
+    ).returncode == 0
+
+
+def progress_clear(
+    runner: Runner,
+    *,
+    repo_root: str,
+    cwd: str | None = None,
+) -> bool:
+    """Clear a clone's active pointer through the Rust progress-state owner."""
+    return _progress_command(
+        runner,
+        verb="clear",
+        arguments=("--repo-root", repo_root),
+        cwd=cwd,
+    ).returncode == 0
+
+
+def progress_deactivate(
+    runner: Runner,
+    *,
+    repo_root: str,
+    run_id: str,
+    cwd: str | None = None,
+) -> bool:
+    """Compare-and-clear one run through the Rust progress-state owner."""
+    return _progress_command(
+        runner,
+        verb="deactivate",
+        arguments=("--repo-root", repo_root, "--run-id", run_id),
+        cwd=cwd,
+    ).returncode == 0
+
+
+def progress_note(  # noqa: PLR0913 - mirrors the Rust progress CLI surface
+    runner: Runner,
+    *,
+    repo_root: str,
+    run_id: str,
+    skill: str,
+    step: str,
+    text: str,
+    cwd: str | None = None,
+) -> bool:
+    """Append one named-run breadcrumb through the Rust progress-state owner."""
+    return _progress_command(
+        runner,
+        verb="note",
+        arguments=(
+            "--repo-root",
+            repo_root,
+            "--run-id",
+            run_id,
+            "--skill",
+            skill,
+            "--step",
+            step,
+            text,
+        ),
+        cwd=cwd,
+    ).returncode == 0
+
+
+def progress_cleanup(
+    runner: Runner,
+    *,
+    retention_days: int,
+    cwd: str | None = None,
+) -> int:
+    """Prune stale progress state and return the Rust owner's removed count."""
+    result = _progress_command(
+        runner,
+        verb="cleanup",
+        arguments=("--retention-days", str(retention_days)),
+        cwd=cwd,
+    )
+    values = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    removed = values.get("PROGRESS_REMOVED", "")
+    if result.returncode != 0 or not removed.isascii() or not removed.isdigit():
+        return 0
+    return int(removed)
+
+
 def render_phase_detail(  # noqa: PLR0913 - mirrors the Rust renderer's stable CLI surface plus the injected runner
     runner: Runner,
     *,

@@ -2,5 +2,6 @@
 
 Home for the reporting pipeline:
 ``tokens``, ``timing``, and ``run_logs``.
-``progress_file``, ``statusline``, and the ``report_tokens_*`` family (models, scan, cost, render, plot, issue, cli).
+``progress_file`` (read-only persisted run identity) and the
+``report_tokens_*`` family (models, scan, cost, render, plot, issue, cli).
 """

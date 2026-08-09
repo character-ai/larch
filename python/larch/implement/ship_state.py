@@ -9,8 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import config
-from larch.core import logging_util
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.outcomes import Outcome
@@ -178,7 +177,14 @@ def _progress_note(*, step: str, text: str) -> None:
     implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     run_id = progress_file.resolve_owned_run_id(tmpdir=implement_tmpdir or None)
     if run_id is not None:
-        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
+        _ = rust_runtime.progress_note(
+            proc,
+            repo_root=str(Path.cwd()),
+            run_id=run_id,
+            skill="implement",
+            step=step,
+            text=text,
+        )
 
 
 def _state_bool(*, value: bool) -> str:

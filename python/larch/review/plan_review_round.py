@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.report import progress_file
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.review import review_aggregate
@@ -40,7 +40,14 @@ def _emit(*, key: str, value: object = "") -> None:
 def _progress_note(*, step: str, text: str, tmpdir: Path | None = None) -> None:
     run_id = progress_file.resolve_owned_run_id(tmpdir=tmpdir)
     if run_id is not None:
-        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "design", step, text)
+        _ = rust_runtime.progress_note(
+            proc,
+            repo_root=str(Path.cwd()),
+            run_id=run_id,
+            skill="design",
+            step=step,
+            text=text,
+        )
 
 
 def _parse_kv(text: str) -> dict[str, str]:

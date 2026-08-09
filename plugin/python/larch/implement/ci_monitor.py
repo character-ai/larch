@@ -1112,7 +1112,15 @@ def verify_job_locally(
     _ci_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     _ci_run_id = progress_file.resolve_owned_run_id(tmpdir=_ci_tmpdir or None)
     if _ci_run_id is not None:
-        _ = progress_file.append_breadcrumb_for_run(Path(cwd or _REPO_ROOT), _ci_run_id, "implement", "8", f"running check shard {_job_token(name=name, shard=shard)}")
+        _ = run_log_flush.progress_note(
+            runner,
+            repo_root=str(Path(cwd or _REPO_ROOT)),
+            run_id=_ci_run_id,
+            skill="implement",
+            step="8",
+            text=f"running check shard {_job_token(name=name, shard=shard)}",
+            cwd=cwd,
+        )
     result = runner.run(list(argv), cwd=cwd)
     return result.returncode == 0
 
@@ -1503,12 +1511,14 @@ def stage_and_push(
             _ci_fix_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
             _ci_fix_run_id = progress_file.resolve_owned_run_id(tmpdir=_ci_fix_tmpdir or None)
             if _ci_fix_run_id is not None:
-                _ = progress_file.append_breadcrumb_for_run(
-                    Path(cwd or _REPO_ROOT),
-                    _ci_fix_run_id,
-                    "implement",
-                    "8",
-                    f"CI-fix jobs {' '.join(_job_token(name=job.name, shard=job.shard) for job in classified.fixable)}",
+                _ = run_log_flush.progress_note(
+                    runner,
+                    repo_root=str(Path(cwd or _REPO_ROOT)),
+                    run_id=_ci_fix_run_id,
+                    skill="implement",
+                    step="8",
+                    text=f"CI-fix jobs {' '.join(_job_token(name=job.name, shard=job.shard) for job in classified.fixable)}",
+                    cwd=cwd,
                 )
             failed_verify = [
                 _job_token(name=job.name, shard=job.shard)

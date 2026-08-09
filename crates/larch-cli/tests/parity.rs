@@ -165,6 +165,7 @@ impl CleanInstallCase {
                 "--run-id",
                 "clean-install",
             ],
+            "clean-install-progress-cleanup" => &["--retention-days", "7"],
             "clean-install-progress-clear" => {
                 &["--repo-root", "/larch-clean-install-clone-missing"]
             }
@@ -1181,6 +1182,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "render-session-transcript",
     ),
     CleanInstallCase::new("clean-install-progress-activate", "progress", "activate"),
+    CleanInstallCase::new("clean-install-progress-cleanup", "progress", "cleanup"),
     CleanInstallCase::new("clean-install-progress-clear", "progress", "clear"),
     CleanInstallCase::new(
         "clean-install-progress-deactivate",

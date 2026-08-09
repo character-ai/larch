@@ -139,6 +139,33 @@ def test_cleanup_reports_session_count(monkeypatch: Any, tmp_path: Path, capsys:
     assert "SESSION_COUNT=2" in capsys.readouterr().out
 
 
+def test_cleanup_routes_progress_pruning_to_the_rust_owner(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    calls: list[int] = []
+
+    def fake_progress_cleanup(
+        runner: object,
+        *,
+        retention_days: int,
+        cwd: str | None = None,
+    ) -> int:
+        assert runner is cleanup_skill.proc
+        assert cwd is None
+        calls.append(retention_days)
+        return 3
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+    monkeypatch.setattr(cleanup_skill.rust_runtime, "progress_cleanup", fake_progress_cleanup)
+
+    assert cleanup_skill.run_main([]) == 0
+    assert calls == [7]
+    assert "PROGRESS_REMOVED=3" in capsys.readouterr().out
+
+
 def test_cleanup_keeps_fresh_nested_activity(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     cache = tmp_path / "cache"
     parent = cache / "larch/sessions/stale-parent"

@@ -13,7 +13,7 @@ from pathlib import Path
 from larch.core import config
 from larch.core import env_file
 from larch.core import proc
-from larch.report import progress_file  # lint-layering: ok cleanup driver prunes stale progress breadcrumb files owned by larch.report
+from larch.core import rust_runtime
 
 TMP_PATTERNS = (
     "claude-implement-*",
@@ -195,7 +195,7 @@ def run_main(argv: list[str]) -> int:
             if (not impl_tmpdir or not Path(impl_tmpdir).is_dir()) and _remove_entry(pointer):
                 pointers_removed += 1
     _emit(key="IMPLEMENT_POINTERS_REMOVED", value=pointers_removed)
-    progress_removed = progress_file.cleanup_old_progress_files(retention_days=retention)
+    progress_removed = rust_runtime.progress_cleanup(proc, retention_days=retention)
     _emit(key="PROGRESS_REMOVED", value=progress_removed)
     _warn("")
     _warn("Cleanup complete:")

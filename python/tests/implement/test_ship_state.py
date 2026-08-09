@@ -127,15 +127,25 @@ def test_read_existing_ship_state_wraps_codec_read_failures(
 def test_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ship_state._progress_note writes breadcrumbs via append_breadcrumb_for_run."""
+    """ship_state._progress_note writes breadcrumbs through the Rust seam."""
     monkeypatch.setenv("LARCH_RUN_ID", "ship-run-88")
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(
+        _runner: object,
+        *,
+        repo_root: str,
+        run_id: str,
+        skill: str,
+        step: str,
+        text: str,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = repo_root, cwd
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    monkeypatch.setattr(ship_state.progress_file, "append_breadcrumb_for_run", fake_append)  # type: ignore[attr-defined]
+    monkeypatch.setattr(ship_state.rust_runtime, "progress_note", fake_append)
     monkeypatch.chdir(tmp_path)
 
     ship_state._progress_note(step="9", text="test note")  # pyright: ignore[reportPrivateUsage]

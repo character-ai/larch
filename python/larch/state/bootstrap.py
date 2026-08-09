@@ -442,7 +442,11 @@ def _restore_resume_progress(st: BootstrapState) -> None:
     st.run_id = st.read_session(key="LARCH_RUN_ID") or st.resolve_run_id()
     if _activatable_run_id(st.run_id):
         with contextlib.suppress(OSError, ValueError):
-            progress_file.activate_run(Path.cwd(), st.run_id)
+            _ = rust_runtime.progress_activate(
+                proc,
+                repo_root=str(Path.cwd()),
+                run_id=st.run_id,
+            )
 
 
 def _self_subagents_only(opts: BootstrapOptions) -> bool:
@@ -481,7 +485,7 @@ def _resolve_entry_gate(st: BootstrapState) -> bool:
 
 
 def _phase_infra(st: BootstrapState) -> None:
-    _ = progress_file.clear_active_run(Path.cwd())
+    _ = rust_runtime.progress_clear(proc, repo_root=str(Path.cwd()))
     branch = pr.check_branch_state(proc)
     if branch.exit_code != 0:
         st.emit_step_failed("create-branch")
@@ -543,7 +547,11 @@ def _phase_infra(st: BootstrapState) -> None:
         st.run_id = st.resolve_run_id()
         if _activatable_run_id(st.run_id):
             with contextlib.suppress(OSError, ValueError):
-                progress_file.activate_run(Path.cwd(), st.run_id)
+                _ = rust_runtime.progress_activate(
+                    proc,
+                    repo_root=str(Path.cwd()),
+                    run_id=st.run_id,
+                )
         _write_claude_source_snapshot(st)
         _write_base_session_env(st)
         _ = tokens.token_mark(step="Step 0 — preflight")

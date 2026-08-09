@@ -21,7 +21,7 @@ from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.git import gh
-from larch.core import config, proc
+from larch.core import config, proc, rust_runtime
 
 from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
 from larch.design.design_router import _parse_stdout_kv, _write_kv_file
@@ -841,7 +841,7 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
     if run_id and repo_root is not None:
-        _ = progress_file.deactivate_run(repo_root, run_id)
+        _ = rust_runtime.progress_deactivate(proc, repo_root=str(repo_root), run_id=run_id)
     cleanup_cmd = [str(repo_roots.larch_entrypoint(plugin_root)), "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)]
     cleanup_rc = subprocess.run(cleanup_cmd, check=False).returncode
     if cleanup_rc != 0:

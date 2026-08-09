@@ -18,7 +18,7 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.core.repo_roots import larch_entrypoint, repo_root_probe
 from larch.git import gh
 from larch.core.ctx import Ctx
@@ -1381,7 +1381,11 @@ def _try_deactivate_design_run(design_tmpdir: Path) -> None:
     with contextlib.suppress(Exception):
         run_id = _progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
         if run_id:
-            _ = _progress_file.deactivate_run(Path.cwd(), run_id)
+            _ = rust_runtime.progress_deactivate(
+                proc,
+                repo_root=str(Path.cwd()),
+                run_id=run_id,
+            )
 
 
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:

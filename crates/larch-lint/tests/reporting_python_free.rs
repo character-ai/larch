@@ -85,7 +85,7 @@ fn prepare(repository: &TempRepo) {
 }
 
 /// A sampled fixture carries four of the pinned rows, so the only diagnostic it
-/// may raise is the absence of the rest. The complete 54-row boundary is
+/// may raise is the absence of the rest. The complete 55-row boundary is
 /// asserted against the live ledger by `make rust-lint`.
 #[test]
 fn accepts_final_rows_and_reports_only_absent_rows() {
@@ -167,6 +167,37 @@ fn rejects_restored_python_manifest_writer_and_caller() {
             ))
             .and(predicate::str::contains(
                 "production Python run-log manifest writer remains: _write_manifest",
+            )),
+        );
+}
+
+#[test]
+fn rejects_restored_python_progress_writer_caller_and_durable_write() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/report/progress_file.py",
+        b"def activate_run() -> None:\n    return None\nPath('current').write_text('run-1\\n')\n",
+    );
+    repository.write(
+        "python/larch/implement/ship_state.py",
+        b"progress_file.append_breadcrumb_for_run()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "reporting-python-free"])
+        .assert()
+        .failure()
+        .stdout(
+            predicate::str::contains(
+                "production Python progress-state writer remains: activate_run",
+            )
+            .and(predicate::str::contains(
+                "production Python caller bypasses Rust progress-state owner: progress_file.append_breadcrumb_for_run",
+            ))
+            .and(predicate::str::contains(
+                "production Python progress compatibility module performs a durable write",
             )),
         );
 }

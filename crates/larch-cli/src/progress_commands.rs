@@ -23,6 +23,7 @@ use std::{
 };
 
 const ACTIVATE_USAGE: &str = "usage: progress activate [--repo-root REPO_ROOT] --run-id RUN_ID";
+const CLEANUP_USAGE: &str = "usage: progress cleanup [--retention-days DAYS]";
 const DEACTIVATE_USAGE: &str = "usage: progress deactivate [--repo-root REPO_ROOT] --run-id RUN_ID";
 const CLEAR_USAGE: &str = "usage: progress clear [--repo-root REPO_ROOT]";
 const NOTE_USAGE: &str = "usage: progress note [--repo-root REPO_ROOT] [--run-id RUN_ID] --skill SKILL --step STEP text [text ...]";
@@ -58,6 +59,29 @@ pub fn activate(arguments: &[OsString]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Remove stale clone-scoped progress runs and legacy flat logs.
+pub fn cleanup(arguments: &[OsString]) -> ExitCode {
+    let parsed = parse(arguments, &["--retention-days"], 0);
+    if let Some(error) = parsed.error() {
+        return usage_error(CLEANUP_USAGE, "progress cleanup", &error);
+    }
+    let retention_days = match parsed.value("--retention-days").map_or(Ok(7), |value| {
+        let raw = value.to_string_lossy();
+        raw.parse::<u64>()
+            .ok()
+            .filter(|days| *days > 0)
+            .ok_or_else(|| format!("argument --retention-days: invalid positive integer: '{raw}'"))
+    }) {
+        Ok(days) => days,
+        Err(error) => return usage_error(CLEANUP_USAGE, "progress cleanup", &error),
+    };
+    println!(
+        "PROGRESS_REMOVED={}",
+        progress_state::cleanup_old_progress_files(&cache_home(), retention_days)
+    );
+    ExitCode::SUCCESS
 }
 
 /// Clear the clone's active-run pointer when the named run still owns it.
@@ -453,9 +477,9 @@ fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{missing_arguments, required_run_id};
+    use super::{cleanup, missing_arguments, required_run_id};
     use crate::argparse_compat::parse;
-    use std::ffi::OsString;
+    use std::{ffi::OsString, process::ExitCode};
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
@@ -483,6 +507,14 @@ mod tests {
         assert_eq!(
             required_run_id(&parsed, "usage: x", "x").as_deref(),
             Some("run-1")
+        );
+    }
+
+    #[test]
+    fn cleanup_rejects_zero_retention() {
+        assert_eq!(
+            cleanup(&arguments(&["--retention-days", "0"])),
+            ExitCode::from(2)
         );
     }
 }
