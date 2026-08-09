@@ -63,6 +63,17 @@ that no workspace binary or test executable remains, and uploads the resulting
 directory inventory. Cache data is never an artifact-provenance substitute and
 a cache hit never skips correctness checks or artifact handoff.
 
+The only manual compiler-output publication is an explicitly selected,
+main-ref coverage-target benchmark. Its job is gated to `workflow_dispatch` on
+`refs/heads/main`, uses a separate `coverage-target-deps-benchmark-*` key, and
+accepts a decimal size bound no greater than 2 GiB. It cannot run from a pull
+request, shares no key with the disabled production cache, and cannot make the
+production path restore or publish a target cache. The first zero-bound run
+measures and inventories dependencies without saving; later benchmark runs use
+that measured bound to compare warm candidates against the concurrent normal
+coverage control. This scoped measurement exception does not change the
+main-push-only production publication rule.
+
 CI does not delete Actions caches as part of this policy. A future collector
 must first establish repository quota pressure or eviction of useful immutable
 entries, limit deletion to this repository's versioned Rust-cache prefixes,
@@ -77,8 +88,9 @@ use, including after a cache restore, CI verifies the installed binary SHA-256
 and reported version. Tool-cache publication is restricted to successful
 `main` pushes. Coverage timing artifacts explicitly record cache restore and
 whether cache save succeeded or was skipped; a manual dispatch is marked
-`workflow_dispatch-read-only`. CI has no `cargo install` fallback for either
-tool.
+`workflow_dispatch-read-only`, except for the separately named, main-only
+target-cache benchmark described above. CI has no `cargo install` fallback for
+either tool.
 
 The coverage execution job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace

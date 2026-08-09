@@ -3784,8 +3784,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  rust-coverage-benchmark:", 1
     )[0]
     rust_coverage_benchmark = workflow.split("\n  rust-coverage-benchmark:", 1)[1].split(
-        "\n  rust-gate:", 1
+        "\n  rust-coverage-target-cache-benchmark:", 1
     )[0]
+    rust_target_cache_benchmark = workflow.split(
+        "\n  rust-coverage-target-cache-benchmark:", 1
+    )[1].split("\n  rust-gate:", 1)[0]
     rust_coverage = (
         repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
     ).read_text(encoding="utf-8")
@@ -3865,7 +3868,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert "actions/cache@" + cache_sha not in input_cache
 
     coverage_target_key = (
-        "coverage-target-deps-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-"
+        "${{ env.COVERAGE_TARGET_CACHE_KEY_PREFIX }}-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-"
         "${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-"
         "${{ env.CARGO_LLVM_COV_VERSION }}-"
         "opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-"
@@ -3879,6 +3882,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     for coverage_job in (rust_full_job, rust_coverage_benchmark):
         assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in coverage_job
         assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
         assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
@@ -3901,13 +3906,18 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "cargo metadata --no-deps --format-version 1",
         "coverage target cache retained workspace product",
         "COVERAGE_TARGET_CACHE_MAX_BYTES",
+        "COVERAGE_TARGET_CACHE_MAX_BYTES_CAP",
+        "main-dispatch-benchmark",
         "unmeasured-size-bound",
         "COVERAGE_TARGET_CACHE_SAVE_ALLOWED",
     ):
         assert run_specific_output in coverage_target_prune
     assert "actions/cache/save@" + cache_sha in coverage_target_save
     assert "path: target/llvm-cov-target" in coverage_target_save
+    assert "env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-push'" in coverage_target_save
     assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in coverage_target_save
+    assert "env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-dispatch-benchmark'" in coverage_target_save
+    assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in coverage_target_save
     assert "steps.coverage-target-cache.outputs.cache-hit != 'true'" in coverage_target_save
     assert "steps.coverage-target-cache-prune.outcome == 'success'" in coverage_target_save
     assert "env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'" in coverage_target_save
@@ -3962,11 +3972,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov --version" in rust_coverage
     assert "coverage_profile_benchmark:" in workflow
     assert "coverage_profile_runner:" in workflow
+    assert "coverage_target_cache_benchmark:" in workflow
+    assert "coverage_target_cache_benchmark_max_bytes:" in workflow
     assert "large_ubuntu_4cpu" in workflow
     assert "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}" in rust_coverage_benchmark
     assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_full_job
     assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: ""' in rust_full_job
     assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"' in rust_full_job
+    assert 'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"' in rust_full_job
     assert rust_coverage_benchmark.count(
         "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
     ) == 1
@@ -3988,6 +4001,25 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "needs: [rust-selection]" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
+    assert (
+        "github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark"
+        " && github.ref == 'refs/heads/main'"
+    ) in rust_target_cache_benchmark
+    assert "name: rust-coverage-target-cache-benchmark" in rust_target_cache_benchmark
+    assert "runs-on: ubuntu-24.04" in rust_target_cache_benchmark
+    assert 'COVERAGE_TARGET_CACHE_ENABLED: "true"' in rust_target_cache_benchmark
+    assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps-benchmark"' in rust_target_cache_benchmark
+    assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-dispatch-benchmark"' in rust_target_cache_benchmark
+    assert "COVERAGE_TARGET_CACHE_MAX_BYTES: ${{ inputs.coverage_target_cache_benchmark_max_bytes }}" in rust_target_cache_benchmark
+    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES_CAP: "2147483648"' in rust_target_cache_benchmark
+    assert "Validate coverage target cache benchmark bound" in rust_target_cache_benchmark
+    assert "coverage target cache benchmark bound exceeds cap" in rust_target_cache_benchmark
+    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: "-target-cache-benchmark"' in rust_target_cache_benchmark
+    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-target-cache-benchmark"' in rust_target_cache_benchmark
+    assert 'COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"' in rust_target_cache_benchmark
+    assert 'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-target-cache-benchmark"' in rust_target_cache_benchmark
+    assert "uses: ./.github/actions/rust-coverage" in rust_target_cache_benchmark
+    assert "git diff --exit-code -- plugin" in rust_target_cache_benchmark
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
@@ -4019,6 +4051,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ):
         assert timing_phase in rust_coverage
     assert "workflow_dispatch-read-only" in rust_coverage
+    assert "workflow_dispatch-main-benchmark-hit" in rust_coverage
     coverage_binary = "target/llvm-cov-target/debug/larch"
     assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in rust_coverage
     assert 'test -x "$coverage_larch"' in rust_coverage
@@ -4051,7 +4084,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Upload coverage-built Rust executable for cross-language integration tests", 1
     )[1].split("Start Rust coverage cache save timing", 1)[0]
     assert "Prepare coverage-built Rust integration artifact" in rust_coverage
-    assert "name: larch-linux-test-binary" in coverage_binary_artifact
+    assert "name: ${{ env.COVERAGE_PYTHON_ARTIFACT_NAME }}" in coverage_binary_artifact
     assert "path: ${{ runner.temp }}/larch-linux-test-binary" in coverage_binary_artifact
     assert "if-no-files-found: error" in coverage_binary_artifact
     assert "env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'" in coverage_binary_artifact
@@ -4100,9 +4133,12 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "restore-keys" in supply_chain
     assert "primary-key miss" in supply_chain
     assert "2 GiB" in supply_chain
+    assert "coverage-target-deps-benchmark" in supply_chain
+    assert "main-ref coverage-target benchmark" in supply_chain
     assert "repository quota pressure" in supply_chain
     assert "CI cache trust" in workflow_trust
     assert "compiler-output cache" in workflow_trust
+    assert "manual target-cache benchmark" in workflow_trust
     assert "actions/cache/restore@" + cache_sha in rust_coverage
     assert "actions/cache/save@" + cache_sha in rust_coverage
     assert "id: cargo-inputs-cache" in rust_coverage
