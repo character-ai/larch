@@ -459,6 +459,18 @@ final `main` evidence or declare a final winner from them. After merge, collect
 three comparable successful `main`-ref samples of the configured profile before
 making that final claim.
 
+### Production main-run evidence
+
+A final production claim needs three comparable warm full-path successful
+`push` runs on `refs/heads/main` after the relevant repair. Record each run's
+direct URL and the results for `rust-full`, `rust-coverage`, `rust-gate`, and
+`python-tests-gate`. For every sample, link the coverage-timing TSV, LCOV
+artifact, and `larch-linux-test-binary` artifact. Record the job duration,
+cache hit or miss, restored bytes and restore time, compile time, cache-save
+outcome and time, and end-to-end time. Keep warm exact hits separate from cold
+or miss samples. Report raw values and medians. A pull-request or manual run
+does not substitute for a production push.
+
 ### Post-policy nextest-tail candidate evidence
 
 [Benchmark run 31219903417](https://github.com/character-ai/larch/actions/runs/31219903417)

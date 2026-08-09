@@ -4260,7 +4260,11 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     coverage_and_ci = rust_testing.split("## Coverage and CI", 1)[1].split(
         "### Pull-request Rust selection", 1
     )[0]
+    production_evidence = rust_testing.split("### Production main-run evidence", 1)[1].split(
+        "### Post-policy nextest-tail candidate evidence", 1
+    )[0]
     coverage_text = " ".join(coverage_and_ci.split())
+    production_evidence_text = " ".join(production_evidence.split())
     rust_testing_text = " ".join(rust_testing.split())
     rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
     rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[0]
@@ -4296,6 +4300,10 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     assert "full-rust-ci" in rust_testing_text
     assert "that label can only narrow toward the safer `full` mode" in rust_testing_text
     assert "`rust-coverage` is the direct production coverage lane." not in rust_testing
+    assert "three comparable warm full-path successful `push` runs on `refs/heads/main`" in production_evidence_text
+    assert "`rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`" in production_evidence_text
+    assert "coverage-timing TSV, LCOV artifact, and `larch-linux-test-binary` artifact" in production_evidence_text
+    assert "A pull-request or manual run does not substitute for a production push." in production_evidence_text
 
     assert "github.event_name != 'pull_request'" in rust_full
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
