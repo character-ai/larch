@@ -2969,7 +2969,7 @@ mod tests {
         .expect("valid issue fixture");
         issue["id"] = json!(number);
         issue["number"] = json!(number);
-        issue["title"] = json!(format!("[BUG] prefetch regression #{number}"));
+        issue["title"] = json!(format!("{BUG_PREFIX} prefetch regression #{number}"));
         issue["body"] = json!("residual behavior after the fix #7");
         issue["state"] = json!("closed");
         issue["state_reason"] = json!("completed");
@@ -2981,7 +2981,7 @@ mod tests {
         GitHubIssue {
             id: number,
             number,
-            title: format!("[BUG] regression #{number}"),
+            title: format!("{BUG_PREFIX} regression #{number}"),
             body: body.to_owned(),
             state,
             state_reason: String::new(),
