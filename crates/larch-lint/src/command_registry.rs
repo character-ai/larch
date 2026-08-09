@@ -1,7 +1,7 @@
 //! Canonical Python-to-Rust command ownership and production-caller ledger.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Write as _,
     fs::{self, OpenOptions},
     io::Write as _,
@@ -72,7 +72,8 @@ impl Rule for CommandRegistryRule {
         let ledger = read_ledger(repository)?;
         let python = read_python_registry(repository)?;
         let known = ledger.commands.iter().map(CommandRecord::key).collect();
-        let python_sources = read_python_sources(repository, &ledger)?;
+        let retirement_records = completed_python_retirement_records(&ledger);
+        let python_sources = read_python_sources(repository, &retirement_records, true)?;
         let callers = discover_callers(repository, &known, Some(&python_sources))?;
         let clean_install_cases = read_clean_install_cases(repository)?;
         validate_ledger(
@@ -95,22 +96,15 @@ pub fn python_retirement_findings_for_issues(
 ) -> Result<Vec<Finding>, LintError> {
     let ledger = read_ledger(repository)?;
     let python = read_python_registry(repository)?;
-    let python_sources = read_python_sources(repository, &ledger)?;
-    let mut findings = Vec::new();
-    for record in ledger.commands.iter().filter(|record| {
+    let retirement_checks = retirement_checks(ledger.commands.iter().filter(|record| {
         record
             .migration_issue
             .is_some_and(|issue| migration_issues.contains(&issue))
-    }) {
-        let key = record.key();
-        validate_python_retirement(
-            &key,
-            record,
-            python.get(&key),
-            &python_sources,
-            &mut findings,
-        );
-    }
+    }));
+    let source_retirement_records = completed_python_retirement_records(&ledger);
+    let python_sources = read_python_sources(repository, &source_retirement_records, true)?;
+    let mut findings = Vec::new();
+    validate_python_retirements(&retirement_checks, &python, &python_sources, &mut findings);
     Ok(findings)
 }
 
@@ -494,10 +488,14 @@ fn validate_ledger(
             clean_install_cases,
             &mut findings,
         );
-        if record.python_removal == Completion::Complete {
-            validate_python_retirement(key, record, python.get(key), python_sources, &mut findings);
-        }
     }
+    let retirement_checks = retirement_checks(
+        commands
+            .values()
+            .copied()
+            .filter(|record| record.python_removal == Completion::Complete),
+    );
+    validate_python_retirements(&retirement_checks, python, python_sources, &mut findings);
     compare_callers(&callers, &live_callers, &mut findings);
     Ok(RuleOutput::from_findings(findings))
 }
@@ -976,6 +974,35 @@ struct PythonSource {
     tree: Arc<Tree>,
 }
 
+struct RetirementCheck<'record> {
+    key: CommandKey,
+    record: &'record CommandRecord,
+}
+
+#[derive(Clone, Copy, Default)]
+struct RetirementDocumentState(u8);
+
+impl RetirementDocumentState {
+    const DEFINITION_PRESENT: u8 = 1;
+    const IMPORTED: u8 = 1 << 1;
+    const REFERENCED: u8 = 1 << 2;
+    const CALLED: u8 = 1 << 3;
+
+    const fn mark(&mut self, finding: u8) {
+        self.0 |= finding;
+    }
+
+    const fn has(self, finding: u8) -> bool {
+        self.0 & finding != 0
+    }
+}
+
+struct PythonDocumentScan<'source> {
+    top_level_functions: Vec<&'source str>,
+    import_statements: Vec<&'source str>,
+    from_import_statements: Vec<&'source str>,
+}
+
 #[derive(Default)]
 struct PythonBindings {
     direct_symbols: BTreeSet<String>,
@@ -994,7 +1021,8 @@ fn parse_python(path: &str, source: &str) -> Result<Tree, LintError> {
 
 fn read_python_sources(
     repository: &Repository,
-    ledger: &Ledger,
+    source_retirement_records: &[&CommandRecord],
+    include_runtime_candidates: bool,
 ) -> Result<Vec<PythonSource>, LintError> {
     let mut sources = Vec::new();
     for path in repository.paths() {
@@ -1017,22 +1045,11 @@ fn read_python_sources(
                 .rsplit_once('.')
                 .map_or_else(String::new, |(parent, _)| parent.to_owned())
         };
-        let runtime_candidate =
-            source.contains("larch_entrypoint") || source.contains("scripts/larch.sh");
-        let retirement_candidate = ledger.commands.iter().any(|record| {
-            if record.python_removal != Completion::Complete {
-                return false;
-            }
-            let module_leaf = record
-                .python_module
-                .rsplit('.')
-                .next()
-                .unwrap_or(record.python_module.as_str());
-            module == record.python_module
-                || (source.contains(module_leaf)
-                    && (source.contains(&record.python_function) || source.contains("import *")))
-        });
-        if !runtime_candidate && !retirement_candidate {
+        let runtime_candidate = include_runtime_candidates
+            && (source.contains("larch_entrypoint") || source.contains("scripts/larch.sh"));
+        let source_retirement_candidate =
+            source_matches_python_retirement(&module, &source, source_retirement_records);
+        if !runtime_candidate && !source_retirement_candidate {
             continue;
         }
         let tree = repository.python_syntax(path)?;
@@ -1052,70 +1069,154 @@ fn read_python_sources(
     Ok(sources)
 }
 
-fn validate_python_retirement(
-    key: &CommandKey,
-    record: &CommandRecord,
-    registered: Option<&PythonCommand>,
-    sources: &[PythonSource],
-    findings: &mut Vec<Finding>,
-) {
-    if registered.is_some() {
-        findings.push(retirement_finding(
-            "python-entrypoint-still-present",
-            key,
-            PYTHON_REGISTRY_PATH,
-        ));
-    }
+fn source_matches_python_retirement(
+    module: &str,
+    source: &str,
+    retirement_records: &[&CommandRecord],
+) -> bool {
+    retirement_records
+        .iter()
+        .any(|record| python_retirement_matches_source(module, source, record))
+}
+
+fn completed_python_retirement_records(ledger: &Ledger) -> Vec<&CommandRecord> {
+    ledger
+        .commands
+        .iter()
+        .filter(|record| record.python_removal == Completion::Complete)
+        .collect()
+}
+
+fn retirement_checks<'record>(
+    records: impl IntoIterator<Item = &'record CommandRecord>,
+) -> Vec<RetirementCheck<'record>> {
+    records
+        .into_iter()
+        .map(|record| RetirementCheck {
+            key: record.key(),
+            record,
+        })
+        .collect()
+}
+
+fn python_retirement_matches_source(module: &str, source: &str, record: &CommandRecord) -> bool {
     let module_leaf = record
         .python_module
         .rsplit('.')
         .next()
         .unwrap_or(record.python_module.as_str());
-    for document in sources {
-        let may_import_or_reference = document.source.contains(module_leaf)
-            && (document.source.contains(&record.python_function)
-                || document.source.contains("import *"));
-        if document.module != record.python_module && !may_import_or_reference {
-            continue;
-        }
-        if document.module == record.python_module
-            && has_module_function(
-                document.tree.root_node(),
-                &document.source,
-                &record.python_function,
-            )
-        {
+    module == record.python_module
+        || (source.contains(module_leaf)
+            && (source.contains(&record.python_function) || source.contains("import *")))
+}
+
+fn validate_python_retirements(
+    checks: &[RetirementCheck<'_>],
+    python: &BTreeMap<CommandKey, PythonCommand>,
+    sources: &[PythonSource],
+    findings: &mut Vec<Finding>,
+) {
+    for check in checks {
+        if python.contains_key(&check.key) {
             findings.push(retirement_finding(
                 "python-entrypoint-still-present",
-                key,
-                &document.path,
+                &check.key,
+                PYTHON_REGISTRY_PATH,
             ));
         }
-        let bindings = python_bindings(
-            document.tree.root_node(),
-            &document.source,
+    }
+    for document in sources {
+        let candidates: Vec<_> = checks
+            .iter()
+            .filter(|check| {
+                python_retirement_matches_source(&document.module, &document.source, check.record)
+            })
+            .collect();
+        if candidates.is_empty() {
+            continue;
+        }
+        validate_python_retirement_document(document, &candidates, findings);
+    }
+}
+
+fn validate_python_retirement_document(
+    document: &PythonSource,
+    checks: &[&RetirementCheck<'_>],
+    findings: &mut Vec<Finding>,
+) {
+    // Each check passed the legacy source-candidate predicate. Analyze the
+    // parsed document as a batch, then project its facts back onto every check.
+    let scan = scan_python_imports(document.tree.root_node(), &document.source);
+    let mut states = vec![RetirementDocumentState::default(); checks.len()];
+    let mut direct_targets: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut attribute_targets: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut local_call_targets: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (index, check) in checks.iter().enumerate() {
+        let record = check.record;
+        if document.module == record.python_module
+            && scan
+                .top_level_functions
+                .contains(&record.python_function.as_str())
+        {
+            states[index].mark(RetirementDocumentState::DEFINITION_PRESENT);
+        }
+        let bindings = python_bindings_from_scan(
+            &scan,
             &document.package,
             &record.python_module,
             &record.python_function,
         );
-        let (referenced, called) = python_symbol_uses(
-            document.tree.root_node(),
-            &document.source,
-            &bindings,
-            &record.python_function,
-            document.module == record.python_module,
-        );
-        if bindings.imported || referenced {
+        if bindings.imported {
+            states[index].mark(RetirementDocumentState::IMPORTED);
+        }
+        for symbol in bindings.direct_symbols {
+            direct_targets.entry(symbol).or_default().push(index);
+        }
+        for module in bindings.module_aliases {
+            attribute_targets
+                .entry(format!("{module}.{}", record.python_function))
+                .or_default()
+                .push(index);
+        }
+        if document.module == record.python_module {
+            local_call_targets
+                .entry(record.python_function.clone())
+                .or_default()
+                .push(index);
+        }
+    }
+
+    scan_python_symbol_uses(
+        document.tree.root_node(),
+        &document.source,
+        &direct_targets,
+        &attribute_targets,
+        &local_call_targets,
+        &mut states,
+    );
+
+    for (check, state) in checks.iter().zip(states) {
+        if state.has(RetirementDocumentState::DEFINITION_PRESENT) {
             findings.push(retirement_finding(
-                "python-entrypoint-still-imported",
-                key,
+                "python-entrypoint-still-present",
+                &check.key,
                 &document.path,
             ));
         }
-        if called {
+        if state.has(RetirementDocumentState::IMPORTED)
+            || state.has(RetirementDocumentState::REFERENCED)
+        {
+            findings.push(retirement_finding(
+                "python-entrypoint-still-imported",
+                &check.key,
+                &document.path,
+            ));
+        }
+        if state.has(RetirementDocumentState::CALLED) {
             findings.push(retirement_finding(
                 "python-entrypoint-still-called",
-                key,
+                &check.key,
                 &document.path,
             ));
         }
@@ -1126,21 +1227,90 @@ fn retirement_finding(token: &str, key: &CommandKey, path: &str) -> Finding {
     finding(format!("{token} {}: {path}", key.selector()))
 }
 
-fn has_module_function(root: Node<'_>, source: &str, function: &str) -> bool {
+fn scan_python_imports<'source>(
+    root: Node<'_>,
+    source: &'source str,
+) -> PythonDocumentScan<'source> {
+    let mut scan = PythonDocumentScan {
+        top_level_functions: Vec::new(),
+        import_statements: Vec::new(),
+        from_import_statements: Vec::new(),
+    };
     let mut cursor = root.walk();
-    root.named_children(&mut cursor).any(|child| {
+    for child in root.named_children(&mut cursor) {
         let definition = if child.kind() == "decorated_definition" {
             child.child_by_field_name("definition")
         } else {
             Some(child)
         };
-        definition.is_some_and(|node| {
-            node.kind() == "function_definition"
-                && node
-                    .child_by_field_name("name")
-                    .and_then(|name| node_text(name, source))
-                    .is_some_and(|name| name == function)
-        })
+        if let Some(name) = definition
+            .filter(|node| node.kind() == "function_definition")
+            .and_then(|node| node.child_by_field_name("name"))
+            .and_then(|name| node_text(name, source))
+        {
+            scan.top_level_functions.push(name);
+        }
+    }
+    walk_named(root, &mut |node| match node.kind() {
+        "import_statement" => {
+            if let Some(text) = node_text(node, source) {
+                scan.import_statements.push(text);
+            }
+        }
+        "import_from_statement" => {
+            if let Some(text) = node_text(node, source) {
+                scan.from_import_statements.push(text);
+            }
+        }
+        _ => {}
+    });
+    scan
+}
+
+fn scan_python_symbol_uses(
+    root: Node<'_>,
+    source: &str,
+    direct_targets: &HashMap<String, Vec<usize>>,
+    attribute_targets: &HashMap<String, Vec<usize>>,
+    local_call_targets: &HashMap<String, Vec<usize>>,
+    states: &mut [RetirementDocumentState],
+) {
+    walk_named(root, &mut |node| {
+        if node.kind() == "attribute" {
+            let attribute = compact_node_text(node, source);
+            if let Some(targets) = attribute_targets.get(&attribute) {
+                for target in targets {
+                    states[*target].mark(RetirementDocumentState::REFERENCED);
+                    if is_call_function(node) {
+                        states[*target].mark(RetirementDocumentState::CALLED);
+                    }
+                }
+            }
+        } else if node.kind() == "identifier"
+            && let Some(name) = node_text(node, source)
+            && !has_ancestor_kind(node, &["import_statement", "import_from_statement"])
+        {
+            let called = is_call_function(node);
+            if let Some(targets) = direct_targets.get(name) {
+                for target in targets {
+                    states[*target].mark(RetirementDocumentState::REFERENCED);
+                    if called {
+                        states[*target].mark(RetirementDocumentState::CALLED);
+                    }
+                }
+            }
+            if called && let Some(targets) = local_call_targets.get(name) {
+                for target in targets {
+                    states[*target].mark(RetirementDocumentState::CALLED);
+                }
+            }
+        }
+    });
+}
+
+fn is_call_function(node: Node<'_>) -> bool {
+    node.parent().is_some_and(|parent| {
+        parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
     })
 }
 
@@ -1167,6 +1337,28 @@ fn python_bindings(
         ),
         _ => {}
     });
+    bindings
+}
+
+fn python_bindings_from_scan(
+    scan: &PythonDocumentScan<'_>,
+    current_package: &str,
+    target_module: &str,
+    target_function: &str,
+) -> PythonBindings {
+    let mut bindings = PythonBindings::default();
+    for statement in &scan.import_statements {
+        inspect_import_statement(statement, target_module, &mut bindings);
+    }
+    for statement in &scan.from_import_statements {
+        inspect_from_import(
+            statement,
+            current_package,
+            target_module,
+            target_function,
+            &mut bindings,
+        );
+    }
     bindings
 }
 
@@ -1254,49 +1446,6 @@ fn resolve_import_module(current_package: &str, imported: &str) -> String {
         parts.push(suffix);
     }
     parts.join(".")
-}
-
-fn python_symbol_uses(
-    root: Node<'_>,
-    source: &str,
-    bindings: &PythonBindings,
-    target_function: &str,
-    within_target_module: bool,
-) -> (bool, bool) {
-    let mut referenced = false;
-    let mut called = false;
-    walk_named(root, &mut |node| {
-        if node.kind() == "attribute" {
-            let text = compact_node_text(node, source);
-            if bindings
-                .module_aliases
-                .iter()
-                .any(|module| text == format!("{module}.{target_function}"))
-            {
-                referenced = true;
-                if node.parent().is_some_and(|parent| {
-                    parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
-                }) {
-                    called = true;
-                }
-            }
-        } else if node.kind() == "identifier"
-            && let Some(name) = node_text(node, source)
-            && !has_ancestor_kind(node, &["import_statement", "import_from_statement"])
-        {
-            let direct_import = bindings.direct_symbols.contains(name);
-            let direct_call = node.parent().is_some_and(|parent| {
-                parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
-            });
-            if direct_import {
-                referenced = true;
-            }
-            if direct_call && (direct_import || within_target_module && name == target_function) {
-                called = true;
-            }
-        }
-    });
-    (referenced, called)
 }
 
 fn has_ancestor_kind(mut node: Node<'_>, kinds: &[&str]) -> bool {
@@ -1443,9 +1592,11 @@ fn python_string(node: Node<'_>, source: &str) -> Option<String> {
 }
 
 fn compact_node_text(node: Node<'_>, source: &str) -> String {
-    node_text(node, source)
-        .unwrap_or_default()
-        .chars()
+    compact_text(node_text(node, source).unwrap_or_default())
+}
+
+fn compact_text(text: &str) -> String {
+    text.chars()
         .filter(|character| !character.is_whitespace())
         .collect()
 }
@@ -1858,7 +2009,8 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
     let ledger = read_ledger(repository)?;
     let python = read_python_registry(repository)?;
     let known = ledger.commands.iter().map(CommandRecord::key).collect();
-    let python_sources = read_python_sources(repository, &ledger)?;
+    let retirement_records = completed_python_retirement_records(&ledger);
+    let python_sources = read_python_sources(repository, &retirement_records, true)?;
     let live_callers = discover_callers(repository, &known, Some(&python_sources))?;
     let clean_install_cases = read_clean_install_cases(repository)?;
     let validation = validate_ledger(
