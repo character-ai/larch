@@ -30,9 +30,9 @@ on stdout requires `--output FILE`, so stdout never mixes JSON and prose.
 
 ## Report schema
 
-Schema version `1` has these top-level fields:
+Schema version `2` has these top-level fields:
 
-- `schema_version`: the integer `1`
+- `schema_version`: the integer `2`
 - `repository`: the validated `owner/name` input
 - `chief_issue`: the positive issue number passed with `--chief`
 - `snapshot_timestamp`: the UTC time captured before evidence collection
@@ -44,6 +44,10 @@ Schema version `1` has these top-level fields:
 
 - `executable_leaves`
 - `valid_plans`
+- `historical_managed_leaves`
+- `historical_missing_plan_evidence`
+- `historical_unverified_rust_line_budgets`
+- `historical_recorded_rust_line_budget_deviations`
 - `missing_or_stale_blockers`
 - `active_owner_conflicts`
 - `stale_implementation_leases`
@@ -57,6 +61,15 @@ Each finding contains `category`, nullable `issue`, and `reason`. A stale lease
 also contains `cleanup_command`. Each issue row contains `number`, nullable
 `plan_valid`, and `finding_reasons`. The report excludes issue titles, bodies,
 comments, credentials, and arbitrary GitHub error text.
+
+Historical managed leaves are closed direct umbrella leaves that name the Chief
+umbrella, or whose durable parent umbrella declares that Chief relationship.
+Their four counts and per-issue reasons are report-only: they do not become gate
+findings or make the audit fail. `historical_unverified_rust_line_budgets` means
+no durable matching budget record is available; it does not claim that a
+historical PR exceeded the limit. `historical_recorded_rust_line_budget_deviations`
+counts only explicit durable records. The audit never writes retrospective plans,
+approvals, or deviations.
 
 Reasons come from the existing migration owners. They include plan defects,
 blocker and receipt tokens, owner-admission tokens, stale-lease tokens, and
@@ -88,6 +101,10 @@ Plan findings use these exact tokens:
 - `existing-new-plan-path`
 - `unsafe-plan-path`
 
+Historical report-only reasons use `historical-plan-evidence-missing
+defects=TOKEN[,TOKEN]` and `historical-rust-line-budget-unverified`, optionally
+with `defects=TOKEN` when a durable deviation section is malformed.
+
 Blocker and receipt findings use `missing-native-blocker-edge issue=#N`,
 `undocumented-native-blocker-edge issue=#N`,
 `closed-blocker-edge-retained issue=#N`, `stale-plan-body`,
@@ -117,10 +134,11 @@ repository-relative path, line number, and rule message.
 
 ## Snapshot and mutation boundary
 
-The command captures open issues, referenced issues, native dependency edges,
-open pull request branches, the Git commit, and tracked paths before it builds
-the report. Every issue check uses that immutable snapshot. The command rejects
-a Git commit change during the run.
+The command captures open and closed issues, referenced issues, native
+dependency edges for executable leaves, open pull request branches, the Git
+commit, and tracked paths before it builds the report. Every issue check uses
+that immutable snapshot. The command rejects a Git commit change during the
+run.
 
 GitHub transport uses read helpers only. The aggregate has no issue-mutation
 owner and no write fallback. Its temporary command-audit input contains only

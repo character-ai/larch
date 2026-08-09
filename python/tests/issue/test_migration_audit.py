@@ -87,6 +87,7 @@ def _snapshot(
     open_issues: tuple[mg.MigrationIssueSnapshot, ...],
     referenced: tuple[mg.MigrationIssueSnapshot, ...] = (),
     dependencies: tuple[mg.DependencySnapshot, ...],
+    closed_issues: tuple[mg.MigrationIssueSnapshot, ...] = (),
 ) -> mg.MigrationAuditSnapshot:
     return mg.MigrationAuditSnapshot(
         repository="owner/repo",
@@ -98,6 +99,7 @@ def _snapshot(
         dependencies=dependencies,
         open_pr_branches=frozenset(),
         tracked_paths=frozenset({"README.md"}),
+        closed_issues=closed_issues,
     )
 
 
@@ -117,12 +119,15 @@ def test_empty_report_golden(tmp_path: Path) -> None:
     assert mg.render_migration_audit_json(report=report) == (
         '{"chief_issue":7687,"counts":{"active_owner_conflicts":0,'
         '"clean_install_coverage_gaps":0,"executable_leaves":1,'
+        '"historical_managed_leaves":0,"historical_missing_plan_evidence":0,'
+        '"historical_recorded_rust_line_budget_deviations":0,'
+        '"historical_unverified_rust_line_budgets":0,'
         '"missing_caller_surfaces":0,"missing_or_stale_blockers":0,'
         '"production_runtime_escape_hatches":0,"python_retirement_violations":0,'
         '"registry_state_violations":0,"stale_implementation_leases":0,'
         '"valid_plans":1},"findings":[],"issues":[{"finding_reasons":[],'
         '"number":10,"plan_valid":true}],"repository":"owner/repo",'
-        '"schema_version":1,"snapshot_timestamp":"2026-07-19T12:00:00Z"}\n'
+        '"schema_version":2,"snapshot_timestamp":"2026-07-19T12:00:00Z"}\n'
     )
 
 
@@ -179,6 +184,10 @@ def test_mixed_report_counts_and_reordered_input_are_stable(tmp_path: Path) -> N
         "active_owner_conflicts": 0,
         "clean_install_coverage_gaps": 1,
         "executable_leaves": 2,
+        "historical_managed_leaves": 0,
+        "historical_missing_plan_evidence": 0,
+        "historical_recorded_rust_line_budget_deviations": 0,
+        "historical_unverified_rust_line_budgets": 0,
         "missing_caller_surfaces": 1,
         "missing_or_stale_blockers": 2,
         "production_runtime_escape_hatches": 1,
@@ -189,6 +198,152 @@ def test_mixed_report_counts_and_reordered_input_are_stable(tmp_path: Path) -> N
     }
     assert "fixture-secret" not in rendered[0]
     assert "secret=" not in rendered[0]
+
+
+def test_historical_leaves_report_only_missing_plan_or_budget_evidence(
+    tmp_path: Path,
+) -> None:
+    repo, head = _git_repo(tmp_path)
+    missing_plan = mg.MigrationIssueSnapshot(
+        number=12,
+        title="[DONE] [LEAF OF 7779] Missing plan",
+        state="closed",
+        body="Chief umbrella: #7687.\n",
+        updated_at=SNAPSHOT_TIME,
+    )
+    unverified_budget = mg.MigrationIssueSnapshot(
+        number=13,
+        title="[DONE] [LEAF OF 7779] No budget record",
+        state="closed",
+        body="Chief umbrella: #7687.\n" + issue_wire.compose_named_block(
+            marker="plan", inner=_plan()
+        ),
+        updated_at=SNAPSHOT_TIME,
+    )
+    recorded_budget = mg.MigrationIssueSnapshot(
+        number=14,
+        title="[DONE] [LEAF OF 7779] Recorded budget",
+        state="closed",
+        body="Chief umbrella: #7687.\n"
+        + issue_wire.compose_named_block(
+            marker="plan",
+            inner=_plan().replace(
+                "diff_lines: 10\n",
+                "## Rust line budget deviation\n\n"
+                "- Split decision: retain this leaf as one PR\n"
+                "- Rationale: The coupled public wire change could not split safely.\n"
+                f"- Base SHA: {head}\n"
+                f"- Head SHA: {head}\n"
+                "- Added non-generated Rust lines: 1501\n\n"
+                "diff_lines: 10\n",
+            ),
+        ),
+        updated_at=SNAPSHOT_TIME,
+    )
+    parent = mg.MigrationIssueSnapshot(
+        number=7779,
+        title="[IMPLEMENTING] [UMBRELLA] Fixture",
+        state="open",
+        body="This umbrella is part of #7687, **[CHIEF UMBRELLA] Fixture**.\n",
+        updated_at=SNAPSHOT_TIME,
+    )
+    inherited_chief = mg.MigrationIssueSnapshot(
+        number=15,
+        title="[DONE] [LEAF OF 7779] Chief inherited from parent",
+        state="closed",
+        body=(
+            "This is a leaf of umbrella #7779. Read the umbrella in full before acting.\n"
+            "\n"
+            "This historical body predates an explicit Chief umbrella line.\n"
+        ),
+        updated_at=SNAPSHOT_TIME,
+    )
+
+    report = mg.build_migration_audit_report(
+        proc,
+        snapshot=_snapshot(
+            head=head,
+            open_issues=(parent,),
+            closed_issues=(
+                missing_plan,
+                unverified_budget,
+                recorded_budget,
+                inherited_chief,
+            ),
+            dependencies=(),
+        ),
+        repo_root=repo,
+    )
+
+    payload = json.loads(mg.render_migration_audit_json(report=report))
+    assert payload["counts"]["historical_managed_leaves"] == 4
+    assert payload["counts"]["historical_missing_plan_evidence"] == 2
+    assert payload["counts"]["historical_unverified_rust_line_budgets"] == 1
+    assert payload["counts"]["historical_recorded_rust_line_budget_deviations"] == 1
+    assert payload["counts"]["valid_plans"] == 0
+    assert payload["issues"] == [
+        {
+            "finding_reasons": [
+                "historical-plan-evidence-missing defects=missing-plan-block"
+            ],
+            "number": 12,
+            "plan_valid": False,
+        },
+        {
+            "finding_reasons": ["historical-rust-line-budget-unverified"],
+            "number": 13,
+            "plan_valid": True,
+        },
+        {"finding_reasons": [], "number": 14, "plan_valid": True},
+        {
+            "finding_reasons": [
+                "historical-plan-evidence-missing defects=missing-plan-block"
+            ],
+            "number": 15,
+            "plan_valid": False,
+        },
+    ]
+
+
+def test_rust_line_budget_deviation_parser_is_fail_closed() -> None:
+    valid = (
+        "## Plan\n\n"
+        "## Rust line budget deviation\n\n"
+        "- Split decision: retain this leaf as one PR\n"
+        "- Rationale: One atomic compatibility change remains coupled.\n"
+        f"- Base SHA: {'a' * 40}\n"
+        f"- Head SHA: {'b' * 40}\n"
+        "- Added non-generated Rust lines: 1501\n"
+    )
+    parsed = mg.parse_rust_line_budget_deviation(plan_inner=valid)
+    assert parsed.deviation == mg.RustLineBudgetDeviation(
+        split_decision="retain this leaf as one PR",
+        rationale="One atomic compatibility change remains coupled.",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        added_lines=1501,
+    )
+    assert not parsed.defects
+    assert mg.parse_rust_line_budget_deviation(plan_inner="## Plan\n").deviation is None
+    malformed = mg.parse_rust_line_budget_deviation(
+        plan_inner="## Rust line budget deviation\n\n- Split decision: split it\n"
+    )
+    assert malformed.defects == ("malformed-rust-line-budget-deviation",)
+    duplicate = mg.parse_rust_line_budget_deviation(
+        plan_inner=valid + "\n## Rust line budget deviation\n"
+    )
+    assert duplicate.defects == ("multiple-rust-line-budget-deviations",)
+    fenced_fields = mg.parse_rust_line_budget_deviation(
+        plan_inner=(
+            "## Rust line budget deviation\n\n```text\n"
+            "- Split decision: retain this leaf as one PR\n"
+            "- Rationale: A code example is not durable evidence.\n"
+            f"- Base SHA: {'a' * 40}\n"
+            f"- Head SHA: {'b' * 40}\n"
+            "- Added non-generated Rust lines: 1501\n```\n"
+        )
+    )
+    assert fenced_fields.defects == ("malformed-rust-line-budget-deviation",)
 
 
 def test_stale_lease_includes_exact_cleanup_command(tmp_path: Path) -> None:
@@ -242,7 +397,7 @@ def test_snapshot_api_failure_is_required_evidence_failure(
         raise ShipError("api failed with secret=do-not-copy")
 
     monkeypatch.setattr(mg.gh, "issue_list_read", fail)
-    with pytest.raises(mg.MigrationAuditError, match="open issue snapshot unavailable"):
+    with pytest.raises(mg.MigrationAuditError, match="issue snapshot unavailable"):
         _ = mg.load_migration_audit_snapshot(
             object(),  # type: ignore[arg-type]
             repository="owner/repo",
@@ -298,6 +453,8 @@ def test_snapshot_transport_has_no_mutation_path(tmp_path: Path) -> None:
     )
 
     assert not snapshot.open_issues
+    issue_list = runner.calls[0]
+    assert issue_list[issue_list.index("--state") + 1] == "all"
     flattened = "\n".join(" ".join(call) for call in runner.calls)
     assert " issue edit " not in f" {flattened} "
     assert " api graphql " not in f" {flattened} "

@@ -46,3 +46,17 @@ def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
     assert "`ci_failed`" in ship
     assert "Do not spawn a CI fixer when checks are pending or green." in ship
     assert "The driver's persisted state enforces the fix-attempt cap." in ship
+
+
+def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
+    recon = _read("recon-design.md")
+    assert "valid durable plan" in recon
+    assert "named-block write" in recon
+    assert "--marker plan" in recon
+    assert "before it adds `[IMPLEMENTING]`" in recon
+
+    review = _read("adversarial-review.md")
+    assert "--mode line-budget" in review
+    assert "RUST_LINE_BUDGET_STATUS=deviation-required" in review
+    assert "RUST_LINE_BUDGET_STATUS=deviation-recorded" in review
+    assert "Publish the complete updated plan" in review

@@ -8,7 +8,7 @@
 
 Read `phase-common.md` in this directory in full before acting.
 
-Start from only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/implementation.diff`. Do not read the issue bodies or the prior phase summary. This is an independent review, not a continuation of the implementer's reasoning.
+Start from only `$SESSION_TMPDIR/design-brief.md`, `$SESSION_TMPDIR/implementation.diff`, and `$SESSION_TMPDIR/plan.md`. Do not read the issue bodies or the prior phase summary. This is an independent review, not a continuation of the implementer's reasoning.
 
 Review the diff against every brief requirement. Check correctness, recovery paths, trust boundaries, architecture, tests, and companion artifacts. Inspect exact changed files when needed.
 
@@ -18,7 +18,57 @@ For every differential or parity harness in scope, verify that it asserts a real
 
 Apply every in-scope fix you find. Run affected checks. Commit review fixes in one commit when the diff changed. Require a clean worktree.
 
-Regenerate `$SESSION_TMPDIR/implementation.diff` from the final `git diff main...HEAD`. Write `$SESSION_TMPDIR/review-summary.md` with findings, fixes, stale-caller results, parity-success evidence, final HEAD, and checks. Keep it below 2,000 tokens.
+After the final commit, run the managed-leaf line-budget read:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+  --mode line-budget \
+  --repository "<REPOSITORY>" \
+  --repo-root "$PWD" \
+  --handoff-root "$SESSION_TMPDIR" \
+  --umbrella "<UMBRELLA>" \
+  --leaf "<LEAF>"
+```
+
+Require one of these outcomes:
+
+- `RUST_LINE_BUDGET_STATUS=not-managed` or `within-limit`: record the checked
+  count in the review summary and continue.
+- `RUST_LINE_BUDGET_STATUS=deviation-required`: decide whether this atomic leaf
+  must remain one PR. If it does, insert this exact section before the plan's
+  terminal trailer block in `$SESSION_TMPDIR/plan.md`, with a concrete truthful
+  rationale and every SHA/count copied from the command output:
+
+  ```text
+  ## Rust line budget deviation
+
+  - Split decision: retain this leaf as one PR
+  - Rationale: <why splitting would break this atomic change>
+  - Base SHA: <RUST_LINE_BUDGET_BASE_SHA>
+  - Head SHA: <RUST_LINE_BUDGET_HEAD_SHA>
+  - Added non-generated Rust lines: <RUST_LINE_BUDGET_ADDED_LINES>
+  ```
+
+  Publish the complete updated plan:
+
+  ```bash
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" named-block write \
+    --marker plan \
+    --issue "<LEAF>" \
+    --content-file "$SESSION_TMPDIR/plan.md" \
+    --repo "<REPOSITORY>"
+  ```
+
+  Then rerun the read and require
+  `RUST_LINE_BUDGET_STATUS=deviation-recorded`. If the change should split,
+  stop rather than recording an override for the unsplit PR.
+- `RUST_LINE_BUDGET_STATUS=deviation-recorded`: verify that the count and SHAs
+  still describe the final HEAD, then continue.
+
+Any other output or nonzero exit is a hard stop. The ship driver repeats this
+gate immediately before its admin merge.
+
+Regenerate `$SESSION_TMPDIR/implementation.diff` from the final `git diff main...HEAD`. Write `$SESSION_TMPDIR/review-summary.md` with findings, fixes, stale-caller results, parity-success evidence, final HEAD, Rust line-budget status/count, and checks. Keep it below 2,000 tokens.
 
 End with:
 

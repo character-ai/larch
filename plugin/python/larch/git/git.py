@@ -568,6 +568,22 @@ def diff_name_status(
     argv.extend(["--name-status", base, head, "--", *paths])
     return _run(runner, argv, cwd=cwd)
 
+
+def diff_numstat_z(
+    runner: Runner,
+    base: str,
+    head: str,
+    *,
+    find_renames: bool = False,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Return NUL-delimited numstat rows for a deterministic two-ref diff."""
+    argv = ["git", "diff", "--no-ext-diff", "--numstat", "-z"]
+    if find_renames:
+        argv.append("-M50%")
+    argv.extend([base, head])
+    return _run(runner, argv, cwd=cwd)
+
 def diff_name_only(
     runner: Runner,
     base: str,
