@@ -8,7 +8,7 @@
 
 use crate::{
     PathIntent, TemporaryRoot, assert_no_symlink_path_or_ancestors, atomic_write_utf8,
-    ensure_directory_chain, git::GixRepository,
+    ensure_directory_chain, git::GixRepository, same_file_stat_metadata,
 };
 use larch_core::RepositoryRead as _;
 use larch_core::{
@@ -26,10 +26,7 @@ use std::{
     ffi::OsStr,
     fs::{self, OpenOptions},
     io::{Read as _, Write as _},
-    os::{
-        fd::OwnedFd,
-        unix::fs::{MetadataExt as _, OpenOptionsExt as _},
-    },
+    os::{fd::OwnedFd, unix::fs::OpenOptionsExt as _},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -400,7 +397,7 @@ fn open_verified_directory(path: &Path) -> Option<OwnedFd> {
     .ok()?;
     let opened = fstat(&directory).ok()?;
     let visible = fs::symlink_metadata(path).ok()?;
-    (is_directory(&opened) && same_stat_metadata(&opened, &visible)).then_some(directory)
+    (is_directory(&opened) && same_file_stat_metadata(&opened, &visible)).then_some(directory)
 }
 
 fn open_verified_directory_at(parent: &OwnedFd, name: &str) -> Option<OwnedFd> {
@@ -491,11 +488,6 @@ fn is_directory(stat: &nix::sys::stat::FileStat) -> bool {
 
 const fn file_type(stat: &nix::sys::stat::FileStat) -> SFlag {
     SFlag::from_bits_truncate(stat.st_mode)
-}
-
-fn same_stat_metadata(stat: &nix::sys::stat::FileStat, metadata: &fs::Metadata) -> bool {
-    i128::from(stat.st_dev) == i128::from(metadata.dev())
-        && i128::from(stat.st_ino) == i128::from(metadata.ino())
 }
 
 const fn same_file_stat(left: &nix::sys::stat::FileStat, right: &nix::sys::stat::FileStat) -> bool {

@@ -8,6 +8,8 @@ use crate::{
     argparse_compat::{split_inline_option, take_option_value, utf8_arguments},
     bgjob_commands,
 };
+#[cfg(unix)]
+use larch_adapters::same_file_stat_metadata;
 use larch_adapters::{
     SystemProcessIdentityHost, refuses_symlink, validate_design_tmpdir as validate_session_tmpdir,
 };
@@ -1252,7 +1254,7 @@ impl DecisionLock {
         let opened_root = fstat(&root_fd).map_err(|error| lock_failure("fstat-root", error))?;
         let current_root =
             fs::symlink_metadata(root).map_err(|error| lock_failure("stat-root", error))?;
-        if !same_stat_metadata(&opened_root, &current_root) {
+        if !same_file_stat_metadata(&opened_root, &current_root) {
             return Err(DecisionError::token("lock-failed"));
         }
         let name = format!("{run_id}-{step}.lock");
@@ -1313,12 +1315,6 @@ impl DecisionLock {
 }
 
 #[cfg(unix)]
-fn same_stat_metadata(stat: &nix::sys::stat::FileStat, metadata: &fs::Metadata) -> bool {
-    i128::from(stat.st_dev) == i128::from(metadata.dev())
-        && i128::from(stat.st_ino) == i128::from(metadata.ino())
-}
-
-#[cfg(unix)]
 const fn file_type(stat: &nix::sys::stat::FileStat) -> SFlag {
     SFlag::from_bits_truncate(stat.st_mode)
 }
@@ -1344,7 +1340,7 @@ fn unlink_regular_under(path: &Path, root: &Path, failure: &'static str) -> Deci
         let opened_parent = fstat(&directory).map_err(|_| DecisionError::token("unsafe-path"))?;
         let current_parent =
             fs::symlink_metadata(parent).map_err(|_| DecisionError::token("unsafe-path"))?;
-        if !same_stat_metadata(&opened_parent, &current_parent) {
+        if !same_file_stat_metadata(&opened_parent, &current_parent) {
             return Err(DecisionError::token("unsafe-path"));
         }
         let current = match fstatat(&directory, name, AtFlags::AT_SYMLINK_NOFOLLOW) {

@@ -193,6 +193,19 @@ impl RootIdentity {
     }
 }
 
+/// Compare an opened Unix descriptor's identity with visible path metadata.
+///
+/// Callers use this after opening a no-follow descriptor to reject a path that
+/// was replaced between the open and the metadata lookup.
+#[cfg(unix)]
+#[must_use]
+pub fn same_file_stat_metadata(stat: &nix::sys::stat::FileStat, metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    i128::from(stat.st_dev) == i128::from(metadata.dev())
+        && i128::from(stat.st_ino) == i128::from(metadata.ino())
+}
+
 impl CanonicalRoot {
     fn resolve(
         candidate: Option<&Path>,

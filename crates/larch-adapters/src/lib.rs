@@ -44,6 +44,8 @@ pub use file_io::{
     read_optional_utf8_lossy, read_session_kv_text, read_utf8, remove_optional_file,
     rename_same_directory,
 };
+#[cfg(unix)]
+pub use filesystem::same_file_stat_metadata;
 pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
     SecureTempDir, SecureTempFile, TemporaryRoot, ensure_directory_chain,
