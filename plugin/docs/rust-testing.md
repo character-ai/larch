@@ -235,18 +235,35 @@ follows:
 - `rust-lint` runs format and Clippy with incremental compilation and dev/test
   debug output disabled.
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
-- `rust-coverage` is the direct production coverage lane. It uses the selected
-  `cargo llvm-cov nextest` profile for the full locked workspace build and
-  tests, runs workspace doctests against the same instrumented target, enforces
-  the workspace line baseline, writes `target/llvm-cov/lcov.info`, runs
-  repository policy and plugin projection validation, and uploads the Linux
-  executable artifact. The 20-shard `python-tests` matrix runs stub-safe tests
-  without waiting for Rust coverage. The required `python-rust-integration`
-  job publishes the stable `python-tests-gate` check. It waits for
-  `rust-coverage`, checks both prerequisite results, verifies the
-  coverage-produced `larch-linux-test-binary` checksum, source SHA, and
-  version, then runs the marker-selected Rust-backed tests directly. This
-  avoids a second post-integration runner tail.
+- `rust-full`, `rust-partial`, and `rust-skip` are mutually exclusive execution
+  producers. `rust-coverage` is not an execution lane: it is the stable
+  required aggregate. Under `if: always()`, it validates the selected mode and
+  every producer result, then passes only when the selected producer succeeds
+  and the other two are skipped. `rust-gate` and `python-rust-integration` use
+  that stable aggregate status.
+- `rust-full` owns the full locked-workspace coverage path: the selected
+  `cargo llvm-cov nextest` profile, workspace doctests against the instrumented
+  target, the workspace line baseline, `target/llvm-cov/lcov.info`, repository
+  policy, plugin projection validation, and the Linux executable artifact.
+  It is the only producer that enforces full-workspace coverage. Pushes to
+  `main`, manual dispatches, scheduled runs, merge-queue runs, and unknown
+  events always use `rust-full`; pull requests use it when selection is `full`
+  or selection cannot prove a narrower path.
+- `rust-partial` and `rust-skip` may be the selected producer only for pull
+  requests. `rust-partial` runs the selector-proven package closure without a
+  misleading full-workspace coverage threshold. `rust-skip` runs no
+  pull-request Rust binary; it validates and uses the exact trusted-main policy
+  executable instead. Both producers retain repository policy, plugin
+  projection validation, and the Linux artifact handoff required for Python
+  integration.
+- The 20-shard `python-tests` matrix is artifact-independent and runs its
+  stub-safe tests without waiting for Rust coverage. The required
+  `python-rust-integration` job waits for `python-tests` and the stable
+  `rust-coverage` aggregate, then consumes the selected producer's verified
+  `larch-linux-test-binary`. It verifies the artifact checksum, source SHA, and
+  version before running the marker-selected Rust-backed tests and publishing
+  the stable `python-tests-gate` check. This avoids a second post-integration
+  runner tail.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
   the protected production path and does not upload a competing Python artifact.
@@ -256,35 +273,34 @@ follows:
   uploads a uniquely named verification artifact rather than competing with the
   Python handoff.
 
-The coverage job installs checksum-verified pinned `cargo-nextest` and
-`cargo-llvm-cov` binaries without a source-install fallback. Normal local
-checks use changed-path Clippy and do not install coverage tooling or create
-instrumented artifacts.
+`rust-full` and the dispatch-only coverage measurement jobs install
+checksum-verified pinned `cargo-nextest` and `cargo-llvm-cov` binaries without
+a source-install fallback. Normal local checks use changed-path Clippy and do
+not install coverage tooling or create instrumented artifacts.
 
-The direct production lane sets `CARGO_INCREMENTAL=0`,
-`CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs
-nextest with `NEXTEST_TEST_THREADS=16`. It cleans prior coverage state, builds
-one coverage-instrumented artifact set with `cargo nextest run --no-run` under
-the environment exported by `cargo llvm-cov show-env`. The same environment
-then builds the `larch` CLI with Cargo's `--profile test`, which resolves to
-`target/llvm-cov-target/debug/larch`; it does not compile a second CLI with
-the dev profile or build an uninstrumented `target/debug/larch`. The lane runs
+`rust-full` sets `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_TEST_DEBUG=0`,
+`CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs nextest with
+`NEXTEST_TEST_THREADS=16`. It cleans prior coverage state, builds one
+coverage-instrumented artifact set with `cargo nextest run --no-run` under the
+environment exported by `cargo llvm-cov show-env`. The same environment then
+builds the `larch` CLI with Cargo's `--profile test`, which resolves to
+`target/llvm-cov-target/debug/larch`; it does not compile a second CLI with the
+dev profile or build an uninstrumented `target/debug/larch`. The producer runs
 `cargo llvm-cov nextest --no-report` and a separate
 `cargo test --doc --workspace --all-features --locked --target-dir
 target/llvm-cov-target` command under the same `cargo llvm-cov show-env`
 environment. `--no-report` preserves the coverage artifact set between normal
 test phases; the stable toolchain runs doctests without cargo-llvm-cov's
 nightly-only doctest instrumentation. The report command retains the existing
-line threshold and filename exclusions. For each coverage
-path, after nextest and before its report, the lane fails closed unless the
-coverage-target executable is runnable and reports its version, then uses it
-for exactly one `larch lint all` invocation. That invocation writes a sorted
-per-rule timing TSV and contributes to the unchanged line gate. After the
-report, the lane uses the executable for both plugin-runtime commands and the
-generated-projection clean-diff check before uploading it for Python integration
-tests. The separate doctest command stays required even when the workspace
-currently has no doctests. Nextest's slow-test status and final status output
-remain visible in the job log.
+line threshold and filename exclusions. After nextest and before its report,
+the producer fails closed unless the coverage-target executable is runnable and
+reports its version, then uses it for exactly one `larch lint all` invocation.
+That invocation writes a sorted per-rule timing TSV and contributes to the
+unchanged line gate. After the report, the producer uses the executable for
+both plugin-runtime commands and the generated-projection clean-diff check
+before uploading it for Python integration tests. The separate doctest command
+stays required even when the workspace currently has no doctests. Nextest's
+slow-test status and final status output remain visible in the job log.
 
 ### Pull-request Rust selection
 
