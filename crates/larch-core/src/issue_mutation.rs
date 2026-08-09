@@ -841,6 +841,7 @@ mod tests {
             title: String::from("T"),
             body: String::new(),
             state: GitHubIssueState::Open,
+            state_reason: String::new(),
             url: String::from("https://github.com/owner/repo/issues/7"),
             author: String::new(),
             labels: Vec::new(),

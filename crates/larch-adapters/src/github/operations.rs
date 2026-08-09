@@ -17,7 +17,13 @@ use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use regex::Regex;
 use serde_json::{Map, Value, json};
-use std::{error::Error, fmt, future::Future, sync::LazyLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+    future::Future,
+    sync::LazyLock,
+};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
 const DIAGNOSTIC_LIMIT: usize = 500;
@@ -32,6 +38,14 @@ static SECURITY_CONTENT: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Fixed GraphQL document for merge and review state REST does not expose.
 const REVIEW_STATE_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision mergeStateStatus mergeable}}}";
+
+/// Fixed GraphQL document for issue-to-pull-request closure references.
+///
+/// REST issue listings intentionally omit this relation. The backlog command
+/// needs it to distinguish a completed issue from an explicitly not-planned
+/// or combined-away issue, so it is a typed operation rather than an
+/// arbitrary query exposed to a command caller.
+const ISSUE_CLOSURE_REFERENCES_QUERY: &str = "query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:$name){issues(first:100,states:[OPEN,CLOSED],orderBy:{field:CREATED_AT,direction:DESC},after:$cursor){nodes{number closedByPullRequestsReferences(first:100){nodes{url}pageInfo{hasNextPage}}}pageInfo{hasNextPage endCursor}}}}";
 
 /// Why a typed GitHub operation could not return a result.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -980,6 +994,61 @@ impl OctocrabGitHubService {
             .fetch_json(cancellation, self.client.post("/graphql", Some(&payload)))
             .await?;
         parse_review_state(&value)
+    }
+
+    /// Read closure references for a bounded set of issues through one fixed
+    /// paginated GraphQL document.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error when the repository or response is invalid, the
+    /// connection exceeds the transport page bound, or GitHub reports any
+    /// GraphQL error. A returned map contains every requested issue observed
+    /// in the connection, including entries whose closure list is empty.
+    pub async fn issue_closure_references(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        wanted: &BTreeSet<u64>,
+    ) -> Result<BTreeMap<u64, Vec<String>>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        if wanted.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        if wanted.len() > self.policy.limits().items() {
+            return Err(GitHubOperationError::Malformed(
+                "issue closure-reference request exceeds item bound",
+            ));
+        }
+        let mut cursor: Option<String> = None;
+        let mut found = BTreeMap::new();
+        for page_index in 0..self.policy.limits().pages() {
+            let payload = json!({
+                "query": ISSUE_CLOSURE_REFERENCES_QUERY,
+                "variables": { "owner": owner, "name": repo, "cursor": cursor },
+            });
+            let value = self
+                .fetch_json(cancellation, self.client.post("/graphql", Some(&payload)))
+                .await?;
+            let page = parse_issue_closure_references(&value, wanted, self.policy.limits())?;
+            found.extend(page.entries);
+            if found.len() == wanted.len() || !page.has_next_page {
+                return Ok(found);
+            }
+            if page_index + 1 == self.policy.limits().pages() {
+                return Err(GitHubOperationError::Malformed(
+                    "issue closure-reference pagination limit",
+                ));
+            }
+            cursor = page.end_cursor;
+            if cursor.is_none() {
+                return Err(GitHubOperationError::Malformed(
+                    "issue closure-reference pagination cursor",
+                ));
+            }
+        }
+        unreachable!("bounded GraphQL pagination always returns")
     }
 
     /// List the issues that block one issue.
@@ -2336,6 +2405,108 @@ fn parse_release_pull_requests(
         .collect()
 }
 
+#[derive(Debug)]
+struct IssueClosureReferencePage {
+    entries: BTreeMap<u64, Vec<String>>,
+    has_next_page: bool,
+    end_cursor: Option<String>,
+}
+
+fn parse_issue_closure_references(
+    value: &Value,
+    wanted: &BTreeSet<u64>,
+    limits: GitHubResponseLimits,
+) -> Result<IssueClosureReferencePage, GitHubOperationError> {
+    let object = as_object(value)?;
+    if graphql_has_errors(object) {
+        return Err(GitHubOperationError::GraphqlErrors);
+    }
+    let connection = value
+        .pointer("/data/repository/issues")
+        .and_then(Value::as_object)
+        .ok_or(GitHubOperationError::Malformed("graphql issue connection"))?;
+    let nodes = connection
+        .get("nodes")
+        .and_then(Value::as_array)
+        .ok_or(GitHubOperationError::Malformed("graphql issue nodes"))?;
+    if nodes.len() > 100 {
+        return Err(GitHubOperationError::Malformed("graphql issue page size"));
+    }
+    let mut entries = BTreeMap::new();
+    for node in nodes {
+        let node = as_object(node)?;
+        let number = required_u64(node, "number", "graphql issue number")?;
+        if !wanted.contains(&number) {
+            continue;
+        }
+        let reference_connection = node
+            .get("closedByPullRequestsReferences")
+            .and_then(Value::as_object)
+            .ok_or(GitHubOperationError::Malformed(
+                "graphql issue closure references",
+            ))?;
+        let references = reference_connection
+            .get("nodes")
+            .and_then(Value::as_array)
+            .ok_or(GitHubOperationError::Malformed(
+                "graphql issue closure references",
+            ))?;
+        if references.len() > 100
+            || reference_connection
+                .get("pageInfo")
+                .and_then(Value::as_object)
+                .and_then(|page_info| page_info.get("hasNextPage"))
+                .and_then(Value::as_bool)
+                .ok_or(GitHubOperationError::Malformed(
+                    "graphql issue closure-reference pageInfo",
+                ))?
+        {
+            return Err(GitHubOperationError::Malformed(
+                "graphql issue closure-reference pagination",
+            ));
+        }
+        let references = references
+            .iter()
+            .map(|reference| {
+                let reference = as_object(reference)?;
+                required_str(
+                    reference,
+                    "url",
+                    limits,
+                    "graphql issue closure-reference URL",
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        entries.insert(number, references);
+    }
+    let page_info = connection
+        .get("pageInfo")
+        .and_then(Value::as_object)
+        .ok_or(GitHubOperationError::Malformed("graphql issue pageInfo"))?;
+    let has_next_page = page_info
+        .get("hasNextPage")
+        .and_then(Value::as_bool)
+        .ok_or(GitHubOperationError::Malformed(
+            "graphql issue pageInfo.hasNextPage",
+        ))?;
+    let end_cursor = match page_info.get("endCursor") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(cursor)) if cursor.len() <= limits.string_bytes() => {
+            Some(cursor.clone())
+        }
+        Some(_) => {
+            return Err(GitHubOperationError::Malformed(
+                "graphql issue pageInfo.endCursor",
+            ));
+        }
+    };
+    Ok(IssueClosureReferencePage {
+        entries,
+        has_next_page,
+        end_cursor,
+    })
+}
+
 fn parse_review_state(value: &Value) -> Result<PullRequestReviewState, GitHubOperationError> {
     let object = as_object(value)?;
     if graphql_has_errors(object) {
@@ -2567,15 +2738,16 @@ mod tests {
         Mergeable, PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
         classify_dependency_write, classify_sub_issue_write, dependency_present, edit_body,
         is_safe_segment, issue_graph_next_link, merge_body, parse_dependency_comments,
-        parse_dependency_refs, parse_dependency_target, parse_pull_request, parse_pull_requests,
-        parse_release_candidate_pull_request, parse_review_state, parse_sub_issue_ref,
-        parse_sub_issue_refs, reconcile_create, sub_issue_present,
-        target_has_protected_lifecycle_state, target_has_security_content, validate_issue_number,
-        validate_repo,
+        parse_dependency_refs, parse_dependency_target, parse_issue_closure_references,
+        parse_pull_request, parse_pull_requests, parse_release_candidate_pull_request,
+        parse_review_state, parse_sub_issue_ref, parse_sub_issue_refs, reconcile_create,
+        sub_issue_present, target_has_protected_lifecycle_state, target_has_security_content,
+        validate_issue_number, validate_repo,
     };
     use super::{DependencyWrite, IssueGraphFeature, PullRequestEdit, SubIssueWrite};
     use larch_core::GitHubTransportPolicy;
     use serde_json::{Value, json};
+    use std::collections::BTreeSet;
 
     fn limits() -> larch_core::GitHubResponseLimits {
         GitHubTransportPolicy::github_com().limits()
@@ -2748,6 +2920,55 @@ mod tests {
         assert_eq!(
             parse_review_state(&unknown).expect_err("unknown enum must fail"),
             GitHubOperationError::Malformed("mergeStateStatus")
+        );
+    }
+
+    #[test]
+    fn issue_closure_references_keep_requested_rows_and_fail_closed() {
+        let wanted = BTreeSet::from([7, 99]);
+        let value = json!({
+            "data": { "repository": { "issues": {
+                "nodes": [
+                    {"number": 7, "closedByPullRequestsReferences": {"nodes": [{"url": "https://github.com/o/r/pull/8"}], "pageInfo": {"hasNextPage": false}}},
+                    {"number": 8, "closedByPullRequestsReferences": {"nodes": [], "pageInfo": {"hasNextPage": false}}},
+                ],
+                "pageInfo": {"hasNextPage": false, "endCursor": null},
+            }}}
+        });
+        let parsed =
+            parse_issue_closure_references(&value, &wanted, limits()).expect("closure references");
+        assert_eq!(
+            parsed.entries.get(&7),
+            Some(&vec!["https://github.com/o/r/pull/8".to_owned()])
+        );
+        assert!(!parsed.entries.contains_key(&8));
+        assert!(!parsed.has_next_page);
+        assert_eq!(
+            parse_issue_closure_references(
+                &json!({"errors": [{"message": "denied"}]}),
+                &wanted,
+                limits()
+            )
+            .expect_err("GraphQL errors must fail closed"),
+            GitHubOperationError::GraphqlErrors
+        );
+        assert!(
+            parse_issue_closure_references(
+                &json!({
+                    "data": {"repository": {"issues": {
+                        "nodes": [{
+                            "number": 7,
+                            "closedByPullRequestsReferences": {
+                                "nodes": [], "pageInfo": {"hasNextPage": true}
+                            }
+                        }],
+                        "pageInfo": {"hasNextPage": false, "endCursor": null}
+                    }}}
+                }),
+                &wanted,
+                limits()
+            )
+            .is_err()
         );
     }
 
@@ -3002,6 +3223,7 @@ mod service_tests {
     use crate::runtime::Cancellation;
     use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
+    use std::collections::BTreeSet;
 
     fn stub_service(responses: Vec<(u16, String)>) -> (OctocrabGitHubService, IssueServiceStub) {
         let exchanges = responses.into_iter().map(|(status, body)| {
@@ -3657,6 +3879,22 @@ mod service_tests {
                 .await
                 .expect_err("graphql errors fail closed"),
             GitHubOperationError::GraphqlErrors
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn issue_closure_references_rejects_an_unbounded_request_before_network() {
+        let (service, server) = stub_service(vec![]);
+        let max = u64::try_from(service.policy.limits().items()).expect("item bound fits u64");
+        let wanted: BTreeSet<u64> = (1..=max + 1).collect();
+
+        assert_eq!(
+            service
+                .issue_closure_references(&Cancellation::new(), "o", "r", &wanted)
+                .await
+                .expect_err("unbounded request must fail before network I/O"),
+            GitHubOperationError::Malformed("issue closure-reference request exceeds item bound")
         );
         server.join().expect("stub completed");
     }

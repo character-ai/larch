@@ -1747,6 +1747,7 @@ mod tests {
             title: "Bug report".to_owned(),
             body: "Original report".to_owned(),
             state: GitHubIssueState::Open,
+            state_reason: String::new(),
             url: url.to_owned(),
             author: "reporter".to_owned(),
             labels: vec![GitHubLabel {

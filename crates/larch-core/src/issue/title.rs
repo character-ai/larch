@@ -17,6 +17,8 @@ pub const BUG_PREFIX: &str = "[BUG]";
 pub const IMPLEMENTING_PREFIX: &str = "[IMPLEMENTING] ";
 /// The completed implementation lifecycle prefix.
 pub const DONE_PREFIX: &str = "[DONE] ";
+/// The blocked implementation lifecycle prefix.
+pub const STALLED_PREFIX: &str = "[STALLED] ";
 /// The managed umbrella identity prefix.
 pub const UMBRELLA_PREFIX: &str = "[UMBRELLA] ";
 
@@ -29,7 +31,7 @@ pub const LIFECYCLE_PREFIXES: [&str; 9] = [
     "[DESIGNED] ",
     IMPLEMENTING_PREFIX,
     DONE_PREFIX,
-    "[STALLED] ",
+    STALLED_PREFIX,
     "[DEBATING] ",
     "[DEBATED] ",
     "[IN PROGRESS] ",
@@ -41,7 +43,7 @@ pub const BUG_TITLE_LIFECYCLE_PREFIXES: [&str; 6] = [
     DONE_PREFIX,
     "[DESIGNED] ",
     IMPLEMENTING_PREFIX,
-    "[STALLED] ",
+    STALLED_PREFIX,
     "[DEBATING] ",
     "[DEBATED] ",
 ];

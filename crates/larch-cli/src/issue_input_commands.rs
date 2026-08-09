@@ -766,6 +766,7 @@ mod tests {
             title: title.to_owned(),
             body: String::new(),
             state,
+            state_reason: String::new(),
             url: format!("https://github.com/o/r/issues/{number}"),
             author: "author".to_owned(),
             labels: Vec::new(),

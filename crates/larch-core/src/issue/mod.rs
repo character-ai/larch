@@ -112,7 +112,7 @@ pub use report_core::{
 pub use rows::{OpenIssueRow, open_issue_rows, parse_open_issue_row};
 pub use title::{
     ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES, DONE_PREFIX, IMPLEMENTING_PREFIX,
-    LIFECYCLE_PREFIXES, UMBRELLA_PREFIX, bug_title_match, detect_lifecycle_prefix,
+    LIFECYCLE_PREFIXES, STALLED_PREFIX, UMBRELLA_PREFIX, bug_title_match, detect_lifecycle_prefix,
     insert_signal_marker, insert_tag_after_bug_prefix, leading_square_bracket_prefix,
     normalize_title_prefix, strip_lifecycle_prefix, title_has_archival_report_prefix,
     title_is_archival, title_lifecycle_reject_marker, title_starts_with_brainstorm,

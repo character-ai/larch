@@ -1146,6 +1146,7 @@ mod deps_audit_tests {
             title: title.to_owned(),
             body: "body".to_owned(),
             state,
+            state_reason: String::new(),
             url: String::new(),
             author: String::new(),
             labels: vec![

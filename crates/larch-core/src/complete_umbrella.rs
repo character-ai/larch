@@ -211,6 +211,7 @@ mod tests {
             title: title.to_owned(),
             body: format!("{}\nDetails", umbrella_leaf_opening(5)),
             state,
+            state_reason: String::new(),
             url: "https://github.com/o/r/issues/9".to_owned(),
             author: "author".to_owned(),
             labels: Vec::new(),

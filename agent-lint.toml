@@ -401,10 +401,6 @@ exclude = [
   # harnesses outside the skill prose surface (they are operator-invocable via
   # `make`, not via the skill's procedural body).
   "python/test_implement_dispatch.py",
-  # regression harness for the dev-only /analyze-issues analyzer. It is
-  # referenced from Makefile (test-analyze target) and its sibling contract,
-  # not from SKILL.md's runtime prose. The fixture is consumed by the harness.
-  "python/test_analyze_issues.py",
   # for the dev-only audit-runs skill. Referenced from Makefile
   # (test-audit-runs target) and its sibling contract; not from SKILL.md
   # runtime prose. Same Makefile-only pattern as test-analyze above.

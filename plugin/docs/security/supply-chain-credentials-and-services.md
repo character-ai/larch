@@ -525,6 +525,12 @@ head, and closed method inputs. Merge sends at most one request, then uses
 bounded exact-head read-back after uncertainty. Result classes are fixed, and
 untrusted response text never egresses.
 
+The fixed issue-closure-reference GraphQL query accepts only a validated
+repository and a bounded set of issue numbers. Its connection scan, page size,
+and closure-reference fields are bounded; GraphQL errors, malformed pages, and
+missing cursors return a typed failure. Backlog analysis records that failure as
+degraded evidence rather than treating the closure field as complete.
+
 Release preparation uses typed, bounded reads for the Latest release, PRs, and
 companion issue titles. Publication fetches through the typed Git CLI adapter,
 checks ancestry through gix, and uses typed release and attestation services. It

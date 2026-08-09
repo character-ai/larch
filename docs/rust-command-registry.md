@@ -365,11 +365,13 @@ exited on an uncaught traceback, for an unreadable path, non-UTF-8 bytes, or a
 non-integer bucket value.
 
 `larch.rendering.render_chart` keeps only its pure `render_chart` function.
-`larch.issue._report` calls it in process to build the `/analyze-issues` growth
-section, and `analyze-issues run` is Python-owned under #7682; the residual
-function retires with that command. `larch.report.design_diagram_log` likewise
-stays until #7680 moves `design publish` and #7681 moves the `pr` verbs, the two
-in-process callers of its bounded logging.
+`larch.issue._ground_truth` still imports title helpers from
+`larch.issue._report`, but #8183 moves `analyze-issues {fetch,run,analyze}` to
+Rust and deletes its Python command owner. The Rust analyzer renders its growth
+section through `larch_core::report::growth_chart`; the residual Python helper
+is not an `analyze-issues` command surface. `larch.report.design_diagram_log`
+likewise stays until #7680 moves `design publish` and #7681 moves the `pr`
+verbs, the two in-process callers of its bounded logging.
 
 Issue 8089 ports parse/load/render and Markdown block upsert only. Claude assessment
 subprocess launching stays injectable for later consumer cutover; Python

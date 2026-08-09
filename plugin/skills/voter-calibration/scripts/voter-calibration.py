@@ -43,7 +43,6 @@ from larch.issue._util import (  # noqa: E402
     load_issues,
     parse_iso,
 )
-from larch.issue.analyze_issues import fetch_main  # noqa: E402
 from larch.report import run_log_corpus  # noqa: E402
 from larch.review import voting  # noqa: E402
 from larch.review.voting import (  # noqa: E402
@@ -584,6 +583,27 @@ def _realized_outcomes_skip(reason: str) -> str:
     return "\n".join(["## Realized-outcome voter calibration", "", f"- Skipped: `{reason}`.", "- Core voter calibration metrics are still available."])
 
 
+def _fetch_issue_snapshot(*, repo: str, output: str) -> int:
+    """Fetch through the Rust-owned command boundary, never a Python client."""
+    entrypoint = repo_roots.larch_entrypoint(plugin_root)
+    result = subprocess.run(
+        [
+            str(entrypoint),
+            "analyze-issues",
+            "fetch",
+            "--repo",
+            repo,
+            "--limit",
+            "2000",
+            "--output",
+            output,
+        ],
+        check=False,
+        env=repo_roots.larch_entrypoint_env(plugin_root),
+    )
+    return result.returncode
+
+
 def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed_issue_details_json: str) -> str:
     repo, repo_error = _resolve_realized_repo(repo_override)
     if repo_error:
@@ -610,7 +630,7 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
                 dump_path = handle.name
             # Nested: outer finally cleans up dump_path even on early return from inner except.
             try:
-                rc = fetch_main(["--repo", repo, "--limit", "2000", "--output", dump_path])
+                rc = _fetch_issue_snapshot(repo=repo, output=dump_path)
             except FileNotFoundError:
                 return _realized_outcomes_skip("gh_unavailable")
             if rc != 0:

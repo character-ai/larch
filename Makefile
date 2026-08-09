@@ -99,7 +99,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: test-collect-agent-results test-blocker
 
-test-harnesses-2: test-check-mid-run-dirty-tree test-fetch-combinable-issues-filter
+test-harnesses-2: test-check-mid-run-dirty-tree test-fetch-combinable-issues-filter test-analyze
 
 test-harnesses-3: test-design-step3-mav test-fluff-analysis test-gate-b-apply-mode test-design-step3-review test-check-clean-tree test-hook-anti-read-poll test-launch-claude-subprocess test-git-commit-only test-check-scope-reduction-marker test-cache-key-discipline test-block-submodule test-references-headers test-launch-claude-review test-no-grouped-reuse-guard test-plan-adequacy-audit oos-disposition-gate-bash-harness test-pause-skill test-audit-edit-write test-implement-anti-halt test-design-clarify test-implement-step8-exit3-first-fixer test-implement-step2-routing test-anti-halt test-implement-positional-issue test-fluff-analysis-corpus
 
@@ -140,7 +140,7 @@ test-collect-agent-results:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test collector_commands
 
 test-analyze:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_analyze_issues.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch analyze_issues_commands
 
 test-fluff-analysis:
 	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh

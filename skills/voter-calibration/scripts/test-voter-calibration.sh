@@ -220,8 +220,27 @@ if grep -Fq 'Traceback' "$FIX/no-git.out"; then exit 1; fi
 [[ ! -e "$nogit_log" ]]
 
 fake_plugin="$FIX/fake-plugin"
-mkdir -p "$fake_plugin"
+mkdir -p "$fake_plugin/scripts"
 ln -s "$ROOT/python" "$fake_plugin/python"
+cat > "$fake_plugin/scripts/larch.sh" <<'SH'
+#!/bin/sh
+if [ "${1:-}" != "analyze-issues" ] || [ "${2:-}" != "fetch" ]; then
+  exit 2
+fi
+output=""
+shift 2
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output" ] && [ "$#" -ge 2 ]; then
+    output="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+[ -n "$output" ] || exit 2
+printf '%s\n' '[{"number":"bad","title":"bad","body":""},{"number":0,"title":"bad","body":""}]' > "$output"
+SH
+chmod +x "$fake_plugin/scripts/larch.sh"
 fake_bin="$FIX/fake-bin"
 mkdir -p "$fake_bin"
 cat > "$fake_bin/git" <<'SH'
@@ -248,7 +267,7 @@ case " \$* " in
   *" --json number,state,stateReason,labels,body,closedAt,closedByPullRequestsReferences"* ) ;;
   * ) exit 7 ;;
 esac
-printf '%s\n' '{"number":5461,"state":"CLOSED","stateReason":"COMPLETED","labels":[],"body":"","closedAt":"2026-06-26T00:00:00Z","closedByPullRequestsReferences":[{"number":123}]}'
+printf '%s\n' '{"number":5544,"state":"CLOSED","stateReason":"COMPLETED","labels":[],"body":"","closedAt":"2026-06-26T00:00:00Z","closedByPullRequestsReferences":[{"number":123}]}'
 SH
 chmod +x "$fake_bin/gh"
 PATH="$fake_bin" CLAUDE_PLUGIN_ROOT="$fake_plugin" "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 1 --era all > "$FIX/fake-gh-success.out"
@@ -264,7 +283,7 @@ mkdir -p "$missing_closed_bin"
 cp "$fake_bin/git" "$missing_closed_bin/git"
 cat > "$missing_closed_bin/gh" <<'SH'
 #!/bin/sh
-printf '%s\n' '{"number":5461,"state":"CLOSED","stateReason":"COMPLETED","labels":[],"body":"","closedByPullRequestsReferences":[{"number":123}]}'
+printf '%s\n' '{"number":5544,"state":"CLOSED","stateReason":"COMPLETED","labels":[],"body":"","closedByPullRequestsReferences":[{"number":123}]}'
 SH
 chmod +x "$missing_closed_bin/gh"
 PATH="$missing_closed_bin" CLAUDE_PLUGIN_ROOT="$fake_plugin" "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --era all > "$FIX/missing-closed-at.out"
