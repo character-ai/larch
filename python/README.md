@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is Rust-owned via `scripts/larch.sh report-tokens analyze`. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is Rust-owned via `scripts/larch.sh report-tokens analyze`. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -15,7 +15,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — token scan and pricing helpers still used by `larch.report.tokens`, `larch.git.pr_body`, `larch.report.final_report`, and the calibration analyzers. The `/report-tokens` render, plot, issue, and CLI modules retired with issue 8088.
+- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for the still-Python `token` and analytics surfaces, plus the `render run-summary` compatibility payload. Their later command owners are #7682 and #7684; they do not own `/report-tokens` or `final-report`, both of which retired their Python entrypoints in #8088 and #8090.
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
@@ -23,8 +23,9 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
   run the fixer waterfall, and return the GOTO-Rebase signal.
 - `larch/implement/complete_umbrella_ship.py` — standalone leaf prepare and ship driver for `/complete-umbrella`. It reuses typed Git, GitHub, CI, redaction, retry, and issue-mutation owners without fabricating the `IMPLEMENT_TMPDIR` state required by `ship pr`. It persists a leaf-bound no-follow state file, waits five minutes between CI reads, emits a bounded failure digest, admin-merges green PRs, and verifies issue, branch, and synchronized-main postconditions.
-- **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`
-  and `run_log_manifest.py` owners, `tokens.py`, `tracking_issue.py`,
+- **Phase 5** (live via default Python ship driver): `run_logs.py` is a typed Rust-command facade,
+  `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
+  and `run_log_manifest.py` is read-only. `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. `merge.py`
@@ -32,12 +33,18 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
-- `larch/report/run_log_archive.py`, `object_store.py`, `storage_config.py`,
-  and `run_log_publish.py` retain bounded Python compatibility helpers. Rust
+- `larch/report/run_log_archive.py`, `run_lifecycle.py`, `storage_config.py`,
+  and `run_log_publish.py` retain bounded Python compatibility readers, types,
+  and Rust-command facades. Rust
   owns archive creation, materialization, standalone and lifecycle publication,
   synchronization, tool-first layout migration, historical repair sweeps, and
-  completed-implement-run cleanup. `run_log_archive.py` and
-  `run_lifecycle.py` are typed `scripts/larch.sh` consumers.
+  completed-implement-run cleanup. None of these Python modules replaces a
+  Rust-owned run-log command.
+- `larch/core/rust_runtime.py` is the typed ship-facing facade for Rust
+  `run-log refresh`, `final-report write`, and `progress` commands. It keeps
+  established Python result and error contracts without staging an artifact.
+- `larch/report/object_store.py` remains a compatibility/test provider adapter;
+  it has no production run-log command caller.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
 - `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 
@@ -66,7 +73,7 @@ Ruff in `lint-local`, Pyright in `python-pyright`, and tests in `python-tests`. 
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path uses `python/cli.py ship pr`. `/report-tokens` is cut over to `python/cli.py report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
+The live `/implement` path uses `python/cli.py ship pr`. `/report-tokens` is cut over to `scripts/larch.sh report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
 
 ## Pre-push conflict handoff scope
 

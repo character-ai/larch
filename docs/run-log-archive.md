@@ -1,7 +1,10 @@
 # Run-log storage contracts
 
-This document defines the language-neutral run-log storage boundary. Python owns
-the workflow; a narrow Rust transport owns GCS authentication and requests only.
+This document defines the language-neutral run-log storage boundary. Rust owns
+the production lifecycle, archive, provider, synchronization, and publication
+paths. Python retains bounded readers, local compatibility types, and typed
+consumers of those Rust commands. Its legacy `object_store.py` adapter remains
+only for compatibility and test callers; it is not a production command owner.
 
 The shared provider fixture is `tests/fixtures/run-log-object-store-contract-v1.json`.
 Python and the Rust GCS transport both load it in tests. A later runtime
@@ -252,14 +255,14 @@ Rust owns `run-log archive`, `run-log materialize`, `run-log publish`,
 `run-log sync`, `run-log storage-preflight`, and the shared lifecycle verbs,
 including terminal archive publication and cache promotion. Configuration
 resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
-R2 use the official AWS SDK through `S3Storage`. Python keeps only typed local
-cache consumers; it has no publication, synchronization, archive, provider, or
-layout-migration fallback. Both runtimes preserve the same credential-free error
-classes.
+R2 use the official AWS SDK through `S3Storage`. Python keeps typed local-cache
+consumers and the compatibility/test `object_store.py` adapter; it has no
+production publication, synchronization, archive, provider, or layout-migration
+fallback. Both runtimes preserve the same credential-free error classes.
 
-When remaining run-log commands migrate, follow `docs/python-migration.md` and
-I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
-switch every production caller to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`,
-remove the Python registration and implementation, and prove clean-install
-execution. Do not add a compatibility shim, bridge, implementation selector,
-fallback, or dual-write period.
+The run-log command cutover is complete. Future removal of a bounded Python
+compatibility helper follows `docs/python-migration.md` and I-Cutover-1 without
+reopening a dual owner: preserve the shared fixtures, move its callers, and
+delete the helper only when its final consumer has moved. Do not add a
+compatibility shim, bridge, implementation selector, fallback, or dual-write
+period.

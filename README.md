@@ -185,7 +185,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#report-tokens"><code>/report-tokens</code></a></td>
       <td><code>--skill &lt;design|implement&gt; [--no-issue] [--no-plot] [--run-id &lt;ID&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Analyze structured token reports from the synchronized run-log cache, price Claude/Codex/Cursor runs through `python/larch/report/report_tokens_cost.py`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
+    <tr><td colspan="2">Analyze structured token reports from the synchronized run-log cache with Rust-owned `scripts/larch.sh report-tokens analyze`, price Claude/Codex/Cursor runs through `larch_core::report::RATE_TABLE`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
