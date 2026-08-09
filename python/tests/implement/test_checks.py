@@ -3882,15 +3882,22 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', "
         "'crates/**/Cargo.toml', '.cargo/**') }}"
     )
+    assert (
+        "COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && "
+        "inputs.coverage_target_cache_benchmark && 'false' || 'true' }}"
+        in rust_full_job
+    )
+    assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' not in rust_full_job
     for coverage_job in (rust_full_job, rust_coverage_benchmark):
-        assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"' in coverage_job
-        assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in coverage_job
         assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
         assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
         assert 'RUST_COVERAGE_LINKER: "runner-default"' in coverage_job
+    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "1350000000"' in rust_full_job
+    assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage_benchmark
+    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage_benchmark
     assert "path: target/llvm-cov-target" in coverage_target_restore
     assert coverage_target_key in coverage_target_restore
     assert "actions/cache/restore@" + cache_sha in coverage_target_restore

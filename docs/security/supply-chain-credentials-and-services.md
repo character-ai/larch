@@ -42,18 +42,16 @@ can be saved, the workflow removes workspace products with `cargo clean
 --workspace`; it follows the same successful-`main`-push rule.
 
 The coverage compiler-dependency cache is a separate, versioned
-`target/llvm-cov-target` class. It is disabled until three comparable warm-cache
-`main` samples beat a no-target-cache control end to end; a missing comparison
-or an inconclusive result leaves it disabled. Its explicit key binds runner OS
-and architecture, target triple, toolchain and manifests, coverage-tool
-version, compiler-profile values, feature mode, linker choice, Cargo
-configuration, and a schema version. It has no broad `restore-keys` fallback.
-If evidence later activates it, pull requests may restore but cannot publish
-it: only a successful `refs/heads/main` push on a primary-key miss may save
-after the size guard passes. The initial size limit must come from a measured
-dependency-only inventory; the current zero value is a fail-closed unmeasured
-sentinel, not a permitted cache size. Any later bound above 2 GiB needs
-explicit PR evidence that transfer cost remains net-positive.
+`target/llvm-cov-target` class. It is enabled with a measured
+1,350,000,000-byte dependency-only limit after three comparable warm-cache
+`main` samples beat a no-target-cache control end to end. Its explicit key
+binds runner OS and architecture, target triple, toolchain and manifests,
+coverage-tool version, compiler-profile values, feature mode, linker choice,
+Cargo configuration, and a schema version. It has no broad `restore-keys`
+fallback. Pull requests may restore but cannot publish it: only a successful
+`refs/heads/main` push on a primary-key miss may save after the size guard
+passes. Any bound above 2 GiB needs explicit PR evidence that transfer cost
+remains net-positive.
 
 Before an enabled target cache can save, the coverage report and verified Linux
 executable artifacts have already uploaded, and the coverage executable has
@@ -67,8 +65,9 @@ The only manual compiler-output publication is an explicitly selected,
 main-ref coverage-target benchmark. Its job is gated to `workflow_dispatch` on
 `refs/heads/main`, uses a separate `coverage-target-deps-benchmark-*` key, and
 accepts a decimal size bound no greater than 2 GiB. It cannot run from a pull
-request, shares no key with the disabled production cache, and cannot make the
-production path restore or publish a target cache. The first zero-bound run
+request, shares no key with the production cache, and cannot make the
+production path restore or publish a target cache. During that benchmark
+dispatch, `rust-full` remains the cache-off control. The first zero-bound run
 measures and inventories dependencies without saving; later benchmark runs use
 that measured bound to compare warm candidates against the concurrent normal
 coverage control. This scoped measurement exception does not change the

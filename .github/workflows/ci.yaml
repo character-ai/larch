@@ -774,15 +774,16 @@ jobs:
       COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"
       COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
       COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"
-      # A target cache is opt-in only after three comparable warm-cache main
-      # samples beat a no-target-cache control end to end. Zero is deliberately
-      # not a size bound: it makes an accidental enablement save nothing until
-      # a measured dependency-only size bound is reviewed in this workflow.
-      COVERAGE_TARGET_CACHE_ENABLED: "false"
+      # Three comparable warm-cache main samples beat the cache-off control
+      # end to end. The measured dependency-only inventory is 1,349,087,232
+      # bytes, so this reviewed decimal bound leaves 912,768 bytes of
+      # headroom. The target-cache benchmark dispatch keeps rust-full cache-off
+      # as its paired control; every other full lane restores this exact cache.
+      COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark && 'false' || 'true' }}
       COVERAGE_TARGET_CACHE_SCHEMA: "v1"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
       COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"
-      COVERAGE_TARGET_CACHE_MAX_BYTES: "0"
+      COVERAGE_TARGET_CACHE_MAX_BYTES: "1350000000"
       RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
       RUST_COVERAGE_FEATURE_MODE: "all-features"
       RUST_COVERAGE_LINKER: "runner-default"

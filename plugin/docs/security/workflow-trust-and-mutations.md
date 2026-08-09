@@ -286,17 +286,19 @@ The [CI Rust tool bootstrap and caches](supply-chain-credentials-and-services.md
 section is the canonical cache-class and publication contract. Pull-request
 workflows may consume only the explicitly scoped default-branch cache classes;
 they do not gain authority to publish a compiler-output cache. A coverage target
-cache stays disabled unless independent end-to-end measurements prove it helps.
-Neither a cache restore nor its diagnostic metadata waives the coverage,
-artifact, executable, repository-policy, or plugin-validation gates.
+cache is dependency-only, bound at a measured 1,350,000,000 bytes, and enabled
+only after independent end-to-end measurements prove it helps. Neither a cache
+restore nor its diagnostic metadata waives the coverage, artifact, executable,
+repository-policy, or plugin-validation gates.
 
 The manual target-cache benchmark is isolated from that production cache
 contract. Its fixed workflow condition requires a direct `workflow_dispatch`
 of `refs/heads/main`, its benchmark-only key cannot be restored by the normal
 coverage lane, and its decimal size input is capped before the shared action
-can save. It exists only to collect the independent warm-cache comparison; it
-does not authorize a pull request or normal manual run to publish compiler
-output.
+can save. During that exact dispatch, `rust-full` stays cache-off as the paired
+control. The benchmark exists only to collect the independent warm-cache
+comparison; it does not authorize a pull request or normal manual run to
+publish compiler output.
 
 ### CI Rust selection trust
 
