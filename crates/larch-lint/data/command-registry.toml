@@ -4110,11 +4110,13 @@ verb = "coverage-index"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "coverage_index_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8186
+clean_install_test = "clean-install-learn-from-bugs-coverage-index"
 
 [[commands]]
 domain = "learn-from-bugs"
@@ -4134,11 +4136,13 @@ verb = "prepare"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "prepare_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8186
+clean_install_test = "clean-install-learn-from-bugs-prepare"
 
 [[commands]]
 domain = "learn-from-bugs"
@@ -4146,11 +4150,13 @@ verb = "read-state"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "read_state_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8186
+clean_install_test = "clean-install-learn-from-bugs-read-state"
 
 [[commands]]
 domain = "learn-from-bugs"
@@ -4158,11 +4164,13 @@ verb = "resolve-zones"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "resolve_zones_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8186
+clean_install_test = "clean-install-learn-from-bugs-resolve-zones"
 
 [[commands]]
 domain = "learn-from-bugs"
@@ -4206,11 +4214,13 @@ verb = "write-state"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "write_state_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8186
+clean_install_test = "clean-install-learn-from-bugs-write-state"
 
 [[commands]]
 domain = "lint"
@@ -8694,6 +8704,12 @@ python = []
 rust = ["execution-issues flush", "timing mark"]
 
 [[callers]]
+path = "python/larch/issue/learn_from_bugs.py"
+kind = "python-runtime"
+python = []
+rust = ["learn-from-bugs write-state"]
+
+[[callers]]
 path = "python/larch/issue/validate_merged.py"
 kind = "python-runtime"
 python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "validate-merged prepare", "validate-merged report", "validate-merged write-state"]
@@ -9644,8 +9660,8 @@ rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-fail
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
 kind = "skill"
-python = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report"]
-rust = []
+python = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs state-publish", "learn-from-bugs validate-report"]
+rust = ["learn-from-bugs prepare", "learn-from-bugs resolve-zones"]
 
 [[callers]]
 path = "skills/pause/SKILL.md"
