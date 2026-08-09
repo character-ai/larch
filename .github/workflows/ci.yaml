@@ -828,7 +828,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$RUST_POLICY_INPUTS_SHA256"
-          policy_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
+          # The composite action preserves these exact bytes before pruning
+          # workspace products from the coverage dependency cache.
+          policy_larch="$RUNNER_TEMP/larch-linux-test-binary/larch"
           policy_dir="$RUNNER_TEMP/trusted-main-rust-policy"
           test -x "$policy_larch"
           rm -rf "$policy_dir"
