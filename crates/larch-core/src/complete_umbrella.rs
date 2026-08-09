@@ -20,15 +20,27 @@ pub struct CompleteUmbrellaLeaf {
 pub enum CompleteUmbrellaNext {
     Launch(u64),
     Audit,
+    OrphanBlocked(Vec<u64>),
     Deadlocked(Vec<u64>),
 }
 
-/// Select the smallest-numbered open leaf that has no open blockers.
+/// Select the next action from the fresh direct-leaf and parent-blocker graph.
 ///
-/// Closed leaves do not participate. No open leaves advances to the audit.
-/// Open leaves with no runnable member produce a stable deadlock result.
+/// An open parent blocker that is not a direct leaf stops scheduling before
+/// leaf-dependency deadlock handling. Closed leaves do not participate. No
+/// open leaves advances to the audit. Open leaves with no runnable member
+/// produce a stable deadlock result.
 #[must_use]
-pub fn select_complete_umbrella_leaf(leaves: &[CompleteUmbrellaLeaf]) -> CompleteUmbrellaNext {
+pub fn select_complete_umbrella_leaf(
+    leaves: &[CompleteUmbrellaLeaf],
+    open_orphan_blockers: &[u64],
+) -> CompleteUmbrellaNext {
+    let mut orphan_blockers = open_orphan_blockers.to_vec();
+    orphan_blockers.sort_unstable();
+    orphan_blockers.dedup();
+    if !orphan_blockers.is_empty() {
+        return CompleteUmbrellaNext::OrphanBlocked(orphan_blockers);
+    }
     if let Some(number) = leaves
         .iter()
         .filter(|leaf| leaf.open && leaf.open_blockers.is_empty())
@@ -147,14 +159,14 @@ pub fn validate_complete_umbrella_leaf(issue: &GitHubIssue, umbrella: u64) -> Re
     };
     if !title_valid {
         return Err(format!(
-            "direct child #{} has an invalid leaf lifecycle title",
+            "direct leaf #{} violates the exact lifecycle-title invariant",
             issue.number
         ));
     }
     let opening = umbrella_leaf_opening(umbrella);
     if issue.body.lines().next() != Some(opening.as_str()) {
         return Err(format!(
-            "direct child #{} lacks the exact umbrella opening",
+            "direct leaf #{} violates the exact first-line body invariant",
             issue.number
         ));
     }
@@ -230,7 +242,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            select_complete_umbrella_leaf(&leaves),
+            select_complete_umbrella_leaf(&leaves, &[]),
             CompleteUmbrellaNext::Launch(11)
         );
     }
@@ -238,27 +250,48 @@ mod tests {
     #[test]
     fn selection_distinguishes_audit_from_deadlock() {
         assert_eq!(
-            select_complete_umbrella_leaf(&[CompleteUmbrellaLeaf {
-                number: 5,
-                open: false,
-                open_blockers: Vec::new(),
-            }]),
+            select_complete_umbrella_leaf(
+                &[CompleteUmbrellaLeaf {
+                    number: 5,
+                    open: false,
+                    open_blockers: Vec::new(),
+                }],
+                &[],
+            ),
             CompleteUmbrellaNext::Audit
         );
         assert_eq!(
-            select_complete_umbrella_leaf(&[
-                CompleteUmbrellaLeaf {
-                    number: 9,
-                    open: true,
-                    open_blockers: vec![10],
-                },
-                CompleteUmbrellaLeaf {
-                    number: 7,
-                    open: true,
-                    open_blockers: vec![9],
-                },
-            ]),
+            select_complete_umbrella_leaf(
+                &[
+                    CompleteUmbrellaLeaf {
+                        number: 9,
+                        open: true,
+                        open_blockers: vec![10],
+                    },
+                    CompleteUmbrellaLeaf {
+                        number: 7,
+                        open: true,
+                        open_blockers: vec![9],
+                    },
+                ],
+                &[],
+            ),
             CompleteUmbrellaNext::Deadlocked(vec![7, 9])
+        );
+    }
+
+    #[test]
+    fn selection_prioritizes_sorted_open_orphan_blockers() {
+        assert_eq!(
+            select_complete_umbrella_leaf(
+                &[CompleteUmbrellaLeaf {
+                    number: 5,
+                    open: false,
+                    open_blockers: Vec::new(),
+                }],
+                &[12, 7, 12],
+            ),
+            CompleteUmbrellaNext::OrphanBlocked(vec![7, 12])
         );
     }
 
