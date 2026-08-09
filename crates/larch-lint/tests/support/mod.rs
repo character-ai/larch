@@ -192,8 +192,8 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
     );
     repository.write(
-        "python/larch/report/timing.py",
-        b"TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({\"fixture-kind\"})\n",
+        "crates/larch-core/src/report/timing.rs",
+        b"pub const TIMING_TASK_KINDS_ALLOWED: [&str; 1] = [\"fixture-kind\"];\n",
     );
     repository.write("scripts/residual-bash-paths.txt", b"# residual paths\n");
     for path in [

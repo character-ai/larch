@@ -229,16 +229,40 @@ def _state(tmp_path: Path) -> dispatch_shared.DispatchState:
     )
 
 
-def test_record_voter_dispatch_prep_appends_row_to_existing_ledger(tmp_path: Path) -> None:
-    # Issue #7166: the pre-dispatch window lands as a claude/voter-dispatch-prep vendor row.
+def test_record_voter_dispatch_prep_appends_row_to_existing_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Issue #7166: the pre-dispatch window reaches the Rust timing owner as a
+    # claude/voter-dispatch-prep vendor row.
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text("", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def fake_timing_record_vendor_task(_runner: object, **kwargs: object) -> bool:
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        dispatch_shared.rust_runtime,
+        "timing_record_vendor_task",
+        fake_timing_record_vendor_task,
+    )
     dispatch_shared.record_voter_dispatch_prep(
         ledger=ledger, skill="implement", prep_start=40, prep_end=207, round_num=3
     )
-    row = ledger.read_text(encoding="utf-8").strip().split("\t")
-    assert row[0:2] == ["v1", "vendor"]
-    assert row[5:11] == ["claude", "voter-dispatch-prep", "40", "207", "167", "voter-dispatch-prep-round-3.out"]
+    assert calls == [
+        {
+            "vendor": "claude",
+            "task_kind": "voter-dispatch-prep",
+            "start_s": 40,
+            "end_s": 207,
+            "output": "voter-dispatch-prep-round-3.out",
+            "skill": "implement",
+            "ledger": str(ledger),
+            "status": "complete",
+            "environment": {"IMPLEMENT_TMPDIR": str(tmp_path)},
+        }
+    ]
 
 
 def test_record_voter_dispatch_prep_skips_when_ledger_missing(tmp_path: Path) -> None:
@@ -254,16 +278,44 @@ def test_record_voter_dispatch_prep_skips_when_ledger_missing(tmp_path: Path) ->
     )
 
 
-def test_record_reviewer_collect_appends_row_to_existing_ledger(tmp_path: Path) -> None:
-    # Issue #7179: the reviewers-to-aggregator window lands as a claude/reviewer-collect vendor row.
+def test_record_reviewer_collect_appends_row_to_existing_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Issue #7179: the reviewers-to-aggregator window reaches the Rust timing
+    # owner as a claude/reviewer-collect vendor row.
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text("", encoding="utf-8")
-    dispatch_shared.record_reviewer_collect(
-        ledger=ledger, skill="implement", collect_start=164, collect_end=348, round_num=2
+    calls: list[dict[str, object]] = []
+
+    def fake_timing_record_vendor_task(_runner: object, **kwargs: object) -> bool:
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        dispatch_shared.rust_runtime,
+        "timing_record_vendor_task",
+        fake_timing_record_vendor_task,
     )
-    row = ledger.read_text(encoding="utf-8").strip().split("\t")
-    assert row[0:2] == ["v1", "vendor"]
-    assert row[5:11] == ["claude", "reviewer-collect", "164", "348", "184", "reviewer-collect-round-2.out"]
+    dispatch_shared.record_reviewer_collect(
+        ledger=ledger,
+        skill="implement",
+        collect_start=164,
+        collect_end=348,
+        round_num=2,
+    )
+    assert calls == [
+        {
+            "vendor": "claude",
+            "task_kind": "reviewer-collect",
+            "start_s": 164,
+            "end_s": 348,
+            "output": "reviewer-collect-round-2.out",
+            "skill": "implement",
+            "ledger": str(ledger),
+            "status": "complete",
+            "environment": {"IMPLEMENT_TMPDIR": str(tmp_path)},
+        }
+    ]
 
 
 def test_record_reviewer_collect_skips_when_ledger_missing(tmp_path: Path) -> None:

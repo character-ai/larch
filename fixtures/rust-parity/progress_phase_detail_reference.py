@@ -23,7 +23,6 @@ from larch.calibration import difficulty
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
-from larch.report.timing import TIMING_VENDOR_MIN_COLS
 from larch.review import plan_review_round
 from larch.report import report_tokens_cost
 from larch.review import voting
@@ -35,6 +34,7 @@ from larch.review.review_types import is_security_block_text, parse_blocks
 # exists.
 _GANTT_DEFAULT_WIDTH = 56
 _GANTT_SECONDS_PER_MINUTE = 60
+TIMING_VENDOR_MIN_COLS = 13
 
 
 @dataclass(frozen=True)
@@ -127,7 +127,7 @@ TIMING_ROUND_SKILL_COL = 3
 TIMING_ROUND_ROUND_NUM_COL = 5
 TIMING_ROUND_END_COL = 7
 # Issue #5504: reserved trailing column repurposed as the 1-based round attempt index
-# (written by timing.TimingLedger.record_round). Rows predating it carry "-" -> attempt 1.
+# (written by Rust's timing record-round). Rows predating it carry "-" -> attempt 1.
 TIMING_ROUND_ATTEMPT_COL = 12
 TIMING_VENDOR_VENDOR_COL = 5
 TIMING_VENDOR_KIND_COL = 6

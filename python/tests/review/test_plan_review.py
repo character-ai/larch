@@ -66,6 +66,63 @@ def _timing_round_window(
     return (min(starts), max(ends)) if starts and ends else None
 
 
+def _install_rust_timing_stubs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Exercise review timing consumers without reimplementing a Python owner."""
+    calls: list[dict[str, object]] = []
+
+    def fake_round(_runner: object, **kwargs: object) -> bool:
+        calls.append({"verb": "record-round", **kwargs})
+        ledger = Path(str(kwargs["ledger"]))
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        skill = str(kwargs["skill"])
+        round_num = int(cast("int | float | str", kwargs["round_num"]))
+        if kwargs.get("if_round_exists") and ledger.exists() and any(
+            (cols := line.split("\t"))[:2] == ["v1", "round"]
+            and len(cols) == 13
+            and cols[3] == skill
+            and cols[5] == str(round_num)
+            for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+        ):
+            return True
+        prior = 1 + sum(
+            1
+            for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+            if (cols := line.split("\t"))[:2] == ["v1", "round"]
+            and len(cols) == 13
+            and cols[3] == skill
+            and cols[5] == str(round_num)
+        ) if ledger.exists() else 1
+        start_s = int(cast("int | float | str", kwargs["start_s"]))
+        end_s = int(cast("int | float | str", kwargs["end_s"]))
+        row = [
+            "v1", "round", str(end_s), skill, str(kwargs["step"]), str(round_num),
+            str(start_s), str(end_s), str(max(end_s - start_s, 0)),
+            str(kwargs["accepted"]), str(kwargs["rejected"]), "-", str(prior),
+        ]
+        with ledger.open("a", encoding="utf-8") as handle:
+            _ = handle.write("\t".join(row) + "\n")
+        return True
+
+    def fake_vendor(_runner: object, **kwargs: object) -> bool:
+        calls.append({"verb": "record-vendor-task", **kwargs})
+        ledger = Path(str(kwargs["ledger"]))
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        start_s = int(cast("int | float | str", kwargs["start_s"]))
+        end_s = int(cast("int | float | str", kwargs["end_s"]))
+        row = [
+            "v1", "vendor", str(end_s), str(kwargs["skill"]), "-", str(kwargs["vendor"]),
+            str(kwargs["task_kind"]), str(start_s), str(end_s), str(max(end_s - start_s, 0)),
+            Path(str(kwargs["output"])).name, str(kwargs.get("exit_code", 0)), str(kwargs["status"]),
+        ]
+        with ledger.open("a", encoding="utf-8") as handle:
+            _ = handle.write("\t".join(row) + "\n")
+        return True
+
+    monkeypatch.setattr(plan_review_loop.rust_runtime, "timing_record_round", fake_round)
+    monkeypatch.setattr(plan_review_loop.rust_runtime, "timing_record_vendor_task", fake_vendor)
+    return calls
+
+
 def test_legacy_assets_removed_from_plan_review_module() -> None:
     assert not hasattr(plan_review, "_LEGACY_ASSETS")
     assert not hasattr(plan_review, "run_legacy_script")
@@ -2915,33 +2972,24 @@ def test_zero_accepted_round_ignores_round_meta_failure(
     assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
 
 
-def test_record_round_timing_writes_canonical_v1_row_idempotently(tmp_path: Path) -> None:
-    def _record(round_num: str, start_s: str, end_s: str) -> subprocess.CompletedProcess[str]:
-        return run_cli(
-            "plan-review",
-            "record-round-timing",
-            "--design-tmpdir",
-            str(tmp_path),
-            "--round",
-            round_num,
-            "--start-s",
-            start_s,
-            "--end-s",
-            end_s,
-            env={"LARCH_QUIET_DISABLE": "1"},
-        )
-
+def test_design_round_timing_uses_rust_owner_idempotently(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_rust_timing_stubs(monkeypatch)
     def _window(round_num: int) -> tuple[int, int] | None:
         return _timing_round_window(
             tmp_path / "timing-ledger.tsv", skill="design", round_num=round_num, skill_filtered=True
         )
 
-    proc = _record("1", "100", "110")
-    assert proc.returncode == 0, proc.stderr
+    plan_review_loop._append_canonical_round_timing(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path,
+        round_num=1,
+        start_s=100,
+        end_s=110,
+    )
     ledger = tmp_path / "timing-ledger.tsv"
 
-    # The recorded row must parse through the renderer's canonical gate so the
-    # Review Phase Detail Time/Cost columns populate (issue #5444).
     assert _window(1) == (100, 110)
     rows = [line.split("\t") for line in ledger.read_text(encoding="utf-8").splitlines() if line.startswith("v1\tround\t")]
     assert len(rows) == 1
@@ -2949,19 +2997,26 @@ def test_record_round_timing_writes_canonical_v1_row_idempotently(tmp_path: Path
     assert rows[0][5] == "1"
     assert len(rows[0]) >= 8
 
-    # Re-recording the same round is idempotent: no duplicate v1 round row.
-    proc_dup = _record("1", "100", "110")
-    assert proc_dup.returncode == 0, proc_dup.stderr
+    plan_review_loop._append_canonical_round_timing(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path,
+        round_num=1,
+        start_s=100,
+        end_s=110,
+    )
     rows_after = [line for line in ledger.read_text(encoding="utf-8").splitlines() if line.startswith("v1\tround\t")]
     assert len(rows_after) == 1
 
-    # A second round records its own canonical window plus the round-summary.env side effect.
-    snap = tmp_path / "plan-review" / "round-4"
-    snap.mkdir(parents=True)
-    proc_snap = _record("4", "400", "410")
-    assert proc_snap.returncode == 0, proc_snap.stderr
+    plan_review_loop._append_canonical_round_timing(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path,
+        round_num=4,
+        start_s=400,
+        end_s=410,
+    )
     assert _window(4) == (400, 410)
-    assert (snap / "round-summary.env").read_text(encoding="utf-8") == "ROUND_NUM=4\n"
+    assert [call["verb"] for call in calls] == ["record-round", "record-round", "record-round"]
+    assert calls[0]["if_round_exists"] is True
+    assert calls[1]["if_round_exists"] is True
+    assert calls[0]["environment"] == {"DESIGN_TMPDIR": str(tmp_path)}
 
 
 def test_write_design_round_meta_records_round_timing_from_start_file(
@@ -2971,6 +3026,7 @@ def test_write_design_round_meta_records_round_timing_from_start_file(
     round_dir = tmp_path / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
     _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
+    _ = _install_rust_timing_stubs(monkeypatch)
 
     # Isolate the timing side effect from the round-meta subprocess and freeze the end clock.
     monkeypatch.setattr(plan_review, "_run_command", lambda *_a, **_k: None)  # type: ignore[arg-type]
@@ -3119,6 +3175,7 @@ def test_write_design_round_meta_with_gate_b_apply_ready_marker_without_vendor_r
     round_dir.mkdir(parents=True)
     _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
     (tmp_path / ".gate-b-postapply-ready-1").touch()
+    _ = _install_rust_timing_stubs(monkeypatch)
 
     def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "", "")
@@ -3156,6 +3213,7 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
         vendor="codex",
         skill=vendor_skill,
     )
+    _ = _install_rust_timing_stubs(monkeypatch)
     _write_design_vendor_timing(
         ledger,
         kind="claude-plan-voter",

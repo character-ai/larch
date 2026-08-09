@@ -263,13 +263,13 @@ test-timing-ledger:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q
 
 test-review-and-fix-record-timing:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k record_timing
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k step5_round_timing
 
 test-review-and-fix-step5-loop-timing:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'record_round_timing or persist_round_start_s'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'design_round_timing or persist_round_start_s'
 
 
 

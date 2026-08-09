@@ -1508,9 +1508,19 @@ def _run_phase_infra_for_progress(
         calls.append(("clear",))
         return True
 
-    def fake_timing(*, label: str, env: dict[str, str] | None = None) -> None:
-        _ = env
+    def fake_timing(
+        _runner: object,
+        *,
+        label: str,
+        skill: str,
+        ledger: str | None = None,
+        if_latest_differs: bool = False,
+        environment: dict[str, str] | None = None,
+        cwd: str | None = None,
+    ) -> bool:
+        _ = skill, ledger, if_latest_differs, environment, cwd
         calls.append(("timing", label))
+        return True
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         # `run-log append-failure` is Rust-owned, so the bootstrap fallback record
@@ -1529,7 +1539,7 @@ def _run_phase_infra_for_progress(
     monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
     monkeypatch.setattr(bootstrap.rust_runtime, "progress_activate", fake_activate)
     monkeypatch.setattr(bootstrap.rust_runtime, "progress_clear", fake_clear)
-    monkeypatch.setattr(bootstrap.timing, "mark", fake_timing)
+    monkeypatch.setattr(bootstrap.rust_runtime, "timing_mark", fake_timing)
     monkeypatch.setattr(bootstrap.proc, "run", fake_run)
     monkeypatch.setattr(bootstrap, "_write_claude_source_snapshot", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_write_base_session_env", lambda _st: None)  # pyright: ignore[reportPrivateUsage]

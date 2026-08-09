@@ -28,7 +28,7 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body
 from larch.issue import tracking_issue
-from larch.report import progress_file, run_log_batch, run_logs, timing, tokens
+from larch.report import progress_file, run_log_batch, run_logs, tokens
 from larch.agents import agents
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -555,8 +555,11 @@ def _phase_infra(st: BootstrapState) -> None:
         _write_claude_source_snapshot(st)
         _write_base_session_env(st)
         _ = tokens.token_mark(step="Step 0 — preflight")
-        env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
-        _ = timing.mark(label="Step 0 — preflight", env=env)
+        _ = rust_runtime.timing_mark(
+            proc,
+            label="Step 0 — preflight",
+            skill="implement",
+        )
         _refresh_reviewer_state(st)
     _install_statusline_best_effort()
     if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):

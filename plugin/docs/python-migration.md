@@ -156,8 +156,8 @@ exclusive `flock`, so concurrent marks from separate processes never lose or
 corrupt a row, and every clock value arrives through the injected
 `BusinessClock`, so tests pin time instead of sleeping. The Python
 registrations and the superseded command implementations are removed;
-`python/larch/report/timing.py` keeps only the ledger writers and the path
-resolver that in-process Python callers still import. `timing harness-mark`
+`python/larch/report/timing.py` keeps only a read-only path resolver for review
+consumers, while Rust owns every ledger mutation. `timing harness-mark`
 reaches developer and CI harnesses through the Makefile `HARNESS_MARK`
 variable. One deliberate difference: the Rust report parses the ledger once, so
 a malformed row now warns once instead of once per internal read.

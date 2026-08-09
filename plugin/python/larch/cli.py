@@ -265,7 +265,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan-review", "persist-retally-env"): ("larch.review.plan_review", "persist_retally_env_main", True),
     ("plan-review", "persist-round-start-s"): ("larch.review.plan_review", "persist_round_start_s_main", True),
     ("plan-review", "step3-state"): ("larch.review.plan_review", "step3_state_main", True),
-    ("plan-review", "record-round-timing"): ("larch.review.plan_review", "record_round_timing_main", True),
     ("plan-review", "continuation"): ("larch.review.plan_review", "continuation_main", True),
     ("plan-review", "prelaunch-failure"): ("larch.review.plan_review", "prelaunch_failure_main", True),
     ("plan-review", "step3-entry"): ("larch.review.plan_review", "step3_entry_main", True),
@@ -405,7 +404,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("review-and-fix", "check-changes"): ("larch.review.review_and_fix", "check_changes", True),
     ("review-and-fix", "commit-fixes"): ("larch.review.review_and_fix", "commit_fixes", True),
     ("review-and-fix", "write-rejected"): ("larch.review.review_and_fix", "write_rejected", True),
-    ("review-and-fix", "record-round-timing"): ("larch.review.review_and_fix", "record_round_timing", True),
     ("review-and-fix", "write-self-review-tally"): ("larch.review.review_and_fix", "write_self_review_tally", True),
     ("review-and-fix", "write-pre-self-review-snapshot"): (
         "larch.review.review_and_fix",

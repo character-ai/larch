@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from larch.core import config
 from larch.core import proc
 import pytest
-from larch.review import coder_runner, snapshot
+from larch.review import coder_runner, dispatch_shared, snapshot
 from larch.review import review_collect, review_core_body, review_dispatch_panel, review_pipeline, review_pipeline_shared, review_prune, review_threshold
 from larch.review.review_types import ReviewCoreStatus
 from larch.rendering import rendering
@@ -292,6 +292,13 @@ def test_review_core_body_records_reviewer_collect_row(tmp_path: Path, monkeypat
     # reviewer-collect vendor row in the same timing ledger the reviewers and aggregator use, so
     # the Gantt shows it instead of a blank gap between the reviewer bars and the aggregator bar.
     ledger = _reviewer_collect_ledger(tmp_path, monkeypatch, name="timing-home")
+    calls: list[dict[str, object]] = []
+
+    def fake_record(_runner: object, **kwargs: object) -> bool:
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(dispatch_shared.rust_runtime, "timing_record_vendor_task", fake_record)
 
     result = _run_review_core_body_direct(
         tmp_path, monkeypatch, findings=1, accepted=1, outdir_name="body-collect",
@@ -299,10 +306,17 @@ def test_review_core_body_records_reviewer_collect_row(tmp_path: Path, monkeypat
     )
 
     assert result.status == ReviewCoreStatus.fix_required
-    collect_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "reviewer-collect" in line).split("\t")
-    assert collect_row[3] == "implement"
-    assert collect_row[5:7] == ["claude", "reviewer-collect"]
-    assert collect_row[10] == "reviewer-collect-round-1.out"
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["vendor"] == "claude"
+    assert call["task_kind"] == "reviewer-collect"
+    assert call["output"] == "reviewer-collect-round-1.out"
+    assert call["skill"] == "implement"
+    assert call["ledger"] == str(ledger)
+    assert call["status"] == "complete"
+    assert call["environment"] == {"IMPLEMENT_TMPDIR": str(ledger.parent)}
+    assert isinstance(call["start_s"], float)
+    assert isinstance(call["end_s"], float)
 
 
 def test_review_core_body_skips_reviewer_collect_on_zero_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

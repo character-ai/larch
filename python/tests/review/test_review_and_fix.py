@@ -10,6 +10,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 from larch.calibration import difficulty_calibration
@@ -575,7 +576,7 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
         )
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -625,7 +626,7 @@ def test_round_runner_maps_zero_survivor_panel_failed_to_self_review_required(tm
 def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
-    timing_calls: list[list[str]] = []
+    timing_calls: list[dict[str, object]] = []
     flush_calls: list[dict[str, object]] = []
     now = {"value": 10}
 
@@ -646,10 +647,9 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
             review_and_fix.CoderResult(0),
         )
 
-    def fake_record(argv):
+    def fake_record(**kwargs: object) -> None:
         events.append("timing")
-        timing_calls.append(argv)
-        return 0
+        timing_calls.append(kwargs)
 
     def fake_flush(**kwargs):
         events.append("flush")
@@ -658,7 +658,7 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
 
     monkeypatch.setattr(review_and_fix.time, "time", fake_time)
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", fake_record)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", fake_flush)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
     out = capsys.readouterr().out
@@ -670,8 +670,8 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
     assert events == ["round", "timing", "flush"]
     assert len(timing_calls) == 1
     timing_call = timing_calls[0]
-    assert timing_call[timing_call.index("--round") + 1] == "1"
-    assert timing_call[timing_call.index("--start-s") + 1] == "11"
+    assert timing_call["round_num"] == 1
+    assert timing_call["start_s"] == 11
     assert len(flush_calls) == 1
     assert flush_calls[0]["rounds"] == 1
 
@@ -1100,7 +1100,7 @@ def test_step5_handoff_restages_difficulty_record(
         return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
     rc = review_and_fix.step5([
@@ -1158,7 +1158,7 @@ def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, 
 @MARK_LOOP_TIMING
 def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
-    timing_calls: list[list[str]] = []
+    timing_calls: list[dict[str, object]] = []
     round_entered = threading.Event()
     release_round = threading.Event()
     rc_box: list[int] = []
@@ -1179,7 +1179,11 @@ def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path
         )
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda argv: timing_calls.append(argv) or 0)
+    monkeypatch.setattr(
+        review_and_fix,
+        "_record_step5_round_timing",
+        lambda **kwargs: timing_calls.append(kwargs),
+    )
 
     def run_step5() -> None:
         try:
@@ -1211,8 +1215,7 @@ def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path
         raise exc_box[0]
     assert rc_box == [0]
     assert timing_calls
-    timing_argv = timing_calls[0]
-    assert timing_argv[timing_argv.index("--start-s") + 1] == start_value
+    assert timing_calls[0]["start_s"] == int(start_value)
 
 
 def test_persist_round_start_skips_symlinked_round_dir(tmp_path: Path) -> None:
@@ -1393,7 +1396,7 @@ def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys
         review_and_fix.CoderResult(0),
     )
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: result)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda *_a, **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: ok(tuple(argv)))
 
     rc = review_and_fix.step5([
@@ -1414,17 +1417,36 @@ def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys
     assert "STALL_REASON=tally-flush-failed" in out
 
 
-@pytest.mark.record_timing
-def test_record_round_timing_writes_ledger_row(tmp_path, monkeypatch):
+def test_step5_round_timing_uses_rust_owner(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
-    round_dir = impl / "round-1"
-    round_dir.mkdir()
-    (round_dir / "accepted-findings.md").write_text("### FINDING_1: x\n", encoding="utf-8")
-    rc = review_and_fix.record_round_timing([
-        "--implement-tmpdir", str(impl), "--round", "1", "--start-s", "100", "--end-s", "200",
-    ])
-    assert rc == 0
-    assert (impl / "timing-ledger.tsv").is_file()
+    calls: list[dict[str, object]] = []
+
+    def fake_record(_runner: object, **kwargs: object) -> bool:
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(review_and_fix.rust_runtime, "timing_record_round", fake_record)
+    result = _step5_round_result(impl, status="complete")
+
+    review_and_fix._record_step5_round_timing(  # pyright: ignore[reportPrivateUsage]
+        implement_tmpdir=impl,
+        round_num=1,
+        start_s=100,
+        end_s=200,
+        result=result,
+    )
+
+    assert calls == [{
+        "skill": "implement",
+        "step": "Step 5 — code review",
+        "round_num": 1,
+        "start_s": 100,
+        "end_s": 200,
+        "accepted": result.accepted_count,
+        "rejected": result.rejected_count,
+        "ledger": str(impl / "timing-ledger.tsv"),
+        "environment": {"IMPLEMENT_TMPDIR": str(impl)},
+    }]
 
 
 def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
@@ -2793,7 +2815,7 @@ def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch
         )
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -2833,7 +2855,7 @@ def test_step5_terminal_flushes_review_batches_with_counts(
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
     if gate_status:
         monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", lambda **_kw: (gate_status, "", False))
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", fake_flush)
     monkeypatch.setattr(review_and_fix, "_emit_step5_envelope", fake_emit)
 
@@ -2893,7 +2915,7 @@ def test_step5_terminal_restages_resolved_difficulty_record(
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
     if gate_status:
         monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", lambda **_kw: (gate_status, "", False))
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda **_kwargs: True)
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
@@ -2940,7 +2962,7 @@ def test_step5_difficulty_restage_warning_preserves_success(
         return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status="complete"))
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda **_kwargs: True)
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
@@ -2988,7 +3010,7 @@ def test_step5_complete_flush_warning_preserves_success(
         raise OSError("append boom")
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status="complete"))
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", fail_flush)
     if append_raises:
         monkeypatch.setattr(review_and_fix.run_log_batch, "append_execution_issue", fail_append)
@@ -3034,7 +3056,7 @@ def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, cap
         )
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", lambda **_kwargs: None)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "2"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -3051,7 +3073,7 @@ def test_step5_fix_applied_records_round_timing_after_post_round_gates(
 ):
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
-    timing_calls: list[list[str]] = []
+    timing_calls: list[dict[str, object]] = []
     now = {"value": 99}
     gate_done = {"value": 0}
 
@@ -3072,15 +3094,14 @@ def test_step5_fix_applied_records_round_timing_after_post_round_gates(
         gate_done["value"] = now["value"]
         return "complete", "", False
 
-    def fake_record(argv):
+    def fake_record(**kwargs: object) -> None:
         events.append("record")
-        timing_calls.append(argv)
-        return 0
+        timing_calls.append(kwargs)
 
     monkeypatch.setattr(review_and_fix.time, "time", fake_time)
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", fake_record)
 
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl),
@@ -3094,8 +3115,8 @@ def test_step5_fix_applied_records_round_timing_after_post_round_gates(
     assert events == ["round", "gates", "record"]
     assert len(timing_calls) == 1
     call = timing_calls[0]
-    assert call[call.index("--start-s") + 1] == "100"
-    assert int(call[call.index("--end-s") + 1]) > gate_done["value"]
+    assert call["start_s"] == 100
+    assert cast("int", call["end_s"]) > gate_done["value"]
 
 
 @MARK_STEP5
@@ -3106,7 +3127,7 @@ def test_step5_fix_applied_gate_continue_records_before_next_round(
 ):
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
-    timing_calls: list[list[str]] = []
+    timing_calls: list[dict[str, object]] = []
     now = {"value": 299}
 
     def fake_time() -> int:
@@ -3145,15 +3166,14 @@ def test_step5_fix_applied_gate_continue_records_before_next_round(
         events.append(f"gates-{round_num}")
         return None, None, True
 
-    def fake_record(argv):
-        events.append(f"record-{argv[argv.index('--round') + 1]}")
-        timing_calls.append(argv)
-        return 0
+    def fake_record(**kwargs: object) -> None:
+        events.append(f"record-{kwargs['round_num']}")
+        timing_calls.append(kwargs)
 
     monkeypatch.setattr(review_and_fix.time, "time", fake_time)
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", fake_record)
 
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl),
@@ -3167,10 +3187,10 @@ def test_step5_fix_applied_gate_continue_records_before_next_round(
     assert events[:4] == ["round-1", "gates-1", "record-1", "round-2"]
     round_one_calls = [
         call for call in timing_calls
-        if call[call.index("--round") + 1] == "1"
+        if call["round_num"] == 1
     ]
     assert len(round_one_calls) == 1
-    assert round_one_calls[0][round_one_calls[0].index("--start-s") + 1] == "300"
+    assert round_one_calls[0]["start_s"] == 300
 
 
 @MARK_STEP5
@@ -3180,7 +3200,7 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
     capsys,
 ):
     impl = _tmp_impl(tmp_path)
-    timing_calls: list[list[str]] = []
+    timing_calls: list[dict[str, object]] = []
     now = {"value": 399}
 
     def fake_time() -> int:
@@ -3196,14 +3216,13 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
         now["value"] = 500
         raise RuntimeError("post-gate boom")
 
-    def fake_record(argv):
-        timing_calls.append(argv)
-        return 0
+    def fake_record(**kwargs: object) -> None:
+        timing_calls.append(kwargs)
 
     monkeypatch.setattr(review_and_fix.time, "time", fake_time)
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+    monkeypatch.setattr(review_and_fix, "_record_step5_round_timing", fake_record)
 
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl),
@@ -3217,8 +3236,8 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
     assert "STEP5_REVIEW_STATUS=stall" in out
     assert len(timing_calls) == 1
     call = timing_calls[0]
-    assert call[call.index("--start-s") + 1] == "400"
-    assert int(call[call.index("--end-s") + 1]) > 500
+    assert call["start_s"] == 400
+    assert cast("int", call["end_s"]) > 500
 
 
 @MARK_STEP5

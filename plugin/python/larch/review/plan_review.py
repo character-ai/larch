@@ -76,7 +76,6 @@ from larch.review.plan_review_loop import (
     persist_design_round_start_s,
     persist_retally_step3_env,
     plan_review_continuation,
-    record_plan_review_round_timing,
     _record_gate_b_apply_timing_from_round_window,
     _record_design_round_timing_from_start_file,
     run_plan_review_round,
@@ -1011,10 +1010,6 @@ def persist_retally_env_main(argv: list[str] | None = None) -> int:
 
 def step3_state_main(argv: list[str] | None = None) -> int:
     return step3_state(argv or [])
-
-
-def record_round_timing_main(argv: list[str] | None = None) -> int:
-    return record_plan_review_round_timing(argv or [])
 
 
 def persist_round_start_s_main(argv: list[str] | None = None) -> int:

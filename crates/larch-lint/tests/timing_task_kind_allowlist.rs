@@ -5,8 +5,8 @@ use support::TempRepo;
 
 fn write_allowlist(repository: &TempRepo) {
     repository.write(
-        "python/larch/report/timing.py",
-        b"TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({\"known-kind\"})\n",
+        "crates/larch-core/src/report/timing.rs",
+        b"pub const TIMING_TASK_KINDS_ALLOWED: [&str; 1] = [\"known-kind\"];\n",
     );
 }
 
