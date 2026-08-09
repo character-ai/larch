@@ -3090,7 +3090,7 @@ mod tests {
                 "triage_verdict": "FIXED_CLEAR", "triage_evidence_verified": true, "stages_complete": ["triage"],
             }),
         )]);
-        let queued = deep_candidates(&[bundle.clone()], &verified, false, 0);
+        let queued = deep_candidates(std::slice::from_ref(&bundle), &verified, false, 0);
         assert_eq!(queued[0].get("source"), Some(&json!("chain-linked")));
 
         let unverified = std::collections::BTreeMap::from([(
