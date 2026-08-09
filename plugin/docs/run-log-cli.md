@@ -156,6 +156,10 @@ manifest writer. It publishes through `larch_adapters::atomic_write_utf8_in`,
 which writes and syncs a same-directory temporary file, atomically renames it,
 then syncs the containing directory.
 
+Python's manifest compatibility module is read-only: it parses existing
+manifests and exposes state readers, while every production mutation enters
+through `scripts/larch.sh run-log manifest`.
+
 The Rust-owned archive lifecycle verbs use their own machine envelopes.
 Provider failures
 use the normalized error set in the storage contract. `run-log sync`

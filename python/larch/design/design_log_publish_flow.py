@@ -17,7 +17,7 @@ from larch import io as larch_io
 from larch.core import config, redact, repo_roots
 from larch.design import design_publish
 from larch.design.design_summary import resolve_summary_mode
-from larch.report import run_lifecycle, run_logs
+from larch.report import run_lifecycle
 from larch.report.run_log_batch import append_execution_issue
 
 
@@ -348,15 +348,31 @@ def _publish_design_logs(
         return (False, "", "", "0")
     run_dest = context.run_dir
     try:
-        _ = run_logs.log_manifest_update(
-            log_root=context.log_root,
-            skill="design",
-            run_id=request.run_id,
-            updates={"issue_number": int(request.issue)},
+        manifest_result = _run(
+            [
+                str(repo_roots.larch_entrypoint(request.plugin_root)),
+                "run-log",
+                "manifest",
+                "--log-root",
+                str(context.log_root),
+                "--skill",
+                "design",
+                "--run-id",
+                request.run_id,
+                "--field",
+                f"issue_number={request.issue}",
+            ],
         )
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
         print(
             f"design log-publish: lifecycle issue binding failed: {exc}",
+            file=sys.stderr,
+        )
+        return (False, "", "", "0")
+    if manifest_result.returncode != 0:
+        detail = manifest_result.stderr.strip() or manifest_result.stdout.strip()
+        print(
+            f"design log-publish: lifecycle issue binding failed: {detail or 'run-log manifest failed'}",
             file=sys.stderr,
         )
         return (False, "", "", "0")

@@ -108,7 +108,10 @@ with complete parity, consumer cutover, and Python removal, and must keep its
 exact migration leaf and its retired Python target. The rule rejects a restored
 Python registration in `python/larch/cli.py`, a restored module-level Python
 entrypoint, and any other ledger row that still names #7683 as its planning
-issue.
+issue. It also rejects a production Python run-log manifest writer, direct use
+of the retired manifest mutation helpers, or a durable write from the Python
+manifest compatibility module; production callers must invoke the Rust
+`run-log manifest` entrypoint.
 
 That last check is what keeps a hand-off honest. #7683 owns no unmigrated
 command, so a row that still points at it is either a missed migration or a

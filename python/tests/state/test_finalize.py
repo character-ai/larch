@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from larch.state import finalize
-from larch.report import run_log_manifest, progress_file
+from larch.report import progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
@@ -33,6 +33,16 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         issue_number="1",
     )
     return base.with_(**kwargs)
+
+
+def _write_partial_manifest(tmp_path: Path) -> Path:
+    path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        '{"schema_version":2,"status":"partial","run_id":"run-abc","steps_ran":{}}\n',
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_title_matches_exact_title() -> None:
@@ -113,9 +123,8 @@ def test_rename_issue_fails_without_a_valid_issue_title(tmp_path: Path, payload:
 def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, draft=True)
-    _ = run_log_manifest.init_run(ctx)
+    manifest_path = _write_partial_manifest(tmp_path)
     result = finalize.postmerge(runner=runner, ctx=ctx, cwd=str(tmp_path))
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert result.local_cleanup_status == "skipped-draft"
     assert manifest["status"] == "partial"
@@ -796,7 +805,7 @@ def test_teardown_deactivates_run_before_tmpdir_removal(tmp_path: Path, monkeypa
     """Teardown calls deactivate_run with the effective run ID."""
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
-    _ = run_log_manifest.init_run(ctx)
+    _ = _write_partial_manifest(tmp_path)
 
     deactivate_calls: list[tuple[object, str]] = []
 

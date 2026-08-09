@@ -11,6 +11,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import config, proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
 from larch.git import gh
 from larch.implement.ship_state import _tmpdir_under_allowed_root  # pyright: ignore[reportPrivateUsage] # internal ship-state helpers reused within the larch.implement package
@@ -90,19 +91,31 @@ def _validate_manifest_run_identity(*, tmpdir: Path, run_id: str) -> None:
         raise ValueError("manifest-run-mismatch")
 
 
-def _write_manifest(*, tmpdir: Path, run_id: str, pr_number: int) -> None:
-    path = _manifest_path(tmpdir=tmpdir, run_id=run_id)
-    if not larch_io.trusted_file_present(path, root=tmpdir):
-        raise ValueError("manifest-missing")
-    raw = json.loads(larch_io.read_trusted_text(path, root=tmpdir, reject_cr=True))
-    if not isinstance(raw, dict):
-        raise TypeError("manifest-invalid")
-    data = cast("dict[str, object]", raw)
-    if data.get("run_id", run_id) != run_id:
-        raise ValueError("manifest-run-mismatch")
-    data["status"] = config.MANIFEST_STATUS_DONE
-    data["pr_number"] = pr_number
-    larch_io.trusted_atomic_write(path, json.dumps(data, indent=2) + "\n", root=tmpdir)
+def _update_manifest_through_rust(*, tmpdir: Path, run_id: str, pr_number: int) -> None:
+    """Publish terminal manifest fields through the sole Rust owner."""
+    try:
+        result = proc.run(
+            [
+                str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+                "run-log",
+                "manifest",
+                "--log-root",
+                str(tmpdir / "larch-logs"),
+                "--skill",
+                "implement",
+                "--run-id",
+                run_id,
+                "--field",
+                f"status={config.MANIFEST_STATUS_DONE}",
+                "--field",
+                f"pr_number={pr_number}",
+            ]
+        )
+    except OSError as exc:
+        raise ShipError(f"manifest-update-failed:{str(exc)[:300]}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "run-log manifest failed"
+        raise ShipError(f"manifest-update-failed:{detail[:300]}")
 
 
 def _has_overlay(values: Mapping[str, str]) -> bool:
@@ -253,7 +266,11 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
         larch_io.trusted_atomic_write(
             tmpdir / "post-merge-sentinel", "MERGE_RESULT=merged\n", root=tmpdir
         )
-        _write_manifest(tmpdir=tmpdir, run_id=run_id, pr_number=pr.number)
+        _update_manifest_through_rust(
+            tmpdir=tmpdir,
+            run_id=run_id,
+            pr_number=pr.number,
+        )
         verification_error = _verify_reconciliation(
             tmpdir=tmpdir,
             run_id=run_id,

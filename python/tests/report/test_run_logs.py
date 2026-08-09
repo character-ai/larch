@@ -18,7 +18,6 @@ from larch.core import config
 from larch import io as larch_io
 from larch.report import run_log_batch, run_log_manifest, run_logs
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch, _append_batch  # pyright: ignore[reportPrivateUsage]
-from larch.report import tokens
 
 from test_support import RecordingRunner as _RecordingRunner, RunCall, make_run_context
 from tests.support.stall_recovery import frozen_normalized_outcome
@@ -54,40 +53,6 @@ def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:
         manifest_path=str(tmp_path / "manifest.json"),
         state_file=state_file,
     )
-
-
-def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep Python-only checkpoint tests isolated from the Rust bootstrap."""
-    original_run = subprocess.run
-
-    def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if "run-log" not in argv or "manifest" not in argv:
-            return original_run(argv, **kwargs)  # type: ignore[arg-type]
-        root = Path(argv[argv.index("--log-root") + 1])
-        skill = argv[argv.index("--skill") + 1]
-        run_id = argv[argv.index("--run-id") + 1]
-        updates: dict[str, object] = {}
-        for index, value in enumerate(argv):
-            if value != "--field":
-                continue
-            key, raw = argv[index + 1].split("=", 1)
-            if raw == "true":
-                updates[key] = True
-            elif raw == "false":
-                updates[key] = False
-            elif raw == "null":
-                updates[key] = None
-            elif raw.lstrip("-").isdigit():
-                updates[key] = int(raw)
-            else:
-                updates[key] = raw
-        run_log_manifest._update_manifest_v2(  # pyright: ignore[reportPrivateUsage]  # checkpoint unit-test boundary double; Rust CLI parity is covered separately.
-            path=root / skill / run_id / "manifest.json",
-            updates=updates,
-        )
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", run_manifest_in_process)
 
 
 def test_validate_run_id_slug() -> None:
@@ -255,32 +220,6 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert calls["nofollow"] is True
 
 
-def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
-    log_dir = tmp_path / "larch-logs" / "implement" / "recovered-run"
-    log_dir.mkdir(parents=True)
-    ctx = _ctx(tmp_path).with_(run_id="../invalid")
-    manifest = run_log_manifest.load_or_recover_manifest(ctx)
-    assert manifest.run_id == ""
-
-
-def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=lost-run\nISSUE_NUMBER=123\n", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    recovered = run_log_manifest.load_or_recover_manifest_checked(ctx)
-    assert recovered.recovery_ok
-    assert recovered.manifest.status == config.MANIFEST_STATUS_PARTIAL
-    assert recovered.manifest.extra == {"recovery_reason": "manifest_lost_mid_run"}
-    assert recovered.manifest.reserved["issue_number"] == 123
-    manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 2
-    assert manifest["run_id"] == "lost-run"
-    assert manifest["issue_number"] == 123
-    assert manifest["steps_ran"] == {}
-    assert manifest["issue_number"] == 123
-
-
 def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
@@ -364,19 +303,6 @@ def test_manifest_status_read_only_uses_effective_run_id_path(tmp_path: Path) ->
     assert run_log_manifest.manifest_status(ctx) == ""
 
 
-def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
-    state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    _ = (run_dir / "execution-issues.ndjson").write_text("{}\n", encoding="utf-8")
-    _ = (run_dir / "manifest.json").write_text("{not-json", encoding="utf-8")
-    ctx = _ctx(tmp_path, str(state))
-    manifest = run_log_manifest.load_or_recover_manifest(ctx)
-    assert manifest.run_id == "run-abc"
-    assert manifest.steps_ran.get("recovered") is True
-
-
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
     assert not run_logs.path_under_repo(repo_root=tmp_path, rel_path="../outside")
     assert run_logs.path_under_repo(repo_root=tmp_path, rel_path="docs/plan.md")
@@ -394,55 +320,10 @@ def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
     assert not run_log_batch.is_placeholder_run_id("")
 
 
-def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx)
-    manifest = run_log_manifest.update_manifest(ctx, version="9", updated_at="now")
-    assert manifest.version == "9"
-    assert manifest.updated_at == "now"
-    assert "version" not in manifest.steps_ran
-
-
 def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_bytes(b"\xff\xfe")
     assert run_log_manifest.read_state_kv(state_file=str(state), key="RUN_ID") == ""
-
-
-def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs" / "implement"
-    old = log_root / "run-old"
-    new = log_root / "run-abc"
-    old.mkdir(parents=True)
-    new.mkdir(parents=True)
-    _ = (old / "manifest.json").write_text(
-        json.dumps({"status": "partial", "version": "1", "run_id": "run-old", "steps_ran": {}}),
-        encoding="utf-8",
-    )
-    _ = (new / "manifest.json").write_text(
-        json.dumps({"status": "partial", "version": "1", "run_id": "run-abc", "steps_ran": {}}),
-        encoding="utf-8",
-    )
-    ctx = _ctx(tmp_path, state_file=None)
-    manifest = run_log_manifest.load_or_recover_manifest(ctx)
-    assert manifest.run_id == "run-abc"
-
-
-def test_load_or_recover_manifest_fails_closed_without_valid_run_id(
-    tmp_path: Path,
-) -> None:
-    newest = tmp_path / "larch-logs" / "implement" / "run-new"
-    newest.mkdir(parents=True)
-    _ = (newest / "manifest.json").write_text(
-        json.dumps(
-            {"status": "partial", "version": "1", "run_id": "run-new", "steps_ran": {}},
-        ),
-        encoding="utf-8",
-    )
-    ctx = _ctx(tmp_path).with_(run_id="../bad")
-    manifest = run_log_manifest.load_or_recover_manifest(ctx)
-    assert manifest.run_id == ""
-    assert not manifest.steps_ran
 
 
 def test_rebase_under_tmpdir_handles_session_local_absolute_path(
@@ -1196,16 +1077,7 @@ def test_design_completed_step3_without_plan_review_does_not_reach_round_require
     assert missing == []
 
 
-def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx, run_id="run-abc")
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 2
-    assert data["skill"] == "implement"
-
-
-def test_manifest_v2_round_trip_preserves_reserved_and_extension_bytes() -> None:
+def test_manifest_v2_reader_retains_reserved_and_extension_fields() -> None:
     original = {
         "schema_version": 2,
         "skill": "implement",
@@ -1230,81 +1102,10 @@ def test_manifest_v2_round_trip_preserves_reserved_and_extension_bytes() -> None
     }
 
     manifest = run_log_manifest.Manifest.from_json(original)
-    rendered = manifest.to_json(existing=original)
 
-    assert rendered == original
-    text = json.dumps(rendered, indent=2, sort_keys=True) + "\n"
-    assert '"created_at"' not in text
-    assert '"version"' not in text
     assert manifest.reserved["stalled_at_step"] == "5"
+    assert manifest.reserved["pr_number"] == 9
     assert manifest.extra == {"extension_key": "kept"}
-
-
-def test_update_manifest_routes_reserved_keys_to_top_level(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx, run_id="run-abc")
-
-    updated = run_log_manifest.update_manifest(ctx, stalled_at_step="7", pr_number=123, custom_extension="yes")
-
-    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert data["stalled_at_step"] == "7"
-    assert data["pr_number"] == 123
-    assert data["custom_extension"] == "yes"
-    assert updated.reserved["stalled_at_step"] == "7"
-    assert updated.reserved["pr_number"] == 123
-    assert updated.extra == {"custom_extension": "yes"}
-
-
-def test_manifest_v2_registry_keeps_parse_and_emit_filters_distinct() -> None:
-    original: dict[str, Any] = {
-        "schema_version": 2,
-        "status": "partial",
-        "skill": "implement",
-        "run_id": "run-1",
-        "steps_ran": {},
-        "started_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "stalled_at_step": "old",
-    }
-
-    manifest = run_log_manifest.Manifest.from_json(original)
-    assert manifest.extra is None
-    promoted = run_log_manifest.Manifest(
-        status=manifest.status,
-        version=manifest.version,
-        run_id=manifest.run_id,
-        steps_ran=manifest.steps_ran,
-        created_at=manifest.created_at,
-        updated_at=manifest.updated_at,
-        extra={"stalled_at_step": "new"},
-        reserved={},
-    ).to_json(existing=original)
-
-    assert promoted["stalled_at_step"] == "new"
-
-
-def test_synthesize_v2_main_model_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
-    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-4-6")
-    data = run_log_manifest.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
-    assert data["model_roster"]["main"] == "claude-sonnet-4-6"
-
-
-def test_synthesize_v2_main_model_from_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
-    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
-    monkeypatch.setattr(tokens, "read_main_model", lambda: "claude-opus-4-8")
-    data = run_log_manifest.Manifest.synthesize_v2(skill="design", run_id="r").to_json(existing=None)
-    assert data["model_roster"]["main"] == "claude-opus-4-8"
-
-
-def test_synthesize_v2_main_model_unknown_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
-    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
-    monkeypatch.setattr(tokens, "read_main_model", lambda: "")
-    data = run_log_manifest.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
-    assert data["model_roster"]["main"] == "unknown"
 
 
 # pyright: reportUnusedCallResult=false

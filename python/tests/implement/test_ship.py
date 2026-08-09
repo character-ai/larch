@@ -74,38 +74,14 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
-def _stub_rust_manifest_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep ship orchestration tests isolated from the Rust bootstrap."""
-    original_run = subprocess.run
-
-    def run_manifest_in_process(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if "run-log" not in argv or "manifest" not in argv:
-            return original_run(argv, **kwargs)  # type: ignore[arg-type]
-        root = Path(argv[argv.index("--log-root") + 1])
-        skill = argv[argv.index("--skill") + 1]
-        run_id = argv[argv.index("--run-id") + 1]
-        updates: dict[str, object] = {}
-        for index, value in enumerate(argv):
-            if value != "--field":
-                continue
-            key, raw = argv[index + 1].split("=", 1)
-            if raw == "true":
-                updates[key] = True
-            elif raw == "false":
-                updates[key] = False
-            elif raw == "null":
-                updates[key] = None
-            elif raw.lstrip("-").isdigit():
-                updates[key] = int(raw)
-            else:
-                updates[key] = raw
-        run_log_manifest._update_manifest_v2(  # pyright: ignore[reportPrivateUsage]  # ship orchestration boundary double; Rust CLI parity is covered separately.
-            path=root / skill / run_id / "manifest.json",
-            updates=updates,
-        )
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", run_manifest_in_process)
+def _write_partial_run_manifest(tmp_path: Path) -> Path:
+    path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        '{"schema_version":2,"status":"partial","run_id":"run-abc","steps_ran":{}}\n',
+        encoding="utf-8",
+    )
+    return path
 
 
 def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_resume.ResumePlan:
@@ -1365,7 +1341,6 @@ def test_happy_path_stage_order(
         "refresh_postmerge_snapshot",
         lambda *_a, **_k: order.append("flush-post") or run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
     monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: order.append("comment"))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: order.append("state"))
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -1413,9 +1388,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyP
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    ctx = _ctx(tmp_path)
-    _ = run_log_manifest.init_run(ctx)
-    _stub_rust_manifest_command(monkeypatch)
+    _ = _write_partial_run_manifest(tmp_path)
     flush_calls: list[bool] = []
 
     def capturing_flush(
@@ -1467,7 +1440,6 @@ def test_straight_merge_green_ci_single_pre_pr_flush(monkeypatch: pytest.MonkeyP
         "refresh_postmerge_snapshot",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(
@@ -1544,8 +1516,7 @@ def _prepare_recovered_stalled_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         f"REPO=o/r\nMERGE=true\nDRAFT={'true' if draft else 'false'}\nSTALL_TRACKING=false\n",
         encoding="utf-8",
     )
-    ctx = _ctx(tmp_path, state_file=str(state_file))
-    _ = run_log_manifest.init_run(ctx)
+    _ = _write_partial_run_manifest(tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _ = (run_dir / "final-summary.md").write_text(
         "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n",
@@ -1809,7 +1780,6 @@ def test_post_ensure_fresh_run_is_push_only_no_reflush(monkeypatch: pytest.Monke
         "refresh_postmerge_snapshot",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
 
     def fake_flush(
         *_a: object,
@@ -7486,7 +7456,6 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
         "refresh_postmerge_snapshot",
         lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
     monkeypatch.setattr(ship, "_write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")

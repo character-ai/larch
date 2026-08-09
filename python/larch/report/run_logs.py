@@ -6,20 +6,15 @@
 executes the verified bootstrap script, then translates the command's exit code
 into the `ValueError` / `OSError` contract its Python callers already handle.
 No run-log entry write is performed here.
-
-`log_manifest_update` remains a Python writer for the mutable manifest fields;
-it is not part of this leaf's cutover.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from larch.core import proc
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
-from larch.report import run_log_manifest
 
 
 # The Rust owner exits 1 for a refusal (Python's historical `ValueError`) and 2
@@ -220,17 +215,6 @@ def log_append_failure(
         arguments.append("--redact")
     envelope = _run_run_log(arguments)
     return LogAppendFailureResult(log=log, appended=envelope.get("APPENDED") == "true")
-
-
-def log_manifest_update(
-    *, log_root: Path, skill: str, run_id: str, updates: dict[str, Any]
-) -> Path:
-    """Apply mutable manifest fields and return the updated manifest path."""
-    path = run_log_manifest._manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)  # noqa: SLF001 - residual facade delegates to the manifest owner's private helper.
-    if not path.is_file():
-        raise ValueError(f"manifest not found: {path}")
-    _ = run_log_manifest._update_manifest_v2(path=path, updates=updates)  # noqa: SLF001 - residual facade delegates to the manifest owner's private helper.
-    return path
 
 
 def path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
