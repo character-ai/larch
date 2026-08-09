@@ -21,6 +21,7 @@ use crate::argparse_compat::python_io_error;
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
+mod analyze_bugs_commands;
 mod analyze_issues_commands;
 mod argparse_compat;
 mod bgjob_adapt;
@@ -200,6 +201,9 @@ enum Domain {
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
+    /// Bounded filed-bug evidence and verification-ledger commands.
+    #[command(subcommand, name = "analyze-bugs")]
+    AnalyzeBugs(AnalyzeBugsCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -423,6 +427,16 @@ enum AnalyzeIssuesCommand {
     /// Render the cumulative-growth chart from a bucketed TSV.
     #[command(name = "render-chart", disable_help_flag = true)]
     RenderChart(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum AnalyzeBugsCommand {
+    /// Fetch bounded, synced-main bug-fix evidence bundles.
+    #[command(disable_help_flag = true)]
+    Prefetch(RawCompatibilityArguments),
+    /// Reconcile or ingest the append-only bug-verification ledger.
+    #[command(disable_help_flag = true)]
+    Ledger(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1581,6 +1595,14 @@ fn run(
             }
             AnalyzeIssuesCommand::RenderChart(arguments) => {
                 rendering_commands::render_chart(&arguments.arguments)
+            }
+        }),
+        Domain::AnalyzeBugs(command) => Ok(match command {
+            AnalyzeBugsCommand::Prefetch(arguments) => {
+                analyze_bugs_commands::prefetch(&arguments.arguments)
+            }
+            AnalyzeBugsCommand::Ledger(arguments) => {
+                analyze_bugs_commands::ledger(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {

@@ -1,8 +1,19 @@
 //! Trusted `gix` implementation of the core repository metadata read port.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+};
 
-use gix::bstr::ByteSlice;
+use gix::diff::blob::{
+    Algorithm, InternedInput, UnifiedDiff, diff_with_slider_heuristics,
+    unified_diff::{ConsumeBinaryHunk, ContextSize},
+};
+use gix::{
+    bstr::{BStr, BString, ByteSlice, ByteVec},
+    traverse::tree::{Visit, visit::Action},
+};
 use larch_core::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
     ConflictStage, GitMode, GitPath, Head, IgnoreKind, IgnoredEntry, IndexFlags, Object,
@@ -17,6 +28,124 @@ use larch_core::{
 pub struct GixRepository {
     git_dir: PathBuf,
     location: RepositoryLocation,
+}
+
+/// Bounded path recorder for a `gix` tree traversal.
+///
+/// `gix`'s convenient `files()` preset materializes every entry before the
+/// caller can enforce a limit.  Evidence collectors need the limit to stop
+/// traversal itself, not merely reject a completed repository-wide walk.
+struct BoundedFileCollector {
+    limit: usize,
+    visited: usize,
+    exceeded: bool,
+    path: BString,
+    pending_paths: VecDeque<BString>,
+    files: Vec<GitPath>,
+}
+
+impl BoundedFileCollector {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            visited: 0,
+            exceeded: false,
+            path: BString::default(),
+            pending_paths: VecDeque::default(),
+            files: Vec::new(),
+        }
+    }
+
+    fn push_component(&mut self, component: &BStr) {
+        if !component.is_empty() {
+            if !self.path.is_empty() {
+                self.path.push(b'/');
+            }
+            self.path.push_str(component);
+        }
+    }
+
+    fn pop_component(&mut self) {
+        if let Some(position) = self.path.rfind_byte(b'/') {
+            self.path.resize(position, 0);
+        } else {
+            self.path.clear();
+        }
+    }
+
+    fn observe(&mut self, entry: &gix::objs::tree::EntryRef<'_>) -> Action {
+        if self.visited == self.limit {
+            self.exceeded = true;
+            return ControlFlow::Break(());
+        }
+        self.visited += 1;
+        if entry.mode.is_blob_or_symlink() {
+            self.files.push(GitPath::new(self.path.to_vec()));
+        }
+        ControlFlow::Continue(true)
+    }
+}
+
+impl Visit for BoundedFileCollector {
+    fn pop_back_tracked_path_and_set_current(&mut self) {
+        self.path = self.pending_paths.pop_back().unwrap_or_default();
+    }
+
+    fn pop_front_tracked_path_and_set_current(&mut self) {
+        self.path = self.pending_paths.pop_front().unwrap_or_default();
+    }
+
+    fn push_back_tracked_path_component(&mut self, component: &BStr) {
+        self.push_component(component);
+        self.pending_paths.push_back(self.path.clone());
+    }
+
+    fn push_path_component(&mut self, component: &BStr) {
+        self.push_component(component);
+    }
+
+    fn pop_path_component(&mut self) {
+        self.pop_component();
+    }
+
+    fn visit_tree(&mut self, entry: &gix::objs::tree::EntryRef<'_>) -> Action {
+        self.observe(entry)
+    }
+
+    fn visit_nontree(&mut self, entry: &gix::objs::tree::EntryRef<'_>) -> Action {
+        self.observe(entry)
+    }
+}
+
+/// Render a bounded caller-owned blob pair as a unified evidence diff.
+///
+/// Binary or non-UTF-8 inputs retain a stable text marker so consumers can
+/// mark the evidence as incomplete without interpreting repository data.
+///
+/// # Errors
+///
+/// Returns a stable repository error if `gix` cannot render the textual diff.
+pub fn unified_blob_diff(before: &[u8], after: &[u8]) -> Result<String, RepositoryError> {
+    if before == after {
+        return Ok(String::new());
+    }
+    if before.contains(&0)
+        || after.contains(&0)
+        || std::str::from_utf8(before).is_err()
+        || std::str::from_utf8(after).is_err()
+    {
+        return Ok("Binary files differ\n".to_owned());
+    }
+    let input = InternedInput::new(before, after);
+    let diff = diff_with_slider_heuristics(Algorithm::Histogram, &input);
+    UnifiedDiff::new(
+        &diff,
+        &input,
+        ConsumeBinaryHunk::new(String::new(), "\n"),
+        ContextSize::symmetrical(1),
+    )
+    .consume()
+    .map_err(|_| error(RepositoryErrorKind::CorruptRepository))
 }
 
 impl GixRepository {
@@ -92,6 +221,41 @@ impl GixRepository {
         paths.sort();
         paths.dedup();
         Ok(paths)
+    }
+
+    /// Return file-like paths (regular files and symlinks) reachable from one commit.
+    ///
+    /// The caller supplies an explicit upper bound so evidence collectors do
+    /// not accidentally turn a repository-wide search into unbounded work.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed hash, missing-object, object-type, traversal, or bound
+    /// failure without exposing repository path details.
+    pub fn files_at_commit(
+        &self,
+        commit: &ObjectId,
+        limit: usize,
+    ) -> Result<Vec<GitPath>, RepositoryError> {
+        let repository = self.local()?;
+        let commit = repository
+            .find_commit(gix_id(commit, repository.object_hash())?)
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+        let tree = commit
+            .tree()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let mut entries = BoundedFileCollector::new(limit);
+        if tree.traverse().breadthfirst(&mut entries).is_err() {
+            return Err(error(if entries.exceeded {
+                RepositoryErrorKind::InvalidInput
+            } else {
+                RepositoryErrorKind::CorruptRepository
+            }));
+        }
+        if entries.exceeded {
+            return Err(error(RepositoryErrorKind::InvalidInput));
+        }
+        Ok(entries.files)
     }
 
     /// Return local status for a compatibility command without interpreting diff text.
@@ -724,7 +888,7 @@ impl RepositoryRead for GixRepository {
         else {
             return Ok(None);
         };
-        if !entry.mode().is_blob() {
+        if !entry.mode().is_blob_or_symlink() {
             return Err(error(RepositoryErrorKind::ObjectType));
         }
         entry

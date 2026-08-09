@@ -423,7 +423,10 @@ fn stash_refusal(repository: &GixRepository) -> Option<ExitCode> {
 }
 
 /// Fetch `origin main`, retrying across the shared transient backoff schedule.
-fn fetch_origin_main(working_directory: &Path) -> bool {
+///
+/// This is also the one synchronized-main refresh used by bounded evidence
+/// collectors before they read immutable repository objects.
+pub fn fetch_origin_main(working_directory: &Path) -> bool {
     for attempt in 1..=TRANSIENT_ATTEMPTS {
         match run_git(working_directory, &PreflightGit::FetchOriginMain) {
             GitOutcome::Succeeded => return true,

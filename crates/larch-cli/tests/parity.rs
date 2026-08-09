@@ -437,6 +437,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new(
+        "clean-install-analyze-bugs-ledger",
+        "analyze-bugs",
+        "ledger",
+    ),
+    CleanInstallCase::new(
+        "clean-install-analyze-bugs-prefetch",
+        "analyze-bugs",
+        "prefetch",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-issues-analyze",
         "analyze-issues",
         "analyze",

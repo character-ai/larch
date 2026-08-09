@@ -1062,7 +1062,8 @@ pub fn stage_append_batch(
     Ok(path)
 }
 
-fn acquire_append_lock(lock: &Path) -> Result<(), String> {
+/// Acquire the cross-platform directory mutex shared by atomic append writers.
+pub fn acquire_append_lock(lock: &Path) -> Result<(), String> {
     for attempt in 0..APPEND_LOCK_ATTEMPTS {
         match fs::create_dir(lock) {
             Ok(()) => return Ok(()),

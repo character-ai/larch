@@ -60,7 +60,7 @@ pub use git::{
     GitUrl, GixRepository, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
     PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest, ResetMode, ResetRequest,
     RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
-    TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error,
+    TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error, unified_blob_diff,
 };
 pub use process::{
     NoopProcessObserver, OpenFileHolderStatus, ProcessFileRouting, ProcessOutputRouting,

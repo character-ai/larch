@@ -30,7 +30,7 @@ pub use ops::{
     RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
     TagMutationRequest, VersionRequest, WorktreeRequest,
 };
-pub use repository::GixRepository;
+pub use repository::{GixRepository, unified_blob_diff};
 pub use validate::{
     GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl,
 };
