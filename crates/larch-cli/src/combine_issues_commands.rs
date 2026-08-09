@@ -2242,6 +2242,7 @@ mod tests {
         values.iter().map(OsString::from).collect()
     }
 
+    #[allow(clippy::needless_pass_by_value)] // Inline JSON fixtures keep the request sequence readable.
     fn response(status: u16, body: Value) -> IssueServiceExchange {
         IssueServiceExchange::any_json(status, body.to_string()).expect("valid response")
     }
@@ -2358,6 +2359,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)] // One compact malformed-input table proves each parser boundary.
     fn compatibility_helpers_refuse_malformed_documents() {
         assert_eq!(dispatch("unknown", &[]), ExitCode::from(2));
         assert!(issue_numbers("", "--issues").is_err());
@@ -2638,6 +2640,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // One ordered exchange sequence proves the apply checkpoints.
     fn apply_transfers_edges_before_closing_sources_and_reports_partial_transfers() {
         let temp = TempDir::new().expect("tempdir");
         let body = temp.path().join("body.md");
@@ -2766,6 +2769,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // Each failed checkpoint must prove that no source was closed.
     fn apply_fails_closed_across_each_live_checkpoint() {
         let temp = TempDir::new().expect("tempdir");
         let body = temp.path().join("body.md");
@@ -2879,6 +2883,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity, clippy::too_many_lines)] // Closure cases share the typed loopback sequence.
     fn close_commands_verify_sources_with_the_loopback_service() {
         let source = issue(1, 10, "source", "Source body", "open");
         let closed = issue(1, 10, "source", "Source body", "closed");
