@@ -543,6 +543,78 @@ fn completed_python_removal_rejects_registration_definition_imports_and_calls() 
 }
 
 #[test]
+fn completed_python_removals_preserve_findings_when_a_document_matches_multiple_entries() {
+    let repository = TempRepo::new();
+    let mut ledger = command_row_for(
+        "retired",
+        "run",
+        "larch.fixture",
+        "retired_main",
+        "rust",
+        "complete",
+        "complete",
+        "complete",
+    );
+    append_command(
+        &mut ledger,
+        &command_row_for(
+            "retired",
+            "status",
+            "larch.fixture",
+            "status_main",
+            "rust",
+            "complete",
+            "complete",
+            "complete",
+        ),
+    );
+    prepare(&repository, &ledger);
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"retired\", \"run\"): (\"larch.fixture\", \"retired_main\", False),\n    (\"retired\", \"status\"): (\"larch.fixture\", \"status_main\", False),\n}\n",
+    );
+    repository.write(
+        "python/larch/fixture.py",
+        b"def retired_main() -> int:\n    return 0\n\ndef status_main() -> int:\n    return 0\n\nRETIRED = retired_main()\nSTATUS = status_main()\n",
+    );
+    repository.write(
+        "python/larch/consumer.py",
+        b"from larch.fixture import retired_main as retired, status_main as status\n\nRETIRED = retired()\nSTATUS = status()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-present retired run: python/larch/fixture.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called retired run: python/larch/fixture.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-imported retired run: python/larch/consumer.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called retired run: python/larch/consumer.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-present retired status: python/larch/fixture.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called retired status: python/larch/fixture.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-imported retired status: python/larch/consumer.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called retired status: python/larch/consumer.py",
+        ))
+        .stderr("");
+}
+
+#[test]
 fn live_rust_command_requires_a_matching_clean_install_fixture() {
     let repository = TempRepo::new();
     prepare(
