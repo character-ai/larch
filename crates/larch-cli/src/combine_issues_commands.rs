@@ -34,15 +34,13 @@ use crate::{
 
 const USAGE_EXIT: u8 = 2;
 const ERROR_CHARS: usize = 500;
-const BUSY_PREFIXES: [&str; 8] = [
+const BUSY_PREFIXES: [&str; 6] = [
     "[DESIGNING] ",
     "[IMPLEMENTING] ",
     "[DONE] ",
     "[STALLED] ",
     "[DEBATING] ",
     "[DEBATED] ",
-    "[PLANNED] ",
-    "[IN PROGRESS] ",
 ];
 
 /// Dispatch one raw compatibility command from the clap boundary.
@@ -214,7 +212,13 @@ fn title_is_oos(title: &str) -> bool {
 }
 
 fn title_is_busy(title: &str) -> bool {
-    title.starts_with("[LOCKED]") || BUSY_PREFIXES.iter().any(|prefix| title.starts_with(prefix))
+    title.starts_with("[LOCKED]")
+        || BUSY_PREFIXES.iter().any(|prefix| title.starts_with(prefix))
+        || ["[PLANNED]", "[IN PROGRESS]"].iter().any(|prefix| {
+            title
+                .strip_prefix(prefix)
+                .is_some_and(|suffix| suffix.chars().next().is_some_and(char::is_whitespace))
+        })
 }
 
 const fn state_text(state: GitHubIssueState) -> &'static str {
@@ -456,7 +460,7 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
         })
         .collect();
     let count = filtered.len();
-    let mut file = match NamedTempFile::new_in("/tmp") {
+    let mut file = match NamedTempFile::with_prefix_in("combine-issues-", "/tmp") {
         Ok(file) => file,
         Err(error) => return failure(error.to_string()),
     };
@@ -1328,9 +1332,15 @@ fn plan_audit(arguments: &[OsString]) -> ExitCode {
             Err(error) => return failure(error),
         };
         let decisions_for_edge = decisions.get(&edge);
-        if existing.contains(&edge)
-            || ["rejected", "unresolved"].contains(&edge_decision(decisions_for_edge))
-        {
+        let rejected_or_unresolved = decisions_for_edge.is_some_and(|rows| {
+            rows.iter().any(|row| {
+                matches!(
+                    row.get("decision").and_then(Value::as_str),
+                    Some("rejected" | "unresolved")
+                )
+            })
+        });
+        if existing.contains(&edge) || rejected_or_unresolved {
             duplicate += 1;
             continue;
         }
@@ -2207,16 +2217,103 @@ fn close_batch(arguments: &[OsString], combined_mode: bool) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_edge, dependency_warning_code, issue_numbers, source_map, title_is_busy,
-        title_is_oos,
+        apply, bool_text, candidate_rows, classify_edge, close_sources, combined_comment,
+        combined_rows, dependency_entry, dependency_warning_code, dispatch, edges_from_file, fetch,
+        fetch_deps, issue_numbers, list_open, normal_edge, open_rows, plan_inherited, prose_audit,
+        read_json, records_by_edge, source_map, state_text, status_ok, title_is_busy, title_is_oos,
+        write_outcome,
     };
-    use serde_json::json;
-    use std::collections::{BTreeMap, BTreeSet};
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_core::GitHubIssueState;
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        ffi::OsString,
+        fs,
+        path::PathBuf,
+        process::ExitCode,
+        sync::Arc,
+    };
+    use tempfile::TempDir;
+
+    fn arguments(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    fn response(status: u16, body: Value) -> IssueServiceExchange {
+        IssueServiceExchange::any_json(status, body.to_string()).expect("valid response")
+    }
+
+    fn service(
+        exchanges: impl IntoIterator<Item = IssueServiceExchange>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        (factory, server)
+    }
+
+    fn issue(number: u64, id: u64, title: &str, body: &str, state: &str) -> Value {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        value["id"] = json!(id);
+        value["number"] = json!(number);
+        value["title"] = json!(title);
+        value["body"] = json!(body);
+        value["state"] = json!(state);
+        value["updated_at"] = json!("2026-07-19T00:00:00Z");
+        if state == "closed" {
+            value["closed_at"] = json!("2026-07-19T00:01:00Z");
+        }
+        value
+    }
+
+    fn comment(body: &str) -> Value {
+        let issue = issue(1, 10, "source", "", "open");
+        json!({
+            "id": 11,
+            "node_id": "C_11",
+            "url": "https://example.invalid/comments/11",
+            "html_url": "https://example.invalid/issues/1#issuecomment-11",
+            "body": body,
+            "user": issue["user"],
+            "created_at": "2026-07-19T00:00:00Z",
+            "updated_at": "2026-07-19T00:00:00Z"
+        })
+    }
+
+    fn write_json(temp: &TempDir, name: &str, value: &Value) -> String {
+        let path = temp.path().join(name);
+        fs::write(&path, serde_json::to_vec(value).expect("JSON fixture")).expect("write fixture");
+        path.to_string_lossy().into_owned()
+    }
+
+    fn fetch_snapshots() -> BTreeSet<PathBuf> {
+        fs::read_dir("/tmp")
+            .expect("read temporary directory")
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("combine-issues-"))
+            })
+            .collect()
+    }
 
     #[test]
     fn title_filter_keeps_designed_and_rejects_legacy_busy_titles() {
         assert!(!title_is_busy("[DESIGNED] ready"));
         assert!(title_is_busy("[IN PROGRESS] old run"));
+        assert!(title_is_busy("[IN PROGRESS]\told run"));
         assert!(title_is_busy("[LOCKED] no"));
         assert!(title_is_oos("[OOS]\tready"));
     }
@@ -2258,5 +2355,756 @@ mod tests {
             "exception"
         );
         assert_eq!(classify_edge((100, 5), &meta, &BTreeSet::new()).0, "safe");
+    }
+
+    #[test]
+    fn compatibility_helpers_refuse_malformed_documents() {
+        assert_eq!(dispatch("unknown", &[]), ExitCode::from(2));
+        assert!(issue_numbers("", "--issues").is_err());
+        assert!(issue_numbers("1,no", "--issues").is_err());
+        assert!(read_json("/tmp/larch-combine-missing.json", "fixture").is_err());
+        assert!(status_ok(&json!({"status":"failed"}), "fixture").is_err());
+        assert!(source_map(&json!({"zero": 1})).is_err());
+        assert!(source_map(&json!({"1": "not-a-number"})).is_err());
+        assert!(source_map(&json!({"1": []})).is_err());
+        assert!(normal_edge(None, "edge").is_err());
+        assert!(normal_edge(Some(&json!([1])), "edge").is_err());
+        assert!(normal_edge(Some(&json!([1, "no"])), "edge").is_err());
+        assert_eq!(state_text(GitHubIssueState::Closed), "closed");
+        assert_eq!(state_text(GitHubIssueState::All), "");
+        assert_eq!(bool_text(true), "true");
+        assert_eq!(bool_text(false), "false");
+
+        let open = open_rows(&json!([{}, {"number": 7}])).expect("tolerant open rows");
+        assert_eq!(open.len(), 1);
+        assert!(open_rows(&json!(true)).is_err());
+        assert!(combined_rows(&json!([1])).is_err());
+        assert!(combined_rows(&json!([{"number": 0}])).is_err());
+        assert!(combined_rows(&json!([{"number": 1, "source_issues": {}}])).is_err());
+
+        let dependencies = json!({"issues":[{"source_issue":3}, {"number":4}]});
+        assert!(dependency_entry(&dependencies, 3).is_some());
+        assert!(dependency_entry(&dependencies, 4).is_some());
+        assert!(dependency_entry(&json!({"issues": null}), 3).is_none());
+        assert!(records_by_edge(&json!({"records":[1]}), "records").is_err());
+        assert!(candidate_rows(&json!({"candidates":[1]}), "candidates").is_err());
+        assert!(edges_from_file(&json!({}), "edges").is_err());
+
+        let outcomes = vec![
+            json!({"phase":"different", "status":"written"}),
+            json!({"phase":"selected", "status":"other"}),
+        ];
+        assert_eq!(write_outcome(Some(&outcomes), &["selected"]), "missing");
+    }
+
+    #[test]
+    fn typed_fetchers_run_against_the_loopback_service() {
+        let before = fetch_snapshots();
+        let (github, server) = service([response(
+            200,
+            json!([issue(2, 20, "Ready", "Issue body", "open")]),
+        )]);
+        assert_eq!(
+            with_test_github_service(github, || fetch(&arguments(&["--repo", "o/r"]))),
+            ExitCode::SUCCESS
+        );
+        let created: Vec<PathBuf> = fetch_snapshots().difference(&before).cloned().collect();
+        assert_eq!(created.len(), 1, "fetch should publish one snapshot");
+        for path in created {
+            fs::remove_file(path).expect("remove fetch snapshot");
+        }
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let before = fetch_snapshots();
+        let (github, server) = service([response(
+            200,
+            json!([issue(4, 40, "[OOS] Ready", "Issue body", "open")]),
+        )]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                fetch(&arguments(&["--repo", "o/r", "--oos"]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let created: Vec<PathBuf> = fetch_snapshots().difference(&before).cloned().collect();
+        assert_eq!(created.len(), 1, "OOS fetch should publish one snapshot");
+        for path in created {
+            fs::remove_file(path).expect("remove OOS fetch snapshot");
+        }
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([response(404, json!({"message": "unavailable"}))]);
+        assert_eq!(
+            with_test_github_service(github, || fetch(&arguments(&["--repo", "o/r"]))),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([response(
+            200,
+            json!([issue(3, 30, "Ready", "Issue body", "open")]),
+        )]);
+        assert_eq!(
+            with_test_github_service(github, || { list_open(&arguments(&["--repo", "o/r"])) }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([response(200, json!({"unexpected": "object"}))]);
+        assert_eq!(
+            with_test_github_service(github, || { list_open(&arguments(&["--repo", "o/r"])) }),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([response(404, json!({"message": "not found"}))]);
+        assert_eq!(
+            with_test_github_service(github, || { list_open(&arguments(&["--repo", "o/r"])) }),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(
+                200,
+                json!([{"number": 7, "id": 70}, {"number": 5, "id": 50}]),
+            ),
+            response(200, json!([{"number": 9, "id": 90}])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                fetch_deps(&arguments(&["--repo", "o/r", "--issues", "1"]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let (github, server) = service([
+            response(200, json!({"unexpected": "object"})),
+            response(200, json!([])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                fetch_deps(&arguments(&["--repo", "o/r", "--issues", "1"]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let (github, server) = service([
+            response(404, json!({"message": "dependency endpoint missing"})),
+            response(200, json!([])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                fetch_deps(&arguments(&["--repo", "o/r", "--issues", "1"]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+    }
+
+    #[test]
+    fn inherited_plan_enriches_missing_blocker_metadata_with_the_typed_service() {
+        let temp = TempDir::new().expect("tempdir");
+        let deps = write_json(
+            &temp,
+            "deps.json",
+            &json!({"status":"ok","issues":{"1":{"blocked_by":[9],"blocking":[],"read_ok":true}}}),
+        );
+        let mapping = write_json(&temp, "mapping.json", &json!({"1":100}));
+        let open = write_json(&temp, "open.json", &json!({"status":"ok","issues":[]}));
+        let combined = write_json(
+            &temp,
+            "combined.json",
+            &json!([{"number":100,"title":"Combined","source_issues":[1]}]),
+        );
+        let (github, server) = service([response(200, issue(9, 90, "blocker", "", "open"))]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                plan_inherited(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--deps-file",
+                    &deps,
+                    "--source-to-combined-file",
+                    &mapping,
+                    "--open-issues-file",
+                    &open,
+                    "--combined-issues-file",
+                    &combined,
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+    }
+
+    #[test]
+    fn prose_audit_scans_typed_issue_and_comment_evidence() {
+        let temp = TempDir::new().expect("tempdir");
+        let open = write_json(
+            &temp,
+            "open.json",
+            &json!({"status":"ok","issues":[
+                {"number":1,"title":"one","state":"open"},
+                {"number":2,"title":"two","state":"open"},
+                {"number":3,"title":"three","state":"open"}
+            ]}),
+        );
+        let existing = write_json(&temp, "existing.json", &json!([]));
+        let mapping = write_json(&temp, "mapping.json", &json!({"1":100,"2":200,"3":300}));
+        let (github, server) = service([
+            response(200, issue(1, 10, "one", "Blocked by #2", "open")),
+            response(200, issue(2, 20, "two", "Blocks #1", "open")),
+            response(200, issue(3, 30, "three", "Blocks #1", "open")),
+            response(200, issue(100, 1000, "combined one", "", "open")),
+            response(200, issue(200, 2000, "combined two", "", "open")),
+            response(200, issue(300, 3000, "combined three", "", "open")),
+            response(200, json!([comment("Blocks #3")])),
+            response(200, json!([])),
+            response(200, json!([])),
+            response(200, json!([])),
+            response(200, json!([])),
+            response(200, json!([])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                prose_audit(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issues",
+                    "100,200,300",
+                    "--open-issues-file",
+                    &open,
+                    "--existing-edges-file",
+                    &existing,
+                    "--source-to-combined-file",
+                    &mapping,
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 12);
+
+        let empty_open = write_json(
+            &temp,
+            "empty-open.json",
+            &json!({"status":"ok","issues":[]}),
+        );
+        let empty_mapping = write_json(&temp, "empty-mapping.json", &json!({}));
+        let (github, server) = service([response(404, json!({"message": "not found"}))]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                prose_audit(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issues",
+                    "100",
+                    "--open-issues-file",
+                    &empty_open,
+                    "--existing-edges-file",
+                    &existing,
+                    "--source-to-combined-file",
+                    &empty_mapping,
+                ]))
+            }),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(404, json!({"message": "comments unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                prose_audit(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issues",
+                    "100",
+                    "--open-issues-file",
+                    &empty_open,
+                    "--existing-edges-file",
+                    &existing,
+                    "--source-to-combined-file",
+                    &empty_mapping,
+                ]))
+            }),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+    }
+
+    #[test]
+    fn apply_transfers_edges_before_closing_sources_and_reports_partial_transfers() {
+        let temp = TempDir::new().expect("tempdir");
+        let body = temp.path().join("body.md");
+        fs::write(&body, "Combined body\n").expect("write body");
+        let body = body.to_string_lossy().into_owned();
+        let combined = issue(100, 1000, "Combined", "Combined body\n", "open");
+        let source = issue(1, 10, "source", "Source body", "open");
+        let closed = issue(1, 10, "source", "Source body", "closed");
+        let note = combined_comment(1, 100);
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, combined.clone()),
+            response(200, json!([])),
+            response(201, json!({})),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, source),
+            response(201, comment(&note)),
+            response(200, closed),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                apply(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--title",
+                    "Combined",
+                    "--body-file",
+                    &body,
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let requests = server.finish().expect("stub finished");
+        assert_eq!(requests.len(), 10);
+        assert_eq!(
+            requests[1].method, "POST",
+            "create follows dependency reads"
+        );
+        assert_eq!(requests[3].method, "POST", "edge transfer is a mutation");
+        assert_eq!(requests[8].method, "POST", "source close records a comment");
+        assert_eq!(
+            requests[9].method, "PATCH",
+            "source closes after edge read-back"
+        );
+
+        let (github, server) = service([response(201, combined.clone())]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                apply(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--title",
+                    "Combined",
+                    "--body-file",
+                    &body,
+                    "--source-issues",
+                    "1",
+                    "--defer-close",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, combined),
+            response(200, json!([])),
+            response(404, json!({"message": "dependency endpoint unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                apply(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--title",
+                    "Combined",
+                    "--body-file",
+                    &body,
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let requests = server.finish().expect("stub finished");
+        assert_eq!(
+            requests.len(),
+            4,
+            "partial transfer must not close its source"
+        );
+        assert!(requests.iter().all(|request| request.method != "PATCH"));
+
+        let (github, server) = service([
+            response(200, json!([])),
+            response(201, issue(101, 1010, "Combined", "Combined body\n", "open")),
+            response(200, json!([])),
+            response(200, json!([{"number": 9, "id": 90, "state": "open"}])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                apply(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--title",
+                    "Combined",
+                    "--body-file",
+                    &body,
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let requests = server.finish().expect("stub finished");
+        assert_eq!(requests.len(), 4);
+        assert!(requests.iter().all(|request| request.method != "PATCH"));
+    }
+
+    #[test]
+    fn apply_fails_closed_across_each_live_checkpoint() {
+        let temp = TempDir::new().expect("tempdir");
+        let body = temp.path().join("body.md");
+        fs::write(&body, "Combined body\n").expect("write body");
+        let body = body.to_string_lossy().into_owned();
+        let apply_args = [
+            "--repo",
+            "o/r",
+            "--title",
+            "Combined",
+            "--body-file",
+            body.as_str(),
+            "--source-issues",
+            "1",
+            "--operator-invoked",
+        ];
+
+        assert_eq!(
+            apply(&arguments(&[
+                "--repo",
+                "o/r",
+                "--title",
+                "Combined",
+                "--body-file",
+                &body,
+                "--source-issues",
+                "1",
+            ])),
+            ExitCode::FAILURE
+        );
+
+        let (github, server) = service([response(500, json!({"message": "unavailable"}))]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(200, json!([])),
+            response(500, json!({"message": "create unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::FAILURE
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, issue(102, 1020, "Combined", "Combined body\n", "open")),
+            response(200, json!([])),
+            response(201, json!({})),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 6);
+
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, issue(103, 1030, "Combined", "Combined body\n", "open")),
+            response(200, json!([])),
+            response(201, json!({})),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(500, json!({"message": "read-back unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 6);
+
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, issue(104, 1040, "Combined", "Combined body\n", "open")),
+            response(200, json!([])),
+            response(201, json!({})),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(500, json!({"message": "source dependencies unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 7);
+
+        let note = combined_comment(1, 105);
+        let (github, server) = service([
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(201, issue(105, 1050, "Combined", "Combined body\n", "open")),
+            response(200, json!([])),
+            response(201, json!({})),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, issue(1, 10, "source", "", "open")),
+            response(201, comment(&note)),
+            response(500, json!({"message": "close unavailable"})),
+            response(200, issue(1, 10, "source", "", "open")),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || apply(&arguments(&apply_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 11);
+    }
+
+    #[test]
+    fn close_commands_verify_sources_with_the_loopback_service() {
+        let source = issue(1, 10, "source", "Source body", "open");
+        let closed = issue(1, 10, "source", "Source body", "closed");
+        let note = combined_comment(1, 100);
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, source.clone()),
+            response(200, json!([{"number": 3, "id": 30}])),
+            response(200, source.clone()),
+            response(201, comment(&note)),
+            response(200, closed.clone()),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                close_sources(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issue",
+                    "100",
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let requests = server.finish().expect("stub finished");
+        assert_eq!(requests.len(), 7);
+        assert_eq!(requests[5].method, "POST");
+        assert_eq!(requests[6].method, "PATCH");
+
+        let (github, server) = service([
+            response(200, source.clone()),
+            response(200, source),
+            response(200, closed),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                super::close_stale(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--issues",
+                    "1",
+                    "--reason",
+                    "completed",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        let requests = server.finish().expect("stub finished");
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[2].method, "PATCH");
+
+        let (github, server) = service([response(200, issue(100, 1000, "combined", "", "closed"))]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                close_sources(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issue",
+                    "100",
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([])),
+            response(200, issue(1, 10, "[IN PROGRESS] source", "", "open")),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                close_sources(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issue",
+                    "100",
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 3);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([])),
+            response(200, issue(1, 10, "source", "", "open")),
+            response(200, json!([{"number": 9, "id": 90, "state": "open"}])),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                close_sources(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issue",
+                    "100",
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 4);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([])),
+            response(200, issue(1, 10, "source", "", "open")),
+            response(404, json!({"message": "dependency endpoint unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || {
+                close_sources(&arguments(&[
+                    "--repo",
+                    "o/r",
+                    "--combined-issue",
+                    "100",
+                    "--source-issues",
+                    "1",
+                    "--operator-invoked",
+                ]))
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 4);
+
+        assert_eq!(
+            close_sources(&arguments(&[
+                "--repo",
+                "o/r",
+                "--combined-issue",
+                "100",
+                "--source-issues",
+                "1",
+            ])),
+            ExitCode::FAILURE
+        );
+
+        let close_args = [
+            "--repo",
+            "o/r",
+            "--combined-issue",
+            "100",
+            "--source-issues",
+            "1",
+            "--operator-invoked",
+        ];
+        let (github, server) = service([response(404, json!({"message": "not found"}))]);
+        assert_eq!(
+            with_test_github_service(github, || close_sources(&arguments(&close_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(404, json!({"message": "dependency endpoint unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || close_sources(&arguments(&close_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([])),
+            response(404, json!({"message": "source unavailable"})),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || close_sources(&arguments(&close_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 3);
+
+        let (github, server) = service([
+            response(200, issue(100, 1000, "combined", "", "open")),
+            response(200, json!([])),
+            response(200, issue(1, 10, "source", "", "closed")),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || close_sources(&arguments(&close_args))),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 3);
+
+        let stale_args = [
+            "--repo",
+            "o/r",
+            "--issues",
+            "1",
+            "--reason",
+            "not planned",
+            "--operator-invoked",
+        ];
+        let (github, server) = service([
+            response(200, issue(1, 10, "source", "", "open")),
+            response(200, issue(1, 10, "source", "", "closed")),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || { super::close_stale(&arguments(&stale_args)) }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let (github, server) = service([
+            response(200, issue(1, 10, "source", "", "open")),
+            response(200, issue(1, 10, "source", "", "open")),
+            response(500, json!({"message": "close unavailable"})),
+            response(200, issue(1, 10, "source", "", "open")),
+        ]);
+        assert_eq!(
+            with_test_github_service(github, || { super::close_stale(&arguments(&stale_args)) }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(server.finish().expect("stub finished").len(), 4);
     }
 }

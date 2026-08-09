@@ -168,6 +168,22 @@ impl OctocrabGitHubService {
         }
     }
 
+    /// Construct a loopback-only test client from one supplied base URL.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_test_base(base_url: &str) -> Self {
+        let client = Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri(base_url)
+            .expect("test API base URI")
+            .upload_uri(base_url)
+            .expect("test upload base URI")
+            .build()
+            .expect("test client");
+        Self::with_test_client(client)
+    }
+
     /// Acquire the sole supported credential from `gh` and construct one hardened client.
     ///
     /// # Errors

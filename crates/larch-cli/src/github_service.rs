@@ -12,6 +12,23 @@ use larch_adapters::{
 };
 use std::env;
 
+#[cfg(test)]
+use std::{cell::RefCell, sync::Arc};
+
+#[cfg(test)]
+type TestServiceFactory = Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>;
+
+#[cfg(test)]
+std::thread_local! {
+    /// Per-test substitute for the process-built GitHub service.
+    ///
+    /// Command-unit tests use a loopback-only typed client to exercise the
+    /// same command path without making credential or network calls.  The
+    /// value is thread-local because Rust runs independent unit tests in
+    /// parallel.
+    static TEST_SERVICE: RefCell<Option<TestServiceFactory>> = const { RefCell::new(None) };
+}
+
 /// Why a GitHub operation did not produce a result.
 ///
 /// Callers that report a setup failure differently from a service refusal —
@@ -43,6 +60,19 @@ impl ServiceFailure {
 pub fn with_github_service<T>(
     operation: impl AsyncFnOnce(&OctocrabGitHubService, &Cancellation) -> Result<T, String>,
 ) -> Result<T, ServiceFailure> {
+    #[cfg(test)]
+    if let Some(factory) = TEST_SERVICE.with(|slot| slot.borrow().clone()) {
+        let runtime = LarchRuntime::new().map_err(|error| {
+            ServiceFailure::Setup(format!("cannot initialize larch runtime: {error}"))
+        })?;
+        return runtime.block_on(async {
+            let service = factory();
+            let cancellation = Cancellation::new();
+            operation(&service, &cancellation)
+                .await
+                .map_err(ServiceFailure::Operation)
+        });
+    }
     let working_directory = env::current_dir().map_err(|error| {
         ServiceFailure::Setup(format!("cannot resolve current directory: {error}"))
     })?;
@@ -58,6 +88,23 @@ pub fn with_github_service<T>(
         operation(&service, &cancellation)
             .await
             .map_err(ServiceFailure::Operation)
+    })
+}
+
+/// Run one command-unit-test action with a loopback-only GitHub service.
+///
+/// The substitute exists only in the test build; released command paths still
+/// acquire their sole credential through `gh auth token --hostname github.com`.
+#[cfg(test)]
+pub fn with_test_github_service<T>(factory: TestServiceFactory, action: impl FnOnce() -> T) -> T {
+    TEST_SERVICE.with(|slot| {
+        assert!(
+            slot.replace(Some(factory)).is_none(),
+            "a command test cannot nest GitHub service substitutes"
+        );
+        let outcome = action();
+        let _ = slot.replace(None);
+        outcome
     })
 }
 
