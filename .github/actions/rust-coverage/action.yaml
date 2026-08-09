@@ -414,11 +414,16 @@ runs:
         }
 
         workspace_targets="$RUNNER_TEMP/coverage-target-workspace-targets.txt"
+        # Custom build scripts use the generic build_script_build filename,
+        # which third-party dependencies also use. cargo clean owns their
+        # provenance cleanup; inspect only uniquely named workspace targets.
         cargo metadata --no-deps --format-version 1 \
-          | jq -r '.packages[].targets[].name | gsub("-"; "_")' \
+          | jq -r '.packages[].targets[] | select((.kind | index("custom-build")) | not) | .name | gsub("-"; "_")' \
           | LC_ALL=C sort -u > "$workspace_targets"
         while IFS= read -r target_name; do
-          stale_workspace_product="$(find "$coverage_target_dir" -type f \( \
+          # A .d file is compiler dependency metadata, not a produced
+          # workspace binary or library.
+          stale_workspace_product="$(find "$coverage_target_dir" -type f ! -name '*.d' \( \
             -name "$target_name" -o -name "${target_name}-*" -o \
             -name "lib${target_name}-*" \
           \) -print -quit)"
