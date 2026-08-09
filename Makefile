@@ -158,13 +158,13 @@ test-fluff-analysis-corpus:
 	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-fetch-combinable-issues-filter:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_combine_issues.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli combine_issues_commands --bin larch
 
 test-legacy-title-prefix-literals-scope:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
 
 test-blocker:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_blocker.py -x -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-core --lib prose_blockers
 
 test-anti-improvised-wakeup:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-anti-improvised-wakeup.sh

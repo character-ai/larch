@@ -13,9 +13,7 @@ ALLOW=(
   agents/_implementer-base.md
   skills/implement/prompts/codex-implementer.md
   skills/implement/prompts/cursor-implementer.md
-  python/combine_issues.py
   python/larch/implement/preflight.py
-  python/test_combine_issues.py
   python/test_deps_audit.py
   SECURITY.md
   docs/linting.md
@@ -25,6 +23,7 @@ ALLOW=(
   crates/larch-core/src/issue/title.rs
   crates/larch-core/tests/issue_wire.rs
   crates/larch-cli/src/admission_commands.rs
+  crates/larch-cli/src/combine_issues_commands.rs
   python/preflight.py
   python/issue_wire.py
   python/larch/issue/title_match.py

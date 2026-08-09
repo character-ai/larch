@@ -2,6 +2,6 @@
 
 Home for the issue pipeline:
 ``issue_wire``, ``issue_create``, ``tracking_issue``,
-``combine_issues``, ``file_oos``, ``oos``,
+``file_oos``, ``oos``,
 ``analyze_issues``, ``audit_runs``, and ``execution_issues``.
 """

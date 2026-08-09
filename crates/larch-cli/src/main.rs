@@ -30,6 +30,7 @@ mod ci_launcher_commands;
 mod ci_timing;
 pub(crate) mod claude_commands;
 mod collector_commands;
+mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod deps_audit_commands;
 mod dirty_tree_commands;
@@ -136,6 +137,9 @@ enum Domain {
     /// Serially complete and audit every direct leaf of one umbrella issue.
     #[command(subcommand)]
     CompleteUmbrella(CompleteUmbrellaCommand),
+    /// Combine related issues while preserving their dependency graph.
+    #[command(subcommand, name = "combine-issues")]
+    CombineIssues(CombineIssuesCommand),
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
@@ -718,6 +722,40 @@ enum DepsCommand {
     /// Apply exactly the mutations the approved plan carries.
     #[command(disable_help_flag = true)]
     Apply(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum CombineIssuesCommand {
+    /// Fetch combinable open issues.
+    #[command(disable_help_flag = true)]
+    Fetch(RawCompatibilityArguments),
+    /// Fetch native dependency edges for source issues.
+    #[command(name = "fetch-deps", disable_help_flag = true)]
+    FetchDeps(RawCompatibilityArguments),
+    /// List normalized open issue rows.
+    #[command(name = "list-open", disable_help_flag = true)]
+    ListOpen(RawCompatibilityArguments),
+    /// Decide which source issues may safely close.
+    #[command(name = "close-eligible", disable_help_flag = true)]
+    CloseEligible(RawCompatibilityArguments),
+    /// Compose remapped inherited dependency edges.
+    #[command(name = "plan-inherited", disable_help_flag = true)]
+    PlanInherited(RawCompatibilityArguments),
+    /// Audit explicit dependency declarations in issue prose.
+    #[command(name = "prose-audit", disable_help_flag = true)]
+    ProseAudit(RawCompatibilityArguments),
+    /// Combine tier-one and tier-two dependency candidates.
+    #[command(name = "plan-audit", disable_help_flag = true)]
+    PlanAudit(RawCompatibilityArguments),
+    /// Create a combined issue and optionally close its sources.
+    #[command(disable_help_flag = true)]
+    Apply(RawCompatibilityArguments),
+    /// Close sources after the dependency plan permits it.
+    #[command(name = "close-sources", disable_help_flag = true)]
+    CloseSources(RawCompatibilityArguments),
+    /// Close stale or rejected sources with an optional comment.
+    #[command(name = "close-stale", disable_help_flag = true)]
+    CloseStale(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1317,6 +1355,38 @@ fn run(
             }
             DepsCommand::Plan(arguments) => deps_audit_commands::plan(&arguments.arguments),
             DepsCommand::Apply(arguments) => deps_audit_commands::apply(&arguments.arguments),
+        }),
+        Domain::CombineIssues(command) => Ok(match command {
+            CombineIssuesCommand::Fetch(arguments) => {
+                combine_issues_commands::dispatch("fetch", &arguments.arguments)
+            }
+            CombineIssuesCommand::FetchDeps(arguments) => {
+                combine_issues_commands::dispatch("fetch-deps", &arguments.arguments)
+            }
+            CombineIssuesCommand::ListOpen(arguments) => {
+                combine_issues_commands::dispatch("list-open", &arguments.arguments)
+            }
+            CombineIssuesCommand::CloseEligible(arguments) => {
+                combine_issues_commands::dispatch("close-eligible", &arguments.arguments)
+            }
+            CombineIssuesCommand::PlanInherited(arguments) => {
+                combine_issues_commands::dispatch("plan-inherited", &arguments.arguments)
+            }
+            CombineIssuesCommand::ProseAudit(arguments) => {
+                combine_issues_commands::dispatch("prose-audit", &arguments.arguments)
+            }
+            CombineIssuesCommand::PlanAudit(arguments) => {
+                combine_issues_commands::dispatch("plan-audit", &arguments.arguments)
+            }
+            CombineIssuesCommand::Apply(arguments) => {
+                combine_issues_commands::dispatch("apply", &arguments.arguments)
+            }
+            CombineIssuesCommand::CloseSources(arguments) => {
+                combine_issues_commands::dispatch("close-sources", &arguments.arguments)
+            }
+            CombineIssuesCommand::CloseStale(arguments) => {
+                combine_issues_commands::dispatch("close-stale", &arguments.arguments)
+            }
         }),
         Domain::ExecutionIssues(command) => Ok(match command {
             ExecutionIssuesCommand::Append(arguments) => {
