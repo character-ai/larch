@@ -1097,11 +1097,13 @@ def _record_coder_fallback(*, st: BootstrapState, reason: str) -> None:
                 status_label="fallback", redact_body=True,
             )
     if _valid_run_id(st.run_id):
-        with contextlib.suppress(OSError, ValueError):
-            run_logs.log_manifest_update(
-                log_root=Path(st.implement_tmpdir) / "larch-logs", skill="implement",
-                run_id=st.run_id, updates={"coder_fallback": True},
-            )
+        with contextlib.suppress(OSError):
+            _ = proc.run([
+                str(larch_entrypoint(_REPO_ROOT)), "run-log", "manifest",
+                "--log-root", str(Path(st.implement_tmpdir) / "larch-logs"),
+                "--skill", "implement", "--run-id", st.run_id,
+                "--field", "coder_fallback=true",
+            ])
 
 
 def _record_explicit_coder_unavailable(*, st: BootstrapState, requested: str, selected: str) -> None:

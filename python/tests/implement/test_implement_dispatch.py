@@ -514,6 +514,38 @@ def test_write_step2_difficulty_record_uses_trivial_tier_model(
     assert write_call[write_call.index("--rater-model") + 1] == config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.TRIVIAL]
 
 
+def _apply_rust_manifest_update(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    """Small test double for the Rust-owned manifest command."""
+    root = Path(command[command.index("--log-root") + 1])
+    skill = command[command.index("--skill") + 1]
+    run_id = command[command.index("--run-id") + 1]
+    path = root / skill / run_id / "manifest.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for index, token in enumerate(command):
+        if token != "--field":
+            continue
+        key, raw = command[index + 1].split("=", 1)
+        value: object
+        if raw == "true":
+            value = True
+        elif raw == "false":
+            value = False
+        elif raw == "null":
+            value = None
+        elif raw.lstrip("-").isdigit():
+            value = int(raw)
+        else:
+            value = raw
+        if key.startswith("steps_ran."):
+            steps = payload.setdefault("steps_ran", {})
+            assert isinstance(steps, dict)
+            steps[key.split(".", 1)[1]] = value
+        else:
+            payload[key] = value
+    _ = path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    return subprocess.CompletedProcess(list(command), 0, "", "")
+
+
 def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:
     original = subprocess.run
 
@@ -521,6 +553,8 @@ def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout
         cmd = cast("Sequence[str]", args[0] if args else kwargs.get("args", []))
         if any("disposition-checkpoint" in str(part) for part in cmd):
             return subprocess.CompletedProcess(["checkpoint"], rc, stdout, "")
+        if "run-log" in cmd and "manifest" in cmd:
+            return _apply_rust_manifest_update(cmd)
         return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
 
     monkeypatch.setattr(subprocess, "run", selective_run)
@@ -537,6 +571,8 @@ def _capture_refresh_execution_issues(
         cmd = [str(part) for part in cast("Sequence[str]", args[0] if args else kwargs.get("args", []))]
         if "disposition-checkpoint" in " ".join(cmd):
             return subprocess.CompletedProcess(["checkpoint"], 0, "", "")
+        if "run-log" in cmd and "manifest" in cmd:
+            return _apply_rust_manifest_update(cmd)
         if "execution-issues" in cmd:
             if error is not None:
                 raise error
@@ -546,6 +582,41 @@ def _capture_refresh_execution_issues(
 
     monkeypatch.setattr(subprocess, "run", selective_run)
     return calls
+
+
+def test_stamp_step9a1_routes_through_rust_manifest_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text('{"schema_version":2,"steps_ran":{}}\n', encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_rust(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        calls.append(list(argv))
+        return CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(dispatch_ship.proc, "run", fake_rust)
+
+    assert dispatch_ship._stamp_step9a1(  # pyright: ignore[reportPrivateUsage]
+        implement_tmpdir=tmp_path,
+        run_id="run-abc",
+        value=True,
+    )
+    assert calls == [[
+        str(Path(dispatch_ship.__file__).resolve().parents[3] / "scripts" / "larch.sh"),
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--field",
+        "steps_ran.step9a1=true",
+    ]]
 
 
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:

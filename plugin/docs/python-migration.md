@@ -69,8 +69,10 @@ and the verify-completeness reachability chain, and
 `log_init` / `log_write` / `log_append` / `log_write_round` /
 `log_append_failure` helpers build an argv, execute `scripts/larch.sh`, and
 translate the exit code into the `ValueError` / `OSError` contract their
-existing callers already handle. `log_manifest_update` is unrelated to this
-leaf and still writes the manifest in Python.
+existing callers already handle. Manifest mutation completed its separate
+cutover in #8072 and #8289: `scripts/larch.sh run-log manifest` is the only
+production writer, while `python/larch/report/run_log_manifest.py` keeps only
+read-only parsing and state compatibility helpers.
 
 Two parts of `larch.report.run_log_batch` outlive their production callers on
 purpose. The batch registry still backs bounded Python compatibility consumers

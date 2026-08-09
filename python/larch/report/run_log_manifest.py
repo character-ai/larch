@@ -1,38 +1,28 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportPrivateUsage=false
-"""Manifest dataclasses, state readers, and manifest lifecycle for larch run-logs."""
+"""Read-only manifest compatibility parsing and state readers for larch run-logs."""
 
 from __future__ import annotations
 
 import json
-import os
 import re
-import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
 from larch.core import architectural_guidelines, config
-from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.core.rust_runtime import RunLogRefreshOutput as RefreshSkip
 from larch.core.run_context import RunContext
 from larch.report import exec_issue_detail
-from larch.report import tokens
-from larch.errors import ShipError
 
 from larch.report.run_log_batch import (
     _EXECUTION_ISSUE_CATEGORIES,
     _LARCH_LOG_BATCHES,
-    _atomic_write,
-    _read_kv_file,
     _read_state_kv,
     _resolve_log_root,
-    _run_dir,
     validate_run_id_slug,
 )
 from larch.report.run_log_tolerance import terminal_bail_skip_signal
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _MANIFEST_SCHEMA_VERSION = 2
 
@@ -53,9 +43,7 @@ _V2_RESERVED_KEYS = frozenset({
     "flags",
     "pr_number",
 })
-_V2_EXTRA_PROMOTABLE_RESERVED_KEYS = frozenset({"stalled_at_step", "pr_number", "issue_number"})
 _V2_PARSE_EXCLUDED_KEYS = _V2_CORE_KEYS | _V2_RESERVED_KEYS
-_V2_EMIT_EXTRA_EXCLUDED_KEYS = _V2_CORE_KEYS | (_V2_RESERVED_KEYS - _V2_EXTRA_PROMOTABLE_RESERVED_KEYS)
 
 
 def _empty_manifest_reserved() -> dict[str, Any]:
@@ -71,9 +59,8 @@ class Manifest:
     created_at: str = ""
     updated_at: str = ""
     extra: dict[str, Any] | None = None
-    # Reserved v2 metadata is kept separate from extension keys. Immutable fields
-    # are guarded by _MANIFEST_IMMUTABLE; mutable fields such as stalled_at_step,
-    # issue_number, and pr_number may be updated by manifest writers.
+    # Reserved v2 metadata remains separate from extension keys so Python's
+    # compatibility readers can preserve the Rust-owned schema distinctions.
     reserved: dict[str, Any] = field(default_factory=_empty_manifest_reserved)
 
     @classmethod
@@ -108,71 +95,6 @@ class Manifest:
             extra=extra or None,
         )
 
-    @classmethod
-    def synthesize_v2(
-        cls,
-        *,
-        skill: str,
-        run_id: str,
-        steps_ran: dict[str, Any] | None = None,
-        extra: dict[str, Any] | None = None,
-    ) -> Manifest:
-        ts = _now_utc()
-        data: dict[str, Any] = {
-            "schema_version": 2,
-            "skill": skill,
-            "run_id": run_id,
-            "operator_cwd": "<OPERATOR_CWD>",
-            "operator_repo_root": "<REPO_ROOT>",
-            "parent_skill": None,
-            "parent_run_id": None,
-            "issue_number": None,
-            "larch_version": _plugin_version(),
-            "model_roster": {
-                "main": _resolve_main_model(),
-            },
-            "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
-            "started_at": ts,
-            "updated_at": ts,
-            "attempt": 1,
-            "superseded_by": None,
-            "stalled_at_step": None,
-            "steps_ran": steps_ran or {},
-            "flags": {},
-        }
-        if extra:
-            data.update(extra)
-        return cls.from_json(data)
-
-    def to_json(self, existing: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        if str(self.version) == "2":
-            data = dict(existing or {})
-            data.pop("version", None)
-            data.pop("created_at", None)
-            data["schema_version"] = 2
-            data["status"] = self.status
-            data["run_id"] = self.run_id
-            data["steps_ran"] = dict(self.steps_ran)
-            data["started_at"] = self.created_at
-            data["updated_at"] = self.updated_at
-            data.update(dict(self.reserved))
-            if self.extra:
-                for key, value in self.extra.items():
-                    if key in _V2_EMIT_EXTRA_EXCLUDED_KEYS:
-                        continue
-                    data[key] = value
-            return data
-        data = dict(self.extra or {})
-        data.update({
-            "status": self.status,
-            "version": self.version,
-            "run_id": self.run_id,
-            "steps_ran": dict(self.steps_ran),
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        })
-        return data
-
 
 @dataclass(frozen=True)
 class RequiredArtifact:
@@ -196,13 +118,6 @@ class _ReachabilityContext:
     manifest_pr_number: str
 
 
-@dataclass(frozen=True)
-class ManifestRecovery:
-    manifest: Manifest
-    recovery_ok: bool
-
-
-RECOVERY_REASON_MANIFEST_LOST = "manifest_lost_mid_run"
 REFRESH_SKIP_RECOVERY_FAILED = "manifest-recovery-failed"
 
 
@@ -221,24 +136,6 @@ class DurableFlags:
     forked: bool
     merge: bool
     draft: bool
-
-
-_MANIFEST_IMMUTABLE = frozenset(
-    {
-        "schema_version",
-        "skill",
-        "run_id",
-        "started_at",
-        "operator_cwd",
-        "operator_repo_root",
-        "parent_skill",
-        "parent_run_id",
-    },
-)
-
-
-def _manifest_cli_path(*, log_root: Path, skill: str, run_id: str) -> Path:
-    return _run_dir(log_root=log_root, skill=skill, run_id=run_id) / "manifest.json"
 
 
 def _read_manifest_v2(path: Path) -> dict[str, Any]:
@@ -269,13 +166,33 @@ def _manifest_steps_ran_empty(manifest: Manifest) -> bool:
     return len(manifest.steps_ran) == 0
 
 
+def _manifest_read_data(manifest: Manifest) -> dict[str, Any]:
+    """Project parsed compatibility fields for read-only predicates."""
+    data = dict(manifest.extra or {})
+    data.update(manifest.reserved)
+    data.update({
+        "status": manifest.status,
+        "run_id": manifest.run_id,
+        "steps_ran": dict(manifest.steps_ran),
+    })
+    if manifest.version == "2":
+        data["schema_version"] = _MANIFEST_SCHEMA_VERSION
+        data["started_at"] = manifest.created_at
+        data["updated_at"] = manifest.updated_at
+    else:
+        data["version"] = manifest.version
+        data["created_at"] = manifest.created_at
+        data["updated_at"] = manifest.updated_at
+    return data
+
+
 def _final_summary_bail_signal_without_pr_evidence(
     *,
     run_dir: Path,
     manifest_pr_number: str,
     manifest_data: Manifest | None = None,
 ) -> bool:
-    manifest_obj: object | None = manifest_data.to_json(existing=None) if manifest_data is not None else None
+    manifest_obj: object | None = _manifest_read_data(manifest_data) if manifest_data is not None else None
     if manifest_obj is None and manifest_pr_number.strip().isdigit():
         manifest_obj = {"pr_number": int(manifest_pr_number)}
     pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
@@ -756,89 +673,6 @@ def verify_run_log_completeness(
     return not missing, missing
 
 
-def _write_manifest_v2(*, path: Path, data: dict[str, Any]) -> None:
-    _atomic_write(path=path, content=json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def _update_manifest_v2(*, path: Path, updates: dict[str, Any]) -> dict[str, Any]:
-    data = _read_manifest_v2(path)
-    manifest = Manifest.from_json(data)
-    steps: dict[str, Any] = dict(manifest.steps_ran)
-    reserved: dict[str, Any] = dict(manifest.reserved)
-    extra: dict[str, Any] = dict(manifest.extra or {})
-    status = manifest.status
-    for key, value in updates.items():
-        if key in _MANIFEST_IMMUTABLE:
-            raise ValueError(f"immutable-field:{key}")
-        if key.startswith("steps_ran."):
-            steps[key.split(".", 1)[1]] = value
-        elif key == "steps_ran" and isinstance(value, dict):
-            steps.update(cast("dict[str, Any]", value))
-        elif key == "status":
-            status = str(value)
-        elif key in _V2_RESERVED_KEYS:
-            reserved[key] = value
-        else:
-            extra[key] = value
-    updated = replace(
-        manifest,
-        status=status,
-        steps_ran=steps,
-        updated_at=_now_utc(),
-        extra=extra or None,
-        reserved=reserved,
-    )
-    out = updated.to_json(existing=data)
-    _write_manifest_v2(path=path, data=out)
-    return out
-
-
-def _plugin_version() -> str:
-    plugin_json = _REPO_ROOT / ".claude-plugin" / "plugin.json"
-    if plugin_json.is_file():
-        try:
-            data = json.loads(plugin_json.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                version = str(cast("dict[str, Any]", data).get("version", "") or "").strip()
-                if version and version != "null":
-                    return version
-        except (OSError, json.JSONDecodeError):
-            pass
-    return "unknown"
-
-
-def _resolve_main_model() -> str:
-    """Main-agent model for manifest metadata.
-
-    Prefers an explicit env override, else reads the active session transcript
-    (newest at run-log init, before subagents spawn, so it reflects the
-    orchestrator model rather than a spawned reviewer), else "unknown".
-    """
-    explicit = os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL")
-    if explicit:
-        return explicit
-    try:
-        model = tokens.read_main_model()
-    except Exception:
-        model = ""
-    return model or "unknown"
-
-
-def _now_utc() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def _resolve_consumer_repo_root(cwd: str | None) -> Path:
-    result = repo_root_probe(options=RepoRootProbeOptions(git_cwd=cwd or Path.cwd()))
-    if result.returncode != 0 or not result.stdout.strip():
-        raise ShipError("cwd is outside a git worktree")
-    return Path(result.stdout.strip())
-
-
-def _read_session_env_key(*, ctx: RunContext, key: str) -> str:
-    return _read_kv_file(path=Path(ctx.tmpdir) / "session-env.sh", key=key)
-
-
 def _parse_nonnegative_int(raw: str) -> int:
     text = raw.strip()
     if not re.fullmatch(r"[0-9]+", text):
@@ -942,184 +776,6 @@ def effective_run_id(ctx: RunContext) -> str:
     return ""
 
 
-def _manifest_path(ctx: RunContext) -> Path:
-    run_id = effective_run_id(ctx)
-    return Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / "manifest.json"
-
-
-def _run_log_dir(ctx: RunContext) -> Path:
-    return Path(ctx.tmpdir) / "larch-logs" / "implement" / effective_run_id(ctx)
-
-
-def _issue_number_from_context(ctx: RunContext) -> int | None:
-    raw = (
-        _read_state_kv(state_file=ctx.state_file, key="ISSUE_NUMBER")
-        or _read_state_kv(state_file=ctx.state_file, key="ISSUE")
-        or str(ctx.issue_number or ctx.issue or "")
-    )
-    return int(raw) if raw.isdigit() else None
-
-
-def init_run(
-    ctx: RunContext,
-    *,
-    run_id: str | None = None,
-    recovery_reason: str = "",
-) -> Manifest:
-    rid = run_id or effective_run_id(ctx)
-    extra: dict[str, Any] = {"status": config.MANIFEST_STATUS_PARTIAL}
-    if recovery_reason:
-        extra["recovery_reason"] = recovery_reason
-        issue_number = _issue_number_from_context(ctx)
-        if issue_number is not None:
-            extra["issue_number"] = issue_number
-    manifest = Manifest.synthesize_v2(skill="implement", run_id=rid, extra=extra)
-    _write_manifest_v2(path=_manifest_path(ctx), data=manifest.to_json(existing=None))
-    return manifest
-
-
-def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
-    recovery = load_or_recover_manifest_checked(ctx)
-    if not recovery.recovery_ok:
-        msg = "manifest recovery failed"
-        raise ShipError(msg)
-    current = recovery.manifest
-    steps = dict(current.steps_ran)
-    status = current.status
-    version = current.version
-    run_id = current.run_id
-    created_at = current.created_at
-    updated_at = current.updated_at
-    extra = dict(current.extra or {})
-    reserved = dict(current.reserved)
-    for key, value in changes.items():
-        if key == "steps_ran" and isinstance(value, dict):
-            steps.update(cast("dict[str, Any]", value))
-        elif key == "status":
-            status = str(value)
-        elif key == "version":
-            version = str(value)
-        elif key == "run_id":
-            run_id = str(value)
-        elif key == "created_at":
-            created_at = str(value)
-        elif key == "updated_at":
-            updated_at = str(value)
-        elif key in _V2_RESERVED_KEYS:
-            reserved[key] = value
-        else:
-            extra[key] = value
-    updated = Manifest(
-        status=status,
-        version=version,
-        run_id=run_id,
-        steps_ran=steps,
-        created_at=created_at,
-        updated_at=updated_at,
-        extra=extra or None,
-        reserved=reserved,
-    )
-    _write_manifest(ctx=ctx, manifest=updated)
-    return updated
-
-
-def _recover_manifest_from_run_dir(*, ctx: RunContext, run_id: str, run_dir: Path) -> Manifest | None:
-    if not run_dir.is_dir():
-        return None
-    steps: dict[str, Any] = {"recovered": True}
-    if (run_dir / "execution-issues.ndjson").is_file():
-        steps["execution_issues"] = True
-    if (run_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson").is_file():
-        steps["token_report"] = True
-    extra: dict[str, Any] = {"recovery_reason": RECOVERY_REASON_MANIFEST_LOST, "status": config.MANIFEST_STATUS_PARTIAL}
-    issue_number = _issue_number_from_context(ctx)
-    if issue_number is not None:
-        extra["issue_number"] = issue_number
-    return Manifest.synthesize_v2(
-        skill="implement",
-        run_id=run_id,
-        steps_ran=steps,
-        extra=extra,
-    )
-
-
-def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
-    rid = effective_run_id(ctx)
-    if rid:
-        primary = Path(ctx.tmpdir) / "larch-logs" / "implement" / rid / "manifest.json"
-        run_dir = primary.parent
-        if primary.is_file():
-            try:
-                data = _read_manifest_v2(primary)
-                return ManifestRecovery(Manifest.from_json(data), recovery_ok=True)
-            except json.JSONDecodeError:
-                recovered = _recover_manifest_from_run_dir(ctx=ctx, run_id=rid, run_dir=run_dir)
-                if recovered is not None:
-                    try:
-                        _write_manifest_v2(path=primary, data=recovered.to_json(existing=None))
-                    except OSError:
-                        return ManifestRecovery(recovered, recovery_ok=False)
-                    return ManifestRecovery(recovered, recovery_ok=True)
-        elif run_dir.is_dir():
-            recovered = _recover_manifest_from_run_dir(ctx=ctx, run_id=rid, run_dir=run_dir)
-            if recovered is not None:
-                try:
-                    _write_manifest_v2(path=primary, data=recovered.to_json(existing=None))
-                except OSError:
-                    return ManifestRecovery(recovered, recovery_ok=False)
-                return ManifestRecovery(recovered, recovery_ok=True)
-        try:
-            manifest = init_run(ctx, run_id=rid, recovery_reason=RECOVERY_REASON_MANIFEST_LOST)
-        except OSError:
-            manifest = Manifest(
-                status=config.MANIFEST_STATUS_PARTIAL,
-                version="1",
-                run_id=rid,
-                steps_ran={},
-                extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
-            )
-            return ManifestRecovery(manifest, recovery_ok=False)
-        return ManifestRecovery(manifest, recovery_ok=True)
-    try:
-        return ManifestRecovery(init_run(ctx), recovery_ok=True)
-    except OSError:
-        return ManifestRecovery(
-            Manifest(
-                status=config.MANIFEST_STATUS_PARTIAL,
-                version="1",
-                run_id="",
-                steps_ran={},
-            ),
-            recovery_ok=False,
-        )
-
-
-def load_or_recover_manifest(ctx: RunContext) -> Manifest:
-    recovery = load_or_recover_manifest_checked(ctx)
-    if not recovery.recovery_ok:
-        msg = "manifest recovery failed"
-        raise ShipError(msg)
-    return recovery.manifest
-
-
-def _write_manifest(*, ctx: RunContext, manifest: Manifest) -> None:
-    path = _manifest_path(ctx)
-    if path.is_file():
-        try:
-            data = _read_manifest_v2(path)
-            if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
-                updated = replace(manifest, updated_at=_now_utc())
-                _write_manifest_v2(path=path, data=updated.to_json(existing=data))
-                return
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            pass
-    updated = replace(manifest, updated_at=manifest.updated_at or _now_utc())
-    _atomic_write(
-        path=path,
-        content=json.dumps(updated.to_json(existing=None), indent=2, sort_keys=True) + "\n"
-    )
-
-
 def _manifest_step9a1_explicitly_skipped(manifest: Manifest) -> bool:
     return manifest.steps_ran.get("step9a1") is False
 
@@ -1134,41 +790,23 @@ def _manifest_steps_ran_nonempty_without_step9a1(manifest: Manifest) -> bool:
 
 # Expose _resolve_log_root for callers that import it via this module
 __all__ = [
-    "RECOVERY_REASON_MANIFEST_LOST",
     "REFRESH_SKIP_RECOVERY_FAILED",
-    "_MANIFEST_IMMUTABLE",
     "_MANIFEST_SCHEMA_VERSION",
-    "_V2_EMIT_EXTRA_EXCLUDED_KEYS",
     "_V2_RESERVED_KEYS",
     "DurableFlags",
     "Manifest",
-    "ManifestRecovery",
     "RefreshSkip",
     "ResumeCounters",
-    "_manifest_cli_path",
-    "_manifest_path",
     "_manifest_step9a1_explicitly_ran",
     "_manifest_step9a1_explicitly_skipped",
     "_manifest_steps_ran_nonempty_without_step9a1",
-    "_now_utc",
     "_read_manifest_v2",
-    "_read_session_env_key",
     "_read_state_kv",
-    "_recover_manifest_from_run_dir",
-    "_resolve_consumer_repo_root",
     "_resolve_log_root",
-    "_run_log_dir",
-    "_update_manifest_v2",
-    "_write_manifest",
-    "_write_manifest_v2",
     "effective_run_id",
-    "init_run",
-    "load_or_recover_manifest",
-    "load_or_recover_manifest_checked",
     "manifest_status",
     "parse_pr_number",
     "read_durable_flags",
     "read_resume_counters",
     "read_state_kv",
-    "update_manifest",
 ]

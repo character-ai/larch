@@ -6,8 +6,9 @@
 //! registration, a superseded Python entrypoint, or an unmigrated row that
 //! still names the closed umbrella as its roadmap owner.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, path::Path, sync::LazyLock};
 
+use regex::Regex;
 use toml::Value;
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
@@ -20,6 +21,39 @@ const DESCRIPTION: &str =
 const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.toml";
 const REPORTING_AUTHORITY_PATH: &str = "crates/larch-cli/src/run_log_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7683;
+const PYTHON_RUNTIME_PREFIX: &str = "python/larch/";
+const PYTHON_MANIFEST_READER_PATH: &str = "python/larch/report/run_log_manifest.py";
+const PYTHON_RUN_LOG_FACADE_PATH: &str = "python/larch/report/run_logs.py";
+const PYTHON_SHIP_RECOVERY_PATH: &str = "python/larch/implement/ship_recovery.py";
+const PYTHON_MANIFEST_WRITER_PATHS: &[&str] = &[
+    PYTHON_MANIFEST_READER_PATH,
+    PYTHON_RUN_LOG_FACADE_PATH,
+    PYTHON_SHIP_RECOVERY_PATH,
+];
+
+static MANIFEST_WRITER_DEFINITION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)^(?:async\s+)?def\s+(?P<function>_?write_manifest(?:_v2)?|_?update_manifest(?:_v2)?|init_run|update_manifest|load_or_recover_manifest(?:_checked)?|_?recover_manifest(?:_from_run_dir)?|log_manifest_update)\s*\(",
+    )
+    .expect("manifest writer definition expression is valid")
+});
+
+static MANIFEST_WRITER_CALL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        (?P<target>
+            (?:run_log_manifest\s*\.\s*(?:_?write_manifest(?:_v2)?|_?update_manifest(?:_v2)?|init_run|update_manifest|load_or_recover_manifest(?:_checked)?))
+            |(?:run_logs\s*\.\s*log_manifest_update)
+            |(?:_?update_manifest_v2|log_manifest_update|init_run|update_manifest|load_or_recover_manifest(?:_checked)?|_?recover_manifest(?:_from_run_dir)?)
+        )\s*\(",
+    )
+    .expect("manifest writer call expression is valid")
+});
+
+static MANIFEST_DURABLE_WRITE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:\.(?:write_text|write_bytes|replace|rename)\s*\()|(?:_?atomic_write\s*\()")
+        .expect("manifest durable write expression is valid")
+});
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ExpectedOwner {
@@ -191,10 +225,66 @@ impl Rule for ReportingPythonFreeRule {
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
+        check_manifest_writer_boundary(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn check_manifest_writer_boundary(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    for path in repository.paths() {
+        let relative = path.as_str();
+        if !relative.starts_with(PYTHON_RUNTIME_PREFIX)
+            || !Path::new(relative)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        if PYTHON_MANIFEST_WRITER_PATHS.contains(&relative) {
+            for matched in MANIFEST_WRITER_DEFINITION.captures_iter(&source) {
+                let whole = matched
+                    .get(0)
+                    .expect("whole manifest writer definition capture");
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!(
+                        "production Python run-log manifest writer remains: {}",
+                        &matched["function"]
+                    ),
+                ));
+            }
+        } else {
+            for matched in MANIFEST_WRITER_CALL.captures_iter(&source) {
+                let whole = matched.get(0).expect("whole manifest writer call capture");
+                let target: String = matched["target"]
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect();
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!("production Python caller bypasses Rust run-log manifest owner: {target}"),
+                ));
+            }
+        }
+        if relative == PYTHON_MANIFEST_READER_PATH {
+            for matched in MANIFEST_DURABLE_WRITE.find_iter(&source) {
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, matched.start()),
+                    "production Python manifest compatibility module performs a durable write",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn is_in_scope_row(value: &Value) -> bool {

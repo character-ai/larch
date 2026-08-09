@@ -1355,6 +1355,73 @@ def test_publish_design_logs_classifies_archive_finalization_failure(
     assert result[0] is False
 
 
+def test_publish_design_logs_binds_issue_through_rust_manifest_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    run_dir = tmp_path / "logs" / "design" / "RUN1"
+    run_dir.mkdir(parents=True)
+    context = run_lifecycle.LifecycleStart(
+        repo_root=tmp_path,
+        storage_root=ToolRepositoryStorage(StorageBase("s3", "bucket"), "consumer"),
+        skill="design",
+        run_id="RUN1",
+        log_root=tmp_path / "logs",
+        run_dir=run_dir,
+        context_file=tmp_path / "context.json",
+    )
+    calls: list[list[str]] = []
+    entrypoint = tmp_path / "rust-owner" / "larch.sh"
+
+    def fake_run(argv: list[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+        del cwd
+        if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(argv, 0, str(tmp_path), "")
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(design_log_publish_flow, "_run", fake_run)
+    monkeypatch.setattr(design_log_publish_flow.repo_roots, "larch_entrypoint", lambda _root: entrypoint)
+    monkeypatch.setattr(design_log_publish_flow.run_lifecycle, "load_run_context", lambda **_kwargs: context)
+    monkeypatch.setattr(
+        design_log_publish_flow.run_lifecycle,
+        "finish_run",
+        lambda **_kwargs: run_lifecycle.LifecycleTerminal(
+            outcome="success",
+            publication=None,
+            secret_scrub_violations=0,
+        ),
+    )
+
+    result = design_log_publish_flow._publish_design_logs(  # pyright: ignore[reportPrivateUsage]
+        request=design_log_publish_flow.PublishDesignLogsRequest(
+            plugin_root=tmp_path / "plugin",
+            design_tmpdir=design,
+            run_id="RUN1",
+            issue="12",
+            repo="",
+            lifecycle_outcome="success",
+        ),
+    )
+
+    assert result == (True, "", "", "0")
+    assert calls == [[
+        str(entrypoint),
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(tmp_path / "logs"),
+        "--skill",
+        "design",
+        "--run-id",
+        "RUN1",
+        "--field",
+        "issue_number=12",
+    ]]
+
+
 def test_publish_excluded_github_redundant_top_level_only() -> None:
     # GitHub-redundant snapshots duplicate the issue body / larch:diagrams comment
     # and are dropped at the top level only, so a curated subtree copy (e.g.

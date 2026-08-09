@@ -113,6 +113,42 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert "/*|*..*)" in text
 
 
+def test_coder_fallback_routes_manifest_flag_through_rust_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+        calls.append(list(argv))
+        return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(bootstrap.proc, "run", fake_run)
+    monkeypatch.setattr(bootstrap.run_logs, "log_append_failure", lambda **_kwargs: None)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder"),
+        implement_tmpdir=str(tmp_path),
+        run_id="run-abc",
+        coder_fallback="true",
+    )
+
+    bootstrap._record_coder_fallback(st=st, reason="all coders unavailable")  # pyright: ignore[reportPrivateUsage]
+
+    assert calls == [[
+        str(bootstrap._REPO_ROOT / "scripts" / "larch.sh"),  # pyright: ignore[reportPrivateUsage]
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--field",
+        "coder_fallback=true",
+    ]]
+
+
 def test_install_statusline_best_effort_routes_through_the_rust_owner(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
+from larch.core.proc import CommandResult
 from larch.errors import ShipError
 from larch.git.gh import PullRequest
 from larch.implement import ship_recovery
@@ -29,8 +30,50 @@ def _session(
 def _manifest(tmp_path: Path, *, run_id: str = "RUN-123") -> Path:
     path = tmp_path / "larch-logs" / "implement" / run_id / "manifest.json"
     path.parent.mkdir(parents=True)
-    path.write_text('{"status":"in-progress","keep":"yes"}\n', encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "skill": "implement",
+                "run_id": run_id,
+                "started_at": "2026-08-08T00:00:00Z",
+                "status": "in-progress",
+                "steps_ran": {},
+                "keep": "yes",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return path
+
+
+def _install_rust_manifest_owner(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def update_manifest(argv: list[str], **_kwargs: object) -> CommandResult:
+        command = list(argv)
+        calls.append(command)
+        assert command[1:3] == ["run-log", "manifest"]
+        log_root = Path(command[command.index("--log-root") + 1])
+        run_id = command[command.index("--run-id") + 1]
+        assignments: dict[str, str] = {}
+        for index, argument in enumerate(command):
+            if argument != "--field":
+                continue
+            key, separator, value = command[index + 1].partition("=")
+            assert separator
+            assignments[key] = value
+        path = log_root / "implement" / run_id / "manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = assignments["status"]
+        data["pr_number"] = int(assignments["pr_number"])
+        data["updated_at"] = "2026-08-08T00:00:01Z"
+        path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        return CommandResult(tuple(command), 0, "LOG_PATH=fixture\n", "", 0.0)
+
+    monkeypatch.setattr(ship_recovery.proc, "run", update_manifest)
+    return calls
 
 
 def _merged_pr(number: int = 7049) -> PullRequest:
@@ -64,6 +107,7 @@ def test_reconcile_manual_merge_clears_every_layer(
     (tmp_path / "ship-pr-state.sh").write_text(stale, encoding="utf-8")
     (tmp_path / "finalize-state.sh").write_text(stale, encoding="utf-8")
     manifest = _manifest(tmp_path)
+    manifest_calls = _install_rust_manifest_owner(monkeypatch)
     monkeypatch.setattr(
         ship_recovery.gh,
         "pr_view",
@@ -97,10 +141,61 @@ def test_reconcile_manual_merge_clears_every_layer(
         encoding="utf-8"
     ) == "MERGE_RESULT=merged\n"
     assert json.loads(manifest.read_text(encoding="utf-8")) == {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN-123",
+        "started_at": "2026-08-08T00:00:00Z",
         "status": "done",
+        "steps_ran": {},
         "keep": "yes",
         "pr_number": 7049,
+        "updated_at": "2026-08-08T00:00:01Z",
     }
+    assert manifest_calls[0][1:] == [
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "RUN-123",
+        "--field",
+        "status=done",
+        "--field",
+        "pr_number=7049",
+    ]
+
+
+def test_reconcile_surfaces_rust_manifest_update_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _session(tmp_path)
+    _manifest(tmp_path)
+    monkeypatch.setattr(
+        ship_recovery.gh,
+        "pr_view",
+        lambda *_args, **_kwargs: _merged_pr(),
+    )
+    monkeypatch.setattr(
+        ship_recovery.proc,
+        "run",
+        lambda argv, **_kwargs: CommandResult(
+            tuple(argv), 1, "", "Rust manifest owner refused update\n", 0.0
+        ),
+    )
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().out == (
+        "RECONCILE_STATUS=failed\n"
+        "ERROR=manifest-update-failed:Rust manifest owner refused update\n"
+    )
 
 
 def test_reconcile_unmerged_writes_nothing(
@@ -316,6 +411,7 @@ def test_reconcile_rerun_converges(
 ) -> None:
     _session(tmp_path)
     _manifest(tmp_path)
+    _install_rust_manifest_owner(monkeypatch)
     monkeypatch.setattr(
         ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
     )
@@ -337,6 +433,7 @@ def test_reconcile_fails_post_read_when_partial_clear_leaves_overlay(
 ) -> None:
     _session(tmp_path)
     _manifest(tmp_path)
+    _install_rust_manifest_owner(monkeypatch)
     monkeypatch.setattr(
         ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
     )
@@ -371,6 +468,7 @@ def test_bd267d84_operator_waiver_manual_merge_replay_writes_merged_final_summar
 ) -> None:
     _session(tmp_path)
     manifest = _manifest(tmp_path)
+    _install_rust_manifest_owner(monkeypatch)
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=RUN-123\n", encoding="utf-8")
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     monkeypatch.setattr(

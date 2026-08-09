@@ -8490,6 +8490,12 @@ python = []
 rust = ["agent launch-claude-subprocess"]
 
 [[callers]]
+path = "python/larch/design/design_log_publish_flow.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log manifest"]
+
+[[callers]]
 path = "python/larch/design/design_oos.py"
 kind = "python-runtime"
 python = ["design file-oos-annotate", "design file-oos-prepare"]
@@ -8637,7 +8643,7 @@ rust = ["git commit", "timing mark"]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
 python = []
-rust = ["execution-issues refresh", "oos disposition-checkpoint", "oos file", "stall-recovery seed-terminal-state"]
+rust = ["execution-issues refresh", "oos disposition-checkpoint", "oos file", "run-log manifest", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_step18.py"
@@ -8650,6 +8656,12 @@ path = "python/larch/implement/preflight.py"
 kind = "python-runtime"
 python = []
 rust = ["admission gate", "gh resolve-repo", "plan-block read"]
+
+[[callers]]
+path = "python/larch/implement/ship_recovery.py"
+kind = "python-runtime"
+python = []
+rust = ["run-log manifest"]
 
 [[callers]]
 path = "python/larch/implement/step_7a.py"
@@ -8799,7 +8811,7 @@ rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
 path = "python/larch/state/bootstrap.py"
 kind = "python-runtime"
 python = ["implement kill-active-leg"]
-rust = ["git snapshot-untracked", "session entry-gate", "session persist-run-flags", "session write-implement-env"]
+rust = ["git snapshot-untracked", "run-log manifest", "session entry-gate", "session persist-run-flags", "session write-implement-env"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"

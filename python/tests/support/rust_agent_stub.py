@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # pyright: reportPrivateUsage=false, reportArgumentType=false
-# The entry-write run-log verbs deliberately reuse the shared private helpers in
-# `larch.report.run_log_batch` / `run_log_manifest` rather than restating their
-# behavior, and the manifest record crosses this module as an opaque value.
+# The entry-write run-log verbs deliberately reuse the shared private batch
+# helpers rather than restating their behavior. The manifest fixture is local
+# so test plumbing does not retain the retired Python manifest writer.
 """Verified-bootstrap test double for Rust-owned agent and run-log commands.
 
 Python integration tests exercise their callers through ``scripts/larch.sh``,
@@ -12,9 +12,9 @@ need; the real command contracts live in Rust integration tests
 (``crates/larch-cli/tests/``).
 
 The entry-write ``run-log`` verbs delegate to the surviving
-`larch.report.run_log_batch` and `larch.report.run_log_manifest` helpers. The
-archive fixture below is test-only plumbing for Python callers; the production
-archive contract and hostile-input coverage live in Rust integration tests.
+`larch.report.run_log_batch` helpers. The archive fixture below is test-only
+plumbing for Python callers; the production archive contract and hostile-input
+coverage live in Rust integration tests.
 """
 
 from __future__ import annotations
@@ -1040,11 +1040,8 @@ def _identity(arguments: list[str]) -> tuple[Path, str, str]:
 
 
 def _run_log_init(arguments: list[str]) -> int:
-    _bind_larch_package()
-    from larch.report import run_log_manifest  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
-
     log_root, skill, run_id = _identity(arguments)
-    path = run_log_manifest._manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)  # noqa: SLF001 - test double reuses the shared path owner
+    path = log_root / skill / run_id / "manifest.json"
     if path.is_file():
         _log_envelope(path=path, written=False, unchanged=True)
         return 0
@@ -1052,16 +1049,97 @@ def _run_log_init(arguments: list[str]) -> int:
     if issue and not issue.isdigit():
         _log_envelope(path=None, written=False, unchanged=False, error=f"invalid issue: {issue}")
         return 1
-    manifest = run_log_manifest.Manifest.synthesize_v2(
-        skill=skill,
-        run_id=run_id,
-        extra={
-            "parent_skill": _flag(arguments, "--parent-skill") or None,
-            "parent_run_id": _flag(arguments, "--parent-run-id") or None,
-            "issue_number": int(issue) if issue else None,
-        },
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "skill": skill,
+                "run_id": run_id,
+                "operator_cwd": "<OPERATOR_CWD>",
+                "operator_repo_root": "<REPO_ROOT>",
+                "parent_skill": _flag(arguments, "--parent-skill") or None,
+                "parent_run_id": _flag(arguments, "--parent-run-id") or None,
+                "issue_number": int(issue) if issue else None,
+                "larch_version": _version(),
+                "model_roster": {"main": "unknown"},
+                "effort": "unknown",
+                "started_at": timestamp,
+                "updated_at": timestamp,
+                "attempt": 1,
+                "superseded_by": None,
+                "stalled_at_step": None,
+                "steps_ran": {},
+                "flags": {},
+                "status": "partial",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
-    run_log_manifest._write_manifest_v2(path=path, data=manifest.to_json(existing=None))  # noqa: SLF001 - test double reuses the shared writer
+    _log_envelope(path=path, written=True, unchanged=False)
+    return 0
+
+
+def _manifest_scalar(raw: str) -> object:
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    if raw == "null":
+        return None
+    if raw.lstrip("-").isdigit():
+        return int(raw)
+    return raw
+
+
+def _manifest_updates(arguments: list[str]) -> dict[str, object]:
+    updates: dict[str, object] = {}
+    for index, token in enumerate(arguments):
+        if token != "--field" or index + 1 >= len(arguments):
+            continue
+        key, separator, raw = arguments[index + 1].partition("=")
+        if not separator or not key:
+            raise ValueError(f"invalid field assignment: {arguments[index + 1]}")
+        updates[key] = _manifest_scalar(raw)
+    return updates
+
+
+def _apply_manifest_updates(*, payload: dict[str, object], updates: dict[str, object]) -> None:
+    for key, value in updates.items():
+        if not key.startswith("steps_ran."):
+            payload[key] = value
+            continue
+        steps = payload.setdefault("steps_ran", {})
+        if not isinstance(steps, dict):
+            raise TypeError("steps_ran must be an object")
+        steps[key.split(".", 1)[1]] = value
+
+
+def _run_log_manifest(arguments: list[str]) -> int:
+    """Apply a test-fixture manifest patch for the Rust-owned selector."""
+    log_root, skill, run_id = _identity(arguments)
+    path = log_root / skill / run_id / "manifest.json"
+    if not path.is_file():
+        _log_envelope(path=None, written=False, unchanged=False, error=f"manifest not found: {path}")
+        return 1
+    try:
+        payload_raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload_raw, dict):
+            raise TypeError("manifest root must be an object")
+        payload = cast("dict[str, object]", payload_raw)
+        _apply_manifest_updates(payload=payload, updates=_manifest_updates(arguments))
+        payload["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _ = path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        _log_envelope(path=None, written=False, unchanged=False, error=str(error))
+        return 1
     _log_envelope(path=path, written=True, unchanged=False)
     return 0
 
@@ -1782,6 +1860,7 @@ def main(arguments: list[str]) -> int:
             ("run-log", "append-entry"): _append_entry,
             ("run-log", "archive"): _run_log_archive,
             ("run-log", "init"): _run_log_init,
+            ("run-log", "manifest"): _run_log_manifest,
             ("run-log", "materialize"): _run_log_materialize,
             ("run-log", "write"): _run_log_write,
             ("run-log", "append"): _run_log_append,

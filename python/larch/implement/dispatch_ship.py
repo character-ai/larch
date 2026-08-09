@@ -26,7 +26,6 @@ from larch.git import git, gh, rebase
 from larch.implement import ship
 from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
-from larch.report import run_log_manifest
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
     _emit_kv,
@@ -1161,9 +1160,17 @@ def _stamp_step9a1(*, implement_tmpdir: Path, run_id: str, value: bool) -> bool:
     if not manifest.is_file():
         return False
     try:
-        run_log_manifest._update_manifest_v2(path=manifest, updates={"steps_ran.step9a1": value})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-    except (OSError, ValueError) as exc:
+        result = proc.run([
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])), "run-log", "manifest",
+            "--log-root", str(implement_tmpdir / "larch-logs"),
+            "--skill", "implement", "--run-id", run_id,
+            "--field", f"steps_ran.step9a1={'true' if value else 'false'}",
+        ])
+    except OSError as exc:
         raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {str(exc)[:300]}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "run-log manifest failed"
+        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {detail[:300]}")
     return True
 
 

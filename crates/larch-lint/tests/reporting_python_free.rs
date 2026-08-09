@@ -137,6 +137,41 @@ fn rejects_a_restored_python_registration_and_entrypoint() {
 }
 
 #[test]
+fn rejects_restored_python_manifest_writer_and_caller() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/report/run_log_manifest.py",
+        b"def _update_manifest_v2() -> None:\n    return None\n",
+    );
+    repository.write(
+        "python/larch/implement/dispatch_ship.py",
+        b"run_log_manifest._update_manifest_v2()\n",
+    );
+    repository.write(
+        "python/larch/implement/ship_recovery.py",
+        b"def _write_manifest() -> None:\n    return None\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "reporting-python-free"])
+        .assert()
+        .failure()
+        .stdout(
+            predicate::str::contains(
+                "production Python run-log manifest writer remains: _update_manifest_v2",
+            )
+            .and(predicate::str::contains(
+                "production Python caller bypasses Rust run-log manifest owner: run_log_manifest._update_manifest_v2",
+            ))
+            .and(predicate::str::contains(
+                "production Python run-log manifest writer remains: _write_manifest",
+            )),
+        );
+}
+
+#[test]
 fn rejects_non_final_missing_and_unclosed_rows() {
     let repository = TempRepo::new();
     prepare(&repository);
