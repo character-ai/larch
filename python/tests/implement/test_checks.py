@@ -3780,6 +3780,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     rust_full_job = workflow.split("\n  rust-full:", 1)[1].split(
         "\n  rust-partial:", 1
     )[0]
+    trusted_main_policy_stage = rust_full_job.split(
+        "Stage verified trusted main Rust policy binary", 1
+    )[1].split("Save trusted main Rust policy binary", 1)[0]
     rust_coverage_job = workflow.split("\n  rust-coverage:", 1)[1].split(
         "\n  rust-coverage-benchmark:", 1
     )[0]
@@ -4124,6 +4127,19 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'printf \'%s\\n\' "$GITHUB_SHA"' in prepared_artifact
     assert 'printf \'%s\\n\' "$RUST_POLICY_INPUTS_SHA256"' in prepared_artifact
     assert "sha256sum larch > larch.sha256" in prepared_artifact
+    assert (
+        'policy_larch="$RUNNER_TEMP/larch-linux-test-binary/larch"'
+        in trusted_main_policy_stage
+    )
+    assert "target/llvm-cov-target" not in trusted_main_policy_stage
+    for trusted_main_check in (
+        "sha256sum --check --strict larch.sha256",
+        'printf \'%s\\n\' "$GITHUB_SHA"',
+        'printf \'%s\\n\' "$RUST_POLICY_INPUTS_SHA256"',
+        "printf '%s\\n' refs/heads/main",
+        'test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"',
+    ):
+        assert trusted_main_check in trusted_main_policy_stage
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
     )
