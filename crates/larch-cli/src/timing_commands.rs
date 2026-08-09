@@ -298,14 +298,14 @@ pub fn record_round(arguments: &[OsString]) -> ExitCode {
         };
         numbers.push(value);
     }
-    let Some(oos) = parse_integer(
-        options
-            .get("--oos")
-            .filter(|value| !value.is_empty())
-            .map_or("0", String::as_str),
-    ) else {
-        eprintln!("{label}: --oos must be an integer");
-        return ExitCode::from(1);
+    let oos = if let Some(raw) = options.get("--oos").filter(|value| !value.is_empty()) {
+        let Some(value) = parse_integer(raw) else {
+            eprintln!("{label}: --oos must be an integer");
+            return ExitCode::from(1);
+        };
+        Some(value)
+    } else {
+        None
     };
     let environment = Environment::ambient();
     let path = match resolve_ledger_path(ledger.as_deref(), &environment) {
@@ -322,10 +322,16 @@ pub fn record_round(arguments: &[OsString]) -> ExitCode {
     }
     let (round, start, end, accepted, rejected) =
         (numbers[0], numbers[1], numbers[2], numbers[3], numbers[4]);
+    let ledger_text = read_text(&path);
+    if options.contains_key("--if-round-exists")
+        && round_exists_for_compatibility(&ledger_text, skill, round)
+    {
+        return ExitCode::SUCCESS;
+    }
     // A stall recovery reruns the same round number in one ledger (issue #5504).
     // Retries run strictly after the prior attempt returns, so counting prior
     // rows for this (skill, round) is race-free.
-    let attempt = timing::next_round_attempt(&read_text(&path), skill, round);
+    let attempt = timing::next_round_attempt(&ledger_text, skill, round);
     let row = timing::round_row(
         epoch_now(),
         skill,
@@ -336,7 +342,7 @@ pub fn record_round(arguments: &[OsString]) -> ExitCode {
         (end - start).max(0),
         accepted,
         rejected,
-        Some(oos),
+        oos,
         attempt,
     );
     if let Err(message) = append_row(&path, &row) {
@@ -759,6 +765,20 @@ fn read_text(path: &Path) -> String {
         |_error| String::new(),
         |bytes| String::from_utf8_lossy(&bytes).into_owned(),
     )
+}
+
+/// Match the retired design helper's idempotency scan, including legacy short rows.
+fn round_exists_for_compatibility(text: &str, skill: &str, round: i64) -> bool {
+    let skill = timing::sanitize(skill);
+    let round = round.to_string();
+    text.lines().any(|line| {
+        let columns: Vec<&str> = line.split('\t').collect();
+        columns.len() >= 8
+            && columns[0] == "v1"
+            && columns[1] == "round"
+            && columns[3] == skill
+            && columns[5] == round
+    })
 }
 
 fn read_rows(path: &Path) -> LedgerRows {

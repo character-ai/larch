@@ -26,6 +26,7 @@ const PYTHON_MANIFEST_READER_PATH: &str = "python/larch/report/run_log_manifest.
 const PYTHON_RUN_LOG_FACADE_PATH: &str = "python/larch/report/run_logs.py";
 const PYTHON_SHIP_RECOVERY_PATH: &str = "python/larch/implement/ship_recovery.py";
 const PYTHON_PROGRESS_READER_PATH: &str = "python/larch/report/progress_file.py";
+const PYTHON_TIMING_COMPAT_PATH: &str = "python/larch/report/timing.py";
 const PYTHON_MANIFEST_WRITER_PATHS: &[&str] = &[
     PYTHON_MANIFEST_READER_PATH,
     PYTHON_RUN_LOG_FACADE_PATH,
@@ -81,6 +82,34 @@ static PROGRESS_DURABLE_WRITE: LazyLock<Regex> = LazyLock::new(|| {
         |os\s*\.\s*(?:open|unlink|mkdir|replace|remove|rmdir)\s*\(",
     )
     .expect("progress durable write expression is valid")
+});
+
+static TIMING_WRITER_DEFINITION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)^(?:class\s+(?P<class>TimingLedger)\b|(?:async\s+)?def\s+(?P<function>mark|record_vendor_task|record_round|_append)\s*\()",
+    )
+    .expect("timing writer definition expression is valid")
+});
+
+static TIMING_WRITER_CALL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        (?P<target>
+            (?:from\s+larch\.report\.timing\s+import\s+[^\n]*(?:\bTimingLedger\b|\b(?:mark|record_vendor_task|record_round|_append)\b|\*))
+            |(?:\b(?:_?timing\s*\.\s*)?TimingLedger\s*\()
+            |(?:\b_?timing\s*\.\s*(?:mark|record_vendor_task|record_round|_append)\s*\()
+        )",
+    )
+    .expect("timing writer call expression is valid")
+});
+
+static TIMING_DURABLE_WRITE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        \.(?:write|write_text|write_bytes|unlink|replace|rename|mkdir|touch)\s*\(
+        |os\s*\.\s*(?:open|unlink|mkdir|replace|remove|rmdir)\s*\(",
+    )
+    .expect("timing durable write expression is valid")
 });
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -256,6 +285,7 @@ impl Rule for ReportingPythonFreeRule {
         check_python_entrypoints(repository, &mut findings)?;
         check_manifest_writer_boundary(repository, &mut findings)?;
         check_progress_writer_boundary(repository, &mut findings)?;
+        check_timing_writer_boundary(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
@@ -365,6 +395,61 @@ fn check_progress_writer_boundary(
                     format!(
                         "production Python caller bypasses Rust progress-state owner: {target}"
                     ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_timing_writer_boundary(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    for path in repository.paths() {
+        let relative = path.as_str();
+        if !relative.starts_with(PYTHON_RUNTIME_PREFIX)
+            || !Path::new(relative)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        if relative == PYTHON_TIMING_COMPAT_PATH {
+            for matched in TIMING_WRITER_DEFINITION.captures_iter(&source) {
+                let whole = matched
+                    .get(0)
+                    .expect("whole timing writer definition capture");
+                let name = matched
+                    .name("class")
+                    .or_else(|| matched.name("function"))
+                    .expect("timing writer name capture")
+                    .as_str();
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!("production Python timing-ledger writer remains: {name}"),
+                ));
+            }
+            for matched in TIMING_DURABLE_WRITE.find_iter(&source) {
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, matched.start()),
+                    "production Python timing compatibility module performs a durable write",
+                ));
+            }
+        } else {
+            for matched in TIMING_WRITER_CALL.captures_iter(&source) {
+                let whole = matched.get(0).expect("whole timing writer call capture");
+                let target: String = matched["target"]
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect();
+                findings.push(Finding::new(
+                    relative,
+                    super::python_boundary::offset_line_number(&source, whole.start()),
+                    format!("production Python caller bypasses Rust timing owner: {target}"),
                 ));
             }
         }

@@ -98,6 +98,55 @@ def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, mo
     assert dispatch_commit_route._run_step_checks_worker(args, tmp, plugin_root) == 0
 
 
+def test_step5_handoff_timing_uses_rust_owner_and_keeps_round_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    implement_tmpdir = tmp_path / "implement"
+    round_dir = implement_tmpdir / "round-2"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    (round_dir / "review-tally.env").write_text(
+        "ACCEPTED_COUNT=3\nREJECTED_COUNT=2\n",
+        encoding="utf-8",
+    )
+    marks: list[dict[str, object]] = []
+    rounds: list[dict[str, object]] = []
+
+    def fake_mark(_runner: object, **kwargs: object) -> bool:
+        marks.append(kwargs)
+        return True
+
+    def fake_round(_runner: object, **kwargs: object) -> bool:
+        rounds.append(kwargs)
+        ledger = Path(str(kwargs["ledger"]))
+        ledger.write_text(
+            "v1\tround\t200\timplement\tStep 5 — code review\t2\t100\t200\t100\t3\t2\t-\t1\n",
+            encoding="utf-8",
+        )
+        return True
+
+    monkeypatch.setattr(dispatch_commit_route.rust_runtime, "timing_mark", fake_mark)
+    monkeypatch.setattr(dispatch_commit_route.rust_runtime, "timing_record_round", fake_round)
+    monkeypatch.setattr(dispatch_commit_route.time, "time", lambda: 200)
+
+    dispatch_commit_route._record_step5_handoff_timing(  # pyright: ignore[reportPrivateUsage]
+        implement_tmpdir=implement_tmpdir,
+        final_round_num="2",
+    )
+    dispatch_commit_route._record_step5_handoff_timing(  # pyright: ignore[reportPrivateUsage]
+        implement_tmpdir=implement_tmpdir,
+        final_round_num="2",
+    )
+
+    assert len(marks) == 2
+    assert len(rounds) == 1
+    assert rounds[0]["step"] == "Step 5 — code review"
+    assert rounds[0]["accepted"] == 3
+    assert rounds[0]["rejected"] == 2
+    assert rounds[0]["environment"] == {"IMPLEMENT_TMPDIR": str(implement_tmpdir)}
+
+
 @pytest.fixture(autouse=True)
 def quiet_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

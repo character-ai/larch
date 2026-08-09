@@ -103,6 +103,115 @@ def test_progress_mutations_enter_through_the_typed_rust_owner() -> None:
     assert runner.calls[4][1:] == ["progress", "cleanup", "--retention-days", "7"]
 
 
+def test_timing_mutations_enter_through_the_typed_rust_owner() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+            CommandResult(("larch",), 0, "", "", 0.01),
+        ],
+    )
+
+    assert rust_runtime.timing_mark(
+        runner,
+        label="Step 0 — preflight",
+        skill="implement",
+        if_latest_differs=True,
+    )
+    assert rust_runtime.timing_record_vendor_task(
+        runner,
+        vendor="claude",
+        task_kind="reviewer-collect",
+        start_s=10,
+        end_s=25,
+        output="collector.out",
+        skill="implement",
+        ledger="/tmp/ledger.tsv",
+        environment={"IMPLEMENT_TMPDIR": "/tmp"},
+    )
+    assert rust_runtime.timing_record_round(
+        runner,
+        skill="design",
+        step="design Step 3 — plan review",
+        round_num=2,
+        start_s=30,
+        end_s=45,
+        accepted=1,
+        rejected=0,
+        oos=3,
+        ledger="/tmp/ledger.tsv",
+        environment={"DESIGN_TMPDIR": "/tmp"},
+    )
+    assert rust_runtime.timing_record_round(
+        runner,
+        skill="design",
+        step="design Step 3 — plan review",
+        round_num=3,
+        start_s=50,
+        end_s=65,
+        accepted=0,
+        rejected=0,
+        ledger="/tmp/ledger.tsv",
+        if_round_exists=True,
+        environment={"DESIGN_TMPDIR": "/tmp"},
+    )
+
+    assert runner.calls[0][1:] == [
+        "timing",
+        "mark",
+        "--if-latest-differs",
+        "Step 0 — preflight",
+    ]
+    assert runner.calls[1][1:] == [
+        "timing",
+        "record-vendor-task",
+        "--ledger",
+        "/tmp/ledger.tsv",
+        "--vendor",
+        "claude",
+        "--task-kind",
+        "reviewer-collect",
+        "--start-s",
+        "10",
+        "--end-s",
+        "25",
+        "--output",
+        "collector.out",
+        "--exit-code",
+        "0",
+        "--status",
+        "complete",
+    ]
+    assert runner.calls[2][1:] == [
+        "timing",
+        "record-round",
+        "--ledger",
+        "/tmp/ledger.tsv",
+        "--skill",
+        "design",
+        "--step",
+        "design Step 3 — plan review",
+        "--round",
+        "2",
+        "--start-s",
+        "30",
+        "--end-s",
+        "45",
+        "--accepted",
+        "1",
+        "--rejected",
+        "0",
+        "--oos",
+        "3",
+    ]
+    assert runner.records[1].env is not None
+    assert runner.records[1].env["LARCH_TIMING_SKILL"] == "implement"
+    assert runner.records[1].env["LARCH_TIMING_LEDGER"] == "/tmp/ledger.tsv"
+    assert "--oos" not in runner.calls[3]
+    assert runner.calls[3][-1] == "--if-round-exists"
+
+
 def test_dirty_tree_commands_relay_validated_rust_envelopes() -> None:
     runner = RecordingRunner(
         responses=[

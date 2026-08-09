@@ -327,11 +327,16 @@ run_post_phase() {
         fi
         if is_positive_int "$round_start_s"; then
             end_s="$(date +%s)"
-            python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review record-round-timing \
-                --design-tmpdir "$DESIGN_TMPDIR" \
+            DESIGN_TMPDIR="$DESIGN_TMPDIR" CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" timing record-round \
+                --ledger "$DESIGN_TMPDIR/timing-ledger.tsv" \
+                --skill design \
+                --step "design Step 3 — plan review" \
                 --round "$artifact_round" \
                 --start-s "$round_start_s" \
-                --end-s "$end_s" || true
+                --end-s "$end_s" \
+                --accepted 0 \
+                --rejected 0 \
+                --if-round-exists || true
         fi
         if [ "$loop_mode" = true ]; then
             if [ "$accepted_count" -eq 0 ]; then

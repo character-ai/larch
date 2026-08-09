@@ -26,7 +26,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import rust_runtime
-from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
 from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally
@@ -55,8 +55,6 @@ from larch.review._raf_util import (
     _git_status_porcelain,
     _git_status_porcelain_or_fail,
     _git_stdout,
-    _non_negative_int,
-    _parse_env_file,
     _parse_env_lines,
     _plugin_root,
     _positive_int,
@@ -637,14 +635,30 @@ def _record_step5_round_timing(
     end_s: int,
     result: RoundResult,
 ) -> None:
-    record_round_timing([
-        "--implement-tmpdir", str(implement_tmpdir),
-        "--round", str(round_num),
-        "--start-s", str(start_s),
-        "--end-s", str(end_s),
-        "--accepted", str(result.accepted_count),
-        "--rejected", str(result.rejected_count),
-    ])
+    ledger = implement_tmpdir / "timing-ledger.tsv"
+    step_label = "Step 5 — code review"
+    if ledger.is_file():
+        for line in _read_text(ledger).splitlines():
+            if _timing_row_matches(
+                line.split("\t"),
+                round_num=round_num,
+                start_s=start_s,
+                end_s=end_s,
+                step_label=step_label,
+            ):
+                return
+    _ = rust_runtime.timing_record_round(
+        proc,
+        skill="implement",
+        step=step_label,
+        round_num=round_num,
+        start_s=start_s,
+        end_s=end_s,
+        accepted=max(result.accepted_count, 0),
+        rejected=max(result.rejected_count, 0),
+        ledger=str(ledger),
+        environment={"IMPLEMENT_TMPDIR": str(implement_tmpdir)},
+    )
 
 
 def _record_step5_round_timing_before_gates(
@@ -1322,78 +1336,6 @@ def write_rejected(argv: list[str] | None = None) -> int:
     _emit_kv(key="REJECTED_COUNT", value=count)
     _emit_kv(key="STATUS", value="ok")
     return 0
-
-
-def record_round_timing(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="review-and-fix-record-round-timing")
-    parser = argparse.ArgumentParser(prog="cli.py review-and-fix record-round-timing")
-    parser.add_argument("--implement-tmpdir", required=True)
-    parser.add_argument("--round", required=True)
-    parser.add_argument("--start-s", required=True)
-    parser.add_argument("--end-s", required=True)
-    parser.add_argument("--accepted", default="")
-    parser.add_argument("--rejected", default="")
-    try:
-        args = parser.parse_args(argv)
-        round_num = _non_negative_int(value=args.round, label="--round")
-        start_s = _non_negative_int(value=args.start_s, label="--start-s")
-        end_s = _non_negative_int(value=args.end_s, label="--end-s")
-        accepted = _non_negative_int(value=args.accepted, label="--accepted") if args.accepted else -1
-        rejected = _non_negative_int(value=args.rejected, label="--rejected") if args.rejected else -1
-    except (SystemExit, ValueError) as exc:
-        if not isinstance(exc, SystemExit):
-            _err(f"record-round-timing: WARNING: {exc}")
-        return 2
-    implement_tmpdir = Path(args.implement_tmpdir).resolve()
-    if not implement_tmpdir.is_dir() or implement_tmpdir.is_symlink():
-        _err("record-round-timing: WARNING: --implement-tmpdir must name a directory")
-        return 2
-    round_dir = implement_tmpdir / f"round-{round_num}"
-    if accepted < 0 or rejected < 0:
-        tally = _parse_env_file(round_dir / "review-tally.env")
-        if accepted < 0:
-            raw = tally.get("ACCEPTED_COUNT", tally.get("ACCEPTED", ""))
-            accepted = int(raw) if raw.isdigit() else _count_findings(round_dir / "accepted-findings.md")
-        if rejected < 0:
-            raw = tally.get("REJECTED_COUNT", tally.get("REJECTED", ""))
-            if raw.isdigit():
-                rejected = int(raw)
-            else:
-                rejected = _count_rejected_lines(round_dir / "rejected-findings.md")
-    accepted = max(accepted, 0)
-    rejected = max(rejected, 0)
-    ledger = implement_tmpdir / "timing-ledger.tsv"
-    step_label = "Step 5 — code review"
-    if ledger.is_file():
-        for line in _read_text(ledger).splitlines():
-            parts = line.split("\t")
-            if _timing_row_matches(
-                parts,
-                round_num=round_num,
-                start_s=start_s,
-                end_s=end_s,
-                step_label=step_label,
-            ):
-                return 0
-    env = {
-        **larch_entrypoint_env(_plugin_root()),
-        "IMPLEMENT_TMPDIR": str(implement_tmpdir),
-        "LARCH_TIMING_LEDGER": str(ledger),
-        "LARCH_TIMING_SKILL": "implement",
-    }
-    _run([
-        str(larch_entrypoint(_plugin_root())), "timing", "record-round",
-        "--skill", "implement",
-        "--step", step_label,
-        "--round", str(round_num),
-        "--start-s", str(start_s),
-        "--end-s", str(end_s),
-        "--accepted", str(accepted),
-        "--rejected", str(rejected),
-    ], env=env)
-    if ledger.is_file():
-        return 0
-    return 1
 
 
 def _self_review_findings_jsonl(*, accepted: int, rejected: int) -> str:

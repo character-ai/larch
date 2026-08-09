@@ -12,9 +12,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from larch import io as larch_io
+from larch.core import proc, rust_runtime
 from larch.design.design_terminal import json_get_bool, phase_driver_write_result_env
 from larch.design.plan_quality import sync_oversize_override_authority
-from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
 from larch.design import plan_grammar
@@ -64,6 +64,7 @@ from larch.review.plan_review_normalize import (
 )
 
 DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD = 2
+TIMING_LEDGER_MIN_COLUMNS = 13
 
 
 def step3_loop_persist_envelope(
@@ -535,24 +536,18 @@ def step3_state(argv: Sequence[str]) -> int:
 def _append_canonical_round_timing(*, tmpdir: Path, round_num: int, start_s: int, end_s: int) -> None:
     """Append a canonical ``v1 round`` timing row for a design plan-review round."""
     ledger = tmpdir / "timing-ledger.tsv"
-    round_s = str(round_num)
-    if ledger.is_file():
-        try:
-            existing = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            existing = []
-        for line in existing:
-            cols = line.split("\t")
-            if len(cols) >= 8 and cols[0] == "v1" and cols[1] == "round" and cols[3] == "design" and cols[5] == round_s:  # noqa: PLR2004
-                return
-    TimingLedger(path=ledger, skill="design").record_round(
+    _ = rust_runtime.timing_record_round(
+        proc,
         skill="design",
         step="design Step 3 — plan review",
-        round_n=round_num,
+        round_num=round_num,
         start_s=start_s,
         end_s=end_s,
         accepted=0,
         rejected=0,
+        ledger=str(ledger),
+        if_round_exists=True,
+        environment={"DESIGN_TMPDIR": str(tmpdir)},
     )
 
 
@@ -567,7 +562,7 @@ def _gate_b_apply_start_s(*, ledger: Path, round_start_s: int, end_s: int, outpu
     duplicate = False
     for line in lines:
         cols = line.split("\t")
-        if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
+        if len(cols) < TIMING_LEDGER_MIN_COLUMNS or cols[0] != "v1" or cols[1] != "vendor":
             continue
         kind = cols[6]
         if kind == "gate-b-apply" and Path(cols[10]).name == output_basename:
@@ -607,15 +602,19 @@ def _record_gate_b_apply_timing_from_round_window(*, tmpdir: Path, round_num: in
     if gate_b_start_s is None:
         return
     try:
-        TimingLedger(path=ledger, skill="design").record_vendor_task(
+        _ = rust_runtime.timing_record_vendor_task(
+            proc,
             vendor="claude",
             task_kind="gate-b-apply",
             start_s=gate_b_start_s,
             end_s=end_s,
             output=output,
+            skill="design",
+            ledger=str(ledger),
             status="complete",
+            environment={"DESIGN_TMPDIR": str(tmpdir)},
         )
-    except (OSError, ValueError):
+    except OSError:
         return
 
 
@@ -630,24 +629,6 @@ def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int,
         return
     round_end_s = int(time.time()) if end_s is None else end_s
     _append_canonical_round_timing(tmpdir=tmpdir, round_num=round_num, start_s=start_s, end_s=round_end_s)
-
-
-def record_plan_review_round_timing(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py plan-review record-round-timing")
-    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--round", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--start-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--end-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
-    ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    _append_canonical_round_timing(tmpdir=tmpdir, round_num=ns.round, start_s=ns.start_s, end_s=ns.end_s)
-    round_dir = tmpdir / "plan-review" / f"round-{ns.round}"
-    if round_dir.is_dir() and not round_dir.is_symlink():
-        summary = round_dir / "round-summary.env"
-        if not summary.exists():
-            _write_atomic(path=summary, content=f"ROUND_NUM={ns.round}\n")
-    _emit_kv(key="RECORD_ROUND_TIMING_STATUS", value="ok")
-    return 0
 
 
 def tally_plan_review(argv: Sequence[str]) -> int:

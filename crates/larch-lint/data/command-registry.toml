@@ -4758,18 +4758,6 @@ planning_issue = 7679
 
 [[commands]]
 domain = "plan-review"
-verb = "record-round-timing"
-python_module = "larch.review.plan_review"
-python_function = "record_round_timing_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7679
-
-[[commands]]
-domain = "plan-review"
 verb = "round-artifact-included"
 python_module = "larch.review.plan_review"
 python_function = "round_artifact_included_main"
@@ -5946,18 +5934,6 @@ domain = "review-and-fix"
 verb = "normalize-status"
 python_module = "larch.review.review_and_fix"
 python_function = "normalize_status"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7679
-
-[[commands]]
-domain = "review-and-fix"
-verb = "record-round-timing"
-python_module = "larch.review.review_and_fix"
-python_function = "record_round_timing"
 machine_stdout = true
 owner = "python"
 implementation_parity = "pending"
@@ -8471,7 +8447,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome"]
+rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8639,7 +8615,7 @@ rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
-rust = ["bgjob adapt", "dirty-tree scope-check", "timing mark"]
+rust = ["bgjob adapt", "dirty-tree scope-check"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_helpers.py"
@@ -8789,7 +8765,7 @@ rust = ["agent dispatch-waterfall", "dirty-tree scope-marker", "run-log append-e
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "timing record-round"]
+rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark"]
 
 [[callers]]
 path = "python/larch/review/review_collect.py"
@@ -8962,8 +8938,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review record-round-timing", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "run-log append-failure", "session write-run-params"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9130,8 +9106,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "plan-review persist-retally-env", "plan-review record-round-timing", "render scope-anchor", "voting findings-classification-header"]
-rust = ["kv get", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir"]
+python = ["design pause-save", "plan-review persist-retally-env", "render scope-anchor", "voting findings-classification-header"]
+rust = ["kv get", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -9707,7 +9683,7 @@ rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wr
 path = "skills/review-and-fix/SKILL.md"
 kind = "skill"
 python = ["checks run-relevant", "redact scrub-submodule-paths", "review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5"]
-rust = []
+rust = ["timing record-round"]
 
 [[callers]]
 path = "skills/review/SKILL.md"

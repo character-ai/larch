@@ -203,6 +203,40 @@ fn rejects_restored_python_progress_writer_caller_and_durable_write() {
 }
 
 #[test]
+fn rejects_restored_python_timing_writer_and_caller() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/report/timing.py",
+        b"class TimingLedger:\n    def record_round(self) -> None:\n        return None\nopen('timing-ledger.tsv', 'a').write('v1\\n')\n",
+    );
+    repository.write(
+        "python/larch/review/plan_review_loop.py",
+        b"from larch.report.timing import TimingLedger\nfrom larch.report.timing import record_round\nTimingLedger().record_round()\nrecord_round()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "reporting-python-free"])
+        .assert()
+        .failure()
+        .stdout(
+            predicate::str::contains(
+                "production Python timing-ledger writer remains: TimingLedger",
+            )
+            .and(predicate::str::contains(
+                "production Python timing compatibility module performs a durable write",
+            ))
+            .and(predicate::str::contains(
+                "production Python caller bypasses Rust timing owner: fromlarch.report.timingimportTimingLedger",
+            ))
+            .and(predicate::str::contains(
+                "production Python caller bypasses Rust timing owner: fromlarch.report.timingimportrecord_round",
+            )),
+        );
+}
+
+#[test]
 fn rejects_non_final_missing_and_unclosed_rows() {
     let repository = TempRepo::new();
     prepare(&repository);

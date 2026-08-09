@@ -12,8 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Protocol, cast
 
 from larch.agents import _launch_failure, slot_manifest
-from larch.core import config, external_defaults, logging_util
-from larch.report.timing import TimingLedger
+from larch.core import config, external_defaults, logging_util, proc, rust_runtime
 from larch.review import _voting_calibration, voting
 
 VoterRowLayout = Literal["code_review_sequential", "plan_review_interleaved"]
@@ -160,14 +159,20 @@ def _record_pipeline_span(  # noqa: PLR0913 - the six span fields are all load-b
     """
     if ledger is None or not ledger.is_file():
         return
-    with suppress(OSError, ValueError):
-        TimingLedger(ledger, skill=skill).record_vendor_task(
+    with suppress(OSError):
+        _ = rust_runtime.timing_record_vendor_task(
+            proc,
             vendor="claude",
             task_kind=task_kind,
             start_s=start_s,
             end_s=end_s,
             output=output,
+            skill=skill,
+            ledger=str(ledger),
             status="complete",
+            environment={
+                "DESIGN_TMPDIR" if skill == "design" else "IMPLEMENT_TMPDIR": str(ledger.parent),
+            },
         )
 
 

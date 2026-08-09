@@ -8,9 +8,9 @@
 //! | Rust command construction | Reuse `command_arguments` static array and builder analysis. |
 //! | Rust CLI defaults | Reuse `syn` attribute parsing for Clap's `arg` attributes. |
 //!
-//! The canonical policy remains `TIMING_TASK_KINDS_ALLOWED` in Python. This
-//! rule reads that source directly so Rust discovers literals without copying
-//! the allow-list into a second owner.
+//! The canonical policy is Rust's `TIMING_TASK_KINDS_ALLOWED`. This rule reads
+//! that source directly so Python, shell, Markdown, and Rust consumers all
+//! validate against the one timing owner.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -30,7 +30,7 @@ use super::command_arguments::{Argument, BuilderCommand, Constants, array_argume
 
 const NAME: &str = "timing-task-kind-allowlist";
 const DESCRIPTION: &str = "Require literal timing task kinds to appear in the canonical allow-list";
-const ALLOWLIST_PATH: &str = "python/larch/report/timing.py";
+const ALLOWLIST_PATH: &str = "crates/larch-core/src/report/timing.rs";
 const TIMING_FLAG: &str = "--timing-task-kind";
 
 static TEXT_KIND: LazyLock<Regex> = LazyLock::new(|| {
@@ -38,7 +38,7 @@ static TEXT_KIND: LazyLock<Regex> = LazyLock::new(|| {
         .expect("timing task kind expression is valid")
 });
 static ALLOWLIST_BODY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)TIMING_TASK_KINDS_ALLOWED\s*:[^=]*=\s*frozenset\s*\(\s*\{(?P<body>.*?)\}\s*\)")
+    Regex::new(r"(?s)TIMING_TASK_KINDS_ALLOWED\s*:\s*\[&str;\s*\d+\]\s*=\s*\[(?P<body>.*?)\];")
         .expect("canonical allow-list expression is valid")
 });
 static QUOTED_KIND: LazyLock<Regex> = LazyLock::new(|| {

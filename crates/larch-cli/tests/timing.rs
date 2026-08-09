@@ -291,6 +291,7 @@ fn record_round_counts_prior_attempts_of_the_same_round() {
     let attempts: Vec<String> = rows.iter().map(|row| row[12].clone()).collect();
     assert_eq!(rounds, ["1", "1", "2"]);
     assert_eq!(attempts, ["1", "2", "1"]);
+    assert!(rows.iter().all(|row| row[11] == "-"));
     let refused = fixture.run(&[
         "record-round",
         "--skill",
@@ -310,6 +311,74 @@ fn record_round_counts_prior_attempts_of_the_same_round() {
     ]);
     assert_eq!(refused.status.code(), Some(1));
     assert!(stderr(&refused).contains("--skill must be implement or design"));
+}
+
+#[test]
+fn record_round_if_round_exists_preserves_idempotent_compatibility_calls() {
+    let fixture = Fixture::new();
+    let arguments = [
+        "record-round",
+        "--skill",
+        "design",
+        "--step",
+        "design Step 3 — plan review",
+        "--round",
+        "1",
+        "--start-s",
+        "100",
+        "--end-s",
+        "120",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
+        "--if-round-exists",
+    ];
+    assert!(
+        fixture
+            .run_with_skill("design", &arguments)
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run_with_skill("design", &arguments)
+            .status
+            .success()
+    );
+    assert_eq!(fixture.rows().len(), 1);
+    assert_eq!(fixture.rows()[0][12], "1");
+}
+
+#[test]
+fn record_round_if_round_exists_keeps_a_legacy_short_round_row_unchanged() {
+    let fixture = Fixture::new();
+    fixture.seed(&["v1\tround\t100\tdesign\tdesign Step 3 — plan review\t1\t10\t20"]);
+    let output = fixture.run_with_skill(
+        "design",
+        &[
+            "record-round",
+            "--skill",
+            "design",
+            "--step",
+            "design Step 3 — plan review",
+            "--round",
+            "1",
+            "--start-s",
+            "10",
+            "--end-s",
+            "20",
+            "--accepted",
+            "0",
+            "--rejected",
+            "0",
+            "--if-round-exists",
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fixture.rows().len(), 1);
+    assert_eq!(fixture.rows()[0].len(), 8);
 }
 
 #[test]

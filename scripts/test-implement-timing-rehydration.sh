@@ -45,7 +45,8 @@ PY
 
 # Invariant B: the Python Step 5 adapter and the Step 18 wrapper own telemetry.
 command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not rehydrate telemetry keys'
-command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not mark implement timing'
+command grep -Fq 'rust_runtime.timing_mark(' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not call the Rust timing owner'
+command grep -Fq 'label="Step 5: review handoff"' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not mark implement timing'
 command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
 command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not rehydrate telemetry keys'
 command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not mark implement timing'

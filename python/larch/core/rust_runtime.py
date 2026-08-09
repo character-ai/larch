@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -894,6 +895,148 @@ def progress_cleanup(
     if result.returncode != 0 or not removed.isascii() or not removed.isdigit():
         return 0
     return int(removed)
+
+
+def _timing_command(  # noqa: PLR0913 - internal transport preserves the Rust timing CLI context.
+    runner: Runner,
+    *,
+    verb: str,
+    arguments: Sequence[str],
+    skill: str,
+    ledger: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Invoke one Rust-owned timing mutation with explicit session context."""
+    env = dict(os.environ)
+    if environment is not None:
+        env.update(environment)
+    env["LARCH_TIMING_SKILL"] = skill
+    if ledger:
+        env["LARCH_TIMING_LEDGER"] = ledger
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "timing",
+        verb,
+    ]
+    if ledger:
+        argv.extend(["--ledger", ledger])
+    argv.extend(arguments)
+    return runner.run(argv, cwd=cwd, env=env)
+
+
+def timing_mark(  # noqa: PLR0913 - mirrors the stable Rust timing CLI surface.
+    runner: Runner,
+    *,
+    label: str,
+    skill: str,
+    ledger: str | None = None,
+    if_latest_differs: bool = False,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Record one step mark through the sole Rust timing-ledger owner."""
+    arguments = ["--if-latest-differs"] if if_latest_differs else []
+    arguments.append(label)
+    return _timing_command(
+        runner,
+        verb="mark",
+        arguments=arguments,
+        skill=skill,
+        ledger=ledger,
+        environment=environment,
+        cwd=cwd,
+    ).returncode == 0
+
+
+def timing_record_vendor_task(  # noqa: PLR0913 - mirrors the stable Rust timing CLI surface.
+    runner: Runner,
+    *,
+    vendor: str,
+    task_kind: str,
+    start_s: float,
+    end_s: float,
+    output: str,
+    skill: str,
+    ledger: str | None = None,
+    exit_code: int = 0,
+    status: str = "complete",
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Record one vendor span through the sole Rust timing-ledger owner."""
+    return _timing_command(
+        runner,
+        verb="record-vendor-task",
+        arguments=(
+            "--vendor",
+            vendor,
+            "--task-kind",
+            task_kind,
+            "--start-s",
+            str(start_s),
+            "--end-s",
+            str(end_s),
+            "--output",
+            output,
+            "--exit-code",
+            str(exit_code),
+            "--status",
+            status,
+        ),
+        skill=skill,
+        ledger=ledger,
+        environment=environment,
+        cwd=cwd,
+    ).returncode == 0
+
+
+def timing_record_round(  # noqa: PLR0913 - mirrors the stable Rust timing CLI surface.
+    runner: Runner,
+    *,
+    skill: str,
+    step: str,
+    round_num: int,
+    start_s: float,
+    end_s: float,
+    accepted: int,
+    rejected: int,
+    oos: int | None = None,
+    ledger: str | None = None,
+    if_round_exists: bool = False,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Record one review round through the sole Rust timing-ledger owner."""
+    arguments = [
+        "--skill",
+        skill,
+        "--step",
+        step,
+        "--round",
+        str(round_num),
+        "--start-s",
+        str(start_s),
+        "--end-s",
+        str(end_s),
+        "--accepted",
+        str(accepted),
+        "--rejected",
+        str(rejected),
+    ]
+    if oos is not None:
+        arguments.extend(["--oos", str(oos)])
+    if if_round_exists:
+        arguments.append("--if-round-exists")
+    return _timing_command(
+        runner,
+        verb="record-round",
+        arguments=arguments,
+        skill=skill,
+        ledger=ledger,
+        environment=environment,
+        cwd=cwd,
+    ).returncode == 0
 
 
 def render_phase_detail(  # noqa: PLR0913 - mirrors the Rust renderer's stable CLI surface plus the injected runner

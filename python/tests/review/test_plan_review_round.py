@@ -962,6 +962,14 @@ def test_execute_round_records_reviewer_collect_row(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     # Rust-owned run-log verbs route through the bootstrap runner.
     monkeypatch.setattr(plan_review_round, "_run_larch", fake_run_cli)
+    timing_calls: list[dict[str, object]] = []
+
+    def fake_record_reviewer_collect(**kwargs: object) -> None:
+        timing_calls.append(kwargs)
+
+    monkeypatch.setattr(
+        plan_review_round, "record_reviewer_collect", fake_record_reviewer_collect
+    )
 
     rc, _values = plan_review_round.execute_round(
         design=design,
@@ -974,10 +982,13 @@ def test_execute_round_records_reviewer_collect_row(
     )
 
     assert rc == 0
-    collect_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "reviewer-collect" in line).split("\t")
-    assert collect_row[3] == "design"
-    assert collect_row[5:7] == ["claude", "reviewer-collect"]
-    assert collect_row[10] == "reviewer-collect-round-1.out"
+    assert len(timing_calls) == 1
+    timing_call = timing_calls[0]
+    assert timing_call["ledger"] == ledger
+    assert timing_call["skill"] == "design"
+    assert isinstance(timing_call["collect_start"], float)
+    assert isinstance(timing_call["collect_end"], float)
+    assert timing_call["round_num"] == 1
 
 
 def test_parse_collector_records_keyvalue_anchored() -> None:

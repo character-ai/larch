@@ -818,6 +818,14 @@ def test_dispatch_voters_records_voter_dispatch_prep_row(tmp_path: Path, monkeyp
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
     monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    timing_calls: list[dict[str, object]] = []
+
+    def fake_record_voter_dispatch_prep(**kwargs: object) -> None:
+        timing_calls.append(kwargs)
+
+    monkeypatch.setattr(
+        plan_review_panel, "record_voter_dispatch_prep", fake_record_voter_dispatch_prep
+    )
 
     rc = plan_review_panel.dispatch_voters([
         "--ballot-file", str(ballot),
@@ -828,10 +836,13 @@ def test_dispatch_voters_records_voter_dispatch_prep_row(tmp_path: Path, monkeyp
     ])
 
     assert rc == 0
-    prep_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "voter-dispatch-prep" in line).split("\t")
-    assert prep_row[3] == "design"
-    assert prep_row[5:7] == ["claude", "voter-dispatch-prep"]
-    assert prep_row[10] == "voter-dispatch-prep-round-1.out"
+    assert len(timing_calls) == 1
+    timing_call = timing_calls[0]
+    assert timing_call["ledger"] == ledger
+    assert timing_call["skill"] == "design"
+    assert isinstance(timing_call["prep_start"], float)
+    assert isinstance(timing_call["prep_end"], float)
+    assert timing_call["round_num"] == 1
 
 
 def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

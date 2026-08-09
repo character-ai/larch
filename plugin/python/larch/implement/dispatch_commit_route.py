@@ -30,6 +30,7 @@ from larch.implement import checks_result_identity
 from larch.implement import ship
 from larch.implement import scope_disposition
 from larch.implement.self_edit_log import file_sha256, read_self_edits
+from larch.review.review_types import parse_findings
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
@@ -622,10 +623,39 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
         len(cols) >= TIMING_LEDGER_MIN_COLUMNS
         and cols[1] == "round"
         and cols[3] == "implement"
-        and cols[4] == "Step 5: code review"
+        and cols[4] == "Step 5 — code review"
         and cols[5] == round_decimal
         and cols[6] == start_s
     )
+
+
+def _step5_round_timing_counts(round_dir: Path) -> tuple[int, int]:
+    """Recover the round counts the removed Python timing CLI used to infer."""
+    tally = round_dir / "review-tally.env"
+    accepted_raw = _read_kv_file(path=tally, key="ACCEPTED_COUNT") or _read_kv_file(
+        path=tally,
+        key="ACCEPTED",
+    )
+    rejected_raw = _read_kv_file(path=tally, key="REJECTED_COUNT") or _read_kv_file(
+        path=tally,
+        key="REJECTED",
+    )
+    accepted = int(accepted_raw) if accepted_raw.isdigit() else len(
+        parse_findings(round_dir / "accepted-findings.md", boundary="finding_heading")
+    )
+    if rejected_raw.isdigit():
+        return max(accepted, 0), max(int(rejected_raw), 0)
+    rejected_path = round_dir / "rejected-findings.md"
+    try:
+        rejected_text = rejected_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        rejected_text = ""
+    rejected = len(re.findall(r"^###\s+\[(?:rejected|Code Review)\]\s+", rejected_text, flags=re.MULTILINE))
+    if not rejected:
+        rejected = len(re.findall(r"^(?:[0-9]+:FINDING_[A-Za-z0-9_]+_OUTCOME=rejected|\[[^]]+\]|- )", rejected_text, flags=re.MULTILINE))
+    if not rejected and rejected_text:
+        rejected = 1
+    return max(accepted, 0), rejected
 
 
 def _parse_whitespace_kv_line(line: str) -> dict[str, str]:
@@ -1591,8 +1621,15 @@ def _step5_resume_commit_phase() -> int | None:
 
 
 def _record_step5_handoff_timing(*, implement_tmpdir: Path, final_round_num: str) -> None:
-    # lint-subprocess-via-runner: ok timing-mark needs custom DESIGN_TMPDIR/LARCH_TIMING_SKILL env; _invoke_larch does not support custom env
-    subprocess.run([str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 5: review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
+    _ = rust_runtime.timing_mark(
+        proc,
+        label="Step 5: review handoff",
+        skill="implement",
+        environment={
+            "DESIGN_TMPDIR": "",
+            "IMPLEMENT_TMPDIR": str(implement_tmpdir),
+        },
+    )
     round_start_file = implement_tmpdir / f"round-{final_round_num}" / "round-start-s"
     if round_start_file.is_file():
         start_s = round_start_file.read_text(encoding="utf-8", errors="replace").strip()
@@ -1606,7 +1643,20 @@ def _record_step5_handoff_timing(*, implement_tmpdir: Path, final_round_num: str
                     needs_record = False
                     break
         if needs_record and start_s.isdigit():
-            _invoke_cli(["review-and-fix", "record-round-timing", "--implement-tmpdir", str(implement_tmpdir), "--round", final_round_num, "--start-s", start_s, "--end-s", str(int(time.time()))])
+            round_dir = implement_tmpdir / f"round-{final_round_num}"
+            accepted, rejected = _step5_round_timing_counts(round_dir)
+            _ = rust_runtime.timing_record_round(
+                proc,
+                skill="implement",
+                step="Step 5 — code review",
+                round_num=int(final_round_num),
+                start_s=int(start_s),
+                end_s=int(time.time()),
+                accepted=accepted,
+                rejected=rejected,
+                ledger=str(ledger),
+                environment={"IMPLEMENT_TMPDIR": str(implement_tmpdir)},
+            )
 
 
 def _step5_resume_worker(args: argparse.Namespace, implement_tmpdir: Path) -> int:
