@@ -167,6 +167,7 @@ fn standalone_publication_and_sync_preserve_disabled_and_parser_contracts() {
         ("RUN_LOG_STORAGE", "disabled"),
         ("CORPUS_ROOT", ""),
         ("LISTED_ARCHIVES", "0"),
+        ("INVENTORY_SHA256", ""),
         ("PRESENT_RUNS", "0"),
         ("DOWNLOADED_RUNS", "0"),
         ("REPAIRED_RUNS", "0"),

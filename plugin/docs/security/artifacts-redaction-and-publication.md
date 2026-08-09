@@ -369,6 +369,11 @@ migration descriptor or inventory. The retained legacy parser is available
 only to an explicit operator migration API. It does not discover normal
 repository configuration or change the sync trust boundary.
 
+Corpus-derived evidence in a public run-log audit may record only
+`INVENTORY_SHA256`, aggregate sync counters, and fixed outcome tokens. It must
+not record `CORPUS_ROOT`, archive names, archive contents, provider diagnostics,
+or credentials.
+
 Mutable analyzer state is not an archive and never appears under `run-logs/`.
 It stays under the private, client-repository and storage-origin-bound XDG state
 home with owner-scoped paths, `0600` files, atomic replacement, per-file locks,

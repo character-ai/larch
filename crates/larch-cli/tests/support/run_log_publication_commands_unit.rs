@@ -73,6 +73,7 @@ fn result_formatters_cover_success_and_failure_envelopes() {
     assert!(publish_outcome(Err("failed".to_owned()), 3).eq(&ExitCode::FAILURE));
     let sync = RepositorySyncResult {
         corpus_root: root.path().join("corpus"),
+        inventory_sha256: "a".repeat(64),
         runs: Vec::new(),
     };
     assert!(sync_outcome(Ok(sync)).eq(&ExitCode::SUCCESS));

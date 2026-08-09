@@ -218,10 +218,10 @@ perform no archive, provider, pending-state, or cache operation and exit zero
 with `RUN_LOG_STORAGE=disabled`, `RUN_LOG_STORAGE_REASON=<token>`, and their
 normal `PUBLISH_OK=true` or `SYNC_OK=true` terminal field. Publish also emits
 `RUN_LOG_PUBLICATION=skipped-disabled`; sync emits zero archive counters and an
-empty `CORPUS_ROOT`. Python analyzer consumers reject that skipped sync as an
-empty corpus and return actionable storage guidance. Analysis commands with an
-explicit `--log-root` continue to read that local corpus without storage or
-network access.
+empty `CORPUS_ROOT` and `INVENTORY_SHA256`. Python analyzer consumers reject
+that skipped sync as an empty corpus and return actionable storage guidance.
+Analysis commands with an explicit `--log-root` continue to read that local
+corpus without storage or network access.
 
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh run-log sync --repo-root <root>` lists the complete
 `run-logs/` remote prefix once, including every provider pagination page. It
@@ -230,6 +230,13 @@ Valid cached runs remain untouched. Invalid entries are quarantined under the
 per-run publication lock, replaced atomically after validation, and restored if
 repair fails. Interrupted download, materialization, promotion, and quarantine
 entries are removed before the next attempt.
+
+Enabled sync emits `INVENTORY_SHA256`: SHA-256 over the schema tag, inventory
+count, and each sorted normalized relative archive key plus its listed byte
+size. It is an opaque inventory identity for audit records, not an archive
+digest. It never prints an archive name, local path, archive content, or
+provider diagnostic. The current aggregate audit record is
+[Run-log corpus re-audit: 2026-08-09](run-log-corpus-audit-2026-08-09.md).
 
 Normal synchronization accepts only manifest-bearing archives. It does not read
 a legacy migration descriptor, inventory, or basename-keyed cache. The

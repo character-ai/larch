@@ -36,6 +36,7 @@ def test_synchronized_repository_log_root_is_a_typed_rust_consumer(
             "RUN_LOG_STORAGE=enabled\n"
             f"CORPUS_ROOT={corpus}\n"
             "LISTED_ARCHIVES=2\n"
+            "INVENTORY_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
             "PRESENT_RUNS=1\n"
             "DOWNLOADED_RUNS=1\n"
             "REPAIRED_RUNS=0\n"
@@ -50,6 +51,7 @@ def test_synchronized_repository_log_root_is_a_typed_rust_consumer(
 
     assert result.corpus_root == corpus
     assert result.listed_count == 2
+    assert result.inventory_sha256 == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     assert result.present_count == 1
     assert result.downloaded_count == 1
     assert result.repaired_count == 0
@@ -72,6 +74,7 @@ def test_synchronized_repository_log_root_rejects_a_disabled_rust_skip(
             "RUN_LOG_STORAGE_REASON=config-file-missing\n"
             "CORPUS_ROOT=\n"
             "LISTED_ARCHIVES=0\n"
+            "INVENTORY_SHA256=\n"
             "PRESENT_RUNS=0\n"
             "DOWNLOADED_RUNS=0\n"
             "REPAIRED_RUNS=0\n"
@@ -94,8 +97,32 @@ def test_synchronized_repository_log_root_rejects_an_inconsistent_rust_envelope(
             "RUN_LOG_STORAGE=enabled\n"
             f"CORPUS_ROOT={tmp_path}\n"
             "LISTED_ARCHIVES=1\n"
+            "INVENTORY_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
             "PRESENT_RUNS=1\n"
             "DOWNLOADED_RUNS=1\n"
+            "REPAIRED_RUNS=0\n"
+            "SYNC_OK=true\n",
+            "",
+        )
+
+    monkeypatch.setattr(run_log_corpus.subprocess, "run", _run)
+    with pytest.raises(run_log_corpus.RunLogCorpusError, match="invalid machine envelope"):
+        _ = run_log_corpus.synchronized_repository_log_root(repo_root=tmp_path)
+
+
+def test_synchronized_repository_log_root_rejects_an_invalid_inventory_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "RUN_LOG_STORAGE=enabled\n"
+            f"CORPUS_ROOT={tmp_path}\n"
+            "LISTED_ARCHIVES=1\n"
+            "INVENTORY_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg\n"
+            "PRESENT_RUNS=1\n"
+            "DOWNLOADED_RUNS=0\n"
             "REPAIRED_RUNS=0\n"
             "SYNC_OK=true\n",
             "",

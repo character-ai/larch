@@ -299,6 +299,7 @@ fn sync_outcome(result: Result<RepositorySyncResult, String>) -> ExitCode {
         Ok(result) => {
             println!("CORPUS_ROOT={}", result.corpus_root.display());
             println!("LISTED_ARCHIVES={}", result.listed_count());
+            println!("INVENTORY_SHA256={}", result.inventory_sha256);
             println!("PRESENT_RUNS={}", result.present_count());
             println!("DOWNLOADED_RUNS={}", result.downloaded_count());
             println!("REPAIRED_RUNS={}", result.repaired_count());
@@ -386,6 +387,7 @@ fn print_disabled_sync(resolution: &RunLogStorageResolution) {
     print!("{}", format_preflight_stdout(resolution));
     println!("CORPUS_ROOT=");
     println!("LISTED_ARCHIVES=0");
+    println!("INVENTORY_SHA256=");
     println!("PRESENT_RUNS=0");
     println!("DOWNLOADED_RUNS=0");
     println!("REPAIRED_RUNS=0");

@@ -30,6 +30,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/run-log-archive.md",
     "docs/run-log-batches.md",
     "docs/run-log-cli.md",
+    "docs/run-log-corpus-audit-2026-08-09.md",
     "docs/run-logs-required-files.tsv",
     "docs/run-logs.md",
     "docs/rust-async-runtime.md",
@@ -428,6 +429,7 @@ mod tests {
         assert!(paths.contains("docs/google-service-inventory.md"));
         assert!(paths.contains("docs/dev-hook-audit.md"));
         assert!(paths.contains("docs/progress-reporting.md"));
+        assert!(paths.contains("docs/run-log-corpus-audit-2026-08-09.md"));
         assert!(paths.contains("docs/rust-async-runtime.md"));
         assert!(paths.contains("docs/rust-parity-harness.md"));
         assert!(paths.contains("docs/rust-ci-selection-observation.md"));
