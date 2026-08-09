@@ -336,6 +336,7 @@ def test_advanced_base_with_a_dependent_absent_from_head_metadata_selects_full(t
         ("python/cli.py", "global-input:rust-selector"),
         ("python/larch/core/proc.py", "global-input:rust-selector"),
         ("python/larch/core/redact.py", "global-input:rust-selector"),
+        ("python/larch/implement/rust_policy_candidate.py", "global-input:rust-ci-workflow"),
         ("python/larch/implement/rust_ci_selection.py", "global-input:rust-selector"),
         ("nextest.toml", "global-input:test-profile"),
     ],

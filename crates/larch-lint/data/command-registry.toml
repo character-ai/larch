@@ -1373,6 +1373,18 @@ planning_issue = 7681
 
 [[commands]]
 domain = "ci"
+verb = "prepare-rust-integration-artifact"
+python_module = "larch.implement.rust_policy_candidate"
+python_function = "prepare_integration_artifact_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8319
+
+[[commands]]
+domain = "ci"
 verb = "rerun-failed"
 python_module = "larch.implement.ci"
 python_function = "rerun_failed_main"
@@ -1406,6 +1418,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 8216
+
+[[commands]]
+domain = "ci"
+verb = "stage-rust-policy-candidate"
+python_module = "larch.implement.rust_policy_candidate"
+python_function = "stage_policy_candidate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8319
 
 [[commands]]
 domain = "ci"
@@ -8382,7 +8406,7 @@ planning_issue = 7679
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "residual-bash paths"]
+python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "ci stage-rust-policy-candidate", "residual-bash paths"]
 rust = ["lint gitleaks"]
 
 [[callers]]

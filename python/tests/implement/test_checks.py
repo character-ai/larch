@@ -3780,8 +3780,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     rust_full_job = workflow.split("\n  rust-full:", 1)[1].split(
         "\n  rust-partial:", 1
     )[0]
-    trusted_main_policy_stage = rust_full_job.split(
-        "Stage verified trusted main Rust policy binary", 1
+    policy_candidate_stage = rust_full_job.split(
+        "Stage and verify Rust policy cache candidate", 1
     )[1].split("Save trusted main Rust policy binary", 1)[0]
     rust_coverage_job = workflow.split("\n  rust-coverage:", 1)[1].split(
         "\n  rust-coverage-benchmark:", 1
@@ -3891,6 +3891,35 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         in rust_full_job
     )
     assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' not in rust_full_job
+    named_full_steps = {
+        match.group("name"): match.group("body")
+        for match in re.finditer(
+            r"(?ms)^      - name: (?P<name>[^\n]+)\n(?P<body>.*?)(?=^      - name:|\Z)",
+            rust_full_job.split("\n    steps:\n", 1)[1],
+        )
+    }
+    event_varying_steps = {
+        name
+        for name, body in named_full_steps.items()
+        if "github.event_name" in body or "github.ref" in body
+    }
+    assert event_varying_steps == {
+        "Restore trusted main Rust policy cache key",
+        "Save trusted main Rust policy binary",
+    }
+    for step_name in event_varying_steps:
+        assert "actions/cache/" in named_full_steps[step_name]
+        assert "run: |" not in named_full_steps[step_name]
+    named_coverage_steps = {
+        match.group("name"): match.group("body")
+        for match in re.finditer(
+            r"(?ms)^    - name: (?P<name>[^\n]+)\n(?P<body>.*?)(?=^    - name:|\Z)",
+            rust_coverage,
+        )
+    }
+    for coverage_step in named_coverage_steps.values():
+        if "run: |" in coverage_step:
+            assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" not in coverage_step
     for coverage_job in (rust_full_job, rust_coverage_benchmark):
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
@@ -4114,32 +4143,29 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     prepared_artifact = rust_coverage.split(
         "Prepare coverage-built Rust integration artifact", 1
     )[1].split("Upload coverage-built Rust executable for cross-language integration tests", 1)[0]
-    assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in prepared_artifact
-    for artifact_file in (
-        "larch",
-        "larch.sha256",
-        "producer-ref",
-        "rust-inputs-sha256",
-        "source-sha",
-        "version",
+    assert "ci prepare-rust-integration-artifact" in prepared_artifact
+    assert f'--coverage-larch "$GITHUB_WORKSPACE/{coverage_binary}"' in prepared_artifact
+    assert '--artifact-dir "$RUNNER_TEMP/larch-linux-test-binary"' in prepared_artifact
+    assert '--source-sha "$GITHUB_SHA"' in prepared_artifact
+    assert '--rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"' in prepared_artifact
+    assert "sha256sum larch > larch.sha256" not in prepared_artifact
+    assert "github.event_name" not in prepared_artifact
+    assert "github.ref" not in prepared_artifact
+    assert "github.event_name" not in policy_candidate_stage
+    assert "github.ref" not in policy_candidate_stage
+    assert policy_candidate_stage.count("$GITHUB_EVENT_NAME") == 1
+    assert policy_candidate_stage.count("$GITHUB_REF") == 1
+    for candidate_argument in (
+        "ci stage-rust-policy-candidate",
+        '--artifact-dir "$RUNNER_TEMP/larch-linux-test-binary"',
+        '--policy-dir "$RUNNER_TEMP/trusted-main-rust-policy"',
+        '--event-name "$GITHUB_EVENT_NAME"',
+        '--ref "$GITHUB_REF"',
+        '--source-sha "$GITHUB_SHA"',
+        '--rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"',
     ):
-        assert artifact_file in prepared_artifact
-    assert 'printf \'%s\\n\' "$GITHUB_SHA"' in prepared_artifact
-    assert 'printf \'%s\\n\' "$RUST_POLICY_INPUTS_SHA256"' in prepared_artifact
-    assert "sha256sum larch > larch.sha256" in prepared_artifact
-    assert (
-        'policy_larch="$RUNNER_TEMP/larch-linux-test-binary/larch"'
-        in trusted_main_policy_stage
-    )
-    assert "target/llvm-cov-target" not in trusted_main_policy_stage
-    for trusted_main_check in (
-        "sha256sum --check --strict larch.sha256",
-        'printf \'%s\\n\' "$GITHUB_SHA"',
-        'printf \'%s\\n\' "$RUST_POLICY_INPUTS_SHA256"',
-        "printf '%s\\n' refs/heads/main",
-        'test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"',
-    ):
-        assert trusted_main_check in trusted_main_policy_stage
+        assert candidate_argument in policy_candidate_stage
+    assert "target/llvm-cov-target" not in policy_candidate_stage
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
     )
@@ -4167,6 +4193,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage compiler-dependency cache" in supply_chain
     assert "three comparable warm-cache" in supply_chain
     assert "restore-keys" in supply_chain
+    assert "Every `rust-full` execution stages and verifies a policy-cache candidate" in supply_chain
+    assert "same checksum" in supply_chain
+    assert "current-checkout" in supply_chain
     assert "primary-key miss" in supply_chain
     assert "2 GiB" in supply_chain
     assert "coverage-target-deps-benchmark" in supply_chain

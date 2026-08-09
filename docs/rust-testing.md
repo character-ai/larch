@@ -245,6 +245,11 @@ follows:
   `cargo llvm-cov nextest` profile, workspace doctests against the instrumented
   target, the workspace line baseline, `target/llvm-cov/lcov.info`, repository
   policy, plugin projection validation, and the Linux executable artifact.
+  After coverage-target pruning, every full lane stages and verifies a policy
+  cache candidate from that preserved artifact. Pull requests and merge
+  candidates use `current-checkout` provenance; only a successful `main` push
+  may label and publish a `refs/heads/main` candidate. This does not build a
+  second executable.
   It is the only producer that enforces full-workspace coverage. Pushes to
   `main`, manual dispatches, scheduled runs, merge-queue runs, and unknown
   events always use `rust-full`; pull requests use it when selection is `full`

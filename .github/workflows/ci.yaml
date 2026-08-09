@@ -821,41 +821,22 @@ jobs:
         with:
           path: ${{ runner.temp }}/trusted-main-rust-policy
           key: trusted-main-rust-policy-${{ env.RUST_POLICY_CACHE_SCHEMA }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-      - name: Stage verified trusted main Rust policy binary
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # The coverage action has already prepared the integration artifact and
+      # pruned workspace products. Every full lane stages and verifies a fresh
+      # candidate; only the save step below may publish a trusted-main cache.
+      - name: Stage and verify Rust policy cache candidate
+        if: success()
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
         run: |
           set -euo pipefail
-          test -n "$RUST_POLICY_INPUTS_SHA256"
-          # The composite action preserves these exact bytes before pruning
-          # workspace products from the coverage dependency cache.
-          policy_larch="$RUNNER_TEMP/larch-linux-test-binary/larch"
-          policy_dir="$RUNNER_TEMP/trusted-main-rust-policy"
-          test -x "$policy_larch"
-          rm -rf "$policy_dir"
-          mkdir -p "$policy_dir"
-          install -m 0755 "$policy_larch" "$policy_dir/larch"
-          (
-            cd "$policy_dir"
-            sha256sum larch > larch.sha256
-          )
-          printf '%s\n' refs/heads/main > "$policy_dir/producer-ref"
-          printf '%s\n' "$RUST_POLICY_INPUTS_SHA256" > "$policy_dir/rust-inputs-sha256"
-          printf '%s\n' "$GITHUB_SHA" > "$policy_dir/source-sha"
-          "$policy_dir/larch" --version > "$policy_dir/version"
-          for policy_file in larch larch.sha256 producer-ref rust-inputs-sha256 source-sha version; do
-            test -f "$policy_dir/$policy_file"
-            test ! -L "$policy_dir/$policy_file"
-          done
-          chmod 755 "$policy_dir/larch"
-          (
-            cd "$policy_dir"
-            sha256sum --check --strict larch.sha256
-          )
-          test "$(<"$policy_dir/rust-inputs-sha256")" = "$RUST_POLICY_INPUTS_SHA256"
-          test "$(<"$policy_dir/producer-ref")" = refs/heads/main
-          test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"
+          python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-rust-policy-candidate \
+            --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
+            --policy-dir "$RUNNER_TEMP/trusted-main-rust-policy" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --ref "$GITHUB_REF" \
+            --source-sha "$GITHUB_SHA" \
+            --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
       - name: Save trusted main Rust policy binary
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.trusted-main-policy-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0

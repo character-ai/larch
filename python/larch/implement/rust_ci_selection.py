@@ -637,6 +637,7 @@ _GLOBAL_PATH_TRIGGERS: Final = {
     ".github/actions/rust-coverage/action.yaml": "global-input:rust-ci-workflow",
     "python/cli.py": "global-input:rust-selector",
     "python/larch/cli.py": "global-input:rust-selector",
+    "python/larch/implement/rust_policy_candidate.py": "global-input:rust-ci-workflow",
     "python/larch/implement/rust_ci_selection.py": "global-input:rust-selector",
     "python/larch/core/proc.py": "global-input:rust-selector",
     "python/larch/core/redact.py": "global-input:rust-selector",
