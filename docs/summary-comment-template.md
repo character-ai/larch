@@ -1,6 +1,6 @@
 # Summary Comment Template Contributor Notes
 
-**Purpose**: Contributor documentation for script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
+**Purpose**: Contributor documentation for script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments through `scripts/larch.sh tracking-issue upsert-summary`.
 
 **Contract**: Tracking issue comments use one marker per comment:
 
@@ -15,20 +15,24 @@
 issue-scoped rather than run-scoped, jointly written by `/design` (Architecture)
 and `/implement` (Code Flow). All other markers remain run-scoped.
 
-The `larch:final-summary` body is rich markdown produced by
-`python/cli.py render run-summary`: it opens with a `## /…` header and bullet lines,
-including optional `- Force: true` when `/implement --force` was
-requested, then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
-note lines from `--note-lines-file` (sentinel is the last line of the
-standardized block, not the first line of the file).
+The `/implement` `larch:final-summary` body is rich markdown produced by Rust
+`final-report write`; it opens with a `## /…` header and bullet lines, including
+optional `- Force: true` when `/implement --force` was requested, then emits
+the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional note
+lines from `--note-lines-file` (sentinel is the last line of the standardized
+block, not the first line of the file). The #7682 Python `render run-summary`
+command remains a bounded `/design` payload renderer, not an `/implement`
+final-report owner.
 `/implement` and `/design` share the same `larch:final-summary` marker family; the
 `runid=` segment disambiguates concurrent runs on one tracking issue.
-`/implement` uses this renderer for the published
-`final-summary.md` projection and the GitHub upsert payload (`summary-final.md` for implement; `python/cli.py design render-final-summary` owns the `/design` gather + upsert path).
+`/implement` uses Rust `final-report write` for the published `final-summary.md`
+projection and the GitHub upsert payload (`summary-final.md` for implement;
+`python/cli.py design render-final-summary` owns the `/design` gather + upsert
+path).
 
-Large runtime payloads are not embedded in these comments. They are staged
-under `larch-logs/<skill>/<run-id>/` by `python/cli.py run-log`, then published
-as one terminal archive. **Exception**: `larch:diagrams` embeds diagram bodies
+Large runtime payloads are not embedded in these comments. Rust `run-log`
+commands stage them under `larch-logs/<skill>/<run-id>/`, then the Rust
+lifecycle publishes one terminal archive. **Exception**: `larch:diagrams` embeds diagram bodies
 directly in the shared issue comment; diagrams are not written as a larch-log
 batch. `/design` owns the Architecture section and `/implement` owns the Code
 Flow section.

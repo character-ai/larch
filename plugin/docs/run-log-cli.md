@@ -106,10 +106,13 @@ separate processes never interleave a record.
 
 `run-log checkpoint`, `refresh`, `prepare-terminal-snapshot`, and
 `capture-transcript` are Rust-owned. Every production caller enters through
-`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The Rust owner may invoke remaining
-Python report commands as documented compatibility dependencies until their
-named migration leaves cut over. Rust controls flush ordering, batch
-aggregation, and manifest reconciliation around those bounded dependencies.
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Rust controls flush ordering, batch
+aggregation, and manifest reconciliation. Its only retained Python payload
+dependencies are `token report`, `token mark`, and `difficulty write-record`,
+all owned by #7684; `final-report write` additionally reads the #7679 model
+fallback and assessment payloads and the #7681 plan and PR payloads. Those
+Python payload commands never write a manifest, timing ledger, transcript,
+archive, or run-log batch directly.
 Batch replacement and append use same-directory temporary
 files, atomic renames, directory syncs, and the shared append lock. Repeating a
 flush replaces derived reports instead of duplicating their rows.

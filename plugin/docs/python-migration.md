@@ -23,9 +23,10 @@ mutable checkpoint and terminal flushes, transcript capture, manifest updates,
 breadcrumb publication, archive creation, materialization, cache promotion,
 storage preflight, shared lifecycle operations, standalone publication,
 synchronization, historical layout migration, and retroactive repair sweeps.
-Python retains bounded compatibility consumers and content renderers until
-their named leaves cut over. A renderer invoked by Rust produces a payload
-only. It is not a fallback command owner.
+Python retains bounded compatibility consumers and payload producers owned by
+the #7679, #7680, #7681, #7682, and #7684 umbrellas. A renderer invoked by Rust
+produces a payload only. It is not a fallback command owner. The current command
+and compatibility inventory lives in [Rust command registry](rust-command-registry.md#retained-python-surfaces-outside-the-closed-7683-boundary).
 
 Before a Rust cutover, pass the shared
 `tests/fixtures/run-log-object-store-contract-v1.json` fixture plus archive,
@@ -82,7 +83,7 @@ from the authoritative Rust table. The round-artifact tables and
 `_stage_round_artifact` have no Python production caller left; they are retained
 only as the shared source for the `run-log write-round` test double in
 `python/tests/support/rust_agent_stub.py`, so the double cannot become a second
-implementation. Delete both when the remaining run-log verbs cut over.
+implementation. They are not a remaining run-log command owner.
 
 **Publication and synchronization cut over in #8080.** `run-log publish` and
 `run-log sync` are Rust-owned through
@@ -93,9 +94,11 @@ inventory validation, interrupted-transfer cleanup, quarantine/restore, and
 archive materialization behind the shared Rust object-store port. It removed
 the Python command registrations and the superseded Python publication and
 synchronization implementations. `python/larch/report/run_log_corpus.py` is a
-typed Rust consumer for analyzer callers; `run_log_publish.py` retains only
-local path and lock types used by unrelated state owners. The offline adapter
-double covers retry/resume, redaction before egress, and cold/warm sync.
+typed Rust consumer for analyzer callers; `run_log_publish.py` and
+`storage_config.py` retain bounded path, lock, configuration, and error support
+used by those compatibility callers. The legacy `object_store.py` adapter is
+for compatibility/test callers only. The offline adapter double covers
+retry/resume, redaction before egress, and cold/warm sync.
 
 **Breadcrumb publication cut over in #8074.** `run-log publish-breadcrumbs` is
 Rust-owned. `larch_adapters::run_lifecycle::publish_breadcrumbs` is the single
@@ -251,7 +254,7 @@ Wired into `make lint` and `.pre-commit-config.yaml`.
 ```bash
 # Direct call — no shim.
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr [args...]
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" report-tokens analyze [args...]
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" report-tokens analyze [args...]
 cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
 ```
 
@@ -260,9 +263,11 @@ domain module (lazy import).
 
 ## Rate-override environment variables
 
-For `report-tokens analyze`, cost calculations use the rates in `python/larch/core/config.py`.
-Override them per-run with environment variables documented in
-`docs/configuration-and-permissions.md`.
+For `report-tokens analyze` and `final-report`, cost calculations use
+`larch_core::report::RATE_TABLE`. The Python `report_tokens_cost.py` helper
+remains only for #7682 compatibility payloads and #7684 token/analytics
+commands. Both paths accept the rate-override environment variables documented
+in `docs/configuration-and-permissions.md`.
 
 ## Decision log — B6 prompt rendering and generators
 

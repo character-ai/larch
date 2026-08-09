@@ -537,9 +537,13 @@ Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count 
 
 Default `2` (positive integer). `/design` Step 2b.5 compares the current plan and diff sizes against the first drift baseline captured for the run. When either ratio is greater than this multiple, `design-postplan-emit.sh --with-plan-size` exits `14`, prints `## Plan Size — Drift`, and the orchestrator asks Continue / Cancel before proceeding. Empty, non-numeric, and non-positive values fall back to `2`.
 
-#### Per-vendor rates (`/implement` final summary)
+#### Per-vendor rates (`/implement` final summary and `/report-tokens`)
 
-[`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
+`larch_core::report::RATE_TABLE` owns the canonical `/implement` final-summary
+and `/report-tokens` USD estimates per lane. The retained
+[`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py)
+helper consumes the same override names only for the #7682 `render run-summary`
+compatibility payload and #7684 token/analytics commands:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars** (`gpt-5.6-sol` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
