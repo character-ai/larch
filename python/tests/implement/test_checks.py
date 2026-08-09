@@ -3849,6 +3849,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_target_restore = rust_coverage.split("Restore coverage dependencies", 1)[1].split(
         "Record Rust coverage cache restore timing", 1
     )[0]
+    coverage_target_restore_diagnostics = rust_coverage.split(
+        "Record coverage dependency cache restore diagnostics", 1
+    )[1].split("Start Rust coverage tool setup timing", 1)[0]
     coverage_target_prune = rust_coverage.split(
         "Prune coverage workspace products before target cache save", 1
     )[1].split("Record coverage dependency cache prune diagnostics", 1)[0]
@@ -3930,7 +3933,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "Start Rust coverage job timing" in rust_full_job
     assert "Start Rust coverage job timing" in rust_coverage_benchmark
     assert "job-total-after-runner-setup" in rust_coverage
-    assert "restored_bytes=unavailable" in rust_coverage
+    assert (
+        'coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"'
+        in coverage_target_restore_diagnostics
+    )
+    assert "coverage target cache hit restored no directory" in coverage_target_restore_diagnostics
+    assert 'du -sk "$coverage_target_dir"' in coverage_target_restore_diagnostics
+    assert 'restored_bytes="$((restored_kib * 1024))"' in coverage_target_restore_diagnostics
+    assert "restored_bytes=0" in coverage_target_restore_diagnostics
     assert "rust-coverage-target-cache-inventory" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
         "Prune coverage workspace products before target cache save"

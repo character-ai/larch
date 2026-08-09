@@ -113,22 +113,40 @@ runs:
           case "$restore_step_outcome" in
             success)
               case "$cache_hit" in
-                true) restore_outcome=hit ;;
-                false|'') restore_outcome=miss ;;
+                true)
+                  restore_outcome=hit
+                  coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
+                  test -d "$coverage_target_dir" || {
+                    printf 'coverage target cache hit restored no directory: %s\n' "$coverage_target_dir" >&2
+                    exit 1
+                  }
+                  restored_kib="$(du -sk "$coverage_target_dir" | awk '{print $1}')"
+                  case "$restored_kib" in
+                    ''|*[!0-9]*) printf 'invalid coverage target cache restored size: %s\n' "$restored_kib" >&2; exit 1 ;;
+                  esac
+                  restored_bytes="$((restored_kib * 1024))"
+                  ;;
+                false|'')
+                  restore_outcome=miss
+                  restored_bytes=0
+                  ;;
                 *) printf 'unexpected coverage target cache-hit value: %s\n' "$cache_hit" >&2; exit 1 ;;
               esac
               ;;
-            failure) restore_outcome=failure ;;
+            failure)
+              restore_outcome=failure
+              restored_bytes=unavailable
+              ;;
             *) printf 'unexpected coverage target restore outcome: %s\n' "$restore_step_outcome" >&2; exit 1 ;;
           esac
         else
           cache_hit=disabled
           restore_seconds=0
           restore_outcome=disabled-unmeasured
+          restored_bytes=unavailable
         fi
-        # actions/cache does not expose a restored-byte output. Keep that
-        # absence explicit rather than deriving bytes from a later directory.
-        restored_bytes=unavailable
+        # The target directory contains only the restored cache at this point.
+        # Record its allocated size on exact hits before Cargo can add outputs.
         {
           printf 'COVERAGE_TARGET_CACHE_HIT=%s\n' "$cache_hit"
           printf 'COVERAGE_TARGET_CACHE_RESTORE_OUTCOME=%s\n' "$restore_outcome"
