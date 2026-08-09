@@ -175,6 +175,7 @@ struct LeafState {
 struct GraphState {
     parent: GitHubIssue,
     leaves: Vec<LeafState>,
+    open_orphan_blockers: Vec<u64>,
 }
 
 struct ExpectedAuditLeaf {
@@ -274,18 +275,10 @@ fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String
             open_blockers: leaf.open_blockers.clone(),
         })
         .collect::<Vec<_>>();
-    let selection = select_complete_umbrella_leaf(&selection_input);
+    let selection = select_complete_umbrella_leaf(&selection_input, &graph.open_orphan_blockers);
     write_audit_snapshot(arguments, graph)?;
-    match &selection {
-        CompleteUmbrellaNext::Launch(issue) => {
-            emit_kv("NEXT_ACTION", "launch");
-            emit_kv("NEXT_LEAF", &issue.to_string());
-        }
-        CompleteUmbrellaNext::Audit => emit_kv("NEXT_ACTION", "audit"),
-        CompleteUmbrellaNext::Deadlocked(issues) => {
-            emit_kv("NEXT_ACTION", "deadlock");
-            emit_kv("BLOCKED_LEAVES", &join_numbers(issues));
-        }
+    for (key, value) in next_action_fields(&selection) {
+        emit_kv(key, &value);
     }
     emit_kv("LEAF_COUNT", &graph.leaves.len().to_string());
     emit_kv(
@@ -298,6 +291,24 @@ fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String
     );
     emit_kv("SNAPSHOT_WRITTEN", "true");
     Ok(())
+}
+
+fn next_action_fields(selection: &CompleteUmbrellaNext) -> Vec<(&'static str, String)> {
+    match selection {
+        CompleteUmbrellaNext::Launch(issue) => vec![
+            ("NEXT_ACTION", "launch".to_owned()),
+            ("NEXT_LEAF", issue.to_string()),
+        ],
+        CompleteUmbrellaNext::Audit => vec![("NEXT_ACTION", "audit".to_owned())],
+        CompleteUmbrellaNext::OrphanBlocked(issues) => vec![
+            ("NEXT_ACTION", "orphan-blocker".to_owned()),
+            ("ORPHAN_BLOCKERS", join_numbers(issues)),
+        ],
+        CompleteUmbrellaNext::Deadlocked(issues) => vec![
+            ("NEXT_ACTION", "deadlock".to_owned()),
+            ("BLOCKED_LEAVES", join_numbers(issues)),
+        ],
+    }
 }
 
 fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
@@ -679,6 +690,7 @@ async fn finish_remote(
     issue: u64,
 ) -> Result<(), String> {
     let graph = read_graph(service, cancellation, repository, issue).await?;
+    require_no_open_orphan_blockers(&graph)?;
     if graph
         .leaves
         .iter()
@@ -715,6 +727,7 @@ async fn finish_remote(
         .await
         .map_err(|error| error.to_string())?;
     let before_close = read_graph(service, cancellation, repository, issue).await?;
+    require_no_open_orphan_blockers(&before_close)?;
     if before_close
         .leaves
         .iter()
@@ -737,6 +750,7 @@ async fn finish_remote(
         return Err("parent close read-back failed".to_owned());
     }
     let final_graph = read_graph(service, cancellation, repository, issue).await?;
+    require_no_open_orphan_blockers(&final_graph)?;
     if final_graph.parent.state != GitHubIssueState::Closed
         || !final_graph.parent.title.starts_with(DONE_PREFIX)
         || final_graph
@@ -775,24 +789,8 @@ async fn read_graph(
             "umbrella has more than {MAX_DIRECT_LEAVES} direct leaves"
         ));
     }
-    let parent_blockers = service
-        .list_blocked_by(
-            cancellation,
-            repository.owner(),
-            repository.name(),
-            umbrella,
-        )
-        .await
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|blocker| blocker.issue_number())
-        .collect::<BTreeSet<_>>();
-    if references
-        .iter()
-        .any(|leaf| !parent_blockers.contains(&leaf.issue_number()))
-    {
-        return Err("a direct leaf does not block its umbrella parent".to_owned());
-    }
+    let open_orphan_blockers =
+        read_open_orphan_blockers(service, cancellation, repository, umbrella, &references).await?;
     let mut seen = BTreeSet::new();
     let mut leaves = Vec::with_capacity(references.len());
     for reference in references {
@@ -845,7 +843,63 @@ async fn read_graph(
         });
     }
     leaves.sort_by_key(|leaf| leaf.issue.number);
-    Ok(GraphState { parent, leaves })
+    Ok(GraphState {
+        parent,
+        leaves,
+        open_orphan_blockers,
+    })
+}
+
+async fn read_open_orphan_blockers(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    umbrella: u64,
+    references: &[larch_adapters::github::SubIssueRef],
+) -> Result<Vec<u64>, String> {
+    let parent_blockers = service
+        .list_blocked_by(
+            cancellation,
+            repository.owner(),
+            repository.name(),
+            umbrella,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let parent_blocker_numbers = parent_blockers
+        .iter()
+        .map(larch_adapters::github::DependencyRef::issue_number)
+        .collect::<BTreeSet<_>>();
+    let direct_leaf_numbers = references
+        .iter()
+        .map(larch_adapters::github::SubIssueRef::issue_number)
+        .collect::<BTreeSet<_>>();
+    if references
+        .iter()
+        .any(|leaf| !parent_blocker_numbers.contains(&leaf.issue_number()))
+    {
+        return Err("a direct leaf does not block its umbrella parent".to_owned());
+    }
+    Ok(parent_blockers
+        .iter()
+        .filter(|blocker| {
+            blocker.is_open() && !direct_leaf_numbers.contains(&blocker.issue_number())
+        })
+        .map(larch_adapters::github::DependencyRef::issue_number)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect())
+}
+
+fn require_no_open_orphan_blockers(graph: &GraphState) -> Result<(), String> {
+    if graph.open_orphan_blockers.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cannot finish while open non-leaf parent blockers remain: {}",
+            join_numbers(&graph.open_orphan_blockers)
+        ))
+    }
 }
 
 async fn require_top_level_umbrella(

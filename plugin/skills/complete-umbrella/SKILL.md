@@ -29,9 +29,9 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 
 - Accept exactly one positive umbrella issue number. Reject descriptions, flags, pull requests, ordinary issues, and nested umbrellas.
 - Mark the parent `[IMPLEMENTING]` immediately after repository resolution and durable umbrella validation. Change only that leading workflow prefix to `[DONE]` after the final audit passes.
-- Before every leaf turn, fetch the direct leaf graph and every open blocked-by edge again. Choose only the smallest-numbered open leaf with no open blockers.
+- Before every leaf turn, fetch the direct leaf graph and every open parent blocker again. Reject an open parent blocker that is not a direct leaf. Choose only the smallest-numbered open leaf with no open blockers.
 - Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The child creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship.
-- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, or failed read-back hard-stops the complete-umbrella run.
+- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run.
 - Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use background Bash, Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop.
 - During the final audit, do not ask the operator for decisions. Make the narrowest evidence-backed choice. Do not publish a security-sensitive gap or a secret as a public issue; fail privately instead.
 
@@ -125,6 +125,7 @@ Parse with `kv get`. Require `SNAPSHOT_WRITTEN=true`, numeric leaf counts, and o
 - `launch`: require a positive numeric `NEXT_LEAF`, then continue to Step 2.
 - `audit`: require `OPEN_LEAF_COUNT=0`, then continue to Step 4.
 - `deadlock`: hard-fail and report the numeric `BLOCKED_LEAVES` list. Do not guess at a dependency override.
+- `orphan-blocker`: hard-fail and report the numeric `ORPHAN_BLOCKERS` list. Do not treat an open non-leaf parent blocker as a leaf dependency deadlock or an audit result.
 
 Do not reuse an earlier `next.env` or snapshot for another turn.
 
@@ -259,7 +260,7 @@ After a passing Step 4 audit, run:
   --operator-invoked
 ```
 
-Require `UMBRELLA_FINISHED=true` and the exact issue number. The owner re-fetches the complete graph, refuses any open leaf, changes only the leading active workflow prefix to `[DONE]`, closes the parent as completed, and performs a final graph read-back.
+Require `UMBRELLA_FINISHED=true` and the exact issue number. The owner re-fetches the complete graph, refuses any open leaf or open non-leaf parent blocker, changes only the leading active workflow prefix to `[DONE]`, closes the parent as completed, and performs a final graph read-back.
 
 Run shared `run-log lifecycle-finalize` and require its terminal success contract. Remove `COMPLETE_UMBRELLA_WRITE_SENTINEL`, then clean the session with:
 

@@ -68,11 +68,19 @@ fn repository() -> GitHubRepositoryRef {
 }
 
 fn closed_graph(parent: &str, leaf: &str) -> Vec<IssueServiceExchange> {
+    closed_graph_with_parent_blockers(parent, leaf, &[(LEAF, 410, "closed")])
+}
+
+fn closed_graph_with_parent_blockers(
+    parent: &str,
+    leaf: &str,
+    parent_blockers: &[(u64, u64, &str)],
+) -> Vec<IssueServiceExchange> {
     vec![
         response(200, parent),
         response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "closed")])),
-        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(parent_blockers)),
         response(200, leaf),
         response(200, "[]"),
     ]
@@ -87,6 +95,52 @@ fn open_graph(parent: &str, leaf: &str) -> Vec<IssueServiceExchange> {
         response(200, leaf),
         response(200, "[]"),
         response(200, "[]"),
+    ]
+}
+
+fn attachment_exchanges(
+    parent: &str,
+    leaf: &str,
+    leaf_ref: &str,
+    parent_ref: &str,
+) -> Vec<IssueServiceExchange> {
+    vec![
+        response(200, parent),
+        response(404, "{}"),
+        response(200, leaf),
+        response(200, "[]"),
+        response(404, "{}"),
+        response(200, "[]"),
+        response(201, "{}"),
+        response(200, leaf_ref),
+        response(200, parent),
+        response(200, "[]"),
+        response(201, "{}"),
+        response(200, leaf_ref),
+        response(200, parent),
+        response(404, "{}"),
+        response(200, leaf_ref),
+        response(200, leaf_ref),
+        response(200, leaf),
+        response(200, "[]"),
+        response(200, "[]"),
+        response(200, leaf_ref),
+        response(200, parent),
+        response(404, "{}"),
+        response(200, leaf),
+        response(200, "[]"),
+        response(200, parent_ref),
+        response(200, leaf_ref),
+        response(200, parent),
+        response(200, leaf_ref),
+        response(200, parent),
+        response(404, "{}"),
+        response(200, leaf_ref),
+        response(200, leaf_ref),
+        response(200, leaf),
+        response(200, "[]"),
+        response(200, "[]"),
+        response(200, leaf_ref),
     ]
 }
 
@@ -250,7 +304,7 @@ async fn start_remote_applies_only_the_active_title_transition() {
 }
 
 #[tokio::test]
-async fn attachment_replays_both_native_edges_with_exact_read_back() {
+async fn attachment_is_idempotent_and_replays_both_native_edges_with_exact_read_back() {
     let parent = issue_json(
         UMBRELLA,
         400,
@@ -270,28 +324,8 @@ async fn attachment_replays_both_native_edges_with_exact_read_back() {
         BEFORE,
     );
     let leaf_ref = refs(&[(GAP, 420, "open")]);
-    let (service, server) = service(vec![
-        response(200, &parent),
-        response(404, "{}"),
-        response(200, &leaf),
-        response(200, "[]"),
-        response(404, "{}"),
-        response(200, "[]"),
-        response(201, "{}"),
-        response(200, &leaf_ref),
-        response(200, &parent),
-        response(200, "[]"),
-        response(201, "{}"),
-        response(200, &leaf_ref),
-        response(200, &parent),
-        response(404, "{}"),
-        response(200, &leaf_ref),
-        response(200, &leaf_ref),
-        response(200, &leaf),
-        response(200, "[]"),
-        response(200, "[]"),
-        response(200, &leaf_ref),
-    ]);
+    let parent_ref = json!({ "number": UMBRELLA, "id": 400, "state": "open" }).to_string();
+    let (service, server) = service(attachment_exchanges(&parent, &leaf, &leaf_ref, &parent_ref));
     let arguments = LeafArguments {
         repository: String::from("o/r"),
         umbrella: UMBRELLA,
@@ -311,6 +345,15 @@ async fn attachment_replays_both_native_edges_with_exact_read_back() {
     )
     .await
     .expect("verified attachment");
+    attach_leaf_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &expected,
+    )
+    .await
+    .expect("idempotent attachment");
 
     let requests = server.finish().expect("stub completed");
     assert_eq!(
@@ -408,7 +451,7 @@ async fn attachment_stops_when_the_parent_finishes_between_edges() {
 }
 
 #[tokio::test]
-async fn finish_remote_proves_closed_leaves_before_and_after_parent_close() {
+async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_blockers() {
     let active_parent = issue_json(
         UMBRELLA,
         400,
@@ -441,16 +484,25 @@ async fn finish_remote_proves_closed_leaves_before_and_after_parent_close() {
         "closed",
         BEFORE,
     );
-    let mut exchanges = closed_graph(&active_parent, &leaf);
+    let parent_blockers = [(LEAF, 410, "closed"), (GAP, 420, "closed")];
+    let mut exchanges = closed_graph_with_parent_blockers(&active_parent, &leaf, &parent_blockers);
     exchanges.extend([
         response(200, &active_parent),
         response(200, &active_parent),
         response(200, &done_parent),
         response(200, &done_parent),
     ]);
-    exchanges.extend(closed_graph(&done_parent, &leaf));
+    exchanges.extend(closed_graph_with_parent_blockers(
+        &done_parent,
+        &leaf,
+        &parent_blockers,
+    ));
     exchanges.push(response(200, &closed_parent));
-    exchanges.extend(closed_graph(&closed_parent, &leaf));
+    exchanges.extend(closed_graph_with_parent_blockers(
+        &closed_parent,
+        &leaf,
+        &parent_blockers,
+    ));
     let (service, server) = service(exchanges);
 
     finish_remote(&service, &Cancellation::new(), &repository(), UMBRELLA)
@@ -466,6 +518,156 @@ async fn finish_remote_proves_closed_leaves_before_and_after_parent_close() {
         2
     );
     assert!(String::from_utf8_lossy(&requests[16].body.bytes).contains("completed"));
+}
+
+#[tokio::test]
+async fn finish_refuses_an_open_non_leaf_parent_blocker() {
+    let active_parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Implement it",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let (client, server) = service(closed_graph_with_parent_blockers(
+        &active_parent,
+        &leaf,
+        &[(LEAF, 410, "closed"), (GAP, 420, "open")],
+    ));
+
+    let error = finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect_err("open non-leaf parent blocker must refuse completion");
+    assert_eq!(
+        error,
+        "cannot finish while open non-leaf parent blockers remain: 42"
+    );
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
+}
+
+#[tokio::test]
+async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Implement it",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(404, "{}"),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open"), (GAP, 420, "open")])),
+        response(200, &leaf),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+
+    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect("valid direct leaf with a separately reported parent blocker");
+    assert_eq!(graph.open_orphan_blockers, vec![GAP]);
+    let selection = select_complete_umbrella_leaf(
+        &graph
+            .leaves
+            .iter()
+            .map(|leaf| CompleteUmbrellaLeaf {
+                number: leaf.issue.number,
+                open: leaf.issue.state == GitHubIssueState::Open,
+                open_blockers: leaf.open_blockers.clone(),
+            })
+            .collect::<Vec<_>>(),
+        &graph.open_orphan_blockers,
+    );
+    assert_eq!(
+        next_action_fields(&selection),
+        vec![
+            ("NEXT_ACTION", "orphan-blocker".to_owned()),
+            ("ORPHAN_BLOCKERS", "42".to_owned()),
+        ]
+    );
+    server.join().expect("orphan graph stub completed");
+}
+
+#[tokio::test]
+async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let invalid_title = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Implement it",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(404, "{}"),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, &invalid_title),
+    ]);
+    let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    else {
+        panic!("closed leaf title must remain exact");
+    };
+    assert_eq!(
+        error,
+        "direct leaf #41 violates the exact lifecycle-title invariant"
+    );
+    server.join().expect("title stub completed");
+
+    let invalid_body = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Implement it",
+        "Wrong first line\n\nDone.",
+        "closed",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(404, "{}"),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, &invalid_body),
+    ]);
+    let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    else {
+        panic!("closed leaf body must retain the exact opening");
+    };
+    assert_eq!(
+        error,
+        "direct leaf #41 violates the exact first-line body invariant"
+    );
+    server.join().expect("body stub completed");
 }
 
 #[tokio::test]
@@ -595,7 +797,7 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
 }
 
 #[test]
-fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
+fn next_snapshot_covers_launch_audit_orphan_deadlock_and_inactive_refusal() {
     let directory = tempfile::tempdir().expect("temporary root");
     let parent = GitHubIssue {
         id: 400,
@@ -633,6 +835,7 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
         &GraphState {
             parent: parent.clone(),
             leaves: vec![leaf(43, GitHubIssueState::Open, Vec::new())],
+            open_orphan_blockers: Vec::new(),
         },
     )
     .expect("launch snapshot");
@@ -641,6 +844,7 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
         &GraphState {
             parent: parent.clone(),
             leaves: Vec::new(),
+            open_orphan_blockers: Vec::new(),
         },
     )
     .expect("audit snapshot");
@@ -649,9 +853,19 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
         &GraphState {
             parent: parent.clone(),
             leaves: vec![leaf(44, GitHubIssueState::Open, vec![99])],
+            open_orphan_blockers: Vec::new(),
         },
     )
     .expect("deadlock snapshot");
+    emit_next(
+        &arguments("orphan-blocker.json"),
+        &GraphState {
+            parent: parent.clone(),
+            leaves: Vec::new(),
+            open_orphan_blockers: vec![99],
+        },
+    )
+    .expect("orphan-blocker snapshot");
     let mut inactive = parent;
     inactive.state = GitHubIssueState::Closed;
     assert!(
@@ -660,6 +874,7 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
             &GraphState {
                 parent: inactive,
                 leaves: Vec::new(),
+                open_orphan_blockers: Vec::new(),
             },
         )
         .is_err()
@@ -670,6 +885,35 @@ fn next_snapshot_covers_launch_audit_deadlock_and_inactive_refusal() {
     assert!(snapshot.contains("\"repository\": \"o/r\""));
     assert_eq!(join_numbers(&[3, 5, 8]), "3 5 8");
     assert_eq!(state_token(GitHubIssueState::All), "all");
+}
+
+#[test]
+fn next_action_fields_preserve_valid_order_and_distinguish_orphan_blockers() {
+    assert_eq!(
+        next_action_fields(&CompleteUmbrellaNext::Launch(41)),
+        vec![
+            ("NEXT_ACTION", "launch".to_owned()),
+            ("NEXT_LEAF", "41".to_owned()),
+        ]
+    );
+    assert_eq!(
+        next_action_fields(&CompleteUmbrellaNext::Audit),
+        vec![("NEXT_ACTION", "audit".to_owned())]
+    );
+    assert_eq!(
+        next_action_fields(&CompleteUmbrellaNext::Deadlocked(vec![43, 44])),
+        vec![
+            ("NEXT_ACTION", "deadlock".to_owned()),
+            ("BLOCKED_LEAVES", "43 44".to_owned()),
+        ]
+    );
+    assert_eq!(
+        next_action_fields(&CompleteUmbrellaNext::OrphanBlocked(vec![42, 99])),
+        vec![
+            ("NEXT_ACTION", "orphan-blocker".to_owned()),
+            ("ORPHAN_BLOCKERS", "42 99".to_owned()),
+        ]
+    );
 }
 
 #[cfg(unix)]
