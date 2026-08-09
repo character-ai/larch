@@ -10,9 +10,9 @@ use larch_core::{
     GitHubIssueState, GitHubRepositoryRef, GitHubService, IssueCreateRequest, IssueMutationError,
     IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, ProcessCancellation,
     VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
-    redact_issue_create_request, redact_issue_mutation_request, same_mutation_identity,
-    snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
-    verify_created_issue,
+    redact_issue_create_request, redact_issue_mutation_request, redact_issue_text_outbound,
+    same_mutation_identity, snapshot_is_strictly_newer, validate_issue_mutation_request,
+    verify_authorized_body_change, verify_created_issue,
 };
 
 use super::{
@@ -167,6 +167,61 @@ impl<'service> IssueMutationOwner<'service> {
         } else {
             Err(String::from("close-read-back-failed"))
         }
+    }
+
+    /// Publish an optional close note and close one open issue under the shared
+    /// live-mutation gate.
+    ///
+    /// Unlike [`Self::close_not_planned`], this is a user-visible mutation and
+    /// therefore checks authorization before it reaches GitHub.  The comment is
+    /// written first while holding the runtime mutation lock: a failed comment
+    /// leaves the issue open, and a failed close leaves the durable note in
+    /// place for an operator to inspect rather than claiming that the close
+    /// happened.  GitHub's close response is the required read-back proof.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable mutation reason when authorization, identity,
+    /// redaction, the open-state precondition, comment publication, close, or
+    /// close read-back cannot be proven.
+    pub async fn close_with_comment(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+        reason: GitHubCloseReason,
+        comment: Option<&str>,
+    ) -> Result<GitHubIssue, IssueMutationError> {
+        authorize(authorization)?;
+        if issue == 0 {
+            return Err(IssueMutationError::new("invalid-identity"));
+        }
+        let redacted_comment = comment.map(redact_issue_text_outbound).transpose()?;
+        let _mutation = self.service.mutation_lock.lock().await;
+        let before = self.read_snapshot(repository, issue, cancellation).await?;
+        if before.state != GitHubIssueState::Open {
+            return Err(IssueMutationError::new("close-precondition-failed"));
+        }
+        if let Some(body) = redacted_comment.as_deref() {
+            let written = self
+                .service
+                .create_comment(repository, issue, body, cancellation)
+                .await
+                .map_err(|_| IssueMutationError::new("comment-write-failed"))?;
+            if written.body != body {
+                return Err(IssueMutationError::new("comment-read-back-failed"));
+            }
+        }
+        let closed = self
+            .service
+            .close_issue(repository, issue, reason, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("close-failed"))?;
+        if closed.number != issue || closed.state != GitHubIssueState::Closed {
+            return Err(IssueMutationError::new("close-read-back-failed"));
+        }
+        Ok(closed)
     }
 
     /// Apply the exact requested fields and prove their postcondition by read-back.
@@ -352,8 +407,8 @@ mod tests {
         runtime::Cancellation,
     };
     use larch_core::{
-        GitHubIssueState, GitHubRepositoryRef, IssueCreateRequest, IssueMutationError,
-        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
+        GitHubCloseReason, GitHubIssueState, GitHubRepositoryRef, IssueCreateRequest,
+        IssueMutationError, IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
     };
     use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
@@ -790,6 +845,137 @@ mod tests {
 
         assert_eq!(error, "close-read-back-failed");
         assert_eq!(server.finish().expect("stub finished").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_commented_close_redacts_then_confirms_the_closed_issue() {
+        let mut closed: Value =
+            serde_json::from_str(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
+                .expect("issue fixture");
+        closed["state"] = json!("closed");
+        let mut comment = json!({
+            "id": 11, "node_id": "C_11",
+            "url": "https://api.github.com/repos/owner/repo/issues/comments/11",
+            "html_url": "https://github.com/owner/repo/issues/7#issuecomment-11",
+            "body": "note <REDACTED-TOKEN>",
+            "created_at": "2026-07-19T00:00:00Z",
+            "updated_at": "2026-07-19T00:00:00Z",
+        });
+        comment["user"] =
+            serde_json::from_str::<Value>(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
+                .expect("issue fixture")["user"]
+                .clone();
+        let (service, server) = service(vec![
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7",
+                200,
+                issue_json("T", "B", &[], "2026-07-19T00:00:00Z"),
+            )
+            .expect("snapshot response"),
+            IssueServiceExchange::json(
+                "POST",
+                "/repos/owner/repo/issues/7/comments",
+                201,
+                comment.to_string(),
+            )
+            .expect("comment response"),
+            IssueServiceExchange::json(
+                "PATCH",
+                "/repos/owner/repo/issues/7",
+                200,
+                closed.to_string(),
+            )
+            .expect("close response"),
+        ]);
+        let owner = IssueMutationOwner::new(&service);
+
+        let result = owner
+            .close_with_comment(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &repository(),
+                7,
+                GitHubCloseReason::Completed,
+                Some("note ghp_abcdefghijklmnopqrst"),
+            )
+            .await;
+        let requests = server.finish().expect("stub finished");
+        let closed = result.expect("close succeeds");
+        let note: Value = serde_json::from_slice(&requests[1].body.bytes).expect("comment JSON");
+
+        assert_eq!(closed.state, GitHubIssueState::Closed);
+        assert_eq!(note["body"], "note <REDACTED-TOKEN>");
+        assert_eq!(requests[2].method, "PATCH");
+    }
+
+    #[tokio::test]
+    async fn a_commented_close_refuses_a_comment_echo_that_lost_its_marker() {
+        let mut comment = json!({
+            "id": 11, "node_id": "C_11",
+            "url": "https://api.github.com/repos/owner/repo/issues/comments/11",
+            "html_url": "https://github.com/owner/repo/issues/7#issuecomment-11",
+            "body": "wrong note",
+            "created_at": "2026-07-19T00:00:00Z",
+            "updated_at": "2026-07-19T00:00:00Z",
+        });
+        comment["user"] =
+            serde_json::from_str::<Value>(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
+                .expect("issue fixture")["user"]
+                .clone();
+        let (service, server) = service(vec![
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7",
+                200,
+                issue_json("T", "B", &[], "2026-07-19T00:00:00Z"),
+            )
+            .expect("snapshot response"),
+            IssueServiceExchange::json(
+                "POST",
+                "/repos/owner/repo/issues/7/comments",
+                201,
+                comment.to_string(),
+            )
+            .expect("comment response"),
+        ]);
+        let owner = IssueMutationOwner::new(&service);
+
+        let error = owner
+            .close_with_comment(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &repository(),
+                7,
+                GitHubCloseReason::Completed,
+                Some("expected note"),
+            )
+            .await
+            .expect_err("a mismatched comment must stop the close");
+
+        assert_eq!(error.reason(), "comment-read-back-failed");
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_commented_close_refuses_before_any_github_request() {
+        let (service, server) = service(Vec::new());
+        let owner = IssueMutationOwner::new(&service);
+
+        let error = owner
+            .close_with_comment(
+                &Cancellation::new(),
+                &denied_authorization(),
+                &repository(),
+                7,
+                GitHubCloseReason::Completed,
+                Some("note"),
+            )
+            .await
+            .expect_err("unauthorized close must fail");
+
+        assert_eq!(error.reason(), "unauthorized-mutation");
+        assert!(server.finish().expect("stub finished").is_empty());
     }
 
     fn create_request(title: &str, body: &str, labels: &[&str]) -> IssueCreateRequest {

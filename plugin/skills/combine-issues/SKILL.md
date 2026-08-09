@@ -45,10 +45,10 @@ Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp
 <!-- step:1 — Fetch Eligible Issues -->
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues fetch
 ```
 
-Title-prefix filtering logic lives in `python/larch/issue/combine_issues.py`; keep it in sync with `python/tests/issue/test_combine_issues.py`.
+Title-prefix filtering and its Rust parity coverage live in `crates/larch-cli/src/combine_issues_commands.rs`.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues eligible for combination.` and stop.
 
@@ -71,10 +71,11 @@ Ask the user which groups to apply (e.g., "all", "1,3", or "none").
 For each approved group, write the combined body to `$COMBINE_TMPDIR/group-<N>.md`, then invoke:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues apply \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues apply \
   --title "<combined title>" \
   --body-file "$COMBINE_TMPDIR/group-<N>.md" \
-  --source-issues "<comma-separated issue numbers>"
+  --source-issues "<comma-separated issue numbers>" \
+  --operator-invoked
 ```
 
 Parse `COMBINED_ISSUE` and `CLOSED_ISSUES` from stdout. Print a summary line per group: `Combined #X, #Y, #Z → #<new> (<N> issues closed)`.
@@ -128,10 +129,10 @@ Set these variable paths under `$COMBINE_TMPDIR` before running any OOS step:
 <!-- step:oos-1 — Fetch OOS Issues -->
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch --repo "$REPO" --oos
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues fetch --repo "$REPO" --oos
 ```
 
-OOS title-prefix filtering logic lives in `python/larch/issue/combine_issues.py`.
+OOS title-prefix filtering lives in the Rust `combine-issues` command owner.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open [OOS] issues found.` and stop.
 
@@ -173,16 +174,17 @@ For each issue, parse its body and extract the individual items. Then for each i
 
 Track pending fully discarded source issues while checking actuality and merit. A source is fully discarded only when every item in that source is stale auto-discarded or confirmed merit-rejected, and no item is blocked, rescued, still actionable, pending merit confirmation, or consumed by a combined host. During oos-2, merit rejections are only proposed, so sources with proposed low-merit items remain pending and must not close yet. Build a pending discarded-source list with the source issue number, a redacted stale discard summary, proposed merit rejection keys and causes, proposed close reason `not planned`, and whether a comment file will be used. Sources whose items are all stale still behave like the previous stale-only closure list.
 
-Do not call raw `gh issue close` from prompt prose. Reserve `python/cli.py combine-issues close-sources` for **post-combination** source closures in oos-7 only: each close comment must keep the human-readable `Combined into #<target>` line and write the durable `larch:combined-away` marker used by `/analyze-issues`. Stale-only and confirmed fully discarded closures in oos-2 and oos-4 use `combine-issues close-stale` only and must **not** carry the combined-away marker. Do not invoke `combine-issues close-stale` during oos-2 before approval.
+Do not call raw `gh issue close` from prompt prose. Reserve `scripts/larch.sh combine-issues close-sources` for **post-combination** source closures in oos-7 only: each close comment must keep the human-readable `Combined into #<target>` line and write the durable `larch:combined-away` marker used by `/analyze-issues`. Stale-only and confirmed fully discarded closures in oos-2 and oos-4 use `combine-issues close-stale` only and must **not** carry the combined-away marker. Do not invoke `combine-issues close-stale` during oos-2 before approval.
 
 If no kept items remain after actuality and merit checks and no proposed merit rejections are pending, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-stale \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues close-stale \
   --repo "$REPO" \
   --issues "<issue>" \
   --reason "not planned" \
-  --comment-file "<file>"
+  --comment-file "<file>" \
+  --operator-invoked
 ```
 
 The comment file must be redacted and should summarize only that issue's stale discard lines. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Report the stale closure tally and stop without entering combination planning. If approval is denied, leave the stale-only sources open, report them as not closed, and stop.
@@ -253,11 +255,12 @@ Post-rescue regrouping:
 After approval and before dependency phases, close approved stale-only or fully discarded sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-stale \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues close-stale \
   --repo "$REPO" \
   --issues "<issue>" \
   --reason "not planned" \
-  --comment-file "<file>"
+  --comment-file "<file>" \
+  --operator-invoked
 ```
 
 The comment file must be redacted and should summarize only that issue's stale discard lines and confirmed merit rejection causes. The comment must say the items were discarded as stale or out of line with repo principles when merit contributed. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Include partial stale or fully discarded closes in final left-open tallies. Do not let a `close-stale` partial failure hide later combine results.
@@ -267,12 +270,13 @@ The comment file must be redacted and should summarize only that issue's stale d
 For each approved group, write the combined body to `$COMBINE_TMPDIR/oos-group-<N>.md`, then invoke:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues apply \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues apply \
   --repo "$REPO" \
   --title "<combined title>" \
   --body-file "$COMBINE_TMPDIR/oos-group-<N>.md" \
   --source-issues "<comma-separated issue numbers to close>" \
-  --defer-close
+  --defer-close \
+  --operator-invoked
 ```
 
 Only list a source issue in `--source-issues` when all of its items were handled by this run. Handled means stale auto-discarded, confirmed merit-rejected, or consumed into an approved group. Blocked-on-source items, pending merit items, rescued items not consumed by an approved group, and uncombined kept items are not handled. If a source issue had stale items discarded or merit items confirmed rejected and every remaining item was consumed into combined issues, it can be deferred for closure. If a source issue contributed items to multiple groups, defer closure until all groups are applied. Never list a source issue in `--source-issues` when it still has blocked items, pending merit items, rescued unconsumed items, or any other unhandled item.
@@ -296,14 +300,14 @@ Materialize every dependency workflow JSON file before the first dependency comm
 
 <!-- step:oos-6 — Inherit Source Dependencies -->
 
-Run the Python planner for inherited native dependencies. Do not redo remap, classification, dedupe, or source-eligibility logic in prompt prose.
+Run the Rust planner for inherited native dependencies. Do not redo remap, classification, dedupe, or source-eligibility logic in prompt prose.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch-deps \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues fetch-deps \
   --repo "$REPO" \
   --issues "<all source issues>" > "$DEPS_JSON"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-inherited \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues plan-inherited \
   --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -343,8 +347,8 @@ Do not close sources tied to unresolved inherited exception decisions. Do not cl
 Refresh metadata before source closure, then rerun the inherited planner.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-inherited \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues plan-inherited \
   --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -358,10 +362,10 @@ Compare the refreshed plan with the initial plan by edge tuple. The refresh reso
 
 <!-- step:oos-7 — Close Consumed Source Issues -->
 
-Compute closure eligibility in Python.
+Compute closure eligibility in Rust.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-eligible \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues close-eligible \
   --inherited-plan-file "$FINAL_INHERITED_PLAN_JSON" \
   --write-results-file "$WRITE_RESULTS_JSON" \
   --exception-decisions-file "$EXCEPTION_DECISIONS_JSON" \
@@ -374,10 +378,11 @@ Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple
 `close-eligible` ignores `satisfied_edges`; closed-blocker dependencies do not require writes and do not block source closure.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-sources \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues close-sources \
   --repo "$REPO" \
   --combined-issue "<combined issue>" \
-  --source-issues "<comma-separated eligible source issues>"
+  --source-issues "<comma-separated eligible source issues>" \
+  --operator-invoked
 ```
 
 Each `close-sources` invocation writes a two-line close comment: human-readable `Combined into #<target>`, blank line, then the exact HTML envelope `<!-- larch:combined-away source=#<source> target=#<target> -->` (for example `<!-- larch:combined-away source=#12 target=#99 -->`). `/analyze-issues` matches that HTML comment shape when docking combined-away filed OOS issues.
@@ -389,7 +394,7 @@ Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PAR
 After source closure, refresh the full open-issue set for audit.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$AUDIT_OPEN_ISSUES_JSON"
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues list-open --repo "$REPO" > "$AUDIT_OPEN_ISSUES_JSON"
 ```
 
 Hard-stop if audit `list-open` exits non-zero, or if its JSON status is not `ok`.
@@ -403,7 +408,7 @@ Build `decided_edges.json` separately from inherited rejected exception decision
 Run Tier-1 prose audit:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues prose-audit \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues prose-audit \
   --repo "$REPO" \
   --combined-issues "$COMBINED_ISSUES_CSV" \
   --open-issues-file "$AUDIT_OPEN_ISSUES_JSON" \
@@ -424,10 +429,10 @@ If the bounded trigger set exceeds 50 pairs, skip Tier-2 for the excess and summ
 
 <!-- step:oos-9 — Audit Exception Gate and Writes -->
 
-Plan audit writes in Python.
+Plan audit writes in Rust.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-audit \
+CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues plan-audit \
   --prose-candidates-file "$PROSE_CANDIDATES_JSON" \
   --tier2-candidates-file "$TIER2_CANDIDATES_JSON" \
   --existing-edges-file "$EXISTING_EDGES_JSON" \

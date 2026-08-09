@@ -29,6 +29,7 @@ Commands:
   bgjob              Durable background-job compatibility commands
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
+  combine-issues     Combine related issues while preserving their dependency graph
   dirty-tree         Working-tree checkpoint and scope compatibility commands
   deps               The `/deps` open-issue dependency audit: reads, plan, and one apply
   execution-issues   The `/implement` execution-issue ledger lifecycle

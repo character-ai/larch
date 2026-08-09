@@ -113,7 +113,20 @@ impl CleanInstallCase {
             | "clean-install-oos-issue-cap"
             | "clean-install-oos-disposition-gate"
             | "clean-install-oos-disposition-checkpoint"
-            | "clean-install-oos-file" => 2,
+            | "clean-install-oos-file"
+            // The combine-issues compatibility verbs receive the fixture's
+            // `--help` token as a raw argument, so their argparse boundary
+            // proves dispatch by refusing it with the standard usage code.
+            | "clean-install-combine-issues-apply"
+            | "clean-install-combine-issues-close-eligible"
+            | "clean-install-combine-issues-close-sources"
+            | "clean-install-combine-issues-close-stale"
+            | "clean-install-combine-issues-fetch"
+            | "clean-install-combine-issues-fetch-deps"
+            | "clean-install-combine-issues-list-open"
+            | "clean-install-combine-issues-plan-audit"
+            | "clean-install-combine-issues-plan-inherited"
+            | "clean-install-combine-issues-prose-audit" => 2,
             _ => 0,
         }
     }
@@ -424,6 +437,48 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "preflight",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-close-eligible",
+        "combine-issues",
+        "close-eligible",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-close-sources",
+        "combine-issues",
+        "close-sources",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-close-stale",
+        "combine-issues",
+        "close-stale",
+    ),
+    CleanInstallCase::new("clean-install-combine-issues-fetch", "combine-issues", "fetch"),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-fetch-deps",
+        "combine-issues",
+        "fetch-deps",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-list-open",
+        "combine-issues",
+        "list-open",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-plan-audit",
+        "combine-issues",
+        "plan-audit",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-plan-inherited",
+        "combine-issues",
+        "plan-inherited",
+    ),
+    CleanInstallCase::new(
+        "clean-install-combine-issues-prose-audit",
+        "combine-issues",
+        "prose-audit",
+    ),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),

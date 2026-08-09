@@ -1525,11 +1525,13 @@ verb = "apply"
 python_module = "larch.issue.combine_issues"
 python_function = "apply_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-apply"
 
 [[commands]]
 domain = "combine-issues"
@@ -1537,11 +1539,13 @@ verb = "close-eligible"
 python_module = "larch.issue.combine_issues"
 python_function = "close_eligible_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-close-eligible"
 
 [[commands]]
 domain = "combine-issues"
@@ -1549,11 +1553,13 @@ verb = "close-sources"
 python_module = "larch.issue.combine_issues"
 python_function = "close_sources_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-close-sources"
 
 [[commands]]
 domain = "combine-issues"
@@ -1561,11 +1567,13 @@ verb = "close-stale"
 python_module = "larch.issue.combine_issues"
 python_function = "close_stale_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-close-stale"
 
 [[commands]]
 domain = "combine-issues"
@@ -1573,11 +1581,13 @@ verb = "fetch"
 python_module = "larch.issue.combine_issues"
 python_function = "fetch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-fetch"
 
 [[commands]]
 domain = "combine-issues"
@@ -1585,11 +1595,13 @@ verb = "fetch-deps"
 python_module = "larch.issue.combine_issues"
 python_function = "fetch_deps_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-fetch-deps"
 
 [[commands]]
 domain = "combine-issues"
@@ -1597,11 +1609,13 @@ verb = "list-open"
 python_module = "larch.issue.combine_issues"
 python_function = "list_open_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-list-open"
 
 [[commands]]
 domain = "combine-issues"
@@ -1609,11 +1623,13 @@ verb = "plan-audit"
 python_module = "larch.issue.combine_issues"
 python_function = "plan_audit_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-plan-audit"
 
 [[commands]]
 domain = "combine-issues"
@@ -1621,11 +1637,13 @@ verb = "plan-inherited"
 python_module = "larch.issue.combine_issues"
 python_function = "plan_inherited_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-plan-inherited"
 
 [[commands]]
 domain = "combine-issues"
@@ -1633,11 +1651,13 @@ verb = "prose-audit"
 python_module = "larch.issue.combine_issues"
 python_function = "prose_audit_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8181
+clean_install_test = "clean-install-combine-issues-prose-audit"
 
 [[commands]]
 domain = "complete-umbrella"
@@ -8926,8 +8946,8 @@ rust = []
 [[callers]]
 path = "skills/combine-issues/SKILL.md"
 kind = "skill"
-python = ["combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit"]
-rust = ["block-issue add-blocked-by", "gh resolve-repo", "issue add-blocked-by"]
+python = []
+rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by"]
 
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"

@@ -226,13 +226,22 @@ Plan, owner, and blocker hashes remain live checks, and in-scope base-target
 drift fails closed. Unavailable or stale evidence fails closed.
 
 `crates/larch-adapters/src/github/issue_mutation.rs` is the single Rust owner
-for issue title, body, and label writes. Later Rust callers use
+for issue title, body, label, comment, and close writes. Later Rust callers use
 `larch_adapters::github::IssueMutationOwner`, which applies the shared
 live-mutation gate before its first read, serializes through the shared GitHub
-runtime lock, redacts outbound titles and bodies, and proves a fresh exact
-read-back without a blind retry. This library leaf adds no command surface; the
-Python owner remains responsible for its existing command callers until an
-explicit cutover.
+runtime lock, redacts outbound titles, bodies, and close comments, and proves a
+fresh exact read-back without a blind retry. The Rust-owned `/combine-issues`
+apply path reads every source's native blockers before creation, re-adds those
+blockers to the combined issue, and verifies the full set before it can
+close a source. A partial transfer leaves sources open and reports the durable
+combined issue URL. Deferred source closure re-reads the combined host and each
+source's active blockers; missing or unverifiable inherited edges leave that
+source open. If a source-close batch becomes partial after the combined issue
+is durable, it also reports that URL and its exact closure tally. A close
+comment is published before the close while holding the same mutation lock;
+comment, close, or closed-state failure is never reported
+as a successful close. Python remains responsible only for issue callers that
+have not reached an explicit atomic cutover.
 
 ### Local mutation safety
 

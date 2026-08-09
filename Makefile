@@ -97,9 +97,9 @@ lint-only:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: test-collect-agent-results
+test-harnesses-1: test-collect-agent-results test-blocker
 
-test-harnesses-2: test-check-mid-run-dirty-tree
+test-harnesses-2: test-check-mid-run-dirty-tree test-fetch-combinable-issues-filter
 
 test-harnesses-3: test-design-step3-mav test-fluff-analysis test-gate-b-apply-mode test-design-step3-review test-check-clean-tree test-hook-anti-read-poll test-launch-claude-subprocess test-git-commit-only test-check-scope-reduction-marker test-cache-key-discipline test-block-submodule test-references-headers test-launch-claude-review test-no-grouped-reuse-guard test-plan-adequacy-audit oos-disposition-gate-bash-harness test-pause-skill test-audit-edit-write test-implement-anti-halt test-design-clarify test-implement-step8-exit3-first-fixer test-implement-step2-routing test-anti-halt test-implement-positional-issue test-fluff-analysis-corpus
 
@@ -158,13 +158,13 @@ test-fluff-analysis-corpus:
 	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-fetch-combinable-issues-filter:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_combine_issues.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli combine_issues_commands --bin larch
 
 test-legacy-title-prefix-literals-scope:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
 
 test-blocker:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_blocker.py -x -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-core --lib prose_blockers
 
 test-anti-improvised-wakeup:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
