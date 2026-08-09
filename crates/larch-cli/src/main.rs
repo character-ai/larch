@@ -21,6 +21,7 @@ use crate::argparse_compat::python_io_error;
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
+mod analyze_issues_commands;
 mod argparse_compat;
 mod bgjob_adapt;
 mod bgjob_commands;
@@ -410,6 +411,15 @@ enum GanttCommand {
 
 #[derive(Subcommand)]
 enum AnalyzeIssuesCommand {
+    /// Fetch a bounded issue-backlog snapshot as private JSON.
+    #[command(disable_help_flag = true)]
+    Fetch(RawCompatibilityArguments),
+    /// Analyze a recorded issue-backlog snapshot.
+    #[command(disable_help_flag = true)]
+    Analyze(RawCompatibilityArguments),
+    /// Fetch the backlog and analyze the synchronized run-log corpus.
+    #[command(disable_help_flag = true)]
+    Run(RawCompatibilityArguments),
     /// Render the cumulative-growth chart from a bucketed TSV.
     #[command(name = "render-chart", disable_help_flag = true)]
     RenderChart(RawCompatibilityArguments),
@@ -1559,9 +1569,20 @@ fn run(
         Domain::Gantt(GanttCommand::Render(arguments)) => {
             Ok(rendering_commands::gantt_render(&arguments.arguments))
         }
-        Domain::AnalyzeIssues(AnalyzeIssuesCommand::RenderChart(arguments)) => {
-            Ok(rendering_commands::render_chart(&arguments.arguments))
-        }
+        Domain::AnalyzeIssues(command) => Ok(match command {
+            AnalyzeIssuesCommand::Fetch(arguments) => {
+                analyze_issues_commands::fetch(&arguments.arguments)
+            }
+            AnalyzeIssuesCommand::Analyze(arguments) => {
+                analyze_issues_commands::analyze(&arguments.arguments)
+            }
+            AnalyzeIssuesCommand::Run(arguments) => {
+                analyze_issues_commands::run(&arguments.arguments)
+            }
+            AnalyzeIssuesCommand::RenderChart(arguments) => {
+                rendering_commands::render_chart(&arguments.arguments)
+            }
+        }),
         Domain::Progress(command) => Ok(match command {
             ProgressCommand::Activate(arguments) => {
                 progress_commands::activate(&arguments.arguments)

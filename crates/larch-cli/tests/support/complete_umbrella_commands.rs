@@ -805,6 +805,7 @@ fn next_snapshot_covers_launch_audit_orphan_deadlock_and_inactive_refusal() {
         title: String::from("[IMPLEMENTING] [UMBRELLA] Ship it"),
         body: String::from(PROPOSAL_BODY),
         state: GitHubIssueState::Open,
+        state_reason: String::new(),
         url: String::from("https://github.com/o/r/issues/40"),
         author: String::from("author"),
         labels: Vec::new(),

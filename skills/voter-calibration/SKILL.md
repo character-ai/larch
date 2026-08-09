@@ -44,7 +44,7 @@ Direct `python3 .../voter-calibration.py` and `make test-voter-calibration` runs
 
 ## Acceptance Readout
 
-- **Default post-ship:** run `--era all` after incentive #5461 ships. Auto-boundary uses `closedAt` from one scoped `gh issue view`. Compare `High Rate` and `Calibration Score` in segmented `## Pre-incentive era` and `## Post-incentive era` sections. Each section contains `## Agreement Table` and `## Voter Severity Scoreboard`.
+- **Default post-ship:** run `--era all` after incentive #5544 ships. Auto-boundary uses `closedAt` from one scoped `gh issue view`. Compare `High Rate` and `Calibration Score` in segmented `## Pre-incentive era` and `## Post-incentive era` sections. Each section contains `## Agreement Table` and `## Voter Severity Scoreboard`.
 - **Override or pre-ship:** run `--era all --era-since-date YYYY-MM-DD` when the incentive is unshipped, auto-boundary degrades, or the operator wants a manual cutoff.
 
 ## Implementation

@@ -80,6 +80,12 @@ also refresh the implementation lease, which the same owner binds to the run
 that already holds it. The rows that still name Python-owned issue commands
 enumerate them instead of claiming the whole domain.
 
+The three `issue-backlog-*` rows record the #8183 cutover of
+`analyze-issues fetch` and `analyze-issues run`. They read bounded issue and
+comment DTOs through the typed REST adapter, while the fixed closure-reference
+GraphQL operation stays inside the operations adapter. The offline `analyze`
+verb reads only its supplied snapshot and therefore has no GitHub-service row.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -93,6 +99,9 @@ issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	compl
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
 issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
+issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
+issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
+issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs *,issue migration-audit
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *

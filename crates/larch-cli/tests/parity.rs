@@ -436,6 +436,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "admission",
         "preflight",
     ),
+    CleanInstallCase::new(
+        "clean-install-analyze-issues-analyze",
+        "analyze-issues",
+        "analyze",
+    ),
+    CleanInstallCase::new(
+        "clean-install-analyze-issues-fetch",
+        "analyze-issues",
+        "fetch",
+    ),
+    CleanInstallCase::new(
+        "clean-install-analyze-issues-run",
+        "analyze-issues",
+        "run",
+    ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(

@@ -277,6 +277,8 @@ pub struct GitHubIssue {
     pub title: String,
     pub body: String,
     pub state: GitHubIssueState,
+    /// GitHub's optional close reason, empty when absent or not applicable.
+    pub state_reason: String,
     pub url: String,
     pub author: String,
     pub labels: Vec<GitHubLabel>,

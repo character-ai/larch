@@ -14,14 +14,14 @@ This artifact records the token-allocation capstone verdict for #4771.
 ## Command
 
 ```bash
-python3 python/cli.py analyze-issues run --ground-truth-verdict --since-date 2026-06-26 --min-larch-version 52.1.0 --min-runs 150
+scripts/larch.sh analyze-issues run --ground-truth-verdict --since-date 2026-06-26 --min-larch-version 52.1.0 --min-runs 150
 ```
 
 ## Preconditions
 
 - **Calibration incentive:** #5544 must be closed and shipped with a non-empty `closedByPullRequestsReferences` list. Bare `CLOSED` and `NOT_PLANNED` do not satisfy the gate.
 - **Enrichment:** GitHub issue enrichment must not be degraded.
-- **Targeted filed-OOS fetches:** no targeted `gh issue view` calls for filed-OOS details may fail.
+- **Targeted filed-OOS fetches:** no targeted typed GitHub issue or comment reads for filed-OOS details may fail.
 - **Corpus:** the filtered run corpus must satisfy the unique-`run_dir` gate.
 
 ## Corpus Gate Result

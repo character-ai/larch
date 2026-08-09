@@ -816,6 +816,14 @@ fn issue_from_model(
             ));
         }
     };
+    let state_reason = match value.state_reason {
+        Some(models::issues::IssueStateReason::Completed) => "COMPLETED",
+        Some(models::issues::IssueStateReason::NotPlanned) => "NOT_PLANNED",
+        Some(models::issues::IssueStateReason::Reopened) => "REOPENED",
+        Some(models::issues::IssueStateReason::Duplicate) => "DUPLICATE",
+        Some(_) | None => "",
+    }
+    .to_owned();
     let labels: Vec<GitHubLabel> = value
         .labels
         .into_iter()
@@ -831,6 +839,7 @@ fn issue_from_model(
         title: value.title,
         body,
         state,
+        state_reason,
         url,
         author: value.user.login,
         labels,

@@ -554,11 +554,13 @@ verb = "analyze"
 python_module = "larch.issue.analyze_issues"
 python_function = "analyze_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8183
+clean_install_test = "clean-install-analyze-issues-analyze"
 
 [[commands]]
 domain = "analyze-issues"
@@ -566,11 +568,13 @@ verb = "fetch"
 python_module = "larch.issue.analyze_issues"
 python_function = "fetch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8183
+clean_install_test = "clean-install-analyze-issues-fetch"
 
 [[commands]]
 domain = "analyze-issues"
@@ -591,11 +595,13 @@ verb = "run"
 python_module = "larch.issue.analyze_issues"
 python_function = "run_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8183
+clean_install_test = "clean-install-analyze-issues-run"
 
 [[commands]]
 domain = "architectural-assessment"

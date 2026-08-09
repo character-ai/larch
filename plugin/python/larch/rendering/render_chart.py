@@ -1,12 +1,12 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
 # ruff: noqa: PERF401, PLR1714, UP006, UP035
 # pylint: skip-file
-"""Compact ASCII cumulative-growth chart, called in process by `analyze-issues`.
+"""Compatibility renderer for residual Python report helpers.
 
-`analyze-issues render-chart` moved to Rust in #8092; `larch_core::report::
-growth_chart` owns the renderer and the TSV grammar. This residual function
-serves only `larch.issue._report`, whose `analyze-issues run` command is still
-Python-owned under #7682, and it retires with that command.
+`analyze-issues render-chart` moved to Rust in #8092, and the remaining
+`analyze-issues` verbs moved in #8183. `larch_core::report::growth_chart` owns
+the live renderer and TSV grammar; this function remains only for Python
+helpers that have not yet retired their in-process import.
 """
 
 from __future__ import annotations
