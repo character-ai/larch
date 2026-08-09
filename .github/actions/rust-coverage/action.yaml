@@ -399,13 +399,13 @@ runs:
         coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
         test -d "$coverage_target_dir"
         find "$coverage_target_dir" -type f \( \
-          -name '*.profraw' -o -name '*.profdata' -o -name '*.lcov' -o \
+          -name '*.profraw' -o -name '*-profraw-list' -o -name '*.profdata' -o -name '*.lcov' -o \
           -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \
         \) -delete
         cargo clean --workspace --target-dir "$coverage_target_dir"
 
         run_specific_file="$(find "$coverage_target_dir" -type f \( \
-          -name '*.profraw' -o -name '*.profdata' -o -name '*.lcov' -o \
+          -name '*.profraw' -o -name '*-profraw-list' -o -name '*.profdata' -o -name '*.lcov' -o \
           -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \
         \) -print -quit)"
         test -z "$run_specific_file" || {
