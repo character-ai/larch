@@ -1640,6 +1640,18 @@ python_removal = "pending"
 planning_issue = 7682
 
 [[commands]]
+domain = "complete-umbrella"
+verb = "ship-leaf"
+python_module = "larch.implement.complete_umbrella_ship"
+python_function = "main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8282
+
+[[commands]]
 domain = "debate"
 verb = "abort"
 python_module = "larch.debate.orchestrator"
@@ -8896,6 +8908,18 @@ path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
 python = ["session setup", "verify skill-called"]
 rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir"]
+
+[[callers]]
+path = "skills/complete-umbrella/references/recon-design.md"
+kind = "skill"
+python = ["complete-umbrella ship-leaf"]
+rust = []
+
+[[callers]]
+path = "skills/complete-umbrella/references/ship.md"
+kind = "skill"
+python = ["complete-umbrella ship-leaf"]
+rust = []
 
 [[callers]]
 path = "skills/debate/SKILL.md"

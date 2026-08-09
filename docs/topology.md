@@ -21,7 +21,9 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.partition.umbrella_handoff"></a>`implement.partition.umbrella_handoff` | /umbrella | multi-issue target replacement owner | `skills/implement/SKILL.md` |
 | <a id="umbrella.leaf_filing"></a>`umbrella.leaf_filing` | /issue | deduplication + prepared dependency wiring + identity-bound verified sentinel | `skills/umbrella/SKILL.md` |
 | <a id="complete_umbrella.audit_gap_filing"></a>`complete_umbrella.audit_gap_filing` | /issue | exact no-dedup leaf filing + caller-bound graph attachment | `skills/complete-umbrella/SKILL.md` |
-| <a id="complete_umbrella.leaf_execution"></a>`complete_umbrella.leaf_execution` | bgjob | serial current-model Claude child with larch skills disabled | `skills/complete-umbrella/SKILL.md` |
+| <a id="complete_umbrella.leaf_execution"></a>`complete_umbrella.leaf_execution` | bgjob | serial thin Claude orchestrator with larch skills disabled | `skills/complete-umbrella/SKILL.md` |
+| <a id="complete_umbrella.leaf_phases"></a>`complete_umbrella.leaf_phases` | fresh phase contexts | recon/design + implement + adversarial review + ship | `skills/complete-umbrella/SKILL.md` |
+| <a id="complete_umbrella.leaf_ship"></a>`complete_umbrella.leaf_ship` | Deterministic leaf ship driver | one umbrella leaf | `python/larch/implement/complete_umbrella_ship.py` |
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | cli.py | offline panel regression coverage | `python/cli.py` |
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |
 | <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | cli.py | offline prepare annotate close-original coverage | `python/cli.py` |

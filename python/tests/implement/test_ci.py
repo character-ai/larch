@@ -677,3 +677,37 @@ def test_distill_log_programmatic_returns_outcome_without_emitting(
     assert bad.status == "error"
     assert bad.exit_code == config.EXIT_USAGE
     assert bad.bail_class == "invalid-run-id"
+
+
+def test_distill_log_to_root_needs_no_implement_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    _patch_failed_jobs(monkeypatch)
+    _patch_failed_log(monkeypatch, stdout="lint\tRun lint\tERROR\n")
+    output = tmp_path / "ci-errors-42.md"
+
+    outcome = ci.distill_log_to_root(
+        run_id="42",
+        repo="o/r",
+        output=output,
+        trusted_root=tmp_path,
+    )
+
+    assert outcome.status == "ok"
+    assert output.is_file()
+    escaped = ci.distill_log_to_root(
+        run_id="42",
+        repo="o/r",
+        output=tmp_path.parent / "escaped.md",
+        trusted_root=tmp_path,
+    )
+    assert escaped.bail_class == "invalid-output-path"
+    lexical_escape = ci.distill_log_to_root(
+        run_id="42",
+        repo="o/r",
+        output=tmp_path / ".." / "escaped.md",
+        trusted_root=tmp_path,
+    )
+    assert lexical_escape.bail_class == "invalid-output-path"

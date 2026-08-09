@@ -1,0 +1,965 @@
+"""Deterministic leaf ship driver for one umbrella leaf."""
+
+from __future__ import annotations
+
+import argparse
+import math
+import re
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Final
+
+from larch import io as larch_io
+from larch.core import config, logging_util, proc, redact, retry
+from larch.core.proc import CommandResult, Runner
+from larch.errors import ShipError
+from larch.git import gh, git, pr_body, push
+from larch.implement import ci, ci_monitor
+from larch.issue import issue_mutation, tracking_issue
+from larch.state.session_env import is_allowed_session_tmpdir
+
+SleepFn = Callable[[float], None]
+
+_STATE_BASENAME: Final = "complete-umbrella-ship.env"
+_STATE_SCHEMA: Final = "1"
+_STATE_KEYS: Final = frozenset(
+    {
+        "SCHEMA",
+        "REPOSITORY",
+        "UMBRELLA",
+        "LEAF",
+        "BRANCH",
+        "HEAD_SHA",
+        "PR_NUMBER",
+        "PR_URL",
+        "STATUS",
+        "CI_ERRORS_FILE",
+        "CI_FIX_ATTEMPTS",
+    },
+)
+_STATE_STATUSES: Final = frozenset(
+    {"prepared", "monitoring", "ci_failed", "merged", "finalizing", "complete"},
+)
+_BRANCH_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_HEAD_RE: Final = re.compile(r"^[0-9a-f]{40,64}$")
+_CI_ERRORS_RE: Final = re.compile(r"^ci-errors-[0-9]+\.md$")
+
+
+@dataclass(frozen=True)
+class LeafShipRequest:
+    repository: str
+    repo_root: Path
+    handoff_root: Path
+    umbrella: int
+    leaf: int
+
+
+@dataclass(frozen=True)
+class LeafShipState:
+    repository: str
+    umbrella: int
+    leaf: int
+    branch: str = ""
+    head_sha: str = ""
+    pr_number: int = 0
+    pr_url: str = ""
+    status: str = "prepared"
+    ci_errors_file: str = ""
+    ci_fix_attempts: int = 0
+
+
+@dataclass(frozen=True)
+class LeafShipOutcome:
+    status: str
+    pr_number: int = 0
+    pr_url: str = ""
+    ci_errors_file: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class CiWaitOutcome:
+    status: str
+    failed_run_id: str = ""
+
+
+def _detail(text: str) -> str:
+    cleaned = redact.redact_outbound(text).replace("\r", " ").replace("\n", " ").strip()
+    return cleaned[:500]
+
+
+def _line_value(value: str, *, label: str) -> str:
+    if "\n" in value or "\r" in value:
+        raise ShipError(f"{label} contains a line break")
+    return value
+
+
+def _valid_branch(branch: str) -> bool:
+    return bool(
+        branch
+        and branch != "main"
+        and _BRANCH_RE.fullmatch(branch)
+        and ".." not in branch
+        and "//" not in branch
+        and "@{" not in branch
+        and not branch.endswith(("/", "."))
+    )
+
+
+def _expected_branch(leaf: int) -> str:
+    return f"complete-umbrella/leaf-{leaf}"
+
+
+def _validate_request(request: LeafShipRequest) -> LeafShipRequest:
+    if not gh.validate_repo_slug(request.repository):
+        raise ShipError("repository must use OWNER/REPO syntax")
+    if request.umbrella <= 0 or request.leaf <= 0:
+        raise ShipError("umbrella and leaf must be positive integers")
+    try:
+        repo_root = request.repo_root.resolve(strict=True)
+        handoff_root = larch_io.validate_trusted_directory(request.handoff_root)
+    except OSError as exc:
+        raise ShipError(f"path validation failed: {exc}") from exc
+    if not repo_root.is_dir():
+        raise ShipError("repo root must be a directory")
+    if not is_allowed_session_tmpdir(handoff_root):
+        raise ShipError("handoff root is outside the allowed session roots")
+    return replace(request, repo_root=repo_root, handoff_root=handoff_root)
+
+
+def _state_path(request: LeafShipRequest) -> Path:
+    return request.handoff_root / _STATE_BASENAME
+
+
+def _state_rows(state: LeafShipState) -> tuple[tuple[str, str], ...]:
+    values: tuple[tuple[str, str], ...] = (
+        ("SCHEMA", _STATE_SCHEMA),
+        ("REPOSITORY", state.repository),
+        ("UMBRELLA", str(state.umbrella)),
+        ("LEAF", str(state.leaf)),
+        ("BRANCH", state.branch),
+        ("HEAD_SHA", state.head_sha),
+        ("PR_NUMBER", str(state.pr_number) if state.pr_number else ""),
+        ("PR_URL", state.pr_url),
+        ("STATUS", state.status),
+        ("CI_ERRORS_FILE", state.ci_errors_file),
+        ("CI_FIX_ATTEMPTS", str(state.ci_fix_attempts)),
+    )
+    return tuple((key, _line_value(value, label=key)) for key, value in values)
+
+
+def _write_state(request: LeafShipRequest, state: LeafShipState) -> None:
+    _validate_state(request, state)
+    text = larch_io.format_kvs(_state_rows(state))
+    try:
+        larch_io.trusted_atomic_write(
+            _state_path(request),
+            text,
+            root=request.handoff_root,
+            mode=0o600,
+        )
+    except OSError as exc:
+        raise ShipError(f"ship state write failed: {exc}") from exc
+
+
+def _read_state(request: LeafShipRequest) -> LeafShipState | None:
+    path = _state_path(request)
+    try:
+        if not larch_io.trusted_file_present(path, root=request.handoff_root):
+            return None
+        text = larch_io.read_trusted_text(
+            path,
+            root=request.handoff_root,
+            errors="strict",
+            reject_cr=True,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ShipError(f"ship state read failed: {exc}") from exc
+    return _parse_state(request, text)
+
+
+def _parse_state(request: LeafShipRequest, text: str) -> LeafShipState:
+    physical_lines = [line for line in text.splitlines() if line]
+    if any("=" not in line for line in physical_lines):
+        raise ShipError("ship state contains a malformed row")
+    parsed = larch_io.parse_kv(text, duplicate_policy="all")
+    if set(parsed) != set(_STATE_KEYS) or any(
+        len(values) != 1 for values in parsed.values()
+    ):
+        raise ShipError("ship state has missing, unknown, or duplicate keys")
+
+    def value(key: str) -> str:
+        return parsed[key][0]
+
+    if value("SCHEMA") != _STATE_SCHEMA:
+        raise ShipError("ship state schema is unsupported")
+    try:
+        umbrella = int(value("UMBRELLA"))
+        leaf = int(value("LEAF"))
+        pr_number = int(value("PR_NUMBER") or "0")
+        ci_fix_attempts = int(value("CI_FIX_ATTEMPTS"))
+    except ValueError as exc:
+        raise ShipError("ship state contains a non-numeric identity") from exc
+    state = LeafShipState(
+        repository=value("REPOSITORY"),
+        umbrella=umbrella,
+        leaf=leaf,
+        branch=value("BRANCH"),
+        head_sha=value("HEAD_SHA"),
+        pr_number=pr_number,
+        pr_url=value("PR_URL"),
+        status=value("STATUS"),
+        ci_errors_file=value("CI_ERRORS_FILE"),
+        ci_fix_attempts=ci_fix_attempts,
+    )
+    _validate_state(request, state)
+    return state
+
+
+def _validate_state(request: LeafShipRequest, state: LeafShipState) -> None:
+    if state.status not in _STATE_STATUSES:
+        raise ShipError(f"invalid ship state status: {state.status}")
+    _validate_state_identity(request, state)
+    _validate_state_pr(request, state)
+    _validate_state_ci(request, state)
+
+
+def _validate_state_identity(request: LeafShipRequest, state: LeafShipState) -> None:
+    if (
+        state.repository != request.repository
+        or state.umbrella != request.umbrella
+        or state.leaf != request.leaf
+    ):
+        raise ShipError("ship state identity does not match the live leaf")
+    if state.pr_number < 0 or state.ci_fix_attempts < 0:
+        raise ShipError("ship state contains an invalid counter")
+    if state.ci_fix_attempts > config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
+        raise ShipError("ship state exceeds the CI fix attempt cap")
+
+
+def _validate_state_pr(request: LeafShipRequest, state: LeafShipState) -> None:
+    pr_identity = (
+        bool(state.branch),
+        bool(state.head_sha),
+        state.pr_number > 0,
+        bool(state.pr_url),
+    )
+    if any(pr_identity) and not all(pr_identity):
+        raise ShipError("ship state contains a partial PR identity")
+    if state.branch and not _valid_branch(state.branch):
+        raise ShipError("ship state contains an invalid branch")
+    if state.branch and state.branch != _expected_branch(request.leaf):
+        raise ShipError("ship state branch does not match the leaf identity")
+    if state.head_sha and _HEAD_RE.fullmatch(state.head_sha) is None:
+        raise ShipError("ship state contains an invalid head SHA")
+    if state.pr_url and state.pr_url != (
+        f"https://github.com/{state.repository}/pull/{state.pr_number}"
+    ):
+        raise ShipError("ship state contains an invalid PR URL")
+    if state.status != "prepared" and not all(pr_identity):
+        raise ShipError("advanced ship state lacks a complete PR identity")
+
+
+def _validate_state_ci(request: LeafShipRequest, state: LeafShipState) -> None:
+    if state.status == "ci_failed":
+        _validate_ci_errors_file(request, state.ci_errors_file)
+    elif state.ci_errors_file:
+        raise ShipError("non-failed ship state contains a CI errors file")
+
+
+def _validate_ci_errors_file(request: LeafShipRequest, value: str) -> None:
+    path = Path(value)
+    if (
+        not path.is_absolute()
+        or ".." in path.parts
+        or _CI_ERRORS_RE.fullmatch(path.name) is None
+    ):
+        raise ShipError("ship state contains an invalid CI errors file")
+    try:
+        _ = path.relative_to(request.handoff_root)
+        present = larch_io.trusted_file_present(path, root=request.handoff_root)
+    except (OSError, ValueError) as exc:
+        raise ShipError("ship state contains an unsafe CI errors file") from exc
+    if not present:
+        raise ShipError("ship state CI errors file is missing")
+
+
+def _leaf_prefix(umbrella: int) -> str:
+    return f"[LEAF OF {umbrella}] "
+
+
+def _active_leaf_title(title: str, *, umbrella: int) -> str:
+    leaf_prefix = _leaf_prefix(umbrella)
+    active_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+    active_leaf_prefix = f"{active_prefix}{leaf_prefix}"
+    if (
+        title.startswith(active_leaf_prefix)
+        and title[len(active_leaf_prefix) :].strip()
+    ):
+        return title
+    if title.startswith(leaf_prefix) and title[len(leaf_prefix) :].strip():
+        return f"{active_prefix}{title}"
+    raise ShipError("leaf title does not have the exact managed leaf prefix")
+
+
+def _done_leaf_title(title: str, *, umbrella: int) -> str:
+    leaf_prefix = _leaf_prefix(umbrella)
+    active_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+    done_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE["done"]
+    active_leaf_prefix = f"{active_prefix}{leaf_prefix}"
+    done_leaf_prefix = f"{done_prefix}{leaf_prefix}"
+    if title.startswith(done_leaf_prefix) and title[len(done_leaf_prefix) :].strip():
+        return title
+    if (
+        title.startswith(active_leaf_prefix)
+        and title[len(active_leaf_prefix) :].strip()
+    ):
+        return f"{done_prefix}{title[len(active_prefix) :]}"
+    raise ShipError("leaf title is not in the active managed lifecycle")
+
+
+def prepare_leaf(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> LeafShipOutcome:
+    request = _validate_request(request)
+    snapshot = issue_mutation.read_snapshot(
+        runner,
+        repository=request.repository,
+        issue=str(request.leaf),
+        cwd=str(request.repo_root),
+    )
+    if snapshot.state.upper() != "OPEN":
+        raise ShipError("leaf must be open before implementation starts")
+    title = _active_leaf_title(snapshot.title, umbrella=request.umbrella)
+    if title != snapshot.title:
+        mutation = issue_mutation.update_title(
+            runner,
+            repository=request.repository,
+            issue=str(request.leaf),
+            title=title,
+            cwd=str(request.repo_root),
+        )
+        if mutation.after.title != title:
+            raise ShipError("active leaf title read-back failed")
+    state = LeafShipState(
+        repository=request.repository,
+        umbrella=request.umbrella,
+        leaf=request.leaf,
+    )
+    existing = _read_state(request)
+    if existing is not None and existing.pr_number:
+        state = existing
+    _write_state(request, state)
+    return LeafShipOutcome(
+        status="prepared",
+        pr_number=state.pr_number,
+        pr_url=state.pr_url,
+    )
+
+
+def _push_branch(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> tuple[str, str]:
+    cwd = str(request.repo_root)
+    push.assert_clean_worktree(runner, cwd=cwd)
+    branch = git.current_branch(runner, cwd=cwd)
+    if branch != _expected_branch(request.leaf):
+        raise ShipError("leaf implementation is not on its exact managed branch")
+    head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = git.push_set_upstream(runner, "origin", "HEAD", cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    pushed = retry.with_transient_retry(attempt).value
+    if pushed.returncode != 0:
+        raise ShipError("feature branch push failed")
+    return branch, head_sha
+
+
+def _default_pr_body(request: LeafShipRequest) -> str:
+    body = (
+        "## Summary\n\n"
+        f"- Implement leaf #{request.leaf} of umbrella #{request.umbrella}.\n"
+    )
+    return tracking_issue.link_pr_closes(body=body, issue_number=request.leaf)
+
+
+def _pr_title(runner: Runner, request: LeafShipRequest) -> str:
+    subject = git.log_subject(runner, "HEAD", cwd=str(request.repo_root))
+    summary = subject or f"Implement umbrella leaf #{request.leaf}"
+    prefix = f"Fixes #{request.leaf}: "
+    title = summary if summary.startswith(prefix) else f"{prefix}{summary}"
+    return _line_value(title[:250], label="PR title")
+
+
+def _ensure_pr_body(
+    runner: Runner,
+    request: LeafShipRequest,
+    pull_request: gh.PullRequest,
+) -> None:
+    cwd = str(request.repo_root)
+    remote_body = gh.pr_view_body(
+        runner,
+        pull_request.number,
+        repo=request.repository,
+        cwd=cwd,
+    )
+    if remote_body is None:
+        raise ShipError("could not read the PR body for closing-link verification")
+    linked = tracking_issue.link_pr_closes(body=remote_body, issue_number=request.leaf)
+    if linked.rstrip() != remote_body.rstrip():
+        raise ShipError("existing PR body lacks the required leaf closing link")
+
+
+def _require_main_base(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    pr_number: int,
+) -> None:
+    base_ref = gh.pr_base_ref(
+        runner,
+        pr_number,
+        repo=request.repository,
+        cwd=str(request.repo_root),
+    )
+    if base_ref != "main":
+        raise ShipError("implementation PR does not target main")
+
+
+def _require_pr_head(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    pr_number: int,
+    head_sha: str,
+) -> gh.MergeState:
+    state = gh.pr_merge_state(
+        runner,
+        pr_number,
+        repo=request.repository,
+        cwd=str(request.repo_root),
+    )
+    if state.head_ref_oid != head_sha:
+        raise ShipError("PR head changed after the verified push")
+    return state
+
+
+def _ensure_pr(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    branch: str,
+    state: LeafShipState,
+) -> gh.PullRequest:
+    cwd = str(request.repo_root)
+    pull_request: gh.PullRequest | None = None
+    if state.pr_number:
+        pull_request = gh.pr_view(
+            runner,
+            state.pr_number,
+            repo=request.repository,
+            cwd=cwd,
+        )
+        if pull_request.head_ref != branch:
+            raise ShipError(
+                "persisted PR no longer belongs to the implementation branch"
+            )
+    if pull_request is None:
+        pull_request = gh.pr_for_branch(
+            runner,
+            branch,
+            repo=request.repository,
+            cwd=cwd,
+        )
+    if pull_request is None:
+        body = pr_body.redact_pr_body(_default_pr_body(request))
+        pull_request, _created = gh.pr_create(
+            runner,
+            repo=request.repository,
+            branch=branch,
+            title=_pr_title(runner, request),
+            body=body,
+            base="main",
+            assignee=None,
+            draft=False,
+            cwd=cwd,
+        )
+    if pull_request.state.upper() not in {"OPEN", "MERGED"}:
+        raise ShipError("implementation PR is closed without a merge")
+    if pull_request.head_ref != branch:
+        raise ShipError("implementation PR branch read-back failed")
+    _require_main_base(runner, request, pr_number=pull_request.number)
+    _ensure_pr_body(runner, request, pull_request)
+    return pull_request
+
+
+def _wait_for_ci(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    pr_number: int,
+    sleep_fn: SleepFn,
+) -> CiWaitOutcome:
+    interval = config.COMPLETE_UMBRELLA_CI_POLL_INTERVAL_SEC
+    max_polls = max(1, math.ceil(config.COMPLETE_UMBRELLA_CI_TIMEOUT_SEC / interval))
+    cwd = str(request.repo_root)
+    for poll_index in range(max_polls):
+        status, failed_run_id = ci_monitor.checks_status(
+            runner,
+            pr=pr_number,
+            repo=request.repository,
+            empty_checks_grace=0,
+            required=False,
+            cwd=cwd,
+            sleep_fn=sleep_fn,
+        )
+        if status == "pass":
+            return CiWaitOutcome(status="pass")
+        if status == "fail":
+            run_id = failed_run_id or ci_monitor.resolve_failed_run_id_once(
+                runner,
+                pr=pr_number,
+                repo=request.repository,
+                cwd=cwd,
+            )
+            return CiWaitOutcome(status="fail", failed_run_id=run_id or "")
+        if status not in {"pending", "empty", "NO_CHECKS", ""}:
+            raise ShipError(f"CI returned an unsupported status: {status}")
+        if poll_index + 1 >= max_polls:
+            break
+        sleep_fn(float(interval))
+    raise ShipError("CI did not complete within the leaf ship timeout")
+
+
+def _distill_ci_failure(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    run_id: str,
+    sleep_fn: SleepFn,
+) -> Path:
+    if not run_id.isdigit():
+        raise ShipError("failed CI did not expose a numeric Actions run id")
+    output = request.handoff_root / f"ci-errors-{run_id}.md"
+    for attempt in range(config.COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS):
+        outcome = ci.distill_log_to_root(
+            runner=runner,
+            run_id=run_id,
+            repo=request.repository,
+            output=output,
+            trusted_root=request.handoff_root,
+        )
+        if outcome.status == "ok":
+            return output
+        if outcome.status != "in_progress":
+            raise ShipError(f"CI log distill failed: {outcome.bail_class}")
+        if attempt + 1 < config.COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS:
+            sleep_fn(float(config.COMPLETE_UMBRELLA_CI_POLL_INTERVAL_SEC))
+    raise ShipError("failed CI logs did not become ready")
+
+
+def _merge_pr(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    pull_request: gh.PullRequest,
+    head_sha: str,
+    sleep_fn: SleepFn,
+) -> gh.PullRequest:
+    cwd = str(request.repo_root)
+    state = _require_pr_head(
+        runner,
+        request,
+        pr_number=pull_request.number,
+        head_sha=head_sha,
+    )
+    if pull_request.state.upper() == "MERGED":
+        return pull_request
+    if state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
+        raise ShipError(f"PR is not admin-merge eligible: {state.merge_state_status}")
+    if not gh.pr_checks_all_pass(
+        runner,
+        pull_request.number,
+        repo=request.repository,
+        cwd=cwd,
+    ):
+        raise ShipError("CI changed after the green pre-merge check")
+
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = gh.pr_merge(
+            runner,
+            pull_request.number,
+            repo=request.repository,
+            merge_method="squash",
+            admin=True,
+            delete_branch=True,
+            cwd=cwd,
+        )
+        return result, result.returncode, result.stdout + result.stderr
+
+    merged = retry.with_transient_retry(attempt, sleeper=sleep_fn).value
+    if merged.returncode != 0:
+        raise ShipError("admin merge failed")
+    read_back = gh.pr_view(
+        runner,
+        pull_request.number,
+        repo=request.repository,
+        cwd=cwd,
+    )
+    if read_back.state.upper() != "MERGED":
+        raise ShipError("merged PR read-back failed")
+    return read_back
+
+
+def _finish_leaf_issue(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    sleep_fn: SleepFn,
+) -> None:
+    cwd = str(request.repo_root)
+    snapshot = issue_mutation.read_snapshot(
+        runner,
+        repository=request.repository,
+        issue=str(request.leaf),
+        cwd=cwd,
+    )
+    title = _done_leaf_title(snapshot.title, umbrella=request.umbrella)
+    if title != snapshot.title:
+        mutation = issue_mutation.update_title(
+            runner,
+            repository=request.repository,
+            issue=str(request.leaf),
+            title=title,
+            cwd=cwd,
+        )
+        snapshot = mutation.after
+    for attempt in range(config.COMPLETE_UMBRELLA_ISSUE_CLOSE_ATTEMPTS):
+        if snapshot.state.upper() == "CLOSED" and snapshot.title == title:
+            return
+        if attempt + 1 < config.COMPLETE_UMBRELLA_ISSUE_CLOSE_ATTEMPTS:
+            sleep_fn(float(config.COMPLETE_UMBRELLA_ISSUE_CLOSE_POLL_INTERVAL_SEC))
+            snapshot = issue_mutation.read_snapshot(
+                runner,
+                repository=request.repository,
+                issue=str(request.leaf),
+                cwd=cwd,
+            )
+    raise ShipError("leaf issue did not auto-close after the PR merge")
+
+
+def _sync_main(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> None:
+    cwd = str(request.repo_root)
+    push.assert_clean_worktree(runner, cwd=cwd)
+    current = git.current_branch(runner, cwd=cwd)
+    if current != "main":
+        switched = git.switch_branch(runner, "main", cwd=cwd)
+        if switched.returncode != 0:
+            raise ShipError("could not switch to main after merge")
+
+    def fetch_attempt() -> tuple[CommandResult, int, str]:
+        result = git.fetch(runner, "origin", "main", cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    fetched = retry.with_transient_retry(fetch_attempt).value
+    if fetched.returncode != 0:
+        raise ShipError("could not fetch origin/main after merge")
+    rebased = git.rebase(runner, "origin/main", cwd=cwd)
+    if rebased.returncode != 0:
+        aborted = git.rebase(runner, "--abort", cwd=cwd)
+        if aborted.returncode != 0:
+            raise ShipError("main rebase failed and could not be aborted")
+        raise ShipError("could not rebase local main onto origin/main")
+    push.assert_clean_worktree(runner, cwd=cwd)
+    if git.rev_parse(runner, "HEAD", cwd=cwd) != git.rev_parse(
+        runner, "origin/main", cwd=cwd
+    ):
+        raise ShipError("local main does not match origin/main after rebase")
+
+
+def _delete_branch(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    branch: str,
+) -> None:
+    cwd = str(request.repo_root)
+    if git.local_branch_exists(runner, branch, cwd=cwd):
+        deleted = git.delete_branch(runner, branch, force=True, cwd=cwd)
+        if deleted.returncode != 0:
+            raise ShipError("could not delete the local implementation branch")
+    remote = git.remote_branch_state(runner, branch, cwd=cwd)
+    if remote.state == "present":
+        deleted_remote = git.push(runner, "origin", f":refs/heads/{branch}", cwd=cwd)
+        if deleted_remote.returncode != 0:
+            raise ShipError("could not delete the remote implementation branch")
+        remote = git.remote_branch_state(runner, branch, cwd=cwd)
+    if remote.state != "absent":
+        raise ShipError("remote implementation branch deletion did not verify")
+    if git.local_branch_exists(runner, branch, cwd=cwd):
+        raise ShipError("local implementation branch deletion did not verify")
+
+
+def _sync_main_and_delete_branch(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    branch: str,
+) -> None:
+    if not _valid_branch(branch):
+        raise ShipError("cannot clean up an invalid implementation branch")
+    _sync_main(runner, request)
+    _delete_branch(runner, request, branch=branch)
+
+
+def _verify_complete(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+) -> None:
+    if not state.pr_number or not _valid_branch(state.branch):
+        raise ShipError("complete ship state lacks PR or branch identity")
+    cwd = str(request.repo_root)
+    pull_request = gh.pr_view(
+        runner,
+        state.pr_number,
+        repo=request.repository,
+        cwd=cwd,
+    )
+    if pull_request.state.upper() != "MERGED" or pull_request.head_ref != state.branch:
+        raise ShipError("complete ship state does not match the merged PR")
+    _require_main_base(runner, request, pr_number=state.pr_number)
+    _ = _require_pr_head(
+        runner,
+        request,
+        pr_number=state.pr_number,
+        head_sha=state.head_sha,
+    )
+    issue = issue_mutation.read_snapshot(
+        runner,
+        repository=request.repository,
+        issue=str(request.leaf),
+        cwd=cwd,
+    )
+    expected_title = _done_leaf_title(issue.title, umbrella=request.umbrella)
+    if issue.state.upper() != "CLOSED" or issue.title != expected_title:
+        raise ShipError("leaf issue is not closed with the exact done title")
+    if git.current_branch(runner, cwd=cwd) != "main":
+        raise ShipError("repository is not on main after leaf shipping")
+    push.assert_clean_worktree(runner, cwd=cwd)
+    if git.rev_parse(runner, "HEAD", cwd=cwd) != git.rev_parse(
+        runner, "origin/main", cwd=cwd
+    ):
+        raise ShipError("local main is not synchronized after leaf shipping")
+    if git.local_branch_exists(runner, state.branch, cwd=cwd):
+        raise ShipError("local implementation branch still exists")
+    remote = git.remote_branch_state(runner, state.branch, cwd=cwd)
+    if remote.state != "absent":
+        raise ShipError("remote implementation branch still exists")
+
+
+def _merged_reentry_state(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+) -> LeafShipState | None:
+    if not state.pr_number:
+        return None
+    persisted_pr = gh.pr_view(
+        runner,
+        state.pr_number,
+        repo=request.repository,
+        cwd=str(request.repo_root),
+    )
+    if persisted_pr.head_ref != state.branch:
+        raise ShipError("persisted PR branch identity changed")
+    if persisted_pr.state.upper() != "MERGED":
+        if state.status in {"merged", "finalizing"}:
+            raise ShipError("persisted postmerge state contradicts the live PR")
+        return None
+    if not _valid_branch(state.branch):
+        raise ShipError("merged ship state lacks a valid branch")
+    _require_main_base(runner, request, pr_number=state.pr_number)
+    _ = _require_pr_head(
+        runner,
+        request,
+        pr_number=state.pr_number,
+        head_sha=state.head_sha,
+    )
+    merged = replace(
+        state,
+        status="merged",
+        pr_url=persisted_pr.url,
+        ci_errors_file="",
+    )
+    _write_state(request, merged)
+    return merged
+
+
+def _run_premerge(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    sleep_fn: SleepFn,
+) -> tuple[LeafShipState, LeafShipOutcome | None]:
+    branch, head_sha = _push_branch(runner, request)
+    if state.branch and state.branch != branch:
+        raise ShipError("implementation branch changed after leaf preparation")
+    if state.status == "ci_failed":
+        if head_sha == state.head_sha:
+            raise ShipError("CI failed but no fixer commit changed the branch head")
+        if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
+            raise ShipError("complete-umbrella CI fix attempt cap reached")
+        state = replace(state, ci_fix_attempts=state.ci_fix_attempts + 1)
+    pull_request = _ensure_pr(runner, request, branch=branch, state=state)
+    state = replace(
+        state,
+        branch=branch,
+        head_sha=head_sha,
+        pr_number=pull_request.number,
+        pr_url=pull_request.url,
+        status="monitoring",
+        ci_errors_file="",
+    )
+    _write_state(request, state)
+    ci_wait = _wait_for_ci(
+        runner,
+        request,
+        pr_number=pull_request.number,
+        sleep_fn=sleep_fn,
+    )
+    if ci_wait.status == "fail":
+        errors_file = _distill_ci_failure(
+            runner,
+            request,
+            run_id=ci_wait.failed_run_id,
+            sleep_fn=sleep_fn,
+        )
+        state = replace(state, status="ci_failed", ci_errors_file=str(errors_file))
+        _write_state(request, state)
+        if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
+            raise ShipError("complete-umbrella CI fix attempt cap reached after failed CI")
+        return state, LeafShipOutcome(
+            status="ci_failed",
+            pr_number=state.pr_number,
+            pr_url=state.pr_url,
+            ci_errors_file=state.ci_errors_file,
+        )
+    merged_pr = _merge_pr(
+        runner,
+        request,
+        pull_request=pull_request,
+        head_sha=head_sha,
+        sleep_fn=sleep_fn,
+    )
+    state = replace(state, status="merged", pr_url=merged_pr.url)
+    _write_state(request, state)
+    return state, None
+
+
+def ship_leaf(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    sleep_fn: SleepFn = time.sleep,
+) -> LeafShipOutcome:
+    request = _validate_request(request)
+    state = _read_state(request)
+    if state is None:
+        raise ShipError("leaf prepare phase has not initialized ship state")
+    if state.status == "complete":
+        _verify_complete(runner, request, state)
+        return LeafShipOutcome(
+            status="complete", pr_number=state.pr_number, pr_url=state.pr_url
+        )
+
+    merged_state = _merged_reentry_state(runner, request, state)
+    if merged_state is None:
+        state, early_outcome = _run_premerge(runner, request, state, sleep_fn=sleep_fn)
+        if early_outcome is not None:
+            return early_outcome
+    else:
+        state = merged_state
+
+    _finish_leaf_issue(runner, request, sleep_fn=sleep_fn)
+    _sync_main_and_delete_branch(runner, request, branch=state.branch)
+    state = replace(state, status="finalizing", ci_errors_file="")
+    _write_state(request, state)
+    _verify_complete(runner, request, state)
+    state = replace(state, status="complete")
+    _write_state(request, state)
+    verified = _read_state(request)
+    if verified != state:
+        raise ShipError("complete ship marker read-back failed")
+    return LeafShipOutcome(
+        status="complete",
+        pr_number=state.pr_number,
+        pr_url=state.pr_url,
+    )
+
+
+def verify_leaf(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> LeafShipOutcome:
+    request = _validate_request(request)
+    state = _read_state(request)
+    if state is None or state.status != "complete":
+        raise ShipError("leaf ship state is not complete")
+    _verify_complete(runner, request, state)
+    return LeafShipOutcome(
+        status="complete", pr_number=state.pr_number, pr_url=state.pr_url
+    )
+
+
+def _emit(outcome: LeafShipOutcome) -> None:
+    logging_util.emit_kv(key="SHIP_STATUS", value=outcome.status)
+    logging_util.emit_kv(
+        key="PR_NUMBER", value=str(outcome.pr_number) if outcome.pr_number else ""
+    )
+    logging_util.emit_kv(key="PR_URL", value=outcome.pr_url)
+    logging_util.emit_kv(key="CI_ERRORS_FILE", value=outcome.ci_errors_file)
+    logging_util.emit_kv(key="DETAIL", value=_detail(outcome.detail))
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py complete-umbrella ship-leaf")
+    _ = parser.add_argument("--mode", choices=("prepare", "ship", "verify"), required=True)
+    _ = parser.add_argument("--repository", required=True)
+    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--handoff-root", required=True)
+    _ = parser.add_argument("--umbrella", required=True, type=int)
+    _ = parser.add_argument("--leaf", required=True, type=int)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
+    request = LeafShipRequest(
+        repository=str(args.repository),
+        repo_root=Path(args.repo_root),
+        handoff_root=Path(args.handoff_root),
+        umbrella=int(args.umbrella),
+        leaf=int(args.leaf),
+    )
+    try:
+        if args.mode == "prepare":
+            outcome = prepare_leaf(proc, request)
+        elif args.mode == "ship":
+            outcome = ship_leaf(proc, request)
+        else:
+            outcome = verify_leaf(proc, request)
+    except (OSError, ShipError, ValueError) as exc:
+        _emit(LeafShipOutcome(status="error", detail=str(exc)))
+        return config.EXIT_INTERNAL_ERROR
+    _emit(outcome)
+    return config.EXIT_OK

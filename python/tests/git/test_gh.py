@@ -51,6 +51,34 @@ def test_pr_view_parses_json() -> None:
     assert pr.head_ref == "b"
 
 
+def test_pr_base_ref_parses_exact_branch() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"baseRefName":"main"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    assert gh.pr_base_ref(runner, 1, repo="o/r") == "main"
+    assert runner.calls == [
+        [
+            "gh",
+            "pr",
+            "view",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "baseRefName",
+        ],
+    ]
+
+
 def test_pr_view_timeout_raises_gh_read_timeout() -> None:
     runner = RecordingRunner(
         responses=[

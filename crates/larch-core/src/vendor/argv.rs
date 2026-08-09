@@ -424,22 +424,13 @@ pub fn build_claude_argv(
             ]
         }
         "workflow-write" => {
-            vec![
-                "--print".to_owned(),
-                "--output-format".to_owned(),
-                "json".to_owned(),
-                "--model".to_owned(),
-                model,
-                "--add-dir".to_owned(),
-                request.workdir.clone(),
-                "--allowedTools".to_owned(),
-                "Bash,Read,Edit,Write,Glob,Grep".to_owned(),
-                "--permission-mode".to_owned(),
-                "dontAsk".to_owned(),
-                "--disable-slash-commands".to_owned(),
-                "--no-session-persistence".to_owned(),
-            ]
+            claude_workflow_write_args(model, &request.workdir, "Bash,Read,Edit,Write,Glob,Grep")
         }
+        "workflow-write-orchestrator" => claude_workflow_write_args(
+            model,
+            &request.workdir,
+            "Bash,Read,Edit,Write,Glob,Grep,Agent",
+        ),
         _ => {
             return Err(VendorArgvError::new(
                 VendorArgvErrorKind::UnknownProfile,
@@ -448,4 +439,22 @@ pub fn build_claude_argv(
         }
     };
     Ok(VendorArgv::new(VendorProgram::Claude, arguments))
+}
+
+fn claude_workflow_write_args(model: String, workdir: &str, allowed_tools: &str) -> Vec<String> {
+    vec![
+        "--print".to_owned(),
+        "--output-format".to_owned(),
+        "json".to_owned(),
+        "--model".to_owned(),
+        model,
+        "--add-dir".to_owned(),
+        workdir.to_owned(),
+        "--allowedTools".to_owned(),
+        allowed_tools.to_owned(),
+        "--permission-mode".to_owned(),
+        "dontAsk".to_owned(),
+        "--disable-slash-commands".to_owned(),
+        "--no-session-persistence".to_owned(),
+    ]
 }

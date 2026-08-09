@@ -303,6 +303,15 @@ SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
 FIXER_LANE_TIMEOUT_SEC: Final = 1800
 CI_WAIT_POLL_INTERVAL_SEC: Final = 10
+# `/complete-umbrella` keeps its leaf ship phase out of the model loop. The
+# standalone driver owns one long CI wait and refreshes GitHub at this fixed
+# cadence. Keep this distinct from the interactive `/implement` monitor.
+COMPLETE_UMBRELLA_CI_POLL_INTERVAL_SEC: Final = 300
+COMPLETE_UMBRELLA_CI_TIMEOUT_SEC: Final = 24 * 60 * 60
+COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS: Final = 3
+COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS: Final = 3
+COMPLETE_UMBRELLA_ISSUE_CLOSE_POLL_INTERVAL_SEC: Final = 5
+COMPLETE_UMBRELLA_ISSUE_CLOSE_ATTEMPTS: Final = 12
 # Per-call subprocess timeout for the poll-time CI status queries (gh pr view /
 # gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
 # a single hung gh read cannot block gather_status for the whole poll budget

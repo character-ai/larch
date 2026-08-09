@@ -422,6 +422,26 @@ def pr_view_body(
     return str(body)
 
 
+def pr_base_ref(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str:
+    """Return the exact base branch for one pull request."""
+    result = pr_view_field_read(runner, number, "baseRefName", repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    data = _as_json_object(
+        _loads_json(result.stdout, context="pr base ref"), context="pr base ref"
+    )
+    value = data.get("baseRefName")
+    if not isinstance(value, str) or not value:
+        raise ShipError("gh JSON missing a non-empty baseRefName (pr base ref)")
+    return value
+
+
 def _pull_request_from_json(data: Mapping[str, object], *, context: str) -> PullRequest:
     _require_json_keys(
         data,
