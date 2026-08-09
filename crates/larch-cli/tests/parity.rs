@@ -447,6 +447,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "prefetch",
     ),
     CleanInstallCase::new(
+        "clean-install-analyze-bugs-report",
+        "analyze-bugs",
+        "report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-analyze-bugs-runtime",
+        "analyze-bugs",
+        "runtime",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-issues-analyze",
         "analyze-issues",
         "analyze",

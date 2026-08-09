@@ -1,40 +1,33 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportPossiblyUnboundVariable=false, reportMissingParameterType=false, reportArgumentType=false, reportUnknownLambdaType=false
 # ruff: noqa: C901, FB504, PLR0911, PLR0912, PLR0913, PLR0915
 # pylint: skip-file
-"""Python-owned runtime, report, and sweep support for ``/analyze-bugs``.
+"""Residual sweep support for ``/analyze-bugs`` and ``/validate-merged``.
 
-The Rust CLI owns the prefetch and ledger verbs. This residual module keeps
-the later workflow stages behind the ``larch.core.proc.Runner`` seam.
+The Rust CLI owns all analyze-bugs commands. This module remains only because
+the separately owned validate-merged workflow reuses its sweep state helpers.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
-import datetime
 import hashlib
 import json
 import os
 import re
 import sys
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
-from larch.core import config, proc
+from larch.core import proc
 from larch.core.proc import Runner
 from larch.git import gh
 from larch.issue.issue_blocks import strip_named_block
-from larch.report import analysis_state
-from larch.report.report_tokens_cost import rate_row
 
 DEFAULT_DIFF_CAP: Final = 60_000
-MECHANICAL_VERDICTS: Final = {"NOT_FIXED", "WONTFIX", "NEEDS_DEEP"}
-TERMINAL_FOLLOWUP_VERDICTS: Final = {"NOT_FIXED", "INCOMPLETE", "REGRESSED"}
-NO_INTRODUCED_RISK: Final = "none found"
-SIBLING_SITE_RE: Final = re.compile(r"^[^:\s]+:[A-Za-z_][A-Za-z0-9_]*$")
 SCAN_OK: Final = "ok"
 HISTORICAL_MARKER_BACKFILL_LIMIT: Final = 50
 PYTHON_ZONE_PARTS: Final = 3
@@ -50,7 +43,6 @@ MARKER_PHRASE_RE: Final = re.compile(
 )
 ISSUE_REFERENCE_RE: Final = re.compile(r"(?<![A-Za-z0-9])#([1-9][0-9]*)")
 BASELINE_PATH_RE: Final = re.compile(r"^python/[^/]+-baseline\.json$")
-VERIFIED_PREDICATE_VERSION: Final = "certifiable-fixed-runtime-v2"
 SWEEP_SCHEMA_VERSION: Final = 1
 SWEEP_DEFAULT_MAX: Final = 20
 SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
@@ -77,17 +69,6 @@ SWEEP_PRINTABLE_MIN: Final = 0x20
 SWEEP_LOG_FIELDS: Final = 3
 SWEEP_FINDER_OUTPUT_TOKENS: Final = 400
 SWEEP_REFUTER_OUTPUT_TOKENS: Final = 80
-RUNTIME_RESULTS_NAME: Final = "runtime-results.jsonl"
-RUNTIME_SCHEMA_VERSION: Final = "1"
-RUNTIME_EVIDENCE_CAP: Final = 500
-CERTIFIABLE_FIXED_VERDICTS: Final = frozenset({"CONFIRMED_FIXED", "FIXED_CLEAR", "FIXED_LIKELY"})
-HARNESS_MAP: Final[tuple[tuple[str, str], ...]] = (
-    ("skills/implement/", "test-architectural-guidelines-step"),
-    ("scripts/test-implement-anti-halt.sh", "test-implement-anti-halt"),
-)
-ORCHESTRATION_ZONE_PREFIXES: Final = (
-    "skills/", "scripts/", "hooks/", "agents/", "python/larch/implement/", "python/larch/design/",
-)
 FULL_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 SWEEP_TIMESTAMP_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SWEEP_FLUSH_SUBJECT_RE: Final = re.compile(r"^chore\(larch-logs\)")
@@ -95,41 +76,6 @@ SWEEP_RELEASE_SUBJECT_RE: Final = re.compile(r"^Release v")
 SWEEP_PY_DEF_RE: Final = re.compile(r"^\+\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 SWEEP_PY_CLASS_RE: Final = re.compile(r"^\+\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
 SWEEP_PY_CONST_RE: Final = re.compile(r"^\+\s*([A-Z][A-Z0-9_]{2,})\s*=")
-
-
-@dataclass(frozen=True)
-class RuntimeBinding:
-    issue: int
-    cache_key: str
-    fix_sha: str
-
-
-@dataclass(frozen=True)
-class RuntimeComponent:
-    name: str
-    status: str
-    evidence: str = ""
-
-
-@dataclass(frozen=True)
-class RuntimeResult:
-    fix_sha: str
-    bindings: tuple[RuntimeBinding, ...]
-    components: tuple[RuntimeComponent, ...]
-    uncovered_zones: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ScanResult:
-    """Outcome of a required local evidence scan."""
-
-    status: str
-    stdout: str = ""
-    reason: str = ""
-
-    @property
-    def complete(self) -> bool:
-        return self.status == SCAN_OK
 
 
 @dataclass(frozen=True)
@@ -216,18 +162,6 @@ class LedgerRecord:
 
 
 @dataclass(frozen=True)
-class ReportCounts:
-    total: int = 0
-    confirmed_fixed: int = 0
-    needs_deep: int = 0
-    not_fixed: int = 0
-    incomplete: int = 0
-    regressed: int = 0
-    wontfix: int = 0
-    unverifiable: int = 0
-
-
-@dataclass(frozen=True)
 class AnalyticsCorpusRecord:
     record: LedgerRecord
     append_ordinal: int
@@ -275,19 +209,6 @@ class AnalyticsView:
     churned_files: tuple[str, ...]
     baseline_issues: tuple[int, ...]
     hydrated_records: tuple[LedgerRecord, ...] = ()
-
-
-@dataclass(frozen=True)
-class RunSnapshot:
-    schema_version: str
-    repo: str
-    run_id: str
-    generated_at: int
-    selected_issues: tuple[int, ...]
-    verified_issues: tuple[int, ...]
-    chronic_zones: tuple[str, ...]
-    chain_edges: tuple[str, ...]
-    verified_predicate: str = VERIFIED_PREDICATE_VERSION
 
 
 @dataclass(frozen=True)
@@ -456,14 +377,6 @@ def _atomic_write_text(path: Path, text: str, *, mode: int = 0o600) -> None:
             pass
 
 
-def _append_private_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
-    payload = "".join(json.dumps(dict(row), sort_keys=True) + "\n" for row in rows)
-    try:
-        analysis_state.append_bytes(path, payload.encode("utf-8"))
-    except analysis_state.AnalysisStateError as exc:
-        raise AnalyzeBugsError(str(exc)) from exc
-
-
 def _json_default(value: object) -> object:
     if hasattr(value, "__dataclass_fields__"):
         return asdict(value)
@@ -586,59 +499,6 @@ def _capped(text: str, cap: int) -> str:
     return text[:cap] + f"\n\n[content truncated to {cap} characters]\n"
 
 
-def _incomplete_evidence_reason(*, scans: Sequence[tuple[str, ScanResult]]) -> str:
-    incomplete = [f"{name} ({scan.reason or scan.status})" for name, scan in scans if not scan.complete]
-    return "required evidence incomplete: " + "; ".join(incomplete)
-
-
-def _bundle_from_mapping(row: Mapping[str, Any]) -> BundleRecord:
-    return BundleRecord(
-        issue_number=int(row.get("issue_number", 0)),
-        title=str(row.get("title") or ""),
-        state=str(row.get("state") or ""),
-        state_reason=str(row.get("state_reason") or ""),
-        url=str(row.get("url") or ""),
-        body_path=str(row.get("body_path") or ""),
-        bundle_path=str(row.get("bundle_path") or ""),
-        fix_sha=str(row.get("fix_sha") or ""),
-        fix_source=str(row.get("fix_source") or ""),
-        touched_files=tuple(str(item) for item in row.get("touched_files", []) if isinstance(item, str)),
-        later_history_hash=str(row.get("later_history_hash") or ""),
-        mechanical_verdict=str(row.get("mechanical_verdict") or ""),
-        mechanical_reason=str(row.get("mechanical_reason") or ""),
-        cache_key=str(row.get("cache_key") or ""),
-        sampled=bool(row.get("sampled", False)),
-        fix_time=int(row.get("fix_time", 0) or 0),
-        added_lines=int(row.get("added_lines", 0) or 0),
-        marker_references=tuple(sorted({int(item) for item in row.get("marker_references", []) if isinstance(item, int) and not isinstance(item, bool) and item > 0})),
-        marker_fingerprint=str(row.get("marker_fingerprint") or ""),
-        zones=tuple(str(item) for item in row.get("zones", []) if isinstance(item, str)),
-        baseline_extended=bool(row.get("baseline_extended", False)),
-        changed_symbols=tuple(str(item) for item in row.get("changed_symbols", []) if isinstance(item, str)),
-        consumer_paths=tuple(str(item) for item in row.get("consumer_paths", []) if isinstance(item, str)),
-        consumer_references=tuple(str(item) for item in row.get("consumer_references", []) if isinstance(item, str)),
-        consumers_truncated=bool(row.get("consumers_truncated", False)),
-        scan_files=tuple(str(item) for item in row.get("scan_files", []) if isinstance(item, str)),
-        diff_scan_status=str(row.get("diff_scan_status") or SCAN_OK),
-        diff_scan_reason=str(row.get("diff_scan_reason") or ""),
-        consumer_scan_status=str(row.get("consumer_scan_status") or SCAN_OK),
-        consumer_scan_reason=str(row.get("consumer_scan_reason") or ""),
-        later_history_scan_status=str(row.get("later_history_scan_status") or SCAN_OK),
-        later_history_scan_reason=str(row.get("later_history_scan_reason") or ""),
-        revert_scan_status=str(row.get("revert_scan_status") or SCAN_OK),
-        revert_scan_reason=str(row.get("revert_scan_reason") or ""),
-    )
-
-
-def _load_manifest(path: Path) -> tuple[dict[str, Any], list[BundleRecord]]:
-    data = _load_json(path)
-    raw_issues = data.get("issues")
-    if not isinstance(raw_issues, list):
-        raise AnalyzeBugsError(f"manifest lacks issues array: {path}")
-    rows = [_bundle_from_mapping(cast("Mapping[str, Any]", item)) for item in raw_issues if isinstance(item, dict)]
-    return data, rows
-
-
 def _ledger_record_from_mapping(raw: Mapping[str, Any]) -> LedgerRecord | None:
     try:
         issue = int(raw.get("issue", 0))
@@ -749,25 +609,6 @@ def load_ledger(path: Path) -> tuple[dict[str, LedgerRecord], int]:
         quarantine = path.with_name(f"{path.name}.corrupt-{int(time.time())}")
         _atomic_write_text(quarantine, "\n".join(corrupt) + "\n")
     return records, len(corrupt)
-
-
-def _record_for_bundle(ledger: Mapping[str, LedgerRecord], bundle: BundleRecord) -> LedgerRecord | None:
-    if not bundle.required_evidence_complete:
-        return None
-    record = ledger.get(bundle.cache_key)
-    if record and record.fix_sha == bundle.fix_sha and record.later_history_hash == bundle.later_history_hash:
-        return record
-    return None
-
-
-def _triage_complete(record: LedgerRecord | None, *, refresh: bool) -> bool:
-    if refresh or record is None:
-        return False
-    return "triage" in record.stages_complete and record.triage_evidence_verified
-
-
-def _record_json(record: LedgerRecord) -> dict[str, Any]:
-    return asdict(record)
 
 
 def _analytics_record_from_bundle(bundle: BundleRecord, record: LedgerRecord | None) -> AnalyticsRecord:
@@ -998,368 +839,6 @@ def build_analytics_view(
     )
 
 
-def _safe_runtime_path(value: str) -> bool:
-    path = Path(value)
-    return bool(value) and not path.is_absolute() and "\\" not in value and ".." not in path.parts and "." not in path.parts
-
-
-def _runtime_evidence(result: proc.CommandResult) -> str:
-    source = (result.stderr or result.stdout or "").replace("\r", " ").replace("\n", " ")
-    cleaned = "".join(char if char.isprintable() else " " for char in source)
-    return _capped(cleaned.replace("|", "\\|").strip(), RUNTIME_EVIDENCE_CAP)
-
-
-def discover_runtime_tests(*, runner: Runner, fix_sha: str, repo_root: Path) -> tuple[str, ...]:
-    result: proc.CommandResult = runner.run(["git", "diff-tree", "--no-commit-id", "--name-status", "-r", fix_sha])
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        raise AnalyzeBugsError(f"runtime test discovery for {fix_sha} failed: {detail}")
-    paths: list[str] = []
-    for line in result.stdout.splitlines():
-        status, separator, candidate = line.partition("\t")
-        if not separator or status not in {"A", "M"}:
-            continue
-        if not candidate.startswith("python/tests/") or not _safe_runtime_path(candidate):
-            continue
-        if not (repo_root / candidate).is_file():
-            continue
-        paths.append(candidate)
-    return tuple(sorted(set(paths)))
-
-
-def resolve_runtime_harnesses(paths: Sequence[str]) -> tuple[str, ...]:
-    targets: list[str] = []
-    for prefix, target in HARNESS_MAP:
-        if any(path.startswith(prefix) for path in paths) and target not in targets:
-            targets.append(target)
-    return tuple(targets)
-
-
-def runtime_zone_label(path: str) -> str | None:
-    matches: list[str] = [prefix for prefix in ORCHESTRATION_ZONE_PREFIXES if path.startswith(prefix)]
-    if not matches:
-        return None
-    return max(matches, key=len).rstrip("/")
-
-
-def _runtime_uncovered_zones(paths: Sequence[str]) -> tuple[str, ...]:
-    uncovered: set[str] = set()
-    for path in paths:
-        zone: str | None = runtime_zone_label(path)
-        if zone and not any(path.startswith(prefix) for prefix, _target in HARNESS_MAP):
-            uncovered.add(zone)
-    return tuple(sorted(uncovered))
-
-
-def _runtime_component(name: str, result: proc.CommandResult) -> RuntimeComponent:
-    if result.returncode == 0:
-        return RuntimeComponent(name=name, status="passed")
-    status = "timeout" if result.returncode == config.PROC_TIMEOUT_EXIT_CODE else "failed"
-    return RuntimeComponent(name=name, status=status, evidence=_runtime_evidence(result))
-
-
-def _runtime_result_json(result: RuntimeResult) -> dict[str, object]:
-    return {
-        "schema_version": RUNTIME_SCHEMA_VERSION,
-        "fix_sha": result.fix_sha,
-        "bindings": [asdict(binding) for binding in result.bindings],
-        "components": [asdict(component) for component in result.components],
-        "uncovered_zones": list(result.uncovered_zones),
-    }
-
-
-def _runtime_result_from_mapping(raw: Mapping[str, Any]) -> RuntimeResult:
-    required = {"schema_version", "fix_sha", "bindings", "components", "uncovered_zones"}
-    if set(raw) != required or str(raw.get("schema_version")) != RUNTIME_SCHEMA_VERSION:
-        raise AnalyzeBugsError("malformed runtime result artifact")
-    fix_sha = raw.get("fix_sha")
-    bindings_raw = raw.get("bindings")
-    components_raw = raw.get("components")
-    zones_raw = raw.get("uncovered_zones")
-    if not isinstance(fix_sha, str) or not FULL_SHA_RE.fullmatch(fix_sha) or not isinstance(bindings_raw, list) or not isinstance(components_raw, list) or not isinstance(zones_raw, list):
-        raise AnalyzeBugsError("malformed runtime result artifact")
-    bindings: list[RuntimeBinding] = []
-    for item in bindings_raw:
-        if not isinstance(item, dict) or set(item) != {"issue", "cache_key", "fix_sha"} or isinstance(item["issue"], bool):
-            raise AnalyzeBugsError("malformed runtime result binding")
-        try:
-            issue = int(item["issue"])
-        except (TypeError, ValueError) as exc:
-            raise AnalyzeBugsError("malformed runtime result binding") from exc
-        if issue <= 0 or not isinstance(item["cache_key"], str) or not isinstance(item["fix_sha"], str) or not FULL_SHA_RE.fullmatch(item["fix_sha"]):
-            raise AnalyzeBugsError("malformed runtime result binding")
-        bindings.append(RuntimeBinding(issue=issue, cache_key=item["cache_key"], fix_sha=item["fix_sha"]))
-    components: list[RuntimeComponent] = []
-    for item in components_raw:
-        if not isinstance(item, dict) or set(item) != {"name", "status", "evidence"}:
-            raise AnalyzeBugsError("malformed runtime result component")
-        if not all(isinstance(item[key], str) for key in ("name", "status", "evidence")) or item["status"] not in {"passed", "failed", "timeout", "absent"}:
-            raise AnalyzeBugsError("malformed runtime result component")
-        components.append(RuntimeComponent(name=item["name"], status=item["status"], evidence=item["evidence"]))
-    if not all(isinstance(zone, str) and zone for zone in zones_raw):
-        raise AnalyzeBugsError("malformed runtime uncovered zones")
-    return RuntimeResult(fix_sha=fix_sha, bindings=tuple(bindings), components=tuple(components), uncovered_zones=tuple(zones_raw))
-
-
-def load_runtime_results(path: Path, bundles: Sequence[BundleRecord]) -> dict[str, RuntimeResult]:
-    if not path.exists():
-        return {}
-    expected: set[tuple[int, str, str]] = {(bundle.issue_number, bundle.cache_key, bundle.fix_sha) for bundle in bundles}
-    matched: dict[str, RuntimeResult] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            raw = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise AnalyzeBugsError(f"malformed runtime result artifact: {path}") from exc
-        if not isinstance(raw, dict):
-            raise AnalyzeBugsError(f"malformed runtime result artifact: {path}")
-        result: RuntimeResult = _runtime_result_from_mapping(cast("Mapping[str, Any]", raw))
-        for binding in result.bindings:
-            key: tuple[int, str, str] = (binding.issue, binding.cache_key, binding.fix_sha)
-            if key not in expected or binding.fix_sha != result.fix_sha:
-                continue
-            if binding.cache_key in matched:
-                raise AnalyzeBugsError(f"duplicate current runtime result for {binding.cache_key}")
-            matched[binding.cache_key] = result
-    return matched
-
-
-def runtime_verify(*, runner: Runner, run_dir: Path, bundles: Sequence[BundleRecord], runtime_max: int, repo_root: Path) -> tuple[tuple[RuntimeResult, ...], int]:
-    if runtime_max < 0:
-        raise AnalyzeBugsError("--runtime-max must be nonnegative")
-    grouped: dict[str, list[BundleRecord]] = {}
-    for bundle in bundles:
-        if not bundle.fix_sha:
-            continue
-        if not FULL_SHA_RE.fullmatch(bundle.fix_sha):
-            raise AnalyzeBugsError(f"runtime verification received invalid fix SHA for issue #{bundle.issue_number}")
-        grouped.setdefault(bundle.fix_sha, []).append(bundle)
-    ranked: list[tuple[str, list[BundleRecord]]] = sorted(grouped.items(), key=lambda item: (-max(bundle.fix_time for bundle in item[1]), item[0]))
-    if runtime_max == 0:
-        _atomic_write_text(run_dir / RUNTIME_RESULTS_NAME, "")
-        _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": 0, "skipped_unique_shas": len(ranked)})
-        return (), len(ranked)
-    selected: list[tuple[str, list[BundleRecord]]] = ranked[:runtime_max]
-    results: list[RuntimeResult] = []
-    for fix_sha, grouped_bundles in selected:
-        bindings: tuple[RuntimeBinding, ...] = tuple(RuntimeBinding(bundle.issue_number, bundle.cache_key, fix_sha) for bundle in grouped_bundles)
-        touched_paths: tuple[str, ...] = tuple(p for bundle in grouped_bundles for p in bundle.touched_files)
-        tests: tuple[str, ...] = discover_runtime_tests(runner=runner, fix_sha=fix_sha, repo_root=repo_root)
-        components: list[RuntimeComponent] = []
-        if tests:
-            base_temp: Path = run_dir / "runtime-pytest-tmp" / fix_sha
-            command: list[str] = ["python3", "-m", "pytest", "-p", "no:cacheprovider", "--basetemp", str(base_temp), "--", *tests]
-            components.append(_runtime_component("pytest", runner.run(command, timeout=config.ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC, cwd=str(repo_root))))
-        else:
-            components.append(RuntimeComponent(name="pytest", status="absent", evidence="no runnable commit test files"))
-        components.extend(
-            _runtime_component(target, runner.run(["make", target], timeout=config.ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC, cwd=str(repo_root)))
-            for target in resolve_runtime_harnesses(touched_paths)
-        )
-        results.append(RuntimeResult(fix_sha=fix_sha, bindings=bindings, components=tuple(components), uncovered_zones=_runtime_uncovered_zones(touched_paths)))
-    path: Path = run_dir / RUNTIME_RESULTS_NAME
-    _atomic_write_text(path, "".join(json.dumps(_runtime_result_json(result), sort_keys=True) + "\n" for result in results))
-    skipped = len(ranked) - len(selected)
-    _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": len(results), "skipped_unique_shas": skipped})
-    return tuple(results), skipped
-
-
-def runtime_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="python/cli.py analyze-bugs runtime")
-    parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--ledger-path", required=True)
-    parser.add_argument("--runtime-max", type=int, default=config.ANALYZE_BUGS_DEFAULT_RUNTIME_MAX)
-    parser.add_argument("--repo-root", required=True)
-    args = parser.parse_args(argv)
-    try:
-        manifest_path = Path(args.manifest)
-        _manifest, bundles = _load_manifest(manifest_path)
-        runner = _runner()
-        results, skipped = runtime_verify(runner=runner, run_dir=Path(args.run_dir), bundles=bundles, runtime_max=args.runtime_max, repo_root=Path(args.repo_root))
-    except AnalyzeBugsError as exc:
-        return _fail(str(exc))
-    _emit_kvs({"RUNTIME_RESULTS_PATH": str(Path(args.run_dir) / RUNTIME_RESULTS_NAME), "RUNTIME_SELECTED_UNIQUE_SHAS": len(results), "RUNTIME_SKIPPED_UNIQUE_SHAS": skipped})
-    return 0
-
-
-def _runtime_overlay(verdict: str, tier: str, reason: str, result: RuntimeResult | None) -> tuple[str, str, str, tuple[str, ...]]:
-    if result is None:
-        return verdict, tier, reason, ()
-    annotations: tuple[str, ...] = tuple(f"UNVERIFIED_RUNTIME: no harness covers {zone}" for zone in result.uncovered_zones)
-    failures: list[RuntimeComponent] = [component for component in result.components if component.status in {"failed", "timeout"}]
-    if failures:
-        detail = "; ".join(f"{component.name} {component.status}: {component.evidence}".rstrip(": ") for component in failures)
-        return "SUSPECT", "RUNTIME", detail, annotations
-    executed: list[RuntimeComponent] = [component for component in result.components if component.status == "passed"]
-    if executed and verdict in CERTIFIABLE_FIXED_VERDICTS:
-        return verdict, "RUNTIME", reason, annotations
-    return verdict, tier, reason, annotations
-
-
-def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, str, tuple[str, ...], bool]:
-    if not bundle.required_evidence_complete:
-        scans = (
-            ("fix-diff", ScanResult(bundle.diff_scan_status, reason=bundle.diff_scan_reason)),
-            ("consumer", ScanResult(bundle.consumer_scan_status, reason=bundle.consumer_scan_reason)),
-            ("later-history", ScanResult(bundle.later_history_scan_status, reason=bundle.later_history_scan_reason)),
-            ("revert", ScanResult(bundle.revert_scan_status, reason=bundle.revert_scan_reason)),
-        )
-        return "NEEDS_DEEP", "MECH", _incomplete_evidence_reason(scans=scans), (), False
-    if record and record.deep_verdict:
-        return record.deep_verdict, "DEEP", record.deep_reason, (), record.sampled
-    if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":
-        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
-    if _triage_complete(record, refresh=False) and record and record.triage_verdict:
-        if record.triage_verdict in {"SUSPECT", "NEEDS_DEEP"} or record.triage_needs_deep:
-            return "NEEDS_DEEP", "TRIAGE", record.triage_reason, record.triage_missing_items, record.sampled
-        return record.triage_verdict, "TRIAGE", record.triage_reason, record.triage_missing_items, record.sampled
-    if bundle.mechanical_verdict:
-        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
-    return "NEEDS_DEEP", "", "not yet triaged", (), False
-
-
-def _verified_issue(verdict: str, tier: str) -> bool:
-    return tier in {"TRIAGE", "DEEP", "RUNTIME"} and verdict in CERTIFIABLE_FIXED_VERDICTS
-
-
-def _valid_introduced_risk(risk: str, reason: str) -> bool:
-    return bool(risk) and bool(reason)
-
-
-def _selected_introduced_risk(record: LedgerRecord | None) -> tuple[str, str, str] | None:
-    if record is None or record.legacy_schema:
-        return None
-    if "deep" in record.stages_complete and _valid_introduced_risk(record.deep_introduced_risk, record.deep_introduced_risk_reason):
-        return "DEEP", record.deep_introduced_risk, record.deep_introduced_risk_reason
-    if "triage" in record.stages_complete and _valid_introduced_risk(record.triage_introduced_risk, record.triage_introduced_risk_reason):
-        return "TRIAGE", record.triage_introduced_risk, record.triage_introduced_risk_reason
-    return None
-
-
-def _class_open_siblings(record: LedgerRecord | None) -> tuple[str, ...]:
-    if record is None or record.legacy_schema or "deep" not in record.stages_complete:
-        return ()
-    if record.deep_verdict != "CONFIRMED_FIXED" or record.class_complete or not record.sibling_sites:
-        return ()
-    if not all(SIBLING_SITE_RE.fullmatch(site) for site in record.sibling_sites):
-        return ()
-    return record.sibling_sites
-
-
-def _snapshot_from_mapping(raw: Mapping[str, Any], *, path: Path) -> RunSnapshot:
-    required = {"schema_version", "repo", "run_id", "generated_at", "selected_issues", "verified_issues", "chronic_zones", "chain_edges", "verified_predicate"}
-    if set(raw) != required or str(raw.get("schema_version")) != "1" or raw.get("verified_predicate") != VERIFIED_PREDICATE_VERSION:
-        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot: {path}")
-    try:
-        generated_at = int(raw["generated_at"])
-        selected = tuple(sorted(int(item) for item in cast("list[Any]", raw["selected_issues"])))
-        verified = tuple(sorted(int(item) for item in cast("list[Any]", raw["verified_issues"])))
-        zones = tuple(sorted(str(item) for item in cast("list[Any]", raw["chronic_zones"])))
-        edges = tuple(sorted(str(item) for item in cast("list[Any]", raw["chain_edges"])))
-    except (TypeError, ValueError) as exc:
-        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot: {path}") from exc
-    if any(not re.fullmatch(r"[1-9][0-9]*>[1-9][0-9]*:(?:marker|file_intersection)", edge) for edge in edges):
-        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot edge: {path}")
-    return RunSnapshot("1", str(raw["repo"]), str(raw["run_id"]), generated_at, selected, verified, zones, edges)
-
-
-def _previous_snapshot(run_dir: Path, *, repo: str, generated_at: int) -> RunSnapshot | None:
-    candidates: list[RunSnapshot] = []
-    runs_root = run_dir.parent
-    if not runs_root.is_dir():
-        return None
-    for path in sorted(runs_root.glob("*/run-state.json")):
-        try:
-            raw = _load_json(path)
-            snapshot = _snapshot_from_mapping(raw, path=path)
-        except (AnalyzeBugsError, OSError, json.JSONDecodeError):
-            continue
-        if snapshot.repo == repo and snapshot.generated_at < generated_at:
-            candidates.append(snapshot)
-    return max(candidates, key=lambda item: (item.generated_at, item.run_id), default=None)
-
-
-def _format_issues(values: Sequence[int]) -> str:
-    return ", ".join(f"#{item}" for item in values) or "None"
-
-
-def _counts(verdicts: Sequence[str]) -> ReportCounts:
-    return ReportCounts(
-        total=len(verdicts),
-        confirmed_fixed=sum(1 for v in verdicts if v in {"CONFIRMED_FIXED", "FIXED_CLEAR", "FIXED_LIKELY"}),
-        needs_deep=sum(1 for v in verdicts if v == "NEEDS_DEEP"),
-        not_fixed=sum(1 for v in verdicts if v == "NOT_FIXED"),
-        incomplete=sum(1 for v in verdicts if v == "INCOMPLETE"),
-        regressed=sum(1 for v in verdicts if v == "REGRESSED"),
-        wontfix=sum(1 for v in verdicts if v == "WONTFIX"),
-        unverifiable=sum(1 for v in verdicts if v == "UNVERIFIABLE"),
-    )
-
-
-def _markdown_table(rows: Sequence[Sequence[str]]) -> str:
-    if not rows:
-        return ""
-    header = rows[0]
-    lines = ["| " + " | ".join(header) + " |", "| " + " | ".join("---" for _ in header) + " |"]
-    lines.extend("| " + " | ".join(cell.replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows[1:])
-    return "\n".join(lines)
-
-
-def _short_sha(sha: str) -> str:
-    return sha[:12] if sha else ""
-
-
-def _estimate_cost(*, bundles: Sequence[BundleRecord], deep_rate_model: str) -> str:
-    # Task token ledgers are unavailable to this offline coordinator, so estimate
-    # from capped bundle characters and one small verifier output per deep item.
-    chars = 0
-    for bundle in bundles:
-        try:
-            chars += len(Path(bundle.bundle_path).read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            chars += 0
-    input_tokens = chars / 4
-    output_tokens = len(bundles) * 400
-    row = rate_row("claude", model=deep_rate_model)
-    cost = (input_tokens / 1_000_000 * row["input"]) + (output_tokens / 1_000_000 * row["output"])
-    return f"${cost:.2f} estimated"
-
-
-def _sweep_cost_estimate(*, run_dir: Path, selected_manifest: Mapping[str, Any]) -> str:
-    """Estimate bounded finder and refuter Task usage at the Sonnet rate."""
-    selected_raw = selected_manifest.get("selected")
-    if not isinstance(selected_raw, list):
-        raise AnalyzeBugsError("selected sweep manifest lacks selected array for cost estimate")
-    finder_chars = 0
-    for item in selected_raw:
-        if not isinstance(item, dict):
-            raise AnalyzeBugsError("selected sweep manifest has non-object entry for cost estimate")
-        bundle_path = item.get("bundle_path")
-        if not isinstance(bundle_path, str):
-            raise AnalyzeBugsError("selected sweep manifest lacks bundle path for cost estimate")
-        path = Path(bundle_path)
-        if path.resolve().parent != run_dir.resolve():
-            raise AnalyzeBugsError("selected sweep manifest has a bundle outside the active run directory")
-        try:
-            finder_chars += len(path.read_text(encoding="utf-8", errors="replace"))
-        except OSError as exc:
-            raise AnalyzeBugsError(f"could not read sweep bundle for cost estimate: {path}") from exc
-    queue_path = run_dir / SWEEP_REFUTER_QUEUE_NAME
-    try:
-        refuter_rows = _read_strict_jsonl(queue_path, desc="sweep refuter queue") if queue_path.exists() else []
-        refuter_chars = len(queue_path.read_text(encoding="utf-8", errors="replace")) if queue_path.exists() else 0
-    except OSError as exc:
-        raise AnalyzeBugsError(f"could not read sweep refuter queue for cost estimate: {queue_path}") from exc
-    row = rate_row("claude", model=config.CLAUDE_SONNET_4_6_MODEL)
-    input_tokens = (finder_chars + refuter_chars) / 4
-    output_tokens = (len(selected_raw) * SWEEP_FINDER_OUTPUT_TOKENS) + (len(refuter_rows) * SWEEP_REFUTER_OUTPUT_TOKENS)
-    cost = (input_tokens / 1_000_000 * row["input"]) + (output_tokens / 1_000_000 * row["output"])
-    return f"${cost:.2f} estimated"
-
-
 def _validated_sweep_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact, dict[str, Any]] | None:
     """Load a strict validated artifact and prove it matches this run's selection."""
     artifact_path = run_dir / SWEEP_VALIDATED_NAME
@@ -1482,239 +961,6 @@ def _validated_sweep_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact,
 def validated_merge_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact, dict[str, Any]] | None:
     """Validate the shared finder/refuter artifact for merge validation."""
     return _validated_sweep_artifact(run_dir=run_dir)
-
-
-def _sweep_state_timestamp() -> str:
-    return datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> str:
-    manifest, bundles = _load_manifest(manifest_path)
-    ledger, corrupt_count = load_ledger(ledger_path)
-    runtime_results = load_runtime_results(run_dir / RUNTIME_RESULTS_NAME, bundles)
-    runtime_summary_path = run_dir / "runtime-summary.json"
-    runtime_summary = _load_json(runtime_summary_path) if runtime_summary_path.exists() else {}
-    sweep = _validated_sweep_artifact(run_dir=run_dir)
-    sweep_artifact = sweep[0] if sweep else None
-    selected_sweep_manifest = sweep[1] if sweep else None
-    analytics = build_analytics_view(manifest=manifest, bundles=bundles, ledger_path=ledger_path, runner=_runner())
-    summary_path = run_dir / "ledger-summary.json"
-    summary = _load_json(summary_path) if summary_path.exists() else {}
-    truncated = {int(item) for item in summary.get("DEEP_TRUNCATED_ISSUES", []) if isinstance(item, int)}
-    rows: list[tuple[BundleRecord, str, str, str, tuple[str, ...], bool]] = []
-    introduced_risk_rows: list[tuple[BundleRecord, str, str, str]] = []
-    class_open_rows: list[tuple[BundleRecord, tuple[str, ...], str]] = []
-    verdict_values: list[str] = []
-    verified_issues: list[int] = []
-    coverage_gaps: dict[str, set[int]] = {}
-    for bundle in bundles:
-        record = _record_for_bundle(ledger, bundle)
-        verdict, tier, reason, missing, sampled = _final_verdict_with_tier(bundle, record)
-        if bundle.issue_number in truncated:
-            verdict = "NEEDS_DEEP"
-            tier = ""
-            reason = "deep cap truncated this candidate"
-        verdict, tier, reason, annotations = _runtime_overlay(verdict, tier, reason, runtime_results.get(bundle.cache_key))
-        if annotations:
-            reason = "; ".join((reason, *annotations)) if reason else "; ".join(annotations)
-            for annotation in annotations:
-                coverage_gaps.setdefault(annotation, set()).add(bundle.issue_number)
-        rows.append((bundle, verdict, tier, reason, missing, sampled))
-        selected_risk = _selected_introduced_risk(record)
-        if selected_risk and selected_risk[1] != NO_INTRODUCED_RISK:
-            introduced_risk_rows.append((bundle, *selected_risk))
-        sibling_sites = _class_open_siblings(record)
-        if sibling_sites:
-            class_open_rows.append((bundle, sibling_sites, record.deep_reason))
-        verdict_values.append(verdict)
-        if _verified_issue(verdict, tier):
-            verified_issues.append(bundle.issue_number)
-    counts = _counts(verdict_values)
-    count_table = _markdown_table(
-        [
-            ["Metric", "Count"],
-            ["Total", str(counts.total)],
-            ["Confirmed or likely fixed", str(counts.confirmed_fixed)],
-            ["Needs deep", str(counts.needs_deep)],
-            ["Not fixed", str(counts.not_fixed)],
-            ["Incomplete", str(counts.incomplete)],
-            ["Regressed", str(counts.regressed)],
-            ["Won't fix", str(counts.wontfix)],
-            ["Unverifiable", str(counts.unverifiable)],
-        ]
-    )
-    detail_rows = [["Issue", "Fix", "Tier", "Verdict", "Reason", "Missing items"]]
-    coverage_gap_rows = [["Coverage gap", "Issues"]]
-    coverage_gap_rows.extend([annotation, _format_issues(sorted(issues))] for annotation, issues in sorted(coverage_gaps.items()))
-    for bundle, verdict, tier, reason, missing, _sampled in rows:
-        issue_link = f"#{bundle.issue_number}" if not bundle.url else f"[#{bundle.issue_number}]({bundle.url})"
-        detail_rows.append([issue_link, _short_sha(bundle.fix_sha), tier or "PENDING", verdict, reason, "; ".join(missing)])
-    introduced_risk_table = [["Issue", "Stage", "Risk", "Evidence"]]
-    introduced_risk_table.extend(
-        [
-            f"[#{bundle.issue_number}]({bundle.url})" if bundle.url else f"#{bundle.issue_number}",
-            stage,
-            risk,
-            risk_reason,
-        ]
-        for bundle, stage, risk, risk_reason in introduced_risk_rows
-    )
-    class_open_table = [["Issue", "Fix", "Sibling sites", "Verification"]]
-    class_open_table.extend(
-        [
-            f"[#{bundle.issue_number}]({bundle.url})" if bundle.url else f"#{bundle.issue_number}",
-            _short_sha(bundle.fix_sha),
-            ", ".join(sibling_sites),
-            deep_reason,
-        ]
-        for bundle, sibling_sites, deep_reason in class_open_rows
-    )
-    sampled_rows = [(bundle, verdict) for bundle, verdict, _tier, _reason, _missing, sampled in rows if sampled]
-    sampled_failures = sum(1 for _bundle, verdict in sampled_rows if verdict in {"INCOMPLETE", "REGRESSED", "NOT_FIXED", "UNVERIFIABLE"})
-    sample_rate = (sampled_failures / len(sampled_rows)) if sampled_rows else 0.0
-    followups = [(bundle, verdict, reason) for bundle, verdict, _tier, reason, _missing, _sampled in rows if verdict in TERMINAL_FOLLOWUP_VERDICTS]
-    followup_path = run_dir / "follow-up-issue.md"
-    if followups or class_open_rows or (sweep_artifact and sweep_artifact.candidates):
-        body_lines = ["# Analyze-bugs follow-up", "", f"Repo: {manifest.get('repo', '')}", "", "Findings:"]
-        for bundle, verdict, reason in followups:
-            body_lines.append(f"- #{bundle.issue_number}: {verdict}. {reason}")
-        for bundle, sibling_sites, deep_reason in class_open_rows:
-            body_lines.append(
-                f"- #{bundle.issue_number}: Instance fixed, class open. "
-                f"Sibling sites: {', '.join(sibling_sites)}. {deep_reason}"
-            )
-        if sweep_artifact and sweep_artifact.candidates:
-            body_lines.extend(["", "Sweep candidates:"])
-            body_lines.extend(
-                f"- {_short_sha(candidate.merge_sha)} {candidate.file} `{candidate.symbol}`: "
-                f"{candidate.severity}/{candidate.confidence}. {candidate.description}"
-                for candidate in sweep_artifact.candidates
-            )
-        _atomic_write_text(followup_path, "\n".join(body_lines) + "\n")
-
-    snapshot = RunSnapshot(
-        schema_version="1",
-        repo=str(manifest.get("repo", "")),
-        run_id=str(manifest.get("run_id", run_dir.name)),
-        generated_at=int(manifest.get("generated_at", 0) or 0),
-        selected_issues=tuple(sorted(bundle.issue_number for bundle in bundles)),
-        verified_issues=tuple(sorted(verified_issues)),
-        chronic_zones=tuple(zone.zone for zone in analytics.chronic_zones),
-        chain_edges=tuple(edge.identity for edge in analytics.chain_edges),
-    )
-    predecessor = _previous_snapshot(run_dir, repo=snapshot.repo, generated_at=snapshot.generated_at)
-    prior_selected = set(predecessor.selected_issues if predecessor else ())
-    prior_verified = set(predecessor.verified_issues if predecessor else ())
-    prior_edges = set(predecessor.chain_edges if predecessor else ())
-    prior_zones = set(predecessor.chronic_zones if predecessor else ())
-    current_zones = set(snapshot.chronic_zones)
-
-    zone_rows = [["Zone", "Bug count", "Member issues", "Churned files"]]
-    zone_rows.extend([zone.zone, str(len(zone.issues)), _format_issues(zone.issues), ", ".join(zone.churned_files) or "None"] for zone in analytics.chronic_zones)
-    chain_rows = [["From", "To", "Detector"]]
-    chain_rows.extend([f"#{edge.from_issue}", f"#{edge.to_issue}", edge.detector_kind] for edge in analytics.chain_edges)
-    baseline_rows = [["Issue", "Fix"]]
-    by_issue = {bundle.issue_number: bundle for bundle in bundles}
-    baseline_rows.extend([f"#{issue}", _short_sha(by_issue[issue].fix_sha) if issue in by_issue else "historical"] for issue in analytics.baseline_issues)
-
-    rate_model = str(summary.get("DEEP_RATE_MODEL") or config.ANALYZE_BUGS_DEEP_MODEL_ALIASES["sonnet"][1])
-    cost = _estimate_cost(bundles=bundles, deep_rate_model=rate_model)
-    parts = [
-        "# Analyze Bugs Report", "", f"Repo: {snapshot.repo}", f"Evidence ref: {manifest.get('evidence_ref', '')}",
-        f"Requested: {manifest.get('bugs_requested', '')}", f"Selected: {manifest.get('bugs_selected', '')}", "",
-        "## Counts", "", count_table, "", "## Issues", "", _markdown_table(detail_rows), "",
-        "## Harness coverage gaps", "", _markdown_table(coverage_gap_rows) if coverage_gaps else "None.", "",
-        f"Runtime selected unique SHAs: {runtime_summary.get('selected_unique_shas', 0)}",
-        f"Runtime skipped unique SHAs: {runtime_summary.get('skipped_unique_shas', 0)}", "",
-        "## Chronic zones", "", _markdown_table(zone_rows) if analytics.chronic_zones else "None.", "",
-        "## Fix chains", "", _markdown_table(chain_rows) if analytics.chain_edges else "None.", "",
-        "## Baseline-extending fixes", "", _markdown_table(baseline_rows) if analytics.baseline_issues else "None.", "",
-        "## Since last run", "", "First run: yes" if predecessor is None else "First run: no",
-        f"Newly selected: {_format_issues(sorted(set(snapshot.selected_issues) - prior_selected))}",
-        f"Newly verified: {_format_issues(sorted(set(snapshot.verified_issues) - prior_verified))}",
-        f"New chain edges: {', '.join(sorted(set(snapshot.chain_edges) - prior_edges)) or 'None'}",
-        f"Zones entering chronic status: {', '.join(sorted(current_zones - prior_zones)) or 'None'}",
-        f"Zones leaving chronic status: {', '.join(sorted(prior_zones - current_zones)) or 'None'}", "",
-        "## Sample calibration", "", f"Sample size: {len(sampled_rows)}", f"Sampled failures: {sampled_failures}",
-        f"Triage false-pass rate: {sample_rate:.2%}", "",
-    ]
-    if class_open_rows:
-        parts[10:10] = ["## Instance fixed, class open", "", _markdown_table(class_open_table), ""]
-    if introduced_risk_rows:
-        parts[10:10] = ["## Introduced risk", "", _markdown_table(introduced_risk_table), ""]
-    if sweep_artifact and selected_sweep_manifest is not None:
-        sweep_rows = [["Merge", "File", "Symbol", "Severity", "Confidence", "Description"]]
-        sweep_rows.extend(
-            [
-                _short_sha(candidate.merge_sha),
-                candidate.file,
-                candidate.symbol,
-                candidate.severity,
-                candidate.confidence,
-                candidate.description,
-            ]
-            for candidate in sweep_artifact.candidates
-        )
-        parts.extend(
-            [
-                "## Sweep candidates",
-                "",
-                _markdown_table(sweep_rows) if sweep_artifact.candidates else "None.",
-                "",
-                f"Sweep selected merges: {sweep_artifact.selected_count}",
-                f"Sweep skipped merges: {sweep_artifact.skipped_count}",
-                f"Sweep pending frontier: {len(sweep_artifact.pending_shas)}",
-            ]
-        )
-        if sweep_artifact.coverage_incomplete:
-            parts.extend(["Sweep coverage incomplete: pending eligible merges will be retried.", ""])
-        else:
-            parts.append("")
-    if corrupt_count:
-        parts.extend([f"Ledger corrupt lines quarantined: {corrupt_count}", ""])
-    if followups or class_open_rows or (sweep_artifact and sweep_artifact.candidates):
-        parts.extend(["## Follow-up issue body", "", f"Follow-up body file: {followup_path}", ""])
-    if analytics.chronic_zones:
-        parts.extend([f"Suggestion: run /learn-from-bugs scoped to {', '.join(zone.zone for zone in analytics.chronic_zones)}.", ""])
-    parts.append(f"ANALYZE_BUGS_COST_ESTIMATE={cost}")
-    if sweep_artifact and selected_sweep_manifest is not None:
-        parts.append(
-            "ANALYZE_BUGS_SWEEP_COST_ESTIMATE="
-            + _sweep_cost_estimate(
-                run_dir=run_dir,
-                selected_manifest=selected_sweep_manifest,
-            )
-        )
-    report = "\n".join(parts) + "\n"
-    _atomic_write_text(run_dir / "report.md", report)
-    if analytics.hydrated_records:
-        _append_private_jsonl(ledger_path, (_record_json(record) for record in analytics.hydrated_records))
-    _write_json(run_dir / "run-state.json", asdict(snapshot))
-    if sweep_artifact:
-        write_sweep_state(
-            sweep_state_path(ledger_path),
-            SweepState(
-                last_sweep_sha=sweep_artifact.pinned_tip,
-                last_sweep_at=_sweep_state_timestamp(),
-                schema_version=SWEEP_SCHEMA_VERSION,
-                pending_shas=sweep_artifact.pending_shas,
-            ),
-        )
-    return report
-
-
-def report_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="python/cli.py analyze-bugs report")
-    parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--ledger-path", required=True)
-    args = parser.parse_args(argv)
-    try:
-        report = render_report(manifest_path=Path(args.manifest), ledger_path=Path(args.ledger_path), run_dir=Path(args.run_dir))
-    except AnalyzeBugsError as exc:
-        return _fail(str(exc))
-    print(report, end="")
-    return 0
 
 
 def _full_sha(value: object, *, label: str) -> str:

@@ -95,6 +95,14 @@ creates a private config directory and injects `CURSOR_CONFIG_DIR` only into the
 child `ProcessRequest` environment; it does not mutate the parent process
 environment, so parallel tests and parallel clones stay isolated.
 
+`analyze-bugs runtime` uses closed `HostUtilityProgram` cases: `python3 -m
+pytest` only for Gix-discovered, live, repository-relative `python/tests/`
+changes, plus two fixed Make harness targets selected from touched-path
+prefixes. It accepts no generic executable or target, has a 300-second deadline,
+five-second shutdown grace, and 64 KiB capture cap, and caps normalized failure
+evidence before it reaches private artifacts. `analyze-bugs report` is local
+only: it may render a follow-up issue body, but never mutates GitHub.
+
 Rust Codex-home preparation likewise creates a fresh confined directory below
 the caller's private root. It strips inherited API settings and prior trusted
 instructions from copied configuration, accepts a trusted-instructions file

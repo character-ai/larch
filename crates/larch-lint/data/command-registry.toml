@@ -534,11 +534,13 @@ verb = "report"
 python_module = "larch.issue.analyze_bugs"
 python_function = "report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8185
+clean_install_test = "clean-install-analyze-bugs-report"
 
 [[commands]]
 domain = "analyze-bugs"
@@ -546,11 +548,13 @@ verb = "runtime"
 python_module = "larch.issue.analyze_bugs"
 python_function = "runtime_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8185
+clean_install_test = "clean-install-analyze-bugs-runtime"
 
 [[commands]]
 domain = "analyze-issues"
@@ -8688,12 +8692,6 @@ path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
 rust = ["execution-issues flush", "timing mark"]
-
-[[callers]]
-path = "python/larch/issue/analyze_bugs.py"
-kind = "python-runtime"
-python = ["analyze-bugs report", "analyze-bugs runtime"]
-rust = []
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"

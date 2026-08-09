@@ -82,7 +82,7 @@ python/larch/implement/rust_ci_selection.py	later-domain	#7681	diff,merge-base,r
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
-python/larch/issue/analyze_bugs.py	later-domain	#7682	diff,diff-tree,fetch,grep,log,merge-base,rev-parse,show
+python/larch/issue/analyze_bugs.py	later-domain	#7682	diff,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/audit_runs.py	later-domain	#7682	branch,config,fetch,pull,rev-parse,status
 python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
