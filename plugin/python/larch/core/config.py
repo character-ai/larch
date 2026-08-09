@@ -78,13 +78,17 @@ ENV_LARCH_R2_ENDPOINT: Final = "LARCH_R2_ENDPOINT"
 MIGRATION_GOVERNANCE_BLOCKED_DETAIL_MARKER: Final = "migration governance blocked:"
 STALL_RECOVERY_PATTERN_MIGRATION_GOVERNANCE_BLOCK: Final = "migration-governance-block"
 # Aggregate migration-governance report contract.
-MIGRATION_AUDIT_SCHEMA_VERSION: Final = 1
+MIGRATION_AUDIT_SCHEMA_VERSION: Final = 2
 MIGRATION_AUDIT_EXIT_FINDINGS: Final = 1
 MIGRATION_AUDIT_EXIT_UNAVAILABLE: Final = 2
 MIGRATION_AUDIT_TABLE_OUTPUTS: Final[tuple[str, ...]] = ("stderr", "stdout", "none")
 MIGRATION_AUDIT_COUNT_KEYS: Final[tuple[str, ...]] = (
     "executable_leaves",
     "valid_plans",
+    "historical_managed_leaves",
+    "historical_missing_plan_evidence",
+    "historical_unverified_rust_line_budgets",
+    "historical_recorded_rust_line_budget_deviations",
     "missing_or_stale_blockers",
     "active_owner_conflicts",
     "stale_implementation_leases",
@@ -94,6 +98,7 @@ MIGRATION_AUDIT_COUNT_KEYS: Final[tuple[str, ...]] = (
     "clean_install_coverage_gaps",
     "production_runtime_escape_hatches",
 )
+MANAGED_LEAF_RUST_LINE_LIMIT: Final = 1_500
 # Helper-script parity exits used by the sh-to-py CLI companions.
 EXIT_USAGE_ONE: Final = 1
 EXIT_USAGE_TWO: Final = 2

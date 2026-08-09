@@ -45,6 +45,7 @@ _RECEIPT_RE: Final = re.compile(
 )
 _SHA256_HEX_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_HEX_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+_NONNEGATIVE_INT_RE: Final = re.compile(r"^(?:0|[1-9][0-9]*)$")
 _SHARED_OWNER_PATTERN: Final = (
     r"(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)"
 )
@@ -87,22 +88,30 @@ _LEASE_STALE_HOURS: Final = 12
 _REUSE_OWNER_ROW_PARTS: Final = 4
 _REPOSITORY_RE: Final = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _LEAF_TITLE_RE: Final = re.compile(r"\[LEAF OF [#]?[1-9][0-9]*\]", re.IGNORECASE)
+_DIRECT_LEAF_OPENING_RE: Final = re.compile(
+    r"^This is a leaf of umbrella #([1-9][0-9]*)\. Read the umbrella in full before acting\.$"
+)
 _FINDING_ISSUE_RE: Final = re.compile(r"\bissue=#([1-9][0-9]*)\b")
 _REGISTRY_PATH: Final = Path("crates/larch-lint/data/command-registry.toml")
 _AUDIT_ISSUE_FIELDS: Final = ("number", "title", "state", "body", "updatedAt")
 _COUNT_KEYS: Final = config.MIGRATION_AUDIT_COUNT_KEYS
 _FINDING_CATEGORY_ORDER: Final = {
     "invalid_plan": 0,
-    "missing_or_stale_blocker": 1,
-    "owner_admission": 2,
-    "active_owner_conflict": 3,
-    "stale_implementation_lease": 4,
-    "registry_state_violation": 5,
-    "missing_caller_surface": 6,
-    "python_retirement_violation": 7,
-    "clean_install_coverage_gap": 8,
-    "production_runtime_escape_hatch": 9,
+    "historical_missing_plan_evidence": 1,
+    "historical_unverified_rust_line_budget": 2,
+    "missing_or_stale_blocker": 3,
+    "owner_admission": 4,
+    "active_owner_conflict": 5,
+    "stale_implementation_lease": 6,
+    "registry_state_violation": 7,
+    "missing_caller_surface": 8,
+    "python_retirement_violation": 9,
+    "clean_install_coverage_gap": 10,
+    "production_runtime_escape_hatch": 11,
 }
+
+RUST_LINE_BUDGET_DEVIATION_HEADING: Final = "## Rust line budget deviation"
+RUST_LINE_BUDGET_SPLIT_DECISION: Final = "retain this leaf as one PR"
 
 REASON_MISSING_NATIVE: Final = "missing-native-blocker-edge"
 REASON_UNDOCUMENTED_NATIVE: Final = "undocumented-native-blocker-edge"
@@ -250,6 +259,25 @@ class MigrationIssueSnapshot:
 
 
 @dataclass(frozen=True)
+class RustLineBudgetDeviation:
+    """Durable over-budget evidence carried inside one issue plan."""
+
+    split_decision: str
+    rationale: str
+    base_sha: str
+    head_sha: str
+    added_lines: int
+
+
+@dataclass(frozen=True)
+class RustLineBudgetDeviationParse:
+    """Fail-closed parse result for a plan's optional budget-deviation section."""
+
+    deviation: RustLineBudgetDeviation | None
+    defects: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DependencySnapshot:
     """One issue's native blocked-by numbers from a single transport read."""
 
@@ -270,6 +298,7 @@ class MigrationAuditSnapshot:
     dependencies: tuple[DependencySnapshot, ...]
     open_pr_branches: frozenset[str]
     tracked_paths: frozenset[str]
+    closed_issues: tuple[MigrationIssueSnapshot, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -318,7 +347,7 @@ class IssueAuditEvidence:
 
 @dataclass(frozen=True)
 class MigrationAuditReport:
-    """Schema-v1 aggregate report."""
+    """Schema-v2 aggregate report."""
 
     repository: str
     chief_issue: int
@@ -1355,11 +1384,125 @@ def _chief_reference_present(*, body: str, chief_issue: int) -> bool:
     return any(re.search(pattern, body, re.IGNORECASE) is not None for pattern in patterns)
 
 
-def _is_executable_leaf(issue: MigrationIssueSnapshot, *, chief_issue: int) -> bool:
+def _is_chief_migration_leaf(
+    issue: MigrationIssueSnapshot, *, chief_issue: int
+) -> bool:
     return (
-        issue.state == "open"
-        and _LEAF_TITLE_RE.search(issue.title) is not None
+        _LEAF_TITLE_RE.search(issue.title) is not None
         and _chief_reference_present(body=issue.body, chief_issue=chief_issue)
+    )
+
+
+def _direct_parent_umbrella(*, body: str) -> int | None:
+    first = (body or "").splitlines()
+    match = _DIRECT_LEAF_OPENING_RE.fullmatch(first[0]) if first else None
+    return int(match.group(1)) if match is not None else None
+
+
+def _parent_declares_chief(*, body: str, chief_issue: int) -> bool:
+    return _chief_reference_present(body=body, chief_issue=chief_issue) or (
+        re.search(
+            rf"#{chief_issue}(?![0-9])[^\r\n]{{0,160}}\[CHIEF[ \t]+UMBRELLA\]",
+            body,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+
+
+def _is_historical_chief_migration_leaf(
+    issue: MigrationIssueSnapshot,
+    *,
+    issues: Mapping[int, MigrationIssueSnapshot],
+    chief_issue: int,
+) -> bool:
+    if _is_chief_migration_leaf(issue, chief_issue=chief_issue):
+        return True
+    parent_number = _direct_parent_umbrella(body=issue.body)
+    parent = issues.get(parent_number) if parent_number is not None else None
+    return parent is not None and _parent_declares_chief(
+        body=parent.body, chief_issue=chief_issue
+    )
+
+
+def _is_executable_leaf(issue: MigrationIssueSnapshot, *, chief_issue: int) -> bool:
+    return issue.state == "open" and _is_chief_migration_leaf(
+        issue, chief_issue=chief_issue
+    )
+
+
+def parse_rust_line_budget_deviation(
+    *, plan_inner: str
+) -> RustLineBudgetDeviationParse:
+    """Parse the one optional durable over-budget record from a plan block."""
+    lines = plan_inner.splitlines()
+    fenced = plan_grammar.balanced_fence_line_indices(lines)
+    headings = [
+        index
+        for index, line in enumerate(lines)
+        if index not in fenced and line == RUST_LINE_BUDGET_DEVIATION_HEADING
+    ]
+    if not headings:
+        return RustLineBudgetDeviationParse(deviation=None, defects=())
+    if len(headings) != 1:
+        return RustLineBudgetDeviationParse(
+            deviation=None,
+            defects=("multiple-rust-line-budget-deviations",),
+        )
+    start = headings[0] + 1
+    end = next(
+        (
+            index
+            for index in range(start, len(lines))
+            if index not in fenced and lines[index].startswith("## ")
+        ),
+        len(lines),
+    )
+    prefixes = {
+        "split_decision": "- Split decision: ",
+        "rationale": "- Rationale: ",
+        "base_sha": "- Base SHA: ",
+        "head_sha": "- Head SHA: ",
+        "added_lines": "- Added non-generated Rust lines: ",
+    }
+    values: dict[str, list[str]] = {key: [] for key in prefixes}
+    for index, line in enumerate(lines[start:end], start=start):
+        if index in fenced:
+            continue
+        for key, prefix in prefixes.items():
+            if line.startswith(prefix):
+                values[key].append(line[len(prefix) :].strip())
+                break
+    if any(len(value) != 1 for value in values.values()):
+        return RustLineBudgetDeviationParse(
+            deviation=None,
+            defects=("malformed-rust-line-budget-deviation",),
+        )
+    split_decision = values["split_decision"][0]
+    rationale = values["rationale"][0]
+    base_sha = values["base_sha"][0]
+    head_sha = values["head_sha"][0]
+    added_lines_text = values["added_lines"][0]
+    if (
+        split_decision != RUST_LINE_BUDGET_SPLIT_DECISION
+        or not rationale
+        or _SHA1_HEX_RE.fullmatch(base_sha) is None
+        or _SHA1_HEX_RE.fullmatch(head_sha) is None
+        or _NONNEGATIVE_INT_RE.fullmatch(added_lines_text) is None
+    ):
+        return RustLineBudgetDeviationParse(
+            deviation=None,
+            defects=("malformed-rust-line-budget-deviation",),
+        )
+    return RustLineBudgetDeviationParse(
+        deviation=RustLineBudgetDeviation(
+            split_decision=split_decision,
+            rationale=rationale,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            added_lines=int(added_lines_text),
+        ),
+        defects=(),
     )
 
 
@@ -1445,27 +1588,29 @@ def load_migration_audit_snapshot(
     current = now or datetime.now(UTC)
     timestamp = current.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
-        raw_open = gh.issue_list_read(
+        raw_issues = gh.issue_list_read(
             runner,
             repo=repository,
-            state="open",
+            state="all",
             fields=_AUDIT_ISSUE_FIELDS,
             limit=open_rows.ISSUE_LIST_LIMIT,
             cwd=cwd,
         )
     except (OSError, ShipError) as exc:
-        raise MigrationAuditError("open issue snapshot unavailable") from exc
-    open_issues = tuple(
+        raise MigrationAuditError("issue snapshot unavailable") from exc
+    all_issues = tuple(
         sorted(
             (
-                _parse_migration_issue(value, context="open issue snapshot")
-                for value in raw_open
+                _parse_migration_issue(value, context="issue snapshot")
+                for value in raw_issues
             ),
             key=lambda item: item.number,
         )
     )
-    if len({issue.number for issue in open_issues}) != len(open_issues):
-        raise MigrationAuditError("open issue snapshot contains duplicates")
+    if len({issue.number for issue in all_issues}) != len(all_issues):
+        raise MigrationAuditError("issue snapshot contains duplicates")
+    open_issues = tuple(issue for issue in all_issues if issue.state == "open")
+    closed_issues = tuple(issue for issue in all_issues if issue.state == "closed")
     leaves = tuple(
         issue
         for issue in open_issues
@@ -1482,12 +1627,12 @@ def load_migration_audit_snapshot(
         required_refs.update(blockers)
         required_refs.update(parse_native_blocker_refs(body=leaf.body))
         required_refs.update(_reuse_source_refs(body=leaf.body))
-    open_numbers = {issue.number for issue in open_issues}
+    known_numbers = {issue.number for issue in all_issues}
     referenced_issues = tuple(
         _read_referenced_issue(
             runner, repository=repository, issue=number, cwd=cwd
         )
-        for number in sorted(required_refs - open_numbers)
+        for number in sorted(required_refs - known_numbers)
     )
     open_pr_branches = _open_pr_branches(runner, repo=repository, cwd=cwd)
     if open_pr_branches is None:
@@ -1509,6 +1654,7 @@ def load_migration_audit_snapshot(
         dependencies=tuple(sorted(dependencies, key=lambda item: item.issue)),
         open_pr_branches=open_pr_branches,
         tracked_paths=tracked_paths,
+        closed_issues=closed_issues,
     )
 
 
@@ -1517,7 +1663,11 @@ def _issues_by_number(
 ) -> dict[int, MigrationIssueSnapshot]:
     return {
         issue.number: issue
-        for issue in (*snapshot.open_issues, *snapshot.referenced_issues)
+        for issue in (
+            *snapshot.open_issues,
+            *snapshot.closed_issues,
+            *snapshot.referenced_issues,
+        )
     }
 
 
@@ -1745,6 +1895,45 @@ def _append_owner_findings(
         findings.append(AggregateFinding(category=category, reason=reason, issue=issue.number))
 
 
+def _historical_plan_defects(*, issue_body: str) -> tuple[str, ...]:
+    """Validate durable plan shape without applying today's repository paths."""
+    marker_defect = issue_wire.issue_plan_marker_defect(issue_body)
+    if marker_defect is not None:
+        return (marker_defect,)
+    plan_inner, malformed = parse_named_block(body=issue_body, marker="plan")
+    if malformed or plan_inner is None:
+        return ("missing-plan-block",)
+    return plan_grammar.validate_plan_facets(plan_text=plan_inner).defects
+
+
+def _historical_budget_evidence(
+    *, leaves: Sequence[MigrationIssueSnapshot]
+) -> tuple[dict[int, bool], dict[int, tuple[str, ...]], int]:
+    """Report only durable historical evidence; never infer or repair it."""
+    recorded_deviations = 0
+    plan_validity: dict[int, bool] = {}
+    reasons_by_issue: dict[int, tuple[str, ...]] = {}
+    for leaf in leaves:
+        defects = _historical_plan_defects(issue_body=leaf.body)
+        plan_validity[leaf.number] = not defects
+        if defects:
+            reasons_by_issue[leaf.number] = (
+                "historical-plan-evidence-missing defects=" + ",".join(defects),
+            )
+            continue
+        plan_inner, _malformed = parse_named_block(body=leaf.body, marker="plan")
+        assert plan_inner is not None
+        deviation = parse_rust_line_budget_deviation(plan_inner=plan_inner)
+        if deviation.deviation is not None and not deviation.defects:
+            recorded_deviations += 1
+            continue
+        reason = "historical-rust-line-budget-unverified"
+        if deviation.defects:
+            reason += " defects=" + ",".join(deviation.defects)
+        reasons_by_issue[leaf.number] = (reason,)
+    return plan_validity, reasons_by_issue, recorded_deviations
+
+
 def build_migration_audit_report(
     runner: Runner,
     *,
@@ -1759,6 +1948,15 @@ def build_migration_audit_report(
         issue
         for issue in snapshot.open_issues
         if _is_executable_leaf(issue, chief_issue=snapshot.chief_issue)
+    )
+    historical_leaves = tuple(
+        issue
+        for issue in snapshot.closed_issues
+        if _is_historical_chief_migration_leaf(
+            issue,
+            issues=issues,
+            chief_issue=snapshot.chief_issue,
+        )
     )
     active_rows = _open_issue_rows_for_snapshot(snapshot.open_issues)
     findings: list[AggregateFinding] = list(repository_findings)
@@ -1802,6 +2000,12 @@ def build_migration_audit_report(
         _append_owner_findings(
             issue=leaf, issues=issues, active_rows=active_rows, findings=findings
         )
+    historical_plan_validity, historical_reasons, recorded_historical_deviations = (
+        _historical_budget_evidence(
+            leaves=historical_leaves,
+        )
+    )
+    plan_validity.update(historical_plan_validity)
     lease_findings = audit_stale_implementation_leases_snapshot(
         repo=snapshot.repository,
         active_rows=active_rows,
@@ -1822,7 +2026,21 @@ def build_migration_audit_report(
     ordered_findings = tuple(sorted(set(findings), key=AggregateFinding.sort_key))
     counts: dict[str, int] = dict.fromkeys(_COUNT_KEYS, 0)
     counts["executable_leaves"] = len(leaves)
-    counts["valid_plans"] = sum(plan_validity.values())
+    counts["valid_plans"] = sum(plan_validity[leaf.number] for leaf in leaves)
+    counts["historical_managed_leaves"] = len(historical_leaves)
+    counts["historical_recorded_rust_line_budget_deviations"] = (
+        recorded_historical_deviations
+    )
+    counts["historical_missing_plan_evidence"] = sum(
+        reason.startswith("historical-plan-evidence-missing")
+        for reasons in historical_reasons.values()
+        for reason in reasons
+    )
+    counts["historical_unverified_rust_line_budgets"] = sum(
+        reason.startswith("historical-rust-line-budget-unverified")
+        for reasons in historical_reasons.values()
+        for reason in reasons
+    )
     category_counts = {
         "missing_or_stale_blocker": "missing_or_stale_blockers",
         "active_owner_conflict": "active_owner_conflicts",
@@ -1845,8 +2063,9 @@ def build_migration_audit_report(
         IssueAuditEvidence(
             number=number,
             plan_valid=plan_validity.get(number),
-            finding_reasons=tuple(
-                finding.reason for finding in ordered_findings if finding.issue == number
+            finding_reasons=(
+                *(finding.reason for finding in ordered_findings if finding.issue == number),
+                *historical_reasons.get(number, ()),
             ),
         )
         for number in evidence_numbers
@@ -1862,7 +2081,7 @@ def build_migration_audit_report(
 
 
 def render_migration_audit_json(*, report: MigrationAuditReport) -> str:
-    """Render compact deterministic schema-v1 JSON."""
+    """Render compact deterministic schema-v2 JSON."""
     return json.dumps(report.as_dict(), sort_keys=True, separators=(",", ":")) + "\n"
 
 
@@ -1970,6 +2189,8 @@ __all__ = [
     "REASON_STALE_PLAN_BODY",
     "REASON_UNDOCUMENTED_NATIVE",
     "RECEIPT_STALE_REASONS",
+    "RUST_LINE_BUDGET_DEVIATION_HEADING",
+    "RUST_LINE_BUDGET_SPLIT_DECISION",
     "AggregateFinding",
     "BlockerSnapshotRow",
     "CommandAuditIssue",
@@ -1987,6 +2208,8 @@ __all__ = [
     "OwnerAdmissionVerdict",
     "ParityVerdict",
     "PlanReceipt",
+    "RustLineBudgetDeviation",
+    "RustLineBudgetDeviationParse",
     "audit_stale_implementation_leases",
     "audit_stale_implementation_leases_snapshot",
     "build_command_audit_issue",
@@ -2010,6 +2233,7 @@ __all__ = [
     "parse_native_blocker_refs",
     "parse_owner_rows",
     "parse_receipt",
+    "parse_rust_line_budget_deviation",
     "persist_plan_receipt",
     "read_issue_body",
     "render_command_audit_input",
