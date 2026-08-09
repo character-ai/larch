@@ -75,9 +75,8 @@ fn manifest_command_updates_full_run_log_tree() {
     assert_eq!(manifest["status"], Value::String("True".to_owned()));
     assert_eq!(manifest["steps_ran"]["step8"], Value::Bool(true));
     assert_eq!(manifest["pr_number"], Value::from(17));
-    let large_integer: Value =
-        serde_json::from_str("18446744073709551616000000000000000000000")
-            .expect("large JSON integer should parse");
+    let large_integer: Value = serde_json::from_str("18446744073709551616000000000000000000000")
+        .expect("large JSON integer should parse");
     assert_eq!(manifest["large_integer"], large_integer);
     assert_eq!(
         manifest["z_extension"],
