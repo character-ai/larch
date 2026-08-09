@@ -17,13 +17,9 @@ from larch.issue import analyze_bugs
 from test_support import RecordingRunner, run_cli
 
 _marker_evidence = analyze_bugs._marker_evidence  # pyright: ignore[reportPrivateUsage]  # direct pure-helper coverage
-_bundle_from_mapping = analyze_bugs._bundle_from_mapping  # pyright: ignore[reportPrivateUsage]  # fixture construction
 _parse_finder_finding = analyze_bugs._parse_finder_finding  # pyright: ignore[reportPrivateUsage]  # strict finder contract coverage
 _parse_finder_row = analyze_bugs._parse_finder_row  # pyright: ignore[reportPrivateUsage]  # strict finder contract coverage
 _parse_refuter_result = analyze_bugs._parse_refuter_result  # pyright: ignore[reportPrivateUsage]  # strict refuter contract coverage
-
-
-EVIDENCE_TOKEN = "token-123"
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
@@ -32,10 +28,6 @@ def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-
-
-def _write_bundle(path: Path, *, proof: str = EVIDENCE_TOKEN) -> None:
-    path.write_text(f"# Bundle\nevidence_token: {proof}\n\nbody\n", encoding="utf-8")
 
 
 def _single_manifest(run_dir: Path, *, issue: int = 1, cache_key: str = "k1", bundle_path: Path | None = None, mechanical: str = "") -> dict[str, object]:
@@ -97,155 +89,6 @@ def test_load_ledger_quarantines_corrupt_lines(tmp_path: Path) -> None:
     assert list(tmp_path.glob("ledger.jsonl.corrupt-*"))
 
 
-def test_render_report_prefers_deep_verdict_over_mechanical_verdict(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    body1 = run_dir / "issue-1-body.md"
-    body2 = run_dir / "issue-2-body.md"
-    bundle1 = run_dir / "issue-1-bundle.md"
-    bundle2 = run_dir / "issue-2-bundle.md"
-    for path, text in ((body1, "body 1\n"), (body2, "body 2\n"), (bundle1, "bundle 1\n"), (bundle2, "bundle 2\n")):
-        _ = path.write_text(text, encoding="utf-8")
-    key1 = "cache-1"
-    key2 = "cache-2"
-    _write_json(
-        run_dir / "manifest.json",
-        {
-            "schema_version": "1",
-            "repo": "o/r",
-            "run_id": "run-1",
-            "run_dir": str(run_dir),
-            "evidence_ref": "origin/main",
-            "bugs_requested": 2,
-            "bugs_selected": 2,
-            "generated_at": 1,
-            "ledger_path": str(tmp_path / "ledger.jsonl"),
-            "triage_batch_paths": [],
-            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
-            "issues": [
-                {
-                    "issue_number": 1,
-                    "title": "[BUG] open stale",
-                    "state": "OPEN",
-                    "state_reason": "",
-                    "url": "https://github.com/o/r/issues/1",
-                    "body_path": str(body1),
-                    "bundle_path": str(bundle1),
-                    "fix_sha": "",
-                    "fix_source": "git-log",
-                    "touched_files": [],
-                    "later_history_hash": "later-1",
-                    "mechanical_verdict": "NOT_FIXED",
-                    "mechanical_reason": "issue is still open",
-                    "cache_key": key1,
-                    "sampled": False,
-                },
-                {
-                    "issue_number": 2,
-                    "title": "[BUG] truncated stale",
-                    "state": "CLOSED",
-                    "state_reason": "COMPLETED",
-                    "url": "https://github.com/o/r/issues/2",
-                    "body_path": str(body2),
-                    "bundle_path": str(bundle2),
-                    "fix_sha": "sha2",
-                    "fix_source": "git-log",
-                    "touched_files": [],
-                    "later_history_hash": "later-2",
-                    "mechanical_verdict": "",
-                    "mechanical_reason": "",
-                    "cache_key": key2,
-                    "sampled": False,
-                },
-            ],
-        },
-    )
-    ledger = tmp_path / "ledger.jsonl"
-    ledger.write_text(
-        json.dumps({"cache_key": key1, "issue": 1, "fix_sha": "", "later_history_hash": "later-1", "deep_verdict": "CONFIRMED_FIXED", "deep_reason": "stale", "stages_complete": ["deep"], "sampled": False}) + "\n"
-        + json.dumps({"cache_key": key2, "issue": 2, "fix_sha": "sha2", "later_history_hash": "later-2", "deep_verdict": "FIXED_CLEAR", "deep_reason": "clear", "stages_complete": ["deep"], "sampled": False}) + "\n",
-        encoding="utf-8",
-    )
-    _write_json(run_dir / "ledger-summary.json", {"DEEP_TRUNCATED_ISSUES": [2], "DEEP_RATE_MODEL": "claude-sonnet-4.5", "DEEP_MODEL": "claude-sonnet-4.5"})
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-
-    assert "CONFIRMED_FIXED" in report
-    assert "deep cap truncated this candidate" in report
-    assert "ANALYZE_BUGS_COST_ESTIMATE=" in report
-    assert (run_dir / "report.md").read_text(encoding="utf-8") == report
-    assert not (run_dir / "follow-up-issue.md").exists()
-
-
-def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    body = run_dir / "issue-1-body.md"
-    bundle = run_dir / "issue-1-bundle.md"
-    _ = body.write_text("body\n", encoding="utf-8")
-    _ = bundle.write_text("bundle\n", encoding="utf-8")
-    cache_key = "cache-1"
-    _write_json(
-        run_dir / "manifest.json",
-        {
-            "schema_version": "1",
-            "repo": "o/r",
-            "run_id": "run-1",
-            "run_dir": str(run_dir),
-            "evidence_ref": "origin/main",
-            "bugs_requested": 1,
-            "bugs_selected": 1,
-            "generated_at": 1,
-            "ledger_path": str(tmp_path / "ledger.jsonl"),
-            "triage_batch_paths": [],
-            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
-            "issues": [
-                {
-                    "issue_number": 1,
-                    "title": "[BUG] deep verified",
-                    "state": "CLOSED",
-                    "state_reason": "COMPLETED",
-                    "url": "https://github.com/o/r/issues/1",
-                    "body_path": str(body),
-                    "bundle_path": str(bundle),
-                    "fix_sha": "sha1",
-                    "fix_source": "git-log",
-                    "touched_files": [],
-                    "later_history_hash": "later-1",
-                    "mechanical_verdict": "NEEDS_DEEP",
-                    "mechanical_reason": "no exact Fixes reference",
-                    "cache_key": cache_key,
-                    "sampled": False,
-                }
-            ],
-        },
-    )
-    ledger = tmp_path / "ledger.jsonl"
-    ledger.write_text(
-        json.dumps(
-            {
-                "cache_key": cache_key,
-                "issue": 1,
-                "fix_sha": "sha1",
-                "later_history_hash": "later-1",
-                "deep_verdict": "CONFIRMED_FIXED",
-                "deep_reason": "deep verifier found the fix",
-                "stages_complete": ["deep"],
-                "sampled": False,
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-
-    assert "| Confirmed or likely fixed | 1 |" in report
-    assert "| Needs deep | 0 |" in report
-    assert "| [#1](https://github.com/o/r/issues/1) | sha1 | DEEP | CONFIRMED_FIXED | deep verifier found the fix |  |" in report
-    assert "no exact Fixes reference" not in report
-
-
 def test_legacy_ledger_rows_are_marked_without_refresh(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"
     ledger.write_text(
@@ -257,49 +100,6 @@ def test_legacy_ledger_rows_are_marked_without_refresh(tmp_path: Path) -> None:
 
     assert corrupt == 0
     assert records["legacy"].legacy_schema is True
-
-
-def test_report_renders_current_risk_and_class_open_followup(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    bundle_path = run_dir / "issue-1-bundle.md"
-    _write_bundle(bundle_path)
-    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, bundle_path=bundle_path))
-    ledger = tmp_path / "ledger.jsonl"
-    ledger.write_text(
-        json.dumps(
-            {
-                "cache_key": "k1",
-                "issue": 1,
-                "fix_sha": "sha",
-                "later_history_hash": "later",
-                "triage_verdict": "FIXED_CLEAR",
-                "triage_reason": "triage clear",
-                "triage_introduced_risk": "none found",
-                "triage_introduced_risk_reason": "Triage found no risk.",
-                "deep_verdict": "CONFIRMED_FIXED",
-                "deep_reason": "One parser literal was fixed; sibling remains.",
-                "deep_introduced_risk": "Consumer accepts an unescaped delimiter",
-                "deep_introduced_risk_reason": "Targeted checkout Grep found the consumer path.",
-                "class_complete": False,
-                "sibling_sites": ["python/other_parser.py:parse_rule"],
-                "legacy_schema": False,
-                "stages_complete": ["deep", "triage"],
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-    followup = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
-
-    assert "## Introduced risk" in report
-    assert "Consumer accepts an unescaped delimiter" in report
-    assert "## Instance fixed, class open" in report
-    assert "python/other_parser.py:parse_rule" in report
-    assert "Instance fixed, class open" in followup
-    assert "python/other_parser.py:parse_rule" in followup
 
 
 def test_bug_fix_triage_agent_grants_read_tool() -> None:
@@ -332,6 +132,31 @@ def _analytics_bundle(run_dir: Path, *, issue: int, cache_key: str, files: list[
     row["marker_fingerprint"] = f"fingerprint-{issue}"
     row["baseline_extended"] = any(path.startswith("python/") and path.endswith("-baseline.json") for path in files)
     return row
+
+
+def _analytics_record(row: dict[str, object]) -> analyze_bugs.BundleRecord:
+    return analyze_bugs.BundleRecord(
+        issue_number=cast("int", row["issue_number"]),
+        title="",
+        state="",
+        state_reason="",
+        url="",
+        body_path="",
+        bundle_path="",
+        fix_sha=str(row["fix_sha"]),
+        fix_source="",
+        touched_files=tuple(cast("list[str]", row["touched_files"])),
+        later_history_hash="",
+        mechanical_verdict="",
+        mechanical_reason="",
+        cache_key=str(row["cache_key"]),
+        fix_time=cast("int", row["fix_time"]),
+        added_lines=cast("int", row["added_lines"]),
+        marker_references=tuple(cast("list[int]", row["marker_references"])),
+        marker_fingerprint=str(row["marker_fingerprint"]),
+        zones=tuple(cast("list[str]", row["zones"])),
+        baseline_extended=bool(row["baseline_extended"]),
+    )
 
 
 def test_zone_mapping_table() -> None:
@@ -372,7 +197,7 @@ def test_analytics_detects_churn_chronic_chains_and_baseline(tmp_path: Path) -> 
 
     view = analyze_bugs.build_analytics_view(
         manifest=manifest,
-        bundles=[_bundle_from_mapping(row) for row in issues],
+        bundles=[_analytics_record(row) for row in issues],
         ledger_path=ledger,
     )
 
@@ -383,40 +208,6 @@ def test_analytics_detects_churn_chronic_chains_and_baseline(tmp_path: Path) -> 
     assert view.chronic_zones[0].zone == "python/larch/issue"
     assert view.chronic_zones[0].issues == (1, 2, 3)
     assert view.baseline_issues == (1,)
-
-
-def test_report_renders_analytics_and_stable_delta(tmp_path: Path, monkeypatch: object) -> None:
-    runs = tmp_path / "runs"
-    prior_dir = runs / "100"
-    run_dir = runs / "200"
-    prior_dir.mkdir(parents=True)
-    run_dir.mkdir()
-    now = 2_000_000
-    prior = analyze_bugs.RunSnapshot("1", "o/r", "100", now - 1000, (1,), (1,), (), (), analyze_bugs.VERIFIED_PREDICATE_VERSION)
-    _write_json(prior_dir / "run-state.json", cast("dict[str, object]", analyze_bugs.asdict(prior)))
-    issues = [
-        _analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/larch/issue/shared.py", "python/complexity-baseline.json"], fix_time=now - 100, markers=[9], mechanical="NOT_FIXED"),
-        _analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/larch/issue/shared.py"], fix_time=now - 200, mechanical="WONTFIX"),
-        _analytics_bundle(run_dir, issue=3, cache_key="k3", files=["python/larch/issue/shared.py"], fix_time=now - 300, mechanical="NOT_FIXED"),
-    ]
-    manifest: dict[str, object] = {
-        "schema_version": "1", "repo": "o/r", "run_id": "200", "run_dir": str(run_dir), "evidence_ref": "origin/main",
-        "bugs_requested": 3, "bugs_selected": 3, "generated_at": now, "ledger_path": str(tmp_path / "ledger.jsonl"),
-        "triage_batch_paths": [], "deep_queue_path": str(run_dir / "deep-queue.jsonl"), "issues": issues,
-    }
-    _write_json(run_dir / "manifest.json", manifest)
-    monkeypatch.setattr(analyze_bugs, "_runner", RecordingRunner)  # type: ignore[attr-defined]  # test seam
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=tmp_path / "ledger.jsonl", run_dir=run_dir)
-
-    assert "| Issue | Fix | Tier | Verdict |" in report
-    assert "## Chronic zones" in report
-    assert "## Fix chains" in report
-    assert "## Baseline-extending fixes" in report
-    assert "## Since last run" in report
-    assert "Newly selected: #2, #3" in report
-    assert "Suggestion: run /learn-from-bugs scoped to python/larch/issue." in report
-    assert report.rstrip().splitlines()[-1].startswith("ANALYZE_BUGS_COST_ESTIMATE=")
 
 
 def test_file_intersection_excludes_exact_fourteen_day_boundary(tmp_path: Path) -> None:
@@ -430,7 +221,7 @@ def test_file_intersection_excludes_exact_fourteen_day_boundary(tmp_path: Path) 
 
     view = analyze_bugs.build_analytics_view(
         manifest={"generated_at": now},
-        bundles=[_bundle_from_mapping(row) for row in issues],
+        bundles=[_analytics_record(row) for row in issues],
         ledger_path=tmp_path / "ledger.jsonl",
     )
 
@@ -476,42 +267,47 @@ def test_external_marker_reference_does_not_make_zone_chronic(tmp_path: Path) ->
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     bundles = [
-        _bundle_from_mapping(_analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/a.py"], fix_time=now - 100, markers=[9])),
-        _bundle_from_mapping(_analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/b.py"], fix_time=now - 200, markers=[9])),
+        analyze_bugs.BundleRecord(
+            issue_number=1,
+            title="",
+            state="",
+            state_reason="",
+            url="",
+            body_path="",
+            bundle_path="",
+            fix_sha="sha-1",
+            fix_source="",
+            touched_files=("python/a.py",),
+            later_history_hash="",
+            mechanical_verdict="",
+            mechanical_reason="",
+            cache_key="k1",
+            fix_time=now - 100,
+            marker_references=(9,),
+        ),
+        analyze_bugs.BundleRecord(
+            issue_number=2,
+            title="",
+            state="",
+            state_reason="",
+            url="",
+            body_path="",
+            bundle_path="",
+            fix_sha="sha-2",
+            fix_source="",
+            touched_files=("python/b.py",),
+            later_history_hash="",
+            mechanical_verdict="",
+            mechanical_reason="",
+            cache_key="k2",
+            fix_time=now - 200,
+            marker_references=(9,),
+        ),
     ]
 
     view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=bundles, ledger_path=tmp_path / "ledger.jsonl")
 
     assert not view.chronic_zones
-
-
-def test_historical_marker_backfill_is_deferred_until_report_success(tmp_path: Path, monkeypatch: object) -> None:
-    runs = tmp_path / "runs"
-    run_dir = runs / "200"
-    run_dir.mkdir(parents=True)
-    now = 2_000_000
-    manifest = _single_manifest(run_dir, issue=1, cache_key="active", mechanical="WONTFIX")
-    manifest["generated_at"] = now
-    manifest["run_id"] = "200"
-    manifest["run_dir"] = str(run_dir)
-    manifest["ledger_path"] = str(tmp_path / "ledger.jsonl")
-    issues = cast("list[dict[str, object]]", manifest["issues"])
-    issues[0]["fix_sha"] = ""
-    _write_json(run_dir / "manifest.json", manifest)
-    ledger = tmp_path / "ledger.jsonl"
-    ledger.write_text(
-        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "", "later_history_hash": "", "fix_time": now - 100, "updated_at": 1}) + "\n",
-        encoding="utf-8",
-    )
-    runner = RecordingRunner(responses=[_result(json.dumps({"title": "[BUG] residual after #1", "body": "body"}))], strict=True)
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: runner)  # type: ignore[attr-defined]  # typed runner factory
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
-
-    assert "| #2 | #1 | marker |" in report
-    assert rows[-1]["marker_references"] == [1]
-    assert rows[-1]["marker_fingerprint"]
 
 
 def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
@@ -950,38 +746,6 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     assert not durable.pending_shas
     assert durable.last_sweep_sha == base
 
-    (run1 / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
-        _finder_jsonl([{"merge_sha": chronic, "findings": []}]), encoding="utf-8"
-    )
-    analyze_bugs.sweep_ingest_finder(run_dir=run1)
-    analyze_bugs.sweep_ingest_refuter(run_dir=run1)
-    _write_json(run1 / "manifest.json", _single_manifest(run1, mechanical="WONTFIX"))
-    _write_bundle(run1 / "issue-1-bundle.md")
-    monkeypatch.setattr(analyze_bugs, "_runner", ProcRunner)
-    analyze_bugs.render_report(manifest_path=run1 / "manifest.json", ledger_path=ledger, run_dir=run1)
-
-    committed = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
-    assert committed is not None
-    assert committed.last_sweep_sha == tip
-    assert committed.pending_shas == (non_chronic, later)
-
-    _commit_file(repo, "README.md", "root2\n", "chore: tiny readme", when=now + 50)
-    new_tip = _set_origin_main(repo)
-    resumed = analyze_bugs.sweep_prepare(
-        runner=ProcRunner(),
-        ledger_path=ledger,
-        run_dir=tmp_path / "run2",
-        repo="o/r",
-        sweep_max=1,
-        pinned_tip=new_tip,
-        now=now + 100,
-    )
-    resumed_manifest = json.loads(Path(str(resumed["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
-    assert resumed_manifest["selected"][0]["merge_sha"] == non_chronic
-    assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])  # pyright: ignore[reportOperatorIssue]  # cast result typed as tuple, `in` is valid at runtime
-    assert cast("int", resumed["SKIPPED_COUNT"]) >= 1  # pyright: ignore[reportOperatorIssue]  # cast result typed as int, `>=` is valid at runtime
-
-
 def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _init_sweep_repo(tmp_path)
     monkeypatch.chdir(repo)
@@ -1027,167 +791,6 @@ def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.Mo
     )
     assert rc_bad == 1
     assert tip
-
-
-# ---------------------------------------------------------------------------
-# Sweep report/state integration (issue #7208, piece 3).
-# ---------------------------------------------------------------------------
-
-
-def _write_validated_sweep_artifact(
-    run_dir: Path,
-    *,
-    pending: tuple[str, ...] = (),
-    skipped: int = 0,
-    candidate: bool = True,
-) -> None:
-    selected = _sweep_selected_manifest(
-        run_dir,
-        pending=pending,
-        skipped=skipped,
-        coverage_incomplete=bool(pending),
-    )
-    bundle_path = run_dir / f"sweep-{SWEEP_SHA_A}-bundle.md"
-    bundle_path.write_text("# Sweep evidence\n" + ("x" * 40) + "\n", encoding="utf-8")
-    (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).write_text(
-        json.dumps(
-            {
-                "merge_sha": SWEEP_SHA_A,
-                "finding_index": 0,
-                "file": "python/example.py",
-                "symbol": "example",
-                "description": "wrong field remains in a consumer",
-                "severity": "high",
-                "confidence": "medium",
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    _write_json(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME, selected)
-    _write_json(
-        run_dir / analyze_bugs.SWEEP_VALIDATED_NAME,
-        {
-            "pinned_tip": SWEEP_TIP,
-            "selected_manifest_path": str(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME),
-            "selected_count": 1,
-            "skipped_count": skipped,
-            "pending_shas": list(pending),
-            "coverage_incomplete": bool(pending),
-            "candidates": [
-                {
-                    "merge_sha": SWEEP_SHA_A,
-                    "file": "python/example.py",
-                    "symbol": "example",
-                    "description": "wrong field remains in a consumer",
-                    "severity": "high",
-                    "confidence": "medium",
-                }
-            ]
-            if candidate
-            else [],
-        },
-    )
-
-
-def test_render_report_merges_sweep_and_commits_pending_state_last(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    ledger = tmp_path / "ledger.jsonl"
-    manifest = _single_manifest(run_dir, mechanical="NOT_FIXED")
-    _write_json(run_dir / "manifest.json", manifest)
-    _write_bundle(run_dir / "issue-1-bundle.md")
-    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
-    analyze_bugs.write_sweep_state(
-        analyze_bugs.sweep_state_path(ledger),
-        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
-    )
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-
-    assert "## Sweep candidates" in report
-    assert "python/example.py" in report
-    assert "Sweep selected merges: 1" in report
-    assert "Sweep skipped merges: 1" in report
-    assert "Sweep pending frontier: 1" in report
-    assert "Sweep coverage incomplete" in report
-    assert "ANALYZE_BUGS_SWEEP_COST_ESTIMATE=$" in report
-    followup = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
-    assert "#1: NOT_FIXED" in followup
-    assert "Sweep candidates:" in followup
-    state = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
-    assert state is not None
-    assert state.last_sweep_sha == SWEEP_TIP
-    assert state.pending_shas == (SWEEP_SHA_B,)
-    assert (run_dir / "report.md").is_file()
-    assert (run_dir / "follow-up-issue.md").is_file()
-
-
-def test_sweep_report_failure_leaves_existing_state_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    ledger = tmp_path / "ledger.jsonl"
-    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
-    _write_bundle(run_dir / "issue-1-bundle.md")
-    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
-    state_path = analyze_bugs.sweep_state_path(ledger)
-    analyze_bugs.write_sweep_state(
-        state_path,
-        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
-    )
-    before = state_path.read_text(encoding="utf-8")
-    original_write = analyze_bugs._atomic_write_text  # pyright: ignore[reportPrivateUsage]  # report-write failure seam
-
-    def fail_report(path: Path, text: str, *, mode: int = 0o600) -> None:
-        if path.name == "report.md":
-            raise OSError("simulated report write failure")
-        original_write(path, text, mode=mode)
-
-    monkeypatch.setattr(analyze_bugs, "_atomic_write_text", fail_report)
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
-
-    with pytest.raises(OSError, match="simulated report"):
-        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-    assert state_path.read_text(encoding="utf-8") == before
-
-
-def test_sweep_only_survivor_creates_followup_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    ledger = tmp_path / "ledger.jsonl"
-    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
-    _write_bundle(run_dir / "issue-1-bundle.md")
-    _write_validated_sweep_artifact(run_dir)
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
-
-    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-
-    followup = run_dir / "follow-up-issue.md"
-    assert followup.is_file()
-    assert "Sweep candidates:" in followup.read_text(encoding="utf-8")
-    assert f"Follow-up body file: {followup}" in report
-
-
-def test_sweep_report_rejects_stale_tip_or_manifest_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    ledger = tmp_path / "ledger.jsonl"
-    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
-    _write_bundle(run_dir / "issue-1-bundle.md")
-    _write_validated_sweep_artifact(run_dir)
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_SHA_B + "\n")))
-
-    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="stale"):
-        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
-
-    artifact_path = run_dir / analyze_bugs.SWEEP_VALIDATED_NAME
-    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    artifact["selected_manifest_path"] = str(tmp_path / "foreign.json")
-    _write_json(artifact_path, artifact)
-    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
-    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="foreign selected manifest"):
-        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
 
 
 # ---------------------------------------------------------------------------

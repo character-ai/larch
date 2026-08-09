@@ -201,7 +201,7 @@ enum Domain {
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
-    /// Bounded filed-bug evidence and verification-ledger commands.
+    /// Bounded filed-bug evidence and verification commands.
     #[command(subcommand, name = "analyze-bugs")]
     AnalyzeBugs(AnalyzeBugsCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
@@ -437,6 +437,12 @@ enum AnalyzeBugsCommand {
     /// Reconcile or ingest the append-only bug-verification ledger.
     #[command(disable_help_flag = true)]
     Ledger(RawCompatibilityArguments),
+    /// Run bounded local verification for selected bug-fix evidence bundles.
+    #[command(disable_help_flag = true)]
+    Runtime(RawCompatibilityArguments),
+    /// Render the report-only bug-verification result and optional follow-up body.
+    #[command(disable_help_flag = true)]
+    Report(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1603,6 +1609,12 @@ fn run(
             }
             AnalyzeBugsCommand::Ledger(arguments) => {
                 analyze_bugs_commands::ledger(&arguments.arguments)
+            }
+            AnalyzeBugsCommand::Runtime(arguments) => {
+                analyze_bugs_commands::runtime(&arguments.arguments)
+            }
+            AnalyzeBugsCommand::Report(arguments) => {
+                analyze_bugs_commands::report(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {

@@ -5,7 +5,7 @@
 //! up to a cap, and read the result back. Keeping the request construction and
 //! the runtime here means a caller states only what is specific to its child.
 
-use std::{env, ffi::OsString, num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{env, ffi::OsString, num::NonZeroUsize, path::Path, sync::Arc, time::Duration};
 
 use larch_adapters::{
     NoopProcessObserver, TokioProcessRunner,
@@ -33,6 +33,33 @@ pub fn bounded_request(
         program,
         arguments,
         working_directory,
+        timeout,
+        shutdown_grace,
+        NonZeroUsize::new(output_limit).unwrap_or(NonZeroUsize::MIN),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Build one bounded, captured child request in a caller-validated directory.
+///
+/// Runtime verification needs to execute against the consumer repository rather
+/// than the larch checkout. The typed request still owns the executable,
+/// deadline, output cap, and environment allowlist.
+///
+/// # Errors
+/// Returns a stable message when the working directory or request is unusable.
+pub fn bounded_request_in(
+    program: ExternalProgram,
+    arguments: impl IntoIterator<Item = OsString>,
+    working_directory: &Path,
+    timeout: Duration,
+    shutdown_grace: Duration,
+    output_limit: usize,
+) -> Result<ProcessRequest, String> {
+    ProcessRequest::new(
+        program,
+        arguments,
+        working_directory.to_path_buf(),
         timeout,
         shutdown_grace,
         NonZeroUsize::new(output_limit).unwrap_or(NonZeroUsize::MIN),

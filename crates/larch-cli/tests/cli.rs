@@ -50,7 +50,7 @@ Commands:
   progress           Clone-scoped progress breadcrumbs and the larch statusline
   gantt              Generic ASCII Gantt rendering
   analyze-issues     Issue-backlog report rendering
-  analyze-bugs       Bounded filed-bug evidence and verification-ledger commands
+  analyze-bugs       Bounded filed-bug evidence and verification commands
   object-store       Narrow provider transports used by Python-owned run-log workflows
   oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands

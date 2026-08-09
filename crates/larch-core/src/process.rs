@@ -42,6 +42,10 @@ pub enum HostUtilityProgram {
     Security,
     /// Report the host Python interpreter version for a `/triage` probe.
     Python3,
+    /// Run the fixed `python3 -m pytest` runtime verification command.
+    Pytest,
+    /// Run a named, repository-defined runtime verification make target.
+    Make,
 }
 
 /// Approved GitHub CLI operations used to acquire the active `gh` credential.
@@ -84,7 +88,8 @@ impl HostUtilityProgram {
             Self::Ps => "ps",
             Self::Pgrep => "pgrep",
             Self::Security => "security",
-            Self::Python3 => "python3",
+            Self::Python3 | Self::Pytest => "python3",
+            Self::Make => "make",
         }
     }
 
@@ -97,6 +102,8 @@ impl HostUtilityProgram {
             Self::Pgrep => "host.process-group-probe",
             Self::Security => "host.keychain-credential-read",
             Self::Python3 => "host.python-version-probe",
+            Self::Pytest => "analyze-bugs.runtime-pytest",
+            Self::Make => "analyze-bugs.runtime-harness",
         }
     }
 
@@ -118,6 +125,12 @@ impl HostUtilityProgram {
             }
             Self::Python3 => {
                 "host interpreter version report required by the fixed read-only /triage probe allowlist"
+            }
+            Self::Pytest => {
+                "bounded pytest execution required to verify changed Python tests in an analyze-bugs runtime bundle"
+            }
+            Self::Make => {
+                "bounded repository harness execution required to verify an analyze-bugs runtime bundle"
             }
         }
     }
