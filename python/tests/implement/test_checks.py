@@ -4250,6 +4250,66 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert marker_paths == ["python/tests/report/test_run_lifecycle_consumer.py"]
 
 
+def test_rust_ci_documentation_matches_producer_topology() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    rust_testing = (repo_root / "docs" / "rust-testing.md").read_text(encoding="utf-8")
+    shipped_rust_testing = (repo_root / "plugin" / "docs" / "rust-testing.md").read_text(
+        encoding="utf-8"
+    )
+    coverage_and_ci = rust_testing.split("## Coverage and CI", 1)[1].split(
+        "### Pull-request Rust selection", 1
+    )[0]
+    coverage_text = " ".join(coverage_and_ci.split())
+    rust_testing_text = " ".join(rust_testing.split())
+    rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
+    rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[0]
+    rust_skip = workflow.split("\n  rust-skip:", 1)[1].split("\n  rust-coverage:", 1)[0]
+    rust_coverage = workflow.split("\n  rust-coverage:", 1)[1].split(
+        "\n  rust-coverage-benchmark:", 1
+    )[0]
+    python_tests = workflow.split("\n  python-tests:", 1)[1].split(
+        "\n  python-rust-integration:", 1
+    )[0]
+    python_rust_integration = workflow.split("\n  python-rust-integration:", 1)[1].split(
+        "\n  gitleaks:", 1
+    )[0]
+
+    assert shipped_rust_testing == rust_testing
+    assert (
+        "`rust-full`, `rust-partial`, and `rust-skip` are mutually exclusive execution producers."
+        in coverage_text
+    )
+    assert "`rust-coverage` is not an execution lane: it is the stable required aggregate." in coverage_text
+    assert "it validates the selected mode and every producer result" in coverage_text
+    assert (
+        "Pushes to `main`, manual dispatches, scheduled runs, merge-queue runs, and unknown events "
+        "always use `rust-full`"
+        in coverage_text
+    )
+    assert "`rust-partial` and `rust-skip` may be the selected producer only for pull requests." in coverage_text
+    assert "The 20-shard `python-tests` matrix is artifact-independent" in coverage_text
+    assert "consumes the selected producer's verified `larch-linux-test-binary`" in coverage_text
+    assert "selection cannot prove a narrower path" in coverage_text
+    assert "An unavailable selector defaults to `full`" in rust_testing_text
+    assert "cache miss or any validation failure selects `full`" in rust_testing_text
+    assert "full-rust-ci" in rust_testing_text
+    assert "that label can only narrow toward the safer `full` mode" in rust_testing_text
+    assert "`rust-coverage` is the direct production coverage lane." not in rust_testing
+
+    assert "github.event_name != 'pull_request'" in rust_full
+    assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
+    assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
+    assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
+    assert "needs: [rust-selection, rust-full, rust-partial, rust-skip]" in rust_coverage
+    assert "if: always()" in rust_coverage
+    assert "Require the selected Rust execution path to pass" in rust_coverage
+    assert "needs: [rust-coverage, python-tests]" in python_rust_integration
+    assert "LARCH_TEST_RUST_BINARY" not in python_tests
+    assert "larch-linux-test-binary" not in python_tests
+    assert "Verify selected Rust integration artifact" in python_rust_integration
+
+
 def test_rust_ci_change_selection_rollout_contract() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
