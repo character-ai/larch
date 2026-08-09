@@ -34,6 +34,7 @@ skills/implement/prompts/cursor-implementer.md	later-domain	#7681	commit
 crates/larch-adapters/src/git/mod.rs	git-cli	#7671	closed-cli-owner
 crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
 crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
@@ -81,7 +82,7 @@ python/larch/implement/rust_ci_selection.py	later-domain	#7681	diff,merge-base,r
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
-python/larch/issue/analyze_bugs.py	later-domain	#7682	cat-file,diff,diff-tree,fetch,grep,log,merge-base,rev-parse,show
+python/larch/issue/analyze_bugs.py	later-domain	#7682	diff,diff-tree,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/audit_runs.py	later-domain	#7682	branch,config,fetch,pull,rev-parse,status
 python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
