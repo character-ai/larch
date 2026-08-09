@@ -3899,6 +3899,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'cargo clean --workspace --target-dir "$coverage_target_dir"' in coverage_target_prune
     for run_specific_output in (
         "*.profraw",
+        "*-profraw-list",
         "*.profdata",
         "*.lcov",
         "lcov.info",
