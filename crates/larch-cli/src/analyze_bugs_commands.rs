@@ -103,6 +103,14 @@ static ISSUE_REFERENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
 #[must_use]
 #[allow(clippy::too_many_lines)] // The ordered artifact hand-off is one compatibility transaction.
 pub fn prefetch(arguments: &[OsString]) -> ExitCode {
+    prefetch_with_evidence(arguments, evidence_repository)
+}
+
+#[allow(clippy::too_many_lines)] // The ordered artifact hand-off is one compatibility transaction.
+fn prefetch_with_evidence(
+    arguments: &[OsString],
+    load_evidence: impl FnOnce() -> Result<EvidenceRepository, String>,
+) -> ExitCode {
     const OPTIONS: &[&str] = &[
         "--repo",
         "--count",
@@ -177,7 +185,7 @@ pub fn prefetch(arguments: &[OsString]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let evidence = match evidence_repository() {
+    let evidence = match load_evidence() {
         Ok(evidence) => evidence,
         Err(error) => {
             eprintln!("ERROR: {error}");
@@ -2855,18 +2863,28 @@ fn commit_timestamp(bytes: &[u8]) -> i64 {
 #[cfg(test)]
 mod tests {
     use std::{
+        ffi::OsString,
         fs,
+        process::ExitCode,
         sync::{Arc, Barrier},
     };
 
     use super::{
-        SIBLING_SITE, append_records, changed_symbols, deep_candidates, has_exact_issue_reference,
-        ingest, load_ledger, marker_evidence, metadata_record, model_alias, validate_agent_row,
-        validate_evidence_token,
+        SIBLING_SITE, append_records, bundle_for_issue, cap_text, changed_symbols,
+        closure_pull_numbers, compute, cross_language_consumer, deep_candidates,
+        excluded_consumer_path, find_fix, has_exact_issue_reference, hydrate_evidence, ingest,
+        is_baseline_path, ledger, load_ledger, marker_evidence, metadata_record, model_alias,
+        path_text, prefetch, prefetch_with_evidence, repository_path_text,
+        required_evidence_complete, sanitize_repo, validate_agent_row, validate_evidence_token,
+        zones_for_files,
     };
-    use larch_adapters::unified_blob_diff;
-    use larch_core::BUG_PREFIX;
-    use serde_json::json;
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::{GixRepository, github::OctocrabGitHubService, unified_blob_diff};
+    use larch_core::{
+        BUG_PREFIX, GitHubIssue, GitHubIssueState, GitPath, RepositoryRead, Revision,
+    };
+    use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
 
     fn write_ingest_fixture(
         root: &std::path::Path,
@@ -2909,11 +2927,363 @@ mod tests {
         (run_dir, manifest, input)
     }
 
+    fn fixture_git<const N: usize>(repository: &GitRepository, arguments: [&str; N]) {
+        let output = repository.git(arguments).expect("run fixture git");
+        assert!(
+            output.success(),
+            "fixture git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn commit_fixture(repository: &GitRepository, subject: &str) {
+        fixture_git(repository, ["add", "-A"]);
+        fixture_git(repository, ["commit", "--quiet", "-m", subject]);
+    }
+
+    fn fixture_evidence(repository: &GitRepository) -> super::EvidenceRepository {
+        let reader = GixRepository::open(repository.root()).expect("open evidence repository");
+        let tip = reader
+            .resolve_revision(&Revision::new(b"HEAD"))
+            .expect("resolve evidence tip");
+        hydrate_evidence(reader, "main".to_owned(), tip).expect("hydrate evidence")
+    }
+
+    fn service(
+        exchanges: impl IntoIterator<Item = IssueServiceExchange>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        (factory, server)
+    }
+
+    fn github_issue_response(number: u64) -> Value {
+        let mut issue: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        issue["id"] = json!(number);
+        issue["number"] = json!(number);
+        issue["title"] = json!(format!("[BUG] prefetch regression #{number}"));
+        issue["body"] = json!("residual behavior after the fix #7");
+        issue["state"] = json!("closed");
+        issue["state_reason"] = json!("completed");
+        issue["closed_at"] = json!("2026-07-19T00:00:00Z");
+        issue
+    }
+
+    fn bug_issue(number: u64, state: GitHubIssueState, body: &str) -> GitHubIssue {
+        GitHubIssue {
+            id: number,
+            number,
+            title: format!("[BUG] regression #{number}"),
+            body: body.to_owned(),
+            state,
+            state_reason: String::new(),
+            url: format!("https://example.invalid/issues/{number}"),
+            author: "fixture".to_owned(),
+            labels: Vec::new(),
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: String::new(),
+            is_pull_request: false,
+        }
+    }
+
+    fn bundle_row(
+        issue: u64,
+        cache_key: &str,
+        fix_sha: &str,
+        mechanical: &str,
+    ) -> serde_json::Value {
+        json!({
+            "issue_number": issue,
+            "cache_key": cache_key,
+            "fix_sha": fix_sha,
+            "later_history_hash": format!("history-{issue}"),
+            "bundle_path": format!("bundle-{issue}.md"),
+            "mechanical_verdict": mechanical,
+            "touched_files": [format!("python/larch/zone-{issue}.py")],
+            "fix_time": issue,
+            "added_lines": issue * 100,
+            "marker_references": [],
+            "marker_fingerprint": "",
+            "zones": ["python/larch/shared"],
+            "baseline_extended": false,
+            "diff_scan_status": "ok",
+            "consumer_scan_status": "ok",
+            "later_history_scan_status": "ok",
+            "revert_scan_status": "ok",
+        })
+    }
+
+    fn argv(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
     #[test]
     fn exact_issue_reference_rejects_digits_that_extend_the_number() {
         assert!(has_exact_issue_reference("Fixes #12", 12));
         assert!(!has_exact_issue_reference("Fixes #123", 12));
         assert!(!has_exact_issue_reference("Fixes #012", 12));
+    }
+
+    #[test]
+    fn artifact_helpers_bound_and_normalize_untrusted_evidence() {
+        assert_eq!(
+            closure_pull_numbers(&[
+                "https://example.invalid/o/r/pull/7".to_owned(),
+                "https://example.invalid/o/r/pull/7/".to_owned(),
+                "https://example.invalid/o/r/issues/8".to_owned(),
+                "https://example.invalid/o/r/pull/zero".to_owned(),
+            ]),
+            std::collections::BTreeSet::from([7])
+        );
+        assert_eq!(sanitize_repo(" ../owner/repo.. "), "owner-repo");
+        assert_eq!(sanitize_repo("..."), "unknown-repo");
+        assert_eq!(
+            cap_text("abcdef", 3),
+            "abc\n\n[content truncated to 3 characters]\n"
+        );
+        assert!(path_text(std::path::Path::new("unsafe\npath")).is_err());
+        assert_eq!(
+            repository_path_text(&GitPath::new(b"python/larch/a.py".to_vec())),
+            Ok("python/larch/a.py".to_owned())
+        );
+        assert!(repository_path_text(&GitPath::new(b"unsafe\npath".to_vec())).is_err());
+        assert_eq!(
+            zones_for_files(&[
+                "python/larch/issue.py".to_owned(),
+                "scripts/check.sh".to_owned(),
+                "docs/contract.md".to_owned(),
+                "crates/larch-cli/main.rs".to_owned(),
+                "README.md".to_owned(),
+            ]),
+            vec![
+                "README.md".to_owned(),
+                "crates/larch-cli".to_owned(),
+                "docs".to_owned(),
+                "python/larch/issue.py".to_owned(),
+                "scripts".to_owned(),
+            ]
+        );
+        assert!(excluded_consumer_path("larch-logs/run.json"));
+        assert!(!excluded_consumer_path("scripts/run.sh"));
+        assert!(cross_language_consumer("scripts/run.sh"));
+        assert!(cross_language_consumer("skills/review/SKILL.md"));
+        assert!(!cross_language_consumer("python/larch/a.py"));
+        assert!(is_baseline_path("python/bugs-baseline.json"));
+        assert!(!is_baseline_path("python/larch/bugs-baseline.json"));
+        assert!(required_evidence_complete(&json!({
+            "diff_scan_status": "ok",
+            "consumer_scan_status": "ok",
+            "later_history_scan_status": "ok",
+            "revert_scan_status": "ok",
+        })));
+        assert!(!required_evidence_complete(
+            &json!({"diff_scan_status": "failed"})
+        ));
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // One matrix keeps Python-compatible error boundaries visible together.
+    fn command_entrypoints_preserve_the_argument_boundary_before_network_access() {
+        assert_eq!(prefetch(&argv(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(prefetch(&argv(&["--repo"])), ExitCode::from(2));
+        assert_eq!(prefetch(&argv(&["--unexpected"])), ExitCode::from(2));
+        assert_eq!(prefetch(&argv(&["--count", "0"])), ExitCode::from(2));
+        assert_eq!(
+            prefetch(&argv(&["--count", "not-a-number"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            prefetch(&argv(&[
+                "--count",
+                "1",
+                "--batch-size",
+                "1",
+                "--diff-cap",
+                "1",
+                "--repo",
+                "not-a-repository",
+            ])),
+            ExitCode::FAILURE
+        );
+
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let (run_dir, manifest, input) = write_ingest_fixture(temporary.path(), "ok");
+        let ledger_path = temporary.path().join("ledger.jsonl");
+        assert_eq!(
+            prefetch_with_evidence(
+                &argv(&[
+                    "--repo",
+                    "o/r",
+                    "--cache-root",
+                    temporary.path().to_str().expect("cache root"),
+                    "--state-root",
+                    temporary.path().to_str().expect("state root"),
+                ]),
+                || Err("fixture evidence unavailable".to_owned()),
+            ),
+            ExitCode::FAILURE
+        );
+        let arguments = argv(&[
+            "--run-dir",
+            run_dir.to_str().expect("run path"),
+            "--ledger-path",
+            ledger_path.to_str().expect("ledger path"),
+            "--manifest",
+            manifest.to_str().expect("manifest path"),
+            "--ingest-triage",
+            input.to_str().expect("input path"),
+        ]);
+        assert_eq!(ledger(&arguments), ExitCode::SUCCESS);
+        assert_eq!(ledger(&argv(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(ledger(&argv(&[])), ExitCode::from(2));
+        assert_eq!(ledger(&argv(&["--run-dir"])), ExitCode::from(2));
+        assert_eq!(
+            ledger(&argv(&[
+                "--run-dir",
+                run_dir.to_str().expect("run path"),
+                "--ledger-path",
+                ledger_path.to_str().expect("ledger path"),
+                "--manifest",
+                manifest.to_str().expect("manifest path"),
+                "--ingest-triage",
+                input.to_str().expect("input path"),
+                "--ingest-deep",
+                input.to_str().expect("input path"),
+            ])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            ledger(&argv(&[
+                "--run-dir",
+                run_dir.to_str().expect("run path"),
+                "--ledger-path",
+                ledger_path.to_str().expect("ledger path"),
+                "--manifest",
+                manifest.to_str().expect("manifest path"),
+                "--refresh",
+                "--sample",
+                "-4",
+                "--deep-max",
+                "1",
+                "--deep-model",
+                "fable",
+                "--batch-size",
+                "0",
+            ])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            ledger(&argv(&[
+                "--run-dir",
+                run_dir.to_str().expect("run path"),
+                "--ledger-path",
+                ledger_path.to_str().expect("ledger path"),
+                "--sample",
+                "not-an-int",
+            ])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            ledger(&argv(&[
+                "--run-dir",
+                run_dir.to_str().expect("run path"),
+                "--ledger-path",
+                ledger_path.to_str().expect("ledger path"),
+                "--manifest",
+                manifest.to_str().expect("manifest path"),
+                "--deep-model",
+                "unknown",
+            ])),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn prefetch_command_writes_the_private_handoff_from_typed_github_data() {
+        let repository = GitRepository::builder(GitFixture::Unborn)
+            .build()
+            .expect("fixture repository");
+        repository
+            .write(
+                "python/larch/bug.py",
+                b"def repaired_name():\n    return 2\n",
+            )
+            .expect("fixed source");
+        repository
+            .write("scripts/consumer.sh", b"#!/bin/sh\nrepaired_name\n")
+            .expect("fixed consumer");
+        commit_fixture(&repository, "Fixes #42 repair old_name");
+        let evidence = fixture_evidence(&repository);
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let cache_root = temporary.path().join("cache");
+        let state_root = temporary.path().join("state");
+        let (github, server) = service([
+            IssueServiceExchange::any_json(200, json!([github_issue_response(42)]).to_string())
+                .expect("issue response"),
+            IssueServiceExchange::any_json(
+                200,
+                json!({
+                    "data": {"repository": {"issues": {
+                        "nodes": [{
+                            "number": 42,
+                            "closedByPullRequestsReferences": {
+                                "nodes": [], "pageInfo": {"hasNextPage": false}
+                            }
+                        }],
+                        "pageInfo": {"hasNextPage": false, "endCursor": null}
+                    }}}
+                })
+                .to_string(),
+            )
+            .expect("closure response"),
+        ]);
+        let arguments = argv(&[
+            "--repo",
+            "o/r",
+            "-n=1",
+            "--cache-root",
+            cache_root.to_str().expect("cache root"),
+            "--state-root",
+            state_root.to_str().expect("state root"),
+            "--batch-size",
+            "1",
+            "--diff-cap",
+            "60000",
+        ]);
+
+        assert_eq!(
+            with_test_github_service(github, || {
+                prefetch_with_evidence(&arguments, || Ok::<_, String>(evidence))
+            }),
+            ExitCode::SUCCESS
+        );
+
+        let run = fs::read_dir(cache_root.join("o-r/runs"))
+            .expect("runs")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .next()
+            .expect("one run");
+        let manifest: Value =
+            serde_json::from_slice(&fs::read(run.join("manifest.json")).expect("manifest"))
+                .expect("manifest JSON");
+        assert_eq!(manifest.get("bugs_selected"), Some(&json!(1)));
+        assert_eq!(
+            manifest.pointer("/issues/0/diff_scan_status"),
+            Some(&json!("ok"))
+        );
+        assert!(run.join("triage-batch-1.jsonl").is_file());
+        assert_eq!(server.finish().expect("GitHub requests").len(), 2);
     }
 
     #[test]
@@ -3140,5 +3510,246 @@ mod tests {
             marker_evidence("residual x#42", ""),
             (Vec::new(), String::new())
         );
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // One fixture verifies every required evidence outcome and fallback.
+    fn prefetch_bundle_collects_bounded_synced_main_evidence() {
+        let repository = GitRepository::builder(GitFixture::Unborn)
+            .build()
+            .expect("fixture repository");
+        repository
+            .write("python/larch/bug.py", b"def old_name():\n    return 1\n")
+            .expect("initial source");
+        repository
+            .write("scripts/consumer.sh", b"#!/bin/sh\nold_name\n")
+            .expect("initial consumer");
+        commit_fixture(&repository, "initial evidence");
+        repository
+            .write(
+                "python/larch/bug.py",
+                b"def repaired_name():\n    return 2\n",
+            )
+            .expect("fixed source");
+        repository
+            .write("scripts/consumer.sh", b"#!/bin/sh\nrepaired_name\n")
+            .expect("fixed consumer");
+        commit_fixture(&repository, "Fixes #42 repair old_name");
+        repository
+            .write(
+                "python/larch/bug.py",
+                b"def repaired_name():\n    return 3\n",
+            )
+            .expect("follow-up source");
+        commit_fixture(&repository, "Revert review-only experiment");
+
+        let reader = GixRepository::open(repository.root()).expect("open evidence repository");
+        let tip = reader
+            .resolve_revision(&Revision::new(b"HEAD"))
+            .expect("resolve evidence tip");
+        let evidence = hydrate_evidence(reader, "main".to_owned(), tip).expect("hydrate evidence");
+        let temporary = tempfile::tempdir().expect("run directory");
+        let issue = bug_issue(
+            42,
+            GitHubIssueState::Closed,
+            "residual behavior after the fix #7",
+        );
+
+        let bundle = bundle_for_issue(
+            &issue,
+            &["https://example.invalid/o/r/pull/42".to_owned()],
+            None,
+            &evidence,
+            temporary.path(),
+            60_000,
+        )
+        .expect("prefetch bundle");
+
+        assert_eq!(bundle.get("diff_scan_status"), Some(&json!("ok")));
+        assert_eq!(bundle.get("consumer_scan_status"), Some(&json!("ok")));
+        assert_eq!(bundle.get("later_history_scan_status"), Some(&json!("ok")));
+        assert_eq!(bundle.get("revert_scan_status"), Some(&json!("ok")));
+        assert_eq!(bundle.get("marker_references"), Some(&json!([7, 42])));
+        assert!(
+            bundle
+                .get("fix_sha")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| value.len() == 40)
+        );
+        let rendered = fs::read_to_string(
+            bundle
+                .get("bundle_path")
+                .and_then(serde_json::Value::as_str)
+                .expect("bundle path"),
+        )
+        .expect("rendered bundle");
+        assert!(rendered.contains("repaired_name"));
+        assert!(rendered.contains("scripts/consumer.sh"));
+
+        let fix_sha = bundle
+            .get("fix_sha")
+            .and_then(Value::as_str)
+            .expect("fix SHA")
+            .to_owned();
+        let closure_fix = find_fix(
+            99,
+            Some(&std::collections::BTreeSet::from([fix_sha.clone()])),
+            &evidence,
+        )
+        .expect("closure fix");
+        assert_eq!(closure_fix.source, "closedByPullRequestsReferences");
+        assert_eq!(closure_fix.sha, fix_sha);
+        assert_eq!(
+            find_fix(99, None, &evidence).expect("missing fix").reason,
+            "no exact Fixes reference"
+        );
+        assert_eq!(
+            find_fix(
+                99,
+                Some(&std::collections::BTreeSet::from([
+                    "a".to_owned(),
+                    "b".to_owned(),
+                ])),
+                &evidence,
+            )
+            .expect("ambiguous closure")
+            .reason,
+            "multiple PR merge commits"
+        );
+        let open_without_fix = bundle_for_issue(
+            &bug_issue(99, GitHubIssueState::Open, "no matching closure"),
+            &[],
+            None,
+            &evidence,
+            temporary.path(),
+            60_000,
+        )
+        .expect("open no-fix bundle");
+        assert_eq!(
+            open_without_fix.get("mechanical_verdict"),
+            Some(&json!("NOT_FIXED"))
+        );
+        assert_eq!(
+            open_without_fix.get("diff_scan_status"),
+            Some(&json!("not-run"))
+        );
+        let capped = bundle_for_issue(&issue, &[], None, &evidence, temporary.path(), 1)
+            .expect("capped bundle");
+        assert_eq!(capped.get("diff_scan_status"), Some(&json!("failed")));
+        assert_eq!(capped.get("mechanical_verdict"), Some(&json!("NEEDS_DEEP")));
+    }
+
+    #[test]
+    fn ledger_compute_refreshes_metadata_and_caps_the_deep_queue() {
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let run_dir = temporary.path().join("run");
+        fs::create_dir_all(&run_dir).expect("run directory");
+        let fixed = "f".repeat(40);
+        let mut chained = bundle_row(3, "chain", &fixed, "");
+        chained["marker_references"] = json!([9]);
+        let sampled = bundle_row(4, "sample", &fixed, "");
+        let manifest = run_dir.join("manifest.json");
+        fs::write(
+            &manifest,
+            json!({
+                "generated_at": 17,
+                "issues": [
+                    bundle_row(1, "triage", &fixed, ""),
+                    bundle_row(2, "mechanical", &fixed, "NEEDS_DEEP"),
+                    chained,
+                    sampled,
+                ],
+            })
+            .to_string(),
+        )
+        .expect("manifest");
+        let ledger = temporary.path().join("ledger.jsonl");
+        fs::write(
+            &ledger,
+            format!(
+                "{}\n{}\n",
+                json!({
+                    "cache_key": "chain", "issue": 3, "fix_sha": fixed,
+                    "later_history_hash": "history-3", "triage_verdict": "FIXED_CLEAR",
+                    "triage_evidence_verified": true, "stages_complete": ["triage"],
+                }),
+                json!({
+                    "cache_key": "sample", "issue": 4, "fix_sha": fixed,
+                    "later_history_hash": "history-4", "triage_verdict": "FIXED_CLEAR",
+                    "triage_evidence_verified": true, "stages_complete": ["triage"],
+                })
+            ),
+        )
+        .expect("ledger");
+
+        let output = compute(&run_dir, &ledger, &manifest, false, 1, 1, "sonnet", 1)
+            .expect("ledger compute");
+        assert_eq!(output.get("TRIAGE_PENDING"), Some(&"1".to_owned()));
+        assert_eq!(output.get("DEEP_PENDING"), Some(&"1".to_owned()));
+        assert_eq!(output.get("DEEP_CAP_TRUNCATED"), Some(&"true".to_owned()));
+        assert_eq!(
+            output.get("DEEP_MODEL"),
+            Some(&"claude-sonnet-4-6".to_owned())
+        );
+        let queue = fs::read_to_string(run_dir.join("deep-queue.jsonl")).expect("deep queue");
+        assert!(queue.contains("mechanical"));
+        assert!(run_dir.join("triage-pending-1.jsonl").is_file());
+        assert!(run_dir.join("ledger-summary.json").is_file());
+    }
+
+    #[test]
+    fn ledger_ingest_rejects_malformed_duplicate_and_inactive_rows() {
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let (run_dir, manifest, input) = write_ingest_fixture(temporary.path(), "ok");
+        fs::write(
+            &input,
+            concat!(
+                "not-json\n",
+                "{\"issue\":2,\"verdict\":\"FIXED_CLEAR\",\"missing_items\":[],\"reason\":\"clear\",\"needs_deep\":false,\"evidence_token\":\"proof-token\"}\n",
+                "{\"issue\":1,\"verdict\":\"FIXED_CLEAR\",\"missing_items\":[],\"reason\":\"clear\",\"needs_deep\":false,\"evidence_token\":\"proof-token\"}\n",
+                "{\"issue\":1,\"verdict\":\"FIXED_CLEAR\",\"missing_items\":[],\"reason\":\"clear\",\"needs_deep\":false,\"evidence_token\":\"proof-token\"}\n"
+            ),
+        )
+        .expect("agent rows");
+        let ledger = temporary.path().join("ledger.jsonl");
+        let output = ingest(&run_dir, &ledger, &manifest, &input, "triage").expect("ingest");
+        assert_eq!(output.get("INGEST_ACCEPTED"), Some(&"1".to_owned()));
+        assert_eq!(output.get("INGEST_REJECTED"), Some(&"3".to_owned()));
+        let missing = run_dir.join("missing-deep.jsonl");
+        let deep =
+            ingest(&run_dir, &ledger, &manifest, &missing, "deep").expect("absent deep ingest");
+        assert_eq!(deep.get("INGEST_ACCEPTED"), Some(&"0".to_owned()));
+    }
+
+    #[test]
+    fn deep_ingest_marks_a_queued_sample_complete_without_replaying_triage() {
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let (run_dir, manifest, _triage_input) = write_ingest_fixture(temporary.path(), "ok");
+        fs::write(
+            run_dir.join("deep-queue.jsonl"),
+            "{\"issue\":1,\"sampled\":true}\n",
+        )
+        .expect("deep queue");
+        let deep_input = run_dir.join("deep.jsonl");
+        fs::write(
+            &deep_input,
+            concat!(
+                "{\"issue\":1,\"verdict\":\"CONFIRMED_FIXED\",\"reason\":\"checked\",",
+                "\"introduced_risk\":\"none found\",\"introduced_risk_reason\":\"checked\",",
+                "\"class_complete\":true,\"sibling_sites\":[]}\n"
+            ),
+        )
+        .expect("deep row");
+        let ledger = temporary.path().join("ledger.jsonl");
+
+        let output = ingest(&run_dir, &ledger, &manifest, &deep_input, "deep").expect("ingest");
+
+        assert_eq!(output.get("INGEST_ACCEPTED"), Some(&"1".to_owned()));
+        let (records, corrupt) = load_ledger(&ledger).expect("ledger");
+        assert_eq!(corrupt, 0);
+        let record = records.get("cache-key").expect("record");
+        assert_eq!(record.get("deep_verdict"), Some(&json!("CONFIRMED_FIXED")));
+        assert_eq!(record.get("sampled"), Some(&json!(true)));
+        assert_eq!(record.get("stages_complete"), Some(&json!(["deep"])));
     }
 }
