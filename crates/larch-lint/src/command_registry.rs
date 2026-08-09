@@ -1624,6 +1624,9 @@ fn extract_selectors(content: &str, marker: &str) -> Vec<String> {
     let mut selectors = BTreeSet::new();
     let mut bindings = Vec::new();
     for line in normalized.lines() {
+        if marker == "python/cli.py" && is_legacy_generated_header(line) {
+            continue;
+        }
         let mut search_start = 0;
         while let Some(relative_index) = line[search_start..].find(marker) {
             let marker_index = search_start + relative_index;
@@ -1673,6 +1676,26 @@ fn extract_selectors(content: &str, marker: &str) -> Vec<String> {
         }
     }
     selectors.into_iter().collect()
+}
+
+fn is_legacy_generated_header(line: &str) -> bool {
+    const PREFIX: &str = "<!-- AUTO-GENERATED:";
+    const MARKER: &str = "Regenerate via: python3 python/cli.py generate ";
+    const SUFFIX: &str = " -->";
+
+    let line = line.trim();
+    let Some(verb) = line
+        .strip_prefix(PREFIX)
+        .and_then(|value| {
+            value
+                .find(MARKER)
+                .map(|offset| &value[offset + MARKER.len()..])
+        })
+        .and_then(|value| value.strip_suffix(SUFFIX))
+    else {
+        return false;
+    };
+    valid_token(verb)
 }
 
 fn literal_words(text: &str) -> Vec<String> {
@@ -2073,6 +2096,18 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
         );
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::python_cli_selectors;
+
+    #[test]
+    fn frozen_generated_headers_are_provenance_not_python_callers() {
+        let content = "<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: python3 python/cli.py generate codex-implementer -->\n<!-- AUTO-GENERATED: Regenerate via: python3 python/cli.py generate code-reviewer-agent -->\npython3 python/cli.py generate check\n";
+
+        assert_eq!(python_cli_selectors(content), vec!["generate check"]);
+    }
 }
 
 crate::register_rule!(METADATA, RULE);

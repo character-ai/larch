@@ -271,9 +271,9 @@ in `docs/configuration-and-permissions.md`.
 
 ## Decision log — B6 prompt rendering and generators
 
-- Prompt rendering, Mermaid sanitization, diagrams upsert, and generated-artifact regeneration now live in `python/rendering.py` behind `python3 python/cli.py render ...`, `mermaid sanitize`, `diagrams upsert`, and `generate ...` verbs.
+- Prompt rendering, Mermaid sanitization, and diagrams upsert remain in `python/rendering.py` behind `python3 python/cli.py render ...`, `mermaid sanitize`, and `diagrams upsert`; generated-artifact regeneration now lives in `crates/larch-cli/src/rendering_commands.rs` behind `generate ...`.
 - Payload-routing parity is intentional: `render voter` and `render plan-review` write prompt/KV payloads directly to stdout; the other verbs initialize quiet-mode and emit machine KVs through the contract stream.
-- Generated artifact headers name the Python CLI regeneration command. `scripts/generators.tsv` now registers `generate <verb>` rows and `python3 python/cli.py generate check` runs the drift walker in-process.
+- Generated artifact headers deliberately retain the historical Python CLI regeneration text for byte stability. `scripts/generators.tsv` registers `generate <verb>` rows and `cargo run --quiet --locked --package larch-cli -- generate check` runs the Rust drift walker in-process.
 - The leaf dispatch slice now lives in `crates/larch-core/src/review_dispatch.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, and `crates/larch-cli/src/agent_commands.rs` with CLI verbs `agent wait-reviewers`, `agent classify-diff`, `agent gather-branch-context`, and `agent compose-collector-failure-log`. Callers use `scripts/larch.sh`; `agent classify-diff` emits `DIFF_MODE=` and fails closed when its plugin-root `scripts/generators.tsv` manifest is missing or malformed.
 
 ## P4 dev-only skills migration

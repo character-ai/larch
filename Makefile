@@ -914,7 +914,7 @@ test-run-external-agent:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_cursor_ci or parse_codex_usage or model_args or degraded_tools)'
 
 agent-sync:
-	python3 python/cli.py generate check
+	cargo run --quiet --locked --package larch-cli -- generate check
 	cargo run --quiet --locked --package larch-cli -- lint rule topology-rule-paths
 	cargo run --quiet --locked --package larch-cli -- lint rule focus-area-enum
 

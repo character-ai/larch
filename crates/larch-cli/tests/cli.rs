@@ -48,6 +48,7 @@ Commands:
   lint               Repository policy lint commands
   plugin             Plugin metadata commands
   progress           Clone-scoped progress breadcrumbs and the larch statusline
+  generate           Regenerate or verify committed developer artifacts
   gantt              Generic ASCII Gantt rendering
   analyze-issues     Issue-backlog report rendering
   analyze-bugs       Bounded filed-bug evidence and verification commands

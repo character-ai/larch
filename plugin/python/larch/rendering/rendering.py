@@ -1,5 +1,5 @@
-"""Prompt rendering, Mermaid sanitizing, diagram upsert, and generators."""
-# ruff: noqa: S608, F401
+"""Prompt rendering, Mermaid sanitizing, and diagram upsert."""
+# ruff: noqa: S608
 # pylint: disable=unused-import
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedImport=false
 
@@ -47,9 +47,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 SMALL_BRANCH_COMMIT_MAX = 5
 RETRY_EXCERPT_BYTES = 8192
-MIN_TOPOLOGY_VALUE_LEN = 3
-TOPOLOGY_COLUMN_COUNT = 4
-GENERATOR_COLUMN_COUNT = 2
 _SCOPE_ANCHOR_MAX_BYTES = 65536
 
 VOTER_ARCHETYPES = {
@@ -1757,25 +1754,3 @@ def diagrams_upsert_main(argv: list[str]) -> int:
     except (ShipError, RenderError) as exc:
         _emit_upsert_failure(msg=str(exc))
         return 2
-
-
-# ---------------------------------------------------------------------------
-
-# Re-exports from sibling module — preserves `rendering.X` access for callers.
-from larch.rendering._rendering_generators import (  # noqa: E402
-    _implementer_text,
-    generate_check_main,
-    generate_code_reviewer_agent_main,
-    generate_codex_implementer_main,
-    generate_cursor_implementer_main,
-    generate_pre_rendered_reviewer_prompts_main,
-    generate_reviewer_code_robustness_agent_main,
-    generate_reviewer_correctness_agent_main,
-    generate_reviewer_edge_cases_agent_main,
-    generate_reviewer_plan_fidelity_agent_main,
-    generate_reviewer_security_agent_main,
-    generate_reviewer_security_structure_tests_agent_main,
-    generate_reviewer_structure_agent_main,
-    generate_reviewer_testing_agent_main,
-    generate_topology_docs_main,
-)

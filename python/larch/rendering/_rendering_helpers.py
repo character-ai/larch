@@ -1,8 +1,7 @@
-"""Cycle-free leaf helpers shared by rendering.py and _rendering_generators.py.
+"""Cycle-free leaf helpers used by rendering.py.
 
-Must not import rendering.py, _rendering_generators.py, CLI modules, or package
-facades. Callers import these helpers; this module stays below both in the
-import graph.
+Must not import rendering.py, CLI modules, or package facades. Callers import
+these helpers; this module stays below rendering.py in the import graph.
 """
 
 from __future__ import annotations
