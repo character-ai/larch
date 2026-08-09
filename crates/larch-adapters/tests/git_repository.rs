@@ -541,6 +541,21 @@ fn range_blob_and_conflict_stage_queries_match_git() {
             .kind(),
         RepositoryErrorKind::ObjectType
     );
+    let mut expected_files = git_lines(&repository, ["ls-tree", "-r", "--name-only", "HEAD"])
+        .into_iter()
+        .map(GitPath::new)
+        .collect::<Vec<_>>();
+    let mut actual_files = reader.files_at_commit(&include, usize::MAX).unwrap();
+    expected_files.sort();
+    actual_files.sort();
+    assert_eq!(actual_files, expected_files);
+    assert_eq!(
+        reader
+            .files_at_commit(&include, actual_files.len().saturating_sub(1))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidInput
+    );
 
     let Some(conflict) = fixture(GitFixture::Conflict, GitObjectFormat::Sha1) else {
         return;

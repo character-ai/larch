@@ -506,11 +506,13 @@ verb = "ledger"
 python_module = "larch.issue.analyze_bugs"
 python_function = "ledger_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8184
+clean_install_test = "clean-install-analyze-bugs-ledger"
 
 [[commands]]
 domain = "analyze-bugs"
@@ -518,11 +520,13 @@ verb = "prefetch"
 python_module = "larch.issue.analyze_bugs"
 python_function = "prefetch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8184
+clean_install_test = "clean-install-analyze-bugs-prefetch"
 
 [[commands]]
 domain = "analyze-bugs"
@@ -8688,7 +8692,7 @@ rust = ["execution-issues flush", "timing mark"]
 [[callers]]
 path = "python/larch/issue/analyze_bugs.py"
 kind = "python-runtime"
-python = ["analyze-bugs ledger", "analyze-bugs prefetch", "analyze-bugs report", "analyze-bugs runtime"]
+python = ["analyze-bugs report", "analyze-bugs runtime"]
 rust = []
 
 [[callers]]

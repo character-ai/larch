@@ -76,8 +76,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "main",
         True,
     ),
-    ("analyze-bugs", "prefetch"): ("larch.issue.analyze_bugs", "prefetch_main", False),
-    ("analyze-bugs", "ledger"): ("larch.issue.analyze_bugs", "ledger_main", False),
     ("analyze-bugs", "runtime"): ("larch.issue.analyze_bugs", "runtime_main", False),
     ("analyze-bugs", "report"): ("larch.issue.analyze_bugs", "report_main", False),
     ("validate-merged", "prepare"): ("larch.issue.validate_merged", "prepare_main", False),

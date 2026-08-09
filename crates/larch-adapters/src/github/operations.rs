@@ -207,6 +207,7 @@ pub struct PullRequest {
     base_ref: String,
     draft: bool,
     merged: bool,
+    merge_commit_oid: Option<String>,
 }
 
 /// Pull-request fields used to prepare release notes.
@@ -362,6 +363,12 @@ impl PullRequest {
     #[must_use]
     pub const fn merged(&self) -> bool {
         self.merged
+    }
+
+    /// Return the immutable merge commit GitHub recorded for a merged pull request.
+    #[must_use]
+    pub fn merge_commit_oid(&self) -> Option<&str> {
+        self.merge_commit_oid.as_deref()
     }
 }
 
@@ -2283,6 +2290,20 @@ fn parse_pull_request(
     limits: GitHubResponseLimits,
 ) -> Result<PullRequest, GitHubOperationError> {
     let object = as_object(value)?;
+    let merge_commit_oid = optional_str(
+        object,
+        "merge_commit_sha",
+        limits,
+        "pull request merge commit oid",
+    )?;
+    if merge_commit_oid
+        .as_deref()
+        .is_some_and(|oid| !is_git_object_id(oid))
+    {
+        return Err(GitHubOperationError::Malformed(
+            "pull request merge commit oid",
+        ));
+    }
     Ok(PullRequest {
         number: required_u64(object, "number", "pull request number")?,
         state: parse_state(required_str(object, "state", limits, "pull request state")?.as_str())?,
@@ -2291,6 +2312,7 @@ fn parse_pull_request(
         base_ref: required_ref(object, "base", limits, "pull request base ref")?,
         draft: optional_bool(object, "draft", "pull request draft")?.unwrap_or(false),
         merged: optional_bool(object, "merged", "pull request merged")?.unwrap_or(false),
+        merge_commit_oid,
     })
 }
 
@@ -2776,6 +2798,27 @@ mod tests {
         assert_eq!(parsed.base_ref(), "main");
         assert!(!parsed.draft());
         assert!(!parsed.merged());
+        assert_eq!(parsed.merge_commit_oid(), None);
+    }
+
+    #[test]
+    fn pull_request_exposes_only_a_valid_merge_commit_oid() {
+        let mut value = pull_request_value(7, "closed", "feature");
+        value["merged"] = json!(true);
+        value["merge_commit_sha"] = json!("1111111111111111111111111111111111111111");
+        let parsed = parse_pull_request(&value, limits()).expect("valid merged pull request");
+        assert_eq!(
+            parsed.merge_commit_oid(),
+            Some("1111111111111111111111111111111111111111")
+        );
+
+        value["merge_commit_sha"] = json!("not-an-oid");
+        assert_eq!(
+            parse_pull_request(&value, limits()),
+            Err(GitHubOperationError::Malformed(
+                "pull request merge commit oid"
+            ))
+        );
     }
 
     #[test]
