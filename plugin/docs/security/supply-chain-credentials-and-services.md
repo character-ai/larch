@@ -28,7 +28,7 @@ licenses, duplicate versions, wildcard requirements, and unapproved registries
 or Git sources. [`ARCHITECTURE.md`](../../ARCHITECTURE.md#dependency-policy)
 owns contributor instructions for dependency changes.
 
-### CI Rust tool bootstrap and caches
+### CI tool bootstrap and caches
 
 Rust CI caches Cargo registry and Git inputs separately from compiler output.
 Its versioned keys bind the runner operating system and architecture, lockfile,
@@ -90,6 +90,33 @@ whether cache save succeeded or was skipped; a manual dispatch is marked
 `workflow_dispatch-read-only`, except for the separately named, main-only
 target-cache benchmark described above. CI has no `cargo install` fallback for
 either tool.
+
+The dedicated `gitleaks` job has a separate, no-Cargo scanner bootstrap. It
+does not build or execute `larch`, including a checkout-provided
+`target/debug/larch`. Its fixed Linux `v8.18.4` release URL, archive SHA-256,
+and extracted-binary SHA-256 are in the workflow. The cache key binds the
+runner OS and architecture, scanner version, and binary digest. On every
+restore, the job requires real cache directories and a regular non-symlink
+binary with the expected SHA-256 and reported version. Before each scan, it
+rechecks the binary's regular-file shape, SHA-256, and reported version. A miss
+or invalid entry downloads only over HTTPS (including
+redirects), with bounded retries, timeouts, and a 16 MiB archive-size cap; it
+verifies the archive digest, then
+requires the exact `LICENSE`, `README.md`, and `gitleaks` member allowlist,
+extracts only the regular `gitleaks` member into a private temporary directory,
+verifies the binary digest, and installs it with mode `0755`. Invalid material
+is never executed. The scanner inherits only its execution prerequisites
+(`PATH`, `HOME`, `TMPDIR`, and `LANG`) plus noninteractive Git behavior; GitHub
+and service-credential environment variables are not passed to it.
+
+The scanner cache can be saved only after both scans succeed on a `push` to
+`refs/heads/main` and only on a primary-key miss. Pull requests and other
+events may restore a cache entry but cannot publish one, so a
+pull-request-provided executable cannot cross into the trusted-main cache.
+The full-history checkout, working-tree `--no-git` scan, and bounded
+`<merge-base>..HEAD` history scan remain independent required steps. Their
+named workflow steps and cache-hit summary record the checkout, preparation,
+working-tree, and history timing phases for cold and warm comparisons.
 
 The coverage execution job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace

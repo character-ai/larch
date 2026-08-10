@@ -390,7 +390,7 @@ A partial edit that updates the Makefile but forgets the workflow YAML would sil
 
 Two scanners run as dedicated CI jobs in `.github/workflows/ci.yaml`:
 
-- **`gitleaks`**: The manual local pre-commit stage and CI call `scripts/larch.sh lint gitleaks`. The Rust command verifies the host's pinned `v8.18.4` release archive, extracted binary, and reported version. CI scans the working tree and PR commit range; the manual local scan uses `--no-git` on the working tree.
+- **`gitleaks`**: The manual local pre-commit stage calls `scripts/larch.sh lint gitleaks`; the Rust command verifies the pinned `v8.18.4` release archive, extracted binary, and reported version. CI uses a separate checksum-pinned workflow installer, revalidates its cache entry before both scans, and does not build `larch-cli`. It scans the working tree and PR commit range; the manual local scan uses `--no-git` on the working tree.
 - **`trufflehog`** — Runs `trufflesecurity/trufflehog` pinned to its commit SHA for `v3.82.13` (supply-chain: tags are mutable) with `version: 3.82.13` pinning the Docker image and `--only-verified`, so findings fire only for credentials that authenticate against a live provider API.
 
 See the canonical
