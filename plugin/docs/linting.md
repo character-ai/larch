@@ -277,9 +277,11 @@ Python consumer tests are `python/tests/test_rebalance_script.py` and
 commands before changing the rebalance contract.
 
 **Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
-dependency-free Rust `larch-harness-mark` binary in `target/harness-mark`, not
-the released `larch-cli` package. That separate target directory preserves the
-existing `target/debug/larch` probe behavior.
+dependency-free Rust `larch-harness-mark` binary in `target/harness-mark`. It
+uses `rustc` directly for its standard-library-only sources, rather than
+starting the released `larch-cli` package or Cargo's workspace machinery. That
+separate target directory preserves the existing `target/debug/larch` probe
+behavior.
 
 Each wrapped command still emits the Rust-owned `LARCH_HARNESS_TIMING` row to
 stdout:
@@ -299,13 +301,13 @@ LARCH_HARNESS_BOOTSTRAP<TAB><test-name><TAB><cold|warm|unknown><TAB><N.NNs>
 ```
 
 `cold` means the isolated timer binary was absent before that recipe invoked
-Cargo; `warm` means it already existed. The duration starts immediately before
-Cargo starts and ends immediately before the child command begins. It is not
-folded into the child row, so a future harness-packing report can charge fixed
-startup separately from target work. A comparable fresh-runner sample retains
-the first cold row, subsequent warm rows, the printed Make recipe that names
-the child command, and the GitHub Actions job timestamps used for total-job and
-summed-runner timing.
+`rustc`; `warm` means it already existed. The duration starts immediately
+before the helper build starts and ends immediately before the child command
+begins. It is not folded into the child row, so a future harness-packing report
+can charge fixed startup separately from target work. A comparable fresh-runner
+sample retains the first cold row, subsequent warm rows, the printed Make
+recipe that names the child command, and the GitHub Actions job timestamps used
+for total-job and summed-runner timing.
 
 ### Branch protection migration
 

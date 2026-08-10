@@ -12,7 +12,7 @@ migration code until each command moves directly to its Rust owner.
 | `larch-core` | Effect-free domain types, use cases, and narrow ports for Git, GitHub, Google services, process execution, storage, and time. | None. |
 | `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
 | `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases or repository-policy rules. Its binary target is named `larch`. | `larch-core`, `larch-adapters`, `larch-harness-mark`, `larch-lint`. |
-| `larch-harness-mark` | Dependency-free inherited-stdio timer boundary. Its library preserves the `timing harness-mark` child-row contract; its developer/CI-only binary avoids compiling the released CLI before a harness child begins. The standalone binary is never a release artifact. | None. |
+| `larch-harness-mark` | Dependency-free inherited-stdio timer boundary. Its library preserves the `timing harness-mark` child-row contract; its standard-library-only developer/CI binary avoids both Cargo workspace setup and compiling the released CLI before a harness child begins. The standalone binary is never a release artifact. | None. |
 | `larch-lint` | Library-only repository policy tooling exposed through `larch lint`. | None of the product crates. |
 | `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, HTTP responses, Git repositories, run-log corpora, and reporting parity snapshots. Product crates may use it only as a dev-dependency. | `larch-core`. |
 
