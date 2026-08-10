@@ -37,6 +37,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_to_no_merge_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: False,
+    )
+
+
 def _mock_checks_pass(*_a: object, **_k: object) -> bool:
     return True
 

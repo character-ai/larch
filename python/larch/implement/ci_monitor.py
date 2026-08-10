@@ -912,6 +912,39 @@ def poll_ci(
             checks -= 1
 
 
+def wait_for_pr_merge(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    timeout: float = config.MERGE_QUEUE_WAIT_TIMEOUT_SEC,
+    poll_interval: float = config.MERGE_QUEUE_WAIT_POLL_INTERVAL_SEC,
+    sleep_fn: SleepFn = time.sleep,
+    cwd: str | None = None,
+) -> gh.PullRequest:
+    """Wait until a queued pull request is observably merged."""
+    if timeout <= 0 or poll_interval <= 0:
+        raise ShipError("merge queue wait requires positive timeout and poll interval")
+    max_polls = max(1, math.ceil(timeout / poll_interval))
+    for poll_index in range(max_polls):
+        pull_request = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
+        state = pull_request.state.upper()
+        if state == "MERGED" or pull_request.merged_at:
+            return pull_request
+        if state != "OPEN":
+            raise ShipError(
+                f"queued PR entered state {state or '<empty>'} without merging",
+            )
+        if poll_index + 1 >= max_polls:
+            break
+        _warn_stderr(
+            f"ci_monitor: queued PR #{pr} is still open; "
+            f"waiting {poll_interval:.0f}s for merge",
+        )
+        sleep_fn(poll_interval)
+    raise ShipError("queued PR did not merge within the merge queue wait timeout")
+
+
 def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:
     raw_name = logging_util.sanitize_diagnostic_line(raw_name)
     if not raw_name:
@@ -1768,6 +1801,7 @@ def monitor(
     cwd: str | None = None,
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
+    wait_for_merge: bool = False,
 ) -> MonitorResult:
     """Driver entrypoint for CI monitor loop.
 
@@ -1777,6 +1811,37 @@ def monitor(
     inline-fix parameters (``plan_file``, ``launch_fn``, ``ctx``,
     ``transient_retries``) were removed with that behavior.
     """
+    if wait_for_merge:
+        try:
+            _ = wait_for_pr_merge(
+                runner,
+                pr=pr,
+                repo=repo,
+                sleep_fn=sleep_fn,
+                cwd=cwd,
+            )
+        except ShipError as exc:
+            return MonitorResult(
+                action="bail",
+                ci_status="error",
+                behind_count=0,
+                failed_run_id=None,
+                goto_rebase=False,
+                iterations=iteration,
+                result=StepResult(outcome=Outcome.STALLED, detail=str(exc)),
+                ci_fix_rebase_pending=ci_fix_rebase_pending,
+            )
+        return MonitorResult(
+            action="already_merged",
+            ci_status="merged",
+            behind_count=0,
+            failed_run_id=None,
+            goto_rebase=False,
+            iterations=iteration,
+            result=StepResult(outcome=Outcome.OK),
+            ci_fix_rebase_pending=ci_fix_rebase_pending,
+        )
+
     status, decision = poll_ci(
         runner,
         pr=pr,

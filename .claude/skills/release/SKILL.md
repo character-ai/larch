@@ -252,10 +252,11 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
 python3 "$PWD/python/cli.py" merge pr \
   --pr "$PR_NUMBER" \
   --repo "$REPO" \
-  --method merge
+  --method merge \
+  --release-queue-bypass
 ```
 
-The merge helper must report a merged result. The merge-commit method preserves the tagged candidate commit as an ancestor of `main`; ordinary larch PR callers still use the default squash method.
+The merge helper must report a merged result. The release-only queue bypass requires the merge-commit method and a version-bump commit. It preserves the tagged candidate commit as an ancestor of `main` when the repository queue is configured to squash; ordinary larch PR callers use the queue when enabled and the default squash method otherwise.
 
 On candidate CI, asset workflow, draft validation, or merge failure, stop before publication. Keep the candidate branch, tag, and mutable draft for repair. A failed asset workflow may be rerun for the same tag and draft; never cut a second version. Repeat `release stage`, the asset workflow wait, and `release validate-draft` for recovery. Asset replacement is allowed only while the Release remains a draft.
 
@@ -454,7 +455,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `scripts/larch.sh bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge --release-queue-bypass`, and `scripts/larch.sh bgjob {start,wait}`
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

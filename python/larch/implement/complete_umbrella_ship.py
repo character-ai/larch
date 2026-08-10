@@ -46,7 +46,15 @@ _STATE_KEYS: Final = frozenset(
     },
 )
 _STATE_STATUSES: Final = frozenset(
-    {"prepared", "monitoring", "ci_failed", "merged", "finalizing", "complete"},
+    {
+        "prepared",
+        "monitoring",
+        "ci_failed",
+        "queued",
+        "merged",
+        "finalizing",
+        "complete",
+    },
 )
 _BRANCH_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 _HEAD_RE: Final = re.compile(r"^[0-9a-f]{40,64}$")
@@ -100,6 +108,12 @@ class LeafShipOutcome:
 class CiWaitOutcome:
     status: str
     failed_run_id: str = ""
+
+
+@dataclass(frozen=True)
+class MergePrOutcome:
+    pull_request: gh.PullRequest
+    queued: bool = False
 
 
 @dataclass(frozen=True)
@@ -820,7 +834,7 @@ def _merge_pr(
     pull_request: gh.PullRequest,
     head_sha: str,
     sleep_fn: SleepFn,
-) -> gh.PullRequest:
+) -> MergePrOutcome:
     cwd = str(request.repo_root)
     state = _require_pr_head(
         runner,
@@ -829,7 +843,7 @@ def _merge_pr(
         head_sha=head_sha,
     )
     if pull_request.state.upper() == "MERGED":
-        return pull_request
+        return MergePrOutcome(pull_request=pull_request)
     _require_main_base(runner, request, pr_number=pull_request.number)
     if state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
         raise ShipError(f"PR is not admin-merge eligible: {state.merge_state_status}")
@@ -842,30 +856,83 @@ def _merge_pr(
         raise ShipError("CI changed after the green pre-merge check")
     _require_rust_line_budget(runner, request, head_sha=head_sha)
 
+    queue_enabled = gh.default_branch_merge_queue_enabled(
+        runner,
+        repo=request.repository,
+        cwd=cwd,
+    )
+
     def attempt() -> tuple[CommandResult, int, str]:
         result = gh.pr_merge(
             runner,
             pull_request.number,
             repo=request.repository,
             merge_method="squash",
-            admin=True,
-            delete_branch=True,
+            admin=not queue_enabled,
+            delete_branch=not queue_enabled,
+            merge_queue=queue_enabled,
             cwd=cwd,
         )
         return result, result.returncode, result.stdout + result.stderr
 
     merged = retry.with_transient_retry(attempt, sleeper=sleep_fn).value
     if merged.returncode != 0:
-        raise ShipError("admin merge failed")
+        action = "merge queue submission" if queue_enabled else "admin merge"
+        raise ShipError(f"{action} failed")
+    if queue_enabled:
+        _ = gh.confirm_pr_merge_queue_submission(
+            runner,
+            pull_request.number,
+            repo=request.repository,
+            sleeper=sleep_fn,
+            cwd=cwd,
+        )
     read_back = gh.pr_view(
         runner,
         pull_request.number,
         repo=request.repository,
         cwd=cwd,
     )
+    if queue_enabled and read_back.state.upper() == "OPEN":
+        return MergePrOutcome(pull_request=read_back, queued=True)
     if read_back.state.upper() != "MERGED":
         raise ShipError("merged PR read-back failed")
-    return read_back
+    return MergePrOutcome(pull_request=read_back)
+
+
+def _wait_for_queued_merge(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    sleep_fn: SleepFn,
+) -> LeafShipState:
+    if not state.pr_number:
+        raise ShipError("queued ship state lacks a PR number")
+    _require_main_base(runner, request, pr_number=state.pr_number)
+    _ = _require_pr_head(
+        runner,
+        request,
+        pr_number=state.pr_number,
+        head_sha=state.head_sha,
+    )
+    merged = ci_monitor.wait_for_pr_merge(
+        runner,
+        pr=state.pr_number,
+        repo=request.repository,
+        sleep_fn=sleep_fn,
+        cwd=str(request.repo_root),
+    )
+    if merged.head_ref != state.branch:
+        raise ShipError("queued PR branch identity changed")
+    completed = replace(
+        state,
+        status="merged",
+        pr_url=merged.url,
+        ci_errors_file="",
+    )
+    _write_state(request, completed)
+    return completed
 
 
 def _finish_leaf_issue(
@@ -1106,14 +1173,31 @@ def _run_premerge(
             pr_url=state.pr_url,
             ci_errors_file=state.ci_errors_file,
         )
-    merged_pr = _merge_pr(
+    merge_outcome = _merge_pr(
         runner,
         request,
         pull_request=pull_request,
         head_sha=head_sha,
         sleep_fn=sleep_fn,
     )
-    state = replace(state, status="merged", pr_url=merged_pr.url)
+    if merge_outcome.queued:
+        state = replace(
+            state,
+            status="queued",
+            pr_url=merge_outcome.pull_request.url,
+        )
+        _write_state(request, state)
+        return _wait_for_queued_merge(
+            runner,
+            request,
+            state,
+            sleep_fn=sleep_fn,
+        ), None
+    state = replace(
+        state,
+        status="merged",
+        pr_url=merge_outcome.pull_request.url,
+    )
     _write_state(request, state)
     return state, None
 
@@ -1136,9 +1220,22 @@ def ship_leaf(
 
     merged_state = _merged_reentry_state(runner, request, state)
     if merged_state is None:
-        state, early_outcome = _run_premerge(runner, request, state, sleep_fn=sleep_fn)
-        if early_outcome is not None:
-            return early_outcome
+        if state.status == "queued":
+            state = _wait_for_queued_merge(
+                runner,
+                request,
+                state,
+                sleep_fn=sleep_fn,
+            )
+        else:
+            state, early_outcome = _run_premerge(
+                runner,
+                request,
+                state,
+                sleep_fn=sleep_fn,
+            )
+            if early_outcome is not None:
+                return early_outcome
     else:
         state = merged_state
 

@@ -14,6 +14,15 @@ from larch.design import design_log_ship
 from larch.core.proc import CommandResult
 
 
+@pytest.fixture(autouse=True)
+def _default_to_no_merge_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        design_log_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: False,
+    )
+
+
 def _cr(argv: Sequence[str], rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
 
@@ -64,6 +73,7 @@ PR_VIEW = (
 )
 CHECKS = ("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link", "--required")
 MERGE = ("gh", "pr", "merge", "1", "--repo", "o/r", "--squash", "--admin", "--delete-branch")
+QUEUE_MERGE = ("gh", "pr", "merge", "1", "--repo", "o/r")
 RUN_VIEW = ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")
 RERUN = ("gh", "run", "rerun", "999", "--repo", "o/r", "--failed")
 
@@ -141,6 +151,52 @@ def test_green_required_checks_guard_then_merge_succeeds() -> None:
     assert result.ok is True
     assert (MERGE, "/repo") in runner.calls
     assert all(call[0][0] != "git" for call in runner.calls)
+
+
+def test_green_required_checks_enqueue_and_wait_for_observed_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        design_log_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        design_log_ship.gh,
+        "confirm_pr_merge_queue_submission",
+        lambda *_args, **_kwargs: design_log_ship.gh.MergeQueueStatus(
+            "OPEN",
+            "QUEUED",
+        ),
+    )
+    runner = RecordingRunner(
+        sequential={
+            PR_VIEW: [
+                _cr(PR_VIEW, stdout=_pr("OPEN")),
+                _cr(PR_VIEW, stdout=_pr("OPEN")),
+                _cr(PR_VIEW, stdout=_pr("MERGED")),
+            ],
+            CHECKS: [
+                _cr(CHECKS, stdout=_checks("pass")),
+                _cr(CHECKS, stdout=_checks("pass")),
+            ],
+            QUEUE_MERGE: [_cr(QUEUE_MERGE)],
+        },
+    )
+
+    result = design_log_ship.run_design_log_ci_merge(
+        runner,
+        pr=1,
+        repo="o/r",
+        cwd="/tmp/wt",
+        merge_cwd="/repo",
+        sleep_fn=lambda _delay: None,
+    )
+
+    assert result.ok is True
+    assert result.detail == "merge queue completed"
+    assert (QUEUE_MERGE, "/repo") in runner.calls
+    assert all(call[0] != MERGE for call in runner.calls)
 
 
 def test_already_merged_before_checks_skips_merge() -> None:
@@ -396,6 +452,10 @@ def _merge_for(n: int) -> tuple[str, ...]:
     return ("gh", "pr", "merge", str(n), "--repo", "o/r", "--squash", "--admin", "--delete-branch")
 
 
+def _queue_merge_for(n: int) -> tuple[str, ...]:
+    return ("gh", "pr", "merge", str(n), "--repo", "o/r")
+
+
 def _list_json(prs: list[tuple[int, str]]) -> str:
     return json.dumps([{"number": n, "title": t, "headRefName": f"larch-logs/design-{n}"} for n, t in prs])
 
@@ -415,6 +475,44 @@ def test_sweep_merges_green_and_skips_pending() -> None:
     assert {it.pr: it.outcome for it in items} == {10: "merged", 11: "skipped-not-green"}
     assert (_merge_for(10), None) in runner.calls
     assert all(call[0] != _merge_for(11) for call in runner.calls)
+
+
+def test_sweep_enqueues_green_pr_without_waiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        design_log_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        design_log_ship.gh,
+        "confirm_pr_merge_queue_submission",
+        lambda *_args, **_kwargs: design_log_ship.gh.MergeQueueStatus(
+            "OPEN",
+            "QUEUED",
+        ),
+    )
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(
+                PR_LIST,
+                stdout=_list_json([(10, "chore(larch-logs): design run A")]),
+            ),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _queue_merge_for(10): _cr(_queue_merge_for(10)),
+        },
+    )
+
+    items = design_log_ship.run_design_log_sweep(
+        runner,
+        repo="o/r",
+        sleep_fn=lambda _delay: None,
+    )
+
+    assert [(item.pr, item.outcome) for item in items] == [(10, "queued")]
+    assert (_queue_merge_for(10), None) in runner.calls
 
 
 def test_sweep_filters_non_design_log_titles() -> None:

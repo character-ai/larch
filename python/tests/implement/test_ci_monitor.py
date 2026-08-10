@@ -16,6 +16,7 @@ from larch.implement import ci_monitor
 from larch.core import config
 from larch.core import redact
 from larch.agents.agents import LaunchFailure, TierAttempt
+from larch.git import gh
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
@@ -1435,6 +1436,112 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.ci_status == "merged"
     assert result.result.outcome is Outcome.OK
     assert result.goto_rebase is False
+
+
+def test_wait_for_pr_merge_observes_open_then_merged() -> None:
+    key = (
+        "gh",
+        "pr",
+        "view",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "number,url,state,headRefName,mergedAt,mergeStateStatus",
+    )
+    runner = RecordingRunner(
+        sequential={
+            key: [
+                _cr(
+                    key,
+                    stdout=(
+                        '{"number":1,"url":"u","state":"OPEN",'
+                        '"headRefName":"feat","mergedAt":null}'
+                    ),
+                ),
+                _cr(
+                    key,
+                    stdout=(
+                        '{"number":1,"url":"u","state":"MERGED",'
+                        '"headRefName":"feat","mergedAt":"2026-08-10T00:00:00Z"}'
+                    ),
+                ),
+            ],
+        },
+    )
+    sleeps: list[float] = []
+
+    merged = ci_monitor.wait_for_pr_merge(
+        runner,
+        pr=1,
+        repo="o/r",
+        timeout=2,
+        poll_interval=1,
+        sleep_fn=sleeps.append,
+    )
+
+    assert merged.state == "MERGED"
+    assert sleeps == [1]
+
+
+def test_wait_for_pr_merge_times_out_without_claiming_completion() -> None:
+    key = (
+        "gh",
+        "pr",
+        "view",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "number,url,state,headRefName,mergedAt,mergeStateStatus",
+    )
+    runner = RecordingRunner(
+        responses={
+            key: _cr(
+                key,
+                stdout=(
+                    '{"number":1,"url":"u","state":"OPEN",'
+                    '"headRefName":"feat","mergedAt":null}'
+                ),
+            ),
+        },
+    )
+
+    with pytest.raises(ci_monitor.ShipError, match="did not merge"):
+        _ = ci_monitor.wait_for_pr_merge(
+            runner,
+            pr=1,
+            repo="o/r",
+            timeout=1,
+            poll_interval=1,
+            sleep_fn=lambda _delay: None,
+        )
+
+
+def test_monitor_wait_for_merge_uses_pr_state_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **_kwargs: gh.PullRequest(1, "u", "MERGED", "feat"),
+    )
+    monkeypatch.setattr(
+        ci_monitor,
+        "poll_ci",
+        lambda *_args, **_kwargs: pytest.fail("queued wait must not poll PR checks"),
+    )
+
+    result = ci_monitor.monitor(
+        RecordingRunner(),
+        pr=1,
+        repo="o/r",
+        wait_for_merge=True,
+    )
+
+    assert result.action == "already_merged"
+    assert result.ci_status == "merged"
+    assert result.result.outcome is Outcome.OK
 
 
 def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:

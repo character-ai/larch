@@ -64,8 +64,9 @@ def merge_pr(
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
     post_flush: bool = True,
+    release_queue_bypass: bool = False,
 ) -> MergeResult:
-    """Classify merge into one of eight merge pr MERGE_RESULT literals."""
+    """Classify a merge or queue submission into a MERGE_RESULT literal."""
     if sleeper is None:
         sleeper = time.sleep
     if not ctx.merge:
@@ -155,13 +156,28 @@ def merge_pr(
             return post_err
         return race
 
+    if release_queue_bypass and (
+        ctx.merge_method != "merge"
+        or ctx.no_admin_fallback
+        or not _bump_subject(runner, cwd=cwd)
+    ):
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=(
+                "--release-queue-bypass requires --method merge, admin fallback, "
+                "and a release version-bump commit"
+            ),
+        )
+
     merge_outcome = _attempt_merge(
         runner=runner,
         ctx=ctx,
         pr_num=pr_num,
         cwd=cwd,
+        release_queue_bypass=release_queue_bypass,
+        sleeper=sleeper,
     )
-    if post_flush:
+    if post_flush and merge_outcome.result != config.MERGE_RESULT_QUEUED:
         post_err = _post_flush(runner=runner, ctx=ctx, merge_result=merge_outcome.result)
         if post_err is not None:
             return post_err
@@ -525,7 +541,82 @@ def _attempt_merge(
     ctx: RunContext,
     pr_num: int,
     cwd: str | None,
+    release_queue_bypass: bool = False,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> MergeResult:
+    try:
+        queue_enabled = gh.default_branch_merge_queue_enabled(
+            runner,
+            repo=ctx.repo,
+            cwd=cwd,
+        )
+    except ShipError as exc:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=redact_merge_diagnostic(
+                f"could not determine default-branch merge queue policy: {exc}",
+            ),
+        )
+
+    if queue_enabled and not release_queue_bypass:
+        queued = gh.pr_merge(
+            runner,
+            pr_num,
+            repo=ctx.repo,
+            merge_queue=True,
+            cwd=cwd,
+        )
+        if queued.returncode == 0:
+            try:
+                status = gh.confirm_pr_merge_queue_submission(
+                    runner,
+                    pr_num,
+                    repo=ctx.repo,
+                    sleeper=sleeper,
+                    cwd=cwd,
+                )
+            except ShipError as exc:
+                return MergeResult(
+                    result=config.MERGE_RESULT_ERROR,
+                    error=redact_merge_diagnostic(
+                        f"merge queue submission could not be verified: {exc}",
+                    ),
+                )
+            if status.pr_state == "MERGED":
+                return MergeResult(result=config.MERGE_RESULT_MERGED, error="")
+            return MergeResult(result=config.MERGE_RESULT_QUEUED, error="")
+        diag = redact_merge_diagnostic(queued.stderr + queued.stdout)
+        return _maybe_review_required(
+            runner=runner,
+            ctx=ctx,
+            pr_num=pr_num,
+            outcome=MergeResult(
+                result=config.MERGE_RESULT_POLICY_DENIED,
+                error=f"merge queue submission failed: {diag}",
+            ),
+            cwd=cwd,
+        )
+
+    if queue_enabled and release_queue_bypass:
+        admin = gh.pr_merge(
+            runner,
+            pr_num,
+            repo=ctx.repo,
+            merge_method=ctx.merge_method,
+            admin=True,
+            cwd=cwd,
+        )
+        if admin.returncode == 0:
+            return MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
+        admin_diag = redact_merge_diagnostic(admin.stderr + admin.stdout)
+        return MergeResult(
+            result=config.MERGE_RESULT_ADMIN_FAILED,
+            error=(
+                "release queue bypass admin merge failed; refusing queue or plain "
+                f"fallback: {admin_diag}"
+            ),
+        )
+
     if ctx.no_admin_fallback:
         result = gh.pr_merge(
             runner,
@@ -591,6 +682,7 @@ def pr_main(argv: list[str]) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--no-admin-fallback", action="store_true")
     parser.add_argument("--method", choices=("squash", "merge"), default="squash")
+    parser.add_argument("--release-queue-bypass", action="store_true")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -612,7 +704,12 @@ def pr_main(argv: list[str]) -> int:
         no_logs_commit=True,
         merge_method=args.method,
     )
-    result = merge_pr(runner=proc, ctx=ctx, post_flush=False)
+    result = merge_pr(
+        runner=proc,
+        ctx=ctx,
+        post_flush=False,
+        release_queue_bypass=args.release_queue_bypass,
+    )
     logging_util.emit_kv(key="MERGE_RESULT", value=result.result)
     logging_util.emit_kv(key="ERROR", value=result.error)
     return 0

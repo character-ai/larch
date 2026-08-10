@@ -45,6 +45,15 @@ def _pr(*, state: str = "OPEN") -> gh.PullRequest:
 _HEAD = "a" * 40
 
 
+@pytest.fixture(autouse=True)
+def _default_to_no_merge_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: False,
+    )
+
+
 def _plan_body(inner: str) -> str:
     return issue_wire.compose_named_block(marker="plan", inner=inner)
 
@@ -500,10 +509,73 @@ def test_merge_uses_verified_head_admin_squash_and_branch_deletion(
         sleep_fn=lambda _delay: None,
     )
 
-    assert merged.state == "MERGED"
+    assert merged.pull_request.state == "MERGED"
+    assert merged.queued is False
     assert ("merge_method", "squash") in calls
     assert ("admin", True) in calls
     assert ("delete_branch", True) in calls
+
+
+def test_merge_queue_submission_omits_admin_strategy_and_branch_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "pr_merge_state",
+        lambda *_args, **_kwargs: gh.MergeState("CLEAN", _HEAD),
+    )
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "pr_checks_all_pass",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(leaf_ship.gh, "pr_base_ref", lambda *_args, **_kwargs: "main")
+    monkeypatch.setattr(
+        leaf_ship,
+        "_require_rust_line_budget",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "confirm_pr_merge_queue_submission",
+        lambda *_args, **_kwargs: gh.MergeQueueStatus("OPEN", "QUEUED"),
+    )
+
+    def merge(*_args: object, **kwargs: object) -> CommandResult:
+        calls.append(dict(kwargs))
+        return CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01)
+
+    monkeypatch.setattr(leaf_ship.gh, "pr_merge", merge)
+    monkeypatch.setattr(leaf_ship.gh, "pr_view", lambda *_args, **_kwargs: _pr())
+
+    outcome = leaf_ship._merge_pr(
+        RecordingRunner(),
+        request,
+        pull_request=_pr(),
+        head_sha=_HEAD,
+        sleep_fn=lambda _delay: None,
+    )
+
+    assert outcome.queued is True
+    assert outcome.pull_request.state == "OPEN"
+    assert calls == [
+        {
+            "repo": "owner/repo",
+            "merge_method": "squash",
+            "admin": False,
+            "delete_branch": False,
+            "merge_queue": True,
+            "cwd": str(tmp_path),
+        },
+    ]
 
 
 def test_merge_refuses_an_over_limit_managed_leaf_before_admin_merge(
@@ -611,7 +683,8 @@ def test_ship_happy_path_persists_complete_only_after_verification(
     monkeypatch.setattr(
         leaf_ship,
         "_merge_pr",
-        lambda *_args, **_kwargs: events.append("merge") or _pr(state="MERGED"),
+        lambda *_args, **_kwargs: events.append("merge")
+        or leaf_ship.MergePrOutcome(pull_request=_pr(state="MERGED")),
     )
     monkeypatch.setattr(
         leaf_ship,
@@ -722,6 +795,63 @@ def test_merged_reentry_never_replays_premerge_mutations(
 
     outcome = leaf_ship.ship_leaf(
         RecordingRunner(), request, sleep_fn=lambda _delay: None
+    )
+
+    assert outcome.status == "complete"
+
+
+def test_queued_reentry_waits_without_replaying_premerge_mutations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    leaf_ship._write_state(
+        request,
+        leaf_ship.LeafShipState(
+            repository="owner/repo",
+            umbrella=40,
+            leaf=42,
+            branch="complete-umbrella/leaf-42",
+            head_sha=_HEAD,
+            pr_number=77,
+            pr_url=_pr().url,
+            status="queued",
+        ),
+    )
+    monkeypatch.setattr(leaf_ship.gh, "pr_view", lambda *_args, **_kwargs: _pr())
+    monkeypatch.setattr(leaf_ship.gh, "pr_base_ref", lambda *_args, **_kwargs: "main")
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "pr_merge_state",
+        lambda *_args, **_kwargs: gh.MergeState("CLEAN", _HEAD),
+    )
+    monkeypatch.setattr(
+        leaf_ship.ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **_kwargs: _pr(state="MERGED"),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_push_branch",
+        lambda *_args, **_kwargs: pytest.fail("queued reentry must not push"),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_merge_pr",
+        lambda *_args, **_kwargs: pytest.fail("queued reentry must not resubmit"),
+    )
+    monkeypatch.setattr(leaf_ship, "_finish_leaf_issue", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        leaf_ship,
+        "_sync_main_and_delete_branch",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(leaf_ship, "_verify_complete", lambda *_args, **_kwargs: None)
+
+    outcome = leaf_ship.ship_leaf(
+        RecordingRunner(),
+        request,
+        sleep_fn=lambda _delay: None,
     )
 
     assert outcome.status == "complete"

@@ -67,7 +67,7 @@ against the existing M1/M2 contract before that transition. This is a
 managed-chief admission rule, not a substitute for an approval or a way to
 backfill one.
 
-Immediately before the managed ship driver admin-merges a PR, it measures
+Immediately before the managed ship driver submits a queued or direct merge, it measures
 `git merge-base origin/main HEAD` to `HEAD` with
 `git diff --no-ext-diff --numstat -z -M50%`. It sums added lines for every changed
 `.rs` destination path, including test paths. Deletions contribute zero; an
