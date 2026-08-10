@@ -457,6 +457,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "runtime",
     ),
     CleanInstallCase::new(
+        "clean-install-learn-from-bugs-coverage-index",
+        "learn-from-bugs",
+        "coverage-index",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-prepare",
+        "learn-from-bugs",
+        "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-read-state",
+        "learn-from-bugs",
+        "read-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-resolve-zones",
+        "learn-from-bugs",
+        "resolve-zones",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-write-state",
+        "learn-from-bugs",
+        "write-state",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-issues-analyze",
         "analyze-issues",
         "analyze",

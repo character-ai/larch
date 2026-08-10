@@ -51,6 +51,7 @@ Commands:
   gantt              Generic ASCII Gantt rendering
   analyze-issues     Issue-backlog report rendering
   analyze-bugs       Bounded filed-bug evidence and verification commands
+  learn-from-bugs    Prepare compact bug-learning evidence and maintain its durable marker
   object-store       Narrow provider transports used by Python-owned run-log workflows
   oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands

@@ -1,13 +1,10 @@
 # argparse add_argument() and file write_text()/write() results are intentionally discarded.
 # pyright: reportUnusedCallResult=false
-"""Mine closed issues for recurring root causes and propose preventions.
+"""Residual proposal, validation, and filing support for ``/learn-from-bugs``.
 
-Backs the ``/learn-from-bugs`` skill. GitHub access goes through the
-``larch.core.proc.Runner`` seam so the digest and coverage-index logic stay
-unit-testable offline. The module never reads a full issue backlog into a model:
-it compresses each body to a compact root-cause digest first (an average
-bug-report body is dominated by an appended ``/design`` plan, which this drops),
-so the synthesis step reads a small fraction of the raw tokens.
+Rust owns preparation, coverage indexing, zone resolution, and durable-state
+commands. This module retains the later workflow stages until their own
+atomic cutover.
 """
 
 from __future__ import annotations
@@ -34,6 +31,7 @@ from larch.core.architectural_guidelines import (
     INVARIANTS_FILENAME,
 )
 from larch.core.proc import CommandResult, ProcRunner, Runner
+from larch.core.repo_roots import larch_entrypoint
 from larch.design import design_log_ship
 from larch.errors import ShipError
 from larch.git import gh, git
@@ -1450,57 +1448,6 @@ def _print_kv(pairs: Mapping[str, object]) -> None:
         print(f"{key}={value}")
 
 
-def _print_prepare_kv(pairs: Mapping[str, object]) -> None:
-    """Emit the prepare grammar, preserving one ``DIGEST_PATH`` per chunk."""
-    for key, value in pairs.items():
-        if key == "DIGEST_PATH":
-            digest_paths = cast("tuple[str, ...]", pairs["DIGEST_PATHS"])
-            for path in digest_paths:
-                print(f"DIGEST_PATH={path}")
-        elif key != "DIGEST_PATHS":
-            print(f"{key}={value}")
-
-
-def prepare_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="learn-from-bugs prepare", allow_abbrev=False)
-    parser.add_argument("--search", default=DEFAULT_SEARCH)
-    parser.add_argument("--state", default=DEFAULT_STATE)
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
-    parser.add_argument("--repo", default="")
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--root", default=".")
-    parser.add_argument("--full", action="store_true")
-    search_explicit: bool = any(
-        token == "--search" or token.startswith("--search=") for token in argv
-    )
-    args = parser.parse_args(argv)
-    request = PrepareRequest(
-        search=args.search,
-        search_explicit=search_explicit,
-        state=args.state,
-        limit=args.limit,
-        repo_explicit=args.repo,
-        out_dir=Path(args.out),
-        root=Path(args.root),
-        full=args.full,
-    )
-    _print_prepare_kv(run_prepare(_runner(), request))
-    return 0
-
-
-def coverage_index_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="learn-from-bugs coverage-index")
-    parser.add_argument("--root", default=".")
-    parser.add_argument("--out", default="")
-    args = parser.parse_args(argv)
-    coverage = coverage_index(Path(args.root))
-    payload = json.dumps(coverage.to_json(), indent=2)
-    if args.out:
-        Path(args.out).write_text(payload + "\n", encoding="utf-8")
-    print(payload)
-    return 0
-
-
 def _lint_target_adopted(proposal: Proposal, root: Path) -> bool:
     if proposal.target.startswith("module:"):
         return _safe_relative_path(
@@ -1936,117 +1883,6 @@ def check_proposals_main(argv: list[str]) -> int:
     return 0
 
 
-def read_state_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        prog="learn-from-bugs read-state", allow_abbrev=False
-    )
-    parser.add_argument("--root", required=True)
-    args = parser.parse_args(argv)
-    path = state_path(Path(args.root))
-    state = read_state(path)
-    if state is None:
-        _print_kv(
-            {
-                "LEARN_FROM_BUGS_STATE_FOUND": "false",
-                "STATE_RELPATH": config.LEARN_FROM_BUGS_STATE_RELPATH,
-                "STATE_PATH": str(path),
-            }
-        )
-        return 0
-    rows: dict[str, object] = {
-        "LEARN_FROM_BUGS_STATE_FOUND": "true",
-        "STATE_RELPATH": config.LEARN_FROM_BUGS_STATE_RELPATH,
-        "STATE_PATH": str(path),
-        "RUN_DATE": state.run_date,
-        "REPO": state.repo,
-        "SEARCH": state.search,
-        "STATE": state.state,
-        "SELECTED_COUNT": state.selected_count,
-        "HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED": state.highest_closed_issue_number_scanned,
-        "SCHEMA_VERSION": state.schema_version,
-        "PROPOSAL_COUNT": len(state.proposals),
-    }
-    if state.scan_started_at:
-        rows["SCAN_STARTED_AT"] = state.scan_started_at
-    _print_kv(rows)
-    return 0
-
-
-def write_state_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        prog="learn-from-bugs write-state", allow_abbrev=False
-    )
-    parser.add_argument("--root", required=True)
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--search", required=True)
-    parser.add_argument("--state", required=True)
-    parser.add_argument("--selected-count", type=int, required=True)
-    parser.add_argument(
-        "--highest-closed-issue-number-scanned", type=int, required=True
-    )
-    parser.add_argument("--run-date", required=True)
-    parser.add_argument("--scan-started-at", required=True)
-    parser.add_argument("--proposals-file")
-    parser.add_argument("--base-proposals-file")
-    args = parser.parse_args(argv)
-    root = Path(args.root).expanduser().resolve()
-    path = state_path(root)
-    try:
-        snapshot = analysis_state.read_snapshot(path)
-    except analysis_state.AnalysisStateError as exc:
-        raise LearnFromBugsError(str(exc)) from exc
-    existing = _read_existing_state(path)
-    if args.proposals_file:
-        proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
-        if existing is not None:
-            # The state branch starts from a freshly fetched default branch.
-            # Three-way merge against the scan-start base so this run's refreshed
-            # lifecycle statuses survive, while statuses that diverged from base
-            # (genuinely concurrent publications) are retained.
-            base_proposals: tuple[Proposal, ...] = ()
-            if args.base_proposals_file:
-                base_proposals = load_proposals_jsonl(
-                    Path(args.base_proposals_file), root=root
-                )
-            proposals = reconcile_proposals(
-                existing.proposals, proposals, base_proposals
-            )
-    elif existing is not None and existing.proposals:
-        raise LearnFromBugsError("--proposals-file is required to preserve proposal history")
-    else:
-        proposals = ()
-    state = LearnFromBugsState(
-        run_date=args.run_date,
-        scan_started_at=args.scan_started_at,
-        highest_closed_issue_number_scanned=args.highest_closed_issue_number_scanned,
-        repo=args.repo,
-        search=args.search,
-        state=args.state,
-        selected_count=args.selected_count,
-        proposals=proposals,
-    )
-    payload = json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n"
-    try:
-        digest = analysis_state.write_bytes(
-            path, payload.encode("utf-8"), expected_digest=snapshot.digest
-        )
-    except analysis_state.AnalysisStateError as exc:
-        raise LearnFromBugsError(str(exc)) from exc
-    _print_kv(
-        {
-            "STATE_RELPATH": config.LEARN_FROM_BUGS_STATE_RELPATH,
-            "STATE_PATH": str(path),
-            "RUN_DATE": state.run_date,
-            "SCAN_STARTED_AT": state.scan_started_at or "",
-            "HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED": state.highest_closed_issue_number_scanned,
-            "SCHEMA_VERSION": state.schema_version,
-            "PROPOSAL_COUNT": len(state.proposals),
-            "STATE_DIGEST": digest,
-        }
-    )
-    return 0
-
-
 def verify_origin_main(argv: list[str]) -> int:
     """Fail closed unless the checkout's ``origin`` remote identifies ``--repo``.
 
@@ -2081,34 +1917,6 @@ def verify_origin_main(argv: list[str]) -> int:
             "ORIGIN_MATCHES_REPO": "true",
         }
     )
-    return 0
-
-
-def resolve_zones_main(argv: list[str]) -> int:
-    """Emit ``RESOLVED_SEARCH=<query>`` for a valid ``--zones`` value."""
-    parser = argparse.ArgumentParser(prog="learn-from-bugs resolve-zones", allow_abbrev=False)
-    parser.add_argument("--zones", required=True)
-    parser.add_argument(
-        "--has-explicit-search",
-        action="store_true",
-        help="Set when --search was also present; forces a multi-source rejection.",
-    )
-    parser.add_argument(
-        "--has-verbal-search",
-        action="store_true",
-        help="Set when verbal search text was also present; forces a multi-source rejection.",
-    )
-    args = parser.parse_args(argv)
-    try:
-        query = resolve_zone_search(
-            args.zones,
-            has_explicit_search=bool(args.has_explicit_search),
-            has_verbal_search=bool(args.has_verbal_search),
-        )
-    except LearnFromBugsError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    _print_kv({"RESOLVED_SEARCH": query})
     return 0
 
 
@@ -2527,7 +2335,8 @@ def _reserve_branch(runner: Runner, root: Path, branch: str) -> None:
 
 def _write_state_in_checkout(runner: Runner, ctx: _PublishContext) -> str:
     request = ctx.request
-    argv = _cli_argv(
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "learn-from-bugs", "write-state",
         "--root", str(ctx.root),
         "--repo", request.repo,
@@ -2538,7 +2347,7 @@ def _write_state_in_checkout(runner: Runner, ctx: _PublishContext) -> str:
         "--run-date", request.run_date,
         "--scan-started-at", request.scan_started_at,
         "--proposals-file", request.proposals_file,
-    )
+    ]
     if request.base_proposals_file:
         argv.extend(["--base-proposals-file", request.base_proposals_file])
     result = runner.run(argv, cwd=str(ctx.root))
@@ -2688,7 +2497,19 @@ def _restore_default_branch(runner: Runner, ctx: _PublishContext) -> None:
 
 def run_state_publish(runner: Runner, request: StatePublishRequest) -> StatePublishResult:
     """Persist the marker through the non-Git mutable-state contract."""
-    argv = _cli_argv("learn-from-bugs", "write-state", "--root", str(request.root), "--repo", request.repo, "--search", request.search, "--state", request.state, "--selected-count", str(request.selected_count), "--highest-closed-issue-number-scanned", str(request.highest_closed_issue_number_scanned), "--run-date", request.run_date, "--scan-started-at", request.scan_started_at, "--proposals-file", request.proposals_file)
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "learn-from-bugs", "write-state",
+        "--root", str(request.root),
+        "--repo", request.repo,
+        "--search", request.search,
+        "--state", request.state,
+        "--selected-count", str(request.selected_count),
+        "--highest-closed-issue-number-scanned", str(request.highest_closed_issue_number_scanned),
+        "--run-date", request.run_date,
+        "--scan-started-at", request.scan_started_at,
+        "--proposals-file", request.proposals_file,
+    ]
     if request.base_proposals_file:
         argv.extend(["--base-proposals-file", request.base_proposals_file])
     result = runner.run(argv, cwd=str(request.root))

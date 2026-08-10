@@ -12,7 +12,8 @@ use larch_core::{
     ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
     StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage, TranscriptError,
     format_preflight_stdout, render_session_transcript as render_transcript,
-    repository_leaf_from_remote, resolve_run_log_storage, validate_run_log_slug,
+    repository_leaf_from_remote, require_enabled_storage, resolve_run_log_storage,
+    validate_run_log_slug,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -438,10 +439,45 @@ pub fn resolve_storage(
     ),
     PreflightFailure,
 > {
-    let (repo_root, origin, environ) = resolve_repository_environment(repo_root_flag)?;
+    resolve_storage_from_environment(resolve_repository_environment(repo_root_flag)?)
+}
+
+/// Resolve the current repository's configured storage from a path anchor.
+pub fn resolve_storage_path(
+    repo_root_flag: Option<&Path>,
+) -> Result<
+    (
+        PathBuf,
+        larch_core::RunLogStorageResolution,
+        HashMap<String, String>,
+    ),
+    PreflightFailure,
+> {
+    resolve_storage_from_environment(resolve_repository_environment_path(repo_root_flag)?)
+}
+
+/// Resolve configured storage from an already-discovered repository environment.
+pub fn resolve_storage_from_environment(
+    (repo_root, origin, environ): (PathBuf, String, HashMap<String, String>),
+) -> Result<
+    (
+        PathBuf,
+        larch_core::RunLogStorageResolution,
+        HashMap<String, String>,
+    ),
+    PreflightFailure,
+> {
     let resolution = resolve_run_log_storage(&repo_root, &environ, &origin)
         .map_err(PreflightFailure::Configuration)?;
     Ok((repo_root, resolution, environ))
+}
+
+/// Resolve enabled storage, retaining the typed preflight failure boundary.
+pub fn resolve_enabled_storage_path(
+    repo_root_flag: Option<&Path>,
+) -> Result<ToolRepositoryStorage, PreflightFailure> {
+    let (_, resolution, _) = resolve_storage_path(repo_root_flag)?;
+    require_enabled_storage(&resolution).map_err(PreflightFailure::Configuration)
 }
 
 pub fn resolve_repository_environment(

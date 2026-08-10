@@ -692,211 +692,6 @@ def test_state_prior_shape_without_scan_started_at_reads_run_date(tmp_path: Path
     assert state.repo == "o/r"
 
 
-def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert learn_from_bugs.write_state_main(
-        [
-            "--root",
-            str(tmp_path),
-            "--repo",
-            "o/r",
-            "--search",
-            "[BUG] in:title",
-            "--state",
-            "closed",
-            "--selected-count",
-            "0",
-            "--highest-closed-issue-number-scanned",
-            "0",
-            "--run-date",
-            "2026-07-09T12:00:00Z",
-            "--scan-started-at",
-            "2026-07-09T11:00:00Z",
-        ]
-    ) == 0
-
-    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
-    marker = learn_from_bugs.state_path(tmp_path)
-    assert marker.is_file()
-    assert out["STATE_RELPATH"] == config.LEARN_FROM_BUGS_STATE_RELPATH
-    assert out["RUN_DATE"] == "2026-07-09T12:00:00Z"
-    assert out["SCAN_STARTED_AT"] == "2026-07-09T11:00:00Z"
-    assert out["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == "0"
-
-
-def test_write_state_cli_accepts_rust_test_function_target(tmp_path: Path) -> None:
-    proposals_file = tmp_path / "proposals.jsonl"
-    target = "crates/smarts-cli/src/release.rs::publish_retries_on_empty_release_attestation"
-    proposals_file.write_text(
-        json.dumps(
-            _proposal(
-                proposal_id="rust-regression",
-                proposal_type="test",
-                target=target,
-                status="pending",
-                run_date="2026-08-02",
-            ).to_json()
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    assert learn_from_bugs.write_state_main([
-        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-        "--selected-count", "1", "--highest-closed-issue-number-scanned", "1",
-        "--run-date", "2026-08-02T12:00:00Z", "--scan-started-at", "2026-08-02T11:00:00Z",
-        "--proposals-file", str(proposals_file),
-    ]) == 0
-
-    written = learn_from_bugs.read_state(learn_from_bugs.state_path(tmp_path))
-    assert written is not None
-    assert written.proposals[0].target == target
-
-
-def test_write_state_cli_rejects_invalid_existing_marker(tmp_path: Path) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text('{"schema_version": 99}\n', encoding="utf-8")
-
-    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="invalid or unsupported"):
-        learn_from_bugs.write_state_main([
-            "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-            "--selected-count", "0", "--highest-closed-issue-number-scanned", "0",
-            "--run-date", "2026-07-09T12:00:00Z", "--scan-started-at", "2026-07-09T11:00:00Z",
-        ])
-
-
-def test_write_state_cli_requires_proposals_file_for_existing_history(tmp_path: Path) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    learn_from_bugs.write_state(marker, learn_from_bugs.LearnFromBugsState(
-        run_date="2026-07-09T12:00:00Z", repo="o/r", search="x", state="closed",
-        selected_count=1, highest_closed_issue_number_scanned=3, proposals=(_proposal(status="pending"),),
-    ))
-
-    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="--proposals-file"):
-        learn_from_bugs.write_state_main([
-            "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-            "--selected-count", "0", "--highest-closed-issue-number-scanned", "0",
-            "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
-        ])
-
-
-def test_write_state_cli_preserves_newer_existing_proposals(tmp_path: Path) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    remote_proposal = _proposal(status="adopted")
-    remote_only = _proposal(
-        "remote-only", target="registration:remote-only", status="pending"
-    )
-    learn_from_bugs.write_state(
-        marker,
-        learn_from_bugs.LearnFromBugsState(
-            run_date="2026-07-09T12:00:00Z",
-            repo="o/r",
-            search="x",
-            state="closed",
-            selected_count=1,
-            highest_closed_issue_number_scanned=3,
-            proposals=(remote_proposal, remote_only),
-        ),
-    )
-    proposals_file = tmp_path / "reconciled-proposals.jsonl"
-    local_stale = _proposal(status="pending")
-    proposals_file.write_text(
-        json.dumps(local_stale.to_json()) + "\n", encoding="utf-8"
-    )
-
-    assert learn_from_bugs.write_state_main([
-        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-        "--selected-count", "2", "--highest-closed-issue-number-scanned", "4",
-        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
-        "--proposals-file", str(proposals_file),
-    ]) == 0
-
-    written = learn_from_bugs.read_state(marker)
-    assert written is not None
-    assert written.proposals == (remote_proposal, remote_only)
-
-
-def test_write_state_cli_applies_refresh_when_base_matches_published(tmp_path: Path) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    # Fetched default branch still shows the pre-refresh pending status.
-    learn_from_bugs.write_state(
-        marker,
-        learn_from_bugs.LearnFromBugsState(
-            run_date="2026-07-09T12:00:00Z",
-            repo="o/r",
-            search="x",
-            state="closed",
-            selected_count=1,
-            highest_closed_issue_number_scanned=3,
-            proposals=(_proposal(status="pending"),),
-        ),
-    )
-    base_file = tmp_path / "base-proposals.jsonl"
-    base_file.write_text(
-        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
-    )
-    proposals_file = tmp_path / "reconciled-proposals.jsonl"
-    proposals_file.write_text(
-        json.dumps(_proposal(status="adopted").to_json()) + "\n", encoding="utf-8"
-    )
-
-    assert learn_from_bugs.write_state_main([
-        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-        "--selected-count", "1", "--highest-closed-issue-number-scanned", "4",
-        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
-        "--proposals-file", str(proposals_file),
-        "--base-proposals-file", str(base_file),
-    ]) == 0
-
-    written = learn_from_bugs.read_state(marker)
-    assert written is not None
-    assert written.proposals[0].status == "adopted"
-
-
-def test_write_state_cli_keeps_concurrent_publication_over_stale_refresh(tmp_path: Path) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    # A concurrent run already published adopted on the default branch.
-    learn_from_bugs.write_state(
-        marker,
-        learn_from_bugs.LearnFromBugsState(
-            run_date="2026-07-09T12:00:00Z",
-            repo="o/r",
-            search="x",
-            state="closed",
-            selected_count=1,
-            highest_closed_issue_number_scanned=3,
-            proposals=(_proposal(status="adopted"),),
-        ),
-    )
-    # Scan start saw pending; this run's local refresh is a stale pending.
-    base_file = tmp_path / "base-proposals.jsonl"
-    base_file.write_text(
-        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
-    )
-    proposals_file = tmp_path / "reconciled-proposals.jsonl"
-    proposals_file.write_text(
-        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
-    )
-
-    assert learn_from_bugs.write_state_main([
-        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
-        "--selected-count", "1", "--highest-closed-issue-number-scanned", "4",
-        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
-        "--proposals-file", str(proposals_file),
-        "--base-proposals-file", str(base_file),
-    ]) == 0
-
-    written = learn_from_bugs.read_state(marker)
-    assert written is not None
-    assert written.proposals[0].status == "adopted"
-
-
-def test_read_state_cli_reports_missing_without_crashing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert learn_from_bugs.read_state_main(["--root", str(tmp_path)]) == 0
-    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
-    assert out["LEARN_FROM_BUGS_STATE_FOUND"] == "false"
-
-
 def test_run_prepare_captures_scan_started_at_before_issue_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1021,43 +816,6 @@ def test_run_prepare_without_marker_keeps_first_scan_behavior(tmp_path: Path) ->
     assert stats["ISSUES_PREVIOUSLY_SCANNED"] == 0
     assert stats["ISSUES_SELECTED"] == 1
     assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [8]
-
-
-def test_prepare_main_full_includes_prior_window(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    _write_scan_marker(tmp_path, highest_scanned=10)
-    rows = [
-        _issue(9, "[BUG] already scanned", STRUCTURED_BODY),
-        _issue(11, "[BUG] newly closed", STRUCTURED_BODY),
-    ]
-    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
-    out_dir = tmp_path / "out"
-
-    assert learn_from_bugs.prepare_main(
-        [
-            "--repo",
-            "o/r",
-            "--out",
-            str(out_dir),
-            "--root",
-            str(tmp_path),
-            "--full",
-        ]
-    ) == 0
-
-    stats = dict(
-        line.split("=", 1)
-        for line in capsys.readouterr().out.splitlines()
-        if "=" in line
-    )
-    assert stats["INCREMENTAL"] == "false"
-    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == "1"
-    assert stats["ISSUES_SELECTED"] == "2"
-    assert _digest_numbers(out_dir / "digest-01.jsonl") == [9, 11]
 
 
 def test_run_prepare_highest_issue_number_uses_unfiltered_rows(tmp_path: Path) -> None:
@@ -1235,62 +993,6 @@ def test_run_prepare_indexes_unmarked_root_guidelines(tmp_path: Path) -> None:
     ]
 
 
-def test_prepare_main_pages_digest_and_emits_each_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    rows = [_issue(index, f"[BUG] {index}", STRUCTURED_BODY) for index in range(1, 4)]
-    records = [
-        json.dumps(learn_from_bugs.build_digest(row).to_json(), ensure_ascii=True) + "\n"
-        for row in rows
-    ]
-    token_limit = max(
-        (len(record) + learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE - 1)
-        // learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
-        for record in records
-    )
-    monkeypatch.setattr(learn_from_bugs, "DIGEST_CHUNK_TOKEN_LIMIT", token_limit)
-    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
-    out_dir = tmp_path / "run"
-
-    assert learn_from_bugs.prepare_main(
-        [
-            "--repo",
-            "o/r",
-            "--out",
-            str(out_dir),
-            "--root",
-            str(tmp_path),
-        ]
-    ) == 0
-
-    output_lines = capsys.readouterr().out.splitlines()
-    digest_paths = [
-        Path(line.removeprefix("DIGEST_PATH="))
-        for line in output_lines
-        if line.startswith("DIGEST_PATH=")
-    ]
-    max_chars = token_limit * learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
-    stats = dict(line.split("=", 1) for line in output_lines if "=" in line)
-
-    assert [path.name for path in digest_paths] == [
-        "digest-01.jsonl",
-        "digest-02.jsonl",
-        "digest-03.jsonl",
-    ]
-    assert all(len(path.read_text(encoding="utf-8")) <= max_chars for path in digest_paths)
-    assert [number for path in digest_paths for number in _digest_numbers(path)] == [1, 2, 3]
-    assert "DIGEST_PATHS" not in stats
-    assert stats["GUIDELINES_INDEX_STATUS"] == "missing"
-    assert int(stats["DIGEST_TOKENS_EST"]) == (
-        sum(len(record) for record in records)
-        + learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
-        - 1
-    ) // learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
-
-
 def test_run_prepare_default_chunk_bound_splits_large_corpus(tmp_path: Path) -> None:
     large_body = (
         "## Summary\n\n"
@@ -1377,59 +1079,6 @@ def test_run_prepare_filters_explicit_default_search_to_bug_titles(tmp_path: Pat
     assert stats["ISSUES_SELECTED"] == 2
     assert stats["ISSUES_FILTERED_NON_BUG"] == 1
     assert _digest_numbers(out_dir / "digest-01.jsonl") == [1, 2]
-
-
-def test_prepare_main_filters_explicit_search_results(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    rows = [_issue(3, "[FEATURE] discusses bugs", FREEFORM_BODY)]
-    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
-    out_dir = tmp_path / "run"
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
-
-    rc = learn_from_bugs.prepare_main(
-        [
-            "--search",
-            learn_from_bugs.DEFAULT_SEARCH,
-            "--repo",
-            "o/r",
-            "--out",
-            str(out_dir),
-            "--root",
-            str(tmp_path),
-        ]
-    )
-
-    stdout = capsys.readouterr().out
-    stats = dict(line.split("=", 1) for line in stdout.splitlines() if "=" in line)
-    assert rc == 0
-    assert stats["ISSUES_SELECTED"] == "0"
-    assert stats["ISSUES_FILTERED_NON_BUG"] == "1"
-    assert _digest_numbers(out_dir / "digest-01.jsonl") == []
-
-
-def test_prepare_main_rejects_abbreviated_search_flag(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = RecordingRunner(responses=[], strict=True)
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
-
-    with pytest.raises(SystemExit):
-        learn_from_bugs.prepare_main(
-            [
-                "--sear",
-                learn_from_bugs.DEFAULT_SEARCH,
-                "--repo",
-                "o/r",
-                "--out",
-                str(tmp_path / "run"),
-                "--root",
-                str(tmp_path),
-            ]
-        )
 
 
 def _proposal(
@@ -2339,39 +1988,6 @@ def test_check_proposals_main_accepts_symlinked_ancestor_out_dir(
     assert Path(out["ADOPTION_SUMMARY_PATH"]) == real.resolve() / "adoption-summary.md"
 
 
-def test_prepare_main_accepts_symlinked_ancestor_out_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The sibling prepare verb also canonicalizes a symlinked --out ancestor."""
-    real = tmp_path / "real"
-    real.mkdir()
-    alias = tmp_path / "alias"
-    alias.symlink_to(real, target_is_directory=True)
-    rows = [_issue(1, "[BUG] a", STRUCTURED_BODY)]
-    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
-
-    rc = learn_from_bugs.prepare_main(
-        [
-            "--search",
-            learn_from_bugs.DEFAULT_SEARCH,
-            "--repo",
-            "o/r",
-            "--out",
-            str(alias / "run"),
-            "--root",
-            str(tmp_path),
-        ]
-    )
-
-    assert rc == 0
-    assert (real / "run" / "digest-01.jsonl").is_file()
-    assert (real / "run" / "coverage-index.json").is_file()
-    assert (real / "run" / "origin-headline.md").is_file()
-    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
-    assert Path(out["DIGEST_PATH"]) == real.resolve() / "run" / "digest-01.jsonl"
-
-
 def test_check_proposals_main_refuses_symlinked_destination_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2836,15 +2452,6 @@ def test_resolve_zones_preserves_shell_metacharacters() -> None:
     assert query == "[BUG] (design$(boom) OR impl;rm) in:title,body"
 
 
-def test_resolve_zones_main_emits_resolved_search(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    rc = learn_from_bugs.resolve_zones_main(["--zones", "design,implement"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert out.strip() == "RESOLVED_SEARCH=[BUG] (design OR implement) in:title,body"
-
-
 # --- Origin headline + report contract --------------------------------------
 
 
@@ -3186,7 +2793,7 @@ def test_state_publish_writes_local_state_without_git(
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
     assert out == {"STATE_PUBLISH_STATUS": "saved", "STATE_PATH": str(state_path)}
     assert len(runner.calls) == 1
-    assert runner.calls[0][2:4] == ["learn-from-bugs", "write-state"]
+    assert runner.calls[0][1:3] == ["learn-from-bugs", "write-state"]
     assert all(token not in runner.calls[0] for token in ("git", "gh", "pr"))
 
 def test_state_publish_write_failure_has_no_recovery_branch(

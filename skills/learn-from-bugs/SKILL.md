@@ -68,7 +68,7 @@ Decide the gh search query:
 - If `--zones "a,b"` was given alone, trim each comma-separated zone name, reject an empty list or empty zone names, treat zone text as untrusted search data, and resolve through the zone CLI helper. Parse only its whole-line `RESOLVED_SEARCH=` output. Example: `--zones "design,implement"` → `[BUG] (design OR implement) in:title,body`. Set `SEARCH_EXPLICIT=true` and keep the resolved query on the existing `RESOLVED_SEARCH` / `SEARCH_ARGS` preparation route.
 
 ```bash
-if ! ZONE_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs resolve-zones --zones "$ZONES_CSV"); then
+if ! ZONE_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs resolve-zones --zones "$ZONES_CSV"); then
   exit 2
 fi
 RESOLVED_SEARCH=
@@ -92,7 +92,7 @@ State the resolved query, count, and filing-mode flag back to the operator in on
 <!-- step:2 - Prepare the digest and coverage index -->
 ## Step 2 - Prepare the digest and coverage index
 
-Create a scratch run directory and run the prepare verb. Pass the plugin's `cli.py` via `${CLAUDE_PLUGIN_ROOT}`, and scan `ANALYSIS_ROOT`, the target repository checkout, for its existing enforcement surface. When Step 1 parsed an explicit `--repo`, forward it into preparation so mining and prepared `REPO` refer to the selected repository. Do not continue unless the supplied `--root` is that repository's checkout.
+Create a scratch run directory and run the Rust prepare verb through the verified plugin bootstrap, and scan `ANALYSIS_ROOT`, the target repository checkout, for its existing enforcement surface. When Step 1 parsed an explicit `--repo`, forward it into preparation so mining and prepared `REPO` refer to the selected repository. Do not continue unless the supplied `--root` is that repository's checkout.
 
 ```bash
 RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/learn-from-bugs.XXXXXX")
@@ -108,7 +108,7 @@ REPO_ARGS=()
 if [ -n "${REPO:-}" ]; then
   REPO_ARGS=(--repo "$REPO")
 fi
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs prepare \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs prepare \
   "${FULL_ARGS[@]}" \
   "${SEARCH_ARGS[@]}" \
   "${REPO_ARGS[@]}" \

@@ -54,6 +54,7 @@ mod issue_mutation_support;
 mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
+mod learn_from_bugs_commands;
 mod oos_commands;
 mod oos_file_commands;
 mod progress_commands;
@@ -204,6 +205,9 @@ enum Domain {
     /// Bounded filed-bug evidence and verification commands.
     #[command(subcommand, name = "analyze-bugs")]
     AnalyzeBugs(AnalyzeBugsCommand),
+    /// Prepare compact bug-learning evidence and maintain its durable marker.
+    #[command(subcommand, name = "learn-from-bugs")]
+    LearnFromBugs(LearnFromBugsCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -443,6 +447,25 @@ enum AnalyzeBugsCommand {
     /// Render the report-only bug-verification result and optional follow-up body.
     #[command(disable_help_flag = true)]
     Report(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum LearnFromBugsCommand {
+    /// Fetch and compact closed bug reports into bounded artifacts.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Index the checkout's existing enforcement surface.
+    #[command(name = "coverage-index", disable_help_flag = true)]
+    CoverageIndex(RawCompatibilityArguments),
+    /// Read the durable learn-from-bugs marker.
+    #[command(name = "read-state", disable_help_flag = true)]
+    ReadState(RawCompatibilityArguments),
+    /// Atomically update the durable learn-from-bugs marker.
+    #[command(name = "write-state", disable_help_flag = true)]
+    WriteState(RawCompatibilityArguments),
+    /// Render one zone-list GitHub search expression.
+    #[command(name = "resolve-zones", disable_help_flag = true)]
+    ResolveZones(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1615,6 +1638,23 @@ fn run(
             }
             AnalyzeBugsCommand::Report(arguments) => {
                 analyze_bugs_commands::report(&arguments.arguments)
+            }
+        }),
+        Domain::LearnFromBugs(command) => Ok(match command {
+            LearnFromBugsCommand::Prepare(arguments) => {
+                learn_from_bugs_commands::prepare(&arguments.arguments)
+            }
+            LearnFromBugsCommand::CoverageIndex(arguments) => {
+                learn_from_bugs_commands::coverage_index_command(&arguments.arguments)
+            }
+            LearnFromBugsCommand::ReadState(arguments) => {
+                learn_from_bugs_commands::read_state(&arguments.arguments)
+            }
+            LearnFromBugsCommand::WriteState(arguments) => {
+                learn_from_bugs_commands::write_state(&arguments.arguments)
+            }
+            LearnFromBugsCommand::ResolveZones(arguments) => {
+                learn_from_bugs_commands::resolve_zones(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {

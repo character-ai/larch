@@ -25,7 +25,7 @@ use larch_core::{
     ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueList, GitHubIssueState,
     GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER, ProcessErrorKind, RepositoryRead,
     Revision, bug_title_match, emit_kv, epoch_now, private_atomic_write, require_enabled_storage,
-    resolve_run_log_storage, strip_named_block,
+    strip_named_block,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
@@ -2530,12 +2530,14 @@ fn state_root(parsed: &ParsedCommandLine, repo: &str) -> Result<PathBuf, String>
                 .map_err(|_| "could not resolve analysis-state root".to_owned())
         };
     }
-    let (repo_root, origin, environment) =
-        crate::run_log_commands::resolve_repository_environment_path(None)
-            .map_err(|_| "could not resolve analysis-state root".to_owned())?;
-    let storage = resolve_run_log_storage(&repo_root, &environment, &origin)
-        .and_then(|resolution| require_enabled_storage(&resolution))
-        .map_err(|error| error.to_string())?;
+    let environment = crate::run_log_commands::resolve_repository_environment_path(None)
+        .map_err(|_| "could not resolve analysis-state root".to_owned())?;
+    let (_, resolution, _) = crate::run_log_commands::resolve_storage_from_environment(environment)
+        .map_err(|error| match error {
+            crate::run_log_commands::PreflightFailure::Configuration(error) => error.to_string(),
+            crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
+        })?;
+    let storage = require_enabled_storage(&resolution).map_err(|error| error.to_string())?;
     let home = env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|value| PathBuf::from(value).join(".local/state")))
