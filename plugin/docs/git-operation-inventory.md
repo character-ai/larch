@@ -40,6 +40,7 @@ crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/launcher_support.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/learn_from_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_network.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_rebase.rs	git-cli	#7671	typed-cli,typed-read
@@ -85,7 +86,6 @@ python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/analyze_bugs.py	later-domain	#7682	diff,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/audit_runs.py	later-domain	#7682	branch,config,fetch,pull,rev-parse,status
-python/larch/issue/learn_from_bugs.py	later-domain	#7682	dynamic
 python/larch/issue/migration_governance.py	later-domain	#7682	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7682	dynamic
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic

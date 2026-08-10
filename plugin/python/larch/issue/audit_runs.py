@@ -21,10 +21,10 @@ from larch.core import config
 from larch.state import session_env as _session_env_audit
 from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import proc
+from larch.core.repo_roots import larch_entrypoint
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
 from larch.errors import ShipError
 from larch.git import gh
-from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
 from larch.report import run_log_corpus
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
@@ -181,6 +181,37 @@ def _bugs_backlog_nudge_count(*, repo: str, boundary: datetime) -> int | None:
     return count
 
 
+def _learn_from_bugs_scan_boundary(root: Path) -> tuple[str, str] | None:
+    """Read the Rust-owned durable marker through its public wire contract."""
+    result = proc.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "learn-from-bugs",
+            "read-state",
+            "--root",
+            str(root),
+        ]
+    )
+    if result.returncode != 0:
+        return None
+    required = ("LEARN_FROM_BUGS_STATE_FOUND", "REPO", "RUN_DATE")
+    rows: dict[str, str] = {}
+    counts = dict.fromkeys(required, 0)
+    for line in result.stdout.splitlines():
+        for key in (*required, "SCAN_STARTED_AT"):
+            prefix = f"{key}="
+            if line.startswith(prefix):
+                rows[key] = line.removeprefix(prefix)
+                if key in counts:
+                    counts[key] += 1
+    if rows.get("LEARN_FROM_BUGS_STATE_FOUND") != "true":
+        return None
+    if any(counts[key] != 1 for key in required):
+        return None
+    boundary = rows.get("SCAN_STARTED_AT") or rows["RUN_DATE"]
+    return rows["REPO"], boundary
+
+
 def bugs_backlog_nudge_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py audit-runs bugs-backlog-nudge", allow_abbrev=False)
     parser.add_argument("--repo", required=True)
@@ -190,15 +221,12 @@ def bugs_backlog_nudge_main(argv: list[str] | None = None) -> int:
     if not _valid_repo(repo):
         print("audit-runs bugs-backlog-nudge: --repo must be OWNER/REPO", file=sys.stderr)
         return 2
-    marker = learn_from_bugs.state_path(Path(args.root))
-    state = learn_from_bugs.read_state(marker)
-    if state is not None and state.repo.lower() != repo.lower():
-        state = None
-    boundary_raw = state.scan_started_at if state is not None and state.scan_started_at else (
-        state.run_date if state is not None else ""
-    )
+    scan = _learn_from_bugs_scan_boundary(Path(args.root))
+    if scan is not None and scan[0].lower() != repo.lower():
+        scan = None
+    boundary_raw = "" if scan is None else scan[1]
     boundary = _parse_utc_instant(boundary_raw)
-    if state is None or boundary is None:
+    if scan is None or boundary is None:
         print("Advisory: /learn-from-bugs has never run for this repo; consider running /learn-from-bugs.")
         return 0
     count = _bugs_backlog_nudge_count(repo=repo, boundary=boundary)

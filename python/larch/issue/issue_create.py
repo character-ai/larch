@@ -6,8 +6,8 @@ query and input verbs in #8167 and #8168, `issue create-one`,
 `issue write-sentinel`, and `issue cleanup-failed` in #8169, and the two
 issue-graph writes — `issue add-blocked-by` and `issue add-sub-issue` — in
 #8170. `parse_issue_input` stays because it is not a command: it is the
-grammar ``larch.issue.file_oos`` and ``larch.issue.learn_from_bugs`` still
-call in process, and those modules migrate with their own command leaves.
+grammar ``larch.issue.file_oos`` still calls in process, and that module
+migrates with its own command leaf.
 ``larch.issue.umbrella`` was the third caller until #8174 retired it.
 """
 

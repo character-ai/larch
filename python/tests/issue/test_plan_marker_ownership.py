@@ -19,7 +19,6 @@ EXCLUDED_PARTS: Final = frozenset({"tests", "fixtures", "__pycache__", ".mypy_ca
 REQUIRED_HELPER_CALLS: Final = (
     (Path("design/decompose.py"), "compose_named_block"),
     (Path("design/design_router.py"), "parse_named_block"),
-    (Path("issue/learn_from_bugs.py"), "named_block_marker_re"),
 )
 
 

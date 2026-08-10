@@ -152,12 +152,12 @@ PINNED_PARSE_CASES: list[tuple[str, str, list[tuple[str, str, str, str, str, boo
 
 @pytest.mark.parametrize(("name", "text", "expected"), PINNED_PARSE_CASES, ids=[case[0] for case in PINNED_PARSE_CASES])
 def test_parse_issue_input_pinned_grammar(name: str, text: str, expected: list[tuple[str, str, str, str, str, bool]]) -> None:
-    """Pin the grammar `file_oos`, `umbrella`, and `learn_from_bugs` still consume.
+    """Pin the grammar `file_oos` and `umbrella` still consume.
 
     `issue parse-input` itself is Rust owned after #8168; the byte-for-byte
     command contract is pinned by the `issue-parse-input-*` parity goldens and
     `crates/larch-core/tests/issue_input.rs`. What remains here is the library
-    those three Python modules call in process.
+    those two Python modules call in process.
     """
     items, _mode = issue_create.parse_issue_input(text)
     assert [(item.title, item.body, item.reviewer, item.vote, item.phase, item.malformed) for item in items] == expected, name

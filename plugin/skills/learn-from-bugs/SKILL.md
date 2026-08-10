@@ -131,7 +131,7 @@ After preparation and before clustering, refresh every prior proposal against th
 
 ```bash
 CHECK_RC=0
-CHECK_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs check-proposals \
+CHECK_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs check-proposals \
   --root "$ANALYSIS_ROOT" \
   --repo "$REPO" \
   --proposals-out "$RUN_DIR/checked-proposals.jsonl" \
@@ -185,7 +185,7 @@ After the report's proposal sections are final, build exactly one `${RUN_DIR}/re
 Before printing the report, publishing state, or beginning filing-mode work, validate the report contract:
 
 ```bash
-if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report \
+if ! "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs validate-report \
   --report "${RUN_DIR}/report.md" \
   --headline "$ORIGIN_HEADLINE_PATH"; then
   exit 2
@@ -206,7 +206,7 @@ Run the whole fragment as one Bash call. `learn-from-bugs state-publish` writes 
 set -euo pipefail
 
 STATE_PUBLISH_RESULT="$RUN_DIR/state-publication-result.env"
-if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish \
+if ! "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs state-publish \
   --root "$ANALYSIS_ROOT" \
   --repo "$REPO" \
   --run-dir "$RUN_DIR" \
@@ -293,7 +293,7 @@ After grouping and the completeness pass, run the deterministic dependency pre-p
 
 ```bash
 DEPS_RC=0
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs filing-deps \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs filing-deps \
   --input-file "$RUN_DIR/batch-issues.md" \
   --proposal-map-file "$RUN_DIR/proposal-batch-map.tsv" \
   --proposal-deps-file "$RUN_DIR/proposal-deps.tsv" \
