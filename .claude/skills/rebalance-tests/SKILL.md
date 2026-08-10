@@ -22,7 +22,7 @@ changes.
 ## Usage
 
 ```
-/rebalance-tests [--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N]
+/rebalance-tests [--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS]
 ```
 
 All flags are optional. The default kind is `all`. The default branch prefix is
@@ -31,22 +31,35 @@ All flags are optional. The default kind is `all`. The default branch prefix is
 ## Kinds
 
 - `harness`: Rebalances the `test-harnesses-N` shard lists in the `Makefile` by
-  LPT-packing measured `LARCH_HARNESS_TIMING` medians, then verifies real
+  packing a startup- and affinity-aware cost model, then enforces real
   per-shard CI job wall-clock (jobs API) against `--max-shard-wall-clock`
-  (default 60s). The wall-clock and sum-spread reports are warning-only.
+  (default 300s) and the input layout's observed slowest shard. The model
+  includes fixed job startup, each target's measured work, the cold-versus-warm
+  timer setup cost, and any explicitly declared compile-affinity group.
 - `python`: Rebalances pytest nodeid assignments from `--durations=0` timing
   rows into `python/shard-assignments.json`. Verification fails closed on zero
   parseable rows, incomplete shard coverage, or spread over threshold.
-- `all`: Rebalances both artifacts in one PR. Harness verification is
-  warning-only; the Python leg drives any non-zero verification exit.
+- `all`: Rebalances both artifacts in one PR. Either harness or Python
+  verification can return non-zero.
 
 ## Safety gates
 
 Before any write, branch, commit, push, or PR:
 
-1. Selected harness work fetches baseline `LARCH_HARNESS_TIMING` rows, computes
-   medians, rejects untimed shard targets, then runs `_select_packed_workload`,
-   `larch test-shard pack`, and warning-only `_check_feasibility` in memory.
+1. Selected harness work fetches schema-v2 `LARCH_HARNESS_TIMING`,
+   `LARCH_HARNESS_BOOTSTRAP`, and jobs-API rows for one exact successful-run
+   cohort. It rejects skipped runs, missing or unknown bootstrap rows,
+   incompatible target-mark counts, shard-coverage differences, and inventory
+   drift before deriving the model. Fixed startup is the residual of each real
+   job wall-clock after its child and bootstrap rows; target work retains its
+   measured median plus each warm bootstrap; cold-minus-warm setup is charged
+   once to every nonempty shard. `--compile-affinity TARGET=GROUP:SECONDS`
+   declares a known shared compile context; its extra setup is charged once,
+   and zero preserves co-location without inventing a second measured cost.
+   `larch test-shard pack` keeps named affinity groups together. The planner compares active
+   runner counts and retains empty matrix cells when opening them would raise
+   summed runner cost. A predicted slowest shard may not exceed either the
+   current model or the approved wall-clock threshold.
 2. Selected Python work fetches baseline `python-tests` `call` rows, rejects
    zero parseable rows, dedupes latest attempts per `(run_id, shard)` before
    median computation, validates observed CI shard count against
@@ -68,9 +81,19 @@ the run. Rollback restores staged state before checking out each written path.
 
 After PR creation, one shared `n_verify_runs` `workflow_dispatch` loop runs for
 every selected kind. Only after those runs complete does the script collect
-leg-specific verification timing. Harness spread remains informational. Python
+leg-specific verification timing. Harness verification fails closed when the
+exact verification cohort is incomplete or incompatible, when the measured
+slowest shard exceeds `--max-shard-wall-clock` or the approved input-layout
+threshold, or when median summed harness-runner time regresses. Python
 verification fails closed on empty data, missing shard ids, or spread above
 `--balance-threshold`.
+
+An unchanged harness layout also exits non-zero when its exact baseline jobs-API
+cohort exceeds `--max-shard-wall-clock`; an ordinary no-op is not an exemption.
+
+`--experimental-wall-clock-override NOTE` is the sole exception for a
+documented experiment. It can acknowledge a predicted or measured wall-clock
+regression, but never bypasses missing, stale, or incompatible timing evidence.
 
 Merge stays operator-owned.
 
@@ -107,7 +130,9 @@ Forward all args from the skill invocation to the script unchanged.
 | `--n-verify-runs` | `3` | Verification CI runs to trigger after PR creation |
 | `--n-python-shards` | auto-detected | Expected `python-tests` matrix shard count; inferred from CI when omitted |
 | `--balance-threshold` | `15` | Max acceptable sum-estimate shard spread in seconds |
-| `--max-shard-wall-clock` | `60` | Real harness shard CI job wall-clock budget in seconds |
+| `--max-shard-wall-clock` | `300` | Enforced real harness shard CI job wall-clock budget in seconds |
+| `--experimental-wall-clock-override NOTE` | unset | Documented one-off experiment that may continue after a predicted or measured wall-clock regression; evidence failures still stop the run |
+| `--compile-affinity TARGET=GROUP:SECONDS` | unset | Repeat for known shared-compile targets; `SECONDS` is extra one-time setup beyond marked child time (zero is allowed) |
 | `--workflow` | `ci.yaml` | Workflow file name |
 | `--baseline-branch` | `main` | Branch to fetch baseline timings from |
 
@@ -115,10 +140,10 @@ Forward all args from the skill invocation to the script unchanged.
 
 | Surface | Responsibility |
 |--------|---------------|
-| `larch ci-timing harness` | Typed successful-run log fetch, harness parsing, medians, shard totals, and untimed-target detection |
+| `larch ci-timing harness` | Typed successful-run log fetch, raw harness and bootstrap rows, schema-v2 cohort identifiers, medians, shard totals, and untimed-target detection |
 | `larch ci-timing pytest` | Typed successful-run log fetch, pytest parsing, retry dedup, medians, and shard totals |
 | `larch ci-timing jobs` | Typed Actions jobs fetch and real wall-clock medians |
-| `larch test-shard pack` | Deterministic LPT packing for harness targets and temporary Python nodeid assignment data |
+| `larch test-shard pack` | Deterministic LPT packing with fixed-startup and explicit named-affinity setup costs for harness targets, plus temporary Python nodeid assignment data |
 | `larch test-shard read-makefile` / `write-makefile` | Literal single-line `test-harnesses-N:` grammar parsing and atomic emission |
 | `python/pytest_sharding.py` | Assignment-map loading and pytest collection selection |
 | `python/larch/git/gh.py` | Verification workflow dispatch while that workflow remains Python-owned |

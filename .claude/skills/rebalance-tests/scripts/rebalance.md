@@ -7,8 +7,10 @@ unit-test lanes, or both. It samples recent baseline CI timings, runs selected
 pre-write gates in memory, writes selected artifacts, opens one PR, runs shared
 verification CI, and reports before and after shard totals.
 
-Harness verification is warning-only. Python verification fails closed on empty
-or incomplete timing data or spread above the configured threshold.
+Harness verification is authoritative: it fails closed on incomplete timing
+evidence, a slowest-shard threshold violation, or increased summed harness
+runner time. Python verification also fails closed on empty or incomplete timing
+data or spread above the configured threshold.
 
 ## Primary callers
 
@@ -24,9 +26,11 @@ or incomplete timing data or spread above the configured threshold.
 | `--n-runs` | `5` | Number of baseline CI runs to sample, from 1 through 20. |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch name. |
 | `--n-verify-runs` | `3` | Number of verification CI runs to trigger. |
-| `--n-python-shards` | `4` | Expected `python-tests` matrix shard count. |
+| `--n-python-shards` | auto-detected | Expected `python-tests` matrix shard count. |
 | `--balance-threshold` | `15.0` | Maximum acceptable timing-spread threshold in seconds. |
-| `--max-shard-wall-clock` | `60.0` | Harness real per-shard CI job wall-clock budget. |
+| `--max-shard-wall-clock` | `300.0` | Enforced harness real per-shard CI job wall-clock budget. |
+| `--experimental-wall-clock-override NOTE` | unset | Documented experiment that may continue after a predicted or measured wall-clock regression; it cannot bypass missing or incompatible evidence. |
+| `--compile-affinity TARGET=GROUP:SECONDS` | unset | Repeat for known shared-compile targets; `SECONDS` is additional one-time setup beyond marked child time and may be zero for co-location only. |
 | `--workflow` | `ci.yaml` | Workflow file used for baseline and verification runs. |
 | `--baseline-branch` | `main` | Branch used for baseline timing data. |
 
@@ -35,30 +39,36 @@ or incomplete timing data or spread above the configured threshold.
 ### Harness leg
 
 When `--kind harness` or `--kind all` is selected, the script fetches baseline
-`LARCH_HARNESS_TIMING` data through `larch ci-timing harness`. The Rust command
-uses the typed Actions adapter, parses workflow archives, computes medians and
-shard totals, and identifies untimed targets. The script validates the exact
-schema-v1 field order before running the `untimed_targets` hard gate. Empty
-harness rows or any untimed target abort non-zero before any write. The
-selected workload is packed in memory only:
+`LARCH_HARNESS_TIMING` and `LARCH_HARNESS_BOOTSTRAP` data through `larch
+ci-timing harness`, then jobs-API wall-clock rows for the exact
+`sampled_run_ids` cohort. The Rust command uses the typed Actions adapter,
+preserves raw rows, computes medians and shard totals, and identifies untimed
+targets. The script validates exact schema-v2 field order and rejects empty or
+skipped runs, missing or unknown bootstrap rows, incompatible target-mark
+counts, shard-coverage differences, and target inventory drift before any
+write.
 
-```python
-measured = _select_packed_workload(medians, all_shard_targets)
-new_shards = _pack_shards(measured, n_shards, guard=_GUARD)
-_check_feasibility(new_shards, medians, balance_threshold)
-```
+For each sampled job, fixed startup is the jobs-API wall-clock less all child
+and bootstrap rows. Each target keeps its aggregate child median plus a warm
+bootstrap for every marker it emits; cold-minus-warm bootstrap time is charged
+once to every nonempty shard. The Rust packer receives that fixed startup and
+any explicit `--compile-affinity TARGET=GROUP:SECONDS` contracts, preserving
+named compile-affinity groups and charging their extra setup once rather than
+duplicating it on fresh runners. The post-cleanup inventory currently has no
+Cargo-backed targets, so it needs no affinity declaration; a future reviewed
+exception must declare one before rebalance. The planner compares active-runner counts and keeps matrix
+cells empty when a new cold setup would raise summed runner cost. A proposal is
+rejected unless its predicted slowest shard is no worse than both the current model and
+`min(--max-shard-wall-clock, baseline observed slowest)`.
 
-The feasibility check is warning-only. It runs on packed shard totals after
-`_select_packed_workload` and Rust `larch test-shard pack`, not on raw medians
-alone. Reading and writing the `test-harnesses-N:` lines likewise enter the
-verified bootstrap through `larch test-shard read-makefile` and
-`larch test-shard write-makefile`.
+Reading and writing the `test-harnesses-N:` lines enter the verified bootstrap
+through `larch test-shard read-makefile` and `larch test-shard write-makefile`.
 
 ### Python leg
 
 When `--kind python` or `--kind all` is selected, the script fetches recent
 successful `ci.yaml` timing through `larch ci-timing pytest` and validates its
-exact schema-v1 field order. Rust parses `python-tests` `call` rows, dedupes
+exact schema-v2 field order. Rust parses `python-tests` `call` rows, dedupes
 retried shard attempts, computes nodeid and shard medians, and reports the
 observed shard count. The script aborts on zero rows, conflicting or mismatched
 shard counts, or empty medians. Nodeids are LPT-packed into shard ids `1..n` in
@@ -91,11 +101,19 @@ failure restores the original branch before artifact rollback.
 
 After PR creation, every selected kind uses one shared `n_verify_runs`
 `workflow_dispatch` loop on the PR branch before any leg-specific verification
-collection. Harness real-wall-clock and sum-spread reports remain warning-only.
-Python verification collects `python-tests` rows after dispatch completes and
-fails closed on zero rows, missing shard coverage, or spread over
-`--balance-threshold`. Under `--kind all`, only Python verification can force a
-non-zero exit.
+collection. Harness verification requires a complete same-run jobs and
+bootstrap cohort, prints predicted and observed per-shard tables, and fails if
+the measured slowest shard exceeds either configured or approved wall-clock
+thresholds or if median summed harness-runner time exceeds the input-layout
+baseline. Python verification collects `python-tests` rows after dispatch
+completes and fails closed on zero rows, missing shard coverage, or spread over
+`--balance-threshold`. Under `--kind all`, either leg can force a non-zero exit.
+An unchanged harness layout also exits non-zero when its exact baseline jobs-API
+cohort exceeds `--max-shard-wall-clock`.
+
+`--experimental-wall-clock-override NOTE` permits only a documented experiment
+to continue after a predicted or measured wall-clock regression. It never
+permits a missing, stale, skipped, or incompatible timing cohort.
 
 ## Edit in sync
 

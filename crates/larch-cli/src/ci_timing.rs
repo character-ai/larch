@@ -10,7 +10,7 @@ use std::{collections::HashSet, io::Write as _, path::Path, process::ExitCode};
 
 #[derive(Subcommand)]
 pub enum CiTimingCommand {
-    /// Collect `LARCH_HARNESS_TIMING` rows and their medians.
+    /// Collect harness timing and bootstrap rows with their medians.
     Harness(HarnessArguments),
     /// Collect real harness-job wall-clock durations from the jobs API.
     Jobs(JobArguments),

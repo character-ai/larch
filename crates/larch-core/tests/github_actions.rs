@@ -341,12 +341,6 @@ fn ci_timing_jobs_aggregates_typed_wall_clock_records() {
                 name: "test-harnesses (1)".to_owned(),
                 status: "completed".to_owned(),
                 conclusion: Some("success".to_owned()),
-                wall_clock_seconds: Some(50.0),
-            },
-            WorkflowJob {
-                name: "test-harnesses (1)".to_owned(),
-                status: "completed".to_owned(),
-                conclusion: Some("success".to_owned()),
                 wall_clock_seconds: Some(54.0),
             },
             WorkflowJob {
@@ -387,11 +381,53 @@ fn ci_timing_jobs_aggregates_typed_wall_clock_records() {
 
     assert_eq!(report.rows.len(), 4);
     assert_eq!(report.rows[0].run_id, 101);
+    assert_eq!(report.sampled_run_ids, [101, 102]);
     assert!(report.skipped_run_ids.is_empty());
     assert_eq!(
         serde_json::to_string(&report).expect("serialize jobs report"),
-        r#"{"schema_version":1,"kind":"jobs","rows":[{"run_id":101,"shard":1,"seconds":54.0},{"run_id":101,"shard":2,"seconds":40.0},{"run_id":102,"shard":1,"seconds":54.0},{"run_id":102,"shard":2,"seconds":40.0}],"shard_medians":[{"shard":1,"seconds":54.0},{"shard":2,"seconds":40.0}],"skipped_run_ids":[]}"#
+        r#"{"schema_version":2,"kind":"jobs","sampled_run_ids":[101,102],"rows":[{"run_id":101,"shard":1,"seconds":54.0},{"run_id":101,"shard":2,"seconds":40.0},{"run_id":102,"shard":1,"seconds":54.0},{"run_id":102,"shard":2,"seconds":40.0}],"shard_medians":[{"shard":1,"seconds":54.0},{"shard":2,"seconds":40.0}],"skipped_run_ids":[]}"#
     );
+}
+
+#[test]
+fn ci_timing_jobs_skips_an_ambiguous_duplicate_harness_shard() {
+    let service = fake(
+        Ok(completed_run()),
+        Ok(archive(&[])),
+        Ok(vec![
+            WorkflowJob {
+                name: "test-harnesses (1)".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(50.0),
+            },
+            WorkflowJob {
+                name: "test-harnesses (1)".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(54.0),
+            },
+            WorkflowJob {
+                name: "test-harnesses (2)".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(40.0),
+            },
+        ]),
+    );
+    let cancellation = NeverCancelled;
+
+    let report = block_on(collect_job_timing(
+        &service,
+        &repository(),
+        &[101],
+        &cancellation,
+    ))
+    .expect("collect typed job timings");
+
+    assert!(report.rows.is_empty());
+    assert_eq!(report.sampled_run_ids, [101]);
+    assert_eq!(report.skipped_run_ids, [101]);
 }
 
 #[test]

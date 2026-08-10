@@ -13,7 +13,7 @@ use std::{
     sync::LazyLock,
 };
 
-const SCHEMA_VERSION: u8 = 1;
+const SCHEMA_VERSION: u8 = 2;
 const MAX_ARCHIVE_ENTRY_NAME_BYTES: usize = 4_096;
 const MAX_TIMING_LABEL_BYTES: usize = 16_384;
 const MAX_TIMING_REPORT_LABEL_BYTES: usize = 32 * 1024 * 1024;
@@ -22,6 +22,7 @@ const HARNESS_KIND: &str = "harness";
 const PYTEST_KIND: &str = "pytest";
 const JOBS_KIND: &str = "jobs";
 const HARNESS_SENTINEL: &str = "LARCH_HARNESS_TIMING\t";
+const HARNESS_BOOTSTRAP_SENTINEL: &str = "LARCH_HARNESS_BOOTSTRAP\t";
 
 static HARNESS_JOB_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"test-harnesses \((\d+)\)").expect("valid harness job regex"));
@@ -78,6 +79,16 @@ pub struct HarnessTimingRow {
     pub seconds: f64,
 }
 
+/// One timer-bootstrap diagnostic paired with a harness target execution.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct HarnessBootstrapRow {
+    pub run_id: u64,
+    pub shard: u32,
+    pub target: String,
+    pub bootstrap_kind: String,
+    pub seconds: f64,
+}
+
 /// One legacy pytest `--durations=0` call row.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct PytestTimingRow {
@@ -123,7 +134,9 @@ pub struct ShardTiming {
 pub struct HarnessTimingReport {
     schema_version: u8,
     kind: &'static str,
+    pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<HarnessTimingRow>,
+    pub bootstrap_rows: Vec<HarnessBootstrapRow>,
     pub target_medians: Vec<TargetTiming>,
     pub shard_medians: Vec<ShardTiming>,
     pub untimed_targets: Vec<String>,
@@ -135,6 +148,7 @@ pub struct HarnessTimingReport {
 pub struct PytestTimingReport {
     schema_version: u8,
     kind: &'static str,
+    pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<PytestTimingRow>,
     pub nodeid_medians: Vec<NodeidTiming>,
     pub shard_medians: Vec<ShardTiming>,
@@ -147,6 +161,7 @@ pub struct PytestTimingReport {
 pub struct JobTimingReport {
     schema_version: u8,
     kind: &'static str,
+    pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<JobTimingRow>,
     pub shard_medians: Vec<ShardTiming>,
     pub skipped_run_ids: Vec<u64>,
@@ -167,39 +182,54 @@ pub async fn collect_harness_timing(
     cancellation: &dyn ProcessCancellation,
 ) -> Result<HarnessTimingReport, GitHubActionsError> {
     validate_required_targets(required_targets)?;
-    let run_ids = select_run_ids(service, repository, selection, cancellation).await?;
+    let sampled_run_ids = select_run_ids(service, repository, selection, cancellation).await?;
     let mut rows = Vec::new();
+    let mut bootstrap_rows = Vec::new();
     let mut retained_label_bytes = 0;
     let mut skipped_run_ids = Vec::new();
-    for run_id in run_ids {
+    for run_id in &sampled_run_ids {
         let archive = match service
-            .download_workflow_logs(repository, run_id, cancellation)
+            .download_workflow_logs(repository, *run_id, cancellation)
             .await
         {
             Ok(archive) => archive,
             Err(error) if error.kind() == GitHubActionsErrorKind::Cancelled => return Err(error),
             Err(_) => {
-                skipped_run_ids.push(run_id);
+                skipped_run_ids.push(*run_id);
                 continue;
             }
         };
-        match parse_harness_archive(&archive, run_id) {
+        match parse_harness_archive(&archive, *run_id) {
             Ok(mut parsed) => match timing_rows_fit(
-                rows.len(),
+                rows.len().saturating_add(bootstrap_rows.len()),
                 retained_label_bytes,
-                parsed.len(),
-                parsed.iter().map(|row| row.target.as_str()),
+                parsed
+                    .rows
+                    .len()
+                    .saturating_add(parsed.bootstrap_rows.len()),
+                parsed
+                    .rows
+                    .iter()
+                    .map(|row| row.target.as_str())
+                    .chain(parsed.bootstrap_rows.iter().map(|row| row.target.as_str())),
             ) {
                 Some(next_label_bytes) => {
                     retained_label_bytes = next_label_bytes;
-                    rows.append(&mut parsed);
+                    rows.append(&mut parsed.rows);
+                    bootstrap_rows.append(&mut parsed.bootstrap_rows);
                 }
-                None => skipped_run_ids.push(run_id),
+                None => skipped_run_ids.push(*run_id),
             },
-            Err(()) => skipped_run_ids.push(run_id),
+            Err(()) => skipped_run_ids.push(*run_id),
         }
     }
-    Ok(harness_report(rows, required_targets, skipped_run_ids))
+    Ok(harness_report(
+        sampled_run_ids,
+        rows,
+        bootstrap_rows,
+        required_targets,
+        skipped_run_ids,
+    ))
 }
 
 /// Fetch, parse, and aggregate pytest timing rows.
@@ -215,23 +245,23 @@ pub async fn collect_pytest_timing(
     selection: &CiTimingRunSelection,
     cancellation: &dyn ProcessCancellation,
 ) -> Result<PytestTimingReport, GitHubActionsError> {
-    let run_ids = select_run_ids(service, repository, selection, cancellation).await?;
+    let sampled_run_ids = select_run_ids(service, repository, selection, cancellation).await?;
     let mut rows = Vec::new();
     let mut retained_label_bytes = 0;
     let mut skipped_run_ids = Vec::new();
-    for run_id in run_ids {
+    for run_id in &sampled_run_ids {
         let archive = match service
-            .download_workflow_logs(repository, run_id, cancellation)
+            .download_workflow_logs(repository, *run_id, cancellation)
             .await
         {
             Ok(archive) => archive,
             Err(error) if error.kind() == GitHubActionsErrorKind::Cancelled => return Err(error),
             Err(_) => {
-                skipped_run_ids.push(run_id);
+                skipped_run_ids.push(*run_id);
                 continue;
             }
         };
-        match parse_pytest_archive(&archive, run_id) {
+        match parse_pytest_archive(&archive, *run_id) {
             Ok(mut parsed) => match timing_rows_fit(
                 rows.len(),
                 retained_label_bytes,
@@ -242,12 +272,12 @@ pub async fn collect_pytest_timing(
                     retained_label_bytes = next_label_bytes;
                     rows.append(&mut parsed);
                 }
-                None => skipped_run_ids.push(run_id),
+                None => skipped_run_ids.push(*run_id),
             },
-            Err(()) => skipped_run_ids.push(run_id),
+            Err(()) => skipped_run_ids.push(*run_id),
         }
     }
-    Ok(pytest_report(rows, skipped_run_ids))
+    Ok(pytest_report(sampled_run_ids, rows, skipped_run_ids))
 }
 
 /// Fetch and aggregate real harness-job wall-clock durations.
@@ -255,7 +285,8 @@ pub async fn collect_pytest_timing(
 /// # Errors
 ///
 /// Returns a typed GitHub Actions error when the operation is cancelled.
-/// Individual unreadable jobs responses are reported in `skipped_run_ids`.
+/// Individual unreadable or ambiguous jobs responses are reported in
+/// `skipped_run_ids`.
 pub async fn collect_job_timing(
     service: &dyn GitHubActionsService,
     repository: &GitHubRepositoryRef,
@@ -278,7 +309,8 @@ pub async fn collect_job_timing(
             }
         };
         let mut run_rows = Vec::<JobTimingRow>::new();
-        let mut shard_indexes = HashMap::<u32, usize>::new();
+        let mut seen_shards = HashSet::<u32>::new();
+        let mut has_duplicate_shard = false;
         for job in jobs {
             let (Some(shard), Some(seconds)) = (
                 job.harness_shard().filter(|shard| *shard > 0),
@@ -287,21 +319,23 @@ pub async fn collect_job_timing(
             ) else {
                 continue;
             };
-            match shard_indexes.entry(shard) {
-                Entry::Occupied(entry) => run_rows[*entry.get()].seconds = seconds,
-                Entry::Vacant(entry) => {
-                    entry.insert(run_rows.len());
-                    run_rows.push(JobTimingRow {
-                        run_id,
-                        shard,
-                        seconds,
-                    });
-                }
+            if !seen_shards.insert(shard) {
+                has_duplicate_shard = true;
+                break;
             }
+            run_rows.push(JobTimingRow {
+                run_id,
+                shard,
+                seconds,
+            });
+        }
+        if has_duplicate_shard {
+            skipped_run_ids.push(run_id);
+            continue;
         }
         rows.extend(run_rows);
     }
-    Ok(job_report(rows, skipped_run_ids))
+    Ok(job_report(run_ids.to_vec(), rows, skipped_run_ids))
 }
 
 async fn select_run_ids(
@@ -417,6 +451,11 @@ struct ArchiveLogEntry {
     contents: String,
 }
 
+struct ParsedHarnessArchive {
+    rows: Vec<HarnessTimingRow>,
+    bootstrap_rows: Vec<HarnessBootstrapRow>,
+}
+
 fn archive_log_entries(archive: &WorkflowLogArchive) -> Result<Vec<ArchiveLogEntry>, ()> {
     let mut zip = bounded_workflow_log_archive(archive)?;
     let mut total_bytes = 0_usize;
@@ -491,8 +530,9 @@ fn normalize_step_name(path: &str) -> String {
 fn parse_harness_archive(
     archive: &WorkflowLogArchive,
     run_id: u64,
-) -> Result<Vec<HarnessTimingRow>, ()> {
+) -> Result<ParsedHarnessArchive, ()> {
     let mut rows = Vec::new();
+    let mut bootstrap_rows = Vec::new();
     for entry in archive_log_entries(archive)? {
         let Some(shard) = capture_u32(&HARNESS_JOB_RE, &entry.job_name, 1) else {
             continue;
@@ -515,8 +555,36 @@ fn parse_harness_archive(
                 seconds,
             });
         }
+        for line in entry.contents.lines() {
+            let Some(index) = line.find(HARNESS_BOOTSTRAP_SENTINEL) else {
+                continue;
+            };
+            let rest = &line[index + HARNESS_BOOTSTRAP_SENTINEL.len()..];
+            let mut fields = rest.split('\t');
+            let (Some(target), Some(bootstrap_kind), Some(seconds_text), None) =
+                (fields.next(), fields.next(), fields.next(), fields.next())
+            else {
+                continue;
+            };
+            if !matches!(bootstrap_kind.trim(), "cold" | "warm" | "unknown") {
+                continue;
+            }
+            let Some(seconds) = parse_seconds(seconds_text.trim()) else {
+                continue;
+            };
+            bootstrap_rows.push(HarnessBootstrapRow {
+                run_id,
+                shard,
+                target: target.trim().to_owned(),
+                bootstrap_kind: bootstrap_kind.trim().to_owned(),
+                seconds,
+            });
+        }
     }
-    Ok(rows)
+    Ok(ParsedHarnessArchive {
+        rows,
+        bootstrap_rows,
+    })
 }
 
 fn parse_pytest_archive(
@@ -622,14 +690,13 @@ fn parse_seconds(value: &str) -> Option<f64> {
 }
 
 fn harness_report(
+    sampled_run_ids: Vec<u64>,
     rows: Vec<HarnessTimingRow>,
+    bootstrap_rows: Vec<HarnessBootstrapRow>,
     required_targets: &[String],
     skipped_run_ids: Vec<u64>,
 ) -> HarnessTimingReport {
-    let target_medians = named_medians(rows.iter().map(|row| (row.target.as_str(), row.seconds)))
-        .into_iter()
-        .map(|(target, seconds)| TargetTiming { target, seconds })
-        .collect::<Vec<_>>();
+    let target_medians = harness_target_medians(&rows);
     let shard_medians = harness_shard_medians(&rows);
     let timed = target_medians
         .iter()
@@ -644,7 +711,9 @@ fn harness_report(
     HarnessTimingReport {
         schema_version: SCHEMA_VERSION,
         kind: HARNESS_KIND,
+        sampled_run_ids,
         rows,
+        bootstrap_rows,
         target_medians,
         shard_medians,
         untimed_targets,
@@ -652,7 +721,11 @@ fn harness_report(
     }
 }
 
-fn pytest_report(rows: Vec<PytestTimingRow>, skipped_run_ids: Vec<u64>) -> PytestTimingReport {
+fn pytest_report(
+    sampled_run_ids: Vec<u64>,
+    rows: Vec<PytestTimingRow>,
+    skipped_run_ids: Vec<u64>,
+) -> PytestTimingReport {
     let groups = pytest_groups(&rows);
     let latest_rows = groups
         .iter()
@@ -671,6 +744,7 @@ fn pytest_report(rows: Vec<PytestTimingRow>, skipped_run_ids: Vec<u64>) -> Pytes
     PytestTimingReport {
         schema_version: SCHEMA_VERSION,
         kind: PYTEST_KIND,
+        sampled_run_ids,
         rows,
         nodeid_medians,
         shard_medians,
@@ -679,11 +753,16 @@ fn pytest_report(rows: Vec<PytestTimingRow>, skipped_run_ids: Vec<u64>) -> Pytes
     }
 }
 
-fn job_report(rows: Vec<JobTimingRow>, skipped_run_ids: Vec<u64>) -> JobTimingReport {
+fn job_report(
+    sampled_run_ids: Vec<u64>,
+    rows: Vec<JobTimingRow>,
+    skipped_run_ids: Vec<u64>,
+) -> JobTimingReport {
     let shard_medians = shard_medians(rows.iter().map(|row| (row.shard, row.seconds)));
     JobTimingReport {
         schema_version: SCHEMA_VERSION,
         kind: JOBS_KIND,
+        sampled_run_ids,
         rows,
         shard_medians,
         skipped_run_ids,
@@ -767,29 +846,37 @@ fn harness_groups(rows: &[HarnessTimingRow]) -> Vec<Vec<&HarnessTimingRow>> {
 fn harness_shard_medians(rows: &[HarnessTimingRow]) -> Vec<ShardTiming> {
     shard_medians(harness_groups(rows).into_iter().map(|group| {
         let shard = group[0].shard;
-        (shard, latest_harness_attempt_total(&group))
+        (shard, group.iter().map(|row| row.seconds).sum())
     }))
 }
 
-fn latest_harness_attempt_total(rows: &[&HarnessTimingRow]) -> f64 {
-    let unique_targets = rows
-        .iter()
-        .map(|row| row.target.as_str())
-        .collect::<HashSet<_>>();
-    if unique_targets.len() == 1 {
-        return rows.last().map_or(0.0, |row| row.seconds);
-    }
-    let first_target = rows[0].target.as_str();
-    let mut previous_target = first_target;
-    let mut total = 0.0;
-    for (index, row) in rows.iter().enumerate() {
-        if index > 0 && row.target != previous_target && row.target == first_target {
-            total = 0.0;
+fn harness_target_medians(rows: &[HarnessTimingRow]) -> Vec<TargetTiming> {
+    let mut target_totals = Vec::<(String, f64)>::new();
+    for shard_rows in harness_groups(rows) {
+        let mut totals = Vec::<(String, f64)>::new();
+        let mut indexes = HashMap::<String, usize>::new();
+        for row in shard_rows {
+            let index = match indexes.entry(row.target.clone()) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => {
+                    let index = totals.len();
+                    totals.push((entry.key().clone(), 0.0));
+                    entry.insert(index);
+                    index
+                }
+            };
+            totals[index].1 += row.seconds;
         }
-        total += row.seconds;
-        previous_target = &row.target;
+        target_totals.extend(totals);
     }
-    total
+    named_medians(
+        target_totals
+            .iter()
+            .map(|(target, seconds)| (target.as_str(), *seconds)),
+    )
+    .into_iter()
+    .map(|(target, seconds)| TargetTiming { target, seconds })
+    .collect()
 }
 
 fn pytest_groups(rows: &[PytestTimingRow]) -> Vec<Vec<&PytestTimingRow>> {
@@ -864,14 +951,16 @@ mod tests {
     }
 
     #[test]
-    fn recorded_harness_fixture_preserves_rows_medians_attempts_and_wire_order() {
+    fn recorded_harness_fixture_preserves_aggregate_rows_medians_and_wire_order() {
         let fixture = archive(&[
             (
                 "23_test-harnesses (1).txt",
                 "2026-01-01T00:00:00Z LARCH_HARNESS_TIMING\ttest-a\t10.00s\n\
                  LARCH_HARNESS_TIMING\ttest-b\t5s\n\
                  LARCH_HARNESS_TIMING\ttest-a\t12.00s\n\
-                 LARCH_HARNESS_TIMING\ttest-b\t8.00s\n",
+                 LARCH_HARNESS_TIMING\ttest-b\t8.00s\n\
+                 LARCH_HARNESS_BOOTSTRAP\ttest-a\tcold\t1.00s\n\
+                 LARCH_HARNESS_BOOTSTRAP\ttest-b\twarm\t0.01s\n",
             ),
             (
                 "26_test-harnesses (2).txt",
@@ -882,18 +971,21 @@ mod tests {
                 "LARCH_HARNESS_TIMING\ttest-a\t100.00s\n",
             ),
         ]);
-        let rows = parse_harness_archive(&fixture, 42).expect("parse fixture");
+        let parsed = parse_harness_archive(&fixture, 42).expect("parse fixture");
         let report = harness_report(
-            rows,
+            vec![42],
+            parsed.rows,
+            parsed.bootstrap_rows,
             &[String::from("test-a"), String::from("test-missing")],
             Vec::new(),
         );
 
         assert_eq!(report.rows.len(), 5);
+        assert_eq!(report.bootstrap_rows.len(), 2);
         assert_eq!(report.untimed_targets, ["test-missing"]);
         assert_eq!(
             serde_json::to_string(&report).expect("serialize report"),
-            r#"{"schema_version":1,"kind":"harness","rows":[{"run_id":42,"shard":1,"target":"test-a","seconds":10.0},{"run_id":42,"shard":1,"target":"test-b","seconds":5.0},{"run_id":42,"shard":1,"target":"test-a","seconds":12.0},{"run_id":42,"shard":1,"target":"test-b","seconds":8.0},{"run_id":42,"shard":2,"target":"test-c","seconds":3.0}],"target_medians":[{"target":"test-a","seconds":11.0},{"target":"test-b","seconds":6.5},{"target":"test-c","seconds":3.0}],"shard_medians":[{"shard":1,"seconds":20.0},{"shard":2,"seconds":3.0}],"untimed_targets":["test-missing"],"skipped_run_ids":[]}"#
+            r#"{"schema_version":2,"kind":"harness","sampled_run_ids":[42],"rows":[{"run_id":42,"shard":1,"target":"test-a","seconds":10.0},{"run_id":42,"shard":1,"target":"test-b","seconds":5.0},{"run_id":42,"shard":1,"target":"test-a","seconds":12.0},{"run_id":42,"shard":1,"target":"test-b","seconds":8.0},{"run_id":42,"shard":2,"target":"test-c","seconds":3.0}],"bootstrap_rows":[{"run_id":42,"shard":1,"target":"test-a","bootstrap_kind":"cold","seconds":1.0},{"run_id":42,"shard":1,"target":"test-b","bootstrap_kind":"warm","seconds":0.01}],"target_medians":[{"target":"test-a","seconds":22.0},{"target":"test-b","seconds":13.0},{"target":"test-c","seconds":3.0}],"shard_medians":[{"shard":1,"seconds":35.0},{"shard":2,"seconds":3.0}],"untimed_targets":["test-missing"],"skipped_run_ids":[]}"#
         );
     }
 
@@ -911,19 +1003,19 @@ mod tests {
              2s call test_b.py::new[param]\n",
         )]);
         let rows = parse_pytest_archive(&fixture, 7).expect("parse fixture");
-        let report = pytest_report(rows, Vec::new());
+        let report = pytest_report(vec![7], rows, Vec::new());
 
         assert_eq!(report.rows.len(), 2);
         assert_eq!(report.nodeid_medians[0].nodeid, "test_b.py::new[param]");
         assert_eq!(report.observed_shard_count, Some(4));
         assert_eq!(
             serde_json::to_string(&report).expect("serialize report"),
-            r#"{"schema_version":1,"kind":"pytest","rows":[{"run_id":7,"shard":2,"nodeid":"test_a.py::old[param]","seconds":10.0,"attempt":1,"shard_total":4},{"run_id":7,"shard":2,"nodeid":"test_b.py::new[param]","seconds":2.0,"attempt":2,"shard_total":4}],"nodeid_medians":[{"nodeid":"test_b.py::new[param]","seconds":2.0}],"shard_medians":[{"shard":2,"seconds":2.0}],"observed_shard_count":4,"skipped_run_ids":[]}"#
+            r#"{"schema_version":2,"kind":"pytest","sampled_run_ids":[7],"rows":[{"run_id":7,"shard":2,"nodeid":"test_a.py::old[param]","seconds":10.0,"attempt":1,"shard_total":4},{"run_id":7,"shard":2,"nodeid":"test_b.py::new[param]","seconds":2.0,"attempt":2,"shard_total":4}],"nodeid_medians":[{"nodeid":"test_b.py::new[param]","seconds":2.0}],"shard_medians":[{"shard":2,"seconds":2.0}],"observed_shard_count":4,"skipped_run_ids":[]}"#
         );
     }
 
     #[test]
-    fn single_target_harness_retries_keep_only_the_latest_attempt() {
+    fn single_target_harness_marks_are_aggregated_as_one_target_cost() {
         let rows = vec![
             HarnessTimingRow {
                 run_id: 1,
@@ -939,7 +1031,14 @@ mod tests {
             },
         ];
 
-        assert!((harness_shard_medians(&rows)[0].seconds - 12.0).abs() < f64::EPSILON);
+        assert_eq!(harness_shard_medians(&rows)[0].seconds, 22.0);
+        assert_eq!(
+            harness_target_medians(&rows),
+            [TargetTiming {
+                target: String::from("test-solo"),
+                seconds: 22.0,
+            }]
+        );
     }
 
     #[test]
