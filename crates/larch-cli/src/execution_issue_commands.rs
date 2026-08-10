@@ -58,8 +58,8 @@ use crate::{
     python_verb::plugin_root_directory,
     run_log_entry_commands::{
         ExecutionIssueAppendOutcome, append_execution_issue as append_execution_issue_atomic,
-        append_execution_issue_filtered, read_regular_bytes, read_regular_lossy,
-        write_run_log_file,
+        append_execution_issue_filtered, read_optional_regular_lossy, read_regular_bytes,
+        read_regular_lossy, write_run_log_file,
     },
 };
 
@@ -414,31 +414,12 @@ pub fn write_execution_issue_records(
     let batch_text = match batch_path {
         Some(path) => {
             assert_no_symlink_path_or_ancestors(path)?;
-            match fs::symlink_metadata(path) {
-                Ok(metadata) if metadata.is_file() => read_lossy_required(path)?,
-                Ok(_metadata) => {
-                    return Err(format!(
-                        "execution-issues batch must be a regular file: {}",
-                        path.display()
-                    ));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-                Err(error) => return Err(format!("{}: {error}", path.display())),
-            }
+            read_optional_regular_lossy(path, "execution-issues batch must be a regular file")?
         }
         None => String::new(),
     };
-    let issue_text = match fs::symlink_metadata(issue_log) {
-        Ok(metadata) if metadata.is_file() => read_lossy_required(issue_log)?,
-        Ok(_metadata) => {
-            return Err(format!(
-                "execution-issues ledger must be a regular file: {}",
-                issue_log.display()
-            ));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(format!("{}: {error}", issue_log.display())),
-    };
+    let issue_text =
+        read_optional_regular_lossy(issue_log, "execution-issues ledger must be a regular file")?;
     let records = execution_issue_records(&issue_text, &batch_text, labels)
         .map_err(|RedactionRefusal| "redaction failed for run-log batch payload".to_owned())?;
     let payload = if records.is_empty() {
@@ -743,17 +724,7 @@ fn read_kv(path: &Path, key: &str) -> String {
 /// Read one optional KV file without collapsing an unsafe or unreadable file
 /// into a missing value.
 fn read_kv_checked(path: &Path, key: &str) -> Result<String, String> {
-    let text = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_file() => read_lossy_required(path)?,
-        Ok(_metadata) => {
-            return Err(format!(
-                "session metadata must be a regular file: {}",
-                path.display()
-            ));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(format!("{}: {error}", path.display())),
-    };
+    let text = read_optional_regular_lossy(path, "session metadata must be a regular file")?;
     let prefix = format!("{key}=");
     Ok(text
         .split('\n')
@@ -923,17 +894,8 @@ fn resolve_run_id(parent_issue: &Path, session_id: &Path) -> Result<String, Stri
     if !run_id.is_empty() {
         return Ok(run_id);
     }
-    match fs::symlink_metadata(session_id) {
-        Ok(metadata) if metadata.is_file() => {
-            Ok(read_lossy_required(session_id)?.trim().to_owned())
-        }
-        Ok(_metadata) => Err(format!(
-            "session metadata must be a regular file: {}",
-            session_id.display()
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(error) => Err(format!("{}: {error}", session_id.display())),
-    }
+    read_optional_regular_lossy(session_id, "session metadata must be a regular file")
+        .map(|value| value.trim().to_owned())
 }
 
 /// Render the metadata comment body, preserving rows this refresh does not own.

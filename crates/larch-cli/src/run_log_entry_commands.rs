@@ -181,6 +181,22 @@ pub fn read_regular_lossy(path: &Path) -> Result<String, String> {
     read_regular_bytes(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// Read one optional regular file as UTF-8 with replacement.
+///
+/// A missing file is the empty string. Other file types and metadata failures
+/// remain errors, and a regular file is opened through the no-follow reader.
+pub fn read_optional_regular_lossy(
+    path: &Path,
+    non_regular_message: &str,
+) -> Result<String, String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => read_regular_lossy(path),
+        Ok(_metadata) => Err(format!("{non_regular_message}: {}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!("{}: {error}", path.display())),
+    }
+}
+
 /// Run the Rust-owned `run-log init` command.
 #[must_use]
 pub fn init(arguments: &[OsString]) -> ExitCode {
@@ -1038,20 +1054,12 @@ pub fn append_execution_issue_filtered(
         fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     }
     assert_no_symlink_path_or_ancestors(log_file)?;
-    let batch_text = match existing_batch {
-        None => String::new(),
-        Some(path) => match fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-                return Err(format!(
-                    "refusing to read non-regular execution-issues batch: {}",
-                    path.display()
-                ));
-            }
-            Ok(_metadata) => read_regular_lossy(path)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(error) => return Err(format!("{}: {error}", path.display())),
+    let batch_text = existing_batch.map_or_else(
+        || Ok(String::new()),
+        |path| {
+            read_optional_regular_lossy(path, "refusing to read non-regular execution-issues batch")
         },
-    };
+    )?;
     let lock = log_file.with_file_name(format!("{}.lock.d", base_name(log_file)));
     acquire_append_lock(&lock)?;
     // Initialization belongs to the same critical section as read-modify-write.

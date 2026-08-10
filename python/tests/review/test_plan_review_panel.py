@@ -204,6 +204,14 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     cli.chmod(0o755)
+    bootstrap = plugin_root / "scripts" / "larch.sh"
+    rust_stub = ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"
+    bootstrap.parent.mkdir(parents=True)
+    _ = bootstrap.write_text(
+        f'#!/usr/bin/env bash\nexec python3 "{rust_stub}" "$@"\n',
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o755)
     return plugin_root
 
 

@@ -1047,6 +1047,27 @@ def _execution_issue_keys(markdown: str) -> set[tuple[str, str]]:
     return keys
 
 
+def _execution_issue_batch_keys(path: Path) -> set[tuple[str, str]]:
+    """Return valid category/body identities from one durable batch double."""
+    keys: set[tuple[str, str]] = set()
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            decoded = cast("object", json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(decoded, dict):
+            continue
+        row = cast("dict[str, object]", decoded)
+        durable_category = row.get("category")
+        durable_body = row.get("body")
+        if isinstance(durable_category, str) and isinstance(durable_body, str):
+            keys.update(
+                (durable_category, chunk.strip())
+                for chunk in _execution_issue_chunks(durable_body)
+            )
+    return keys
+
+
 def _execution_issues_append(arguments: list[str]) -> int:
     log = Path(_flag(arguments, "--log"))
     category = _flag(arguments, "--category") or "Tool Failures"
@@ -1055,14 +1076,7 @@ def _execution_issues_append(arguments: list[str]) -> int:
     known = _execution_issue_keys(existing)
     batch = _flag(arguments, "--existing-batch")
     if batch and Path(batch).is_file():
-        for raw in Path(batch).read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(row, dict) and isinstance(row.get("category"), str) and isinstance(row.get("body"), str):
-                for chunk in _execution_issue_chunks(row["body"]):
-                    known.add((row["category"], chunk.strip()))
+        known.update(_execution_issue_batch_keys(Path(batch)))
     kept: list[str] = []
     for chunk in _execution_issue_chunks(entry):
         key = (category, chunk.strip())
@@ -1093,7 +1107,7 @@ def _execution_issues_flush_common(arguments: list[str], *, clear: bool) -> int:
     print("FLUSH_STATUS=ok")
     print(f"RECORDS={records}")
     if records and clear:
-        issue_log.write_text("", encoding="utf-8")
+        _ = issue_log.write_text("", encoding="utf-8")
     return 0
 
 
