@@ -69,7 +69,7 @@ If default mode is non-interactive, terminalize with lifecycle early return, emi
 Run the default repository-state admission setup. Do not pass any skip-preflight, skip-clean, skip-branch, or skip-stash option:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup \
   --prefix claude-debate --check-reviewers
 ```
 

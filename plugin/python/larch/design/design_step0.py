@@ -273,7 +273,15 @@ def step0_session_main(argv: Sequence[str]) -> int:
         env=os.environ,
     )
     setup = subprocess.run(
-        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
+        [
+            str(repo_roots.larch_entrypoint(plugin_root)),
+            "session",
+            "setup",
+            "--prefix",
+            "claude-design",
+            "--skip-repo-check",
+            "--check-reviewers",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

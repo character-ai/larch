@@ -3,7 +3,7 @@
 Canonical session setup stem:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup
 ```
 
 Shared reviewer-session flag tail for `/research` and `/review`:

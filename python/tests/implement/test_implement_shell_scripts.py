@@ -1435,33 +1435,9 @@ def test_step18_post_terminal_logs_flush(tmp_path: Path) -> None:
     assert "FINALIZE_SUBCOMMAND=teardown" in cleanup.stdout
 
 
-def _write_session_writer_plugin(tmp_path: Path) -> Path:
-    """Return a plugin root whose bootstrap script stands in for the Rust writers.
-
-    Issue #8058 moved the session-env writers out of Python, so `session setup`
-    dispatches them through the verified bootstrap script. These cases assert on
-    the written file, so the stand-in forwards to the frozen writer reference the
-    Rust parity goldens pin byte for byte, keeping them hermetic.
-    """
-    reference = _REPO / "fixtures" / "rust-parity" / "session_env_reference.py"
-    plugin = tmp_path / "writer-plugin"
-    (plugin / "scripts").mkdir(parents=True, exist_ok=True)
-    _write_executable(
-        plugin / "scripts" / "larch.sh",
-        "#!/usr/bin/env bash\n"
-        'if [ "${1:-}" != session ]; then\n'
-        '  printf \'%s\\n\' "unexpected larch command: $*" >&2\n'
-        "  exit 64\n"
-        "fi\n"
-        "shift\n"
-        f'exec python3 "{reference}" "$@"\n',
-    )
-    return plugin
-
-
-def _token_prop_env(tmp_path: Path) -> dict[str, str]:
+def _token_prop_env() -> dict[str, str]:
     env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(_write_session_writer_plugin(tmp_path))
+    env["CLAUDE_PLUGIN_ROOT"] = str(_REPO)
     env["PYTHONPATH"] = str(_REPO / "python")
     for key in list(env):
         if key.startswith("LARCH_QUIET"):
@@ -1480,88 +1456,24 @@ def _read_session_key(env_file: Path, key: str, default: str = "") -> str:
     )
 
 
-def test_token_propagation_session_setup_forwarding(tmp_path: Path) -> None:
-    env = _token_prop_env(tmp_path)
-    timing_ledger = tmp_path / "timing-ledger.tsv"
-    implement_env = tmp_path / "implement-session-env.sh"
-    review_env = tmp_path / "review-session-env.sh"
-    claude_source = tmp_path / "claude-source.env"
-    _ = claude_source.write_text("SOURCE_FILE=/tmp/mock-transcript.jsonl\n", encoding="utf-8")
-    _ = implement_env.write_text(
+def _write_token_session_env(
+    output: Path,
+    *,
+    timing_ledger: Path,
+    claude_source: Path,
+) -> None:
+    """Seed the already-Rust-owned setup envelope for nested review consumers.
+
+    The native `session setup` matrix owns caller-env and ledger forwarding
+    coverage. These Python-only review tests begin at the envelope its consumer
+    receives, so they stay independent of the verified Rust binary fixture.
+    """
+    _ = output.write_text(
         f"REPO=owner/repo\nREPO_UNAVAILABLE=false\n"
         f"LARCH_TIMING_LEDGER={timing_ledger}\n"
         f"LARCH_TOKEN_SESSION_ID=parent-implement-session\n"
         f"LARCH_CLAUDE_SOURCE_FILE={claude_source}\n",
         encoding="utf-8",
-    )
-    setup = subprocess.run(
-        [
-            _REAL_PYTHON,
-            str(_CLI),
-            "session",
-            "setup",
-            "--prefix",
-            "claude-review-token-test",
-            "--skip-preflight",
-            "--skip-repo-check",
-            "--caller-env",
-            str(implement_env),
-            "--write-session-env",
-            str(review_env),
-        ],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert setup.returncode == 0
-    assert "LARCH_TOKEN_SESSION_ID=parent-implement-session" in setup.stdout
-    assert "LARCH_TIMING_LEDGER=" not in setup.stdout
-    assert _read_session_key(review_env, "LARCH_TOKEN_SESSION_ID") == "parent-implement-session"
-    assert _read_session_key(review_env, "LARCH_CLAUDE_SOURCE_FILE") == str(claude_source)
-    assert _read_session_key(review_env, "LARCH_TIMING_LEDGER") == str(timing_ledger)
-
-
-def test_token_propagation_unsafe_ledger_rejection(tmp_path: Path) -> None:
-    env = _token_prop_env(tmp_path)
-    claude_source = tmp_path / "claude-source.env"
-    _ = claude_source.write_text("SOURCE_FILE=/tmp/mock-transcript.jsonl\n", encoding="utf-8")
-    unsafe_env = tmp_path / "unsafe-implement-session-env.sh"
-    unsafe_review = tmp_path / "unsafe-review-session-env.sh"
-    unsafe_err = tmp_path / "unsafe-session-setup.err"
-    _ = unsafe_env.write_text(
-        f"REPO=owner/repo\nREPO_UNAVAILABLE=false\n"
-        f"LARCH_TIMING_LEDGER=/etc/passwd\n"
-        f"LARCH_TOKEN_SESSION_ID=parent-implement-session\n"
-        f"LARCH_CLAUDE_SOURCE_FILE={claude_source}\n",
-        encoding="utf-8",
-    )
-    setup = subprocess.run(
-        [
-            _REAL_PYTHON,
-            str(_CLI),
-            "session",
-            "setup",
-            "--prefix",
-            "claude-review-token-test",
-            "--skip-preflight",
-            "--skip-repo-check",
-            "--caller-env",
-            str(unsafe_env),
-            "--write-session-env",
-            str(unsafe_review),
-        ],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert setup.returncode == 0
-    _ = unsafe_err.write_text(setup.stderr, encoding="utf-8")
-    assert _read_session_key(unsafe_review, "LARCH_TIMING_LEDGER") == ""
-    assert (
-        "session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)"
-        in setup.stderr
     )
 
 
@@ -1572,38 +1484,15 @@ def _write_review_core_stub(tmp_path: Path) -> Path:
 
 
 def test_token_propagation_review_and_fix_step5_default_moderate(tmp_path: Path) -> None:
-    env = _token_prop_env(tmp_path)
+    env = _token_prop_env()
     timing_ledger = tmp_path / "timing-ledger.tsv"
     review_env = tmp_path / "review-session-env.sh"
     claude_source = tmp_path / "claude-source.env"
     _ = claude_source.write_text("SOURCE_FILE=/tmp/mock-transcript.jsonl\n", encoding="utf-8")
-    implement_env = tmp_path / "implement-session-env.sh"
-    _ = implement_env.write_text(
-        f"REPO=owner/repo\nREPO_UNAVAILABLE=false\n"
-        f"LARCH_TIMING_LEDGER={timing_ledger}\n"
-        f"LARCH_TOKEN_SESSION_ID=parent-implement-session\n"
-        f"LARCH_CLAUDE_SOURCE_FILE={claude_source}\n",
-        encoding="utf-8",
-    )
-    setup = subprocess.run(
-        [
-            _REAL_PYTHON,
-            str(_CLI),
-            "session",
-            "setup",
-            "--prefix",
-            "claude-review-token-test",
-            "--skip-preflight",
-            "--skip-repo-check",
-            "--caller-env",
-            str(implement_env),
-            "--write-session-env",
-            str(review_env),
-        ],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
+    _write_token_session_env(
+        review_env,
+        timing_ledger=timing_ledger,
+        claude_source=claude_source,
     )
     token_session_id = _read_session_key(review_env, "LARCH_TOKEN_SESSION_ID")
     claude_source_file = _read_session_key(review_env, "LARCH_CLAUDE_SOURCE_FILE")
@@ -1667,7 +1556,6 @@ def test_token_propagation_review_and_fix_step5_default_moderate(tmp_path: Path)
     assert "PANEL_TIER=MODERATE" in review_core_env
     assert "PANEL_SHAPE=pairs" in review_core_env
     assert "EFFECTIVE_ROUND_CAP=2" in review_core_env
-    _ = setup  # session setup exercised above
 
 
 @pytest.mark.parametrize(
@@ -1686,38 +1574,15 @@ def test_token_propagation_difficulty_routing(
     expected_shape: str,
     expected_cap: str,
 ) -> None:
-    env = _token_prop_env(tmp_path)
+    env = _token_prop_env()
     timing_ledger = tmp_path / "timing-ledger.tsv"
     review_env = tmp_path / "review-session-env.sh"
     claude_source = tmp_path / "claude-source.env"
     _ = claude_source.write_text("SOURCE_FILE=/tmp/mock-transcript.jsonl\n", encoding="utf-8")
-    implement_env = tmp_path / "implement-session-env.sh"
-    _ = implement_env.write_text(
-        f"REPO=owner/repo\nREPO_UNAVAILABLE=false\n"
-        f"LARCH_TIMING_LEDGER={timing_ledger}\n"
-        f"LARCH_TOKEN_SESSION_ID=parent-implement-session\n"
-        f"LARCH_CLAUDE_SOURCE_FILE={claude_source}\n",
-        encoding="utf-8",
-    )
-    _ = subprocess.run(
-        [
-            _REAL_PYTHON,
-            str(_CLI),
-            "session",
-            "setup",
-            "--prefix",
-            "claude-review-token-test",
-            "--skip-preflight",
-            "--skip-repo-check",
-            "--caller-env",
-            str(implement_env),
-            "--write-session-env",
-            str(review_env),
-        ],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
+    _write_token_session_env(
+        review_env,
+        timing_ledger=timing_ledger,
+        claude_source=claude_source,
     )
     token_session_id = _read_session_key(review_env, "LARCH_TOKEN_SESSION_ID")
     claude_source_file = _read_session_key(review_env, "LARCH_CLAUDE_SOURCE_FILE")

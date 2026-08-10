@@ -82,6 +82,7 @@ mod report_tokens_commands;
 mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
+mod session_setup_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
@@ -755,6 +756,9 @@ enum KvCommand {
 
 #[derive(Subcommand)]
 enum SessionCommand {
+    /// Set up a session temporary directory and emit its compatibility envelope.
+    #[command(disable_help_flag = true)]
+    Setup(RawCompatibilityArguments),
     /// Remove a session temporary directory confined to the session roots.
     #[command(disable_help_flag = true)]
     CleanupTmpdir(RawCompatibilityArguments),
@@ -1345,6 +1349,7 @@ fn run_session(command: SessionCommand) -> ExitCode {
         SessionCommand::KillBackgroundProcesses(arguments) => {
             kill_background::kill_background_processes(&arguments.arguments)
         }
+        SessionCommand::Setup(arguments) => session_setup_commands::setup(&arguments.arguments),
         SessionCommand::ReadKey(arguments) => state_commands::read_key(&arguments.arguments),
         SessionCommand::ReadKeys(arguments) => state_commands::read_keys(&arguments.arguments),
         SessionCommand::CleanupTmpdir(arguments) => {

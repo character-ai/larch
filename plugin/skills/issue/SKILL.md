@@ -86,7 +86,7 @@ If `--repo` was passed, use it instead. If `REPO` is empty:
 **Session tmpdir (required before either mode)**: at the top of Step 3, create the session temp directory and the `bodies/` subdirectory that carries per-item body files produced in this step. `$ISSUE_TMPDIR` is used by Step 3 (parser body output + single-mode body file), Step 5 (candidates corpus), and Step 6 (OOS template assembly), then removed at Step 9.
 
 ```bash
-SETUP_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-issue --skip-preflight --skip-branch-check --skip-repo-check)
+SETUP_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup --prefix claude-issue --skip-preflight --skip-branch-check --skip-repo-check)
 printf '%s\n' "$SETUP_OUT"
 ISSUE_TMPDIR=""
 while IFS= read -r setup_line; do case "$setup_line" in SESSION_TMPDIR=*) ISSUE_TMPDIR="${setup_line#SESSION_TMPDIR=}" ;; esac; done <<< "$SETUP_OUT"

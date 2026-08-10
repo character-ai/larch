@@ -493,7 +493,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("ci", "failed-jobs"): ("larch.implement.ci", "failed_jobs_main", False),
     ("ci", "behind-count"): ("larch.implement.ci", "behind_count_main", False),
     ("ci", "rerun-failed"): ("larch.implement.ci", "rerun_failed_main", False),
-    ("session", "setup"): ("larch.state.session_env", "setup_main", False),
     ("session", "local-cleanup"): ("larch.state.session_env", "local_cleanup_main", False),
 }
 

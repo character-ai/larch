@@ -475,7 +475,7 @@ exclude = [
   # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are
   # excluded.
   # for the presence-detection (CODEX_PRESENT/CURSOR_PRESENT) defaults in
-  # python/cli.py session setup. Referenced only from Makefile
+  # scripts/larch.sh session setup. Referenced only from Makefile
   #  is the regression harness for
   # python/cli.py mermaid sanitize. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,

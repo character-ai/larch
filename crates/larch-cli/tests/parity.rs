@@ -169,6 +169,12 @@ impl CleanInstallCase {
             "clean-install-session-cleanup-tmpdir" => {
                 &["--dir", "/tmp/larch-clean-install-session-missing"]
             }
+            "clean-install-session-setup" => &[
+                "--prefix",
+                "clean-install",
+                "--skip-preflight",
+                "--skip-repo-check",
+            ],
             // `require-plugin-root` rejects every argument, and the three
             // progress stdin readers see an empty payload, so all four dispatch
             // with no arguments at all.
@@ -212,6 +218,7 @@ impl CleanInstallCase {
                 "--repo-unavailable",
                 "false",
             ],
+            "clean-install-session-write-id" => &["--output", "%SESSION%/session-id"],
             "clean-install-session-write-design-env" => &[
                 "--output",
                 "%SESSION%/source-env.sh",
@@ -1003,6 +1010,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "session",
         "cleanup-tmpdir",
     ),
+    CleanInstallCase::new("clean-install-session-setup", "session", "setup"),
     CleanInstallCase::new("clean-install-session-read-key", "session", "read-key"),
     CleanInstallCase::new("clean-install-session-read-keys", "session", "read-keys"),
     CleanInstallCase::new(
@@ -1026,6 +1034,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "validate-design-tmpdir",
     ),
     CleanInstallCase::new("clean-install-session-write-env", "session", "write-env"),
+    CleanInstallCase::new("clean-install-session-write-id", "session", "write-id"),
     CleanInstallCase::new(
         "clean-install-session-write-design-env",
         "session",

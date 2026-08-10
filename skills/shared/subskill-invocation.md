@@ -158,7 +158,7 @@ This is deliberately separate from the `Continue after child returns` micro-remi
 ## Session-env handoff
 
 2. The parent passes `--session-env "$PARENT_TMPDIR/session-env.sh"` to the child.
-3. The child reads the file via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup ... --caller-env "$SESSION_ENV_PATH"`.
+3. The child reads the file via `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup ... --caller-env "$SESSION_ENV_PATH"`.
 
 Canonical producers and consumers in the live tree:
 
@@ -185,7 +185,7 @@ Standalone invocations (`SESSION_ENV_PATH` empty) preserve their normal visible 
 
 ### Security — never `source` a session-env file
 
-**Do NOT `source` `session-env.sh`.** Parse it line-by-line with `KEY=VALUE` matching. The file crosses a trust boundary (written by one skill, consumed by another), so `source` would execute arbitrary shell if any line contained `$(...)`, backticks, or command substitution. The canonical safe-parse pattern lives in `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` (the `--caller-env` reader).
+**Do NOT `source` `session-env.sh`.** Parse it line-by-line with `KEY=VALUE` matching. The file crosses a trust boundary (written by one skill, consumed by another), so `source` would execute arbitrary shell if any line contained `$(...)`, backticks, or command substitution. The canonical safe-parse pattern lives in `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup` (the `--caller-env` reader).
 
 When your skill consumes a session-env file, always route through `session-setup.sh --caller-env` rather than ad-hoc `while read` loops so the safe-parse invariant is centralized.
 

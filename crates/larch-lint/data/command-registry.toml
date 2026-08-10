@@ -6834,11 +6834,13 @@ verb = "setup"
 python_module = "larch.state.session_env"
 python_function = "setup_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8057
+clean_install_test = "clean-install-session-setup"
 
 [[commands]]
 domain = "session"
@@ -6894,6 +6896,7 @@ consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7677
 migration_issue = 8057
+clean_install_test = "clean-install-session-write-id"
 
 [[commands]]
 domain = "session"
@@ -8589,7 +8592,7 @@ rust = ["timing mark"]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session write-design-env", "timing mark"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8853,7 +8856,7 @@ rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
 path = "python/larch/state/bootstrap.py"
 kind = "python-runtime"
 python = ["implement kill-active-leg"]
-rust = ["git snapshot-untracked", "run-log manifest", "session entry-gate", "session persist-run-flags", "session write-implement-env"]
+rust = ["git snapshot-untracked", "run-log manifest", "session entry-gate", "session persist-run-flags", "session setup", "session write-implement-env"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
@@ -8865,7 +8868,7 @@ rust = ["final-report write", "run-log append-failure", "slack issue-announce", 
 path = "python/larch/state/session_env.py"
 kind = "python-runtime"
 python = []
-rust = ["admission preflight", "session write-env"]
+rust = ["session write-env"]
 
 [[callers]]
 path = "scripts/cleanup-sessionstart.sh"
@@ -8960,8 +8963,8 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
-python = ["session setup", "verify skill-called"]
-rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir"]
+python = ["verify skill-called"]
+rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"
@@ -8984,14 +8987,14 @@ rust = []
 [[callers]]
 path = "skills/debate/SKILL.md"
 kind = "skill"
-python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "session setup", "verify skill-called"]
-rust = ["run-log lifecycle-start", "tracking-issue upsert-summary", "untrusted file-block"]
+python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "verify skill-called"]
+rust = ["run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"
 kind = "skill"
-python = ["session setup"]
-rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "untrusted file-block"]
+python = []
+rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "session setup", "untrusted file-block"]
 
 [[callers]]
 path = "skills/design/SKILL.md"
@@ -9236,8 +9239,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "session setup", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9662,8 +9665,8 @@ rust = ["final-report write"]
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["session setup", "verify skill-called"]
-rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps"]
+python = ["verify skill-called"]
+rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "session setup"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
@@ -9704,8 +9707,8 @@ rust = ["report-tokens analyze"]
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-python = ["render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
-rust = ["agent degraded-tools-gate", "git branch-info", "session cleanup-tmpdir"]
+python = ["render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "token lane-report", "token lane-write", "verify skill-called"]
+rust = ["agent degraded-tools-gate", "git branch-info", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"
@@ -9746,8 +9749,8 @@ rust = ["timing record-round"]
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "session setup", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir"]
+python = ["checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
@@ -9824,8 +9827,8 @@ rust = ["run-log lifecycle-start"]
 [[callers]]
 path = "skills/shared/session-setup-output.md"
 kind = "skill"
-python = ["session setup"]
-rust = []
+python = []
+rust = ["session setup"]
 
 [[callers]]
 path = "skills/shared/skill-design-principles.md"
@@ -9836,8 +9839,8 @@ rust = ["push rebase"]
 [[callers]]
 path = "skills/shared/subskill-invocation.md"
 kind = "skill"
-python = ["alias generate", "checks run-relevant", "session setup", "ship pr", "verify skill-called"]
-rust = []
+python = ["alias generate", "checks run-relevant", "ship pr", "verify skill-called"]
+rust = ["session setup"]
 
 [[callers]]
 path = "skills/shared/topology.tsv"
@@ -9866,8 +9869,8 @@ rust = ["issue title-eligibility", "triage apply", "triage inspect", "triage pro
 [[callers]]
 path = "skills/umbrella/SKILL.md"
 kind = "skill"
-python = ["session setup", "verify skill-called"]
-rust = ["umbrella mark-in-flight", "umbrella mutate", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved", "umbrella verify"]
+python = ["verify skill-called"]
+rust = ["session setup", "umbrella mark-in-flight", "umbrella mutate", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved", "umbrella verify"]
 
 [[callers]]
 path = "skills/upgrade-larch/SKILL.md"

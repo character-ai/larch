@@ -1590,14 +1590,6 @@ def _run_phase_infra_for_progress(
         st.skip_branch_check = "true"
         return True
 
-    def fake_setup(**kwargs: object) -> bootstrap.session_env.SessionSetupResult:
-        calls.append(("setup", str(kwargs["skip_codex_probe"]), str(kwargs["skip_cursor_probe"])))
-        return bootstrap.session_env.SessionSetupResult(
-            session_tmpdir=tmp_path, session_id=setup_session_id, render_cache_dir=tmp_path,
-            claude_binary_found="true", repo="owner/repo", repo_unavailable="false",
-            codex_present="false", cursor_present="false", codex_binary_found="false", cursor_binary_found="false",
-        )
-
     def fake_activate(
         _runner: object,
         *,
@@ -1634,6 +1626,30 @@ def _run_phase_infra_for_progress(
         return True
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+        if list(argv[1:3]) == ["session", "setup"]:
+            calls.append((
+                "setup",
+                str("--skip-codex-probe" in argv),
+                str("--skip-cursor-probe" in argv),
+            ))
+            return proc.CommandResult(
+                tuple(argv),
+                0,
+                "\n".join((
+                    f"SESSION_TMPDIR={tmp_path}",
+                    f"SESSION_ID={setup_session_id}",
+                    f"LARCH_RENDER_CACHE_DIR={tmp_path / 'render-cache'}",
+                    "REPO=owner/repo",
+                    "REPO_UNAVAILABLE=false",
+                    f"REPO_ROOT={tmp_path}",
+                    "CLAUDE_BINARY_FOUND=true",
+                    "CODEX_BINARY_FOUND=false",
+                    "CURSOR_BINARY_FOUND=false",
+                    "",
+                )),
+                "",
+                0.0,
+            )
         # `run-log append-failure` is Rust-owned, so the bootstrap fallback record
         # now arrives as a bootstrap dispatch rather than an in-process write.
         if list(argv[1:3]) == ["run-log", "append-failure"]:
@@ -1647,7 +1663,6 @@ def _run_phase_infra_for_progress(
 
     monkeypatch.setattr(bootstrap.pr, "check_branch_state", fake_branch)
     monkeypatch.setattr(bootstrap, "_resolve_entry_gate", fake_gate)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
     monkeypatch.setattr(bootstrap.rust_runtime, "progress_activate", fake_activate)
     monkeypatch.setattr(bootstrap.rust_runtime, "progress_clear", fake_clear)
     monkeypatch.setattr(bootstrap.rust_runtime, "timing_mark", fake_timing)

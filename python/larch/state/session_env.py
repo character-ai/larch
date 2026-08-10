@@ -1,8 +1,9 @@
 """Session/state lifecycle verbs for the larch Python runtime.
 
-Issue #8057 moved ``session setup``'s temp-directory siblings to the Rust owner:
-``require-plugin-root``, ``validate-design-tmpdir``, ``write-id``,
-``resolve-implement-tmpdir``, and ``cleanup-tmpdir`` no longer register here.
+Issue #8057 moved the six ``session setup`` and temp-directory lifecycle
+commands to the Rust owner: ``setup``, ``require-plugin-root``,
+``validate-design-tmpdir``, ``write-id``, ``resolve-implement-tmpdir``, and
+``cleanup-tmpdir`` no longer register here.
 ``require_plugin_root``, ``validate_design_tmpdir``, and ``write_id`` survive as
 library helpers because Python-owned commands in ``larch.design`` and
 ``larch.state.bootstrap`` still call them in process; their CLI entrypoints and
@@ -13,9 +14,9 @@ Issue #8058 moved the eight session-env and run-flag writers — ``write-env``,
 ``persist-run-flags``, ``write-run-params``, ``restore-finalize-state``, and
 ``resolve-trusted-design-env`` — to the Rust owner, entrypoints and
 implementations alike. Nothing here writes a session-env file any more:
-``setup`` and ``larch.state.bootstrap`` reach the writer through
-:func:`run_session_verb`, which enters the verified bootstrap script, and the
-argument renderers below keep one owner for each flag spelling.
+``larch.state.bootstrap`` reaches session setup through the verified bootstrap
+script, and the argument renderers below keep one owner for each writer flag
+spelling.
 ``read_finalize_state`` and ``write_finalize_state_merged`` stay because
 ``implement-finalize teardown`` still reads and merges that file in process.
 """
@@ -29,32 +30,19 @@ import re
 import shlex
 import shutil
 import sys
-import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping
 
-from larch.agents import agents
 from larch.core import config
 from larch import io as larch_io
-from larch.core import logging_util
 from larch.core import proc
 from larch.errors import ShipError
-from larch.git import gh
-from larch.core.proc import Runner
 from larch.core.repo_roots import larch_entrypoint
 
-_SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./~+-]+$")
-_BOOL = {"true", "false"}
 _SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
-# Non-unique placeholder run-log directory names (e.g. ``run-1``). These must
-# never be carried forward from a previous session: they collide across runs and
-# clones and get re-committed to the repo (issue #4397). Real UUID run dirs and
-# ``shared/`` are still carried so resume keeps prior batches.
-_PLACEHOLDER_RUN_DIR_RE = re.compile(r"^run-[0-9]+$")
-MAX_PATH_VALUE_LEN = 512
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch session roots.
 TMP_ROOT = Path(TMP_FALLBACK)
 
@@ -92,19 +80,6 @@ FINALIZE_STATE_CORE_KEYS = (
     "BAIL_NEEDS_USER_INPUT",
     "STALL_TRACKING",
 )
-CALLER_ENV_KEYS = frozenset({
-    "REPO",
-    "REPO_ROOT",
-    "REPO_UNAVAILABLE",
-    "CLAUDE_BINARY_FOUND",
-    "CODEX_BINARY_FOUND",
-    "CURSOR_BINARY_FOUND",
-    "LARCH_TOKEN_SESSION_ID",
-    "LARCH_CLAUDE_SOURCE_FILE",
-    "LARCH_TIMING_LEDGER",
-    "PREV_IMPLEMENT_TMPDIR",
-    "LARCH_DYNAMIC_ARCHETYPES_MAX",
-})
 # Shared /design wrapper-env defaults. design_step2b and plan_quality both
 # build wrapper-env dicts that overlap on this common core; defining it once
 # keeps the two literals from re-introducing a duplicate-code run (R0801).
@@ -243,58 +218,8 @@ class WriteIdResult:
     wrote: bool
 
 
-@dataclass(frozen=True)
-class SetupEmission:
-    """One ordered setup stdout action: a ``KEY=value`` pair (``kind='kv'``) or a
-    literal non-KV line (``kind='line'``, value in ``key``).
-    """
-
-    kind: str
-    key: str
-    value: str = ""
-
-
-@dataclass(frozen=True)
-class SessionSetupResult:
-    session_tmpdir: Path
-    session_id: str
-    render_cache_dir: Path
-    claude_binary_found: str
-    exit_code: int = 0
-    repo_checked: bool = False
-    repo: str = ""
-    repo_unavailable: str = "false"
-    reviewers_checked: bool = False
-    codex_present: str = ""
-    cursor_present: str = ""
-    codex_binary_found: str = ""
-    cursor_binary_found: str = ""
-    token_session_id: str = ""
-    claude_source_file: str = ""
-    session_env_written: bool = False
-    stdout_emissions: tuple[SetupEmission, ...] = ()
-    stderr_diagnostics: tuple[str, ...] = ()
-
-
-class SessionSetupError(Exception):
-    """Setup preflight failed and must short-circuit the wrapper."""
-
-    def __init__(self, *, returncode: int, output: str) -> None:
-        super().__init__(output)
-        self.returncode = returncode
-        self.output = output
-
-
 def _scripts_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "scripts"
-
-
-def _emit(text: str) -> None:
-    logging_util.emit(text)
-
-
-def _err(message: str) -> None:
-    logging_util.BreadcrumbWriter().emit(message)
 
 
 def _read_kv_file_text(path: Path) -> str:
@@ -478,44 +403,6 @@ def write_finalize_state_merged(*, path: str | Path, data: dict[str, str]) -> No
             msg = f"finalize-state value for {key} contains a newline"
             raise ShipError(msg)
     _atomic_write(path=Path(path), text="".join(f"{key}={data[key]}\n" for key in sorted(data)), create_parent=True)
-
-
-def _validate_repo_root_value(*, value: str, flag: str) -> None:
-    if not value:
-        return
-    if len(value) > MAX_PATH_VALUE_LEN or "\n" in value or "\r" in value or "\x00" in value:
-        raise ValueError(f"Invalid {flag}: must be an absolute single-line path")
-    if not value.startswith("/"):
-        raise ValueError(f"Invalid {flag}: must be an absolute path")
-
-
-def _parse_key_value_file(path: str) -> dict[str, str]:
-    if not path or not Path(path).is_file():
-        return {}
-    parsed = larch_io.parse_kv(
-        _read_kv_file_text(Path(path)),
-        duplicate_policy="last",
-        skip_comments=True,
-        allowed_keys=CALLER_ENV_KEYS,
-    )
-    return {key: value for key, value in parsed.items() if value}
-
-
-def _is_path_under_root(*, path: str, root: str) -> bool:
-    if not path or not root:
-        return False
-    return _under(path=Path(path), root=Path(root))
-
-
-def _safe_timing_ledger_path(*, path: str, caller_env_dir: str) -> bool:
-    if not path or "\n" in path or "\r" in path or not path.startswith("/"):
-        return False
-    if len(path) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(path):
-        return False
-    for root in (os.environ.get("TMPDIR", TMP_FALLBACK), os.environ.get("IMPLEMENT_TMPDIR", ""), os.environ.get("DESIGN_TMPDIR", ""), os.environ.get("REVIEW_TMPDIR", ""), caller_env_dir):
-        if _is_path_under_root(path=path, root=root):
-            return True
-    return False
 
 
 @dataclass(frozen=True)
@@ -747,344 +634,6 @@ def write_id(*, output: Path) -> WriteIdResult:
     session_id = _uuid_or_basename(output.parent)
     _atomic_write(path=output, text=session_id + "\n")
     return WriteIdResult(output=output, session_id=session_id, wrote=True)
-
-
-def _repo_from_gh_or_git(runner: Runner) -> str:
-    try:
-        return gh.resolve_repo(runner) or ""
-    except OSError:
-        return ""
-
-
-def _make_session_tmpdir(prefix: str) -> Path:
-    clone_tag = re.sub(r"[^A-Za-z0-9_-]", "_", Path.cwd().name)[:32] or "_"
-    cache_root = cleanup_cache_sessions_root()
-    template_prefix = f"{prefix}-{clone_tag}-"
-    try:
-        cache_root.mkdir(parents=True, exist_ok=True)
-        probe = cache_root / f".larch-write-probe.{os.getpid()}"
-        probe.write_text("", encoding="utf-8")
-        probe.unlink(missing_ok=True)
-        return Path(tempfile.mkdtemp(prefix=template_prefix, dir=cache_root))
-    except OSError:
-        _err("session-setup.sh: warning: cache session root unavailable, falling back to /tmp")
-        return Path(tempfile.mkdtemp(prefix=template_prefix, dir=TMP_FALLBACK))
-
-
-def _write_session_identity(*, tmpdir: Path, session_id: str) -> None:
-    (tmpdir / "session-id").write_text(session_id + "\n", encoding="utf-8")
-    sentinel = tmpdir / ".larch-keepalive"
-    try:
-        sentinel.write_text(f"# larch session identity (hook routing)\nCLONE_PATH={Path.cwd()}\nSESSION_ID={session_id}\n", encoding="utf-8")
-    except OSError:
-        _err(f"session-setup.sh: warning: failed to write session identity: {sentinel}")
-
-
-def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:  # lint-keyword-only: ok shutil.copytree ignore callback
-    """Drop placeholder run-log dirs for the ``shutil.copytree`` ``ignore`` hook.
-
-    Returns the subset of ``names`` matching the non-unique ``run-<N>`` pattern so
-    a fresh session never inherits a stale shared run directory (issue #4397).
-    """
-    return {name for name in names if _PLACEHOLDER_RUN_DIR_RE.match(name)}
-
-
-def _setup_repo_root(*, caller: dict[str, str], emissions: list[SetupEmission]) -> str:
-    """Resolve the operator repo root once at the session-setup trust boundary.
-
-    Tier order: caller-env value, then ``CLAUDE_PROJECT_DIR``/``REPO_ROOT``
-    env, then the setup process cwd (the invoking checkout). Each non-cwd tier
-    must pass the shared ``--repo-root`` validation (absolute, single-line,
-    bounded); an invalid tier falls through so no unvalidated value reaches
-    the line-oriented stdout grammar. Appends the ``REPO_ROOT`` stdout
-    emission and returns the resolved value.
-    """
-    repo_root = str(Path.cwd())
-    for candidate in (
-        caller.get("REPO_ROOT", "").strip(),
-        os.environ.get("CLAUDE_PROJECT_DIR", "").strip(),
-        os.environ.get("REPO_ROOT", "").strip(),
-    ):
-        if not candidate:
-            continue
-        try:
-            _validate_repo_root_value(value=candidate, flag="--repo-root")
-        except ValueError:
-            continue
-        repo_root = candidate
-        break
-    emissions.append(SetupEmission(kind="kv", key="REPO_ROOT", value=repo_root))
-    return repo_root
-
-
-def _dispatch_session_env_write(params: WriteEnvParams) -> tuple[bool, list[str]]:
-    """Dispatch the Rust-owned session-env writer for :func:`setup`.
-
-    Returns whether the file was written and the writer's stderr lines, which the
-    caller re-emits as its own diagnostics.
-    """
-    written = run_write_env(params)
-    if written.returncode == 0:
-        return True, []
-    return False, [line for line in written.stderr.splitlines() if line]
-
-
-def _setup_write_env_params(  # noqa: PLR0913 - session-env inputs stay explicit seams for one caller
-    *,
-    write_session_env: str,
-    caller: dict[str, str],
-    caller_env: str,
-    repo_value: str,
-    repo_root: str,
-    repo_unavailable: str,
-    final_codex: str,
-    final_cursor: str,
-    final_claude_bin: str,
-    final_codex_bin: str,
-    final_cursor_bin: str,
-) -> tuple[WriteEnvParams, list[str]]:
-    """Build the session-env :class:`WriteEnvParams` for :func:`setup`.
-
-    Pre-filters caller-supplied dynamic-archetypes and timing-ledger values,
-    returning the parameters plus any ordered stderr diagnostics for rejected
-    caller-env values (matching the wrapper's warnings).
-    """
-    diagnostics: list[str] = []
-    dyn = caller.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
-    dynamic_archetypes = ""
-    if dyn:
-        if dyn in {"0", "1"}:
-            dynamic_archetypes = dyn
-        else:
-            diagnostics.append("session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..1)")
-    ledger = caller.get("LARCH_TIMING_LEDGER", "")
-    timing_ledger = ""
-    if ledger:
-        caller_dir = str(Path(caller_env).parent.resolve()) if caller_env else ""
-        if _safe_timing_ledger_path(path=ledger, caller_env_dir=caller_dir):
-            timing_ledger = ledger
-        else:
-            diagnostics.append("session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)")
-    params = WriteEnvParams(
-        output=write_session_env,
-        repo_unavailable=repo_unavailable,
-        repo=repo_value,
-        repo_root=repo_root,
-        codex_present=final_codex,
-        cursor_present=final_cursor,
-        claude_binary_found=final_claude_bin,
-        codex_binary_found=final_codex_bin,
-        cursor_binary_found=final_cursor_bin,
-        token_session_id=caller.get("LARCH_TOKEN_SESSION_ID", ""),
-        claude_source_file=caller.get("LARCH_CLAUDE_SOURCE_FILE", ""),
-        dynamic_archetypes=dynamic_archetypes,
-        timing_ledger=timing_ledger,
-    )
-    return params, diagnostics
-
-
-def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip seams
-    *,
-    prefix: str,
-    skip_preflight: bool = False,
-    skip_branch_check: bool = False,
-    skip_repo_check: bool = False,
-    check_reviewers: bool = False,
-    skip_codex_probe: bool = False,
-    skip_cursor_probe: bool = False,
-    write_session_env: str = "",
-    caller_env: str = "",
-) -> SessionSetupResult:
-    """Own the full session-setup side effects and return an ordered emission envelope.
-
-    Performs preflight/stale-plugin probes, session tmpdir/identity creation,
-    optional prior-log carry-forward, repo resolution, reviewer probes, and
-    optional session-env writing (via :func:`write_env`, never the CLI wrapper).
-    Preflight failure raises :class:`SessionSetupError`; other outcomes return a
-    :class:`SessionSetupResult` whose ``stdout_emissions``/``stderr_diagnostics``
-    reproduce the wrapper's exact successful output without re-probing.
-    """
-    runner = proc
-    emissions: list[SetupEmission] = []
-    diagnostics: list[str] = []
-    caller = _parse_key_value_file(caller_env)
-    if not skip_preflight:
-        cmd = [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "admission", "preflight"]
-        if skip_branch_check:
-            cmd.append("--skip-branch-check")
-        preflight = runner.run(cmd)
-        if preflight.returncode != 0:
-            raise SessionSetupError(returncode=preflight.returncode, output=preflight.stdout + preflight.stderr)
-        stale = runner.run([str(_scripts_dir() / "check-stale-plugin.sh")])
-        if stale.returncode != 0:
-            diagnostics.append(f"session-setup.sh: warning: stale plugin check failed (rc={stale.returncode}): {stale.stdout}{stale.stderr}")
-        elif "STALE_PLUGIN_CHECK=working-tree-ahead" in stale.stdout:
-            data = _parse_text_kv(stale.stdout)
-            emissions.append(SetupEmission(kind="line", key=f"**⚠ larch: installed plugin version ({data.get('STALE_PLUGIN_INSTALLED_VERSION','')}) is behind the working tree ({data.get('STALE_PLUGIN_WORKING_TREE_VERSION','')}). Reinstall or refresh the plugin from this checkout before the next run to pick up the latest fixes. Continuing with the cached version.**"))
-    tmpdir = _make_session_tmpdir(prefix)
-    session_id = _uuid_or_basename(tmpdir)
-    _write_session_identity(tmpdir=tmpdir, session_id=session_id)
-    render_cache_dir = tmpdir / "render-cache"
-    emissions.append(SetupEmission(kind="kv", key="SESSION_TMPDIR", value=str(tmpdir)))
-    emissions.append(SetupEmission(kind="kv", key="SESSION_ID", value=session_id))
-    emissions.append(SetupEmission(kind="kv", key="LARCH_RENDER_CACHE_DIR", value=str(render_cache_dir)))
-    prev = caller.get("PREV_IMPLEMENT_TMPDIR", "")
-    if prev and (Path(prev) / "larch-logs").is_dir():
-        with suppress(OSError):
-            shutil.copytree(
-                Path(prev) / "larch-logs",
-                tmpdir / "larch-logs",
-                dirs_exist_ok=True,
-                ignore=_ignore_placeholder_run_dirs,
-            )
-    if not os.environ.get(config.ENV_LARCH_CURSOR_MODEL) and os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL):
-        os.environ[config.ENV_LARCH_CURSOR_MODEL] = os.environ[config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL]
-    if not os.environ.get(config.ENV_LARCH_CODEX_MODEL) and os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL):
-        os.environ[config.ENV_LARCH_CODEX_MODEL] = os.environ[config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL]
-    repo_value = ""
-    repo_unavailable = "false"
-    repo_checked = not skip_repo_check
-    if repo_checked:
-        if caller.get("REPO") or caller.get("REPO_UNAVAILABLE"):
-            repo_value = caller.get("REPO", "")
-            repo_unavailable = caller.get("REPO_UNAVAILABLE", "false")
-        else:
-            repo_value = _repo_from_gh_or_git(runner)
-            repo_unavailable = "false" if repo_value else "true"
-        emissions.extend((
-            SetupEmission(kind="kv", key="REPO", value=repo_value),
-            SetupEmission(kind="kv", key="REPO_UNAVAILABLE", value=repo_unavailable),
-        ))
-    repo_root = _setup_repo_root(caller=caller, emissions=emissions)
-    final_codex = ""
-    final_cursor = ""
-    final_claude_bin = caller.get("CLAUDE_BINARY_FOUND", "")
-    final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
-    final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
-    if final_claude_bin not in _BOOL:
-        final_claude_bin = "true" if shutil.which("claude") else "false"
-    if check_reviewers:
-        # agents.check_reviewers is a real module-level function (see agents.py);
-        # a newer pyright misresolves this cross-module attribute while the
-        # repo-pinned pyright is clean. Suppress the false positive (#4439).
-        reviewer = agents.check_reviewers(  # pyright: ignore[reportAttributeAccessIssue]
-            skip_codex_probe=skip_codex_probe or bool(final_codex),
-            skip_cursor_probe=skip_cursor_probe or bool(final_cursor),
-        )
-        probed = reviewer.kv()
-        emissions.extend(
-            SetupEmission(kind="kv", key=key, value=probed[key])
-            for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")
-            if probed.get(key)
-        )
-        final_codex = probed.get("CODEX_PRESENT", "")
-        final_cursor = probed.get("CURSOR_PRESENT", "")
-        final_codex_bin = probed.get("CODEX_BINARY_FOUND", "")
-        final_cursor_bin = probed.get("CURSOR_BINARY_FOUND", "")
-    else:
-        if final_codex_bin not in _BOOL and final_codex in _BOOL:
-            final_codex_bin = final_codex
-        if final_cursor_bin not in _BOOL and final_cursor in _BOOL:
-            final_cursor_bin = final_cursor
-        if final_codex_bin in _BOOL:
-            emissions.append(SetupEmission(kind="kv", key="CODEX_BINARY_FOUND", value=final_codex_bin))
-        if final_cursor_bin in _BOOL:
-            emissions.append(SetupEmission(kind="kv", key="CURSOR_BINARY_FOUND", value=final_cursor_bin))
-    emissions.append(SetupEmission(kind="kv", key="CLAUDE_BINARY_FOUND", value=final_claude_bin))
-    token_session_id = caller.get("LARCH_TOKEN_SESSION_ID", "")
-    claude_source_file = caller.get("LARCH_CLAUDE_SOURCE_FILE", "")
-    if token_session_id:
-        emissions.append(SetupEmission(kind="kv", key="LARCH_TOKEN_SESSION_ID", value=token_session_id))
-    if claude_source_file:
-        emissions.append(SetupEmission(kind="kv", key="LARCH_CLAUDE_SOURCE_FILE", value=claude_source_file))
-    session_env_written = False
-    exit_code = 0
-    if write_session_env:
-        params, write_diagnostics = _setup_write_env_params(
-            write_session_env=write_session_env,
-            caller=caller,
-            caller_env=caller_env,
-            repo_value=repo_value,
-            repo_root=repo_root,
-            repo_unavailable=repo_unavailable,
-            final_codex=final_codex,
-            final_cursor=final_cursor,
-            final_claude_bin=final_claude_bin,
-            final_codex_bin=final_codex_bin,
-            final_cursor_bin=final_cursor_bin,
-        )
-        diagnostics.extend(write_diagnostics)
-        session_env_written, write_failures = _dispatch_session_env_write(params)
-        diagnostics.extend(write_failures)
-        exit_code = 0 if session_env_written else 1
-    return SessionSetupResult(
-        session_tmpdir=tmpdir,
-        session_id=session_id,
-        render_cache_dir=render_cache_dir,
-        claude_binary_found=final_claude_bin,
-        exit_code=exit_code,
-        repo_checked=repo_checked,
-        repo=repo_value,
-        repo_unavailable=repo_unavailable,
-        reviewers_checked=check_reviewers,
-        codex_present=final_codex,
-        cursor_present=final_cursor,
-        codex_binary_found=final_codex_bin,
-        cursor_binary_found=final_cursor_bin,
-        token_session_id=token_session_id,
-        claude_source_file=claude_source_file,
-        session_env_written=session_env_written,
-        stdout_emissions=tuple(emissions),
-        stderr_diagnostics=tuple(diagnostics),
-    )
-
-
-def setup_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session setup", add_help=False)
-    parser.add_argument("--prefix", default="")
-    parser.add_argument("--skip-preflight", action="store_true")
-    parser.add_argument("--skip-branch-check", action="store_true")
-    parser.add_argument("--skip-repo-check", action="store_true")
-    parser.add_argument("--check-reviewers", action="store_true")
-    parser.add_argument("--skip-codex-probe", action="store_true")
-    parser.add_argument("--skip-cursor-probe", action="store_true")
-    parser.add_argument("--write-session-env", default="")
-    parser.add_argument("--caller-env", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return 4
-    logging_util.quiet_init(argv0="session-setup.sh")
-    if not args.prefix:
-        _err("session-setup.sh: --prefix is required")
-        return 4
-    try:
-        result = setup(
-            prefix=args.prefix,
-            skip_preflight=args.skip_preflight,
-            skip_branch_check=args.skip_branch_check,
-            skip_repo_check=args.skip_repo_check,
-            check_reviewers=args.check_reviewers,
-            skip_codex_probe=args.skip_codex_probe,
-            skip_cursor_probe=args.skip_cursor_probe,
-            write_session_env=args.write_session_env,
-            caller_env=args.caller_env,
-        )
-    except SessionSetupError as exc:
-        _emit(exc.output)
-        return exc.returncode
-    for emission in result.stdout_emissions:
-        if emission.kind == "kv":
-            logging_util.emit_kv(key=emission.key, value=emission.value)
-        else:
-            _emit(emission.key)
-    for line in result.stderr_diagnostics:
-        _err(line)
-    return result.exit_code
-
-
-def _parse_text_kv(text: str) -> dict[str, str]:
-    return larch_io.parse_kv(text, skip_comments=True)
 
 
 def _numeric_stdout(result: proc.CommandResult) -> int:

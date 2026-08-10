@@ -38,7 +38,7 @@ Create one flat `[UMBRELLA]` issue from one open issue number or a verbal task. 
 
 ## Step 1 — Scratch and proposal
 
-Create `$UMBRELLA_TMPDIR` with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-umbrella --skip-preflight --skip-branch-check --skip-repo-check`, then activate a fresh `umbrella-$PPID` sentinel under the deny-edit-write activation directory. Write all artifacts only below `$UMBRELLA_TMPDIR`.
+Create `$UMBRELLA_TMPDIR` with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup --prefix claude-umbrella --skip-preflight --skip-branch-check --skip-repo-check`, then activate a fresh `umbrella-$PPID` sentinel under the deny-edit-write activation directory. Write all artifacts only below `$UMBRELLA_TMPDIR`.
 
 For an issue number, use `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella prepare --repo "$REPO" --issue "$N" --output "$UMBRELLA_TMPDIR/snapshot.json"`. In prepared-partition mode, add `--managed-partition true`; this is the narrow helper-side carve-out for an exact `[DESIGNING]` or `[IMPLEMENTING]` source and an existing plan block. Treat a compatible `[UMBRELLA]` snapshot as a committed managed conversion: resume exclusively from its protected proposal record, require every recorded leaf to be resolved, use that record as the proposal source, and skip the managed mutation. A pending or in-flight leaf after managed conversion is inconsistent and fails closed. For verbal input, invoke `/issue` via the Skill tool normally unless `--no-dedup` was explicit, then validate the returned target with the same preparation command before conversion.
 

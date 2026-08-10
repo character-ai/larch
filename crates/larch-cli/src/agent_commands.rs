@@ -441,28 +441,53 @@ fn cursor_auth_preflight_command() -> ExitCode {
 }
 
 fn check_reviewers_command(arguments: &CheckReviewersArguments) -> ExitCode {
+    let env_map = env::vars().collect();
+    match check_reviewers_with_environment(
+        arguments.skip_codex_probe,
+        arguments.skip_cursor_probe,
+        &env_map,
+    ) {
+        Ok(result) => {
+            for line in result.kv_lines() {
+                println!("{line}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Run the reviewer probe composition for another Rust command.
+///
+/// The session-setup owner passes its model-option fallback map here rather
+/// than mutating process-global environment state.  The standalone command
+/// passes the ambient map, so both surfaces retain one probe, retry, and
+/// accounting implementation.
+pub fn check_reviewers_with_environment(
+    skip_codex_probe: bool,
+    skip_cursor_probe: bool,
+    env_map: &BTreeMap<String, String>,
+) -> Result<larch_core::CheckReviewersResult, String> {
     let caller = "agent check-reviewers";
     let Ok(runtime) = LarchRuntime::current_thread() else {
-        eprintln!("{caller}: could not start the local runtime");
-        return ExitCode::from(1);
+        return Err(format!("{caller}: could not start the local runtime"));
     };
     let Ok(working_directory) = env::current_dir() else {
-        eprintln!("{caller}: could not resolve the working directory");
-        return ExitCode::from(1);
+        return Err(format!("{caller}: could not resolve the working directory"));
     };
     let Some(temporary_root) = probe_temporary_root() else {
-        eprintln!("{caller}: could not resolve the temporary root");
-        return ExitCode::from(1);
+        return Err(format!("{caller}: could not resolve the temporary root"));
     };
     let Some(home) = env::var_os(env_names::HOME).map(PathBuf::from) else {
-        eprintln!("{caller}: HOME is unset");
-        return ExitCode::from(1);
+        return Err(format!("{caller}: HOME is unset"));
     };
     let path_env = env::var(env_names::PATH).ok();
     let user = env::var(env_names::USER).ok();
     let openai_api_key = env::var(env_names::OPENAI_API_KEY).ok();
     let cursor_api_key = env::var(env_names::CURSOR_API_KEY).ok();
-    let env_map: BTreeMap<String, String> = env::vars().collect();
     let config = CheckReviewersConfig::from_env_values(
         env::var(env_names::LARCH_PROBE_TTL_SECONDS).ok().as_deref(),
         env::var(env_names::LARCH_PROBE_NEGATIVE_TTL_SECONDS)
@@ -478,8 +503,8 @@ fn check_reviewers_command(arguments: &CheckReviewersArguments) -> ExitCode {
         env::var(env_names::LARCH_PROBE_TIMEOUT_RETRIES)
             .ok()
             .as_deref(),
-        arguments.skip_codex_probe,
-        arguments.skip_cursor_probe,
+        skip_codex_probe,
+        skip_cursor_probe,
         None,
     );
     let context = CheckReviewersContext {
@@ -491,19 +516,15 @@ fn check_reviewers_command(arguments: &CheckReviewersArguments) -> ExitCode {
         openai_api_key: openai_api_key.as_deref(),
         cursor_api_key: cursor_api_key.as_deref(),
         platform: platform_name(),
-        env_map: &env_map,
+        env_map,
     };
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    let result = runtime.block_on(check_reviewers(
+    Ok(runtime.block_on(check_reviewers(
         &runner,
         &config,
         context,
         &Cancellation::new(),
-    ));
-    for line in result.kv_lines() {
-        println!("{line}");
-    }
-    ExitCode::SUCCESS
+    )))
 }
 
 fn degraded_tools_gate_command(arguments: &DegradedToolsGateArguments) -> ExitCode {
