@@ -83,6 +83,7 @@ mod runtime_entrypoint;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
+mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
@@ -777,6 +778,9 @@ enum SessionCommand {
     /// Remove a session temporary directory confined to the session roots.
     #[command(disable_help_flag = true)]
     CleanupTmpdir(RawCompatibilityArguments),
+    /// Switch to main, fast-forward it, and remove a completed feature branch.
+    #[command(disable_help_flag = true)]
+    LocalCleanup(RawCompatibilityArguments),
     /// Authorize one live GitHub issue mutation for a session-backed caller.
     #[command(disable_help_flag = true)]
     CheckLiveMutationAuth(RawCompatibilityArguments),
@@ -1392,6 +1396,9 @@ fn run_session(command: SessionCommand) -> ExitCode {
         SessionCommand::ReadKeys(arguments) => state_commands::read_keys(&arguments.arguments),
         SessionCommand::CleanupTmpdir(arguments) => {
             session_lifecycle_commands::cleanup_tmpdir(&arguments.arguments)
+        }
+        SessionCommand::LocalCleanup(arguments) => {
+            session_closeout_commands::local_cleanup(&arguments.arguments)
         }
         SessionCommand::RequirePluginRoot(arguments) => {
             session_lifecycle_commands::require_plugin_root(&arguments.arguments)

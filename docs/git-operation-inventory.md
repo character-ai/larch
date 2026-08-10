@@ -53,7 +53,9 @@ crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/rendering_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/repo_size_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/session_closeout_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/session_setup_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/stall_recovery_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
@@ -101,7 +103,6 @@ python/larch/review/review_gather.py	later-domain	#7679	ls-files
 python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,ls-files,restore
 python/larch/state/bootstrap.py	later-domain	#7677	status
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
-python/larch/state/session_env.py	later-domain	#7677	branch,checkout,fetch,pull,rev-list,show-ref,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
 scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status

@@ -24,7 +24,6 @@ spelling.
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
 import shlex
@@ -634,86 +633,3 @@ def write_id(*, output: Path) -> WriteIdResult:
     session_id = _uuid_or_basename(output.parent)
     _atomic_write(path=output, text=session_id + "\n")
     return WriteIdResult(output=output, session_id=session_id, wrote=True)
-
-
-def _numeric_stdout(result: proc.CommandResult) -> int:
-    text = result.stdout.strip() or "0"
-    return int(text) if text.isdigit() else 0
-
-
-def _transient_run(argv: list[str]) -> proc.CommandResult:
-    last = proc.run(argv)
-    for _ in range(2):
-        if last.returncode == 0:
-            return last
-        last = proc.run(argv)
-    return last
-
-
-@dataclass(frozen=True)
-class BranchDeleteResult:
-    cleanup_success: bool
-    branch_deleted: bool
-
-
-def _delete_local_branch(branch: str) -> BranchDeleteResult:
-    branch_ref = proc.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
-    if branch_ref.returncode == 1:
-        print(f"Local branch {branch} was already deleted", file=sys.stderr)
-        return BranchDeleteResult(cleanup_success=True, branch_deleted=False)
-    if branch_ref.returncode != 0:
-        print(f"❌ Failed to check local branch {branch}", file=sys.stderr)
-        return BranchDeleteResult(cleanup_success=False, branch_deleted=False)
-    print(f"🔄 Deleting local branch {branch}...", file=sys.stderr)
-    if proc.run(["git", "branch", "-D", "--", branch]).returncode == 0:
-        return BranchDeleteResult(cleanup_success=True, branch_deleted=True)
-    print(f"❌ Failed to delete local branch {branch}", file=sys.stderr)
-    return BranchDeleteResult(cleanup_success=False, branch_deleted=False)
-
-
-def local_cleanup_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="session local-cleanup", add_help=False)
-    parser.add_argument("--branch", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        print("Usage: local-cleanup.sh --branch BRANCH_NAME", file=sys.stderr)
-        return 1
-    if not args.branch:
-        print("ERROR: --branch is required", file=sys.stderr)
-        print("Usage: local-cleanup.sh --branch BRANCH_NAME", file=sys.stderr)
-        return 1
-    if args.branch == "main":
-        print("ERROR: --branch must not be 'main'", file=sys.stderr)
-        return 1
-    cleanup_success = "false"
-    current_branch = "unknown"
-    branch_deleted = "false"
-    try:
-        print("🔄 Switching to main...", file=sys.stderr)
-        if proc.run(["git", "checkout", "main"]).returncode != 0:
-            print("❌ Failed to checkout main", file=sys.stderr)
-            current_branch = proc.run(["git", "symbolic-ref", "--short", "HEAD"]).stdout.strip() or "unknown"
-            return 0
-        current_branch = "main"
-        print("🔄 Fetching origin main...", file=sys.stderr)
-        if _transient_run(["git", "fetch", "origin", "main"]).returncode != 0:
-            print("⚠ Failed to fetch origin main (continuing)", file=sys.stderr)
-        print("🔄 Fast-forwarding local main from origin/main...", file=sys.stderr)
-        if _transient_run(["git", "pull", "--ff-only", "origin", "main"]).returncode != 0:
-            ahead_after = _numeric_stdout(proc.run(["git", "rev-list", "--count", "origin/main..HEAD"]))
-            if ahead_after > 0:
-                print(f"❌ Failed to pull origin main; local main is ahead of origin/main by {ahead_after} commit(s). Push or reconcile local main before retrying.", file=sys.stderr)
-            else:
-                print("❌ Failed to pull origin main", file=sys.stderr)
-            return 0
-        branch_result = _delete_local_branch(args.branch)
-        if branch_result.cleanup_success:
-            branch_deleted = "true" if branch_result.branch_deleted else "false"
-            cleanup_success = "true"
-            print("✅ Local cleanup complete", file=sys.stderr)
-        return 0
-    finally:
-        print(f"CLEANUP_SUCCESS={cleanup_success}")
-        print(f"CURRENT_BRANCH={current_branch}")
-        print(f"BRANCH_DELETED={branch_deleted}")

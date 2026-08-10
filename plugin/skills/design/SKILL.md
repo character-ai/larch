@@ -54,7 +54,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design prelude --session-env-path 
 
 **Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences: their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see the maintainer-only sentinel host-table reference.
 Wrapper scripts keep the conditional source behavior internally so pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted source call. Step 0 parse/setup wrappers create the env file before requiring it.
-Writer: `${CLAUDE_PLUGIN_ROOT}/python/larch/state/session_env.py` (`session write-design-env`); harness: `${CLAUDE_PLUGIN_ROOT}/python/tests/state/test_session_env.py`.
+Writer: `${CLAUDE_PLUGIN_ROOT}/python/larch/state/session_env.py` (`session write-design-env`); harness: `${CLAUDE_PLUGIN_ROOT}/python/tests/implement/test_session_env.py`.
 **Completion sentinels for pause/resume.** Maintainer-only folded sentinel contract, tradeoff, helper-coverage, and host-table details live in the reference. Load `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md` only when editing sentinel host mappings or debugging pause/resume sentinels. Normal `/design` orchestration does not load it.
 
 ## Design Mindset

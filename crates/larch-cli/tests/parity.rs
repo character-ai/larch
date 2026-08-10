@@ -63,8 +63,11 @@ impl CleanInstallCase {
             // its own usage exit rather than the `argparse` one.
             | "clean-install-oos-file-conflict-deps"
             // Pacific timestamp treats every argument, including `--help`, as
-            // its legacy unexpected-argument refusal.
-            | "clean-install-audit-runs-pacific-timestamp" => 1,
+            // its legacy unexpected-argument refusal. `local-cleanup` keeps
+            // its historical raw compatibility parser, so the same token is a
+            // deterministic usage refusal that proves verified dispatch.
+            | "clean-install-audit-runs-pacific-timestamp"
+            | "clean-install-session-local-cleanup" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
@@ -1023,6 +1026,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "session",
         "cleanup-tmpdir",
     ),
+    CleanInstallCase::new(
+        "clean-install-session-local-cleanup",
+        "session",
+        "local-cleanup",
+    ),
     CleanInstallCase::new("clean-install-session-setup", "session", "setup"),
     CleanInstallCase::new("clean-install-session-read-key", "session", "read-key"),
     CleanInstallCase::new("clean-install-session-read-keys", "session", "read-keys"),
@@ -1333,6 +1341,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "stall-recovery",
         "is-larch-dev-clone",
     ),
+    CleanInstallCase::new("clean-install-stall-recovery-lint", "stall-recovery", "lint"),
     CleanInstallCase::new(
         "clean-install-stall-recovery-populate-sensitive-corpus",
         "stall-recovery",
@@ -7411,6 +7420,7 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         .join("../..")
         .canonicalize()
         .expect("canonical source root");
+    fs::remove_dir_all(fixture.root.join("python")).expect("remove seeded Python contract");
     std::os::unix::fs::symlink(source_root.join("python"), fixture.root.join("python"))
         .expect("link Python continuation");
     let bin = fixture.root.join("bin");
@@ -7699,6 +7709,7 @@ fn clean_install_fixture() -> CleanInstallFixture {
         ),
     )
     .expect("write clean-install plugin manifest");
+    seed_clean_install_stall_recovery_contract(&root);
     let wrapper = temporary_root.join("verified-larch");
     let wrapper_source = r#"#!/bin/sh
 set -eu
@@ -7828,6 +7839,24 @@ exec "$real_larch" "$@"
         home,
         session,
         wrapper,
+    }
+}
+
+/// Copy the contract that the installed Rust-owned lint command reads.
+fn seed_clean_install_stall_recovery_contract(root: &Path) {
+    let projection = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugin");
+    for relative in [
+        "python/stall-recovery-report.md",
+        "python/stall-recovery-report-allowlists.tsv",
+    ] {
+        let destination = root.join(relative);
+        fs::create_dir_all(
+            destination
+                .parent()
+                .expect("stall-recovery contract parent"),
+        )
+        .expect("create stall-recovery contract parent");
+        fs::copy(projection.join(relative), destination).expect("copy stall-recovery contract");
     }
 }
 

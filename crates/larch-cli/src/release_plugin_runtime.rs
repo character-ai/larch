@@ -42,6 +42,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/skills.md",
     "python/cli.py",
     "python/stall-recovery-report.md",
+    "python/stall-recovery-report-allowlists.tsv",
     "scripts/block-submodule-edit.sh",
     "scripts/check-stale-plugin.sh",
     "scripts/cleanup-sessionstart.sh",
@@ -456,6 +457,16 @@ mod tests {
         let paths = runtime_paths(&root).expect("runtime path selection");
 
         assert!(paths.contains("docs/ci-latency-evidence.md"));
+    }
+
+    #[test]
+    fn includes_stall_recovery_contract_in_runtime_projection() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+
+        let paths = runtime_paths(&root).expect("runtime path selection");
+
+        assert!(paths.contains("python/stall-recovery-report-allowlists.tsv"));
     }
 
     #[test]
