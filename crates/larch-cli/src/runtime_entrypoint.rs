@@ -5,33 +5,102 @@
 //! reuse an already-owned verb.  They must not guess at `bin/larch`: the shell
 //! bootstrap owns first-use installation and version verification.
 
-use std::{
-    env,
-    ffi::OsString,
-    fs,
-    path::PathBuf,
-    process::{Command, Output},
-};
+use std::{env, ffi::OsString, fs, path::PathBuf, time::Duration};
+
+use larch_core::{ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput};
+
+use crate::child_process::{bounded_request, run_bounded};
 
 const PLUGIN_ROOT_ENV: &str = "CLAUDE_PLUGIN_ROOT";
+const VERIFIED_LARCH_TIMEOUT: Duration = Duration::from_secs(600);
+const VERIFIED_LARCH_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+const VERIFIED_LARCH_OUTPUT_LIMIT: usize = 256 * 1024;
+
+/// Explicit context read by the current nested larch composition graph.
+///
+/// The shared runner clears every other ambient variable, while this allowlist
+/// preserves session placement, operator-selected model/probe settings, and
+/// vendor credentials that the previously inherited first-party call used.
+const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
+    ChildEnvironment::AnthropicApiKey,
+    ChildEnvironment::ClaudePluginData,
+    ChildEnvironment::ClaudePluginOptionCodexEffort,
+    ChildEnvironment::ClaudePluginOptionCodexModel,
+    ChildEnvironment::ClaudePluginOptionCursorModel,
+    ChildEnvironment::ClaudeProjectDir,
+    ChildEnvironment::ClaudeSubprocessHookExempt,
+    ChildEnvironment::CodexHome,
+    ChildEnvironment::CursorApiKey,
+    ChildEnvironment::CursorConfigDir,
+    ChildEnvironment::DesignTmpdir,
+    ChildEnvironment::GhConfigDir,
+    ChildEnvironment::ImplementTmpdir,
+    ChildEnvironment::LarchBinary,
+    ChildEnvironment::LarchClaudePid,
+    ChildEnvironment::LarchClaudeSourceFile,
+    ChildEnvironment::LarchCodexEffort,
+    ChildEnvironment::LarchCodexFixModel,
+    ChildEnvironment::LarchCodexModel,
+    ChildEnvironment::LarchCodexReviewModel,
+    ChildEnvironment::LarchCodexVoteModel,
+    ChildEnvironment::LarchCursorModel,
+    ChildEnvironment::LarchExternalAuthRetries,
+    ChildEnvironment::LarchExternalHealthCheckTimeout,
+    ChildEnvironment::LarchProbeNegativeTtlSeconds,
+    ChildEnvironment::LarchProbeRetries,
+    ChildEnvironment::LarchProbeTimeoutRetries,
+    ChildEnvironment::LarchProbeTimeoutSeconds,
+    ChildEnvironment::LarchProbeTtlSeconds,
+    ChildEnvironment::LarchQuietDisable,
+    ChildEnvironment::LarchRenderCacheDir,
+    ChildEnvironment::LarchTimingLedger,
+    ChildEnvironment::LarchTimingSkill,
+    ChildEnvironment::LarchTokenLedger,
+    ChildEnvironment::LarchTokenSessionId,
+    ChildEnvironment::LarchStatuslineDisable,
+    ChildEnvironment::NoOpenBrowser,
+    ChildEnvironment::OpenAiApiKey,
+    ChildEnvironment::RepoRoot,
+    ChildEnvironment::ResearchTmpdir,
+    ChildEnvironment::ReviewTmpdir,
+    ChildEnvironment::SessionEnvPath,
+    ChildEnvironment::SessionTmpdir,
+    ChildEnvironment::XdgCacheHome,
+    ChildEnvironment::XdgConfigHome,
+];
 
 /// Resolve and run the verified larch entrypoint with the supplied command.
 ///
 /// # Errors
 ///
 /// Returns a concise diagnostic when the active plugin root is unavailable or
-/// the bootstrap process cannot be started.  A non-zero child exit is returned
-/// in [`Output`] so the caller can preserve that command's own contract.
-pub fn run_verified_larch(arguments: &[OsString]) -> Result<Output, String> {
+/// the bootstrap process cannot be started. A non-zero child exit is returned
+/// in [`ProcessOutput`] so the caller can preserve that command's own contract.
+pub fn run_verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, String> {
     let root = plugin_root()?;
     let script = root.join("scripts").join("larch.sh");
     if !script.is_file() || script.is_symlink() {
         return Err("CLAUDE_PLUGIN_ROOT does not contain a safe scripts/larch.sh".to_owned());
     }
-    Command::new(&script)
-        .args(arguments)
-        .env(PLUGIN_ROOT_ENV, &root)
-        .output()
+    let program = LarchProgram::bootstrap(&root)
+        .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
+    let mut request = bounded_request(
+        ExternalProgram::Larch(program),
+        arguments.iter().cloned(),
+        VERIFIED_LARCH_TIMEOUT,
+        VERIFIED_LARCH_SHUTDOWN_GRACE,
+        VERIFIED_LARCH_OUTPUT_LIMIT,
+    )?;
+    for key in VERIFIED_LARCH_CONTEXT {
+        if let Some(value) = env::var_os(key.name()) {
+            request = request.with_environment(*key, value);
+        }
+    }
+    request = request.with_environment(
+        ChildEnvironment::ClaudePluginRoot,
+        root.as_os_str().to_owned(),
+    );
+    run_bounded(request)
         .map_err(|error| format!("could not start verified larch entrypoint: {error}"))
 }
 

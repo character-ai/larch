@@ -350,6 +350,21 @@ root_type!(
 );
 
 impl TemporaryRoot {
+    /// Revalidate the root identity before a caller performs an unlink that
+    /// intentionally targets a symlink.
+    ///
+    /// Symlink cleanup cannot use [`Self::confine`] because that method
+    /// correctly rejects the symlink leaf. Callers must revalidate this root
+    /// immediately before unlinking such a leaf instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathSafetyError`] when the root was replaced or became
+    /// unsafe since resolution.
+    pub fn revalidate(&self) -> Result<(), PathSafetyError> {
+        self.0.revalidate()
+    }
+
     /// Create a private directory tree below this trusted root.
     ///
     /// Every existing and newly created component is checked without following

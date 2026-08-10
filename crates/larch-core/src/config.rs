@@ -116,6 +116,8 @@ pub mod env {
     pub const PATH: &str = "PATH";
     /// GitHub `OWNER/REPO` associated with the current workflow.
     pub const REPO: &str = "REPO";
+    /// Absolute repository root supplied by an invoking workflow.
+    pub const REPO_ROOT: &str = "REPO_ROOT";
     /// Session identifier associated with the current workflow.
     pub const SESSION_ID: &str = "SESSION_ID";
     /// Temporary directory for the current session.
@@ -126,9 +128,11 @@ pub mod env {
     pub const USER: &str = "USER";
     /// XDG configuration root used by external products when configured.
     pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
+    /// XDG cache root used for session and progress state when configured.
+    pub const XDG_CACHE_HOME: &str = "XDG_CACHE_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 55] = [
+    pub const ALL: [&str; 57] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
@@ -176,6 +180,7 @@ pub mod env {
         OPENAI_API_KEY,
         PATH,
         REPO,
+        REPO_ROOT,
         RESEARCH_TMPDIR,
         REVIEW_TMPDIR,
         SESSION_ID,
@@ -183,6 +188,7 @@ pub mod env {
         SESSION_TMPDIR,
         TMPDIR,
         USER,
+        XDG_CACHE_HOME,
         XDG_CONFIG_HOME,
     ];
 }

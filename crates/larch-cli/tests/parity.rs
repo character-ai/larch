@@ -11,7 +11,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
 
-use larch_core::{ClassifyTextInput, classify_text};
+use larch_core::{ClassifyTextInput, classify_text, shell_quote};
 use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
 use tempfile::TempDir;
 
@@ -7598,6 +7598,9 @@ fn run_bootstrap_invoke(
     session: &Path,
     mode: &str,
 ) -> std::process::Output {
+    let session_hint = fixture.root.join(".bootstrap-test-session");
+    fs::write(&session_hint, format!("{}\n", session.display()))
+        .expect("write bootstrap session hint");
     let mut command = Command::new("/bin/bash");
     command
         .arg(fixture.root.join("scripts/larch.sh"))
@@ -7618,13 +7621,33 @@ fn run_bootstrap_invoke(
         .env("REAL_LARCH", &fixture.binary)
         .env("CLEAN_INSTALL_EVENTS", &fixture.events)
         .env("CLEAN_INSTALL_FAILURE", "")
-        .env("BOOTSTRAP_TEST_SESSION", session)
         .env("LARCH_CLAUDE_PID", "4242")
-        .env("LARCH_TEST_CACHE_HOME", &fixture.root);
+        .env("LARCH_TEST_CACHE_HOME", &fixture.root)
+        .env("XDG_CACHE_HOME", fixture.root.join("nested-cache"))
+        .env("REPO_ROOT", fixture.root.join("nested-repo"))
+        .env("LARCH_STATUSLINE_DISABLE", "1")
+        .env("CLAUDE_PLUGIN_OPTION_CODEX_EFFORT", "medium")
+        .env("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "plugin-codex")
+        .env("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL", "plugin-cursor")
+        .env("LARCH_CODEX_EFFORT", "high")
+        .env("LARCH_CODEX_FIX_MODEL", "fix-codex")
+        .env("LARCH_CODEX_MODEL", "impl-codex")
+        .env("LARCH_CODEX_REVIEW_MODEL", "review-codex")
+        .env("LARCH_CODEX_VOTE_MODEL", "vote-codex")
+        .env("LARCH_CURSOR_MODEL", "cursor-model")
+        .env("LARCH_EXTERNAL_AUTH_RETRIES", "2")
+        .env("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "17")
+        .env("LARCH_PROBE_NEGATIVE_TTL_SECONDS", "3")
+        .env("LARCH_PROBE_RETRIES", "4")
+        .env("LARCH_PROBE_TIMEOUT_RETRIES", "5")
+        .env("LARCH_PROBE_TIMEOUT_SECONDS", "6")
+        .env("LARCH_PROBE_TTL_SECONDS", "7");
     if mode == "resume" {
         command.env("IMPLEMENT_TMPDIR", session);
     }
-    command.output().expect("run bootstrap invoke")
+    let output = command.output().expect("run bootstrap invoke");
+    fs::remove_file(session_hint).expect("remove bootstrap session hint");
+    output
 }
 
 /// Argument placeholder each clean-install case expands to the seeded session.
@@ -7676,22 +7699,48 @@ fn clean_install_fixture() -> CleanInstallFixture {
     )
     .expect("write clean-install plugin manifest");
     let wrapper = temporary_root.join("verified-larch");
-    fs::write(
-        &wrapper,
-        r#"#!/bin/sh
+    let wrapper_source = r#"#!/bin/sh
 set -eu
-printf '%s\n' "$*" >> "$CLEAN_INSTALL_EVENTS"
-if [ -n "${BOOTSTRAP_TEST_SESSION:-}" ]; then
+if [ -n "${CLEAN_INSTALL_EVENTS:-}" ]; then
+  printf '%s\n' "$*" >> "$CLEAN_INSTALL_EVENTS"
+fi
+bootstrap_session=${BOOTSTRAP_TEST_SESSION:-}
+if [ -z "$bootstrap_session" ] \
+  && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
+  && [ -r "$CLAUDE_PLUGIN_ROOT/.bootstrap-test-session" ]; then
+  IFS= read -r bootstrap_session < "$CLAUDE_PLUGIN_ROOT/.bootstrap-test-session"
+fi
+if [ -n "$bootstrap_session" ]; then
   case "${1:-}:${2:-}" in
     git:current-branch)
       printf '%s\n' 'BRANCH=bootstrap-parity'
       exit 0
       ;;
     session:setup)
-      mkdir -p "$BOOTSTRAP_TEST_SESSION"
-      printf '%s\n' 'bootstrap-session' > "$BOOTSTRAP_TEST_SESSION/session-id"
+      [ "${LARCH_CLAUDE_PID:-}" = 4242 ] || exit 78
+      [ "${XDG_CACHE_HOME:-}" = "$CLAUDE_PLUGIN_ROOT/nested-cache" ] || exit 78
+      [ "${REPO_ROOT:-}" = "$CLAUDE_PLUGIN_ROOT/nested-repo" ] || exit 78
+      [ "${LARCH_STATUSLINE_DISABLE:-}" = 1 ] || exit 78
+      [ "${CLAUDE_PLUGIN_OPTION_CODEX_EFFORT:-}" = medium ] || exit 78
+      [ "${CLAUDE_PLUGIN_OPTION_CODEX_MODEL:-}" = plugin-codex ] || exit 78
+      [ "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" = plugin-cursor ] || exit 78
+      [ "${LARCH_CODEX_EFFORT:-}" = high ] || exit 78
+      [ "${LARCH_CODEX_FIX_MODEL:-}" = fix-codex ] || exit 78
+      [ "${LARCH_CODEX_MODEL:-}" = impl-codex ] || exit 78
+      [ "${LARCH_CODEX_REVIEW_MODEL:-}" = review-codex ] || exit 78
+      [ "${LARCH_CODEX_VOTE_MODEL:-}" = vote-codex ] || exit 78
+      [ "${LARCH_CURSOR_MODEL:-}" = cursor-model ] || exit 78
+      [ "${LARCH_EXTERNAL_AUTH_RETRIES:-}" = 2 ] || exit 78
+      [ "${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-}" = 17 ] || exit 78
+      [ "${LARCH_PROBE_NEGATIVE_TTL_SECONDS:-}" = 3 ] || exit 78
+      [ "${LARCH_PROBE_RETRIES:-}" = 4 ] || exit 78
+      [ "${LARCH_PROBE_TIMEOUT_RETRIES:-}" = 5 ] || exit 78
+      [ "${LARCH_PROBE_TIMEOUT_SECONDS:-}" = 6 ] || exit 78
+      [ "${LARCH_PROBE_TTL_SECONDS:-}" = 7 ] || exit 78
+      mkdir -p "$bootstrap_session"
+      printf '%s\n' 'bootstrap-session' > "$bootstrap_session/session-id"
       printf '%s\n' \
-        "SESSION_TMPDIR=$BOOTSTRAP_TEST_SESSION" \
+        "SESSION_TMPDIR=$bootstrap_session" \
         'SESSION_ID=bootstrap-session' \
         'REPO=' \
         'REPO_UNAVAILABLE=true' \
@@ -7702,7 +7751,7 @@ if [ -n "${BOOTSTRAP_TEST_SESSION:-}" ]; then
       ;;
   esac
 fi
-case "$CLEAN_INSTALL_FAILURE" in
+case "${CLEAN_INSTALL_FAILURE:-}" in
   version)
     if [ "$1" = --version ]; then printf '%s\n' 'larch 0.0.0'; exit 0; fi
     ;;
@@ -7720,8 +7769,17 @@ case "$CLEAN_INSTALL_FAILURE" in
     fi
     ;;
 esac
-exec "$REAL_LARCH" "$@"
-"#,
+if [ -n "${REAL_LARCH:-}" ]; then
+  real_larch=$REAL_LARCH
+else
+  real_larch=__REAL_LARCH__
+fi
+exec "$real_larch" "$@"
+"#;
+    let real_larch = shell_quote(path_text(Path::new(env!("CARGO_BIN_EXE_larch"))));
+    fs::write(
+        &wrapper,
+        wrapper_source.replace("__REAL_LARCH__", &real_larch),
     )
     .expect("write verified binary wrapper");
     #[cfg(unix)]

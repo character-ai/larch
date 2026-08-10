@@ -470,11 +470,51 @@ pub enum ChildEnvironment {
     NoOpenBrowser,
     ClaudePluginRoot,
     ClaudePluginData,
+    /// Plugin-provided fallback for the Codex effort setting.
+    ClaudePluginOptionCodexEffort,
+    /// Plugin-provided fallback for the Codex model setting.
+    ClaudePluginOptionCodexModel,
+    /// Plugin-provided fallback for the Cursor model setting.
+    ClaudePluginOptionCursorModel,
+    /// Verified local-binary override consumed only by `scripts/larch.sh`.
+    LarchBinary,
+    /// Claude session owner identity delegated to nested larch commands.
+    LarchClaudePid,
     /// Consumer repository the invoking Claude session opened.
     ClaudeProjectDir,
+    /// Explicit repository root used by nested session setup.
+    RepoRoot,
     ClaudeSubprocessHookExempt,
     /// Disables quiet stream routing inside a delegated larch verb.
     LarchQuietDisable,
+    /// Optional Codex effort override passed to a nested larch composition.
+    LarchCodexEffort,
+    /// Optional Codex fixer model override passed to a nested larch composition.
+    LarchCodexFixModel,
+    /// Optional Codex implementation model override passed to a nested larch composition.
+    LarchCodexModel,
+    /// Optional Codex reviewer model override passed to a nested larch composition.
+    LarchCodexReviewModel,
+    /// Optional Codex voter model override passed to a nested larch composition.
+    LarchCodexVoteModel,
+    /// Optional Cursor model override passed to a nested larch composition.
+    LarchCursorModel,
+    /// Nested reviewer-probe authentication retry limit.
+    LarchExternalAuthRetries,
+    /// Nested external health-check timeout.
+    LarchExternalHealthCheckTimeout,
+    /// Nested reviewer-probe negative-cache lifetime.
+    LarchProbeNegativeTtlSeconds,
+    /// Nested reviewer-probe retry budget.
+    LarchProbeRetries,
+    /// Nested reviewer-probe timeout retry budget.
+    LarchProbeTimeoutRetries,
+    /// Nested reviewer-probe per-attempt timeout.
+    LarchProbeTimeoutSeconds,
+    /// Nested reviewer-probe positive-cache lifetime.
+    LarchProbeTtlSeconds,
+    /// Opt out of progress statusline installation in a nested bootstrap command.
+    LarchStatuslineDisable,
     /// Panel artifact directory a dispatched review slot records against.
     LarchPanelArtifactDir,
     /// Workflow site label a dispatched review slot records against.
@@ -512,6 +552,8 @@ pub enum ChildEnvironment {
     /// Claude transcript source path passed only to a delegated larch verb.
     LarchClaudeSourceFile,
     GhConfigDir,
+    /// XDG cache root used by nested session setup.
+    XdgCacheHome,
     XdgConfigHome,
 }
 
@@ -547,9 +589,29 @@ impl ChildEnvironment {
             Self::NoOpenBrowser => env::NO_OPEN_BROWSER,
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
             Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
+            Self::ClaudePluginOptionCodexEffort => env::CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
+            Self::ClaudePluginOptionCodexModel => env::CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
+            Self::ClaudePluginOptionCursorModel => env::CLAUDE_PLUGIN_OPTION_CURSOR_MODEL,
+            Self::LarchBinary => env::LARCH_BINARY,
+            Self::LarchClaudePid => crate::ENV_LARCH_CLAUDE_PID,
             Self::ClaudeProjectDir => "CLAUDE_PROJECT_DIR",
+            Self::RepoRoot => env::REPO_ROOT,
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
             Self::LarchQuietDisable => "LARCH_QUIET_DISABLE",
+            Self::LarchCodexEffort => env::LARCH_CODEX_EFFORT,
+            Self::LarchCodexFixModel => env::LARCH_CODEX_FIX_MODEL,
+            Self::LarchCodexModel => env::LARCH_CODEX_MODEL,
+            Self::LarchCodexReviewModel => env::LARCH_CODEX_REVIEW_MODEL,
+            Self::LarchCodexVoteModel => env::LARCH_CODEX_VOTE_MODEL,
+            Self::LarchCursorModel => env::LARCH_CURSOR_MODEL,
+            Self::LarchExternalAuthRetries => env::LARCH_EXTERNAL_AUTH_RETRIES,
+            Self::LarchExternalHealthCheckTimeout => env::LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT,
+            Self::LarchProbeNegativeTtlSeconds => env::LARCH_PROBE_NEGATIVE_TTL_SECONDS,
+            Self::LarchProbeRetries => env::LARCH_PROBE_RETRIES,
+            Self::LarchProbeTimeoutRetries => env::LARCH_PROBE_TIMEOUT_RETRIES,
+            Self::LarchProbeTimeoutSeconds => env::LARCH_PROBE_TIMEOUT_SECONDS,
+            Self::LarchProbeTtlSeconds => env::LARCH_PROBE_TTL_SECONDS,
+            Self::LarchStatuslineDisable => crate::STATUSLINE_DISABLE_ENV,
             Self::LarchPanelArtifactDir => "LARCH_PANEL_ARTIFACT_DIR",
             Self::LarchPanelSite => "LARCH_PANEL_SITE",
             Self::LarchPanelSlot => "LARCH_PANEL_SLOT",
@@ -572,6 +634,7 @@ impl ChildEnvironment {
             Self::SessionTmpdir => env::SESSION_TMPDIR,
             Self::LarchClaudeSourceFile => "LARCH_CLAUDE_SOURCE_FILE",
             Self::GhConfigDir => env::GH_CONFIG_DIR,
+            Self::XdgCacheHome => env::XDG_CACHE_HOME,
             Self::XdgConfigHome => env::XDG_CONFIG_HOME,
         }
     }

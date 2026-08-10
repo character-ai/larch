@@ -6,8 +6,11 @@
 //! session pointers are collected before the sweep so an old top-level mtime
 //! cannot erase a live run.
 
-use larch_adapters::{PathIntent, TemporaryRoot, progress_state, remove_session_tmpdir};
-use larch_core::{KeyPolicy, parse_allowlisted_env_line};
+use crate::child_process::run_host_utility;
+use larch_adapters::{PathIntent, TemporaryRoot, progress_state, read_utf8, remove_session_tmpdir};
+use larch_core::{
+    HostUtilityProgram, KeyPolicy, cleanup_cache_sessions_root, parse_allowlisted_env_line,
+};
 use std::{
     collections::BTreeSet,
     env,
@@ -104,34 +107,27 @@ fn retention_days() -> u64 {
 }
 
 fn claude_session_count() -> usize {
-    let Ok(output) = std::process::Command::new("pgrep")
-        .args(["-x", "claude"])
-        .output()
-    else {
+    let Ok(output) = run_host_utility(
+        HostUtilityProgram::Pgrep,
+        [OsString::from("-x"), OsString::from("claude")],
+        Duration::from_secs(3),
+    ) else {
         return 0;
     };
-    if !output.status.success() {
+    if !output.status().success() {
         return 0;
     }
-    String::from_utf8_lossy(&output.stdout)
+    String::from_utf8_lossy(output.stdout())
         .lines()
         .filter(|line| !line.trim().is_empty())
         .count()
 }
 
 fn cache_sessions_root() -> PathBuf {
-    env::var_os("XDG_CACHE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("HOME")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-                .map(|home| home.join(".cache"))
-        })
-        .unwrap_or_else(|| PathBuf::from("/tmp/.cache"))
-        .join("larch")
-        .join("sessions")
+    cleanup_cache_sessions_root(
+        env::var_os("XDG_CACHE_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+    )
 }
 
 fn temporary_roots() -> Vec<PathBuf> {
@@ -156,11 +152,18 @@ fn temporary_roots() -> Vec<PathBuf> {
 }
 
 fn canonical_directory(path: &Path) -> Option<PathBuf> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return None;
+    let path = absolute_path(path)?;
+    TemporaryRoot::resolve(Some(&path))
+        .ok()
+        .map(|root| root.path().to_owned())
+}
+
+fn absolute_path(path: &Path) -> Option<PathBuf> {
+    if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        env::current_dir().ok().map(|cwd| cwd.join(path))
     }
-    fs::canonicalize(path).ok()
 }
 
 #[derive(Default)]
@@ -214,12 +217,11 @@ fn add_active_path(active: &mut BTreeSet<PathBuf>, path: &Path) {
 }
 
 fn read_env_key(path: &Path, key: &str) -> Option<String> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
-    }
-    let bytes = fs::read(path).ok()?;
-    let text = String::from_utf8_lossy(&bytes);
+    let path = absolute_path(path)?;
+    let parent = path.parent()?;
+    let root = TemporaryRoot::resolve(Some(parent)).ok()?;
+    let confined = root.confine(&path, PathIntent::Read).ok()?;
+    let text = read_utf8(&confined).ok()?;
     text.lines().find_map(|line| {
         parse_allowlisted_env_line(line, &[key], Some(KeyPolicy::Environment), true)
             .map(|(_key, value)| value)
@@ -378,7 +380,10 @@ fn reap_design_links(cache_root: &Path) -> usize {
     let Some(root) = canonical_directory(cache_root) else {
         return 0;
     };
-    let Ok(entries) = fs::read_dir(&root) else {
+    let Ok(root_guard) = TemporaryRoot::resolve(Some(&root)) else {
+        return 0;
+    };
+    let Ok(entries) = fs::read_dir(root_guard.path()) else {
         return 0;
     };
     entries
@@ -392,6 +397,9 @@ fn reap_design_links(cache_root: &Path) -> usize {
             let path = entry.path();
             fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink())
                 && stale_design_link(&path)
+                && root_guard.revalidate().is_ok()
+                && fs::symlink_metadata(&path)
+                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
                 && fs::remove_file(path).is_ok()
         })
         .count()
@@ -421,7 +429,10 @@ fn reap_implement_pointers(cache_root: &Path) -> usize {
     let Some(root) = canonical_directory(cache_root) else {
         return 0;
     };
-    let Ok(entries) = fs::read_dir(&root) else {
+    let Ok(root_guard) = TemporaryRoot::resolve(Some(&root)) else {
+        return 0;
+    };
+    let Ok(entries) = fs::read_dir(root_guard.path()) else {
         return 0;
     };
     entries
@@ -441,7 +452,12 @@ fn reap_implement_pointers(cache_root: &Path) -> usize {
             else {
                 return false;
             };
-            !Path::new(&tmpdir).is_dir() && fs::remove_file(path).is_ok()
+            let Ok(confined) = root_guard.confine(&path, PathIntent::Cleanup) else {
+                return false;
+            };
+            !Path::new(&tmpdir).is_dir()
+                && confined.revalidate().is_ok()
+                && fs::remove_file(confined.path()).is_ok()
         })
         .count()
 }

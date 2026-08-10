@@ -1,6 +1,7 @@
 //! Rust owner for `status check`, composed from the existing agent owners.
 
 use crate::runtime_entrypoint::run_verified_larch;
+use larch_core::{DuplicatePolicy, KvDocument, ParseOptions};
 use std::{ffi::OsString, process::ExitCode};
 
 /// Print the current plugin and external-tool health envelope.
@@ -19,8 +20,8 @@ pub fn check(arguments: &[OsString]) -> ExitCode {
     }
     let reviewers =
         match run_verified_larch(&[OsString::from("agent"), OsString::from("check-reviewers")]) {
-            Ok(output) if output.status.success() => {
-                parse_kv(&String::from_utf8_lossy(&output.stdout))
+            Ok(output) if output.status().success() => {
+                parse_kv(&String::from_utf8_lossy(output.stdout()))
             }
             _ => std::collections::BTreeMap::default(),
         };
@@ -42,7 +43,9 @@ pub fn check(arguments: &[OsString]) -> ExitCode {
         OsString::from("--skill"),
         OsString::from("status"),
     ]) {
-        Ok(output) if output.status.success() => parse_kv(&String::from_utf8_lossy(&output.stdout)),
+        Ok(output) if output.status().success() => {
+            parse_kv(&String::from_utf8_lossy(output.stdout()))
+        }
         _ => std::collections::BTreeMap::default(),
     };
     let codex_state = value(&gate, "CODEX_STATE", "probe-failed");
@@ -55,7 +58,9 @@ pub fn check(arguments: &[OsString]) -> ExitCode {
         OsString::from("--cursor-state"),
         OsString::from(cursor_state.clone()),
     ]) {
-        Ok(output) if output.status.success() => parse_kv(&String::from_utf8_lossy(&output.stdout)),
+        Ok(output) if output.status().success() => {
+            parse_kv(&String::from_utf8_lossy(output.stdout()))
+        }
         _ => std::collections::BTreeMap::default(),
     };
 
@@ -106,10 +111,9 @@ fn plugin_version() -> String {
 }
 
 fn parse_kv(text: &str) -> std::collections::BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+    KvDocument::parse(text, ParseOptions::legacy())
+        .map(|document| document.select(DuplicatePolicy::Last))
+        .unwrap_or_default()
 }
 
 fn value(values: &std::collections::BTreeMap<String, String>, key: &str, fallback: &str) -> String {

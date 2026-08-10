@@ -6,13 +6,18 @@
 //! continuation until their #7681 migration leaf is complete.
 
 use crate::{
-    agent_commands, progress_commands,
+    agent_commands,
+    child_process::run_host_utility,
+    progress_commands,
     python_verb::run_python_verb,
     runtime_entrypoint::{plugin_root, run_verified_larch},
     session_env_commands,
 };
-use larch_adapters::{TemporaryRoot, atomic_write_utf8_in};
-use larch_core::{GateDecision, entry_gate, shell_quote, validate_progress_run_id};
+use larch_adapters::{GixRepository, TemporaryRoot, atomic_write_utf8_in};
+use larch_core::{
+    ConfigKey, ConfigScope, CrStrip, DuplicatePolicy, GateDecision, HostUtilityProgram, KvDocument,
+    ParseOptions, RepositoryRead, entry_gate, shell_quote, validate_progress_run_id,
+};
 use std::{
     collections::BTreeMap,
     env,
@@ -20,7 +25,7 @@ use std::{
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::ExitCode,
     time::Duration,
 };
 
@@ -477,20 +482,16 @@ fn branch_state() -> BranchState {
     let current_branch =
         run_verified_larch(&[OsString::from("git"), OsString::from("current-branch")])
             .ok()
-            .filter(|output| output.status.success())
+            .filter(|output| output.status().success())
             .map(|output| {
                 value(
-                    &parse_kv(&String::from_utf8_lossy(&output.stdout)),
+                    &parse_kv(&String::from_utf8_lossy(output.stdout())),
                     "BRANCH",
                     "",
                 )
             })
             .unwrap_or_default();
-    let user_name = Command::new("git") // lint-subprocess-via-runner: ok static compatibility read mirrors the retired branch-state helper.
-        .args(["config", "user.name"])
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-        .unwrap_or_default();
+    let user_name = configured_git_user_name();
     let user_prefix = user_prefix(&user_name);
     let is_main = if current_branch.is_empty() || current_branch == "main" {
         "true"
@@ -509,6 +510,37 @@ fn branch_state() -> BranchState {
         is_user_branch: is_user_branch.to_owned(),
         user_prefix,
     }
+}
+
+fn configured_git_user_name() -> String {
+    let Ok(cwd) = env::current_dir() else {
+        return String::new();
+    };
+    let Ok(repository) = GixRepository::discover(&cwd) else {
+        return String::new();
+    };
+    let Ok(key) = ConfigKey::new("user.name") else {
+        return String::new();
+    };
+    let Ok(values) = repository.config_values(&key) else {
+        return String::new();
+    };
+    values
+        .iter()
+        .rev()
+        .find(|value| {
+            matches!(
+                value.scope,
+                ConfigScope::Repository
+                    | ConfigScope::Worktree
+                    | ConfigScope::Environment
+                    | ConfigScope::CommandLine
+                    | ConfigScope::Api
+            )
+        })
+        .or_else(|| values.last())
+        .map(|value| String::from_utf8_lossy(&value.value).trim().to_owned())
+        .unwrap_or_default()
 }
 
 fn user_prefix(user_name: &str) -> String {
@@ -565,14 +597,14 @@ fn setup_new_session(
     }
     let output = run_verified_larch(&arguments)
         .map_err(|message| InfrastructureFailure::new("session-setup", "", message))?;
-    if !output.status.success() {
+    if !output.status().success() {
         return Err(InfrastructureFailure::new(
             "session-setup",
             "",
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            String::from_utf8_lossy(output.stderr()).trim().to_owned(),
         ));
     }
-    let fields = parse_kv(&String::from_utf8_lossy(&output.stdout));
+    let fields = parse_kv(&String::from_utf8_lossy(output.stdout()));
     state.implement_tmpdir = value(&fields, "SESSION_TMPDIR", "");
     state.session_id = value(&fields, "SESSION_ID", "");
     if state.implement_tmpdir.is_empty()
@@ -1000,9 +1032,14 @@ fn read_env_file(path: &Path, key: &str) -> String {
 }
 
 fn first_kv_value(text: &str, expected: &str) -> String {
-    text.lines()
-        .filter_map(|line| line.strip_suffix('\r').unwrap_or(line).split_once('='))
-        .find_map(|(key, value)| (key == expected).then(|| value.to_owned()))
+    let Ok(document) = KvDocument::parse(text, bootstrap_kv_options()) else {
+        return String::new();
+    };
+    document
+        .rows()
+        .iter()
+        .find(|row| row.key() == expected)
+        .map(|row| row.value().to_owned())
         .unwrap_or_default()
 }
 
@@ -1015,11 +1052,22 @@ fn single_line(value: &str) -> String {
 }
 
 fn parse_kv(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.strip_suffix('\r').unwrap_or(line).split_once('='))
-        .filter(|(key, _)| valid_key(key))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+    KvDocument::parse(text, bootstrap_kv_options()).map_or_else(
+        |_| BTreeMap::new(),
+        |document| {
+            document
+                .select(DuplicatePolicy::Last)
+                .into_iter()
+                .filter(|(key, _)| valid_key(key))
+                .collect()
+        },
+    )
+}
+
+const fn bootstrap_kv_options() -> ParseOptions {
+    let mut options = ParseOptions::legacy();
+    options.cr_strip = CrStrip::Suffix;
+    options
 }
 
 fn first_nonempty(values: &[String]) -> String {
@@ -1137,11 +1185,16 @@ fn parse_routing_arguments(arguments: &[OsString]) -> Result<ParseRoutingOptions
 }
 
 fn parse_routing_envelope(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.strip_suffix('\r').unwrap_or(line).split_once('='))
-        .filter(|(key, _)| ROUTING_KEYS.contains(key) && valid_key(key))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+    KvDocument::parse(text, bootstrap_kv_options()).map_or_else(
+        |_| BTreeMap::new(),
+        |document| {
+            document
+                .select(DuplicatePolicy::Last)
+                .into_iter()
+                .filter(|(key, _)| ROUTING_KEYS.contains(&key.as_str()) && valid_key(key))
+                .collect()
+        },
+    )
 }
 
 fn valid_key(key: &str) -> bool {
@@ -1313,12 +1366,19 @@ fn non_interactive(explicit: &str) -> bool {
 
 fn parent_invocation_non_interactive() -> bool {
     let process_field = |pid: u32, field: &str| {
-        Command::new("ps")
-            .args(["-o", field, "-p", &pid.to_string()])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        run_host_utility(
+            HostUtilityProgram::Ps,
+            [
+                OsString::from("-o"),
+                OsString::from(field),
+                OsString::from("-p"),
+                OsString::from(pid.to_string()),
+            ],
+            Duration::from_secs(3),
+        )
+        .ok()
+        .filter(|output| output.status().success())
+        .map(|output| String::from_utf8_lossy(output.stdout()).trim().to_owned())
     };
     // Python's `os.getppid()` starts inspection at the invoking process, not
     // at the command itself. Preserve the full eight-parent inspection depth.
@@ -1490,7 +1550,7 @@ mod tests {
         write_larch_run_sh(session.to_str().expect("utf8 session path")).expect("write launcher");
         let launcher = session.join("larch-run.sh");
         let run = |arguments: &[&str]| {
-            Command::new("bash")
+            Command::new("bash") // lint-subprocess-via-runner: ok test-only launcher fixture exercises the generated shell contract.
                 .arg(&launcher)
                 .args(arguments)
                 .env_remove("IMPLEMENT_TMPDIR")
@@ -1539,7 +1599,7 @@ mod tests {
                 .expect("utf8 fallback session path"),
         )
         .expect("write fallback launcher");
-        let root = Command::new("bash")
+        let root = Command::new("bash") // lint-subprocess-via-runner: ok test-only launcher fixture verifies the generated fallback resolver.
             .arg(session_fallback.join("larch-run.sh"))
             .arg("--print-plugin-root")
             .env_remove("IMPLEMENT_TMPDIR")
