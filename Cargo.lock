@@ -3044,6 +3044,7 @@ dependencies = [
  "flate2",
  "larch-adapters",
  "larch-core",
+ "larch-harness-mark",
  "larch-lint",
  "larch-test-support",
  "nix",
@@ -3077,6 +3078,10 @@ dependencies = [
  "toml",
  "zip",
 ]
+
+[[package]]
+name = "larch-harness-mark"
+version = "56.2.2"
 
 [[package]]
 name = "larch-lint"

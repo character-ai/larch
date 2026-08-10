@@ -18,6 +18,7 @@ clap.workspace = true
 flate2.workspace = true
 larch-adapters.workspace = true
 larch-core.workspace = true
+larch-harness-mark.workspace = true
 larch-lint.workspace = true
 regex.workspace = true
 serde.workspace = true

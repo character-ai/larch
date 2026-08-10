@@ -161,9 +161,12 @@ corrupt a row, and every clock value arrives through the injected
 registrations and the superseded command implementations are removed;
 `python/larch/report/timing.py` keeps only a read-only path resolver for review
 consumers, while Rust owns every ledger mutation. `timing harness-mark`
-reaches developer and CI harnesses through the Makefile `HARNESS_MARK`
-variable. One deliberate difference: the Rust report parses the ledger once, so
-a malformed row now warns once instead of once per internal read.
+reaches the Rust-owned dependency-free `larch-harness-mark` boundary through
+the Makefile `HARNESS_MARK` variable. The released `larch` command forwards to
+the same owner for compatibility, while the developer/CI binary avoids a cold
+full-CLI build and emits separate cold-or-warm bootstrap timing diagnostics.
+One deliberate difference: the Rust report parses the ledger once, so a
+malformed row now warns once instead of once per internal read.
 
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 

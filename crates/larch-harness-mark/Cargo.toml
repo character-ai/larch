@@ -1,0 +1,16 @@
+[package]
+name = "larch-harness-mark"
+version.workspace = true
+description = "Dependency-free timing wrapper for developer and CI harnesses"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "larch-harness-mark"
+path = "src/main.rs"
+
+[lints]
+workspace = true

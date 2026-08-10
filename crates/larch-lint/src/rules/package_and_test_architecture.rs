@@ -270,6 +270,7 @@ fn known_workspace_package(name: &str) -> bool {
         "larch-core"
             | "larch-adapters"
             | "larch-cli"
+            | "larch-harness-mark"
             | "larch-lint"
             | "larch-test-support"
     )
@@ -279,7 +280,10 @@ fn workspace_dependency_allowed(importer: &str, dependency: &str) -> bool {
     matches!(
         (importer, dependency),
         ("larch-adapters" | "larch-test-support", "larch-core")
-            | ("larch-cli", "larch-core" | "larch-adapters" | "larch-lint")
+            | (
+                "larch-cli",
+                "larch-core" | "larch-adapters" | "larch-harness-mark" | "larch-lint"
+            )
     )
 }
 
@@ -587,6 +591,7 @@ mod tests {
         assert!(known_workspace_package("larch-core"));
         assert!(known_workspace_package("larch-adapters"));
         assert!(known_workspace_package("larch-cli"));
+        assert!(known_workspace_package("larch-harness-mark"));
         assert!(known_workspace_package("larch-lint"));
         assert!(known_workspace_package("larch-test-support"));
         assert!(!known_workspace_package("larch-report"));
@@ -597,6 +602,10 @@ mod tests {
         assert!(workspace_dependency_allowed(
             "larch-cli",
             "larch-adapters"
+        ));
+        assert!(workspace_dependency_allowed(
+            "larch-cli",
+            "larch-harness-mark"
         ));
         assert!(workspace_dependency_allowed(
             "larch-test-support",

@@ -3,6 +3,7 @@ members = [
     "crates/larch-adapters",
     "crates/larch-cli",
     "crates/larch-core",
+    "crates/larch-harness-mark",
     "crates/larch-lint",
     "crates/larch-test-support",
 ]
@@ -40,6 +41,7 @@ indexmap = { version = "2.14.0", default-features = false, features = ["serde", 
 inventory = { version = "0.3.24", default-features = false }
 larch-adapters = { version = "=56.2.2", path = "crates/larch-adapters" }
 larch-core = { version = "=56.2.2", path = "crates/larch-core" }
+larch-harness-mark = { version = "=56.2.2", path = "crates/larch-harness-mark" }
 larch-lint = { version = "=56.2.2", path = "crates/larch-lint" }
 larch-test-support = { version = "=56.2.2", path = "crates/larch-test-support" }
 nix = { version = "0.31.3", default-features = false, features = ["process", "signal", "fs", "dir"] }

@@ -276,8 +276,15 @@ Python consumer tests are `python/tests/test_rebalance_script.py` and
 `crates/larch-cli/tests/test_shards.rs`. Run the targeted Cargo and pytest
 commands before changing the rebalance contract.
 
-**`LARCH_HARNESS_TIMING` format** (from Rust `timing harness-mark`): each
-wrapped `bash` invocation emits one tab-separated row to stdout:
+**Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
+dependency-free Rust `larch-harness-mark` binary in `target/harness-mark`. It
+uses `rustc` directly for its standard-library-only sources, rather than
+starting the released `larch-cli` package or Cargo's workspace machinery. That
+separate target directory preserves the existing `target/debug/larch` probe
+behavior.
+
+Each wrapped command still emits the Rust-owned `LARCH_HARNESS_TIMING` row to
+stdout:
 
 ```
 LARCH_HARNESS_TIMING<TAB><test-name><TAB><N.NNs>
@@ -286,6 +293,21 @@ LARCH_HARNESS_TIMING<TAB><test-name><TAB><N.NNs>
 The trailing `s` suffix is stripped and the remainder parsed as decimal seconds.
 Current output uses exactly two fractional digits (e.g. `0.34s`, `7.62s`);
 older published logs may contain integer-only seconds — both forms are accepted.
+
+Before its child begins, the wrapper also emits a separate bootstrap diagnostic:
+
+```text
+LARCH_HARNESS_BOOTSTRAP<TAB><test-name><TAB><cold|warm|unknown><TAB><N.NNs>
+```
+
+`cold` means the isolated timer binary was absent before that recipe invoked
+`rustc`; `warm` means it already existed. The duration starts immediately
+before the helper build starts and ends immediately before the child command
+begins. It is not folded into the child row, so a future harness-packing report
+can charge fixed startup separately from target work. A comparable fresh-runner
+sample retains the first cold row, subsequent warm rows, the printed Make
+recipe that names the child command, and the GitHub Actions job timestamps used
+for total-job and summed-runner timing.
 
 ### Branch protection migration
 
