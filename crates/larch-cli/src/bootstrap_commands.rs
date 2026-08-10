@@ -479,18 +479,7 @@ struct BranchState {
 }
 
 fn branch_state() -> BranchState {
-    let current_branch =
-        run_verified_larch(&[OsString::from("git"), OsString::from("current-branch")])
-            .ok()
-            .filter(|output| output.status().success())
-            .map(|output| {
-                value(
-                    &parse_kv(&String::from_utf8_lossy(output.stdout())),
-                    "BRANCH",
-                    "",
-                )
-            })
-            .unwrap_or_default();
+    let current_branch = crate::push_network::current_branch().unwrap_or_default();
     let user_name = configured_git_user_name();
     let user_prefix = user_prefix(&user_name);
     let is_main = if current_branch.is_empty() || current_branch == "main" {
