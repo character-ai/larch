@@ -3765,6 +3765,121 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "ruff" not in lint_local_skip
 
 
+def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    linting = (repo_root / "docs" / "linting.md").read_text(encoding="utf-8")
+    coverage_action = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    required_contexts = (
+        "lint",
+        "lint-local",
+        "shellcheck",
+        "test-harnesses-gate",
+        "agent-lint",
+        "rust-coverage",
+        "rust-gate",
+        "contains-pins",
+        "gitleaks",
+        "agent-sync",
+        "trufflehog",
+        "python-pyright",
+        "python-tests-gate",
+    )
+    workflow_trigger = workflow.split("\nconcurrency:", 1)[0]
+    ruleset_section = linting.split("### CI and branch-safety ruleset", 1)[1].split(
+        "### Changing the shard count", 1
+    )[0]
+    rust_selection = workflow.split("\n  rust-selection:", 1)[1].split(
+        "\n  rust-lint:", 1
+    )[0]
+    rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
+    rust_coverage = workflow.split("\n  rust-coverage:", 1)[1].split(
+        "\n  rust-coverage-benchmark:", 1
+    )[0]
+    rust_gate = workflow.split("\n  rust-gate:", 1)[1].split("\n  contains-pins:", 1)[0]
+    test_harnesses_gate = workflow.split("\n  test-harnesses-gate:", 1)[1].split(
+        "\n  agent-lint:", 1
+    )[0]
+    python_tests_gate = workflow.split("\n  python-rust-integration:", 1)[1].split(
+        "\n  gitleaks:", 1
+    )[0]
+
+    assert "merge_group:\n    types: [checks_requested]" in workflow_trigger
+    assert "if: github.event_name == 'pull_request'" in rust_selection
+    assert "github.event_name != 'pull_request'" in rust_full
+    assert "if: always()" in test_harnesses_gate
+    assert "if: always()" in rust_coverage
+    assert "if: always()" in rust_gate
+    assert "if: always()" in python_tests_gate
+    assert "needs: [rust-lint, rust-deny, rust-coverage]" in rust_gate
+    assert "needs: [rust-coverage, python-tests]" in python_tests_gate
+    assert 'test "$FULL_RESULT" = success' in rust_coverage
+    for result_name in ("lint_result", "deny_result", "coverage_result"):
+        assert f'[ "${result_name}" = success ]' in rust_gate
+
+    assert tuple(re.findall(r"^- `([^`]+)`$", ruleset_section, re.MULTILINE)) == required_contexts
+    assert "source-bound to the GitHub Actions integration (`15368`)" in ruleset_section
+    assert "strict_required_status_checks_policy` remains false" in ruleset_section
+    assert "Do not require a matrix leg or a conditional implementation detail." in ruleset_section
+    for merge_queue_parameter in (
+        "`ALLGREEN`",
+        "`max_entries_to_build=1`",
+        "`max_entries_to_merge=1`",
+        "`min_entries_to_merge=1`",
+        "`min_entries_to_merge_wait_minutes=0`",
+    ):
+        assert merge_queue_parameter in ruleset_section
+    for conditional_context in (
+        "rust-selection",
+        "rust-lint",
+        "rust-deny",
+        "rust-full",
+        "rust-partial",
+        "rust-skip",
+    ):
+        assert f"`{conditional_context}`" in ruleset_section
+
+    required_job_anchors = {
+        "lint": "\n  lint:",
+        "lint-local": "\n  lint-local:",
+        "shellcheck": "\n  shellcheck:",
+        "test-harnesses-gate": "\n  test-harnesses-gate:\n    name: test-harnesses-gate",
+        "agent-lint": "\n  agent-lint:",
+        "rust-coverage": "\n  rust-coverage:\n    name: rust-coverage",
+        "rust-gate": "\n  rust-gate:\n    name: rust-gate",
+        "contains-pins": "\n  contains-pins:",
+        "gitleaks": "\n  gitleaks:",
+        "agent-sync": "\n  agent-sync:",
+        "trufflehog": "\n  trufflehog:",
+        "python-pyright": "\n  python-pyright:",
+        "python-tests-gate": "\n  python-rust-integration:\n    name: python-tests-gate",
+    }
+    assert tuple(required_job_anchors) == required_contexts
+    for context, anchor in required_job_anchors.items():
+        assert anchor in workflow, context
+
+    for unconditionally_reported_job in (
+        "lint",
+        "lint-local",
+        "shellcheck",
+        "agent-lint",
+        "contains-pins",
+        "gitleaks",
+        "agent-sync",
+        "trufflehog",
+        "python-pyright",
+    ):
+        job = workflow.split(f"\n  {unconditionally_reported_job}:", 1)[1].split(
+            "\n  ", 1
+        )[0]
+        assert re.search(r"^    if:", job, re.MULTILINE) is None, unconditionally_reported_job
+
+    for trusted_cache_surface in (rust_full, coverage_action):
+        assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in trusted_cache_surface
+
+
 def test_rust_ci_cache_tool_and_gate_contract() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")

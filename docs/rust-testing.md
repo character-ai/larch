@@ -250,10 +250,12 @@ follows:
   candidates use `current-checkout` provenance; only a successful `main` push
   may label and publish a `refs/heads/main` candidate. This does not build a
   second executable.
-  It is the only producer that enforces full-workspace coverage. Pushes to
-  `main`, manual dispatches, scheduled runs, merge-queue runs, and unknown
-  events always use `rust-full`; pull requests use it when selection is `full`
-  or selection cannot prove a narrower path.
+  It is the only producer that enforces full-workspace coverage. The
+  `merge_group` `checks_requested` trigger runs the same full, read-only path
+  for a merge-queue candidate. Pushes to `main`, manual dispatches, scheduled
+  runs, merge-queue runs, and unknown events always use `rust-full`; pull
+  requests use it when selection is `full` or selection cannot prove a
+  narrower path.
 - `rust-partial` and `rust-skip` may be the selected producer only for pull
   requests. `rust-partial` runs the selector-proven package closure without a
   misleading full-workspace coverage threshold. `rust-skip` runs no

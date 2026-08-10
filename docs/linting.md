@@ -333,17 +333,45 @@ sample retains the first cold row, subsequent warm rows, the printed Make
 recipe that names the child command, and the GitHub Actions job timestamps used
 for total-job and summed-runner timing.
 
-### Branch protection migration
+### CI and branch-safety ruleset
 
-Before the sharded CI shape merges, an admin must update main-branch protection. In GitHub, open repository Settings → Branches → the `main` rule → Require status checks. Remove the old single `test-harnesses` required check and add these required checks:
+The active `CI and branch safety` ruleset protects `refs/heads/main`. It
+requires only stable, unconditional aggregate or single-lane checks. Every
+required context is source-bound to the GitHub Actions integration (`15368`):
 
-- `test-harnesses (1)`
-- `test-harnesses (2)`
-- `test-harnesses (3)`
-- `test-harnesses (4)`
-- `test-harnesses (5)`
+- `lint`
+- `lint-local`
+- `shellcheck`
+- `test-harnesses-gate`
+- `agent-lint`
+- `rust-coverage`
+- `rust-gate`
+- `contains-pins`
+- `gitleaks`
+- `agent-sync`
+- `trufflehog`
+- `python-pyright`
+- `python-tests-gate`
 
-Save the rule before merging the PR, or GitHub may report green matrix checks while branch protection still waits for the retired single check. When adding a split CI job such as `python-pyright`, add that new status check to branch protection before relying on it to gate merges. If the repository uses rulesets in addition to classic branch protection, verify the same required-check list there too.
+Do not require a matrix leg or a conditional implementation detail. In
+particular, `rust-selection`, `rust-lint`, `rust-deny`, `rust-full`,
+`rust-partial`, and `rust-skip` are inputs to the stable Rust aggregates, not
+proof that every required Rust obligation ran.
+
+The ruleset requires a merge queue with `ALLGREEN`, a 60-minute check-response
+timeout, `max_entries_to_build=1`, `max_entries_to_merge=1`,
+`min_entries_to_merge=1`, `min_entries_to_merge_wait_minutes=0`, and squash
+merges. The workflow receives `merge_group` `checks_requested` events and runs
+the same full, read-only validation lane as `main`. A merge group cannot publish
+trusted caches because every trusted-cache save requires a successful `push` to
+`refs/heads/main`. `strict_required_status_checks_policy` remains false: the
+merge queue, rather than a stale branch-head check, validates the integrated
+candidate against the current queued base.
+
+If GitHub cannot provide a merge queue, enable
+`strict_required_status_checks_policy` with this same source-bound context list
+and record the reason in the tracking issue. Keep the `merge_group` trigger so
+the workflow remains ready for a later queue activation.
 
 The `shellcheck` job runs as a dedicated CI job in parallel with `lint`; the `lint` job SKIPs the shellcheck hook to avoid paying the pre-commit env-install cost twice.
 
@@ -356,7 +384,7 @@ The shard count today is `5`, hard-coded in two places (the partition guard is s
 
 `scripts/test-harness-shards-coverage.sh` does NOT need editing on a shard-count change: it discovers the active `test-harnesses-N:` rules from the Makefile (`extract_shard_prereqs` parses them) and validates that `test-harness-shards-coverage` is first in the shard that contains it. The umbrella-expected list is built from the same discovered set.
 
-A partial edit that updates the Makefile but forgets the workflow YAML would silently drop a CI shard while local `make test-harness-shards-coverage` still passes. Any change to shard count must touch both locations in the same commit and re-run the branch-protection migration above with the new check identities.
+A partial edit that updates the Makefile but forgets the workflow YAML would silently drop a CI shard while local `make test-harness-shards-coverage` still passes. Any change to shard count must touch both locations in the same commit and update the required-check list above with the new stable gate identity.
 
 ## CI secret scanning
 

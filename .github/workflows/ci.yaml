@@ -30,6 +30,11 @@ on:
     branches:
       - main
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # A merge queue validates an integration candidate on a temporary ref. Keep
+  # this separate from pull_request so every required check reports on the
+  # candidate SHA before GitHub advances main.
+  merge_group:
+    types: [checks_requested]
   # Run the full workflow on push to main so the pre-commit hook-env
   # cache populates under the default-branch scope. PRs from feature
   # branches can read default-branch caches but cannot read each
