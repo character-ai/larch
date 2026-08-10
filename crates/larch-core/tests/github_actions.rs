@@ -4,10 +4,9 @@ use larch_core::{
     CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
     GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue,
     GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult, GitHubIssueSearch,
-    GitHubLabel,
-    GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef, GitHubService,
-    GitHubTransportPolicy, ProcessCancellation, WorkflowDispatchRequest, WorkflowJob,
-    WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing, run_logs,
+    GitHubLabel, GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, ProcessCancellation, WorkflowDispatchRequest,
+    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing, run_logs,
     run_logs_setup_failure, workflow_path,
 };
 use std::{

@@ -1620,7 +1620,11 @@ mod tests {
                 }
                 rows.push(retain);
             }
-            let has_next = if page == 19 { final_page_has_next } else { true };
+            let has_next = if page == 19 {
+                final_page_has_next
+            } else {
+                true
+            };
             pages.push((rows, has_next));
         }
         pages
@@ -1629,7 +1633,8 @@ mod tests {
     #[test]
     fn bounded_partial_admits_the_live_scale_snapshot_with_truncation() {
         let pages = live_scale_pages(true);
-        let GitHubListOutcome::Complete(result) = walk(&pages, 2_000, GitHubIssueListMode::BoundedPartial)
+        let GitHubListOutcome::Complete(result) =
+            walk(&pages, 2_000, GitHubIssueListMode::BoundedPartial)
         else {
             panic!("bounded-partial must admit the snapshot");
         };
@@ -1668,7 +1673,8 @@ mod tests {
         // exhaustive caller (search) gets its five with no refusal and no
         // truncation, while a bounded-partial caller learns older rows remain.
         let pages: Vec<ScanPage> = vec![(vec![true; 100], true)];
-        let GitHubListOutcome::Complete(exhaustive) = walk(&pages, 5, GitHubIssueListMode::Exhaustive)
+        let GitHubListOutcome::Complete(exhaustive) =
+            walk(&pages, 5, GitHubIssueListMode::Exhaustive)
         else {
             panic!("reaching the requested count is not a refusal");
         };
