@@ -265,7 +265,7 @@ exclude = [
   "skills/implement/scripts/test-step-7a.sh",
   "skills/implement/scripts/flush-execution-issues.sh",
   # Delegation smoke for flush-execution-issues.sh; behavioral authority is
-  # python/tests/issue/test_execution_issues.py (flush-execution-issues-py-harness).
+  # the Rust execution_issue_commands unit and process-contract suites.
   "skills/implement/scripts/test-flush-execution-issues.sh",
   "skills/implement/scripts/oos-disposition-checkpoint.sh",
   "skills/implement/scripts/oos-disposition-gate.sh",
@@ -293,7 +293,6 @@ exclude = [
   # so a SKILL.md reference is prohibited; exclude both until the lane is wired.
   "skills/implement/scripts/step-8-ci-fixer.sh",
   "skills/implement/scripts/test-step-8-ci-fixer.sh",
-  "python/test_execution_issues.py",
   "python/cli.py stall-recovery",
   "python/larch/state/stall_recovery.py",
   "python/larch/issue/file_oos.py",

@@ -12,12 +12,32 @@ fn install_bootstrap_stub(root: &Path) -> std::path::PathBuf {
     let plugin_root = root.join("plugin");
     let scripts = plugin_root.join("scripts");
     fs::create_dir_all(&scripts).expect("stub scripts");
+    fs::create_dir_all(plugin_root.join(".claude-plugin")).expect("stub plugin metadata");
+    fs::write(
+        plugin_root.join(".claude-plugin/plugin.json"),
+        r#"{"version":"1.2.3"}"#,
+    )
+    .expect("stub plugin version");
     let bootstrap = scripts.join("larch.sh");
     fs::write(
         &bootstrap,
         r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" >"$CLAUDE_PLUGIN_ROOT/reentry.args"
+if [ "$1 $2" = "tracking-issue upsert-summary" ]; then
+  shift 2
+  content_file=
+  while (( $# > 0 )); do
+    case "$1" in
+      --content-file) content_file=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  test -n "$content_file"
+  cp "$content_file" "$CLAUDE_PLUGIN_ROOT/published-summary.md"
+  printf 'COMMENT_URL=https://example.test/comment/1\n'
+  exit 0
+fi
 log_root=
 run_id=
 record_file=
@@ -389,5 +409,55 @@ fn ordinary_flush_reenters_the_bootstrap_and_publishes_durably() {
         fs::read_to_string(batch)
             .expect("updated batch")
             .contains("\"body\":\"- second\\n\"")
+    );
+}
+
+#[test]
+fn refresh_restores_the_exact_pre_cutover_summary_rows() {
+    let directory = TempDir::new().expect("sandbox");
+    let root = fs::canonicalize(directory.path()).expect("canonical sandbox");
+    let session = root.join("session");
+    fs::create_dir_all(&session).expect("session");
+    fs::write(
+        session.join("parent-issue.md"),
+        "ISSUE_NUMBER=42\nRUN_ID=run-1\n",
+    )
+    .expect("parent issue");
+    fs::write(
+        session.join("session-env.sh"),
+        "REPO=owner/name\nAGENT=claude\nCODER=codex\n",
+    )
+    .expect("session env");
+    fs::write(
+        session.join("execution-issues.md"),
+        "### Warnings\n\n- first\n- second\n",
+    )
+    .expect("execution issues");
+    let plugin_root = install_bootstrap_stub(&root);
+
+    command()
+        .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
+        .args([
+            "execution-issues",
+            "refresh",
+            "--implement-tmpdir",
+            session.to_str().expect("session path"),
+        ])
+        .assert()
+        .success()
+        .stdout("REFRESHED=true\n")
+        .stderr("");
+
+    assert_eq!(
+        fs::read_to_string(plugin_root.join("published-summary.md")).expect("published summary"),
+        concat!(
+            "Run ID: `run-1`\n",
+            "Run log: provider `unknown`, skill `implement`, run ID `run-1`\n",
+            "Tracking issue: #42\n",
+            "Agent: `claude`\n",
+            "Coder: `codex`\n",
+            "Larch version: `1.2.3`\n",
+            "Execution issues pending flush: `2`\n",
+        )
     );
 }

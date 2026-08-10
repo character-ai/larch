@@ -1007,6 +1007,53 @@ pub fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> R
     append_execution_issue_filtered(log_file, category, entry, None, false, true).map(|_outcome| ())
 }
 
+/// Clear an execution-issue ledger only when it still carries `expected`.
+///
+/// Flush record composition and the external batch append cannot hold the
+/// live-ledger append lock across the child process. The final clear therefore
+/// reacquires the same lock and compares exact bytes. A writer that appended
+/// after composition wins: its ledger remains for the next checkpoint, while
+/// the already-published rows are removed by the next composition's durable
+/// dedupe.
+///
+/// # Errors
+///
+/// Returns a message when the ledger path is unsafe, the append lock cannot be
+/// acquired, the current ledger cannot be read, or the atomic clear fails.
+pub fn clear_execution_issue_if_unchanged(
+    log_file: &Path,
+    expected: &[u8],
+) -> Result<bool, String> {
+    let local_log = log_file
+        .parent()
+        .is_some_and(|parent| parent.as_os_str().is_empty())
+        .then(|| Path::new(".").join(log_file));
+    let log_file = local_log.as_deref().unwrap_or(log_file);
+    assert_no_symlink_path_or_ancestors(log_file)?;
+    let lock = log_file.with_file_name(format!("{}.lock.d", base_name(log_file)));
+    acquire_append_lock(&lock)?;
+    let result = (|| {
+        let current = match fs::symlink_metadata(log_file) {
+            Ok(metadata) if metadata.is_file() => read_regular_bytes(log_file)?,
+            Ok(_metadata) => {
+                return Err(format!(
+                    "refusing to clear non-regular execution-issues ledger: {}",
+                    log_file.display()
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("{}: {error}", log_file.display())),
+        };
+        if current != expected {
+            return Ok(false);
+        }
+        write_run_log_file(log_file, "")?;
+        Ok(true)
+    })();
+    let _removed = fs::remove_dir(&lock);
+    result
+}
+
 /// Result of one category-keyed execution-issue append.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExecutionIssueAppendOutcome {
@@ -1434,7 +1481,8 @@ fn non_empty_env(key: &str) -> Option<String> {
 mod tests {
     use super::{
         ExecutionIssueAppendOutcome, append_execution_issue, append_execution_issue_filtered,
-        append_object_field, glob_hit, rebase_under_tmpdir, stage_append_batch, write_run_log_file,
+        append_object_field, clear_execution_issue_if_unchanged, glob_hit, rebase_under_tmpdir,
+        stage_append_batch, write_run_log_file,
     };
     use std::{fs, path::PathBuf, thread};
 
@@ -1603,6 +1651,27 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[test]
+    fn conditional_clear_preserves_a_later_append() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = fs::canonicalize(dir.path()).expect("canonical temp dir");
+        let log = root.join("execution-issues.md");
+        let original = b"### Warnings\n\n- original\n";
+        fs::write(&log, original).expect("initial ledger");
+
+        append_execution_issue(&log, "Warnings", "- later").expect("later append");
+        assert!(!clear_execution_issue_if_unchanged(&log, original).expect("compare and clear"));
+        assert!(
+            fs::read_to_string(&log)
+                .expect("preserved ledger")
+                .contains("- later")
+        );
+
+        let current = fs::read(&log).expect("current ledger");
+        assert!(clear_execution_issue_if_unchanged(&log, &current).expect("matching clear"));
+        assert_eq!(fs::read(&log).expect("cleared ledger"), b"");
     }
 
     #[test]

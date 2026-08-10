@@ -58,8 +58,8 @@ use crate::{
     python_verb::plugin_root_directory,
     run_log_entry_commands::{
         ExecutionIssueAppendOutcome, append_execution_issue as append_execution_issue_atomic,
-        append_execution_issue_filtered, read_optional_regular_lossy, read_regular_bytes,
-        read_regular_lossy, write_run_log_file,
+        append_execution_issue_filtered, clear_execution_issue_if_unchanged, plugin_version,
+        read_optional_regular_lossy, read_regular_bytes, read_regular_lossy, write_run_log_file,
     },
 };
 
@@ -386,13 +386,19 @@ fn non_empty_regular_file(path: &Path) -> Result<bool, String> {
 }
 
 /// Hex SHA-256 of one file's exact bytes.
+#[cfg(test)]
 fn sha256_file(path: &Path) -> Result<String, String> {
     let bytes = read_regular_bytes(path)?;
+    Ok(sha256_bytes(&bytes))
+}
+
+/// Hex SHA-256 of one exact byte snapshot.
+fn sha256_bytes(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(64);
-    for byte in Sha256::digest(&bytes) {
+    for byte in Sha256::digest(bytes) {
         let _written = write!(&mut out, "{byte:02x}");
     }
-    Ok(out)
+    out
 }
 
 /// Compose the records one ledger still owes the staged batch, atomically.
@@ -410,6 +416,21 @@ pub fn write_execution_issue_records(
     batch_path: Option<&Path>,
     labels: RecordLabels<'_>,
 ) -> Result<usize, String> {
+    write_execution_issue_records_snapshot(issue_log, record_file, batch_path, labels)
+        .map(|(records, _snapshot)| records)
+}
+
+/// Compose records from one exact live-ledger snapshot.
+///
+/// Returning the source bytes lets the clearing flush compare-and-clear under
+/// the append lock after its external batch append. This closes the window in
+/// which a later writer could otherwise be erased by the final clear.
+fn write_execution_issue_records_snapshot(
+    issue_log: &Path,
+    record_file: &Path,
+    batch_path: Option<&Path>,
+    labels: RecordLabels<'_>,
+) -> Result<(usize, Vec<u8>), String> {
     assert_no_symlink_path_or_ancestors(issue_log)?;
     let batch_text = match batch_path {
         Some(path) => {
@@ -418,8 +439,18 @@ pub fn write_execution_issue_records(
         }
         None => String::new(),
     };
-    let issue_text =
-        read_optional_regular_lossy(issue_log, "execution-issues ledger must be a regular file")?;
+    let issue_bytes = match fs::symlink_metadata(issue_log) {
+        Ok(metadata) if metadata.is_file() => read_regular_bytes(issue_log)?,
+        Ok(_metadata) => {
+            return Err(format!(
+                "execution-issues ledger must be a regular file: {}",
+                issue_log.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => return Err(format!("{}: {error}", issue_log.display())),
+    };
+    let issue_text = String::from_utf8_lossy(&issue_bytes);
     let records = execution_issue_records(&issue_text, &batch_text, labels)
         .map_err(|RedactionRefusal| "redaction failed for run-log batch payload".to_owned())?;
     let payload = if records.is_empty() {
@@ -428,7 +459,7 @@ pub fn write_execution_issue_records(
         format!("{}\n", records.join("\n"))
     };
     write_run_log_file(record_file, &payload)?;
-    Ok(records.len())
+    Ok((records.len(), issue_bytes))
 }
 
 /// Record one wrapper failure back into the ledger it could not publish.
@@ -449,6 +480,30 @@ fn flush_failure(issue_log: &Path, site: &str, message: &str, append_log: String
         records: 0,
         append_log,
     }
+}
+
+/// Record one published snapshot and clear it only if no writer raced it.
+fn finalize_clearing_flush(
+    issue_log: &Path,
+    sentinel: &Path,
+    digest: &str,
+    snapshot: &[u8],
+) -> Result<(), String> {
+    write_run_log_file(sentinel, &format!("{digest}\n"))?;
+    let _cleared = clear_execution_issue_if_unchanged(issue_log, snapshot)?;
+    Ok(())
+}
+
+/// Persist the Step 7a checkpoint when this is the pre-bump flush.
+fn mark_step7a_checkpoint(request: &FlushRequest<'_>) -> Result<(), String> {
+    if request.step_label != "7a" {
+        return Ok(());
+    }
+    let checkpoint = request.sentinel_dir().join(STEP7A_SENTINEL);
+    if checkpoint.is_file() {
+        return Ok(());
+    }
+    write_run_log_file(&checkpoint, "")
 }
 
 /// Publish the pending ledger tail and clear the ledger.
@@ -472,19 +527,13 @@ pub fn flush_with<E: ExecutionIssueEffects>(
             append_log: reason,
         };
     }
-    let sentinel_dir = request.sentinel_dir();
-    if request.step_label == "7a" {
-        let checkpoint = sentinel_dir.join(STEP7A_SENTINEL);
-        if !checkpoint.is_file()
-            && let Err(message) = write_run_log_file(&checkpoint, "")
-        {
-            return flush_failure(
-                request.issue_log,
-                "flush-execution-issues",
-                &message,
-                String::new(),
-            );
-        }
+    if let Err(message) = mark_step7a_checkpoint(request) {
+        return flush_failure(
+            request.issue_log,
+            "flush-execution-issues",
+            &message,
+            String::new(),
+        );
     }
     let non_empty = match non_empty_regular_file(request.issue_log) {
         Ok(non_empty) => non_empty,
@@ -505,22 +554,22 @@ pub fn flush_with<E: ExecutionIssueEffects>(
             append_log: String::new(),
         };
     }
-    let sentinel = sentinel_dir.join(FLUSHED_SENTINEL);
+    let sentinel = request.sentinel_dir().join(FLUSHED_SENTINEL);
     let batch_path = request.batch_path();
-    let (digest, already_published) = match flush_digest_state(request, &sentinel, &batch_path) {
-        Ok(state) => state,
-        Err(message) => {
-            return flush_failure(
-                request.issue_log,
-                "flush-execution-issues",
-                &message,
-                String::new(),
-            );
-        }
-    };
+    let (snapshot, digest, already_published) =
+        match flush_digest_state(request, &sentinel, &batch_path) {
+            Ok(state) => state,
+            Err(message) => {
+                return flush_failure(
+                    request.issue_log,
+                    "flush-execution-issues",
+                    &message,
+                    String::new(),
+                );
+            }
+        };
     if already_published {
-        let finalized = write_run_log_file(&sentinel, &format!("{digest}\n"))
-            .and_then(|()| write_run_log_file(request.issue_log, ""));
+        let finalized = finalize_clearing_flush(request.issue_log, &sentinel, &digest, &snapshot);
         if let Err(message) = finalized {
             return flush_failure(
                 request.issue_log,
@@ -536,7 +585,7 @@ pub fn flush_with<E: ExecutionIssueEffects>(
             append_log: String::new(),
         };
     }
-    let outcome = publish(
+    let (outcome, published_snapshot) = publish(
         effects,
         request,
         &batch_path,
@@ -544,8 +593,10 @@ pub fn flush_with<E: ExecutionIssueEffects>(
         "flush-execution-issues",
     );
     if outcome.rc == 0 {
-        let finalized = write_run_log_file(&sentinel, &format!("{digest}\n"))
-            .and_then(|()| write_run_log_file(request.issue_log, ""));
+        let snapshot = published_snapshot.unwrap_or(snapshot);
+        let published_digest = sha256_bytes(&snapshot);
+        let finalized =
+            finalize_clearing_flush(request.issue_log, &sentinel, &published_digest, &snapshot);
         if let Err(message) = finalized {
             return flush_failure(
                 request.issue_log,
@@ -563,10 +614,12 @@ fn flush_digest_state(
     request: &FlushRequest<'_>,
     sentinel: &Path,
     batch_path: &Path,
-) -> Result<(String, bool), String> {
-    let digest = sha256_file(request.issue_log)?;
-    let already_published = already_flushed(sentinel, &digest, batch_path, request.issue_log)?;
-    Ok((digest, already_published))
+) -> Result<(Vec<u8>, String, bool), String> {
+    let snapshot = read_regular_bytes(request.issue_log)?;
+    let digest = sha256_bytes(&snapshot);
+    let issue_text = String::from_utf8_lossy(&snapshot);
+    let already_published = already_flushed(sentinel, &digest, batch_path, &issue_text)?;
+    Ok((snapshot, digest, already_published))
 }
 
 /// Publish the pending ledger tail without clearing the ledger.
@@ -617,6 +670,7 @@ pub fn flush_safety_net_with<E: ExecutionIssueEffects>(
         ),
         "flush-execution-issues-safety-net",
     )
+    .0
 }
 
 /// Whether the staged batch already carries this exact ledger.
@@ -629,7 +683,7 @@ fn already_flushed(
     sentinel: &Path,
     digest: &str,
     batch_path: &Path,
-    issue_log: &Path,
+    issue_text: &str,
 ) -> Result<bool, String> {
     match fs::symlink_metadata(sentinel) {
         Ok(metadata) if metadata.is_file() => {
@@ -660,7 +714,7 @@ fn already_flushed(
     if batch_text.contains(&format!("\"source_sha256\":\"{digest}\"")) {
         return Ok(true);
     }
-    batch_contains_all_sections(&read_lossy_required(issue_log)?, &batch_text)
+    batch_contains_all_sections(issue_text, &batch_text)
         .map_err(|RedactionRefusal| "redaction failed for run-log batch payload".to_owned())
 }
 
@@ -671,7 +725,7 @@ fn publish<E: ExecutionIssueEffects>(
     batch_path: &Path,
     append_log_name: &str,
     site: &str,
-) -> FlushOutcome {
+) -> (FlushOutcome, Option<Vec<u8>>) {
     let sentinel_dir = request.sentinel_dir();
     // The append-log name already carries this process's id, so the staging
     // file it derives is unique: two flushes in one session directory cannot
@@ -683,15 +737,24 @@ fn publish<E: ExecutionIssueEffects>(
         step: request.step_label,
         source: request.source_label,
     };
-    let composed =
-        write_execution_issue_records(request.issue_log, &record_path, Some(batch_path), labels);
+    let composed = write_execution_issue_records_snapshot(
+        request.issue_log,
+        &record_path,
+        Some(batch_path),
+        labels,
+    );
+    let mut snapshot = None;
     let (rc, status, records) = match composed {
         Err(message) => {
             append_failure(request.issue_log, site, &message);
             (1, "failed", 0)
         }
-        Ok(0) => (0, "no-records", 0),
-        Ok(records) => {
+        Ok((0, source)) => {
+            snapshot = Some(source);
+            (0, "no-records", 0)
+        }
+        Ok((records, source)) => {
+            snapshot = Some(source);
             let output = effects.append_records(request.log_root, request.run_id, &record_path);
             let captured = write_run_log_file(&append_log, &output.captured());
             if output.succeeded() && captured.is_ok() {
@@ -707,12 +770,15 @@ fn publish<E: ExecutionIssueEffects>(
         }
     };
     let _removed = fs::remove_file(&record_path);
-    FlushOutcome {
-        rc,
-        status,
-        records,
-        append_log: append_log_text,
-    }
+    (
+        FlushOutcome {
+            rc,
+            status,
+            records,
+            append_log: append_log_text,
+        },
+        snapshot,
+    )
 }
 
 /// Read the first `KEY=value` row from one file, the way the wire reader does.
@@ -862,11 +928,18 @@ pub fn refresh_with<E: ExecutionIssueEffects>(
             .join("manifest.json"),
     );
     let summary = implement_tmpdir.join("summary-metadata.md");
-    let body =
-        match compose_summary_metadata(implement_tmpdir, &summary, &issue, &run_id, &reference) {
-            Ok(body) => body,
-            Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
-        };
+    let version = plugin_version();
+    let body = match compose_summary_metadata(
+        implement_tmpdir,
+        &summary,
+        &issue,
+        &run_id,
+        &reference,
+        &version,
+    ) {
+        Ok(body) => body,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
     if let Err(error) = write_run_log_file(&summary, &body) {
         return refresh_failure(implement_tmpdir, best_effort, error);
     }
@@ -910,6 +983,7 @@ fn compose_summary_metadata(
     issue: &str,
     run_id: &str,
     reference: &str,
+    version: &str,
 ) -> Result<String, String> {
     let issue_log = implement_tmpdir.join(LEDGER_BASENAME);
     let count = if non_empty_regular_file(&issue_log)? {
@@ -932,10 +1006,29 @@ fn compose_summary_metadata(
         Err(error) => return Err(format!("{}: {error}", summary.display())),
     };
     let mut kept: Vec<String> = if existing.is_empty() {
+        let session_env = implement_tmpdir.join("session-env.sh");
+        let agent = read_kv_checked(&session_env, "AGENT")?;
+        let coder = read_kv_checked(&session_env, "CODER")?;
         vec![
             format!("Run ID: `{run_id}`"),
             format!("Run log: {reference}"),
             format!("Tracking issue: #{issue}"),
+            format!(
+                "Agent: `{}`",
+                if agent.is_empty() { "claude" } else { &agent }
+            ),
+            format!(
+                "Coder: `{}`",
+                if coder.is_empty() { "claude" } else { &coder }
+            ),
+            format!(
+                "Larch version: `{}`",
+                if version.is_empty() {
+                    "unknown"
+                } else {
+                    version
+                }
+            ),
         ]
     } else {
         let mut rows: Vec<String> = split_text_lines(&existing)
@@ -1374,8 +1467,9 @@ mod tests {
         EffectOutput, ExecutionIssueEffects, FLUSHED_SENTINEL, FlushArguments, FlushRequest,
         LEDGER_BASENAME, STEP7A_SENTINEL, SummaryRequest, append, collapsed_diagnostic,
         compose_summary_metadata, confined_record_destination, flush, flush_arguments,
-        flush_safety_net, flush_safety_net_with, flush_with, pins_disabled_publication, read_kv,
-        refresh, refresh_with, run_log_reference, sha256_file, write_execution_issue_records,
+        flush_safety_net, flush_safety_net_with, flush_with, pins_disabled_publication,
+        plugin_version, read_kv, refresh, refresh_with, run_log_reference, sha256_file,
+        write_execution_issue_records,
     };
     use crate::{
         argparse_compat::parse_with_flags, run_log_entry_commands::append_execution_issue,
@@ -1395,6 +1489,7 @@ mod tests {
         append_code: Option<i32>,
         summary_code: Option<i32>,
         summary_stderr: String,
+        late_append: Option<(PathBuf, String)>,
         seen: RefCell<Vec<String>>,
     }
 
@@ -1405,6 +1500,7 @@ mod tests {
                 append_code: Some(0),
                 summary_code: Some(0),
                 summary_stderr: String::new(),
+                late_append: None,
                 seen: RefCell::new(Vec::new()),
             }
         }
@@ -1426,6 +1522,9 @@ mod tests {
         ) -> EffectOutput {
             let payload = fs::read_to_string(record_file).unwrap_or_default();
             self.seen.borrow_mut().push(payload.clone());
+            if let Some((log, entry)) = &self.late_append {
+                append_execution_issue(log, "Warnings", entry).expect("late append");
+            }
             if self.append_code == Some(0) {
                 if let Some(parent) = self.batch.parent() {
                     fs::create_dir_all(parent).expect("batch parent must be creatable");
@@ -1740,6 +1839,37 @@ mod tests {
     }
 
     #[test]
+    fn a_writer_that_appends_during_publication_is_never_cleared() {
+        let session = session("### Warnings\n- original\n");
+        let effects = FakeEffects {
+            late_append: Some((session.issue_log.clone(), "- later".to_owned())),
+            ..FakeEffects::new(&session.batch)
+        };
+
+        let first = flush_with(&effects, &request(&session, "7a"));
+
+        assert_eq!((first.rc, first.status, first.records), (0, "ok", 1));
+        let pending = fs::read_to_string(&session.issue_log).expect("pending ledger");
+        assert!(pending.contains("- original"));
+        assert!(pending.contains("- later"));
+
+        let retry_effects = FakeEffects::new(&session.batch);
+        let retry = flush_with(&retry_effects, &request(&session, "7a"));
+        assert_eq!((retry.rc, retry.status, retry.records), (0, "ok", 1));
+        assert_eq!(
+            fs::read_to_string(&session.issue_log).expect("cleared ledger"),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(&session.batch)
+                .expect("durable batch")
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[test]
     fn flush_recognizes_a_whole_file_digest_an_older_writer_stored() {
         let session = session("### Warnings\n- one\n");
         let digest = sha256_file(&session.issue_log).expect("ledger must hash");
@@ -1973,8 +2103,11 @@ mod tests {
             format!("ISSUE_NUMBER={issue}\nRUN_ID=run-1\n"),
         )
         .expect("parent issue must be writable");
-        fs::write(session.tmpdir.join("session-env.sh"), "REPO=owner/name\n")
-            .expect("session env must be writable");
+        fs::write(
+            session.tmpdir.join("session-env.sh"),
+            "REPO=owner/name\nAGENT=claude\nCODER=codex\n",
+        )
+        .expect("session env must be writable");
         session
     }
 
@@ -2059,7 +2192,10 @@ mod tests {
         assert_eq!((outcome.rc, outcome.refreshed), (0, true));
         assert_eq!(
             summary,
-            "Run ID: `run-1`\nRun log: provider `s3`, skill `implement`, run ID `run-1`\nTracking issue: #42\nExecution issues pending flush: `2`\n"
+            format!(
+                "Run ID: `run-1`\nRun log: provider `s3`, skill `implement`, run ID `run-1`\nTracking issue: #42\nAgent: `claude`\nCoder: `codex`\nLarch version: `{}`\nExecution issues pending flush: `2`\n",
+                plugin_version()
+            )
         );
         assert_eq!(
             effects.seen.borrow()[0],
@@ -2122,8 +2258,9 @@ mod tests {
         )
         .expect("summary must be writable");
 
-        let body = compose_summary_metadata(&session.tmpdir, &summary, "42", "run-1", "fresh")
-            .expect("summary composition");
+        let body =
+            compose_summary_metadata(&session.tmpdir, &summary, "42", "run-1", "fresh", "1.2.3")
+                .expect("summary composition");
 
         assert_eq!(
             body,
