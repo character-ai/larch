@@ -1,4 +1,4 @@
-"""Design-log PR checks-only CI wait, rerun, and admin merge helper."""
+"""Design-log PR checks-only CI wait, rerun, and merge helper."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from larch.core import proc
 from larch.core import redact
 from larch.core import retry
 from larch.core.proc import CommandResult, Runner
+from larch.errors import ShipError
 
 SleepFn = Callable[[float], None]
 
@@ -28,6 +29,7 @@ class DesignLogMergeResult:
     ok: bool
     detail: str = ""
     already_merged: bool = False
+    queued: bool = False
 
 
 @dataclass(frozen=True)
@@ -124,15 +126,29 @@ def _merge_with_transient_retry(
     repo: str,
     merge_cwd: str | None,
     sleep_fn: SleepFn,
+    wait_for_queue: bool = True,
 ) -> DesignLogMergeResult:
+    try:
+        queue_enabled = gh.default_branch_merge_queue_enabled(
+            runner,
+            repo=repo,
+            cwd=merge_cwd,
+        )
+    except ShipError as exc:
+        return DesignLogMergeResult(
+            ok=False,
+            detail=_detail(f"could not determine merge queue policy: {exc}"),
+        )
+
     def attempt() -> tuple[CommandResult, int, str]:
         result = gh.pr_merge(
             runner,
             pr,
             repo=repo,
             merge_method="squash",
-            admin=True,
-            delete_branch=True,
+            admin=not queue_enabled,
+            delete_branch=not queue_enabled,
+            merge_queue=queue_enabled,
             cwd=merge_cwd,
         )
         return result, result.returncode, result.stdout + result.stderr
@@ -140,6 +156,43 @@ def _merge_with_transient_retry(
     retried = retry.with_transient_retry(attempt, sleeper=sleep_fn)
     result = retried.value
     if retried.last_returncode == 0 and result.returncode == 0:
+        if queue_enabled:
+            try:
+                status = gh.confirm_pr_merge_queue_submission(
+                    runner,
+                    pr,
+                    repo=repo,
+                    sleeper=sleep_fn,
+                    cwd=merge_cwd,
+                )
+            except ShipError as exc:
+                return DesignLogMergeResult(
+                    ok=False,
+                    detail=_detail(f"merge queue submission could not be verified: {exc}"),
+                )
+            if status.pr_state == "MERGED":
+                return DesignLogMergeResult(
+                    ok=True,
+                    detail="merge queue completed",
+                )
+        if queue_enabled and not wait_for_queue:
+            return DesignLogMergeResult(
+                ok=True,
+                queued=True,
+                detail="merge queue submission succeeded",
+            )
+        if queue_enabled:
+            try:
+                _ = ci_monitor.wait_for_pr_merge(
+                    runner,
+                    pr=pr,
+                    repo=repo,
+                    sleep_fn=sleep_fn,
+                    cwd=merge_cwd,
+                )
+            except ShipError as exc:
+                return DesignLogMergeResult(ok=False, detail=_detail(str(exc)))
+            return DesignLogMergeResult(ok=True, detail="merge queue completed")
         return DesignLogMergeResult(ok=True, detail="merge succeeded")
     return DesignLogMergeResult(
         ok=False,
@@ -378,12 +431,12 @@ def _merge_design_log_pr_if_green(
     repo: str,
     sleep_fn: SleepFn,
 ) -> tuple[str, str]:
-    """Admin-merge a single design-log PR when its required checks are green.
+    """Submit a single green design-log PR for merge.
 
     Evaluates the PR once (no long CI poll): a PR whose required checks are not
-    yet green is left for a later sweep rather than blocked on. The merge itself
-    is admin-squash, bypassing only the review gate the automated PR can never
-    satisfy; the no-bypass CI ruleset still guards against merging red CI.
+    yet green is left for a later sweep rather than blocked on. A repository
+    merge queue is used when enabled; otherwise the existing admin-squash path
+    bypasses only the review gate the automated PR can never satisfy.
     """
     if _pr_already_merged(runner, pr=pr, repo=repo, cwd=None):
         return ("already-merged", "PR already merged")
@@ -408,7 +461,10 @@ def _merge_design_log_pr_if_green(
         repo=repo,
         merge_cwd=None,
         sleep_fn=sleep_fn,
+        wait_for_queue=False,
     )
+    if merge.queued:
+        return ("queued", merge.detail)
     if merge.ok:
         return ("merged", merge.detail)
     # The detached /design waiter this sweep backstops may merge the same PR in
@@ -426,11 +482,11 @@ def run_design_log_sweep(
     dry_run: bool = False,
     sleep_fn: SleepFn = time.sleep,
 ) -> list[DesignLogSweepItem]:
-    """Reconcile open ``chore(larch-logs):`` PRs by admin-merging the green ones.
+    """Reconcile open ``chore(larch-logs):`` PRs by submitting green ones.
 
     Each PR is evaluated once (no 30-minute CI poll): already-merged PRs are
-    skipped, PRs whose required checks are green are admin-squash-merged, and
-    PRs whose checks are still pending or failing are left for a later sweep.
+    skipped, green PRs are queued when required or admin-squash-merged otherwise,
+    and PRs whose checks are still pending or failing are left for a later sweep.
     This is the durable backstop for the best-effort detached merge waiter
     spawned at /design log-publish time, which does not reliably survive the
     session that launched it. PR reads and the merge run under the operator's
@@ -469,6 +525,7 @@ def _emit_sweep_report(items: list[DesignLogSweepItem], *, dry_run: bool) -> int
     logging_util.emit_kv(key="SWEEP_DRY_RUN", value="true" if dry_run else "false")
     logging_util.emit_kv(key="SWEEP_TOTAL", value=str(len(items)))
     logging_util.emit_kv(key="SWEEP_MERGED", value=str(counts.get("merged", 0)))
+    logging_util.emit_kv(key="SWEEP_QUEUED", value=str(counts.get("queued", 0)))
     logging_util.emit_kv(key="SWEEP_ALREADY_MERGED", value=str(counts.get("already-merged", 0)))
     logging_util.emit_kv(key="SWEEP_WOULD_MERGE", value=str(counts.get("would-merge", 0)))
     logging_util.emit_kv(key="SWEEP_SKIPPED", value=str(counts.get("skipped-not-green", 0)))
@@ -478,7 +535,7 @@ def _emit_sweep_report(items: list[DesignLogSweepItem], *, dry_run: bool) -> int
 
 def build_sweep_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Reconcile open design-log PRs: admin-merge the ones with green required checks",
+        description="Reconcile open design-log PRs: submit the ones with green required checks",
     )
     _ = parser.add_argument("--repo", default=None)
     _ = parser.add_argument("--dry-run", action="store_true")

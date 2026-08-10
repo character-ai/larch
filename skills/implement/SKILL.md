@@ -157,7 +157,7 @@ Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEX
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--merge` | `false` | Enable CI+rebase+merge loop (Steps 12–15) and related merge surfaces |
-| `--no-admin-fallback` | `false` | Forward into Step 12b `python/cli.py merge pr` — plain merge only after admin-eligible gate |
+| `--no-admin-fallback` | `false` | No-queue Step 12b: skip admin and try a plain merge after the eligibility gate |
 | `--no-logs-commit` | `false` | Suppress terminal implement archive publication |
 | `--forked` | `false` | Fork-CI dry-run against `origin` / `upstream/main`; disables tracking-issue lifecycle, merge |
 | `--draft` | `false` | Create PR as draft; implies no merge loop |

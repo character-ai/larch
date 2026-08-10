@@ -1437,6 +1437,86 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.goto_rebase is False
 
 
+def test_wait_for_pr_merge_observes_open_then_merged() -> None:
+    key = (
+        "gh",
+        "pr",
+        "view",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "number,url,state,headRefName,mergedAt,mergeStateStatus",
+    )
+    runner = RecordingRunner(
+        sequential={
+            key: [
+                _cr(
+                    key,
+                    stdout=(
+                        '{"number":1,"url":"u","state":"OPEN",'
+                        '"headRefName":"feat","mergedAt":null}'
+                    ),
+                ),
+                _cr(
+                    key,
+                    stdout=(
+                        '{"number":1,"url":"u","state":"MERGED",'
+                        '"headRefName":"feat","mergedAt":"2026-08-10T00:00:00Z"}'
+                    ),
+                ),
+            ],
+        },
+    )
+    sleeps: list[float] = []
+
+    merged = ci_monitor.wait_for_pr_merge(
+        runner,
+        pr=1,
+        repo="o/r",
+        timeout=2,
+        poll_interval=1,
+        sleep_fn=sleeps.append,
+    )
+
+    assert merged.state == "MERGED"
+    assert sleeps == [1]
+
+
+def test_wait_for_pr_merge_times_out_without_claiming_completion() -> None:
+    key = (
+        "gh",
+        "pr",
+        "view",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "number,url,state,headRefName,mergedAt,mergeStateStatus",
+    )
+    runner = RecordingRunner(
+        responses={
+            key: _cr(
+                key,
+                stdout=(
+                    '{"number":1,"url":"u","state":"OPEN",'
+                    '"headRefName":"feat","mergedAt":null}'
+                ),
+            ),
+        },
+    )
+
+    with pytest.raises(ci_monitor.ShipError, match="did not merge"):
+        _ = ci_monitor.wait_for_pr_merge(
+            runner,
+            pr=1,
+            repo="o/r",
+            timeout=1,
+            poll_interval=1,
+            sleep_fn=lambda _delay: None,
+        )
+
+
 def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:
     responses = _status(status="pass", behind=1)
     responses[

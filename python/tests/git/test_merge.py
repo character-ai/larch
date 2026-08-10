@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
 """Tests for merge.py."""
 
 from __future__ import annotations
@@ -26,6 +26,15 @@ from test_support import RecordingRunner, make_run_context, merge_admin_response
 def _ctx(**kwargs: object) -> RunContext:
     base = make_run_context(pr_number=1)
     return base.with_(**kwargs)
+
+
+@pytest.fixture(autouse=True)
+def _default_to_no_merge_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: False,
+    )
 
 
 def _mock_checks_pass(*_a: object, **_k: object) -> bool:
@@ -71,7 +80,7 @@ def test_redact_merge_diagnostic_truncates() -> None:
 
 
 def test_merge_results_table_is_exhaustive() -> None:
-    assert len(config.MERGE_RESULTS) == 9
+    assert len(config.MERGE_RESULTS) == 10
     assert "already_merged" not in config.MERGE_RESULTS
 
 
@@ -276,6 +285,196 @@ def test_merge_pr_emits_admin_merged(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_pr_enqueues_without_postmerge_flush(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 0, "queued", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        merge_module.gh,
+        "confirm_pr_merge_queue_submission",
+        lambda *_args, **_kwargs: gh.MergeQueueStatus("OPEN", "QUEUED"),
+    )
+    monkeypatch.setattr(
+        run_log_flush,
+        "refresh_postmerge_snapshot",
+        lambda *_args, **_kwargs: pytest.fail(
+            "queue acceptance must not run postmerge flush",
+        ),
+    )
+
+    out = merge_module.merge_pr(
+        runner=runner,
+        ctx=_ctx(tmpdir=str(tmp_path), state_file=str(state)),
+    )
+
+    assert out.result == config.MERGE_RESULT_QUEUED
+    assert runner.calls[-1] == ["gh", "pr", "merge", "1", "--repo", "o/r"]
+
+
+def test_merge_pr_policy_probe_failure_stops_before_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner(responses=_open_pr_responses())
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+
+    def fail_policy(*_args: object, **_kwargs: object) -> bool:
+        raise merge_module.ShipError("rules unavailable")
+
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        fail_policy,
+    )
+
+    out = merge_module.merge_pr(
+        runner=runner,
+        ctx=_ctx(tmpdir=str(tmp_path)),
+        post_flush=False,
+    )
+
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "could not determine" in out.error
+    assert not any(call[1:3] == ["pr", "merge"] for call in runner.calls)
+
+
+def test_release_queue_bypass_requires_candidate_and_uses_admin_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        merge_module,
+        "_bump_subject",
+        lambda *_args, **_kwargs: "Bump version to 1.2.3",
+    )
+
+    out = merge_module.merge_pr(
+        runner=runner,
+        ctx=_ctx(tmpdir=str(tmp_path), merge_method="merge"),
+        post_flush=False,
+        release_queue_bypass=True,
+    )
+
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert runner.calls[-1][-2:] == ["--merge", "--admin"]
+
+
+@pytest.mark.parametrize(
+    ("merge_method", "bump_subject", "no_admin_fallback"),
+    [("squash", True, False), ("merge", False, False), ("merge", True, True)],
+)
+def test_release_queue_bypass_rejects_non_release_shape_before_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    merge_method: str,
+    bump_subject: bool,
+    no_admin_fallback: bool,
+) -> None:
+    runner = RecordingRunner(responses=_open_pr_responses())
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module,
+        "_bump_subject",
+        lambda *_args, **_kwargs: (
+            "Bump version to 1.2.3" if bump_subject else ""
+        ),
+    )
+
+    out = merge_module.merge_pr(
+        runner=runner,
+        ctx=_ctx(
+            tmpdir=str(tmp_path),
+            merge_method=merge_method,
+            no_admin_fallback=no_admin_fallback,
+        ),
+        post_flush=False,
+        release_queue_bypass=True,
+    )
+
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "requires --method merge, admin fallback" in out.error
+    assert not any(call[1:3] == ["pr", "merge"] for call in runner.calls)
+
+
+def test_release_queue_bypass_never_falls_back_to_queue_or_plain_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(
+                ("gh", "pr", "merge"),
+                1,
+                "",
+                "admin denied",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        merge_module,
+        "_bump_subject",
+        lambda *_args, **_kwargs: "Bump version to 1.2.3",
+    )
+
+    out = merge_module.merge_pr(
+        runner=runner,
+        ctx=_ctx(tmpdir=str(tmp_path), merge_method="merge"),
+        post_flush=False,
+        release_queue_bypass=True,
+    )
+
+    assert out.result == config.MERGE_RESULT_ADMIN_FAILED
+    assert "refusing queue or plain fallback" in out.error
+    merge_calls = [call for call in runner.calls if call[1:3] == ["pr", "merge"]]
+    assert merge_calls == [
+        ["gh", "pr", "merge", "1", "--repo", "o/r", "--merge", "--admin"],
+    ]
 
 
 def test_merge_pr_opt_in_merge_commit_method_preserves_squash_default(

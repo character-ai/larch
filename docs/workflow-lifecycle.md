@@ -183,7 +183,8 @@ without changing GitHub or repository state.
 For a `/complete-umbrella` parent that names a Chief umbrella, recon/design
 writes a valid issue-anchored plan before the prepare driver can move a leaf to
 `[IMPLEMENTING]`. The managed ship driver counts merge-base-to-head added
-non-generated Rust lines, including tests, immediately before admin merge. A
+non-generated Rust lines, including tests, immediately before queue submission
+or direct admin merge. A
 leaf above 1,500 lines needs a durable plan-recorded `retain this leaf as one
 PR` split decision, rationale, base/head SHAs, and count; otherwise the merge
 stops. The audit records closed historical leaves as report-only plan or

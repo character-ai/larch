@@ -1226,6 +1226,106 @@ def _merge_pr_after_log_reconciliation(
     return merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
 
 
+def _finish_queued_merge(
+    *,
+    runner: Runner,
+    working: RunContext,
+    counters: ShipReconciliationCounters,
+    repo_root: str,
+    base_ref: str,
+) -> ShipResult:
+    """Wait for an accepted queue entry without replaying pre-merge mutations."""
+    if working.pr_number is None:
+        raise Stalled("queued merge state lacks a PR number")
+    try:
+        _ = ci_monitor.wait_for_pr_merge(
+            runner,
+            pr=working.pr_number,
+            repo=working.repo,
+            cwd=repo_root,
+        )
+    except ShipError as exc:
+        stalled = working.with_(
+            stall_tracking=True,
+            stall_step=config.SHIP_STALL_STEP_MERGE,
+        )
+        _write_terminal_state(
+            ctx=stalled,
+            result=Outcome.STALLED,
+            step=config.SHIP_STALL_STEP_MERGE,
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=working.pr_number,
+            pr_url=working.pr_url,
+            merge_result=config.MERGE_RESULT_QUEUED,
+            detail=str(exc),
+        )
+
+    merged_or_terminal = _merge_pr_after_log_reconciliation(
+        runner=runner,
+        working=working,
+        repo_root=repo_root,
+        base_ref=base_ref,
+        counters=counters,
+    )
+    if isinstance(merged_or_terminal, ShipResult):
+        return merged_or_terminal
+    merged = merged_or_terminal
+    pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
+    completed = working.with_(
+        merge_result=merged.result,
+        pr_closed=pr_closed,
+    )
+    _write_ship_state(
+        completed,
+        phase="postmerge" if pr_closed else "merge",
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+    )
+    if not pr_closed:
+        detail = merged.error or f"merge did not complete: {merged.result}"
+        _write_terminal_state(
+            ctx=completed.with_(
+                stall_tracking=True,
+                stall_step=config.SHIP_STALL_STEP_MERGE,
+            ),
+            result=Outcome.STALLED,
+            step=config.SHIP_STALL_STEP_MERGE,
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
+        )
+        _publish_post_pr_terminal_snapshot(
+            runner=runner,
+            ctx=completed,
+            cwd=repo_root,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=completed.pr_number,
+            pr_url=completed.pr_url,
+            merge_result=completed.merge_result,
+            detail=detail,
+        )
+    return _ship_postmerge_phase(
+        runner=runner,
+        working=completed,
+        cwd=repo_root,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+    )
+
+
 def _review_required_merge_state_detail(
     *,
     runner: Runner,
@@ -1556,6 +1656,14 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
             if isinstance(destalled, ShipResult):
                 return destalled
             pr_context = destalled
+            if pr_context.merge_result == config.MERGE_RESULT_QUEUED:
+                return _finish_queued_merge(
+                    runner=runner,
+                    working=pr_context,
+                    counters=_resume_reconciliation_counters(resume),
+                    repo_root=repo_root,
+                    base_ref=base_ref,
+                )
 
         _write_ship_state(
             pr_context,
@@ -1676,7 +1784,11 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 )
             _write_ship_state(
                 working,
-                phase="ci-initial",
+                phase=(
+                    "merge"
+                    if working.merge_result == config.MERGE_RESULT_QUEUED
+                    else "ci-initial"
+                ),
                 iteration=iteration,
                 rebase_count=rebase_count,
                 fix_attempts=fix_attempts,
@@ -1794,6 +1906,9 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                     (monitor.result.detail or "") == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
                     and bounded_empty_checks
                 )
+                queued_merge_wait = (
+                    working.merge_result == config.MERGE_RESULT_QUEUED
+                )
                 if no_checks_stall:
                     terminal_last_head = pre_monitor_head or ""
                     phase14_reason = _no_checks_phase14_reason(
@@ -1822,7 +1937,11 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 # -- the perpetual stall loop of issue #5186. Skip the snapshot so
                 # HEAD stays put and CI converges on a stable head; it is published
                 # once the run reaches a genuinely terminal state.
-                if not no_checks_stall:
+                # Do not move a queued PR's head while GitHub may still be
+                # evaluating its merge group. The durable terminal state is
+                # sufficient for resume; a later observed merge runs the normal
+                # post-merge publication path.
+                if not no_checks_stall and not queued_merge_wait:
                     _publish_post_pr_terminal_snapshot(runner=runner, ctx=_bail_ctx, cwd=repo_root)
                 return _step_result_to_ship(
                     monitor.result,
@@ -1987,6 +2106,41 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
                     detail=merged.error or "PR requires approving review",
+                )
+            if merged.result == config.MERGE_RESULT_QUEUED:
+                ci_not_ready_guard.reset()
+                queued_working = working.with_(
+                    merge_result=config.MERGE_RESULT_QUEUED,
+                    pr_closed=False,
+                )
+                _write_ship_state(
+                    queued_working,
+                    phase="merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                    last_monitored_head=last_monitored_head or "",
+                )
+                _progress_note(
+                    step="8",
+                    text=(
+                        f"queued PR #{queued_working.pr_number} for merge"
+                        if queued_working.pr_number
+                        else "queued PR for merge"
+                    ),
+                )
+                return _finish_queued_merge(
+                    runner=runner,
+                    working=queued_working,
+                    counters=ShipReconciliationCounters(
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    ),
+                    repo_root=repo_root,
+                    base_ref=base_ref,
                 )
             pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
             working = working.with_(

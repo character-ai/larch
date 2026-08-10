@@ -2808,6 +2808,203 @@ def _open_pr_merge_loop_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_merge_queue_result_is_persisted_and_waited_before_postmerge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "MERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    monitor_calls: list[bool] = []
+    queue_waits: list[int] = []
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        monitor_calls.append(True)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    merge_results = [
+        config.MERGE_RESULT_QUEUED,
+        config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
+    ]
+
+    def merge_pr(*_args: object, **_kwargs: object) -> object:
+        result = merge_results.pop(0)
+        if result == config.MERGE_RESULT_DRIVER_ALREADY_MERGED:
+            persisted = state_file.read_text(encoding="utf-8")
+            assert "PHASE=merge\n" in persisted
+            assert f"MERGE_RESULT={config.MERGE_RESULT_QUEUED}\n" in persisted
+            assert "PR_CLOSED=false\n" in persisted
+        return type("MR", (), {"result": result, "error": ""})()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **kwargs: queue_waits.append(int(kwargs["pr"])),
+    )
+    monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_args, **_kwargs: ship.ShipResult(Outcome.OK),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert monitor_calls == [True]
+    assert queue_waits == [7]
+    assert not merge_results
+
+
+def test_queued_resume_waits_without_replaying_pr_or_push_mutations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=merge\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "MERGE=true\nDRAFT=false\nMERGE_RESULT=queued\nPR_CLOSED=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_args, **_kwargs: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_args, **_kwargs: type(
+            "PR",
+            (),
+            {
+                "number": 7,
+                "url": "https://example.test/pr/7",
+                "state": "OPEN",
+                "head_ref": "feat",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_args, **_kwargs: pytest.fail("queued resume must not prepare a PR"),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_post_ensure_flush_and_push",
+        lambda *_args, **_kwargs: pytest.fail("queued resume must not push"),
+    )
+    waits: list[int] = []
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **kwargs: waits.append(int(kwargs["pr"])),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_merge_pr_after_log_reconciliation",
+        lambda *_args, **_kwargs: ship.merge.MergeResult(
+            config.MERGE_RESULT_MERGED,
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_ship_postmerge_phase",
+        lambda *_args, **_kwargs: ship.ShipResult(Outcome.OK),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert waits == [7]
+    persisted = state_file.read_text(encoding="utf-8")
+    assert "PHASE=postmerge\n" in persisted
+    assert f"MERGE_RESULT={config.MERGE_RESULT_MERGED}\n" in persisted
+    assert "PR_CLOSED=true\n" in persisted
+
+
+def test_queued_resume_timeout_preserves_head_and_durable_queue_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=merge\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "MERGE=true\nDRAFT=false\nMERGE_RESULT=queued\nPR_CLOSED=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_args, **_kwargs: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_args, **_kwargs: type(
+            "PR",
+            (),
+            {
+                "number": 7,
+                "url": "https://example.test/pr/7",
+                "state": "OPEN",
+                "head_ref": "feat",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ShipError("queued PR did not merge within the merge queue wait timeout"),
+        ),
+    )
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_args, **_kwargs: pytest.fail("queued resume must not prepare a PR"),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_post_ensure_flush_and_push",
+        lambda *_args, **_kwargs: pytest.fail("queued resume must not push"),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_publish_post_pr_terminal_snapshot",
+        lambda *_args, **_kwargs: pytest.fail("queued timeout must not publish"),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert result.merge_result == config.MERGE_RESULT_QUEUED
+    persisted = state_file.read_text(encoding="utf-8")
+    assert f"MERGE_RESULT={config.MERGE_RESULT_QUEUED}\n" in persisted
+    assert "PR_CLOSED=false\n" in persisted
+
+
 def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -593,8 +593,19 @@ permanently when it passes those gates.
 
 SessionStart maintenance hooks are fail-soft and non-blocking. They must not
 turn local paths, logs, or subprocess diagnostics into advisory instructions.
-Background admin merge remains gated on validated pull-request state and green
-required checks.
+Automated merge remains gated on validated pull-request state and green
+required checks. Immediately before mutation, the Python pull-request owner
+reads the active default-branch rules. An enabled merge queue receives a plain
+queue submission without an admin bypass or branch-deletion request. Durable
+state records queue acceptance only after bounded GraphQL read-back observes a
+queue entry, auto-merge request, or completed merge. It distinguishes that
+acceptance from completion, and post-merge work waits for an observed `MERGED`
+state. A policy-read failure stops before mutation. Direct admin merge remains
+the no-queue fallback. The development-only
+release command has a narrow queue bypass that requires both merge-commit mode
+and a version-bump commit so the already-tagged candidate remains an ancestor
+of `main`. If that direct admin merge is rejected on a queue-enabled branch,
+the release stops without a plain merge or queue fallback.
 
 ## Security Findings in OOS Workflows
 
@@ -665,7 +676,7 @@ The leaf subprocess is a thin orchestrator. It does not read or edit repository 
 
 `python/cli.py complete-umbrella ship-leaf` owns the leaf's standalone mutation state. It does not fabricate an `/implement` session. Its no-follow state file binds repository, umbrella, leaf, branch, head, PR, status, and CI-fix count to the private handoff root. For a parent that declares a Chief umbrella, prepare rejects a missing, duplicate, malformed, or otherwise invalid durable issue plan before it changes an exact `[LEAF OF N]` title to `[IMPLEMENTING] [LEAF OF N]`; recon/design writes that plan through the canonical named-block owner. Ship requires a clean non-main branch, creates or verifies a PR with the leaf closing link, waits 300 seconds between CI reads, and emits only a bounded failed-run digest when checks fail. A fresh CI fixer receives only that path. The driver rejects a retry with no new fixer commit and caps repair attempts.
 
-After green CI, the driver rechecks the PR main base, head, and merge state, measures merge-base-to-head non-generated Rust additions for a Chief-managed leaf, and refuses an over-limit PR unless its plan carries a matching durable split decision, rationale, count, and base/head SHA. It then squash-merges with admin and branch deletion, and verifies the merged PR before any postmerge mutation. Reentry after a verified merge skips push, PR creation, CI, and merge. Postmerge changes only the exact `[IMPLEMENTING]` leaf prefix to `[DONE]`, requires the issue to have auto-closed, synchronizes local `main` with `origin/main`, deletes both branch references, and writes `complete` only after fresh verification. A fixed child completion marker remains necessary but not sufficient: the parent independently proves the leaf is a direct closed issue with its exact `[DONE]` lifecycle, then proves a clean, synchronized `main` before another turn.
+After green CI, the driver rechecks the PR main base, head, and merge state, measures merge-base-to-head non-generated Rust additions for a Chief-managed leaf, and refuses an over-limit PR unless its plan carries a matching durable split decision, rationale, count, and base/head SHA. It then reads the active default-branch rules. An enabled merge queue receives a submission without admin or branch deletion; bounded read-back must confirm queue entry, auto-merge, or completion before the driver persists `queued` and waits for an observed merge. Without a queue, it squash-merges with admin and branch deletion. Both paths verify the merged PR before any postmerge mutation. Reentry after queue submission waits without replaying push, PR creation, CI, or submission. Reentry after a verified merge skips all premerge mutations. Postmerge changes only the exact `[IMPLEMENTING]` leaf prefix to `[DONE]`, requires the issue to have auto-closed, synchronizes local `main` with `origin/main`, deletes both branch references, and writes `complete` only after fresh verification. A fixed child completion marker remains necessary but not sufficient: the parent independently proves the leaf is a direct closed issue with its exact `[DONE]` lifecycle, then proves a clean, synchronized `main` before another turn.
 
 Parent title mutations and graph writes require explicit operator mode, freshness checks, centralized title mutation, and exact read-back. Final close re-fetches the graph before and after the mutation and refuses any open leaf or open non-leaf parent blocker. Audit gaps are filed through `/issue` with no deduplication because their identities are exact. Before filing, a read-only preflight confines and validates the bounded caller-owned title and body files. Before attachment, the graph owner compares the live new issue title and body byte-for-byte with those files, rejects another parent or any child, adds the sub-issue and parent blocked-by edges idempotently, and reads both back.
 

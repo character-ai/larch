@@ -14,7 +14,8 @@ import importlib
 import json
 import re
 import tempfile
-from collections.abc import Generator, Mapping, Sequence
+import time
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Final, Protocol, cast
 from dataclasses import dataclass
@@ -32,6 +33,17 @@ from larch.core.retry import (
 )
 
 _RUN_LIST_WORKFLOW_ARGC_MIN: Final = 5
+_RULESET_CHECK_HEADER_RE = re.compile(
+    r"^(?P<count>[0-9]+) rules? appl(?:y|ies) to branch .+ in repo .+$",
+)
+_RULESET_CHECK_RULE_RE = re.compile(
+    r"^- (?P<rule>[a-z][a-z0-9_]*)(?::|\s|$)",
+)
+_PR_MERGE_QUEUE_STATUS_QUERY: Final = (
+    "query($owner:String!,$name:String!,$number:Int!){"
+    "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+    "state mergeQueueEntry{state} autoMergeRequest{enabledAt}}}}"
+)
 
 
 class GhReadTimeout(ShipError):
@@ -85,6 +97,13 @@ class FailedJob:
 class MergeState:
     merge_state_status: str
     head_ref_oid: str
+
+
+@dataclass(frozen=True)
+class MergeQueueStatus:
+    pr_state: str
+    queue_state: str = ""
+    auto_merge_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -793,8 +812,12 @@ def pr_merge(
     merge_method: str = "squash",
     admin: bool = False,
     delete_branch: bool = False,
+    merge_queue: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
+    if merge_queue and (admin or delete_branch):
+        msg = "merge_queue cannot be combined with admin or delete_branch"
+        raise ShipError(msg)
     flag_map = {
         "squash": "--squash",
         "merge": "--merge",
@@ -804,19 +827,162 @@ def pr_merge(
     if flag is None:
         msg = f"unknown merge_method: {merge_method!r}"
         raise ShipError(msg)
-    argv = [
-        "pr",
-        "merge",
-        str(number),
-        "--repo",
-        repo,
-        flag,
-    ]
+    argv = ["pr", "merge", str(number), "--repo", repo]
+    if not merge_queue:
+        argv.append(flag)
     if admin:
         argv.append("--admin")
     if delete_branch:
         argv.append("--delete-branch")
     return _gh(runner, argv, cwd=cwd)
+
+
+def default_branch_merge_queue_enabled(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> bool:
+    """Return whether active rules require a queue for the default branch."""
+    if not validate_repo_slug(repo):
+        raise ShipError("repository must use OWNER/REPO syntax")
+    result = _retry_read(
+        runner,
+        ["ruleset", "check", "--default", "--repo", repo],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    lines = [line for line in result.stdout.splitlines() if line]
+    if not lines:
+        raise ShipError("gh ruleset check returned empty output")
+    header = _RULESET_CHECK_HEADER_RE.fullmatch(lines[0])
+    if header is None:
+        raise ShipError("gh ruleset check returned an unsupported output header")
+    expected_count = int(header.group("count"))
+    rule_types: list[str] = []
+    for line in lines[1:]:
+        if not line.startswith("- "):
+            continue
+        rule = _RULESET_CHECK_RULE_RE.match(line)
+        if rule is None:
+            raise ShipError("gh ruleset check returned an unsupported rule row")
+        rule_types.append(rule.group("rule"))
+    if len(rule_types) != expected_count:
+        raise ShipError("gh ruleset check rule count did not match its header")
+    return "merge_queue" in rule_types
+
+
+def pr_merge_queue_status(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> MergeQueueStatus:
+    """Read queue and auto-merge state from the pull request's owning surface."""
+    if not validate_repo_slug(repo):
+        raise ShipError("repository must use OWNER/REPO syntax")
+    owner, name = repo.split("/", 1)
+    result = _retry_read(
+        runner,
+        [
+            "api",
+            "graphql",
+            "-f",
+            f"query={_PR_MERGE_QUEUE_STATUS_QUERY}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"number={number}",
+        ],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    root = _as_json_object(
+        _loads_json(result.stdout, context="pr merge queue status"),
+        context="pr merge queue status",
+    )
+    _require_json_keys(root, ("data",), context="pr merge queue status")
+    data = _as_json_object(root["data"], context="pr merge queue status data")
+    _require_json_keys(data, ("repository",), context="pr merge queue status data")
+    repository = _as_json_object(
+        data["repository"],
+        context="pr merge queue status repository",
+    )
+    _require_json_keys(
+        repository,
+        ("pullRequest",),
+        context="pr merge queue status repository",
+    )
+    pull_request = _as_json_object(
+        repository["pullRequest"],
+        context="pr merge queue status pull request",
+    )
+    _require_json_keys(
+        pull_request,
+        ("state", "mergeQueueEntry", "autoMergeRequest"),
+        context="pr merge queue status pull request",
+    )
+    queue_state = ""
+    queue_entry = pull_request["mergeQueueEntry"]
+    if queue_entry is not None:
+        entry = _as_json_object(
+            queue_entry,
+            context="pr merge queue status entry",
+        )
+        _require_json_keys(entry, ("state",), context="pr merge queue status entry")
+        queue_state = str(entry["state"] or "")
+        if not queue_state:
+            raise ShipError("gh merge queue entry omitted its state")
+    auto_merge_request = pull_request["autoMergeRequest"]
+    if auto_merge_request is not None:
+        auto_merge = _as_json_object(
+            auto_merge_request,
+            context="pr merge queue status auto merge",
+        )
+        _require_json_keys(
+            auto_merge,
+            ("enabledAt",),
+            context="pr merge queue status auto merge",
+        )
+    return MergeQueueStatus(
+        pr_state=str(pull_request["state"] or "").upper(),
+        queue_state=queue_state,
+        auto_merge_enabled=auto_merge_request is not None,
+    )
+
+
+def confirm_pr_merge_queue_submission(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    sleeper: Callable[[float], None] = time.sleep,
+    cwd: str | None = None,
+) -> MergeQueueStatus:
+    """Confirm a queue mutation with bounded same-surface read-back."""
+    for attempt in range(config.MERGE_QUEUE_SUBMISSION_VERIFY_ATTEMPTS):
+        status = pr_merge_queue_status(
+            runner,
+            number,
+            repo=repo,
+            cwd=cwd,
+        )
+        if status.pr_state == "MERGED":
+            return status
+        if status.pr_state != "OPEN":
+            raise ShipError(
+                f"PR entered state {status.pr_state or '<empty>'} after queue submission",
+            )
+        if status.queue_state or status.auto_merge_enabled:
+            return status
+        if attempt + 1 < config.MERGE_QUEUE_SUBMISSION_VERIFY_ATTEMPTS:
+            sleeper(float(config.MERGE_QUEUE_SUBMISSION_VERIFY_INTERVAL_SEC))
+    raise ShipError("merge queue submission did not appear in PR read-back")
 
 
 def pr_merge_state_read(

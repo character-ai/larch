@@ -317,6 +317,13 @@ COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS: Final = 3
 COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS: Final = 3
 COMPLETE_UMBRELLA_ISSUE_CLOSE_POLL_INTERVAL_SEC: Final = 5
 COMPLETE_UMBRELLA_ISSUE_CLOSE_ATTEMPTS: Final = 12
+# A queue can spend substantial time behind earlier entries before its own
+# merge-group checks start. Keep that wait out of the shorter ordinary PR-CI
+# budget while retaining a finite fail-closed bound.
+MERGE_QUEUE_WAIT_POLL_INTERVAL_SEC: Final = 30
+MERGE_QUEUE_WAIT_TIMEOUT_SEC: Final = 24 * 60 * 60
+MERGE_QUEUE_SUBMISSION_VERIFY_ATTEMPTS: Final = 6
+MERGE_QUEUE_SUBMISSION_VERIFY_INTERVAL_SEC: Final = 1
 # Per-call subprocess timeout for the poll-time CI status queries (gh pr view /
 # gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
 # a single hung gh read cannot block gather_status for the whole poll budget
@@ -1130,6 +1137,7 @@ REFRESH_SKIP_NO_REPO_CWD: Final = "no-repo-cwd"
 
 MERGE_RESULT_MERGED: Final = "merged"
 MERGE_RESULT_ADMIN_MERGED: Final = "admin_merged"
+MERGE_RESULT_QUEUED: Final = "queued"
 MERGE_RESULT_MAIN_ADVANCED: Final = "main_advanced"
 MERGE_RESULT_CI_NOT_READY: Final = "ci_not_ready"
 MERGE_RESULT_VERSION_ALREADY_PUBLISHED: Final = "version_already_published"
@@ -1140,6 +1148,7 @@ MERGE_RESULT_ERROR: Final = "error"
 MERGE_RESULTS: Final[frozenset[str]] = frozenset({
     MERGE_RESULT_MERGED,
     MERGE_RESULT_ADMIN_MERGED,
+    MERGE_RESULT_QUEUED,
     MERGE_RESULT_MAIN_ADVANCED,
     MERGE_RESULT_CI_NOT_READY,
     MERGE_RESULT_VERSION_ALREADY_PUBLISHED,

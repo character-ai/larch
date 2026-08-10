@@ -22,7 +22,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
   --leaf "<LEAF>"
 ```
 
-The driver owns the deterministic sequence: push, create or verify a PR with the leaf closing link, refresh CI once every 300 seconds, distill a failed run, squash-merge with `--admin --delete-branch` after green checks, verify the merge, retitle the closed leaf `[DONE]`, switch to `main`, fetch and rebase `origin/main`, delete the feature branch, and verify every postcondition.
+The driver owns the deterministic sequence: push, create or verify a PR with the leaf closing link, refresh CI once every 300 seconds, distill a failed run, detect the default-branch merge queue after green checks, enqueue and wait when it is enabled or squash-merge with `--admin --delete-branch` otherwise, verify the merge, retitle the closed leaf `[DONE]`, switch to `main`, fetch and rebase `origin/main`, delete the feature branch, and verify every postcondition.
 
 Route only on `SHIP_STATUS`:
 

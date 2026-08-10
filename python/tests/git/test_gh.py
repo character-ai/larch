@@ -1133,6 +1133,162 @@ def test_pr_merge_delete_branch_flag() -> None:
     assert "--delete-branch" in runner.calls[0]
 
 
+def test_pr_merge_queue_omits_strategy_admin_and_branch_deletion() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "merge", "3"), 0, "", "", 0.01)],
+    )
+
+    result = gh.pr_merge(runner, 3, repo="o/r", merge_queue=True)
+
+    assert result.returncode == 0
+    assert runner.calls == [["gh", "pr", "merge", "3", "--repo", "o/r"]]
+
+
+@pytest.mark.parametrize(
+    ("admin", "delete_branch"),
+    [(True, False), (False, True)],
+)
+def test_pr_merge_queue_rejects_incompatible_flags(
+    admin: bool,
+    delete_branch: bool,
+) -> None:
+    runner = RecordingRunner()
+
+    with pytest.raises(ShipError, match="cannot be combined"):
+        _ = gh.pr_merge(
+            runner,
+            3,
+            repo="o/r",
+            merge_queue=True,
+            admin=admin,
+            delete_branch=delete_branch,
+        )
+
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("0 rules apply to branch main in repo o/r\n", False),
+        (
+            "1 rule applies to branch main in repo o/r\n\n"
+            "- merge_queue: [merge_method: SQUASH]\n"
+            "  (configured in ruleset 1 from repository o/r)\n",
+            True,
+        ),
+    ],
+)
+def test_default_branch_merge_queue_enabled_parses_active_rules(
+    output: str,
+    expected: bool,
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "ruleset", "check"), 0, output, "", 0.01)],
+    )
+
+    enabled = gh.default_branch_merge_queue_enabled(runner, repo="o/r", cwd="/repo")
+
+    assert enabled is expected
+    assert runner.calls == [
+        ["gh", "ruleset", "check", "--default", "--repo", "o/r"],
+    ]
+    assert runner.records[0].cwd == "/repo"
+
+
+def test_default_branch_merge_queue_enabled_fails_closed_on_read_error() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "ruleset", "check"),
+                1,
+                "",
+                "permission denied",
+                0.01,
+            ),
+        ],
+    )
+
+    with pytest.raises(ShipError, match="gh command failed"):
+        _ = gh.default_branch_merge_queue_enabled(runner, repo="o/r")
+
+
+def test_default_branch_merge_queue_enabled_fails_closed_on_output_drift() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "ruleset", "check"),
+                0,
+                "2 rules apply to branch main in repo o/r\n\n- non_fast_forward\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    with pytest.raises(ShipError, match="rule count"):
+        _ = gh.default_branch_merge_queue_enabled(runner, repo="o/r")
+
+
+def test_pr_merge_queue_status_parses_queue_entry() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api", "graphql"),
+                0,
+                (
+                    '{"data":{"repository":{"pullRequest":{"state":"OPEN",'
+                    '"mergeQueueEntry":{"state":"QUEUED"},'
+                    '"autoMergeRequest":{"enabledAt":"2026-08-10T00:00:00Z"}}}}}'
+                ),
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    status = gh.pr_merge_queue_status(runner, 7, repo="o/r", cwd="/repo")
+
+    assert status == gh.MergeQueueStatus(
+        pr_state="OPEN",
+        queue_state="QUEUED",
+        auto_merge_enabled=True,
+    )
+    assert runner.calls[0][:4] == ["gh", "api", "graphql", "-f"]
+    assert "owner=o" in runner.calls[0]
+    assert "name=r" in runner.calls[0]
+    assert "number=7" in runner.calls[0]
+
+
+def test_confirm_pr_merge_queue_submission_polls_until_accepted() -> None:
+    missing = (
+        '{"data":{"repository":{"pullRequest":{"state":"OPEN",'
+        '"mergeQueueEntry":null,"autoMergeRequest":null}}}}'
+    )
+    accepted = (
+        '{"data":{"repository":{"pullRequest":{"state":"OPEN",'
+        '"mergeQueueEntry":{"state":"AWAITING_CHECKS"},'
+        '"autoMergeRequest":null}}}}'
+    )
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "api", "graphql"), 0, missing, "", 0.01),
+            CommandResult(("gh", "api", "graphql"), 0, accepted, "", 0.01),
+        ],
+    )
+    sleeps: list[float] = []
+
+    status = gh.confirm_pr_merge_queue_submission(
+        runner,
+        7,
+        repo="o/r",
+        sleeper=sleeps.append,
+    )
+
+    assert status.queue_state == "AWAITING_CHECKS"
+    assert sleeps == [float(config.MERGE_QUEUE_SUBMISSION_VERIFY_INTERVAL_SEC)]
+
+
 def test_pr_merge_state_read() -> None:
     runner = RecordingRunner(
         responses=[

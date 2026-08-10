@@ -66,7 +66,7 @@ Require one of these outcomes:
   still describe the final HEAD, then continue.
 
 Any other output or nonzero exit is a hard stop. The ship driver repeats this
-gate immediately before its admin merge.
+gate immediately before its queue submission or direct admin merge.
 
 Regenerate `$SESSION_TMPDIR/implementation.diff` from the final `git diff main...HEAD`. Write `$SESSION_TMPDIR/review-summary.md` with findings, fixes, stale-caller results, parity-success evidence, final HEAD, Rust line-budget status/count, and checks. Keep it below 2,000 tokens.
 
