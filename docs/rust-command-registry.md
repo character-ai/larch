@@ -445,6 +445,17 @@ read the way `Path.read_text` did, and `oos file-conflict-deps` reads bytes the
 way `larch.io.read_text` did, because the batch grammar it feeds is byte
 oriented.
 
+Issue 8179 moves `oos file` behind `scripts/larch.sh` into
+`crates/larch-cli/src/oos_file_commands.rs`. The driver composes the #8178 cap,
+conflict, and disposition owners in process, and creates and wires issues
+through the typed Rust mutation path without invoking `/issue`.
+`larch_core::issue::oos_filing` owns stable filing identities and durable
+records. The behavioral authority is `oos_file_commands::tests` plus the shared
+core OOS tests. The former `larch.issue.oos_filer` command owner is gone;
+retained #7680 `larch.issue.file_oos`, #7684 `larch.issue._oos`, and #7681
+`larch.implement.dispatch_ship` keep only their distinct in-process parsing,
+identity, workflow-routing, and post-checkpoint responsibilities.
+
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content
 envelope. Issue 8171 then moves every command over that core — the three

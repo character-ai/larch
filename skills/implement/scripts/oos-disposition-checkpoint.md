@@ -1,8 +1,17 @@
-# oos-disposition-checkpoint
+# oos disposition-checkpoint
 
-Python `scripts/larch.sh oos disposition-checkpoint` is the runtime authority. `oos-disposition-checkpoint.sh` is a thin wrapper for legacy harness and direct path invocation.
+Rust owns `scripts/larch.sh oos disposition-checkpoint`. The command resolves one `/implement` session's disposition inputs, evaluates the Rust gate in process, and records refusals. `skills/implement/scripts/oos-disposition-checkpoint.sh` remains only a thin compatibility wrapper for direct path invocation and the delegation smoke.
 
-Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs (fork/repo flags, commit range, `oos-issues.ndjson` discovery, design-OOS path, non-security block count, ndjson precondition), invokes `scripts/larch.sh oos disposition-gate`, and logs failures via `run-log append-failure`. The orchestrator calls `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.sh` (which forwards to `scripts/larch.sh oos disposition-checkpoint`) and branches on its exit code; it does **not** clear `OOS_PENDING`, write `run-statistics`, or re-enter `--resume-phase pr-create` (see NEVER #17 / #18 in `skills/implement/SKILL.md`).
+## Ownership trace
+
+The live Step 8 route is:
+
+1. `skills/implement/scripts/step-8-oos-checkpoint.sh` invokes the retained #7681 Python workflow router `python/cli.py implement step-8-oos-checkpoint`.
+2. That router invokes `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-checkpoint`, preserves its refusal artifact, appends a de-duplicated Tool Failures fallback when needed, and, only after a zero command exit, owns `run-statistics.md`, the `steps_ran.step9a1` stamp, and `OOS_PENDING=false` bookkeeping.
+3. `crates/larch-cli/src/main.rs` dispatches the OOS verb to `crates/larch-cli/src/oos_commands.rs`.
+4. The command composes `crates/larch-core/src/issue/oos_disposition.rs` and `crates/larch-core/src/issue/oos_record.rs` for gate state, evidence counters, and accepted-block grammar.
+
+The Python router is a distinct workflow responsibility; it is not a Python implementation or fallback for the migrated OOS command. The Rust checkpoint calls the shared gate evaluator in process and does not spawn `oos-disposition-gate.sh` or a nested `oos disposition-gate` command.
 
 ## Invocation
 
@@ -10,64 +19,70 @@ Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs
 scripts/larch.sh oos disposition-checkpoint --implement-tmpdir DIR [--design-tmpdir DIR]
 ```
 
-Legacy wrapper:
+Legacy direct-wrapper invocation accepts the same arguments:
 
 ```text
 oos-disposition-checkpoint.sh --implement-tmpdir DIR [--design-tmpdir DIR]
 ```
 
-- `--implement-tmpdir` — Required. Session tmpdir (`$IMPLEMENT_TMPDIR`) containing `ship-pr-state.sh`, `session-id`, accepted-OOS markdown, `oos-issues-created.md`, and `larch-logs/implement/`.
-- `--design-tmpdir` — Optional. Overrides `DESIGN_TMPDIR` for resolving `oos-accepted-design.md` (`<dir>/oos-accepted-design.md`). When omitted, exported `DESIGN_TMPDIR` is used before falling back to `design-export/oos-accepted-design.md` under the implement tmpdir, then `<implement-tmpdir>/oos-accepted-design.md`.
-
-Git mode: `100755` (direct path invocation from `SKILL.md` and the harness).
+- `--implement-tmpdir` is required. It names the session directory containing state files, accepted-OOS Markdown, filing evidence, and `larch-logs/implement/`.
+- `--design-tmpdir` is optional. The command also accepts exported `DESIGN_TMPDIR` when the flag is absent.
 
 ## Input resolution
 
-No unguarded global `set -e` over fallible probes. Defaults (`_forked=false`, `_repo_unavail=false`, `_oos_range=HEAD`) are set before git/`find`/`grep` probes. Deliberate validation failures (ambiguous ndjson, missing ndjson precondition, bad CLI) tee to `oos-disposition-checkpoint.stderr.log`, log, and exit `2`. Only the gate subprocess runs under `set +e` with stderr redirected to `oos-disposition-gate.stderr.log`.
+`crates/larch-cli/src/oos_commands.rs` reads `ship-pr-state.sh` followed by `finalize-state.sh` with the shared legacy KV codec. The last value wins. `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` skips the disposition evaluation and the non-security batch precondition after session identity resolution. The carve-outs do not bypass ambiguous run-batch validation: no recorded identity plus multiple discoverable batches returns exit 2 before the skip.
 
-Design OOS path: `--design-tmpdir` wins, then exported `DESIGN_TMPDIR`, then `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` when present, then `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
+The accepted design path resolves in this order:
 
-Commit range: `merge-base HEAD origin/main..HEAD` when merge-base is non-empty; `origin/main..HEAD` when `origin/main` resolves but merge-base is empty; `HEAD` when `origin/main` is absent.
+1. `<design-tmpdir>/oos-accepted-design.md` when the flag or environment value names an existing file;
+2. `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` when present;
+3. `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
 
-## Ndjson discovery
+The other accepted inputs are `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`.
 
-Reads `$IMPLEMENT_TMPDIR/session-id` as `RUN_ID` (trimmed; empty when absent).
+The commit range comes from the Rust Git adapter. It uses `<merge-base>..HEAD` when `HEAD` and `origin/main` have a merge base, `origin/main..HEAD` when the base resolves without a merge base, `HEAD^..HEAD` when `origin/main` is absent but `HEAD^` resolves, and `HEAD` otherwise.
 
-| `session-id` | Resolution |
-|--------------|------------|
-| Non-empty | Use only `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/oos-issues.ndjson`. **No** `find` fallback when that path is missing — avoids binding a foreign run’s batch after a stale `RUN_ID`. |
-| Empty | `find` under `$IMPLEMENT_TMPDIR/larch-logs/implement` (`-mindepth 2 -maxdepth 2`, name `oos-issues.ndjson`). Exactly one match → adopt; more than one → pre-gate exit **2** (`ambiguous oos-issues.ndjson without session-id`). |
+## NDJSON discovery
 
-When `non_security_oos > 0` and git mode is active (not fork / repo-unavailable), a resolved on-disk ndjson path is required before the gate runs; otherwise pre-gate exit **2** (`batch missing or undiscoverable`). **Stale `RUN_ID`:** keyed path missing with non-zero non-security OOS and a sole foreign `oos-issues.ndjson` still fails here (exit **2**), unlike the removed inline orchestrator block that could `find`-bind the foreign file and exit **0**.
+Run identity resolves from the last state-file `RUN_ID`, then non-empty `$IMPLEMENT_TMPDIR/session-id`, then the parent directory of exactly one discoverable `larch-logs/implement/*/oos-issues.ndjson` batch.
+
+| Identity inputs | Batch resolution |
+|-----------------|------------------|
+| Recorded or session identity is non-empty | Use only `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/oos-issues.ndjson`. No fallback may bind another run's batch. |
+| No recorded or session identity, one batch | Derive its parent-directory name as the run identity and adopt that batch. |
+| No recorded or session identity, multiple batches | Exit 2 rather than guessing which run owns disposition evidence. |
+| No recorded or session identity, no batch | Continue with no NDJSON path; non-security accepted OOS then triggers the required-batch refusal. |
+
+Outside fork and repo-unavailable carve-outs, a non-zero accepted non-security count requires the resolved NDJSON path to be a regular file. A recorded but stale run identity therefore cannot fall back to a foreign run's sole batch.
 
 ## Exit codes
 
 | Code | Meaning |
-|------|--------|
-| 0 | Gate passed or skipped (`--fork-mode` / `--repo-unavailable` via state file). |
-| 1 | Disposition gap (gate exit 1). Logged with `--site step-8-oos-checkpoint`, `--output-file` = gate stderr log. |
-| 2 | Validation/setup (gate exit 2, or pre-gate input-resolution / CLI failure). Logged with `--site step-8-oos-checkpoint-validation`; pre-gate paths use the checkpoint stderr log, gate failures use the gate stderr log. |
+|------|---------|
+| 0 | Gate cleared, or the fork / repo-unavailable carve-out skipped evaluation. |
+| 1 | Accepted non-security OOS lacks filing, inline-triage, or rejection evidence. |
+| 2 | Invalid arguments or session inputs, ambiguous or missing required NDJSON, unusable Git history, or malformed gate evidence. |
+| 3 | Non-security disposition cleared, but a non-empty private security sidecar still requires disposition. |
 
-Gate exit 2 is **not** collapsed into exit 1 (unlike the prior inline orchestrator block).
+The retained #7681 Step 8 Python router translates any non-zero command exit into `OOS_CHECKPOINT_RC=<code>` plus `NEXT_ACTION=stall`. On zero it performs post-pass bookkeeping and emits `NEXT_ACTION=reship`. See `skills/implement/references/ship-pr-oos-checkpoint-router.md` for that router contract.
 
-## Logging (`log_checkpoint_failure`)
+## Refusal artifacts
 
-Every non-zero exit calls `run-log append-failure` best-effort (`|| true`) then `exit` with the saved checkpoint rc:
+The Rust command writes its own bounded diagnostics and `execution-issues.md` Tool Failures entries:
 
-- `--log "$IMPLEMENT_TMPDIR/execution-issues.md"` (required)
-- `--site` — `step-8-oos-checkpoint` (rc 1) or `step-8-oos-checkpoint-validation` (rc 2 and pre-gate exit 2)
-- `--tool oos-disposition-checkpoint.sh`
-- `--exit-code`, `--category "Tool Failures"`, `--output-file`, `--redact`
+- `$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log` records argument, session-resolution, missing-batch, and security-sidecar refusals.
+- `$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log` records gate-counter validation or an undisposed-counter failure line.
+- `execution-issues.md` uses `step-8-oos-checkpoint`, `step-8-oos-checkpoint-validation`, or `step-8-oos-checkpoint-security-sidecar` according to the refusal.
 
-Stderr logs:
+An invalid command line with no recoverable `--implement-tmpdir` prints usage on process stderr. A parsed path that does not exist also reports on stderr. When an invalid line contains a path hint that cannot accept writes, exit 2 may be the only reliable refusal evidence; callers must not assume a session artifact was persisted.
 
-- `$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log` — pre-gate / CLI diagnostics
-- `$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log` — gate subprocess only (created/truncated before gate invocation)
+## Test authority
 
-## Gate contract
+Rust unit tests in `crates/larch-cli/src/oos_commands.rs` cover input resolution, carve-outs, gate refusal, run identity, design export, security-sidecar state, and logging. Core unit tests in `crates/larch-core/src/issue/oos_disposition.rs` and `crates/larch-core/src/issue/oos_record.rs` cover gate semantics and record parsing. `skills/implement/scripts/test-oos-disposition-gate.sh` covers only the two thin wrappers' plugin-root selection, root entrypoint, arguments, exit status, stdout, and stderr.
 
-Gate argv wiring (`--fork-mode`, `--repo-unavailable`, `--oos-issues-ndjson`, `--accepted-files`, `--filed-urls-file`, `--filed-urls-strict-file`, `--commit-range`) matches the former inline `SKILL.md` block; **ndjson discovery** intentionally differs — see [Ndjson discovery](#ndjson-discovery). See `oos-disposition-gate.md` for gate semantics.
-
-## Harness
-
-`skills/implement/scripts/test-oos-disposition-gate.sh` (sibling `test-oos-disposition-gate.md`; Makefile target `test-oos-disposition-gate`) covers both the gate and this checkpoint.
+```text
+cargo test --locked --package larch-cli --bin larch oos_commands::tests
+cargo test --locked --package larch-core --lib issue::oos_disposition::tests
+cargo test --locked --package larch-core --lib issue::oos_record::tests
+make oos-disposition-gate-bash-harness
+```

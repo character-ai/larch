@@ -28,13 +28,18 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure
   PR-footer helpers; its lifecycle, sentinel, and GitHub behavior is Rust-owned behind
   typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
-  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` are PR/merge/logging ports with session-local
+  `pr_body.py`, `push.py`, `pr.py`, and `merge.py` are PR/merge/logging ports with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
+- `larch/issue/file_oos.py` is not a production OOS command owner. Its retained
+  in-process parsing, normalization, and compatibility helpers are assigned to
+  #7680; the #7681 Step 8 workflow consumes its run-id resolver for bookkeeping.
+  All six OOS commands migrated by #8178 and #8179 enter through
+  `scripts/larch.sh` and are Rust-owned.
 - `larch/report/run_log_archive.py`, `run_lifecycle.py`, `storage_config.py`,
   and `run_log_publish.py` retain bounded Python compatibility readers, types,
   and Rust-command facades. Rust

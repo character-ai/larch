@@ -5,9 +5,10 @@ Every command this module once served has moved to the Rust owner: the issue
 query and input verbs in #8167 and #8168, `issue create-one`,
 `issue write-sentinel`, and `issue cleanup-failed` in #8169, and the two
 issue-graph writes — `issue add-blocked-by` and `issue add-sub-issue` — in
-#8170. `parse_issue_input` stays because it is not a command: it is the
-grammar ``larch.issue.file_oos`` still calls in process, and that module
-migrates with its own command leaf.
+#8170. `parse_issue_input` stays because it is not a command: the retained
+#7680 compatibility helpers in ``larch.issue.file_oos`` still call the grammar
+in process. The Rust ``oos file`` production command uses the Rust issue-input
+owner instead.
 ``larch.issue.umbrella`` was the third caller until #8174 retired it.
 """
 

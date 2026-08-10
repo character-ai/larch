@@ -636,10 +636,25 @@ the same dedicated-field predicate after sanitization. A security-looking title
 alone does not route a manifest item.
 
 Classifier failure is private by default. It must never fall back to the public
-OOS path. `python/larch/issue/file_oos.py`, review tally and aggregation modules,
-and `python/larch/implement/ship.py` own the current routing and checkpoint
-enforcement. Their tests cover fenced and unfenced tokens, field variants,
-manifest materialization, mirror-copy failure, and checkpoint refusal.
+OOS path. Manifest materialization and private-sidecar routing are Rust-owned by
+`crates/larch-cli/src/oos_commands.rs` and
+`crates/larch-core/src/issue/oos_batch.rs` behind
+`scripts/larch.sh oos materialize-manifest`. Rust checkpoint enforcement is
+owned by `oos_commands.rs` and `larch_core::issue::oos_disposition` behind
+`scripts/larch.sh oos disposition-checkpoint`; the Rust filing driver in
+`crates/larch-cli/src/oos_file_commands.rs` refuses post-checkpoint completion
+while the sidecar remains.
+
+Review and design tally/aggregation modules retain their distinct source-side
+classification responsibilities. Under receiving umbrella #7681,
+`python/larch/implement/dispatch_ship.py` retains Step 8 routing and
+post-checkpoint bookkeeping. The surviving
+`python/larch/issue/file_oos.py` callers use in-process block parsing/counting,
+title normalization, and run-id resolution under receiving umbrella #7680; the
+module is not an OOS command owner or fallback. Rust tests in `oos_commands.rs`,
+`oos_file_commands.rs`, `oos_batch.rs`, `oos_disposition.rs`, and
+`oos_record.rs` cover manifest materialization, field variants, private
+routing, and checkpoint refusal.
 
 ## Major Residual Risks
 

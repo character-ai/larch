@@ -1,6 +1,6 @@
 # step-8-oos-checkpoint.sh
 
-Thin Step 8+ OOS checkpoint relay. Runtime authority lives in `python/cli.py implement step-8-oos-checkpoint`.
+Thin Step 8+ OOS checkpoint relay. Retained #7681 workflow routing and post-pass bookkeeping authority lives in `python/cli.py implement step-8-oos-checkpoint`; the disposition command it invokes is Rust-owned behind `scripts/larch.sh oos disposition-checkpoint`.
 
 ## Caller
 
@@ -18,7 +18,7 @@ Python emits these keys when routing succeeds:
 
 ## Python-owned work
 
-The Python verb runs `oos disposition-checkpoint` without forwarding child stdout, preserves child-written `oos-disposition-checkpoint.stderr.log` when captured stderr is empty, appends Tool Failures rows when needed, writes `run-statistics.md`, stamps `steps_ran.step9a1=true` on full success, best-effort stamps `step9a1=false` on bookkeeping failure, and clears `OOS_PENDING=false` via `ship._patch_ship_state_keys`.
+The Python verb runs `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-checkpoint` without forwarding child stdout, preserves child-written `oos-disposition-checkpoint.stderr.log` when captured stderr is empty, appends Tool Failures rows when needed, writes `run-statistics.md`, stamps `steps_ran.step9a1=true` on full success, best-effort stamps `step9a1=false` on bookkeeping failure, and clears `OOS_PENDING=false` via `ship._patch_ship_state_keys`.
 
 OOS-checkpoint `NEXT_ACTION=stall` is not the post-driver Step 16 stall path. It halts Step 8+ until the checkpoint gap or bookkeeping failure is resolved.
 
