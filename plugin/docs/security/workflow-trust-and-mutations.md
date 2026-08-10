@@ -234,10 +234,27 @@ Plan, owner, and blocker hashes remain live checks, and in-scope base-target
 drift fails closed. Unavailable or stale evidence fails closed.
 
 `crates/larch-adapters/src/github/issue_mutation.rs` is the single Rust owner
-for issue title, body, label, comment, and close writes. Later Rust callers use
+for issue title, body, label, comment, and close writes. Tracking comment
+creation, replacement, and deletion pass through this owner, which verifies the
+returned comment identity and body, then verifies create and replacement with a
+same-surface comment-list read-back; deletion is verified by absence from that
+list. Issue creation accepts a canonical create response only after a same-issue
+GET proves its title, body, labels, identity, and open state; a failed proof
+names the orphan for best-effort closure.
+Tracking lease activation also applies the lease body and `[IMPLEMENTING]`
+title together, bound to the preflight title, body, and admission-relevant
+label hashes, timestamp lower bound, and current base-target SHA. Metadata-only
+timestamp advancement is accepted only while those admission-relevant issue
+fields remain exact; pre- and post-mutation governance checks consume a fresh
+Rust-materialized post-mutation body and retain blocker and owner race
+detection. Python tracking workflows reach those
+operations through `scripts/larch.sh`; former in-process Python consumers use
+typed `rust_runtime` calls, and external command consumers keep the same
+verified entrypoint. `final-report write` calls the same Rust tracking owner in
+process to preserve its own output envelope. Later Rust callers use
 `larch_adapters::github::IssueMutationOwner`, which applies the shared
 live-mutation gate before its first read, serializes through the shared GitHub
-runtime lock, redacts outbound titles, bodies, and close comments, and proves a
+runtime lock, redacts outbound titles, bodies, and comments, and proves a
 fresh exact read-back without a blind retry. The Rust-owned `/combine-issues`
 apply path reads every source's native blockers before creation, re-adds those
 blockers to the combined issue, and verifies the full set before it can

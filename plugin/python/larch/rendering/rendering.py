@@ -21,7 +21,6 @@ from collections.abc import Sequence
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines
 from larch.review import findings_ledger
-from larch.git import gh
 from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
@@ -29,8 +28,8 @@ from larch.core import proc
 from larch.core.repo_roots import larch_entrypoint
 from larch.git import pr_body
 from larch.core import redact
+from larch.core import rust_runtime
 from larch.state import session_env
-from larch.issue import tracking_issue
 from larch.errors import ShipError
 from larch.review import voting
 from larch.review.review_types import FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, render_wire_values
@@ -1681,28 +1680,30 @@ def diagrams_upsert_main(argv: list[str]) -> int:
         _assert_tmp_scoped(label="architecture", path_value=args.architecture_file, allow_external=args.allow_external_paths)
         _assert_tmp_scoped(label="code-flow", path_value=args.code_flow_file, allow_external=args.allow_external_paths)
         existing = ""
-        comment_id: int | None = None
+        existing_found = False
         repo = args.repo
         runner = proc.ProcRunner()
         if not args.dry_run:
-            if not repo:
-                repo = gh.resolve_repo(runner)
-                if not repo:
-                    raise ShipError("could not determine repo")
-            if not gh.validate_repo_slug(repo):
-                raise UsageError("invalid repo: expected OWNER/REPO")
+            existing_fd, existing_name = tempfile.mkstemp(
+                prefix="larch-diagrams-existing-", suffix=".md"
+            )
+            os.close(existing_fd)
+            existing_file = Path(existing_name)
             try:
-                found = gh.find_issue_comment_id_by_marker(runner, args.issue, args.marker, repo=repo)
-            except ShipError as exc:
-                raise ShipError(f"gh api comments fetch failed: {exc}") from exc
-            if found == -1:
-                raise ShipError("multiple summary comments found for marker")
-            comment_id = found
-            if comment_id is not None:
-                result = gh.api_read(runner, [f"/repos/{repo}/issues/comments/{comment_id}", "--jq", '.body // ""'])
-                if result.returncode != 0:
-                    raise ShipError("gh api comment fetch failed")
-                existing = result.stdout
+                read = rust_runtime.tracking_issue_read_marker(
+                    runner,
+                    issue=args.issue,
+                    marker=args.marker,
+                    output_file=str(existing_file),
+                    repo=repo,
+                )
+                if read.failed:
+                    raise ShipError(read.error or "tracking-issue marker read failed")
+                if read.values.get("FOUND") == "true":
+                    existing_found = True
+                    existing = existing_file.read_text(encoding="utf-8", errors="replace")
+            finally:
+                existing_file.unlink(missing_ok=True)
         arch_existing, code_existing = _extract_sections(existing)
         arch_final, arch_source = _resolve_section(args.architecture_file, clear=args.clear_architecture, existing=arch_existing)
         code_final, code_source = _resolve_section(args.code_flow_file, clear=args.clear_code_flow, existing=code_existing)
@@ -1720,31 +1721,41 @@ def diagrams_upsert_main(argv: list[str]) -> int:
             logging_util.emit_kv(key="ARCHITECTURE_SOURCE", value=arch_source)
             logging_util.emit_kv(key="CODE_FLOW_SOURCE", value=code_source)
             return 0
-        if not sections_redacted and comment_id is None:
+        if not sections_redacted and not existing_found:
             logging_util.emit_kv(key="UPSERT_STATUS", value="no-op")
             logging_util.emit_kv(key="COMMENT_URL", value="")
             logging_util.emit_kv(key="UPDATED", value="false")
-            logging_util.emit_kv(key="ARCHITECTURE_SOURCE", value="absent" if arch_source == "cleared" else arch_source)
-            logging_util.emit_kv(key="CODE_FLOW_SOURCE", value="absent" if code_source == "cleared" else code_source)
+            logging_util.emit_kv(
+                key="ARCHITECTURE_SOURCE",
+                value="absent" if arch_source == "cleared" else arch_source,
+            )
+            logging_util.emit_kv(
+                key="CODE_FLOW_SOURCE",
+                value="absent" if code_source == "cleared" else code_source,
+            )
             return 0
-        if not sections_redacted and comment_id is not None:
-            result = gh.issue_comment_delete(runner, comment_id, repo=repo)
-            if result.returncode != 0:
-                raise ShipError("gh api comment delete failed")
-            logging_util.emit_kv(key="UPSERT_STATUS", value="ok")
-            logging_util.emit_kv(key="COMMENT_URL", value="")
-            logging_util.emit_kv(key="UPDATED", value="true")
-            logging_util.emit_kv(key="ARCHITECTURE_SOURCE", value=arch_source)
-            logging_util.emit_kv(key="CODE_FLOW_SOURCE", value=code_source)
-            return 0
-        body = f"{args.marker}\n{sections_redacted}"
-        url, updated = tracking_issue.upsert_marker_comment(runner, args.issue, args.marker, sections_redacted, repo=repo, comment_id=comment_id)
-        if not url:
-            url = ""
-        _ = body
+        content_fd, content_name = tempfile.mkstemp(
+            prefix="larch-diagrams-content-", suffix=".md"
+        )
+        os.close(content_fd)
+        content_file = Path(content_name)
+        try:
+            content_file.write_text(sections_redacted, encoding="utf-8")
+            upsert = rust_runtime.tracking_issue_upsert_summary(
+                runner,
+                issue=args.issue,
+                marker=args.marker,
+                content_file=str(content_file),
+                repo=repo,
+                delete_if_empty=True,
+            )
+        finally:
+            content_file.unlink(missing_ok=True)
+        if upsert.failed:
+            raise ShipError(upsert.error or "tracking-issue upsert-summary failed")
         logging_util.emit_kv(key="UPSERT_STATUS", value="ok")
-        logging_util.emit_kv(key="COMMENT_URL", value=url)
-        logging_util.emit_kv(key="UPDATED", value="true" if updated else "false")
+        logging_util.emit_kv(key="COMMENT_URL", value=upsert.comment_url)
+        logging_util.emit_kv(key="UPDATED", value="true" if upsert.updated else "false")
         logging_util.emit_kv(key="ARCHITECTURE_SOURCE", value=arch_source)
         logging_util.emit_kv(key="CODE_FLOW_SOURCE", value=code_source)
         return 0

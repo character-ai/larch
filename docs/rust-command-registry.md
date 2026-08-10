@@ -345,9 +345,11 @@ into the Python owners of their dependencies and became verbs there:
 `architectural-assessment final-report-sections` (owned by #7679 with the rest
 of `larch.implement.architectural_assessment`). `token claude-source` is a #7679
 fallback reader for a missing manifest. By contrast,
-`tracking-issue upsert-summary` is Rust-owned after #8175 and is called in
-process by `final-report write`. Neither adds a second implementation of
-anything: the logic has exactly one home, and the Rust command consumes it.
+`tracking-issue upsert-summary` is Rust-owned after the corrected atomic
+cutover in #8346 and is called in process by `final-report write`. Python
+workflow consumers use typed `rust_runtime` wrappers that enter through
+`scripts/larch.sh`. Neither path adds a second implementation: the logic has
+exactly one Rust home.
 
 One contract point changed deliberately. A `PR_URL` absent from
 `ship-pr-state.sh` now falls through to `finalize-state.sh` before the report

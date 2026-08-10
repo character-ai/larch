@@ -21,6 +21,35 @@ const ISSUE_AUTHORITY_PATH: &str = "crates/larch-cli/src/issue_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7682;
 const PYTHON_ISSUE_ROOT: &str = "python/larch/issue/";
 const PYTHON_ISSUE_INIT: &str = "python/larch/issue/__init__.py";
+const TRACKING_PYTHON_MODULE: &str = "python/larch/issue/tracking_issue.py";
+const RUST_RUNTIME_FACADE: &str = "python/larch/core/rust_runtime.py";
+const RETIRED_TRACKING_CALLS: [&str; 14] = [
+    "tracking_issue.append_comment",
+    "tracking_issue.create_issue",
+    "tracking_issue.initialize_implementation_lease",
+    "tracking_issue.mark_false_positive",
+    "tracking_issue.read(",
+    "tracking_issue.read_sentinel",
+    "tracking_issue.refresh_implementation_lease",
+    "tracking_issue.rename_terminal_with_lease",
+    "tracking_issue.rename_with_details",
+    "tracking_issue.rename(",
+    "tracking_issue.upsert_marker_comment",
+    "tracking_issue.upsert_marker_summary",
+    "tracking_issue.upsert_summary",
+    "tracking_issue.upsert_token_report",
+];
+const TRACKING_RUNTIME_WRAPPERS: [&str; 9] = [
+    "def tracking_issue_append_comment(",
+    "def tracking_issue_create(",
+    "def tracking_issue_mark_false_positive(",
+    "def tracking_issue_read(",
+    "def tracking_issue_read_body(",
+    "def tracking_issue_read_marker(",
+    "def tracking_issue_read_sentinel(",
+    "def tracking_issue_rename(",
+    "def tracking_issue_upsert_summary(",
+];
 
 struct ExpectedCommand {
     domain: &'static str,
@@ -228,12 +257,12 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
     ExpectedCommand::new("plan-block", "read", 8171, 7680, "larch.issue.issue_wire", "plan_block_read_main"),
     ExpectedCommand::new("plan-block", "strip-body", 8171, 7680, "larch.issue.issue_wire", "plan_block_strip_body_main"),
     ExpectedCommand::new("plan-block", "write", 8171, 7680, "larch.issue.issue_wire", "plan_block_write_main"),
-    ExpectedCommand::new("tracking-issue", "append-comment", 8175, 7682, "larch.issue.tracking_issue", "append_comment_main"),
-    ExpectedCommand::new("tracking-issue", "create-issue", 8175, 7682, "larch.issue.tracking_issue", "create_issue_main"),
-    ExpectedCommand::new("tracking-issue", "mark-false-positive", 8175, 7682, "larch.issue.tracking_issue", "mark_false_positive_main"),
-    ExpectedCommand::new("tracking-issue", "read", 8175, 7682, "larch.issue.tracking_issue", "read_main"),
-    ExpectedCommand::new("tracking-issue", "rename", 8175, 7682, "larch.issue.tracking_issue", "rename_main"),
-    ExpectedCommand::new("tracking-issue", "upsert-summary", 8175, 7682, "larch.issue.tracking_issue", "upsert_summary_main"),
+    ExpectedCommand::new("tracking-issue", "append-comment", 8346, 7682, "larch.issue.tracking_issue", "append_comment_main"),
+    ExpectedCommand::new("tracking-issue", "create-issue", 8346, 7682, "larch.issue.tracking_issue", "create_issue_main"),
+    ExpectedCommand::new("tracking-issue", "mark-false-positive", 8346, 7682, "larch.issue.tracking_issue", "mark_false_positive_main"),
+    ExpectedCommand::new("tracking-issue", "read", 8346, 7682, "larch.issue.tracking_issue", "read_main"),
+    ExpectedCommand::new("tracking-issue", "rename", 8346, 7682, "larch.issue.tracking_issue", "rename_main"),
+    ExpectedCommand::new("tracking-issue", "upsert-summary", 8346, 7682, "larch.issue.tracking_issue", "upsert_summary_main"),
     ExpectedCommand::new("triage", "apply", 8172, 7682, "larch.issue.triage", "apply_main"),
     ExpectedCommand::new("triage", "inspect", 8172, 7682, "larch.issue.triage", "inspect_main"),
     ExpectedCommand::new("triage", "probe", 8172, 7682, "larch.issue.triage", "probe_main"),
@@ -354,11 +383,128 @@ impl Rule for IssuePythonFreeRule {
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
+        check_tracking_python_boundary(repository, &mut findings)?;
         check_retained_modules(repository, &mut findings);
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn check_tracking_python_boundary(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    let tracking_path = RepoPath::from_trusted(TRACKING_PYTHON_MODULE);
+    if repository.paths().binary_search(&tracking_path).is_ok() {
+        let source = repository.read_utf8(&tracking_path)?;
+        for token in [
+            "from larch.git import gh",
+            "from larch.issue import issue_mutation",
+            "gh.",
+            "issue_mutation.",
+        ] {
+            if let Some(offset) = source.find(token) {
+                findings.push(Finding::new(
+                    TRACKING_PYTHON_MODULE,
+                    line_for_offset(&source, offset),
+                    format!("superseded Python tracking GitHub behavior returned: {token}"),
+                ));
+            }
+        }
+    } else {
+        findings.push(Finding::new(
+            TRACKING_PYTHON_MODULE,
+            1,
+            "missing pure tracking-issue compatibility module",
+        ));
+    }
+    for path in repository.paths() {
+        let relative = path.as_str();
+        if !relative.starts_with("python/larch/")
+            || !Path::new(relative)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+            || relative == TRACKING_PYTHON_MODULE
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        for token in RETIRED_TRACKING_CALLS {
+            if let Some(offset) = source.find(token) {
+                findings.push(Finding::new(
+                    relative,
+                    line_for_offset(&source, offset),
+                    format!("production caller bypasses the Rust tracking-issue facade: {token}"),
+                ));
+            }
+        }
+        let compact: String = source
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        for token in [
+            "_invoke_cli([\"tracking-issue\"",
+            "_invoke_cli(['tracking-issue'",
+        ] {
+            if let Some(offset) = compact.find(token) {
+                let compact_character_offset = compact[..offset].chars().count();
+                findings.push(Finding::new(
+                    relative,
+                    line_for_compact_offset(&source, compact_character_offset),
+                    "production caller routes a retired tracking command through python/cli.py",
+                ));
+            }
+        }
+    }
+    let facade_path = RepoPath::from_trusted(RUST_RUNTIME_FACADE);
+    if repository.paths().binary_search(&facade_path).is_ok() {
+        let source = repository.read_utf8(&facade_path)?;
+        for wrapper in TRACKING_RUNTIME_WRAPPERS {
+            if !source.contains(wrapper) {
+                findings.push(Finding::new(
+                    RUST_RUNTIME_FACADE,
+                    1,
+                    format!("missing typed tracking-issue runtime wrapper: {wrapper}"),
+                ));
+            }
+        }
+        for owner_token in ["larch_entrypoint(", "\"tracking-issue\""] {
+            if !source.contains(owner_token) {
+                findings.push(Finding::new(
+                    RUST_RUNTIME_FACADE,
+                    1,
+                    format!("tracking-issue runtime facade lost its verified owner: {owner_token}"),
+                ));
+            }
+        }
+    } else {
+        findings.push(Finding::new(
+            RUST_RUNTIME_FACADE,
+            1,
+            "missing typed tracking-issue runtime facade",
+        ));
+    }
+    Ok(())
+}
+
+fn line_for_offset(source: &str, offset: usize) -> u32 {
+    source[..offset]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count()
+        .saturating_add(1)
+        .try_into()
+        .unwrap_or(u32::MAX)
+}
+
+fn line_for_compact_offset(source: &str, compact_offset: usize) -> u32 {
+    let byte_offset = source
+        .char_indices()
+        .filter(|(_, character)| !character.is_whitespace())
+        .nth(compact_offset)
+        .map_or(source.len(), |(offset, _)| offset);
+    line_for_offset(source, byte_offset)
 }
 
 fn is_in_scope_row(value: &Value) -> bool {

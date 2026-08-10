@@ -2277,6 +2277,13 @@ mod tests {
         value
     }
 
+    fn created_issue(number: u64, id: u64, title: &str, body: &str) -> Value {
+        let mut value = issue(number, id, title, body, "open");
+        value["html_url"] = json!(format!("https://github.com/o/r/issues/{number}"));
+        value["labels"] = json!([]);
+        value
+    }
+
     fn comment(body: &str) -> Value {
         let issue = issue(1, 10, "source", "", "open");
         json!({
@@ -2646,13 +2653,14 @@ mod tests {
         let body = temp.path().join("body.md");
         fs::write(&body, "Combined body\n").expect("write body");
         let body = body.to_string_lossy().into_owned();
-        let combined = issue(100, 1000, "Combined", "Combined body\n", "open");
+        let combined = created_issue(100, 1000, "Combined", "Combined body\n");
         let source = issue(1, 10, "source", "Source body", "open");
         let closed = issue(1, 10, "source", "Source body", "closed");
         let note = combined_comment(1, 100);
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
             response(201, combined.clone()),
+            response(200, combined.clone()),
             response(200, json!([])),
             response(201, json!({})),
             response(200, json!([{"number": 3, "id": 30}])),
@@ -2679,19 +2687,22 @@ mod tests {
             ExitCode::SUCCESS
         );
         let requests = server.finish().expect("stub finished");
-        assert_eq!(requests.len(), 10);
+        assert_eq!(requests.len(), 11);
         assert_eq!(
             requests[1].method, "POST",
             "create follows dependency reads"
         );
-        assert_eq!(requests[3].method, "POST", "edge transfer is a mutation");
-        assert_eq!(requests[8].method, "POST", "source close records a comment");
+        assert_eq!(requests[4].method, "POST", "edge transfer is a mutation");
+        assert_eq!(requests[9].method, "POST", "source close records a comment");
         assert_eq!(
-            requests[9].method, "PATCH",
+            requests[10].method, "PATCH",
             "source closes after edge read-back"
         );
 
-        let (github, server) = service([response(201, combined.clone())]);
+        let (github, server) = service([
+            response(201, combined.clone()),
+            response(200, combined.clone()),
+        ]);
         assert_eq!(
             with_test_github_service(github, || {
                 apply(&arguments(&[
@@ -2709,11 +2720,12 @@ mod tests {
             }),
             ExitCode::SUCCESS
         );
-        assert_eq!(server.finish().expect("stub finished").len(), 1);
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
 
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
-            response(201, combined),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(404, json!({"message": "dependency endpoint unavailable"})),
         ]);
@@ -2736,14 +2748,16 @@ mod tests {
         let requests = server.finish().expect("stub finished");
         assert_eq!(
             requests.len(),
-            4,
+            5,
             "partial transfer must not close its source"
         );
         assert!(requests.iter().all(|request| request.method != "PATCH"));
 
+        let combined = created_issue(101, 1010, "Combined", "Combined body\n");
         let (github, server) = service([
             response(200, json!([])),
-            response(201, issue(101, 1010, "Combined", "Combined body\n", "open")),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(200, json!([{"number": 9, "id": 90, "state": "open"}])),
         ]);
@@ -2764,7 +2778,7 @@ mod tests {
             ExitCode::SUCCESS
         );
         let requests = server.finish().expect("stub finished");
-        assert_eq!(requests.len(), 4);
+        assert_eq!(requests.len(), 5);
         assert!(requests.iter().all(|request| request.method != "PATCH"));
     }
 
@@ -2818,9 +2832,11 @@ mod tests {
         );
         assert_eq!(server.finish().expect("stub finished").len(), 2);
 
+        let combined = created_issue(102, 1020, "Combined", "Combined body\n");
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
-            response(201, issue(102, 1020, "Combined", "Combined body\n", "open")),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(201, json!({})),
             response(200, json!([{"number": 3, "id": 30}])),
@@ -2830,11 +2846,13 @@ mod tests {
             with_test_github_service(github, || apply(&arguments(&apply_args))),
             ExitCode::SUCCESS
         );
-        assert_eq!(server.finish().expect("stub finished").len(), 6);
+        assert_eq!(server.finish().expect("stub finished").len(), 7);
 
+        let combined = created_issue(103, 1030, "Combined", "Combined body\n");
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
-            response(201, issue(103, 1030, "Combined", "Combined body\n", "open")),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(201, json!({})),
             response(200, json!([{"number": 3, "id": 30}])),
@@ -2844,11 +2862,13 @@ mod tests {
             with_test_github_service(github, || apply(&arguments(&apply_args))),
             ExitCode::SUCCESS
         );
-        assert_eq!(server.finish().expect("stub finished").len(), 6);
+        assert_eq!(server.finish().expect("stub finished").len(), 7);
 
+        let combined = created_issue(104, 1040, "Combined", "Combined body\n");
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
-            response(201, issue(104, 1040, "Combined", "Combined body\n", "open")),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(201, json!({})),
             response(200, json!([{"number": 3, "id": 30}])),
@@ -2859,12 +2879,14 @@ mod tests {
             with_test_github_service(github, || apply(&arguments(&apply_args))),
             ExitCode::SUCCESS
         );
-        assert_eq!(server.finish().expect("stub finished").len(), 7);
+        assert_eq!(server.finish().expect("stub finished").len(), 8);
 
         let note = combined_comment(1, 105);
+        let combined = created_issue(105, 1050, "Combined", "Combined body\n");
         let (github, server) = service([
             response(200, json!([{"number": 3, "id": 30}])),
-            response(201, issue(105, 1050, "Combined", "Combined body\n", "open")),
+            response(201, combined.clone()),
+            response(200, combined),
             response(200, json!([])),
             response(201, json!({})),
             response(200, json!([{"number": 3, "id": 30}])),
@@ -2879,7 +2901,7 @@ mod tests {
             with_test_github_service(github, || apply(&arguments(&apply_args))),
             ExitCode::SUCCESS
         );
-        assert_eq!(server.finish().expect("stub finished").len(), 11);
+        assert_eq!(server.finish().expect("stub finished").len(), 12);
     }
 
     #[test]

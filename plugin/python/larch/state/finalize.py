@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import re
@@ -13,13 +12,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 from larch.core import config, process_identity
 from larch import io as larch_io
 from larch.bgjob import registry as bgjob_registry
 from larch.report import progress_file
-from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
@@ -28,7 +25,6 @@ from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_manifest
 from larch.state import session_env
-from larch.issue import tracking_issue
 from larch.implement import scope_disposition
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome
@@ -483,46 +479,23 @@ def _rename_issue(
     issue = ctx.issue_number or ctx.issue
     if not issue or ctx.repo_unavailable:
         return "skipped"
-    result = gh.issue_view_field_read(runner, str(issue), "title,state", repo=ctx.repo, cwd=cwd)
-    if result.returncode != 0:
-        return "failed"
-    current = ""
-    issue_state = ""
-    try:
-        parsed: object = json.loads(result.stdout or "{}")
-        if isinstance(parsed, dict):
-            data = cast("dict[str, object]", parsed)
-            title = data.get("title")
-            if isinstance(title, str) and title.strip():
-                current = title
-                issue_state = str(data.get("state", ""))
-    except json.JSONDecodeError:
-        pass
-    if not current:
-        return "failed"
-    if state == "stalled" and issue_state.upper() != "OPEN":
-        return "skipped"
-    try:
-        if ctx.run_id and current.startswith(
-            config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
-        ):
-            _ = tracking_issue.rename_terminal_with_lease(
-                runner,
-                state,
-                run=tracking_issue.ImplementationLeaseRun(
-                    issue=issue, repo=ctx.repo, run_id=ctx.run_id, cwd=cwd
-                ),
-            )
-        else:
-            _ = tracking_issue.rename(
-                runner,
-                issue,
-                state,
-                repo=ctx.repo,
-                current_title=current,
-                cwd=cwd,
-            )
-    except ShipError:
+    if state == "stalled":
+        issue_state = rust_runtime.issue_state(
+            runner, issue=str(issue), repo=ctx.repo, cwd=cwd
+        )
+        if issue_state.failed:
+            return "failed"
+        if issue_state.state.upper() != "OPEN":
+            return "skipped"
+    renamed = rust_runtime.tracking_issue_rename(
+        runner,
+        issue=str(issue),
+        state=state,
+        repo=ctx.repo,
+        run_id=ctx.run_id,
+        cwd=cwd,
+    )
+    if renamed.failed:
         return "failed"
     return "ok"
 

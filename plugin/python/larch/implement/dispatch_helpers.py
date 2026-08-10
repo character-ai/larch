@@ -20,6 +20,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
 from larch.core.rust_runtime import phantom_probe
 
@@ -409,8 +410,14 @@ def _read_kv_file(*, path: Path, key: str, default: str = "") -> str:
 def _tracking_sentinel_values(sentinel: Path) -> dict[str, str]:
     if not sentinel.is_file():
         return {}
-    result = _invoke_cli(["tracking-issue", "read", "--sentinel", str(sentinel)])
-    return _parse_kv(result.stdout if result.returncode == 0 else "")
+    result = rust_runtime.tracking_issue_read_sentinel(proc, sentinel=str(sentinel))
+    if result.failed:
+        return {}
+    return {
+        "ISSUE_NUMBER": result.issue_number,
+        "RUN_ID": result.run_id,
+        "ADOPTED": result.adopted,
+    }
 
 
 def _first_nonempty(*values: str) -> str:

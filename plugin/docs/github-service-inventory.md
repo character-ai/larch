@@ -67,18 +67,32 @@ validates. The same leaf moved `umbrella verify` and
 `umbrella verify-completion` to Rust; both prove a completed run entirely from
 recorded artifacts and reach no GitHub service, so neither joins a row.
 
-The two `tracking-issue-*` rows record the #8175 cutover of the six
-tracking-issue lifecycle verbs. `tracking-issue-comments` covers the three that
-read and publish comments — `read` renders the issue and its human comments
-into an untrusted-input task file, `append-comment` adds one note, and
-`upsert-summary` keeps exactly one comment per marker.
+The three `tracking-issue-*` rows record the corrected atomic cutover in #8346
+of the six tracking-issue lifecycle verbs. `tracking-issue-comment-reads`
+covers the three verbs that list comments: `read` renders the issue and its
+human comments into an untrusted-input task file, `append-comment` checks for
+an idempotent replay, and `upsert-summary` resolves the comment its marker owns.
+`tracking-issue-comment-mutations` covers the latter two verbs' verified
+comment creation, replacement, and deletion.
 `tracking-issue-lifecycle` covers the three that change issue identity:
 `create-issue` files one through the mutation owner's redacting create, and
 `rename` and `mark-false-positive` apply a title as a freshness-checked
 compare-and-swap. `rename --run-id` and the `upsert-summary` lease heartbeat
 also refresh the implementation lease, which the same owner binds to the run
-that already holds it. The rows that still name Python-owned issue commands
-enumerate them instead of claiming the whole domain.
+that already holds it. Lease initialization binds the preflight title, body,
+and admission-relevant label hashes, timestamp lower bound, base-target SHA,
+plan receipt, active title, and lease body in one mutation. A metadata comment
+may advance `updatedAt`, but the command admits that drift only while those
+preflight issue fields remain exact.
+Comment create and edit operations use the same mutation owner and verify both
+their mutation echo and a same-surface comment-list read-back; deletion verifies
+absence from that list. Issue creation verifies its response with an exact
+same-issue GET and names an unverified orphan for best-effort closure. Former
+in-process Python workflow callers and external command consumers enter through
+`scripts/larch.sh`; `final-report write` calls the same Rust tracking owner in
+process so its own output envelope stays unpolluted. The retained tracking
+module contains no GitHub behavior. The rows that still name Python-owned issue
+commands enumerate them instead of claiming the whole domain.
 
 The three `issue-backlog-*` rows record the #8183 cutover of
 `analyze-issues fetch` and `analyze-issues run`. They read bounded issue and
@@ -119,7 +133,8 @@ pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	
 pull-request-rust-selection	crates/larch-adapters/src/github/operations.rs	python	#8216	pending	pending	pending	ci rust-select,ci rust-select-summary
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
-tracking-issue-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
+tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
+tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue upsert-summary
 tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename
 umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	umbrella mutate
 ```

@@ -200,3 +200,32 @@ fn rejects_unowned_retained_issue_module() {
             "python/larch/issue/new_owner.py:1: unowned retained issue-domain Python module; name its receiving umbrella",
         ));
 }
+
+#[test]
+fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/issue/tracking_issue.py",
+        b"from larch.git import gh\n\ndef mutate() -> None:\n    gh.issue_comment()\n",
+    );
+    repository.write(
+        "python/larch/state/bootstrap.py",
+        b"def activate() -> None:\n    tracking_issue.rename_with_details()\n\ndef resume() -> None:\n    _invoke_cli(\n        [\"tracking-issue\", \"read\"]\n    )\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "superseded Python tracking GitHub behavior returned",
+        ))
+        .stdout(predicate::str::contains(
+            "production caller bypasses the Rust tracking-issue facade",
+        ))
+        .stdout(predicate::str::contains(
+            "production caller routes a retired tracking command through python/cli.py",
+        ));
+}

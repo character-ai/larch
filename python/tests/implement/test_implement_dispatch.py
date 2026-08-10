@@ -54,6 +54,41 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
 
 
+def test_tracking_sentinel_values_use_verified_rust_entrypoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sentinel = tmp_path / "parent-issue.md"
+    sentinel.write_text("ISSUE_NUMBER=7\nRUN_ID=run-1\nADOPTED=true\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_read(
+        _runner: object, *, sentinel: str, cwd: str | None = None
+    ) -> dispatch_helpers.rust_runtime.TrackingIssueSentinelOutput:
+        assert cwd is None
+        calls.append(sentinel)
+        return dispatch_helpers.rust_runtime.TrackingIssueSentinelOutput(
+            failed=False,
+            issue_number="7",
+            run_id="run-1",
+            adopted="true",
+        )
+
+    def fail_python_cli(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        pytest.fail("tracking sentinel bypassed scripts/larch.sh")
+
+    monkeypatch.setattr(
+        dispatch_helpers.rust_runtime, "tracking_issue_read_sentinel", fake_read
+    )
+    monkeypatch.setattr(dispatch_helpers, "_invoke_cli", fail_python_cli)
+
+    assert dispatch_helpers._tracking_sentinel_values(sentinel) == {
+        "ISSUE_NUMBER": "7",
+        "RUN_ID": "run-1",
+        "ADOPTED": "true",
+    }
+    assert calls == [str(sentinel)]
+
+
 def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

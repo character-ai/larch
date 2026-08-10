@@ -566,7 +566,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     view_result = gh.issue_view_field_read(
         proc,
         issue,
-        "body,labels,number,title,state",
+        "body,labels,number,title,state,updatedAt",
         repo=repo or None,
     )
     try:

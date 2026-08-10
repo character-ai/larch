@@ -1,21 +1,39 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 import os
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from larch.core import proc
 from larch.core.proc import CommandResult
 from larch.implement import dispatch_bootstrap
+from larch.issue import migration_governance
 from larch.state import bootstrap
 
 from test_support import ROOT as _REPO_ROOT, seed_feature_description, seed_plan
+
+
+def _tracking_body_reader(body: str):
+    def read(*_args: object, **kwargs: object) -> bootstrap.rust_runtime.TrackingIssueReadOutput:
+        output = Path(str(kwargs["output_file"]))
+        output.write_text(body, encoding="utf-8")
+        return bootstrap.rust_runtime.TrackingIssueReadOutput(
+            failed=False,
+            values={
+                "BODY_FILE": str(output),
+                "BODY_SHA256": hashlib.sha256(body.encode()).hexdigest(),
+            },
+        )
+
+    return read
 
 
 def test_filtered_envelope_allowlist_and_resume_empty_coder() -> None:
@@ -218,7 +236,7 @@ def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> 
         bootstrap.rust_runtime, "issue_state",
         lambda *_args, **_kwargs: bootstrap.rust_runtime.IssueStateOutput(failed=False, state="OPEN"),
     )
-    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fake_rename)
+    monkeypatch.setattr(bootstrap.rust_runtime, "tracking_issue_rename", fake_rename)
     monkeypatch.setattr(bootstrap, "_dirty_tree_checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
@@ -275,8 +293,17 @@ def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -
     assert not (tmp_path / "parent-issue.md").exists()
 
 
-def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, capsys) -> None:
+def test_tracking_parent_sentinel_requires_explicit_issue_number(
+    tmp_path, capsys, monkeypatch
+) -> None:
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\nADOPTED=true\n", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap.rust_runtime,
+        "tracking_issue_read_sentinel",
+        lambda *_args, **_kwargs: bootstrap.rust_runtime.TrackingIssueSentinelOutput(
+            failed=False, issue_number="7", run_id="R1", adopted="true"
+        ),
+    )
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking"),
         implement_tmpdir=str(tmp_path),
@@ -289,8 +316,17 @@ def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, capsy
     assert "STEP_FAILED=issue-number-required-for-resume" in capsys.readouterr().out
 
 
-def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path) -> None:
+def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(
+    tmp_path, monkeypatch
+) -> None:
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\nADOPTED=true\n", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap.rust_runtime,
+        "tracking_issue_read_sentinel",
+        lambda *_args, **_kwargs: bootstrap.rust_runtime.TrackingIssueSentinelOutput(
+            failed=False, issue_number="7", run_id="R1", adopted="true"
+        ),
+    )
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
         implement_tmpdir=str(tmp_path),
@@ -1326,10 +1362,6 @@ def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, mon
     _stub_session_env_writer(monkeypatch)
     calls: list[str] = []
 
-    def fail_rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
-        calls.append("rename")
-        raise OSError("rename failed")
-
     def fake_log_init(**_kwargs: object) -> Path:
         calls.append("init")
         return tmp_path / "larch-logs" / "implement" / "RUN1"
@@ -1340,11 +1372,6 @@ def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, mon
             exit_code=0, posted=True, comment_url="", error=""
         )
 
-    def fake_title(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("gh",), 0, "Title", "", 0.01)
-
-    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_title)
-    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fail_rename)
     monkeypatch.setattr(bootstrap.run_logs, "log_init", fake_log_init)
     monkeypatch.setattr(bootstrap.pr_body, "post_tracking_issue", fake_post)
     st = bootstrap.BootstrapState(
@@ -1362,33 +1389,53 @@ def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, mon
     assert not (tmp_path / "tracking-rename-warning.stderr.log").exists()
 
 
-def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch) -> None:
+def test_tracking_lease_and_implementing_title_are_one_rust_transition(tmp_path, monkeypatch) -> None:
     calls: list[str] = []
-    lease_heads: list[object] = []
+    identities: list[tuple[object, object, object, object, object]] = []
+    gate_bodies: list[str] = []
 
-    def initialize(*_args: object, **_kwargs: object) -> object:
-        calls.append("lease")
-        lease_heads.append(_kwargs.get("head_sha"))
-        return object()
-
-    def title(*_args: object, **_kwargs: object) -> CommandResult:
-        calls.append("title-read")
-        return CommandResult(("gh",), 0, "[DESIGNED] Title", "", 0.01)
-
-    def rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
+    def rename(*_args: object, **_kwargs: object) -> bootstrap.rust_runtime.TrackingIssueTitleOutput:
         calls.append("rename")
-        return bootstrap.tracking_issue.RenameOutput(
-            renamed=True, new_title="[IMPLEMENTING] Title"
+        identities.append(
+            (
+                _kwargs.get("head_sha"),
+                _kwargs.get("expected_updated_at"),
+                _kwargs.get("expected_body_sha256"),
+                _kwargs.get("expected_title_sha256"),
+                _kwargs.get("expected_labels_sha256"),
+            )
+        )
+        return bootstrap.rust_runtime.TrackingIssueTitleOutput(
+            failed=False, changed=True, new_title="[IMPLEMENTING] Title"
         )
 
-    monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    (tmp_path / "issue.json").write_text(
+        '{"updatedAt":"2026-08-10T00:00:00Z","title":"[DESIGNED] Work","body":"receipt","labels":[{"name":"z"},{"name":"alpha"}]}',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         bootstrap.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
     )
-    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
-    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", rename)
+    monkeypatch.setattr(bootstrap.rust_runtime, "tracking_issue_rename", rename)
+
+    def evaluate(*_args: object, **kwargs: object) -> SimpleNamespace:
+        gate_bodies.append(str(kwargs.get("body", "")))
+        return SimpleNamespace(ok=True, blocking_reasons=())
+
+    monkeypatch.setattr(
+        bootstrap.rust_runtime,
+        "tracking_issue_read_body",
+        _tracking_body_reader("receipt\n<!-- larch:implementation-lease v1 -->\n"),
+    )
+    monkeypatch.setattr(
+        migration_governance,
+        "evaluate_governance_gate",
+        evaluate,
+    )
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7"),
+        bootstrap.BootstrapOptions(
+            up_to_phase="plan", issue_number="7", preflight_tmpdir=str(tmp_path)
+        ),
         implement_tmpdir=str(tmp_path),
         repo="owner/repo",
         issue_number_resolved="7",
@@ -1396,35 +1443,48 @@ def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch
         branch_name="feature/owner",
     )
     assert bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
-    assert calls == ["lease", "title-read", "rename"]
-    assert lease_heads == ["a" * 40]
+    assert calls == ["rename"]
+    assert identities == [
+        (
+            "a" * 40,
+            "2026-08-10T00:00:00Z",
+            hashlib.sha256(b"receipt").hexdigest(),
+            hashlib.sha256(b"[DESIGNED] Work").hexdigest(),
+            "f6cee94e9734c9fe1eefaa2fcbb2e741512c4763b7051d1c52df03e2ebcea622",
+        )
+    ]
+    assert gate_bodies == [
+        "receipt",
+        "receipt\n<!-- larch:implementation-lease v1 -->\n",
+    ]
 
 
-def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkeypatch) -> None:
+def test_tracking_activation_failure_needs_no_partial_lease_cleanup(tmp_path, monkeypatch) -> None:
     calls: list[str] = []
 
-    def initialize(*_args: object, **_kwargs: object) -> object:
-        calls.append("lease")
-        return object()
-
-    def title(*_args: object, **_kwargs: object) -> CommandResult:
-        calls.append("title-read")
-        return CommandResult(("gh",), 1, "", "unavailable", 0.01)
-
-    def terminal(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
-        calls.append("terminal")
-        return bootstrap.tracking_issue.RenameOutput(
-            renamed=True, new_title="[STALLED] Title"
+    def rename(*_args: object, **_kwargs: object) -> bootstrap.rust_runtime.TrackingIssueTitleOutput:
+        calls.append("rename")
+        return bootstrap.rust_runtime.TrackingIssueTitleOutput(
+            failed=True, error="stale-identity"
         )
 
-    monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    (tmp_path / "issue.json").write_text(
+        '{"updatedAt":"2026-08-10T00:00:00Z","title":"[DESIGNED] Work","body":"receipt","labels":[]}',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         bootstrap.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
     )
-    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
-    monkeypatch.setattr(bootstrap.tracking_issue, "rename_terminal_with_lease", terminal)
+    monkeypatch.setattr(bootstrap.rust_runtime, "tracking_issue_rename", rename)
+    monkeypatch.setattr(
+        migration_governance,
+        "evaluate_governance_gate",
+        lambda *_args, **_kwargs: SimpleNamespace(ok=True, blocking_reasons=()),
+    )
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7"),
+        bootstrap.BootstrapOptions(
+            up_to_phase="plan", issue_number="7", preflight_tmpdir=str(tmp_path)
+        ),
         implement_tmpdir=str(tmp_path),
         repo="owner/repo",
         issue_number_resolved="7",
@@ -1432,7 +1492,58 @@ def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkey
         branch_name="feature/owner",
     )
     assert not bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
-    assert calls == ["lease", "title-read", "terminal"]
+    assert calls == ["rename"]
+    assert st.stall_tracking == "true"
+
+
+def test_tracking_post_admission_failure_terminalizes_the_atomic_lease(
+    tmp_path, monkeypatch
+) -> None:
+    states: list[object] = []
+    verdicts = iter(
+        [
+            SimpleNamespace(ok=True, blocking_reasons=()),
+            SimpleNamespace(ok=False, blocking_reasons=("stale-owner-snapshot",)),
+        ]
+    )
+
+    def rename(*_args: object, **kwargs: object) -> bootstrap.rust_runtime.TrackingIssueTitleOutput:
+        states.append(kwargs.get("state"))
+        return bootstrap.rust_runtime.TrackingIssueTitleOutput(
+            failed=False,
+            changed=True,
+            new_title=f"[{str(kwargs.get('state', '')).upper()}] Work",
+        )
+
+    (tmp_path / "issue.json").write_text(
+        '{"updatedAt":"2026-08-10T00:00:00Z","title":"[DESIGNED] Work","body":"receipt","labels":[]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bootstrap.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40)
+    monkeypatch.setattr(bootstrap.rust_runtime, "tracking_issue_rename", rename)
+    monkeypatch.setattr(
+        bootstrap.rust_runtime,
+        "tracking_issue_read_body",
+        _tracking_body_reader("receipt\n<!-- larch:implementation-lease v1 -->\n"),
+    )
+    monkeypatch.setattr(
+        migration_governance,
+        "evaluate_governance_gate",
+        lambda *_args, **_kwargs: next(verdicts),
+    )
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(
+            up_to_phase="plan", issue_number="7", preflight_tmpdir=str(tmp_path)
+        ),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        issue_number_resolved="7",
+        run_id="run-7",
+        branch_name="feature/owner",
+    )
+
+    assert not bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
+    assert states == ["implementing", "stalled"]
     assert st.stall_tracking == "true"
 
 

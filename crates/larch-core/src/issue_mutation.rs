@@ -28,10 +28,17 @@ static IMPLEMENTATION_LEASE_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static PLAN_RECEIPT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^[ \t]*<!--[ \t]+larch:plan-receipt[ \t]+v1[ \t]+plan_sha256=[0-9a-f]{64}[ \t]+base_sha=[0-9a-f]{40}[ \t]+blockers_sha256=[0-9a-f]{64}[ \t]+owners_sha256=[0-9a-f]{64}[ \t]+-->[ \t]*\r?$",
+        r"^[ \t]*<!--[ \t]+larch:plan-receipt[ \t]+v1[ \t]+plan_sha256=([0-9a-f]{64})[ \t]+base_sha=([0-9a-f]{40})[ \t]+blockers_sha256=[0-9a-f]{64}[ \t]+owners_sha256=[0-9a-f]{64}[ \t]+-->[ \t]*\r?$",
     )
     .expect("plan receipt expression is valid")
 });
+
+/// The plan and base identities an implementation lease inherits.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanReceiptIdentity {
+    pub plan_sha256: String,
+    pub base_sha: String,
+}
 
 /// A field the issue-mutation owner may change.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -472,18 +479,32 @@ pub fn mutation_would_change(
             && before.labels != request.labels.clone().unwrap_or_default()
 }
 
-/// Return whether a fresh snapshot proves the requested fields now match.
+/// Return whether a fresh snapshot proves exactly the requested fields changed.
 #[must_use]
 pub fn mutation_postcondition(
+    before: &IssueMutationSnapshot,
     after: &IssueMutationSnapshot,
     request: &IssueMutationRequest,
     body: Option<&str>,
 ) -> bool {
-    (!request.fields.contains(&IssueMutationField::Title)
-        || after.title == request.title.as_deref().unwrap_or_default())
-        && (!body_field_requested(request) || after.body == body.unwrap_or_default())
-        && (!request.fields.contains(&IssueMutationField::Labels)
-            || after.labels == request.labels.clone().unwrap_or_default())
+    after.repository == before.repository
+        && after.issue == before.issue
+        && after.state == before.state
+        && if request.fields.contains(&IssueMutationField::Title) {
+            after.title == request.title.as_deref().unwrap_or_default()
+        } else {
+            after.title == before.title
+        }
+        && if body_field_requested(request) {
+            after.body == body.unwrap_or_default()
+        } else {
+            after.body == before.body
+        }
+        && if request.fields.contains(&IssueMutationField::Labels) {
+            after.labels == request.labels.clone().unwrap_or_default()
+        } else {
+            after.labels == before.labels
+        }
 }
 
 /// Return whether `after` has a strictly newer valid timestamp than `before`.
@@ -610,6 +631,52 @@ fn balanced_fence_lines(lines: &[&str]) -> BTreeSet<usize> {
     fenced
 }
 
+/// Return the sole unfenced plan receipt's lease identity.
+///
+/// A missing, malformed, fenced, or duplicated receipt proves no admission
+/// identity. The caller must refuse rather than choose one candidate.
+#[must_use]
+pub fn parse_plan_receipt_identity(body: &str) -> Option<PlanReceiptIdentity> {
+    let lines: Vec<&str> = body.lines().collect();
+    if !fences_are_balanced(&lines) {
+        return None;
+    }
+    let fenced = balanced_fence_lines(&lines);
+    let mut found = lines.iter().enumerate().filter_map(|(index, line)| {
+        if fenced.contains(&index) {
+            return None;
+        }
+        let captures = PLAN_RECEIPT_RE.captures(line)?;
+        Some(PlanReceiptIdentity {
+            plan_sha256: captures[1].to_owned(),
+            base_sha: captures[2].to_owned(),
+        })
+    });
+    let receipt = found.next()?;
+    found.next().is_none().then_some(receipt)
+}
+
+fn fences_are_balanced(lines: &[&str]) -> bool {
+    let mut opener: Option<(char, usize)> = None;
+    for line in lines {
+        let Some((character, length, suffix)) = fence_marker(line) else {
+            continue;
+        };
+        match opener {
+            None => opener = Some((character, length)),
+            Some((opener_character, opener_length))
+                if character == opener_character
+                    && length >= opener_length
+                    && suffix.trim().is_empty() =>
+            {
+                opener = None;
+            }
+            Some(_) => {}
+        }
+    }
+    opener.is_none()
+}
+
 fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
     let trimmed = line.trim();
     let character = trimmed.chars().next()?;
@@ -676,9 +743,10 @@ fn strip_implementation_leases(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
-        redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
-        validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
+        IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, mutation_postcondition,
+        parse_plan_receipt_identity, redact_issue_text_outbound, same_mutation_identity,
+        snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
+        verify_created_issue,
     };
     use crate::{GitHubIssue, GitHubIssueState, GitHubRepositoryRef};
     use std::collections::BTreeSet;
@@ -765,6 +833,28 @@ mod tests {
     }
 
     #[test]
+    fn plan_receipt_identity_requires_one_exact_unfenced_receipt() {
+        let receipt = format!(
+            "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->",
+            "b".repeat(64),
+            "a".repeat(40),
+            "c".repeat(64),
+            "d".repeat(64),
+        );
+        assert_eq!(
+            parse_plan_receipt_identity(&receipt),
+            Some(super::PlanReceiptIdentity {
+                plan_sha256: "b".repeat(64),
+                base_sha: "a".repeat(40),
+            })
+        );
+        assert!(parse_plan_receipt_identity(&format!("{receipt}\n{receipt}")).is_none());
+        assert!(parse_plan_receipt_identity(&format!("```text\n{receipt}\n```")).is_none());
+        assert!(parse_plan_receipt_identity(&format!("```text\n{receipt}")).is_none());
+        assert!(parse_plan_receipt_identity(&receipt.replace(" -->", " injected -->")).is_none());
+    }
+
+    #[test]
     fn implementation_lease_changes_are_bound_to_the_owning_run() {
         let mut before = snapshot();
         before.title = String::from("[IMPLEMENTING] Protected");
@@ -807,6 +897,25 @@ mod tests {
         after.updated_at = String::from("2026-07-19T00:00:01Z");
         assert!(snapshot_is_strictly_newer(&before, &after));
         assert!(!snapshot_is_strictly_newer(&after, &before));
+    }
+
+    #[test]
+    fn postcondition_rejects_changes_outside_the_requested_fields() {
+        let before = snapshot();
+        let request = title_request();
+        let mut after = before.clone();
+        after.title = String::from("Renamed");
+        after.updated_at = String::from("2026-07-19T00:00:01Z");
+        assert!(mutation_postcondition(&before, &after, &request, None));
+
+        after.labels.insert(String::from("audit-report"));
+        assert!(!mutation_postcondition(&before, &after, &request, None));
+        after.labels.clear();
+        after.state = GitHubIssueState::Closed;
+        assert!(!mutation_postcondition(&before, &after, &request, None));
+        after.state = GitHubIssueState::Open;
+        after.body = String::from("concurrent body");
+        assert!(!mutation_postcondition(&before, &after, &request, None));
     }
     #[test]
     fn outbound_issue_text_scrubs_secrets_keeps_paths_and_preserves_newline_intent() {
