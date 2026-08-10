@@ -49,6 +49,7 @@ use serde_json::{Value, json};
 use crate::{
     admission_commands::{fetch_origin_main, pull_origin_main},
     argparse_compat::{missing, parse_with_flags, usage_error},
+    claude_commands::parse_uint,
     github_repository_resolution::{RemoteRepoResult, repository_ref, resolve_remote_repo},
     github_service::with_github_service,
     run_log_publication_commands::synchronized_corpus_root,
@@ -755,7 +756,7 @@ pub fn map_runs(arguments: &[OsString]) -> ExitCode {
         .map(str::to_owned)
         .collect::<Vec<_>>();
     for token in &tokens {
-        if decimal_u64(token).is_none() {
+        if parse_uint(token).is_none() {
             eprintln!(
                 "audit-map-runs.sh: skipping invalid PR token in --pr-list (non-integer): {token}"
             );
@@ -763,7 +764,7 @@ pub fn map_runs(arguments: &[OsString]) -> ExitCode {
     }
     let numbers = tokens
         .iter()
-        .filter_map(|token| decimal_u64(token))
+        .filter_map(|token| parse_uint(token))
         .collect::<Vec<_>>();
     if numbers.is_empty() {
         return ExitCode::SUCCESS;
@@ -1226,7 +1227,7 @@ pub fn scan_run(arguments: &[OsString]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let pr_text = string_option(&parsed, "--pr");
-    let Some(pr) = decimal_u64(&pr_text) else {
+    let Some(pr) = parse_uint(&pr_text) else {
         emit(
             json!({"scan":"audit-scan-run-args","pr":Value::Null,"result":"error","detail":format!("--pr must be a non-empty decimal integer: {pr_text}")}),
         );
@@ -2201,12 +2202,6 @@ fn nonempty_or(value: &str, fallback: &str) -> String {
     } else {
         value.to_owned()
     }
-}
-
-fn decimal_u64(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse().ok())
-        .flatten()
 }
 
 fn clean_controls(value: &str) -> String {
