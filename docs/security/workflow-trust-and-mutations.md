@@ -323,14 +323,26 @@ timed-out or orphaned child only through validated process-group termination.
 ### CI cache trust
 
 The [CI tool bootstrap and caches](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches)
-section is the canonical cache-class and publication contract. Pull-request and
-merge-group workflows may consume only the explicitly scoped default-branch
-cache classes; they do not gain authority to publish a compiler-output cache or
-trusted policy cache. A coverage target cache is dependency-only, bound at a
-measured 1,350,000,000 bytes, and enabled only after independent end-to-end
-measurements prove it helps. Neither a cache restore nor its diagnostic metadata
-waives the coverage, artifact, executable, repository-policy, or
-plugin-validation gates.
+section is the canonical cache-class and publication contract. The `CI`
+workflow validates pull requests, merge groups, and manual dispatches with
+read-only cache restores. A normal `main` push starts the separate trusted
+publisher, which refuses every other event and ref, has only `actions: read`
+and `contents: read` permissions, and is serialized by its own newest-wins
+concurrency group. Validation events do not gain authority to publish a
+compiler-output cache or trusted policy cache.
+
+For an expensive Rust cache miss, the publisher treats a merge-group artifact
+as untrusted input. It requires exactly one successful `CI` merge-group run for
+the final `main` SHA and successful named producer jobs, then verifies the
+candidate manifest, source SHA, canonical key and key-input digest, byte bound,
+regular-file tree, checksums, modes, artifact identity, and declared tool
+versions before saving. Symlinks, stale source identity, unexpected paths, or a missing
+producer fail closed. The publisher may rewrite only Rust-policy provenance,
+and only after that final-SHA verification. A
+coverage target cache is dependency-only, bound at a measured 1,350,000,000
+bytes, and enabled only after independent end-to-end measurements prove it
+helps. Neither a cache restore nor its diagnostic metadata waives the coverage,
+artifact, executable, repository-policy, or plugin-validation gates.
 
 The manual target-cache benchmark is isolated from that production cache
 contract. Its fixed workflow condition requires a direct `workflow_dispatch`

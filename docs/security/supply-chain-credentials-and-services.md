@@ -30,36 +30,53 @@ owns contributor instructions for dependency changes.
 
 ### CI tool bootstrap and caches
 
+`.github/main-cache-inventory.json` is the cache-class inventory. Its canonical
+key definitions live in `.github/actions/main-cache-keys/action.yaml`; every
+validation restore and every trusted publication uses those same exact keys.
+The `CI` workflow handles pull requests, merge groups, and manual diagnosis.
+It is read-only for production caches. A normal push to `main` runs only
+`.github/workflows/main-cache-publication.yaml`, whose admission job refuses
+any event or ref other than `push` or `workflow_dispatch` on
+`refs/heads/main`.
+
+The publisher has only `actions: read` and `contents: read` permissions and a
+newest-wins `main-cache-publication` concurrency group. Lightweight classes
+(Python and pre-commit packages, test site packages, agent tools, and gitleaks)
+are populated directly on exact misses. Those jobs install or verify their
+pinned inputs and save the matching cache, but deliberately do not run a lint,
+test, or secret scan.
+
 Rust CI caches Cargo registry and Git inputs separately from compiler output.
-Its versioned keys bind the runner operating system and architecture, lockfile,
-root and crate manifests, and pinned toolchain. They do not include Rust source
-hashes. Every Rust lane restores those Cargo inputs through the restore-only
-cache action. An explicit save can publish them only after a successful `main`
-push on a primary-key miss, so pull requests and `workflow_dispatch` runs,
-including manual coverage benchmarks, may restore inputs but cannot publish
-them. The lint dependency cache is a separate `target/debug` entry. Before it
-can be saved, the workflow removes workspace products with `cargo clean
---workspace`; it follows the same successful-`main`-push rule.
+Their versioned keys bind the runner operating system and architecture,
+lockfile, root and crate manifests, and pinned toolchain. The lint dependency
+cache is a separate `target/debug` entry; `cargo clean --workspace` removes
+workspace products before it can become a candidate. The coverage
+compiler-dependency cache is a separate, versioned `target/llvm-cov-target`
+class with a measured 1,350,000,000-byte dependency-only limit. Its exact key
+also binds target triple, coverage tool, compiler-profile values, feature mode,
+linker choice, Cargo configuration, and schema. It has no broad
+`restore-keys` fallback. Any bound above 2 GiB needs explicit PR evidence that
+transfer cost remains net-positive.
 
-The coverage compiler-dependency cache is a separate, versioned
-`target/llvm-cov-target` class. It is enabled with a measured
-1,350,000,000-byte dependency-only limit after three comparable warm-cache
-`main` samples beat a no-target-cache control end to end. Its explicit key
-binds runner OS and architecture, target triple, toolchain and manifests,
-coverage-tool version, compiler-profile values, feature mode, linker choice,
-Cargo configuration, and a schema version. It has no broad `restore-keys`
-fallback. Pull requests may restore but cannot publish it: only a successful
-`refs/heads/main` push on a primary-key miss may save after the size guard
-passes. Any bound above 2 GiB needs explicit PR evidence that transfer cost
-remains net-positive.
+On a successful merge-group run, an exact miss may stage a candidate artifact.
+The publisher first proves that the newly landed `main` SHA has exactly one
+successful `CI` merge-group run for that SHA and that its `rust-full` and
+`rust-lint` producer jobs succeeded. It then downloads only named artifacts
+from that run. Before a candidate reaches an Actions cache, the publisher
+checks its schema, cache class, canonical key, and key-input digest (the
+SHA-256 of that full canonical key), source SHA, producer job, merge-queue ref,
+artifact name and deterministic payload digest, declared tool versions, maximum
+byte bound, manifest member paths, regular-file shape, checksums, and mode
+metadata; symlinks and unexpected tree entries fail closed.
+Cache data is never an artifact-provenance substitute and a cache hit never
+skips correctness checks or artifact handoff.
 
-Before an enabled target cache can save, the coverage report and verified Linux
-executable artifacts have already uploaded, and the coverage executable has
-already completed repository policy and plugin validation. The workflow then
-removes profile data, reports, timing output, and workspace products, verifies
-that no workspace binary or test executable remains, and uploads the resulting
-directory inventory. Cache data is never an artifact-provenance substitute and
-a cache hit never skips correctness checks or artifact handoff.
+Before staging the coverage target candidate, the validation workflow uploads
+the coverage report and verified Linux executable, removes profile data,
+reports, timing output, and workspace products, verifies that no workspace
+binary or test executable remains, and uploads its directory inventory. The
+publisher repeats executable digest and version checks for the pinned Cargo
+tools before saving them.
 
 The only manual compiler-output publication is an explicitly selected,
 main-ref coverage-target benchmark. Its job is gated to `workflow_dispatch` on
@@ -71,7 +88,7 @@ dispatch, `rust-full` remains the cache-off control. The first zero-bound run
 measures and inventories dependencies without saving; later benchmark runs use
 that measured bound to compare warm candidates against the concurrent normal
 coverage control. This scoped measurement exception does not change the
-main-push-only production publication rule.
+trusted-main production-publication rule.
 
 CI does not delete Actions caches as part of this policy. A future collector
 must first establish repository quota pressure or eviction of useful immutable
@@ -84,10 +101,10 @@ caches. On a miss, CI downloads the exact pinned release archive with bounded
 retries and timeouts, verifies its SHA-256 before extraction, accepts only the
 expected regular archive member, and installs it with an explicit mode. Before
 use, including after a cache restore, CI verifies the installed binary SHA-256
-and reported version. Tool-cache publication is restricted to successful
-`main` pushes. Coverage timing artifacts explicitly record cache restore and
-whether cache save succeeded or was skipped; a manual dispatch is marked
-`workflow_dispatch-read-only`, except for the separately named, main-only
+and reported version. The trusted publisher repeats those checks before saving
+an artifact-derived tool cache. Coverage timing artifacts explicitly record
+cache restore and whether candidate staging ran or was skipped; a manual
+dispatch is validation-read-only except for the separately named, main-only
 target-cache benchmark described above. CI has no `cargo install` fallback for
 either tool.
 
@@ -112,14 +129,15 @@ is never executed. The scanner inherits only its execution prerequisites
 (`PATH`, `HOME`, `TMPDIR`, and `LANG`) plus noninteractive Git behavior; GitHub
 and service-credential environment variables are not passed to it.
 
-The scanner cache can be saved only after both scans succeed on a `push` to
-`refs/heads/main` and only on a primary-key miss. Pull requests and other
-events may restore a cache entry but cannot publish one, so a
-pull-request-provided executable cannot cross into the trusted-main cache.
-The full-history checkout, working-tree `--no-git` scan, and bounded
-`<merge-base>..HEAD` history scan remain independent required steps. Their
-named workflow steps and cache-hit summary record the checkout, preparation,
-working-tree, and history timing phases for cold and warm comparisons.
+The trusted publisher may save the scanner cache only after this bootstrap
+verification succeeds on `main` and only on a primary-key miss. It performs no
+scan. Pull requests and other validation events may restore a cache entry but
+cannot publish one, so a pull-request-provided executable cannot cross into the
+trusted-main cache. The validation job retains the full-history checkout,
+working-tree `--no-git` scan, and bounded `<merge-base>..HEAD` history scan as
+independent required steps. Its named workflow steps and cache-hit summary
+record the checkout, preparation, working-tree, and history timing phases for
+cold and warm comparisons.
 
 The coverage execution job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace
@@ -138,24 +156,24 @@ The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
 being treated as a successful handoff.
 
-Every `rust-full` execution stages and verifies a policy-cache candidate after
-the coverage target has been pruned. It verifies the preserved integration
-artifact's regular-file shape, existing SHA-256, Rust-input digest, source SHA,
-and version before copying it, then proves the staged executable against that
-same checksum. Pull requests, merge candidates, and non-main full lanes use
-the fixed `current-checkout` provenance label and cannot publish the candidate.
-Only a successful `push` to `refs/heads/main` labels a candidate
-`refs/heads/main` and may publish it. Candidate staging therefore gives every
-full lane the same post-prune validation without granting cache-mutation
-authority to untrusted events.
+On an exact Rust-policy miss, a successful `rust-full` merge-group run stages
+and verifies a policy-cache candidate after the coverage target has been
+pruned. It verifies the preserved integration artifact's regular-file shape,
+existing SHA-256, Rust-input digest, source SHA, and version before copying it,
+then proves the staged executable against that same checksum. Its internal
+provenance is the fixed `merge-group` label; pull requests, manual runs, and
+other full lanes cannot stage a publishable policy candidate. After generic
+candidate verification proves the final `main` SHA, the trusted publisher alone
+rewrites that one provenance field to `refs/heads/main` and rechecks the bundle.
 
 The `trusted-main-rust-policy` cache is a distinct executable cache, not a
-compiler-output cache or an artifact-provenance substitute. Only a successful
-full `push` to `refs/heads/main` may save it, and only after the coverage-built
-binary completed repository policy and plugin validation. Its exact key binds
-the runner OS and architecture plus tracked crate Rust sources (not generated
-target output), root and crate manifests, root or crate build scripts, lockfile,
-toolchain, and Cargo configuration. It has no restore-key fallback.
+compiler-output cache or an artifact-provenance substitute. Only the trusted
+publisher may save it, and only after an exact successful merge-group source
+for the newly landed `main` SHA produced a coverage-built binary that completed
+repository policy and plugin validation. Its exact key binds the runner OS and
+architecture plus tracked crate Rust sources (not generated target output),
+root and crate manifests, root or crate build scripts, lockfile, toolchain, and
+Cargo configuration. It has no restore-key fallback.
 Before a pull request may use it, CI checks every expected member is a regular,
 non-symlink file; verifies the executable checksum; matches the Rust-input
 digest; requires `refs/heads/main` provenance; validates the recorded source

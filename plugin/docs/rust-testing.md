@@ -245,17 +245,18 @@ follows:
   `cargo llvm-cov nextest` profile, workspace doctests against the instrumented
   target, the workspace line baseline, `target/llvm-cov/lcov.info`, repository
   policy, plugin projection validation, and the Linux executable artifact.
-  After coverage-target pruning, every full lane stages and verifies a policy
-  cache candidate from that preserved artifact. Pull requests and merge
-  candidates use `current-checkout` provenance; only a successful `main` push
-  may label and publish a `refs/heads/main` candidate. This does not build a
-  second executable.
+  After coverage-target pruning, an exact cache miss in a successful
+  `merge_group` full lane stages and verifies a policy-cache candidate from
+  that preserved artifact. The trusted main publisher may promote it only after
+  that candidate's SHA becomes the current `main` SHA, then rewrites and
+  revalidates its `refs/heads/main` provenance. This does not build a second
+  executable.
   It is the only producer that enforces full-workspace coverage. The
   `merge_group` `checks_requested` trigger runs the same full, read-only path
-  for a merge-queue candidate. Pushes to `main`, manual dispatches, scheduled
-  runs, merge-queue runs, and unknown events always use `rust-full`; pull
-  requests use it when selection is `full` or selection cannot prove a
-  narrower path.
+  for a merge-queue candidate. Manual dispatches and merge-queue runs use
+  `rust-full`; a normal `main` push runs only trusted cache publication. Pull
+  requests use `rust-full` when selection is `full` or selection cannot prove
+  a narrower path.
 - `rust-partial` and `rust-skip` may be the selected producer only for pull
   requests. `rust-partial` runs the selector-proven package closure without a
   misleading full-workspace coverage threshold. `rust-skip` runs no
@@ -385,8 +386,8 @@ enforced modes:
 
 - `full` runs format, full Clippy, dependency policy, full coverage, doctests,
   repository policy, plugin projection validation, and the Linux artifact for
-  Python integration tests. Pushes to `main`, manual dispatches, scheduled,
-  merge-queue, and unknown events always take this path.
+  Python integration tests. Manual dispatches and merge-queue runs always take
+  this path. A normal push to `main` runs only trusted cache publication.
 - `partial` accepts only Rust-source changes whose Cargo-metadata package
   closure is a strict subset of the workspace and contains `larch-cli`. The
   closure includes every transitive normal, build, and dev reverse dependency edge,
@@ -409,24 +410,26 @@ enforced modes:
   `rust-coverage` and `rust-gate` prove required status coverage but do not
   replace that duration.
 
-For `skip`, a successful `main` full lane publishes an immutable
-`trusted-main-rust-policy` cache entry. Its key and metadata bind the Linux
-binary to tracked crate Rust sources (never generated target output), root and
-crate manifests, root or crate build scripts, lockfile, toolchain, and
-`.cargo/` inputs. The cache has no broad fallback. The selection job verifies
-regular-file shape, content checksum, input identity, `refs/heads/main`
-provenance, source-SHA shape, and executable version before it permits an
-enforced `skip`. The `rust-skip` job verifies the downloaded handoff again. A
-cache miss or any validation failure selects `full` before another lane can
-rely on it.
+For `skip`, the trusted main publisher promotes an immutable
+`trusted-main-rust-policy` cache entry only from a successful merge-group
+`rust-full` artifact whose SHA exactly became `main`. Its key and metadata bind
+the Linux binary to tracked crate Rust sources (never generated target output),
+root and crate manifests, root or crate build scripts, lockfile, toolchain,
+and `.cargo/` inputs. The cache has no broad fallback. The selection job
+verifies regular-file shape, content checksum, input identity,
+`refs/heads/main` provenance, source-SHA shape, and executable version before
+it permits an enforced `skip`. The `rust-skip` job verifies the downloaded
+handoff again. A cache miss or any validation failure selects `full` before
+another lane can rely on it.
 
 `Cargo.lock`, any Cargo manifest, `rust-toolchain.toml`, `.cargo/`, build
 scripts, Makefiles, `deny.toml`, Rust CI/profile files, and selector machinery
 are global inputs and always select `full`. `rust-coverage` remains the stable
 required status: it aggregates exactly one successful execution producer
 (`rust-full`, `rust-partial`, or `rust-skip`). An unavailable selector defaults
-to `full`, and the aggregate passes only when that full path succeeds. `main`
-is the periodic full-run backstop. To force the full
+to `full`, and the aggregate passes only when that full path succeeds. The
+merge group is the per-merge full-run backstop; manual dispatch provides a
+full rerun. To force the full
 path while debugging a pull request, apply the `full-rust-ci` label; label and
 unlabel events rerun CI, and that label can only narrow toward the safer
 `full` mode.
@@ -642,21 +645,23 @@ Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
 a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.
 The coverage TSV records cache restore, tool setup, profile cleanup,
 compilation, doctests, every test, repository-policy, report, plugin-validation
-phase, each end-to-end total, and cache save. The policy artifact has one
+phase, each end-to-end total, and cache-candidate staging. The policy artifact has one
 deterministically ordered `rule\tmilliseconds` table per coverage path; it is
 written by the covered `larch lint all` invocation before its report. Cache
-save records an explicit `workflow_dispatch-read-only` skip for manual
-benchmarks. The documented pre-consolidation run measured 3–8 s for cache
+candidate staging records an explicit validation-read-only skip outside an
+eligible merge-group miss. The documented pre-consolidation run measured 3–8 s for cache
 restore, 8–12 s for tool setup, 172 s for the former post-report repository
-validation, and 0 s for the intentionally skipped cache save. Those historical
+validation, and 0 s for the intentionally skipped cache publication. Those historical
 timings are not comparable with the covered policy phase; use the policy
 artifact for current per-rule evidence.
 
 Cargo registry and Git inputs use a restore-only cache action in every Rust
-lane. Only a successful primary-key miss on a `main` push may invoke the
-explicit save action. Pull requests and manual benchmark dispatches therefore
-use the same restore cache class but cannot publish Cargo inputs; none of the
-coverage lanes caches `target/` as a broad entry.
+lane. The validation workflow never saves a production cache. On an exact
+primary-key miss, its successful `merge_group` lanes stage a bounded candidate
+artifact; the separate trusted-main publisher can use it only after `main`
+contains that exact merge-group source SHA. Pull requests and manual benchmark
+dispatches therefore use the same restore cache class but cannot publish Cargo
+inputs; none of the coverage lanes caches `target/` as a broad entry.
 
 The coverage dependency cache is enabled with a measured 1,350,000,000-byte
 dependency-only bound. Its versioned exact key includes the runner,
@@ -666,13 +671,14 @@ and schema. It has no coverage-target `restore-keys` fallback. A bound above
 2 GiB needs explicit transfer-cost evidence in the activating pull request.
 
 A pull request may restore only its exact default-branch cache but can never
-save it. A save requires a successful `main` push, a primary-key miss, a
-completed artifact upload, a completed validation path, and a passing size
-guard. Before save, the workflow removes profile/report data and workspace
-products from `target/llvm-cov-target`, then publishes its directory inventory
-as a separate artifact. A cache hit never replaces the coverage report,
-executable smoke test, repository policy, plugin validation, or Python-artifact
-handoff.
+save it. Production publication requires a successful, exact-source
+merge-group validation, the resulting `main` SHA, a primary-key miss, a
+completed candidate artifact upload, a passing size guard, and a verified
+candidate manifest. Before staging, the workflow removes profile/report data
+and workspace products from `target/llvm-cov-target`, then publishes its
+directory inventory as a separate artifact. A cache hit never replaces the
+coverage report, executable smoke test, repository policy, plugin validation,
+or Python-artifact handoff.
 
 The target-cache benchmark uses a separate
 `coverage-target-deps-benchmark-*` key, never the production key. It runs only
@@ -701,7 +707,7 @@ so it was unavailable to this workflow and does not affect the comparison.
 
 The lint lane may restore a manifest-keyed dependency cache under `target/debug`,
 then removes workspace products with `cargo clean --workspace` before a
-successful `main` push can save it. Pull requests do not publish that target
+merge-group candidate can be staged. Pull requests do not publish that target
 cache. The coverage execution lane caches only its pruned dependency-only
 `target/llvm-cov-target` directory, never broad `target/`.
 

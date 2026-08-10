@@ -93,7 +93,7 @@ def test_prepare_prune_and_post_prune_candidate_stage_uses_preserved_artifact(tm
     [
         ("push", "refs/heads/main", "refs/heads/main"),
         ("pull_request", "refs/pull/8319/merge", "current-checkout"),
-        ("merge_group", "refs/heads/gh-readonly-queue/main/pr-8319", "current-checkout"),
+        ("merge_group", "refs/heads/gh-readonly-queue/main/pr-8319", "merge-group"),
         ("workflow_dispatch", "refs/heads/main", "current-checkout"),
     ],
 )
@@ -122,6 +122,38 @@ def test_stage_rejects_a_modified_integration_artifact_before_copying(tmp_path: 
         )
 
 
+def test_promote_merge_group_candidate_rewrites_provenance_after_revalidation(tmp_path: Path) -> None:
+    _coverage_larch, artifact_dir = _prepare_artifact(tmp_path)
+    merge_group_candidate = tmp_path / "runner-temp" / "merge-group-policy"
+    _ = candidate.stage_policy_candidate(
+        candidate.PolicyCandidateRequest(
+            artifact_dir=artifact_dir,
+            policy_dir=merge_group_candidate,
+            event_name="merge_group",
+            ref="refs/heads/gh-readonly-queue/main/pr-8362",
+            source_sha=SOURCE_SHA,
+            rust_inputs_sha256=RUST_INPUTS_SHA256,
+        )
+    )
+
+    promoted = tmp_path / "runner-temp" / "trusted-main-rust-policy"
+    assert cli.main([
+        "ci",
+        "promote-rust-policy-candidate",
+        "--artifact-dir",
+        str(merge_group_candidate),
+        "--policy-dir",
+        str(promoted),
+        "--source-sha",
+        SOURCE_SHA,
+        "--rust-inputs-sha256",
+        RUST_INPUTS_SHA256,
+    ]) == 0
+    assert (promoted / "producer-ref").read_text(encoding="utf-8") == "refs/heads/main\n"
+    assert (promoted / "source-sha").read_text(encoding="utf-8") == f"{SOURCE_SHA}\n"
+    assert (promoted / "larch").stat().st_mode & 0o111
+
+
 def test_rust_policy_candidate_cli_entries_are_registered() -> None:
     assert cli._REGISTRY[("ci", "prepare-rust-integration-artifact")] == (  # pyright: ignore[reportPrivateUsage]
         "larch.implement.rust_policy_candidate",
@@ -131,5 +163,10 @@ def test_rust_policy_candidate_cli_entries_are_registered() -> None:
     assert cli._REGISTRY[("ci", "stage-rust-policy-candidate")] == (  # pyright: ignore[reportPrivateUsage]
         "larch.implement.rust_policy_candidate",
         "stage_policy_candidate_main",
+        False,
+    )
+    assert cli._REGISTRY[("ci", "promote-rust-policy-candidate")] == (  # pyright: ignore[reportPrivateUsage]
+        "larch.implement.rust_policy_candidate",
+        "promote_policy_candidate_main",
         False,
     )

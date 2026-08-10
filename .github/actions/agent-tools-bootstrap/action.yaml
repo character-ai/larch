@@ -1,0 +1,71 @@
+name: Verified agent tool bootstrap
+description: Install or revalidate the checksum-pinned agent-lint and agnix binaries without running repository scans.
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare verified agent-lint release
+      shell: bash
+      env:
+        AGENT_LINT_ARCHIVE_SHA256: "0be0fdea2b90a167bdf9f477289863b69f4df63890507289abdfd72fd2d9fab0"
+        AGENT_LINT_BINARY_SHA256: "8da9eea70cb1c8de1be6585ac882539e3cdf7e0f37563499eb1b122fe75f3346"
+        AGENT_LINT_VERSION: "4.0.3"
+      run: |
+        set -euo pipefail
+        agent_lint_binary=/usr/local/bin/agent-lint
+        agent_lint_is_verified() {
+          test -f "$agent_lint_binary" && test ! -L "$agent_lint_binary"
+          printf '%s  %s\n' "$AGENT_LINT_BINARY_SHA256" "$agent_lint_binary" | sha256sum --check --strict --status -
+          case "$("$agent_lint_binary" --version)" in
+            "agent-lint ${AGENT_LINT_VERSION}"|"agent-lint ${AGENT_LINT_VERSION} "*|"agent-lint ${AGENT_LINT_VERSION}"$'\n'*) ;;
+            *) return 1 ;;
+          esac
+        }
+        if ! agent_lint_is_verified; then
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          archive="$temporary/agent-lint.tar.gz"
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            -o "$archive" \
+            "https://github.com/zhupanov/agent-lint/releases/download/v${AGENT_LINT_VERSION}/agent-lint-v${AGENT_LINT_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          printf '%s  %s\n' "$AGENT_LINT_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict --status -
+          test "$(tar -tzf "$archive" | LC_ALL=C sort)" = agent-lint
+          tar -xzf "$archive" -C "$temporary" -- agent-lint
+          test -f "$temporary/agent-lint" && test ! -L "$temporary/agent-lint"
+          printf '%s  %s\n' "$AGENT_LINT_BINARY_SHA256" "$temporary/agent-lint" | sha256sum --check --strict --status -
+          sudo install -m 0755 "$temporary/agent-lint" "$agent_lint_binary"
+        fi
+        agent_lint_is_verified
+
+    - name: Prepare verified agnix release
+      shell: bash
+      env:
+        AGNIX_ARCHIVE_SHA256: "9452e72f477c5f47917dd523c9510d4a013a8ee33afaa3e8d5d94fa3d1da7690"
+        AGNIX_BINARY_SHA256: "c31ed763925a15fc7f03e4511e5669d96ca906be98ec7ec49c0cc7f08a3284ef"
+        AGNIX_VERSION: "0.40.0"
+      run: |
+        set -euo pipefail
+        agnix_binary=/usr/local/bin/agnix
+        agnix_is_verified() {
+          test -f "$agnix_binary" && test ! -L "$agnix_binary"
+          printf '%s  %s\n' "$AGNIX_BINARY_SHA256" "$agnix_binary" | sha256sum --check --strict --status -
+          case "$("$agnix_binary" --version)" in
+            "agnix ${AGNIX_VERSION}"|"agnix ${AGNIX_VERSION} "*|"agnix ${AGNIX_VERSION}"$'\n'*) ;;
+            *) return 1 ;;
+          esac
+        }
+        if ! agnix_is_verified; then
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          archive="$temporary/agnix.tar.gz"
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            -o "$archive" \
+            "https://github.com/agent-sh/agnix/releases/download/v${AGNIX_VERSION}/agnix-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' "$AGNIX_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict --status -
+          test "$(tar -tzf "$archive" | LC_ALL=C sort)" = agnix
+          tar -xzf "$archive" -C "$temporary" -- agnix
+          test -f "$temporary/agnix" && test ! -L "$temporary/agnix"
+          printf '%s  %s\n' "$AGNIX_BINARY_SHA256" "$temporary/agnix" | sha256sum --check --strict --status -
+          sudo install -m 0755 "$temporary/agnix" "$agnix_binary"
+        fi
+        agnix_is_verified

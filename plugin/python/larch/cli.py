@@ -59,6 +59,21 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "stage_policy_candidate_main",
         False,
     ),
+    ("ci", "promote-rust-policy-candidate"): (
+        "larch.implement.rust_policy_candidate",
+        "promote_policy_candidate_main",
+        False,
+    ),
+    ("ci", "stage-main-cache-candidate"): (
+        "larch.implement.main_cache_candidate",
+        "stage_main_cache_candidate_main",
+        True,
+    ),
+    ("ci", "verify-main-cache-candidate"): (
+        "larch.implement.main_cache_candidate",
+        "verify_main_cache_candidate_main",
+        True,
+    ),
     ("residual-bash", "paths"): ("larch.core.residual_bash", "paths_main", True),
     ("verify", "main"): ("larch.core.verify_main", "main", False),
     ("complete-umbrella", "ship-leaf"): (
