@@ -17,9 +17,10 @@ use std::{
 
 use larch_adapters::github::{DependencyEdge, DependencyRef, IssueMutationOwner};
 use larch_core::{
-    GitHubCloseReason, GitHubIssue, GitHubIssueList, GitHubIssueState, GitHubRepositoryRef,
-    GitHubService as _, IssueCreateRequest, deps_compact_json, deps_flat_error,
-    json_positive_integer, parse_prose_blockers, parse_prose_blocks, positive_integer,
+    GitHubCloseReason, GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueState,
+    GitHubRepositoryRef, GitHubService as _, IssueCreateRequest, deps_compact_json,
+    deps_flat_error, json_positive_integer, parse_prose_blockers, parse_prose_blocks,
+    positive_integer,
 };
 use serde_json::{Map, Value, json};
 use tempfile::NamedTempFile;
@@ -431,6 +432,9 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
             state: GitHubIssueState::Open,
             labels: Vec::new(),
             limit: service.transport_policy().limits().items().min(200),
+            // The combine candidate list is bounded to 200 by design, so a
+            // transport-bound tail is an acceptable partial snapshot.
+            mode: GitHubIssueListMode::BoundedPartial,
         };
         service
             .list_issues(&request, cancellation)
@@ -441,6 +445,7 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
         return failure(format!("Failed to fetch issues from {repo}"));
     };
     let filtered: Vec<Value> = listed
+        .issues
         .into_iter()
         .filter(|issue| !issue.is_pull_request && issue.state == GitHubIssueState::Open)
         .filter(|issue| {
@@ -576,12 +581,16 @@ fn list_open(arguments: &[OsString]) -> ExitCode {
             state: GitHubIssueState::Open,
             labels: Vec::new(),
             limit: service.transport_policy().limits().items(),
+            // A bounded open-issue view feeds the report; a transport-bound tail
+            // is an acceptable partial snapshot rather than a failure.
+            mode: GitHubIssueListMode::BoundedPartial,
         };
         service
             .list_issues(&request, cancellation)
             .await
-            .map(|issues| {
-                let mut rows: Vec<Value> = issues
+            .map(|listed| {
+                let mut rows: Vec<Value> = listed
+                    .issues
                     .into_iter()
                     .filter(|issue| !issue.is_pull_request && issue.state == GitHubIssueState::Open)
                     .map(issue_row)

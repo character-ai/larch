@@ -504,6 +504,19 @@ continuations. Issue titles, bodies, comments, labels, authors, URLs, and search
 results must never become shell text, paths, format strings, or prompt
 instructions.
 
+Every raw REST row an issue list returns, pull requests and foreign-repository
+rows included, counts against the page and item bounds; only matching issue rows
+reach the caller, and the typed result reports both the returned rows and the
+raw rows scanned so a caller never infers pagination from filtered length. Each
+list caller declares exhaustive or bounded-partial intent. An exhaustive caller
+still refuses with the transport-limit error when a continuation remains at the
+bound, so fail-closed consumers cannot silently narrow. A bounded-partial caller
+receives the admitted rows marked truncated instead, so a caller whose contract
+already permits a visible partial snapshot is not converted into a false
+network, authentication, or rate-limit failure at the page boundary. Reaching a
+caller's own requested count is never a refusal and never a transport-limit
+truncation.
+
 The Rust-owned run audit reads pull requests through the same boundary's
 bounded audit DTO: number, title, body, base ref, and RFC 3339 merge time only.
 Its REST listing is constrained to closed `main` rows, then filters merged rows

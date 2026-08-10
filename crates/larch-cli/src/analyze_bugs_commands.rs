@@ -22,10 +22,10 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use chrono::Utc;
 use larch_adapters::{GixRepository, unified_blob_diff};
 use larch_core::{
-    ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueList, GitHubIssueState,
-    GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER, ProcessErrorKind, RepositoryRead,
-    Revision, bug_title_match, emit_kv, epoch_now, private_atomic_write, require_enabled_storage,
-    strip_named_block,
+    ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueList, GitHubIssueListMode,
+    GitHubIssueState, GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER, ProcessErrorKind,
+    RepositoryRead, Revision, bug_title_match, emit_kv, epoch_now, private_atomic_write,
+    require_enabled_storage, strip_named_block,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
@@ -229,12 +229,16 @@ fn prefetch_with_evidence(
                 .saturating_mul(5)
                 .clamp(100, 1_000)
                 .min(service.transport_policy().limits().items()),
+            // A bounded recent sample is the published contract here, so a
+            // transport-bound tail is an acceptable partial rather than a
+            // failure.
+            mode: GitHubIssueListMode::BoundedPartial,
         };
-        let issues = service
+        let listed = service
             .list_issues(&request, cancellation)
             .await
             .map_err(|error| error.to_string())?;
-        Ok::<_, String>(issues)
+        Ok::<_, String>(listed.issues)
     });
     let issues = match fetched {
         Ok(value) => value,

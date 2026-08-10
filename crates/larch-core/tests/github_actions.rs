@@ -3,7 +3,8 @@
 use larch_core::{
     CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
     GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue,
-    GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubLabel,
+    GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult, GitHubIssueSearch,
+    GitHubLabel,
     GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef, GitHubService,
     GitHubTransportPolicy, ProcessCancellation, WorkflowDispatchRequest, WorkflowJob,
     WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing, run_logs,
@@ -69,7 +70,7 @@ impl GitHubService for FakeService {
         &'a self,
         _request: &'a GitHubIssueList,
         _cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>> {
+    ) -> GitHubFuture<'a, GitHubIssueListResult> {
         unused_github()
     }
 

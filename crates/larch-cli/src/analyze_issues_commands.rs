@@ -27,11 +27,11 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use larch_core::{
     BlockBoundary, CorpusFilter, DONE_PREFIX, GitHubComment, GitHubIssue, GitHubIssueList,
-    GitHubIssueState, GitHubService, GroundTruthCorpusScan, GroundTruthMode, GroundTruthRow,
-    GroundTruthVoter, IncentiveEra, IssueLifecycle, IssueSummary, OOS_CORRECTNESS_LABEL,
-    PanelVerdict, RunLogCorpus, RunLogCorpusEvent, RunLogSelection, STALLED_PREFIX,
-    VerdictGateInputs, VoterBallot, analyze_ground_truth, apply_verdict_gate, categorize,
-    category_breakdown, coverage_stats, issue_number_from_url, ndjson_filed_evidence,
+    GitHubIssueListMode, GitHubIssueState, GitHubService, GroundTruthCorpusScan, GroundTruthMode,
+    GroundTruthRow, GroundTruthVoter, IncentiveEra, IssueLifecycle, IssueSummary,
+    OOS_CORRECTNESS_LABEL, PanelVerdict, RunLogCorpus, RunLogCorpusEvent, RunLogSelection,
+    STALLED_PREFIX, VerdictGateInputs, VoterBallot, analyze_ground_truth, apply_verdict_gate,
+    categorize, category_breakdown, coverage_stats, issue_number_from_url, ndjson_filed_evidence,
     parse_oos_blocks, realized_alignment_rate,
     report::growth_chart::{self, GrowthRow},
     scan_ground_truth_corpus, strip_prefixes, version_meets_floor,
@@ -225,8 +225,7 @@ pub fn fetch(arguments: &[OsString]) -> ExitCode {
         print!("{FETCH_HELP}");
         return ExitCode::SUCCESS;
     }
-    let required = ["--repo", "--limit", "--output"];
-    let missing: Vec<&str> = required
+    let missing: Vec<&str> = ["--repo", "--limit", "--output"]
         .into_iter()
         .filter(|name| parsed.value(name).is_none())
         .collect();
@@ -256,13 +255,11 @@ pub fn fetch(arguments: &[OsString]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     if limit == 0 {
-        return match private_write(&output, "[]") {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("ERROR=gh issue list failed for repo {repo}: {error}");
-                ExitCode::FAILURE
-            }
-        };
+        if let Err(error) = private_write(&output, "[]") {
+            eprintln!("ERROR=gh issue list failed for repo {repo}: {error}");
+            return ExitCode::FAILURE;
+        }
+        return ExitCode::SUCCESS;
     }
     let listed = with_github_service(async |service, cancellation| {
         let request = GitHubIssueList {
@@ -270,11 +267,13 @@ pub fn fetch(arguments: &[OsString]) -> ExitCode {
             state: GitHubIssueState::All,
             labels: Vec::new(),
             limit: limit.min(service.transport_policy().limits().items()),
+            mode: GitHubIssueListMode::BoundedPartial,
         };
         let issues = service
             .list_issues(&request, cancellation)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| error.to_string())?
+            .issues;
         let wanted: BTreeSet<u64> = issues.iter().map(|issue| issue.number).collect();
         let closures = service
             .issue_closure_references(cancellation, reference.owner(), reference.name(), &wanted)

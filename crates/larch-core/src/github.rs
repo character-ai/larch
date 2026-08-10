@@ -42,7 +42,7 @@ pub trait GitHubService: Send + Sync {
         &'a self,
         request: &'a GitHubIssueList,
         cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>>;
+    ) -> GitHubFuture<'a, GitHubIssueListResult>;
 
     fn search_issues<'a>(
         &'a self,
@@ -309,12 +309,167 @@ pub struct GitHubLabel {
     pub description: String,
 }
 
+/// Whether a list caller demands the complete matching set or accepts a
+/// visible partial snapshot when the reviewed transport bound is reached.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubIssueListMode {
+    /// Refuse with [`GitHubOperationErrorKind::LimitExceeded`] when a
+    /// continuation remains at the transport page or item bound. Fail-closed
+    /// consumers that must reason over every matching issue use this.
+    Exhaustive,
+    /// Return the admitted rows with `truncated = true` when the transport
+    /// bound cut the scan short. Callers whose contract already permits a
+    /// visible partial snapshot use this.
+    BoundedPartial,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GitHubIssueList {
     pub repo: GitHubRepositoryRef,
     pub state: GitHubIssueState,
     pub labels: Vec<String>,
     pub limit: usize,
+    pub mode: GitHubIssueListMode,
+}
+
+/// The typed outcome of a bounded issue list.
+///
+/// `issues` excludes pull requests and foreign-repository rows, while
+/// `raw_rows_scanned` counts every untrusted REST row those filters dropped, so
+/// a caller can tell filtered output length from raw pagination. `truncated`
+/// reports whether the transport bound (or, for a bounded-partial caller, the
+/// requested count) left a continuation unread.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueListResult {
+    pub issues: Vec<GitHubIssue>,
+    pub raw_rows_scanned: usize,
+    pub truncated: bool,
+}
+
+/// Why a bounded issue scan stopped before its feed ended.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubListStop {
+    /// The caller's own requested issue count was satisfied.
+    RequestedLimit,
+    /// The reviewed transport item bound was reached.
+    TransportItems,
+    /// The reviewed transport page bound was reached with a continuation.
+    PageLimit,
+    /// The feed ended within every bound.
+    Exhausted,
+}
+
+/// The typed result of resolving a stopped scan against its caller mode.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GitHubListOutcome {
+    /// A usable snapshot, truncated or complete.
+    Complete(GitHubIssueListResult),
+    /// An exhaustive caller reached a transport bound with a continuation.
+    Refused,
+}
+
+/// Pure accountant for one bounded issue scan.
+///
+/// The adapter feeds it every raw REST row in page order, including pull
+/// requests and foreign-repository rows, so the transport item bound counts the
+/// same untrusted rows the API returned rather than the filtered issue rows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GitHubIssueScan {
+    retained: usize,
+    raw_scanned: usize,
+    limit: usize,
+    items_limit: usize,
+    pages_limit: usize,
+}
+
+impl GitHubIssueScan {
+    /// Start a scan bounded by the caller's requested issue count and the
+    /// reviewed transport limits.
+    #[must_use]
+    pub const fn new(limit: usize, policy: GitHubTransportPolicy) -> Self {
+        Self {
+            retained: 0,
+            raw_scanned: 0,
+            limit,
+            items_limit: policy.limits().items(),
+            pages_limit: policy.limits().pages(),
+        }
+    }
+
+    /// The reviewed transport page bound, the number of continuations the
+    /// driver may follow.
+    #[must_use]
+    pub const fn pages_limit(&self) -> usize {
+        self.pages_limit
+    }
+
+    /// Every raw REST row counted so far, pull requests included.
+    #[must_use]
+    pub const fn raw_scanned(&self) -> usize {
+        self.raw_scanned
+    }
+
+    /// Count one raw REST row and report whether the driver should retain it.
+    ///
+    /// A row is retained only when it survives the caller's filter (`retain`)
+    /// and the requested issue count is not yet met; every row, retained or
+    /// not, counts against the transport item bound.
+    pub const fn count_row(&mut self, retain: bool) -> bool {
+        self.raw_scanned += 1;
+        if retain && self.retained < self.limit {
+            self.retained += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The stop the running counts imply, if the scan must halt on this row.
+    ///
+    /// The transport item bound is reported before the requested count, so a
+    /// caller whose requested count equals the transport bound stops as a
+    /// transport refusal rather than a satisfied request.
+    #[must_use]
+    pub const fn stop(&self) -> Option<GitHubListStop> {
+        if self.raw_scanned >= self.items_limit {
+            Some(GitHubListStop::TransportItems)
+        } else if self.retained >= self.limit {
+            Some(GitHubListStop::RequestedLimit)
+        } else {
+            None
+        }
+    }
+}
+
+/// Resolve a stopped scan into a typed outcome for its caller mode.
+///
+/// `continuation` is whether more rows remained (on this page or a next page)
+/// when the scan stopped. An exhaustive caller that reached a transport bound
+/// with a continuation is refused; a bounded-partial caller receives the
+/// admitted rows marked truncated. Reaching the caller's own requested count is
+/// never a refusal and never truncation for an exhaustive caller.
+#[must_use]
+pub fn resolve_issue_list(
+    issues: Vec<GitHubIssue>,
+    raw_rows_scanned: usize,
+    stop: GitHubListStop,
+    continuation: bool,
+    mode: GitHubIssueListMode,
+) -> GitHubListOutcome {
+    let transport_bound = matches!(
+        stop,
+        GitHubListStop::TransportItems | GitHubListStop::PageLimit
+    );
+    if continuation && transport_bound && matches!(mode, GitHubIssueListMode::Exhaustive) {
+        return GitHubListOutcome::Refused;
+    }
+    let truncated =
+        continuation && (transport_bound || matches!(mode, GitHubIssueListMode::BoundedPartial));
+    GitHubListOutcome::Complete(GitHubIssueListResult {
+        issues,
+        raw_rows_scanned,
+        truncated,
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1379,6 +1534,167 @@ mod tests {
     fn actions_errors_render_their_safe_detail() {
         let error = GitHubActionsError::new(GitHubActionsErrorKind::Transport, "request failed");
         assert_eq!(error.to_string(), "request failed");
+    }
+
+    /// One synthetic REST page: whether each raw row survives the pull-request
+    /// and repository filter, and whether a continuation link follows.
+    type ScanPage = (Vec<bool>, bool);
+
+    fn placeholder_issue() -> GitHubIssue {
+        GitHubIssue {
+            id: 1,
+            number: 1,
+            title: String::new(),
+            body: String::new(),
+            state: GitHubIssueState::Open,
+            state_reason: String::new(),
+            url: String::new(),
+            author: String::new(),
+            labels: Vec::new(),
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: String::new(),
+            is_pull_request: false,
+        }
+    }
+
+    /// Drive the pure bounded-list primitives over synthetic pages, mirroring
+    /// the adapter's page walk without any HTTP so the transport-bound math is
+    /// covered at the observed live scale.
+    fn walk(pages: &[ScanPage], limit: usize, mode: GitHubIssueListMode) -> GitHubListOutcome {
+        let policy = GitHubTransportPolicy::github_com();
+        let mut scan = GitHubIssueScan::new(limit, policy);
+        let mut kept: Vec<GitHubIssue> = Vec::new();
+        for (page_index, (rows, has_next)) in pages.iter().enumerate() {
+            let count = rows.len();
+            for (index, &retain) in rows.iter().enumerate() {
+                if scan.count_row(retain) {
+                    kept.push(placeholder_issue());
+                }
+                if let Some(stop) = scan.stop() {
+                    let continuation = index + 1 < count || *has_next;
+                    return resolve_issue_list(kept, scan.raw_scanned(), stop, continuation, mode);
+                }
+            }
+            if !has_next {
+                return resolve_issue_list(
+                    kept,
+                    scan.raw_scanned(),
+                    GitHubListStop::Exhausted,
+                    false,
+                    mode,
+                );
+            }
+            if page_index + 1 == scan.pages_limit() {
+                return resolve_issue_list(
+                    kept,
+                    scan.raw_scanned(),
+                    GitHubListStop::PageLimit,
+                    true,
+                    mode,
+                );
+            }
+        }
+        resolve_issue_list(
+            kept,
+            scan.raw_scanned(),
+            GitHubListStop::Exhausted,
+            false,
+            mode,
+        )
+    }
+
+    /// Build the observed live fixture: 20 full pages of 100 raw rows each, of
+    /// which 889 are issues and 1,111 are pull requests, with a continuation.
+    fn live_scale_pages(final_page_has_next: bool) -> Vec<ScanPage> {
+        let mut issues_left = 889_usize;
+        let mut pages = Vec::with_capacity(20);
+        for page in 0..20 {
+            let mut rows = Vec::with_capacity(100);
+            for _ in 0..100 {
+                // Front-load the issue rows so the retained count is exact.
+                let retain = issues_left > 0;
+                if retain {
+                    issues_left -= 1;
+                }
+                rows.push(retain);
+            }
+            let has_next = if page == 19 { final_page_has_next } else { true };
+            pages.push((rows, has_next));
+        }
+        pages
+    }
+
+    #[test]
+    fn bounded_partial_admits_the_live_scale_snapshot_with_truncation() {
+        let pages = live_scale_pages(true);
+        let GitHubListOutcome::Complete(result) = walk(&pages, 2_000, GitHubIssueListMode::BoundedPartial)
+        else {
+            panic!("bounded-partial must admit the snapshot");
+        };
+        assert_eq!(result.issues.len(), 889);
+        assert_eq!(result.raw_rows_scanned, 2_000);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn exhaustive_refuses_the_live_scale_snapshot() {
+        let pages = live_scale_pages(true);
+        assert_eq!(
+            walk(&pages, 2_000, GitHubIssueListMode::Exhaustive),
+            GitHubListOutcome::Refused
+        );
+    }
+
+    #[test]
+    fn exactly_twenty_pages_without_a_continuation_is_not_truncated() {
+        let pages = live_scale_pages(false);
+        for mode in [
+            GitHubIssueListMode::Exhaustive,
+            GitHubIssueListMode::BoundedPartial,
+        ] {
+            let GitHubListOutcome::Complete(result) = walk(&pages, 2_000, mode) else {
+                panic!("a terminal twentieth page is a complete snapshot");
+            };
+            assert_eq!(result.issues.len(), 889);
+            assert!(!result.truncated);
+        }
+    }
+
+    #[test]
+    fn reaching_the_requested_count_early_never_refuses_an_exhaustive_caller() {
+        // Five retainable rows on a page that still has more work: an
+        // exhaustive caller (search) gets its five with no refusal and no
+        // truncation, while a bounded-partial caller learns older rows remain.
+        let pages: Vec<ScanPage> = vec![(vec![true; 100], true)];
+        let GitHubListOutcome::Complete(exhaustive) = walk(&pages, 5, GitHubIssueListMode::Exhaustive)
+        else {
+            panic!("reaching the requested count is not a refusal");
+        };
+        assert_eq!(exhaustive.issues.len(), 5);
+        assert!(!exhaustive.truncated);
+
+        let GitHubListOutcome::Complete(bounded) =
+            walk(&pages, 5, GitHubIssueListMode::BoundedPartial)
+        else {
+            panic!("bounded-partial admits the partial set");
+        };
+        assert_eq!(bounded.issues.len(), 5);
+        assert!(bounded.truncated);
+    }
+
+    #[test]
+    fn a_short_feed_within_every_bound_is_complete_and_untruncated() {
+        let pages: Vec<ScanPage> = vec![(vec![true, false, true], false)];
+        let GitHubListOutcome::Complete(result) =
+            walk(&pages, 2_000, GitHubIssueListMode::Exhaustive)
+        else {
+            panic!("a feed that ends within bounds is complete");
+        };
+        assert_eq!(result.issues.len(), 2);
+        assert_eq!(result.raw_rows_scanned, 3);
+        assert!(!result.truncated);
     }
 }
 
