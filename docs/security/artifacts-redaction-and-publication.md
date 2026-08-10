@@ -538,7 +538,7 @@ egress contract.
 | Residual Bash egress call sites | Thin scripts call the Python redaction owner or the Rust run-log owner before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Stall classification, normalization, attempts, and escalation ledgers | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
-| Tracking, plan, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8175) owns marker-keyed comment mutation, and Rust `final-report write` (#8090) owns `/implement` final-summary publication. Python `render run-summary` remains a #7682 `/design` payload renderer, while plan and diagram surfaces retain their separately named #7679, #7680, and #7681 owners. Service calls use the current typed GitHub adapter where migrated. |
+| Tracking, plan, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8175) owns marker-keyed comment mutation, and Rust `final-report write` (#8090) owns `/implement` final-summary publication. Python `render run-summary` remains a #7680 `/design` payload renderer, while plan and diagram surfaces retain their separately named #7679, #7680, and #7681 owners. Service calls use the current typed GitHub adapter where migrated. |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
 Verification includes focused redaction and run-log tests, Rust Gitleaks command

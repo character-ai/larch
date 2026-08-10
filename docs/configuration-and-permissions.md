@@ -542,7 +542,7 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 `larch_core::report::RATE_TABLE` owns the canonical `/implement` final-summary
 and `/report-tokens` USD estimates per lane. The retained
 [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py)
-helper consumes the same override names only for the #7682 `render run-summary`
+helper consumes the same override names only for the #7680 `render run-summary`
 compatibility payload and #7684 token/analytics commands:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.

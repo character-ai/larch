@@ -594,7 +594,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
-planning_issue = 7682
+planning_issue = 7683
 migration_issue = 8092
 
 [[commands]]
@@ -4070,7 +4070,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7685
 
 [[commands]]
 domain = "issue"
@@ -4456,7 +4456,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7680
+planning_issue = 7679
 
 [[commands]]
 domain = "oos"
@@ -4468,7 +4468,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7680
+planning_issue = 7679
 
 [[commands]]
 domain = "plan"
@@ -5444,7 +5444,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "rejected-analysis"
@@ -5456,7 +5456,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "rejected-analysis"
@@ -5468,7 +5468,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "rejected-analysis"
@@ -5480,7 +5480,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "release"
@@ -5743,7 +5743,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7680
 
 [[commands]]
 domain = "render"
@@ -7521,7 +7521,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "token"
@@ -7689,7 +7689,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "token"
@@ -7713,7 +7713,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7681
 
 [[commands]]
 domain = "tracking-issue"
@@ -8061,7 +8061,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "validate-merged"
@@ -8073,7 +8073,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "validate-merged"
@@ -8085,7 +8085,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "validate-merged"
@@ -8097,7 +8097,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "validate-merged"
@@ -8109,7 +8109,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7682
+planning_issue = 7684
 
 [[commands]]
 domain = "verify"

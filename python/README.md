@@ -15,7 +15,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for the still-Python `token` and analytics surfaces, plus the `render run-summary` compatibility payload. Their later command owners are #7682 and #7684; they do not own `/report-tokens` or `final-report`, both of which retired their Python entrypoints in #8088 and #8090.
+- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for the still-Python `token` and analytics surfaces, plus the `render run-summary` compatibility payload. Their later command owners are #7680 and #7684; they do not own `/report-tokens` or `final-report`, both of which retired their Python entrypoints in #8088 and #8090.
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)

@@ -126,10 +126,10 @@ umbrella that owns their remaining consumers:
 | `render reviewer`, `specialist`, `voter`, `findings-view`, `plan-review` | 5 | #7679 | Review-panel and voting prompt renderers, named by #8091 as staying with the review umbrella. |
 | `render lane-status` | 1 | #7678 | Vendor lane orchestration. |
 | `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
-| `render run-summary` | 1 | #7682 | Recorded in the retained-surface table below as a bounded `/design` payload. |
+| `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #7681 | Step 2 dispatch and PR line counts. |
 | `token claude-source` | 1 | #7679 | Called from `skills/review/SKILL.md`. |
-| `token cost`, `token render-cost-line` | 2 | #7682 | The pricing consumers #8087 and #8088 already deferred there. |
+| `token cost`, `token render-cost-line` | 2 | #7684 | The pricing consumers #8087 and #8088 already deferred there. |
 | The remaining 15 `token` verbs | 15 | #7684 | Research lane capture, ledger dumps, and the `measure-*` analytics, which is #7684's "deterministic models, aggregation, and report inputs" scope. |
 
 Both surfaces this umbrella touched are now closed. #8268 settled the plot
@@ -149,6 +149,41 @@ Direct `bin/larch` execution stays outside this umbrella's surfaces. The
 `larch-runtime-entrypoint` rule already rejects it in `python/larch/**`,
 `skills/`, `.claude/skills/`, `agents/`, `hooks/`, and `scripts/*.sh`, and no
 tracked file in those roots references the binary.
+
+## Closed #7682 issue-domain boundary
+
+`larch lint rule issue-python-free` is the mechanical closeout for #7682. It
+pins the 96 commands migrated by its atomic leaves, including the ten
+issue-domain commands whose surviving `/design` callers make #7680 their
+roadmap owner. Every pinned row remains Rust-owned with complete implementation
+parity, consumer cutover, and Python removal; it also retains the exact
+migration leaf and retired Python target. The rule rejects a restored
+`python/larch/cli.py` registration, a restored module-level entrypoint, or any
+other row left at `planning_issue = 7682`. `command-registry` proves the broader
+production-caller cutover, and `larch-runtime-entrypoint` proves that callers
+enter the installed runtime only through `scripts/larch.sh`.
+
+The audit also names every boundary this umbrella does not own. The listed
+owner is the umbrella that owns the surviving command or library cutover, not a
+temporary compatibility alias.
+Shared libraries may still serve callers from more than one workflow while
+those workflows remain Python-owned; their listed receiving umbrella coordinates
+the next cutover and does not create a second implementation.
+
+| Receiving umbrella | Deliberate hand-off |
+| --- | --- |
+| #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
+| #7679 | `oos serialize` and `oos normalize-header`, plus `larch.issue.oos`, remain review-pipeline surfaces. |
+| #7680 | `clarify` stays in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. |
+| #7681 | `tracking post-issue` and `larch.issue.execution_issues` remain implementation workflow surfaces. |
+| #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
+| #7684 | Rejected-finding and merged-change analysis commands, `token cost`, `token render-cost-line`, and their analytical issue helpers remain research-owned. |
+| #7685 | `issue migration-audit`, `migration_governance`, and `open_rows` remain lint/developer-tooling owned. |
+| #7686 | The final runtime and package retirement sweep owns deletion once no retained consumer remains; it is not an issue-command fallback. |
+
+The rule's retained-module list permits the package initializer and the named
+top-level `python/larch/issue/*.py` libraries only. A new top-level issue module
+fails until this ownership table and the rule identify its receiving umbrella.
 
 ## State transitions
 
@@ -206,8 +241,8 @@ cutover is named in the last column.
 | `larch.report.run_log_corpus`, `run_log_publish`, `object_store`, and `storage_config` | Analyzer-side corpus reads plus bounded configuration, path, lock, and error support. The legacy `object_store` adapter has only compatibility/test callers; none is a production archive, sync, lifecycle, or storage-preflight command owner. | Rust archive, publication, sync, and storage-preflight boundary: #8079 and #8080; their analytics callers are #7684. |
 | `larch.report.analysis_state`, `markdown_block`, and `run_log_tolerance` | Local analyzer state, bounded Markdown fragments, and read-only tolerance predicates. They have no #7683 command entrypoint. | Their analytics and audit callers belong to #7684 and #7682. |
 | `larch.report.exec_issue_detail`, `review_phase_detail`, and `design_diagram_log` | Parser and renderer helpers for issue warnings, review-phase rows, and design-diagram diagnostics. They are not durable run-log writers. | Their review, design, and issue callers belong to #7679, #7680, and #7682. |
-| `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for still-Python token and analytics commands. They do not implement `report-tokens analyze` or a final-report writer. | #7684 owns token reporting and analytics; #7682 owns `token cost` and `token render-cost-line`. |
-| `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7682 owns `render run-summary`; its `/design` caller belongs to #7680. |
+| `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for still-Python token and analytics commands. They do not implement `report-tokens analyze` or a final-report writer. | #7684 owns token reporting, analytics, `token cost`, and `token render-cost-line`. |
+| `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7680 owns `render run-summary` and its `/design` caller. |
 | `token report`, `token mark`, and `difficulty write-record` | Payloads that Rust flush or final-report code may request through the single `python_verb` seam. Rust controls all durable staging and mutation. | #7684. |
 | `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7679. |
 | `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
@@ -239,7 +274,7 @@ and `larch_core::vendor_model` gains the GLM main-agent id and its long-context
 alias. A model priced by another model's rate row, including a display bucket
 that folds one model onto another, is recorded as
 `TokenObservationKind::UnpricedModel` rather than passing silently. Python
-retains `token cost` and `token render-cost-line` as #7682-owned compatibility
+retains `token cost` and `token render-cost-line` as #7684-owned compatibility
 commands; neither is the rate authority for `report-tokens analyze` or
 `final-report`.
 
@@ -281,7 +316,7 @@ style bans from user-facing output. And date labels stay horizontal, thinned to
 whatever fits the axis, rather than rotating every label 45 degrees.
 
 `report_tokens_cost`, `report_tokens_models`, `report_tokens_scan`, and
-`analysis_state` remain Python helpers for the #7682 compatibility commands and
+`analysis_state` remain Python helpers for the #7680 compatibility payload and
 the #7684 token/analytics commands. Issue 8090 removed
 `larch.report.final_report` from their consumer set by pricing the terminal
 report through `larch_core::report::token_cost` directly. They are not a Python
@@ -386,7 +421,7 @@ than defining a second record model.
 
 Two commands stay Python-owned deliberately. `oos serialize` and
 `oos normalize-header` are review-pipeline entry points whose remaining Python
-callers live behind `larch.review`, so #7681 migrates them together with
+callers live behind `larch.review`, so #7679 migrates them together with
 `larch.review.review_types`; the Rust library parity they need is already here.
 The review pipeline's `finding-heading` and `level-three-heading` block
 boundaries stay with `larch.review.review_types` for the same reason.

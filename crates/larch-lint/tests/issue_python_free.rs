@@ -1,0 +1,202 @@
+mod support;
+
+use std::fmt::Write as _;
+
+use predicates::prelude::*;
+use support::TempRepo;
+
+const COMMANDS: [(&str, &str, u64, u64, &str, &str); 3] = [
+    (
+        "issue",
+        "state",
+        8167,
+        7682,
+        "larch.issue.issue_query",
+        "issue_state_main",
+    ),
+    (
+        "oos",
+        "file",
+        8179,
+        7680,
+        "larch.issue.oos_filer",
+        "cmd_file",
+    ),
+    (
+        "audit-runs",
+        "title",
+        8189,
+        7682,
+        "larch.issue.audit_runs",
+        "title_main",
+    ),
+];
+
+const HANDOFFS: [(&str, &str, u64); 2] = [
+    ("issue", "migration-audit", 7685),
+    ("oos", "serialize", 7679),
+];
+
+fn registry() -> String {
+    let mut output = String::from("schema_version = 2\n");
+    for (domain, verb, migration_issue, planning_issue, python_module, python_function) in COMMANDS
+    {
+        let _ = write!(
+            output,
+            r#"
+[[commands]]
+domain = "{domain}"
+verb = "{verb}"
+python_module = "{python_module}"
+python_function = "{python_function}"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = {planning_issue}
+migration_issue = {migration_issue}
+"#,
+        );
+    }
+    for (domain, verb, planning_issue) in HANDOFFS {
+        let _ = write!(
+            output,
+            r#"
+[[commands]]
+domain = "{domain}"
+verb = "{verb}"
+python_module = "larch.issue.handoff"
+python_function = "main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = {planning_issue}
+"#,
+        );
+    }
+    output
+}
+
+fn prepare(repository: &TempRepo) {
+    repository.write(
+        "crates/larch-lint/data/command-registry.toml",
+        registry().as_bytes(),
+    );
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY = {('other', 'run'): ('other', 'main', False)}\n",
+    );
+    repository.write(
+        "python/larch/issue/issue_wire.py",
+        b"def helper() -> None:\n    return None\n",
+    );
+}
+
+/// A sample carries completed and hand-off rows, so only the unrepresented
+/// final boundary rows should fail in this small fixture.
+#[test]
+fn accepts_sample_rows_and_reports_only_missing_boundary_rows() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(
+            predicate::str::contains("missing final issue-domain command row: issue context")
+                .and(predicate::str::contains("non-final").not())
+                .and(predicate::str::contains("drift").not())
+                .and(predicate::str::contains("remains registered in Python").not())
+                .and(predicate::str::contains("unowned retained").not()),
+        )
+        .stderr("");
+}
+
+#[test]
+fn rejects_restored_python_registration_and_entrypoint() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY = {('issue', 'state'): ('larch.issue.issue_query', 'issue_state_main', False)}\n",
+    );
+    repository.write(
+        "python/larch/issue/issue_query.py",
+        b"def issue_state_main(argv: list[str]) -> int:\n    return 0\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "issue-domain command remains registered in Python: issue state",
+        ))
+        .stdout(predicate::str::contains(
+            "superseded issue-domain Python entrypoint remains: larch.issue.issue_query.issue_state_main",
+        ));
+}
+
+#[test]
+fn rejects_non_final_rows_handoff_owner_drift_and_unclosed_rows() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    let drifted = format!(
+        "{}\n[[commands]]\ndomain = \"unowned\"\nverb = \"issue-surface\"\nplanning_issue = 7682\n",
+        registry()
+    )
+    .replacen("owner = \"rust\"", "owner = \"python\"", 1)
+    .replacen("migration_issue = 8167", "migration_issue = 8168", 1)
+    .replacen("planning_issue = 7680", "planning_issue = 7682", 1)
+    .replacen("planning_issue = 7685", "planning_issue = 7682", 1);
+    repository.write(
+        "crates/larch-lint/data/command-registry.toml",
+        drifted.as_bytes(),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "non-final issue-domain command row: issue state",
+        ))
+        .stdout(predicate::str::contains(
+            "issue-domain migration leaf drift: issue state; expected #8167",
+        ))
+        .stdout(predicate::str::contains(
+            "issue-domain planning owner drift: oos file; expected #7680",
+        ))
+        .stdout(predicate::str::contains(
+            "issue-domain hand-off drift: issue migration-audit; expected #7685",
+        ))
+        .stdout(predicate::str::contains(
+            "unclosed #7682 ledger row: unowned issue-surface",
+        ));
+}
+
+#[test]
+fn rejects_unowned_retained_issue_module() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/issue/new_owner.py",
+        b"def helper() -> None:\n    return None\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "python/larch/issue/new_owner.py:1: unowned retained issue-domain Python module; name its receiving umbrella",
+        ));
+}
