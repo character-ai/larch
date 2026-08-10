@@ -2300,7 +2300,10 @@ mod tests {
         .expect("manifest");
 
         let runs = RunLogCorpus::new(root.path()).safe_child_run_directories();
-        assert_eq!(parent_issue_candidates(&runs, "12"), [selected.clone()]);
+        assert_eq!(
+            parent_issue_candidates(&runs, "12"),
+            std::slice::from_ref(&selected)
+        );
         assert_eq!(
             manifest_fields(&selected.join("manifest.json")),
             (

@@ -32,13 +32,13 @@ if str(python_dir) not in sys.path:
 
 from larch.core import config, repo_roots  # noqa: E402
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
-from larch.issue.audit_runs import implement_step8_reachable  # noqa: E402
 from larch.issue.rejected_analysis import (  # noqa: E402
     _lookup_jsonl_record,
     _records_by_round_and_token,
 )
 from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
 from larch.report import run_log_corpus  # noqa: E402
+from larch.report.run_log_manifest import implement_step8_reachable  # noqa: E402
 from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------

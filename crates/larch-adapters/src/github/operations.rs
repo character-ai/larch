@@ -28,6 +28,12 @@ use std::{
 const GITHUB_API_BASE: &str = "https://api.github.com/";
 const DIAGNOSTIC_LIMIT: usize = 500;
 const RELEASE_PAGE_SIZE: usize = 100;
+// The run audit must inspect the repository's complete merged-PR history to
+// preserve its merge-time ordering. Keep that read explicitly bounded while
+// allowing the current larch history (more than the general 2,000-item
+// operation limit) to be audited.
+const AUDIT_HISTORY_PAGE_LIMIT: usize = 50;
+const AUDIT_HISTORY_ITEM_LIMIT: usize = AUDIT_HISTORY_PAGE_LIMIT * RELEASE_PAGE_SIZE;
 
 static SECURITY_CONTENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -738,10 +744,11 @@ impl OctocrabGitHubService {
         let route = format!("/repos/{owner}/{repo}/pulls");
         let limits = self.policy.limits();
         let mut output = Vec::new();
-        for page in 1..=limits.pages() {
+        for page in 1..=AUDIT_HISTORY_PAGE_LIMIT {
             let page_text = page.to_string();
             let parameters = [
                 ("state", "closed"),
+                ("base", "main"),
                 ("per_page", "100"),
                 ("page", page_text.as_str()),
             ];
@@ -753,9 +760,9 @@ impl OctocrabGitHubService {
                 .await?;
             let rows = parse_audit_pull_requests(&value, limits)?;
             let count = rows.len();
-            if output.len().saturating_add(count) > limits.items() {
+            if output.len().saturating_add(count) > AUDIT_HISTORY_ITEM_LIMIT {
                 return Err(GitHubOperationError::Malformed(
-                    "audit pull request list exceeds item bound",
+                    "audit pull request list exceeds history bound",
                 ));
             }
             output.extend(rows.into_iter().filter(|pull_request| {
@@ -3703,6 +3710,19 @@ mod service_tests {
             pulls.iter().map(|pull| pull.number).collect::<Vec<_>>(),
             [1, 3]
         );
+        let requests = server.requests().expect("request log");
+        assert_eq!(requests.len(), 1);
+        let query = requests[0]
+            .path
+            .split_once('?')
+            .expect("audit list query")
+            .1;
+        for parameter in ["state=closed", "base=main", "per_page=100", "page=1"] {
+            assert!(
+                query.split('&').any(|entry| entry == parameter),
+                "audit list must constrain {parameter}: {query}"
+            );
+        }
         server.join().expect("stub completed");
     }
 
