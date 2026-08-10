@@ -5816,6 +5816,20 @@ migration_issue = 8088
 clean_install_test = "clean-install-report-tokens-analyze"
 
 [[commands]]
+domain = "repo"
+verb = "size"
+python_module = "larch_size"
+python_function = "main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8341
+clean_install_test = "clean-install-repo-size"
+
+[[commands]]
 domain = "research"
 verb = "banner"
 python_module = "larch.research.research"

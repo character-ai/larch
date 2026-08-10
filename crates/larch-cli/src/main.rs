@@ -72,6 +72,7 @@ mod release_publish;
 mod release_stage;
 mod release_version;
 mod rendering_commands;
+mod repo_size_commands;
 mod run_lifecycle_commands;
 mod run_log_cleanup_commands;
 mod run_log_commands;
@@ -105,6 +106,7 @@ use ci_timing::CiTimingCommand;
 use complete_umbrella_commands::CompleteUmbrellaCommand;
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
+use repo_size_commands::RepoCommand;
 use slack_commands::SlackCommand;
 use test_shards::TestShardCommand;
 
@@ -235,6 +237,9 @@ enum Domain {
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
+    /// Repository-scoped developer commands.
+    #[command(subcommand)]
+    Repo(RepoCommand),
     /// Terminal `/implement` final-report composition and publication.
     #[command(subcommand, name = "final-report")]
     FinalReport(FinalReportCommand),
@@ -1839,6 +1844,7 @@ fn run(
             }
         }),
         Domain::Release(command) => run_release(command),
+        Domain::Repo(command) => Ok(repo_size_commands::run(command)),
         Domain::FinalReport(command) => Ok(match command {
             FinalReportCommand::Write(arguments) => {
                 final_report_commands::write(&arguments.arguments)

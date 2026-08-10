@@ -59,6 +59,7 @@ Commands:
   object-store       Narrow provider transports used by Python-owned run-log workflows
   oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands
+  repo               Repository-scoped developer commands
   final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
   session            Session state compatibility commands

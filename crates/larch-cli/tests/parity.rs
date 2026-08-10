@@ -1091,6 +1091,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "report-tokens",
         "analyze",
     ),
+    CleanInstallCase::new("clean-install-repo-size", "repo", "size"),
     CleanInstallCase::new("clean-install-final-report-write", "final-report", "write"),
     CleanInstallCase::new(
         "clean-install-final-report-step18b",

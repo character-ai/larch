@@ -21,7 +21,6 @@ Keep the block tab-separated and sort each row's operation names.
 surface	owner	issue	operations
 .claude/skills/agnix-fix/SKILL.md	later-domain	#7685	remote
 .claude/skills/audit-runs/SKILL.md	later-domain	#7684	log,show
-.claude/skills/larch-size/scripts/larch_size.py	later-domain	#7685	ls-files,rev-parse
 .claude/skills/rebalance-tests/scripts/rebalance.py	later-domain	#7685	checkout
 .claude/skills/release/SKILL.md	later-domain	#7674	add,checkout,commit,fetch,merge,merge-base,rev-parse
 .github/workflows/ci.yaml	later-domain	#7685	cat-file,diff,fetch,ls-files,merge-base,rev-parse,worktree
@@ -52,6 +51,7 @@ crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/rendering_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/repo_size_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/session_setup_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read

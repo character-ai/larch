@@ -20,7 +20,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 Run from the repository root:
 
 ```bash
-python3 "$PWD/.claude/skills/larch-size/scripts/larch_size.py"
+"$PWD/scripts/larch.sh" repo size
 ```
 
 Pass the output through unchanged.
