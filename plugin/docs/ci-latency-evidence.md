@@ -1,0 +1,159 @@
+# End-to-end CI latency and runner-cost evidence
+
+This is the evidence record for [#8330](https://github.com/character-ai/larch/issues/8330), the final leaf of [#8324](https://github.com/character-ai/larch/issues/8324). It preserves raw GitHub Actions timestamps, cache observations, and cohort rules rather than rounded workflow-UI durations.
+
+Snapshot time: 2026-08-10. The observations were collected after the last prerequisite merged at `282d0ca8bad0379ee44b8f95bb2e5b7ec45515d8`.
+
+## Result and scope
+
+Three sequential, successful full-path `workflow_dispatch` runs on `refs/heads/main` at that SHA have a median trigger-to-last-job time of 337 s and a median summed runner time of 1,997 s. Every numerical threshold in the leaf is below its limit in that controlled cohort.
+
+That is an observation, not a production-push target declaration. The [production-main-run rule](rust-testing.md#production-main-run-evidence) requires three comparable warm successful `push` runs after the repair; this snapshot has one: [run 31418264078](https://github.com/character-ai/larch/actions/runs/31418264078). Manual dispatches do not substitute for the remaining two pushes. The umbrella therefore remains open for the production-push cohort rather than claiming a pass from an ineligible sample.
+
+## Measurement method
+
+Raw data comes from the GitHub Actions run record and `GET /repos/character-ai/larch/actions/runs/{run}/jobs?per_page=100`. The `per_page=100` parameter is material: it prevents the default page size from omitting jobs. Timestamps are GitHub's whole-second `created_at`, `started_at`, and `completed_at` fields.
+
+An *actual runner job* has a non-empty `runner_name` and successful conclusion. Declared jobs which GitHub marks skipped have no runner time and are excluded from sums and spans.
+
+| Measure | Raw calculation |
+| --- | --- |
+| Queue delay | earliest actual `started_at` minus run `created_at` |
+| Trigger to last job | latest actual `completed_at` minus run `created_at` |
+| Active DAG span | latest actual `completed_at` minus earliest actual `started_at` |
+| Summed runner time | sum of `completed_at - started_at` for actual runner jobs |
+| Slowest / summed harness | maximum / sum of actual `test-harnesses (N)` durations |
+| Rust gate path | `rust-gate.completed_at - rust-full.started_at` |
+
+“Final critical-path job” below is the job with the last observed completion timestamp. It is an execution-envelope observation, not a claim that a separate dependency-graph analyzer proved the only logical path.
+
+## Controlled main-ref cohort
+
+All three samples used the `CI` workflow at `refs/heads/main`, the same SHA, and attempt 1. Each was dispatched only after the prior sample completed, so no stacked-push or concurrent-run effect is included. No cohort member was cancelled, rerun, cold, or a cache miss: every run has attempt 1 and a direct warm target-cache hit. Every actual runner job (41 in each run) concluded `success`; the runner labels were `ubuntu-24.04` and `ubuntu-latest` in every sample.
+
+| Run | SHA | Event | Created (UTC) | Attempt | Queue | Cache class | Result |
+| --- | --- | --- | --- | ---: | ---: | --- | --- |
+| [31418859465](https://github.com/character-ai/larch/actions/runs/31418859465) | `282d0ca` | `workflow_dispatch` | 2026-08-10T18:23:54Z | 1 | 7 s | warm direct coverage-target hit; Cargo input/nextest/LLVM-Cov hits; gitleaks binary hit; dispatch read-only | success |
+| [31419539198](https://github.com/character-ai/larch/actions/runs/31419539198) | `282d0ca` | `workflow_dispatch` | 2026-08-10T18:31:57Z | 1 | 6 s | warm direct coverage-target hit; Cargo input/nextest/LLVM-Cov hits; gitleaks binary hit; dispatch read-only | success |
+| [31420286318](https://github.com/character-ai/larch/actions/runs/31420286318) | `282d0ca` | `workflow_dispatch` | 2026-08-10T18:40:45Z | 1 | 5 s | warm direct coverage-target hit; Cargo input/nextest/LLVM-Cov hits; gitleaks binary hit; dispatch read-only | success |
+
+The raw end-to-end values are seconds. “Harness” means the five `test-harnesses (N)` jobs; “Rust producer” is `rust-full` on main.
+
+| Run | Trigger→last | Active DAG | Sum runner | Slowest harness | Sum harness | Rust producer | Rust gate path | `lint` | `rust-lint` | `gitleaks` | Final critical-path job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31418859465](https://github.com/character-ai/larch/actions/runs/31418859465) | 337 | 330 | 1,997 | 51 | 180 | 305 | 322 | 48 | 59 | 27 | `python-tests-gate` |
+| [31419539198](https://github.com/character-ai/larch/actions/runs/31419539198) | 342 | 336 | 2,195 | 48 | 152 | 305 | 320 | 47 | 64 | 24 | `python-tests-gate` |
+| [31420286318](https://github.com/character-ai/larch/actions/runs/31420286318) | 286 | 281 | 1,946 | 52 | 173 | 243 | 263 | 51 | 72 | 25 | `python-tests-gate` |
+| Median | **337** | **330** | **1,997** | **51** | **173** | **305** | **320** | **48** | **64** | **25** | `python-tests-gate` |
+
+No rounded UI value is used for these medians: with three samples, each is the middle raw value.
+
+### Coverage and cache timing artifacts
+
+Each timing TSV reports direct coverage-target and all three Cargo-related cache hits. The dispatch policy correctly prevents cache publication; that is not a cache miss.
+
+| Run | Timing TSV | Restore total | Target restore | Compilation | Test execution | Repository policy | Report | `end-to-end-total-16` | Job total | Save outcome |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 31418859465 | [9074665679](https://github.com/character-ai/larch/actions/runs/31418859465/artifacts/9074665679) | 8 s | hit, 5 s, 1,348,857,856 B | 93 s | 63 s | 80 s | 25 s | 263 s | 299 s | 0 s skipped: `workflow_dispatch-read-only` |
+| 31419539198 | [9074925405](https://github.com/character-ai/larch/actions/runs/31419539198/artifacts/9074925405) | 10 s | hit, 5 s, 1,348,857,856 B | 90 s | 58 s | 83 s | 25 s | 259 s | 299 s | 0 s skipped: `workflow_dispatch-read-only` |
+| 31420286318 | [9075168617](https://github.com/character-ai/larch/actions/runs/31420286318/artifacts/9075168617) | 11 s | hit, 6 s, 1,348,857,856 B | 72 s | 57 s | 48 s | 18 s | 196 s | 236 s | 0 s skipped: `workflow_dispatch-read-only` |
+
+The gitleaks job used the verified binary cache in every sample. In run 31419539198, the raw log records a hit for the 2,871,356-byte `gitleaks` cache and 15 s checkout, 0 s Rust bootstrap, 0 s verified-tool preparation, 4 s working-tree scan, and 0 s history scan. Its 24 s job duration is the raw value above.
+
+### Threshold comparison
+
+| Leaf target | Controlled-cohort median | Observation |
+| --- | ---: | --- |
+| Trigger to last job ≤ 392 s | 337 s | below limit |
+| Summed runner ≤ 2,836 s | 1,997 s | below limit |
+| Slowest harness ≤ 300 s | 51 s | below limit |
+| Rust gate path ≤ 456 s | 320 s | below limit |
+| `rust-lint` < 300 s | 64 s | below limit |
+| Retain all checks | 41/41 actual runner jobs successful in each run | retained |
+
+The table is deliberately an observation: it cannot satisfy the three-`push` production requirement.
+
+### Supporting post-prerequisite production push
+
+[Run 31418264078](https://github.com/character-ai/larch/actions/runs/31418264078) is the single successful post-prerequisite `push` sample. It ran at `282d0ca8bad0379ee44b8f95bb2e5b7ec45515d8`, was created at 2026-08-10T18:16:45Z, had attempt 1, used both runner labels, and had 41/41 successful actual runner jobs. Its queue was 4 s; trigger-to-last 354 s; active span 350 s; summed runner 1,965 s; slowest/summed harness 55/176 s; `rust-full` 317 s; Rust gate path 332 s; `lint` 51 s; `rust-lint` 70 s; `gitleaks` 26 s; and its last completion was `python-tests-gate`.
+
+Its [timing TSV](https://github.com/character-ai/larch/actions/runs/31418264078/artifacts/9074434915) records a direct target-cache hit in 6 s restoring 1,348,861,952 B, with all Cargo cache inputs hit and cache save skipped because all primary keys hit. It corroborates the controlled cohort but is not pooled with it because the event differs. Cold/miss, cancelled, retried, or stacked-push runs are likewise not eligible for the required warm production median.
+
+## Historical reconciliation
+
+### Original #8211 twelve-run cohort
+
+The exact twelve successful `push` runs identified by [#8211](https://github.com/character-ai/larch/issues/8211) produce these raw job durations when recalculated from Actions job timestamps:
+
+| Run | SHA | Event | Created (UTC) | `rust-lint` | `rust-coverage` |
+| --- | --- | --- | --- | ---: | ---: |
+| [31136683447](https://github.com/character-ai/larch/actions/runs/31136683447) | `4e74540` | `push` | 2026-08-07T01:02:01Z | 290 | 532 |
+| [31135807320](https://github.com/character-ai/larch/actions/runs/31135807320) | `98b98c7` | `push` | 2026-08-07T00:46:34Z | 499 | 636 |
+| [31135160651](https://github.com/character-ai/larch/actions/runs/31135160651) | `97b2036` | `push` | 2026-08-07T00:35:10Z | 489 | 529 |
+| [31132292064](https://github.com/character-ai/larch/actions/runs/31132292064) | `e7a41fc` | `push` | 2026-08-06T23:46:47Z | 408 | 615 |
+| [31132005623](https://github.com/character-ai/larch/actions/runs/31132005623) | `51277e5` | `push` | 2026-08-06T23:41:14Z | 479 | 650 |
+| [31091531282](https://github.com/character-ai/larch/actions/runs/31091531282) | `18d98ff` | `push` | 2026-08-06T10:01:15Z | 334 | 540 |
+| [31088672342](https://github.com/character-ai/larch/actions/runs/31088672342) | `d6c392c` | `push` | 2026-08-06T09:20:24Z | 483 | 608 |
+| [31086731602](https://github.com/character-ai/larch/actions/runs/31086731602) | `a6127b4` | `push` | 2026-08-06T08:53:04Z | 307 | 622 |
+| [31084686100](https://github.com/character-ai/larch/actions/runs/31084686100) | `4d71a53` | `push` | 2026-08-06T08:23:19Z | 474 | 521 |
+| [31083821408](https://github.com/character-ai/larch/actions/runs/31083821408) | `c7c543a` | `push` | 2026-08-06T08:10:33Z | 287 | 605 |
+| [31083278265](https://github.com/character-ai/larch/actions/runs/31083278265) | `712d4b0` | `push` | 2026-08-06T08:02:40Z | 467 | 524 |
+| [31081377729](https://github.com/character-ai/larch/actions/runs/31081377729) | `4070029` | `push` | 2026-08-06T07:33:26Z | 502 | 608 |
+| Exact median | — | — | — | **470.5 s** | **606.5 s** |
+
+The issue text's historical `460/608` pair is not treated as a raw-timestamp fact. `608` is consistent with whole-second rounding of the recalculated 606.5 s coverage median; `460` does not result from this exact twelve-run cohort. The original calculation inputs for `460` were not retained, so this record does not infer whether it used a different selection or method.
+
+### Seven-run reference before #8251 merged
+
+The seven successful main `push` runs immediately before PR #8251 merged at 2026-08-08T09:47:29Z reproduce the umbrella's common end-to-end reference. These measures exist across the older and newer producer topologies; run 31247270073 used the older `rust-coverage` producer name.
+
+| Run | SHA | Queue | Trigger→last | Active DAG | Sum runner | Slowest harness | Sum harness | Final job |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31250456341](https://github.com/character-ai/larch/actions/runs/31250456341) | `e306fd4` | 4 | 393 | 389 | 2,473 | 239 | 546 | `python-tests-gate` |
+| [31249860854](https://github.com/character-ai/larch/actions/runs/31249860854) | `6b5ec65` | 4 | 402 | 398 | 2,557 | 231 | 569 | `python-tests-gate` |
+| [31249122221](https://github.com/character-ai/larch/actions/runs/31249122221) | `f0cfa4f` | 4 | 387 | 383 | 2,483 | 232 | 555 | `python-tests-gate` |
+| [31248746198](https://github.com/character-ai/larch/actions/runs/31248746198) | `0cddbc9` | 3 | 386 | 383 | 2,536 | 232 | 556 | `python-tests-gate` |
+| [31248343047](https://github.com/character-ai/larch/actions/runs/31248343047) | `655e379` | 4 | 397 | 393 | 2,506 | 225 | 539 | `python-tests-gate` |
+| [31247754562](https://github.com/character-ai/larch/actions/runs/31247754562) | `1dc4844` | 4 | 312 | 308 | 2,436 | 247 | 567 | `python-tests-gate` |
+| [31247270073](https://github.com/character-ai/larch/actions/runs/31247270073) | `dc4c9a4` | 3 | 392 | 389 | 2,471 | 221 | 531 | `python-tests-gate` |
+| Median | — | **4** | **392** | **389** | **2,483** | **232** | **555** | `python-tests-gate` |
+
+### Recent warm full-push regression window
+
+The following six successful `push` runs were the recent warm full-path regression window carried by #8324. All have direct coverage-target cache hits. Their target restore time/bytes in row order are 5 s/1,348,853,760 B; 7 s/1,348,857,856 B; 9 s/1,348,861,952 B; 4 s/1,348,857,856 B; 8 s/1,348,857,856 B; and 5 s/1,348,853,760 B. They are regression evidence, not a replacement for the post-repair production cohort.
+
+| Run | SHA | Queue | Trigger→last | Active DAG | Sum runner | Slowest harness | Sum harness | Rust producer | Rust gate path | `rust-lint` | `gitleaks` | Final job |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31317079211](https://github.com/character-ai/larch/actions/runs/31317079211) | `e091925` | 4 | 435 | 431 | 3,818 | 423 | 2,058 | 298 | 310 | 64 | 211 | `test-harnesses-gate` |
+| [31314856995](https://github.com/character-ai/larch/actions/runs/31314856995) | `2b0318b` | 5 | 452 | 447 | 3,782 | 433 | 1,983 | 293 | 307 | 59 | 215 | `test-harnesses-gate` |
+| [31312377141](https://github.com/character-ai/larch/actions/runs/31312377141) | `bf912d0` | 4 | 430 | 426 | 3,837 | 417 | 2,042 | 301 | 323 | 59 | 203 | `test-harnesses-gate` |
+| [31309885781](https://github.com/character-ai/larch/actions/runs/31309885781) | `1636564` | 5 | 439 | 434 | 3,730 | 428 | 1,971 | 280 | 300 | 63 | 205 | `test-harnesses-gate` |
+| [31307943093](https://github.com/character-ai/larch/actions/runs/31307943093) | `894d86e` | 4 | 451 | 447 | 3,705 | 440 | 1,989 | 247 | 263 | 53 | 205 | `test-harnesses-gate` |
+| [31306299339](https://github.com/character-ai/larch/actions/runs/31306299339) | `21e30f9` | 4 | 429 | 425 | 3,780 | 417 | 2,038 | 264 | 279 | 60 | 211 | `test-harnesses-gate` |
+| Median | — | **4** | **437** | **432.5** | **3,781** | **425.5** | **2,013.5** | **286.5** | **303.5** | **59.5** | **208** | `test-harnesses-gate` |
+
+## Pull-request selector evidence
+
+Selector evidence includes a full control, an eligible partial classification, and an enforced safe skip. It is not mixed into main-ref or production-push medians.
+
+| Class | Run | Selector observation | Raw execution result | Queue / trigger / active / runner | Final job |
+| --- | --- | --- | --- | --- | --- |
+| Full control | [31417763547](https://github.com/character-ai/larch/actions/runs/31417763547) | proposed `full`, effective `full`, `selector-proposed-full`; workflow/action inputs were global | `rust-full` 261 s; Rust gate path 292 s | 4 / 319 / 315 / 1,929 s | `python-tests-gate` |
+| Partial eligible | [31293686433](https://github.com/character-ai/larch/actions/runs/31293686433) | proposed `partial` for `larch-cli` and `larch-lint`; effective `full`, `partial-observation-window-open` | actual `rust-full` 276 s; Rust gate path 289 s | 1,001 / 1,421 / 420 / 3,678 s | `test-harnesses-gate` |
+| Safe skip | [31304987045](https://github.com/character-ai/larch/actions/runs/31304987045) | proposed/effective `skip`, `selector-proposed-skip`; trusted policy proof valid | `rust-skip` 68 s; Rust gate path 82 s | 3 / 421 / 418 / 3,368 s | `test-harnesses-gate` |
+
+The partial sample is a valid selector-classification observation but not a comparable latency sample: its 1,001 s initial queue is kept separate from the 420 s active span. The partial enforcement flag remains `false`, so GitHub correctly ran a full producer.
+
+The safe-skip sample shows why a narrower Rust selection alone does not prove a user-visible critical-path improvement. In run 31304987045, `rust-skip` ended at 2026-08-09T09:04:48Z, `python-tests-gate` ended at 09:05:18Z, and `test-harnesses-gate` did not end until 09:10:14Z. The final job remained the harness gate. This is a timestamp observation, not a counterfactual estimate of selector savings.
+
+The underlying selection records are [full 9074079490](https://github.com/character-ai/larch/actions/runs/31417763547/artifacts/9074079490), [partial 9032423030](https://github.com/character-ai/larch/actions/runs/31293686433/artifacts/9032423030), and [skip 9035649436](https://github.com/character-ai/larch/actions/runs/31304987045/artifacts/9035649436).
+
+## Native issue graph and follow-up
+
+The native dependency query made before #8330 closes reported these direct relationships:
+
+- #8324 has sub-issues #8325, #8326, #8327, #8328, #8329, and #8330; its `blockedBy` set is the same.
+- #8330 has parent #8324 and blocks #8324.
+- #8330 is blocked by #8320, #8329, #8328, and #8327, all closed at collection time.
+
+The merge-time read-back is recorded on #8324 so it can show #8330's closed state rather than freezing this pre-close snapshot. Two additional warm, successful, full-path `push` runs on `refs/heads/main` are required before a production target pass can be claimed. Until then, #8324 remains open.
