@@ -700,17 +700,8 @@ fn already_flushed(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("{}: {error}", sentinel.display())),
     }
-    let batch_text = match fs::symlink_metadata(batch_path) {
-        Ok(metadata) if metadata.is_file() => read_lossy_required(batch_path)?,
-        Ok(_metadata) => {
-            return Err(format!(
-                "execution-issues batch must be a regular file: {}",
-                batch_path.display()
-            ));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(format!("{}: {error}", batch_path.display())),
-    };
+    let batch_text =
+        read_optional_regular_lossy(batch_path, "execution-issues batch must be a regular file")?;
     if batch_text.contains(&format!("\"source_sha256\":\"{digest}\"")) {
         return Ok(true);
     }
