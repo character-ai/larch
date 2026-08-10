@@ -1273,7 +1273,7 @@ jobs:
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved
   # here to reduce `lint`'s wall-clock time) and (2) git-history scan
   # (covers the PR commit range; `fetch-depth: 0` supports merge-base lookup).
-  # Both use the same checksum-pinned release artifact path as local pre-commit.
+  # CI uses a separate checksum-pinned release bootstrap from local pre-commit.
   gitleaks:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
