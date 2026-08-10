@@ -24,7 +24,7 @@ breadcrumb publication, archive creation, materialization, cache promotion,
 storage preflight, shared lifecycle operations, standalone publication,
 synchronization, historical layout migration, and retroactive repair sweeps.
 Python retains bounded compatibility consumers and payload producers owned by
-the #7679, #7680, #7681, #7682, and #7684 umbrellas. A renderer invoked by Rust
+the #7679, #7680, #7681, #7684, and #7685 umbrellas. A renderer invoked by Rust
 produces a payload only. It is not a fallback command owner. The current command
 and compatibility inventory lives in [Rust command registry](rust-command-registry.md#retained-python-surfaces-outside-the-closed-7683-boundary).
 
@@ -268,7 +268,7 @@ domain module (lazy import).
 
 For `report-tokens analyze` and `final-report`, cost calculations use
 `larch_core::report::RATE_TABLE`. The Python `report_tokens_cost.py` helper
-remains only for #7682 compatibility payloads and #7684 token/analytics
+remains only for the #7680 compatibility payload and #7684 token/analytics
 commands. Both paths accept the rate-override environment variables documented
 in `docs/configuration-and-permissions.md`.
 

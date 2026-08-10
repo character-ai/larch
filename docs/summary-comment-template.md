@@ -20,7 +20,7 @@ The `/implement` `larch:final-summary` body is rich markdown produced by Rust
 optional `- Force: true` when `/implement --force` was requested, then emits
 the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional note
 lines from `--note-lines-file` (sentinel is the last line of the standardized
-block, not the first line of the file). The #7682 Python `render run-summary`
+block, not the first line of the file). The #7680 Python `render run-summary`
 command remains a bounded `/design` payload renderer, not an `/implement`
 final-report owner.
 `/implement` and `/design` share the same `larch:final-summary` marker family; the

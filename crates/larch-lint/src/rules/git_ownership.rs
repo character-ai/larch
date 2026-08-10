@@ -1205,6 +1205,8 @@ fn later_domain_issue(path: &str) -> u64 {
         || path.starts_with("python/larch/git/")
     {
         7681
+    } else if let Some(issue) = super::issue_python_free::retained_module_owner(path) {
+        u64::try_from(issue).expect("retained issue-domain owner is positive")
     } else if path.contains("/issue/") || path.contains("forked") || path.starts_with("skills/triage") {
         7682
     } else if path.contains("/report/") || path.contains("/rendering/") {
