@@ -1423,15 +1423,31 @@ planning_issue = 7681
 
 [[commands]]
 domain = "ci"
+verb = "gitleaks-base"
+python_module = "larch.implement.ci"
+python_function = "gitleaks_base_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 8216
+migration_issue = 8344
+clean_install_test = "clean-install-ci-gitleaks-base"
+
+[[commands]]
+domain = "ci"
 verb = "rust-select"
 python_module = "larch.implement.rust_ci_selection"
 python_function = "rust_select_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8216
+migration_issue = 8344
+clean_install_test = "clean-install-ci-rust-select"
 
 [[commands]]
 domain = "ci"
@@ -1439,11 +1455,13 @@ verb = "rust-select-summary"
 python_module = "larch.implement.rust_ci_selection"
 python_function = "rust_select_summary_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8216
+migration_issue = 8344
+clean_install_test = "clean-install-ci-rust-select-summary"
 
 [[commands]]
 domain = "ci"
@@ -3163,6 +3181,34 @@ consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7685
 migration_issue = 8100
+
+[[commands]]
+domain = "gh"
+verb = "agnix-ensure-label"
+python_module = "larch.git.gh"
+python_function = "agnix_ensure_label_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8344
+clean_install_test = "clean-install-gh-agnix-ensure-label"
+
+[[commands]]
+domain = "gh"
+verb = "agnix-issue"
+python_module = "larch.git.gh"
+python_function = "agnix_issue_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8344
+clean_install_test = "clean-install-gh-agnix-issue"
 
 [[commands]]
 domain = "gh"
@@ -8465,8 +8511,8 @@ planning_issue = 7679
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "ci stage-rust-policy-candidate", "residual-bash paths"]
-rust = []
+python = ["checks contains-pins", "ci stage-rust-policy-candidate", "residual-bash paths"]
+rust = ["ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "release plugin-runtime"]
 
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"

@@ -4104,6 +4104,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert rust_coverage.index(
         "Upload coverage-built Rust executable for cross-language integration tests"
     ) < rust_coverage.index("Prune coverage workspace products before target cache save")
+    assert rust_coverage.index("Run plugin validations with coverage executable") < rust_coverage.index(
+        "Prune coverage workspace products before target cache save"
+    )
     assert rust_coverage.index("Prune coverage workspace products before target cache save") < rust_coverage.index(
         "Save coverage dependencies"
     )
@@ -4172,6 +4175,12 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "needs: [rust-selection]" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
+    assert "Run plugin validations with coverage executable" in rust_coverage
+    plugin_validation = rust_coverage.split("Run plugin validations with coverage executable", 1)[1].split(
+        "Upload Rust coverage report", 1
+    )[0]
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" "$@"' in plugin_validation
+    assert "plugin_larch release plugin-runtime --check --check-worktree" in plugin_validation
     assert "rust_phase_overlap_benchmark:" in workflow
     assert "github.event_name == 'workflow_dispatch' && inputs.rust_phase_overlap_benchmark" in rust_phase_overlap_benchmark
     assert "runs-on: ubuntu-24.04" in rust_phase_overlap_benchmark
@@ -4182,7 +4191,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'COVERAGE_PROFILE_BENCHMARK: "false"' in rust_phase_overlap_benchmark
     assert 'COVERAGE_TARGET_CACHE_ENABLED: "true"' in rust_phase_overlap_benchmark
     assert 'COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"' in rust_phase_overlap_benchmark
-    assert "Verify generated plugin runtime projection is clean" in rust_phase_overlap_benchmark
     assert (
         "github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark"
         " && github.ref == 'refs/heads/main'"
@@ -4201,7 +4209,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"' in rust_target_cache_benchmark
     assert 'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-target-cache-benchmark"' in rust_target_cache_benchmark
     assert "uses: ./.github/actions/rust-coverage" in rust_target_cache_benchmark
-    assert "git diff --exit-code -- plugin" in rust_target_cache_benchmark
+    assert "git diff --exit-code -- plugin" not in rust_target_cache_benchmark
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
@@ -4276,16 +4284,21 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_binary = "target/llvm-cov-target/debug/larch"
     assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in rust_coverage
     assert 'test -x "$coverage_larch"' in rust_coverage
-    assert '"$coverage_larch" --version' in rust_coverage
+    assert "plugin_larch() {" in rust_coverage
+    assert "plugin_larch --version" in rust_coverage
     assert '"$coverage_larch" lint all' in rust_coverage
     assert rust_coverage.count('"$coverage_larch" lint all') == 1
-    assert '"$coverage_larch" release plugin-runtime' in rust_coverage
-    assert '"$coverage_larch" release plugin-runtime --check' in rust_coverage
-    assert "git diff --exit-code -- plugin" not in rust_coverage
-    assert "git diff --exit-code -- plugin" in rust_full_job
-    assert "git diff --exit-code -- plugin" in rust_coverage_benchmark
-    assert "git ls-files --others --exclude-standard -- plugin" in rust_full_job
-    assert "git ls-files --others --exclude-standard -- plugin" in rust_coverage_benchmark
+    assert "plugin_larch release plugin-runtime" in rust_coverage
+    assert "plugin_larch release plugin-runtime --check" in rust_coverage
+    for coverage_job in (
+        rust_full_job,
+        rust_coverage_benchmark,
+        rust_phase_overlap_benchmark,
+        rust_target_cache_benchmark,
+    ):
+        assert "uses: ./.github/actions/rust-coverage" in coverage_job
+        assert "git diff --exit-code -- plugin" not in coverage_job
+        assert "git ls-files --others --exclude-standard -- plugin" not in coverage_job
     repository_policy = rust_coverage.split("run_repository_policy() (", 1)[1].split(
         'thread_counts="$NEXTEST_TEST_THREADS"', 1
     )[0]
@@ -4453,7 +4466,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert marker_paths == ["python/tests/report/test_run_lifecycle_consumer.py"]
 
 
-def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> None:
+def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
         encoding="utf-8"
@@ -4507,17 +4520,12 @@ def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> 
     assert 'GITLEAKS_VERSION: "8.18.4"' in gitleaks
     assert archive_sha in gitleaks
     assert binary_sha in gitleaks
-    for retired_bootstrap in (
-        "Install pinned Rust toolchain",
-        "Restore Cargo inputs",
-        "Save Cargo inputs",
-        "Build verified larch executable",
-        "scripts/larch.sh",
-        "cargo build",
-        "target/debug/larch",
-        "LARCH_BINARY",
-    ):
-        assert retired_bootstrap not in gitleaks
+    assert "Build typed gitleaks history resolver" in gitleaks
+    assert "id: gitleaks-rust-bootstrap" in gitleaks
+    assert "cargo build --locked --package larch-cli --bin larch" in gitleaks
+    assert "target/debug/larch" in gitleaks
+    assert "LARCH_BINARY" in gitleaks
+    assert "scripts/larch.sh" in gitleaks
 
     assert "id: gitleaks-cache" in gitleaks
     assert "actions/cache/restore@" + cache_sha in gitleaks
@@ -4575,10 +4583,10 @@ def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> 
         'detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --no-git'
         in working_tree
     )
-    assert (
-        "BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)"
-        in history
-    )
+    assert "ci gitleaks-base" in history
+    assert "BASE=$(git " not in history
+    assert "git merge-base" not in history
+    assert "git rev-parse" not in history
     assert (
         'detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --log-opts "${BASE}..HEAD"'
         in history
@@ -4586,15 +4594,15 @@ def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> 
     assert "Record gitleaks phase timing metadata" in gitleaks
     for phase in (
         "checkout_seconds",
-        "rust_bootstrap_seconds: 0",
-        "rust_bootstrap: removed",
+        "rust_bootstrap_seconds: ${{ steps.gitleaks-rust-bootstrap.outputs.seconds }}",
+        "rust_bootstrap: typed larch history resolver",
         "verified_tool_preparation_seconds",
         "working_tree_scan_seconds",
         "history_scan_seconds",
     ):
         assert phase in gitleaks
 
-    assert "separate, no-Cargo scanner bootstrap" in supply_chain
+    assert "typed Rust history resolver" in supply_chain
     assert "16 MiB archive-size cap" in supply_chain
     assert (
         "pull-request-provided executable cannot cross into the trusted-main cache"
@@ -4930,24 +4938,27 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert 'RUST_CI_PARTIAL_ENFORCEMENT: "false"' in workflow
     assert 'RUST_CI_SKIP_ENFORCEMENT: "true"' in workflow
     assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in selector_job
-    assert "fetch-depth: 8" in selector_job
-    assert "fetch-depth: 0" not in selector_job
+    assert "fetch-depth: 0" in selector_job
     assert "ref: ${{ github.sha }}" in selector_job
-    assert "git worktree add --detach" in selector_job
-    assert "valid_commit_sha()" in selector_job
-    assert 'git cat-file -e "${RUST_CI_BASE_SHA}^{commit}"' in selector_job
-    assert 'git merge-base --is-ancestor "$RUST_CI_BASE_SHA" "$RUST_CI_HEAD_SHA"' in selector_job
-    assert "full-history-fallback" in selector_job
-    assert "bounded-depth-8" in selector_job
-    assert "git fetch --no-tags --prune --unshallow origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
-    assert "git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'" in selector_job
-    assert "selector-history-unavailable-or-untrusted" in selector_job
-    assert "selector-base-worktree-unavailable" in selector_job
+    assert "Check out the trusted PR-base selector" in selector_job
+    assert "path: .rust-ci-selector-base" in selector_job
+    assert "continue-on-error: true" in selector_job
+    assert "persist-credentials: false" in selector_job
+    assert "selector-base-checkout-unavailable" in selector_job
+    assert "selector-base-command-unavailable" in selector_job
+    assert "selector_history_source=full-history-checkout" in selector_job
     assert "RUST_SELECTION_HISTORY_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_WORKTREE_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_COMMAND_MILLISECONDS" in selector_job
-    assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select' in selector_job
-    assert 'PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select-summary' in selector_job
+    assert "cargo build --locked --package larch-cli --bin larch" in selector_job
+    assert '"$selector_root/scripts/larch.sh" ci rust-select' in selector_job
+    assert '"$selector_root/scripts/larch.sh" ci rust-select-summary' in selector_job
+    assert "PYTHONPATH" not in selector_job
+    assert "python/cli.py" not in selector_job
+    assert "git worktree" not in selector_job
+    assert "git cat-file" not in selector_job
+    assert "git merge-base" not in selector_job
+    assert "git fetch" not in selector_job
     assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
     assert "trusted-main-rust-policy-v1" in selector_job
     assert "'build.rs'" in selector_job
@@ -4982,7 +4993,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "Run selected Clippy with warnings denied" in rust_lint
     assert "if: env.RUST_CI_MODE == 'full'" in rust_deny
     assert "partial-closure-covers-entire-workspace" in (
-        repo_root / "python" / "larch" / "implement" / "rust_ci_selection.py"
+        repo_root / "crates" / "larch-cli" / "src" / "ci_selection.rs"
     ).read_text(encoding="utf-8")
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
     assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
@@ -4992,8 +5003,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
     assert "Download verified trusted main policy binary" in rust_skip
     assert 'chmod 755 "$policy_dir/larch"' in rust_skip
-    assert "git ls-files --others --exclude-standard -- plugin" in rust_partial
-    assert "git ls-files --others --exclude-standard -- plugin" in rust_skip
+    for plugin_validation_job in (rust_partial, rust_skip):
+        assert "release plugin-runtime --check --check-worktree" in plugin_validation_job
+        assert "git ls-files --others --exclude-standard -- plugin" not in plugin_validation_job
     assert "refs/heads/main" in rust_skip
     assert "needs: [rust-selection, rust-full, rust-partial, rust-skip]" in rust_coverage
     assert "Require the selected Rust execution path to pass" in rust_coverage
@@ -5003,16 +5015,15 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
 
     for required_detail in (
         "Pull-request Rust selection",
-        "stdlib-only",
+        "typed command",
         "normal, build, and dev reverse dependency edge",
         "strict subset of the workspace",
         "trusted-main-rust-policy",
         "full-workspace\n  coverage threshold",
         "non-ancestor base",
-        "bounded depth",
-        "fetches full branch\nhistory",
-        "redaction boundary",
-        "a scrub failure emits a static",
+        "full history",
+        "Rust core redaction boundary",
+        "scrub failure emits a static",
         "full-rust-ci",
         "periodic full-run backstop",
         "observation-window-open",
@@ -5028,8 +5039,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "residual-secret rescan",
         "redaction failure emits a static",
         "trusted-main-rust-policy",
-        "bounded depth",
-        "complete branch history",
+        "full history",
         "`RUST_CI_PARTIAL_ENFORCEMENT` remains `false`",
         "`RUST_CI_SKIP_ENFORCEMENT` is `true`",
     ):

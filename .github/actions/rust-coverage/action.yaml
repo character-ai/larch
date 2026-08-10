@@ -483,10 +483,15 @@ runs:
         set -euo pipefail
         started="$(date +%s)"
         coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
+        plugin_larch() {
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$coverage_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" "$@"
+        }
         if test -x "$coverage_larch" \
-          && "$coverage_larch" --version \
-          && "$coverage_larch" release plugin-runtime \
-          && "$coverage_larch" release plugin-runtime --check; then
+          && plugin_larch --version \
+          && plugin_larch release plugin-runtime \
+          && plugin_larch release plugin-runtime --check \
+          && plugin_larch release plugin-runtime --check --check-worktree; then
           result=0
           outcome=success
         else

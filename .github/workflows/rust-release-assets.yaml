@@ -58,15 +58,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_commit="$(git rev-parse HEAD)"
-          if [ "$source_commit" != "$GITHUB_SHA" ]; then
-            echo "::error::checked-out commit does not match the tag event commit"
-            exit 1
-          fi
-          ./target/release/larch release asset-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/release/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate \
             --repo-root "$GITHUB_WORKSPACE" \
             --tag "$GITHUB_REF_NAME" \
-            --source-commit "$source_commit" >> "$GITHUB_OUTPUT"
+            --source-commit "$GITHUB_SHA" \
+            --verify-checkout >> "$GITHUB_OUTPUT"
 
   build:
     needs: metadata
@@ -91,13 +88,6 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: Verify checkout identity
-        shell: bash
-        env:
-          EXPECTED_COMMIT: ${{ needs.metadata.outputs.source_commit }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
       - name: Install the pinned Rust toolchain
         shell: bash
         run: |
@@ -106,6 +96,19 @@ jobs:
           rustup target add "${{ matrix.target }}"
           cargo --version
           rustc --version --verbose
+      - name: Verify checkout identity
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ needs.metadata.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --package larch-cli
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/release/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --tag "$GITHUB_REF_NAME" \
+              --source-commit "$EXPECTED_COMMIT" \
+              --verify-checkout >/dev/null
       - name: Build and smoke-test on macOS
         shell: bash
         env:
@@ -138,7 +141,15 @@ jobs:
           SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
         run: |
           set -euo pipefail
-          "./target/$TARGET/release/larch" release package-asset \
+          release_larch="$GITHUB_WORKSPACE/target/$TARGET/release/larch"
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --tag "$GITHUB_REF_NAME" \
+              --source-commit "$SOURCE_COMMIT" \
+              --verify-checkout >/dev/null
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release package-asset \
             --version "$VERSION" \
             --tag "$GITHUB_REF_NAME" \
             --source-commit "$SOURCE_COMMIT" \
@@ -211,8 +222,15 @@ jobs:
           SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
-          ./target/release/larch release collect-assets \
+          release_larch="$GITHUB_WORKSPACE/target/release/larch"
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --tag "$GITHUB_REF_NAME" \
+              --source-commit "$SOURCE_COMMIT" \
+              --verify-checkout >/dev/null
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release collect-assets \
             --version "$VERSION" \
             --tag "$GITHUB_REF_NAME" \
             --source-commit "$SOURCE_COMMIT" \
@@ -238,7 +256,9 @@ jobs:
           chmod 700 "$GH_CONFIG_DIR"
           printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$GH_CONFIG_DIR" gh auth login --hostname github.com --with-token
           unset GH_TOKEN GITHUB_TOKEN
-          ./target/release/larch release validate-assets \
+          release_larch="$GITHUB_WORKSPACE/target/release/larch"
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release validate-assets \
             --version "$VERSION" \
             --tag "$GITHUB_REF_NAME" \
             --source-commit "$SOURCE_COMMIT" \

@@ -367,12 +367,21 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-          # The selector compares the tested merge candidate to the PR base.
-          # The selector proves its base ancestry below. Start with a bounded
-          # graph that covers nested generated merges, then fetch full history
-          # only when that proof needs it; an unavailable proof remains full.
-          fetch-depth: 8
+          # The typed selector proves ancestry and reads the candidate diff.
+          # Supplying full history through the checkout action means the
+          # workflow never mutates Git history itself; unavailable proof still
+          # selects the existing full lane.
+          fetch-depth: 0
           ref: ${{ github.sha }}
+      - name: Check out the trusted PR-base selector
+        id: selector-base
+        continue-on-error: true
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .rust-ci-selector-base
+          fetch-depth: 1
+          persist-credentials: false
       - name: Select Rust CI mode from the trusted base
         id: proposed-selection
         env:
@@ -383,22 +392,17 @@ jobs:
         run: |
           set -euo pipefail
           selector_result="$RUNNER_TEMP/rust-ci-selection.json"
-          selector_root="$RUNNER_TEMP/rust-ci-selector-base"
-          selector_worktree_added=false
-          selector_history_source=bounded-depth-8
+          selector_root="$GITHUB_WORKSPACE/.rust-ci-selector-base"
+          selector_binary="$selector_root/target/debug/larch"
+          selector_history_source=full-history-checkout
+          selector_history_milliseconds=0
           selector_worktree_milliseconds=0
           selector_command_milliseconds=0
-          cleanup_selector_worktree() {
-            if [ "$selector_worktree_added" = true ]; then
-              git worktree remove --force "$selector_root" || true
-            fi
-          }
-          trap cleanup_selector_worktree EXIT
           fallback_selection() {
             fallback_reason="${1:-selector-workflow-failed}"
             # Keep this fallback readable by a trusted base that predates the
             # current selector schema.
-            jq -cn --arg fallback_reason "$fallback_reason" '{
+            FALLBACK_REASON="$fallback_reason" jq -cn '{
               affected_packages: [],
               base_sha: null,
               base_source: "unavailable",
@@ -410,7 +414,7 @@ jobs:
               doctest_packages: [],
               event_name: "pull_request",
               format_required: true,
-              full_run_trigger: $fallback_reason,
+              full_run_trigger: env.FALLBACK_REASON,
               head_sha: null,
               mode: "full",
               partial_commands: [],
@@ -420,52 +424,32 @@ jobs:
               validation_owners: []
             }' > "$selector_result"
           }
-          valid_commit_sha() {
-            [[ "$1" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
-          }
-          selector_history_ready() {
-            git cat-file -e "${RUST_CI_BASE_SHA}^{commit}" 2>/dev/null \
-              && git cat-file -e "${RUST_CI_HEAD_SHA}^{commit}" 2>/dev/null \
-              && git merge-base --is-ancestor "$RUST_CI_BASE_SHA" "$RUST_CI_HEAD_SHA"
-          }
-          prepare_selector_history() {
-            valid_commit_sha "$RUST_CI_BASE_SHA" && valid_commit_sha "$RUST_CI_HEAD_SHA" || return 1
-            selector_history_ready && return 0
-            selector_history_source=full-history-fallback
-            if git rev-parse --is-shallow-repository | grep -qx true; then
-              git fetch --no-tags --prune --unshallow origin '+refs/heads/*:refs/remotes/origin/*'
-            else
-              git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
-            fi
-            selector_history_ready
-          }
-          selector_history_started_milliseconds="$(date +%s%3N)"
-          if prepare_selector_history; then
-            selector_history_milliseconds="$(( $(date +%s%3N) - selector_history_started_milliseconds ))"
+          if [ "${{ steps.selector-base.outcome }}" = success ] && [ -d "$selector_root" ]; then
             selector_worktree_started_milliseconds="$(date +%s%3N)"
-            if git worktree add --detach "$selector_root" "$RUST_CI_BASE_SHA"; then
+            if (cd "$selector_root" && cargo build --locked --package larch-cli --bin larch); then
               selector_worktree_milliseconds="$(( $(date +%s%3N) - selector_worktree_started_milliseconds ))"
-              selector_worktree_added=true
               selector_command_started_milliseconds="$(date +%s%3N)"
-              if ! PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select \
-                --event-name "$RUST_CI_EVENT_NAME" \
-                --base-sha "$RUST_CI_BASE_SHA" \
-                --head-sha "$RUST_CI_HEAD_SHA" \
-                --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
+              if ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
+                "$selector_root/scripts/larch.sh" ci rust-select \
+                  --event-name "$RUST_CI_EVENT_NAME" \
+                  --base-sha "$RUST_CI_BASE_SHA" \
+                  --head-sha "$RUST_CI_HEAD_SHA" \
+                  --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
                 printf '%s\n' '::warning::Rust selector command failed; using the full Rust CI fallback.'
                 fallback_selection
               fi
               selector_command_milliseconds="$(( $(date +%s%3N) - selector_command_started_milliseconds ))"
+            else
+              printf '%s\n' '::warning::Trusted-base selector build failed; using the full Rust CI fallback.'
+              fallback_selection selector-base-command-unavailable
             fi
           else
-            selector_history_milliseconds="$(( $(date +%s%3N) - selector_history_started_milliseconds ))"
             selector_history_source=unavailable
-            printf '%s\n' '::warning::Rust selector history was unavailable or untrusted; using the full Rust CI fallback.'
-            fallback_selection selector-history-unavailable-or-untrusted
+            printf '%s\n' '::warning::Trusted selector base checkout was unavailable; using the full Rust CI fallback.'
+            fallback_selection selector-base-checkout-unavailable
           fi
           if [ ! -f "$selector_result" ]; then
-            printf '%s\n' '::warning::Rust selector base worktree failed; using the full Rust CI fallback.'
-            fallback_selection selector-base-worktree-unavailable
+            fallback_selection selector-workflow-failed
           fi
           read_selection_outputs() {
             mode="$(jq -er '
@@ -499,9 +483,13 @@ jobs:
             fallback_selection
             read_selection_outputs
           fi
-          if ! PYTHONPATH="$selector_root/python" python3 "$selector_root/python/cli.py" ci rust-select-summary \
-            --result-file "$selector_result" >> "$GITHUB_STEP_SUMMARY"; then
+          if [ -x "$selector_binary" ] && ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
+            "$selector_root/scripts/larch.sh" ci rust-select-summary \
+              --result-file "$selector_result" >> "$GITHUB_STEP_SUMMARY"; then
             printf '%s\n' '::warning::Rust selector summary failed; the full fallback remains available.'
+          elif [ ! -x "$selector_binary" ]; then
+            printf '%s\n' '## Rust CI selection'
+            printf '%s\n' "Proposed mode: \`full\` because the trusted selector executable was unavailable."
           fi
           test -n "$RUST_POLICY_INPUTS_SHA256"
           {
@@ -514,8 +502,8 @@ jobs:
             printf '## Rust CI selection setup timings\n\n'
             printf '| Phase | Milliseconds | Detail |\n'
             printf '| --- | ---: | --- |\n'
-            printf '| Trusted selector history | %s | %s |\n' "$selector_history_milliseconds" "$selector_history_source"
-            printf '| Base worktree | %s | trusted base checkout |\n' "$selector_worktree_milliseconds"
+            printf '| Candidate history | %s | %s |\n' "$selector_history_milliseconds" "$selector_history_source"
+            printf '| Trusted-base command build | %s | trusted base checkout |\n' "$selector_worktree_milliseconds"
             printf '| Selector command | %s | trusted-base CLI |\n' "$selector_command_milliseconds"
           } >> "$GITHUB_STEP_SUMMARY"
           {
@@ -813,18 +801,6 @@ jobs:
       - uses: ./.github/actions/rust-coverage
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-      # Keep the installed-Git check in the workflow, where the ownership
-      # inventory verifies this production Git surface.
-      - name: Verify generated plugin runtime projection is clean
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
       - name: Restore trusted main Rust policy cache key
         id: trusted-main-policy-cache
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -931,15 +907,12 @@ jobs:
           test -x "$policy_larch"
           "$policy_larch" --version
           "$policy_larch" lint all --timing-file "$RUNNER_TEMP/rust-partial-policy-rules.tsv"
-          "$policy_larch" release plugin-runtime
-          "$policy_larch" release plugin-runtime --check
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
       - name: Prepare partial Rust integration artifact
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
@@ -1028,15 +1001,12 @@ jobs:
           set -euo pipefail
           policy_larch="$RUNNER_TEMP/trusted-main-rust-policy/larch"
           "$policy_larch" lint all --timing-file "$RUNNER_TEMP/rust-skip-policy-rules.tsv"
-          "$policy_larch" release plugin-runtime
-          "$policy_larch" release plugin-runtime --check
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
       - name: Upload trusted-main Rust executable for cross-language integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1150,18 +1120,6 @@ jobs:
             !/larch-logs/
           sparse-checkout-cone-mode: false
       - uses: ./.github/actions/rust-coverage
-      # Keep the installed-Git check in the workflow, where the ownership
-      # inventory verifies this production Git surface.
-      - name: Verify generated plugin runtime projection is clean
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
 
   # This opt-in matrix holds the commit, runner, cache policy, toolchain,
   # profile, and test-thread count constant while comparing the control with
@@ -1219,16 +1177,6 @@ jobs:
       - uses: ./.github/actions/rust-coverage
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-      - name: Verify generated plugin runtime projection is clean
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
 
   # This manual job supplies matched cache-on measurements while rust-full in
   # the same dispatch remains the cache-off control. Its cache key is isolated
@@ -1300,16 +1248,6 @@ jobs:
       - uses: ./.github/actions/rust-coverage
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-      - name: Verify generated plugin runtime projection is clean
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- plugin
-          untracked_plugin_paths="$(git ls-files --others --exclude-standard -- plugin)"
-          if [ -n "$untracked_plugin_paths" ]; then
-            printf '%s\n' '::error::Plugin runtime projection left untracked files under plugin/.'
-            printf '%s\n' "$untracked_plugin_paths"
-            exit 1
-          fi
 
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.
@@ -1379,6 +1317,12 @@ jobs:
           checkout_seconds="$(( $(date +%s) - checkout_started ))"
           test "$checkout_seconds" -ge 0
           printf 'seconds=%s\n' "$checkout_seconds" >> "$GITHUB_OUTPUT"
+      - name: Build typed gitleaks history resolver
+        id: gitleaks-rust-bootstrap
+        run: |
+          set -euo pipefail
+          cargo build --locked --package larch-cli --bin larch
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
       # The named checkout, preparation, and scan steps expose the complete
       # cold/warm phase timing surface in GitHub Actions. The cache hit in the
       # summary below distinguishes warm scanner preparation from a download.
@@ -1482,7 +1426,10 @@ jobs:
           set -euo pipefail
           # Limit scan to new commits in this PR to avoid false positives from
           # historical test-fixture keys in the main branch.
-          BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
+          history_larch="$GITHUB_WORKSPACE/target/debug/larch"
+          BASE="$(CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$history_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci gitleaks-base \
+              --repo-root "$GITHUB_WORKSPACE" --base-ref origin/main)"
           gitleaks_binary="${HOME}/.cache/larch/tools/gitleaks/${GITLEAKS_VERSION}/linux-x64/gitleaks"
           run_gitleaks() {
             env -i \
@@ -1512,8 +1459,8 @@ jobs:
             echo "## Gitleaks timing metadata"
             echo "- cache_hit: ${{ steps.gitleaks-cache.outputs.cache-hit }}"
             echo "- checkout_seconds: ${{ steps.gitleaks-checkout-timing.outputs.seconds }}"
-            echo "- rust_bootstrap_seconds: 0"
-            echo "- rust_bootstrap: removed (no Cargo or larch bootstrap)"
+            echo "- rust_bootstrap_seconds: ${{ steps.gitleaks-rust-bootstrap.outputs.seconds }}"
+            echo "- rust_bootstrap: typed larch history resolver"
             echo "- verified_tool_preparation_seconds: ${{ steps.prepare-gitleaks.outputs.seconds }}"
             echo "- working_tree_scan_seconds: ${{ steps.scan-working-tree.outputs.seconds }}"
             echo "- history_scan_seconds: ${{ steps.scan-history.outputs.seconds }}"

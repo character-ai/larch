@@ -91,15 +91,18 @@ whether cache save succeeded or was skipped; a manual dispatch is marked
 target-cache benchmark described above. CI has no `cargo install` fallback for
 either tool.
 
-The dedicated `gitleaks` job has a separate, no-Cargo scanner bootstrap. It
-does not build or execute `larch`, including a checkout-provided
-`target/debug/larch`. Its fixed Linux `v8.18.4` release URL, archive SHA-256,
-and extracted-binary SHA-256 are in the workflow. The cache key binds the
-runner OS and architecture, scanner version, and binary digest. On every
-restore, the job requires real cache directories and a regular non-symlink
-binary with the expected SHA-256 and reported version. Before each scan, it
-rechecks the binary's regular-file shape, SHA-256, and reported version. A miss
-or invalid entry downloads only over HTTPS (including
+The dedicated `gitleaks` job builds the typed Rust history resolver, then uses
+`ci gitleaks-base` through `scripts/larch.sh` to derive the history boundary.
+That resolver proves the checked-out `HEAD`, resolves an ancestor merge base
+against `origin/main` when available, and falls back only to `HEAD^`; it fails
+closed if neither boundary can be proven. The scanner itself remains a fixed
+Linux `v8.18.4` release with a fixed archive SHA-256 and extracted-binary
+SHA-256 in the workflow. The cache key binds the runner OS and architecture,
+scanner version, and binary digest. On every restore, the job requires real
+cache directories and a regular non-symlink binary with the expected SHA-256
+and reported version. Before each scan, it rechecks the binary's regular-file
+shape, SHA-256, and reported version. A miss or invalid entry downloads only
+over HTTPS (including
 redirects), with bounded retries, timeouts, and a 16 MiB archive-size cap; it
 verifies the archive digest, then
 requires the exact `LICENSE`, `README.md`, and `gitleaks` member allowlist,

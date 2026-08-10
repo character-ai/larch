@@ -1086,6 +1086,13 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
+    CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
+    CleanInstallCase::new("clean-install-ci-rust-select", "ci", "rust-select"),
+    CleanInstallCase::new(
+        "clean-install-ci-rust-select-summary",
+        "ci",
+        "rust-select-summary",
+    ),
     CleanInstallCase::new(
         "clean-install-report-tokens-analyze",
         "report-tokens",
@@ -1149,6 +1156,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "dirty-tree",
         "scope-marker",
     ),
+    CleanInstallCase::new(
+        "clean-install-gh-agnix-ensure-label",
+        "gh",
+        "agnix-ensure-label",
+    ),
+    CleanInstallCase::new("clean-install-gh-agnix-issue", "gh", "agnix-issue"),
     CleanInstallCase::new("clean-install-gh-remote-repo", "gh", "remote-repo"),
     CleanInstallCase::new("clean-install-gh-resolve-repo", "gh", "resolve-repo"),
     CleanInstallCase::new("clean-install-gh-run-logs", "gh", "run-logs"),

@@ -7,6 +7,7 @@ use std::{
 };
 
 use larch_adapters::{GixRepository, PathIntent, RepositoryRoot, read_utf8};
+use larch_core::{GitPath, StatusOptions};
 
 const DIRECT_FILES: &[&str] = &[
     ".claude-plugin/plugin.json",
@@ -67,21 +68,40 @@ const DEV_ONLY_PYTHON: &[&str] = &[
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";
 const ROOT_ERROR: &str = "plugin runtime projection requires the larch repository root";
 
-pub fn run(check: bool) -> Result<(), String> {
+pub fn run(check: bool, check_worktree: bool) -> Result<(), String> {
     let current = std::env::current_dir().map_err(|_| ROOT_ERROR.to_owned())?;
     let root = RepositoryRoot::resolve(Some(&current)).map_err(|_| ROOT_ERROR.to_owned())?;
     let paths = runtime_paths(&root)?;
 
     if check {
         let errors = projection_errors(&root, &paths)?;
-        if errors.is_empty() {
-            return Ok(());
+        if !errors.is_empty() {
+            return Err(errors.join("\n"));
         }
-        return Err(errors.join("\n"));
     }
+    if !check {
+        validate_root(&root)?;
+        sync(&root, &paths)?;
+    }
+    if check_worktree {
+        verify_projection_worktree(&root)?;
+    }
+    Ok(())
+}
 
-    validate_root(&root)?;
-    sync(&root, &paths)
+fn verify_projection_worktree(root: &RepositoryRoot) -> Result<(), String> {
+    let repository = GixRepository::open(root.path()).map_err(|_| INDEX_ERROR.to_owned())?;
+    let status = repository
+        .local_status(&StatusOptions {
+            pathspecs: vec![GitPath::new(b"plugin".to_vec())],
+            include_untracked: true,
+            include_ignored: false,
+        })
+        .map_err(|_| "unable to inspect runtime projection worktree".to_owned())?;
+    if status.is_dirty() {
+        return Err("runtime projection changed tracked or untracked files".to_owned());
+    }
+    Ok(())
 }
 
 fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
@@ -403,7 +423,7 @@ fn create_real_directories(root: &Path, destination: &Path) -> Result<(), String
 mod tests {
     use super::{
         DEV_ONLY_PYTHON, DIRECT_FILES, ROOT_ERROR, focused_security_references, projection_errors,
-        runtime_paths, sync, validate_root,
+        runtime_paths, sync, validate_root, verify_projection_worktree,
     };
     use larch_adapters::RepositoryRoot;
     use std::{collections::BTreeSet, fs, path::Path, process::Command};
@@ -480,6 +500,30 @@ mod tests {
         assert!(errors.contains(
             &"runtime projection differs from its source: agents/reviewer.md".to_owned()
         ));
+    }
+
+    #[test]
+    fn rejects_tracked_or_untracked_projection_worktree_changes() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+
+        assert_eq!(verify_projection_worktree(&root), Ok(()));
+        fs::write(fixture.path().join("plugin/ignored.txt"), "changed\n")
+            .expect("tracked projection file");
+
+        assert_eq!(
+            verify_projection_worktree(&root),
+            Err("runtime projection changed tracked or untracked files".to_owned())
+        );
+        fs::write(fixture.path().join("plugin/ignored.txt"), "ignored\n")
+            .expect("restore tracked projection file");
+        fs::write(fixture.path().join("plugin/untracked.txt"), "unexpected\n")
+            .expect("untracked projection file");
+
+        assert_eq!(
+            verify_projection_worktree(&root),
+            Err("runtime projection changed tracked or untracked files".to_owned())
+        );
     }
 
     #[test]
@@ -655,7 +699,13 @@ mod tests {
             write(fixture.path(), path, "development-only\n");
         }
         run_git(fixture.path(), ["init", "--quiet"]);
+        run_git(
+            fixture.path(),
+            ["config", "user.email", "test@example.invalid"],
+        );
+        run_git(fixture.path(), ["config", "user.name", "Larch test"]);
         run_git(fixture.path(), ["add", "--all"]);
+        run_git(fixture.path(), ["commit", "--quiet", "-m", "fixture"]);
         fixture
     }
 

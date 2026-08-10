@@ -31,6 +31,7 @@ mod blocker_commands;
 mod bootstrap_commands;
 mod child_process;
 mod ci_launcher_commands;
+mod ci_selection;
 mod ci_timing;
 pub(crate) mod claude_commands;
 mod cleanup_commands;
@@ -48,6 +49,7 @@ mod git_commands;
 mod github_repository_resolution;
 mod github_service;
 mod gitleaks;
+mod html;
 mod implement_launcher_commands;
 mod issue_commands;
 mod issue_create_commands;
@@ -102,6 +104,7 @@ mod voter_dispatch_commands;
 mod waterfall_commands;
 
 use agent_commands::AgentCommand;
+use ci_selection::CiCommand;
 use ci_timing::CiTimingCommand;
 use complete_umbrella_commands::CompleteUmbrellaCommand;
 use external_defaults_commands::ExternalDefaultsCommand;
@@ -148,6 +151,9 @@ enum Domain {
     /// Collect GitHub Actions timing inputs for test rebalancing.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
+    /// Fail-closed Rust CI selection and history helpers.
+    #[command(subcommand)]
+    Ci(CiCommand),
     /// Serially complete and audit every direct leaf of one umbrella issue.
     #[command(subcommand)]
     CompleteUmbrella(CompleteUmbrellaCommand),
@@ -1153,6 +1159,9 @@ struct AssetCandidateArguments {
     tag: String,
     #[arg(long)]
     source_commit: String,
+    /// Require the typed repository reader to prove the checkout identity.
+    #[arg(long)]
+    verify_checkout: bool,
 }
 
 #[derive(Args)]
@@ -1327,10 +1336,17 @@ struct PluginRuntimeArguments {
     /// Validate projection drift without changing the worktree.
     #[arg(long)]
     check: bool,
+    /// Verify that generation left no tracked or untracked plugin/ changes.
+    #[arg(long)]
+    check_worktree: bool,
 }
 
 #[derive(Subcommand)]
 enum GhCommand {
+    /// Read one agnix issue through the typed GitHub service.
+    AgnixIssue(AgnixIssueArguments),
+    /// Ensure the agnix fork's skip-changelog label exists through the typed service.
+    AgnixEnsureLabel(AgnixEnsureLabelArguments),
     /// Parse a remote name or URL into OWNER/REPO.
     RemoteRepo(TrailingArguments),
     /// Resolve the ambient GitHub repository slug for the cwd.
@@ -1339,6 +1355,23 @@ enum GhCommand {
     RunLogs(RunLogsArguments),
     /// Print the retained workflow-path placeholder.
     WorkflowPath,
+}
+
+#[derive(Args)]
+struct AgnixIssueArguments {
+    /// Positive upstream issue number.
+    #[arg(long)]
+    issue: u64,
+    /// GitHub repository in OWNER/REPO form.
+    #[arg(long = "repo", value_parser = parse_repository)]
+    repository: larch_core::GitHubRepositoryRef,
+}
+
+#[derive(Args)]
+struct AgnixEnsureLabelArguments {
+    /// GitHub repository in OWNER/REPO form.
+    #[arg(long = "repo", value_parser = parse_repository)]
+    repository: larch_core::GitHubRepositoryRef,
 }
 
 #[derive(Subcommand)]
@@ -1471,6 +1504,7 @@ fn run(
             Ok(cleanup_commands::run(&arguments.arguments))
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
+        Domain::Ci(command) => Ok(ci_selection::run(command)),
         Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
         Domain::DirtyTree(command) => Ok(match command {
             DirtyTreeCommand::Baseline(arguments) => {
@@ -1889,6 +1923,12 @@ fn run(
         Domain::Gh(GhCommand::RemoteRepo(arguments)) => Ok(run_remote_repo(&arguments)),
         Domain::Gh(GhCommand::ResolveRepo(arguments)) => Ok(run_resolve_repo(&arguments)),
         Domain::Gh(GhCommand::RunLogs(arguments)) => Ok(run_logs(&arguments)),
+        Domain::Gh(GhCommand::AgnixIssue(arguments)) => Ok(
+            github_repository_resolution::agnix_issue(&arguments.repository, arguments.issue),
+        ),
+        Domain::Gh(GhCommand::AgnixEnsureLabel(arguments)) => Ok(
+            github_repository_resolution::agnix_ensure_label(&arguments.repository),
+        ),
         Domain::Push(PushSubcommand::Branch(arguments)) => {
             Ok(push_network::branch(&arguments.args))
         }
@@ -2045,6 +2085,7 @@ fn run_release(
                 repo_root: arguments.repo_root,
                 tag: arguments.tag,
                 source_commit: arguments.source_commit,
+                verify_checkout: arguments.verify_checkout,
             },
         )),
         ReleaseCommand::AssetRun(arguments) => Ok(release_stage::asset_run(
@@ -2110,9 +2151,7 @@ fn run_release(
             &arguments.repository,
             arguments.dry_run,
         )),
-        ReleaseCommand::PluginRuntime(arguments) => release_plugin_runtime::run(arguments.check)
-            .map(|()| ExitCode::SUCCESS)
-            .map_err(command_failure),
+        ReleaseCommand::PluginRuntime(arguments) => run_release_plugin_runtime(&arguments),
         ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
         ReleaseCommand::Stage(arguments) => Ok(release_stage::stage(
             &arguments.version,
@@ -2137,6 +2176,14 @@ fn run_release(
             &arguments.source_commit,
         )),
     }
+}
+
+fn run_release_plugin_runtime(
+    arguments: &PluginRuntimeArguments,
+) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
+    release_plugin_runtime::run(arguments.check, arguments.check_worktree)
+        .map(|()| ExitCode::SUCCESS)
+        .map_err(command_failure)
 }
 
 const fn command_failure(message: String) -> larch_adapters::upgrade_larch::Failure {

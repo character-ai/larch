@@ -54,12 +54,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "prepare_integration_artifact_main",
         False,
     ),
-    ("ci", "rust-select"): ("larch.implement.rust_ci_selection", "rust_select_main", True),
-    ("ci", "rust-select-summary"): (
-        "larch.implement.rust_ci_selection",
-        "rust_select_summary_main",
-        True,
-    ),
     ("ci", "stage-rust-policy-candidate"): (
         "larch.implement.rust_policy_candidate",
         "stage_policy_candidate_main",
