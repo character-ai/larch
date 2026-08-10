@@ -462,6 +462,89 @@ their median. A candidate that varies by more than 10% across its first two
 samples is rerun before comparison. The coverage line gate is unchanged; a
 profile whose report fails it is not eligible.
 
+### Rust test-policy overlap measurement contract
+
+A manual dispatch with `rust_phase_overlap_benchmark=true` runs the
+`rust-phase-overlap-benchmark` matrix: three `sequential` control samples and
+three `parallel` candidate samples at one commit on `ubuntu-24.04`. Every cell
+uses the same pinned coverage tools, dependency-cache policy, test profile,
+`NEXTEST_TEST_THREADS=16`, and 88.000% line threshold. The matrix is
+observational and cannot change the protected `rust-full` producer's
+`sequential` mode.
+
+After compilation and the required doctests, the candidate starts nextest and
+the one repository-policy scan together. Each branch requires the
+`LLVM_PROFILE_FILE` process placeholder, writes its timing row and complete
+stdout/stderr to a distinct runner-temp file, and is explicitly awaited. The
+action emits both labeled logs and timing rows before deciding success. A
+failure from either branch fails the job before `cargo llvm-cov report`, so the
+coverage threshold and LCOV run only after every coverage-producing process
+has exited successfully. The coverage-built executable, plugin projection
+validation, LCOV artifact, policy timing artifact, and uniquely named
+integration artifact remain required for every eligible sample.
+
+Compare the raw nextest, policy, report, end-to-end, and job durations only
+within one cache class. Retain parallel production execution only when all
+three paired candidate samples pass every preserved check and improve the
+median end-to-end job time without worsening the Rust gate or total workflow
+median. Otherwise retain the sequential producer and record the measured
+result.
+
+### Rust test-policy overlap evidence
+
+[Benchmark run 31415431053](https://github.com/character-ai/larch/actions/runs/31415431053)
+ran the paired matrix at `386ad7dfadd4630a1d5ab1de9860dba261ec8b77` on
+`ubuntu-24.04`. Every cell was an exact coverage-target-cache hit with warm
+Cargo-input and coverage-tool caches, the same pinned tools and profile, and
+16 nextest threads. The six target-cache restores reported 1,348,853,760 to
+1,348,861,952 allocated bytes; each cache-save row was the explicit
+`workflow_dispatch-read-only` skip. All six cells, the sequential `rust-full`,
+`rust-coverage`, and `rust-gate` jobs succeeded.
+
+The action-level job total excludes runner setup; runner job wall time comes
+from the GitHub job timestamps. The raw paired results are:
+
+| Mode | Sample | Nextest | Policy | Report | End-to-end | Action job | Runner job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sequential | 1 | 64 s | 47 s | 19 s | 205 s | 244 s | 250 s |
+| sequential | 2 | 54 s | 62 s | 19 s | 212 s | 248 s | 252 s |
+| sequential | 3 | 64 s | 87 s | 25 s | 270 s | 309 s | 312 s |
+| sequential | median | 64 s | 62 s | 19 s | 212 s | 248 s | 252 s |
+| parallel | 1 | 75 s | 116 s | 24 s | 230 s | 280 s | 286 s |
+| parallel | 2 | 84 s | 143 s | 28 s | 277 s | 325 s | 332 s |
+| parallel | 3 | 72 s | 108 s | 20 s | 204 s | 248 s | 256 s |
+| parallel | median | 75 s | 116 s | 24 s | 230 s | 280 s | 286 s |
+
+Parallel missed the promotion condition: its median end-to-end duration was
+18 seconds (8.5%) slower and its action-level job median was 32 seconds
+(12.9%) slower. The three sequential runner jobs consumed 814 seconds in
+total; the three parallel jobs consumed 874 seconds, 60 seconds (7.4%) more.
+One parallel sample improved, but the other two regressed, so the sequential
+producer remains the production shape. The same dispatch's sequential
+`rust-full` took 325 seconds, `rust-coverage` took 3 seconds, `rust-gate` took
+3 seconds, and the workflow elapsed 365 seconds. Those manual-run values are
+context rather than a new production median; retaining the existing sequential
+producer makes no Rust-gate or workflow-path change.
+
+Coverage and provenance remained equivalent to the control: every LCOV report
+had 158,933 found lines, 17,614 found functions, and 14,594 hit functions.
+The line-hit values ranged from 140,222 to 140,227 across both modes, with all
+reports at 88.227% to 88.230%, above the unchanged 88.000% threshold. Every
+policy-timing artifact listed the same 53 rules, every plugin projection check
+passed, and all six verified executable artifacts had source SHA
+`386ad7dfadd4630a1d5ab1de9860dba261ec8b77`, Rust-input SHA
+`18dd663036f9c1255cafb27d7c7f642996ab01659b429e520fae5c7bbbfbebd2`, and
+binary SHA-256
+`a70f1aec93089738f2ede40f4e8716fe7437c64b64ea86aa0a9c9d49a49a28f6`.
+
+The repository-policy `lint all` execution path writes only its supplied
+runner-temp timing file, so it has no concurrent target-tree mutation path.
+The candidate requires `%p` in `LLVM_PROFILE_FILE`, writes branch logs and
+timing rows separately, and waits for both before report. A source-extracted
+helper probe forced nextest to exit 23 while policy succeeded; it retained both
+labeled phase records and returned failure, confirming that a branch failure
+remains attributable and blocks the report.
+
 ### Current-main-derived candidate evidence
 
 [Benchmark run 31151194045](https://github.com/character-ai/larch/actions/runs/31151194045)
