@@ -216,7 +216,11 @@ The shard lists live directly in `Makefile`. After #5429 and the contract-unific
 
 Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
-Measured CI timing for the five-shard layout remains balanced enough that this reconciliation keeps five shards; do not change the workflow matrix solely because pytest and aggregates left the Bash-leaf inventory. Rebalance only when complete `larch ci-timing harness` totals show material, non-local imbalance.
+The workflow remains a five-cell matrix. Startup-aware packing may deliberately
+leave a cell empty when activating it would duplicate shared setup and increase
+total runner cost; do not change the matrix solely because pytest and aggregates
+left the Bash-leaf inventory. Rebalance only when complete `larch ci-timing
+harness` evidence shows material, non-local imbalance.
 
 ### Refreshing shard balance
 
@@ -227,11 +231,30 @@ dev skill (`.claude/skills/rebalance-tests/`):
 python3 .claude/skills/rebalance-tests/scripts/rebalance.py --kind harness
 ```
 
-Harness mode LPT-packs `LARCH_HARNESS_TIMING` medians into the `test-harnesses-N`
-shard lists and verifies real per-shard CI job wall-clock against
-`--max-shard-wall-clock` (default 60s); the wall-clock report is warning-only. To
-add a single new target, append it to any shard, run `make
-test-harness-shards-coverage` to verify the partition, then rebalance by timing.
+Harness mode builds a startup- and affinity-aware cost model before packing the
+`test-harnesses-N` shard lists. It combines `LARCH_HARNESS_TIMING` work rows,
+`LARCH_HARNESS_BOOTSTRAP` cold/warm measurements, and real jobs-API wall-clock
+for one exact successful-run cohort. Fixed job startup, every target marker's
+warm bootstrap, cold-minus-warm shared setup, and named compile-affinity setup
+are charged before LPT packing. The current post-cleanup inventory has no
+Cargo-backed targets. A future reviewed shared-compile exception must declare
+`--compile-affinity TARGET=GROUP:SECONDS`; the packer keeps that group together
+and charges `SECONDS` once (or zero to require co-location without adding a
+second measured cost). Missing bootstrap evidence, skipped or incompatible
+cohorts, unstable marker counts, and target inventory drift stop the rewrite.
+The planner compares candidate active-runner counts and retains empty matrix
+cells when opening them would duplicate shared cold setup and raise total runner
+cost.
+
+Verification treats real CI job wall-clock as authoritative: the measured
+slowest shard must not exceed `--max-shard-wall-clock` (default 300s) or the
+input layout's approved threshold, and median summed harness-runner time may
+not regress. The script prints predicted and observed shard tables for all
+verification runs. `--experimental-wall-clock-override NOTE` is limited to a
+documented experiment with a predicted or measured regression; it never
+bypasses incomplete evidence. To add a single new target, append it to any
+shard, run `make test-harness-shards-coverage` to verify the partition, then
+rebalance by timing.
 
 For Python unit test shards, use the `/rebalance-tests` dev skill
 (`.claude/skills/rebalance-tests/`):
@@ -383,7 +406,7 @@ The PR creation surface now lives in `python/cli.py pr create`. Before cutting a
 | `make test-token-report` | Run the `/implement` token report harness. Exercises terse, markdown, and JSON output from fixture Claude transcripts, vendor rows, grand totals, graceful unavailable output, `--output`, and idempotent `## Token Report` sentinel replacement. |
 | `make test-timing-ledger` | Run the timing ledger harness. Exercises fixed 13-column TSV rows, timing task-kind validation, basename-only output storage, `LARCH_TIMING_LEDGER` containment, chmod mode, negative-duration clamping, and parallel append integrity. |
 | `make test-timing-report` | Run the timing report harness. Exercises per-skill duration rendering, JSON output, workflow path reporting, vendor task averages/failures, terse elapsed output, empty-ledger fallback, and idempotent `## Timing Report` sentinel replacement. |
-| `make test-token-vendor-scrapers` | Run the external-vendor token scrape harness. Exercises Codex JSONL usage parsing, Cursor `.usage` totals, malformed JSON fallback, Cursor review JSON-sidecar `.result` extraction back to plain reviewer prose, and `scripts/larch.sh agent launch-cursor-implement` / `scripts/larch.sh agent launch-codex-implement` `record-vendor` smoke (raw=cursor_implement / raw=codex_implement attribution). Also covers per-bucket Codex `BUCKETS_codex` / no blended warning plus legacy aggregate-only `total` rendering for #1427. A `make lint` prerequisite via `test-harnesses-4`. |
+| `make test-token-vendor-scrapers` | Run the external-vendor token scrape harness. Exercises Codex JSONL usage parsing, Cursor `.usage` totals, malformed JSON fallback, Cursor review JSON-sidecar `.result` extraction back to plain reviewer prose, and `scripts/larch.sh agent launch-cursor-implement` / `scripts/larch.sh agent launch-codex-implement` `record-vendor` smoke (raw=cursor_implement / raw=codex_implement attribution). Also covers per-bucket Codex `BUCKETS_codex` / no blended warning plus legacy aggregate-only `total` rendering for #1427. A `make lint` prerequisite via `test-harnesses-5`. |
 | `make lint-retired-scripts` | Run the Rust retired-scripts manifest lint. Checks indexed files for references to paths listed in `python/migrated-scripts.tsv`. Matches full repo-relative paths everywhere; also matches bare basenames in same-directory `.claude/skills/**/*.md` dev-skill docs that lack a live sibling `.sh` (add `# lint-ignore` to suppress the bare-basename check on a specific line). Excludes `larch-logs/`, `CHANGELOG.md`, and the manifest itself. Exits 0 when clean, 1 on findings, 2 on manifest errors. It is included by `make rust-lint`. |
 | `make test-token-claude-source` | Run the Claude transcript resolver harness. Exercises `LARCH_CLAUDE_SOURCE_FILE` snapshot replay short-circuit, snapshot fall-through on stale / garbage / missing files, the live mtime resolver, `LARCH_CLAUDE_SESSION_ID` override, malformed session-id rejection, empty project dir failure, and concurrent-session pinning (snapshot wins over a newer transcript in the project dir). |
 | `make test-external-tool-registry` | Run the offline regression harness for `scripts/external-tool-registry.sh`, the canonical external-tool and implementer-coder taxonomy library. Exercises registry order, predicates, brace-list formatters, double-source idempotency, strict-shell-option preservation, no source-time stdout/stderr, `agent check-reviewers` registry consistency, and nested-cwd `implement step2-dispatch --coder claude` path resolution. A `make lint` prerequisite via `test-harnesses-2`. |

@@ -50,6 +50,30 @@ fn pack_command_accepts_json_file_input() {
 }
 
 #[test]
+fn pack_command_keeps_affinity_groups_together() {
+    larch()
+        .args([
+            "test-shard",
+            "pack",
+            "--n-shards",
+            "2",
+            "--fixed-startup-seconds",
+            "7",
+        ])
+        .write_stdin(
+            r#"[
+  {"target":"test-compile-a","seconds":9.0,"affinity_group":"cargo","affinity_setup_seconds":12.0},
+  {"target":"test-compile-b","seconds":1.0,"affinity_group":"cargo","affinity_setup_seconds":12.0},
+  {"target":"test-independent","seconds":11.0}
+]"#,
+        )
+        .assert()
+        .success()
+        .stdout("{\"1\":[\"test-compile-a\",\"test-compile-b\"],\"2\":[\"test-independent\"]}\n")
+        .stderr("");
+}
+
+#[test]
 fn makefile_commands_preserve_single_line_rules() {
     let temporary = TempDir::new().expect("temporary directory");
     let makefile = temporary.path().join("Makefile");

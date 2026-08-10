@@ -2,7 +2,8 @@
 
 use clap::{Args, Subcommand};
 use larch_core::{
-    TestShardMap, TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards,
+    TestShardMap, TestShardTiming, pack_test_shards_with_fixed_startup, read_makefile_shards,
+    rewrite_makefile_shards,
 };
 use serde::Serialize;
 use std::{
@@ -36,6 +37,9 @@ pub struct PackArguments {
     /// Unmeasured target to place with zero weight. Repeat for multiple targets.
     #[arg(long = "extra")]
     extras: Vec<String>,
+    /// Fixed startup cost charged to every shard for packing estimates.
+    #[arg(long, default_value_t = 0.0, value_parser = parse_nonnegative_seconds)]
+    fixed_startup_seconds: f64,
     /// JSON timing rows. Reads stdin when omitted.
     #[arg(long)]
     input: Option<PathBuf>,
@@ -79,11 +83,12 @@ fn run_inner(command: TestShardCommand) -> Result<Option<Vec<u8>>, String> {
     match command {
         TestShardCommand::Pack(arguments) => {
             let timings = read_json_input::<Vec<TestShardTiming>>(arguments.input.as_deref())?;
-            let shards = pack_test_shards(
+            let shards = pack_test_shards_with_fixed_startup(
                 &timings,
                 arguments.n_shards,
                 &arguments.guard,
                 &arguments.extras,
+                arguments.fixed_startup_seconds,
             )?;
             serialize_json(&shards).map(Some)
         }
@@ -110,6 +115,14 @@ fn parse_shard_count(value: &str) -> Result<u32, String> {
         .ok()
         .filter(|count| *count > 0)
         .ok_or_else(|| format!("expected a positive integer, got {value:?}"))
+}
+
+fn parse_nonnegative_seconds(value: &str) -> Result<f64, String> {
+    value
+        .parse::<f64>()
+        .ok()
+        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+        .ok_or_else(|| format!("expected a non-negative finite number, got {value:?}"))
 }
 
 fn read_json_input<T: serde::de::DeserializeOwned>(path: Option<&Path>) -> Result<T, String> {
@@ -173,12 +186,19 @@ fn write_makefile_atomically(path: &Path, contents: &str) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use super::parse_shard_count;
+    use super::{parse_nonnegative_seconds, parse_shard_count};
 
     #[test]
     fn shard_count_parser_rejects_zero_and_non_numbers() {
         assert_eq!(parse_shard_count("3"), Ok(3));
         assert!(parse_shard_count("0").is_err());
         assert!(parse_shard_count("nope").is_err());
+    }
+
+    #[test]
+    fn fixed_startup_parser_rejects_negative_and_non_finite_values() {
+        assert_eq!(parse_nonnegative_seconds("3.5"), Ok(3.5));
+        assert!(parse_nonnegative_seconds("-1").is_err());
+        assert!(parse_nonnegative_seconds("NaN").is_err());
     }
 }

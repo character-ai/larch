@@ -278,9 +278,9 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#rebalance-tests"><code>/rebalance-tests</code></a></td>
-      <td><code>[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N]</code></td>
+      <td><code>[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS]</code></td>
     </tr>
-    <tr><td colspan="2">Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings; create one PR and trigger verification CI. Harness verification is warning-only; Python timing verification fails closed.</td></tr>
+    <tr><td colspan="2">Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings; create one PR and trigger verification CI. Harness verification fails closed on incomplete evidence, wall-clock or runner-cost regression; Python timing verification also fails closed.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#release"><code>/release</code></a></td>

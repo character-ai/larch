@@ -87,10 +87,10 @@ pub use bgjob_daemon::{
     validate_timing_overrides,
 };
 pub use ci_timing::{
-    CiTimingRunSelection, HarnessTimingReport, HarnessTimingRow, JobTimingReport, JobTimingRow,
-    MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS, NodeidTiming, PytestTimingReport,
-    PytestTimingRow, ShardTiming, TargetTiming, collect_harness_timing, collect_job_timing,
-    collect_pytest_timing,
+    CiTimingRunSelection, HarnessBootstrapRow, HarnessTimingReport, HarnessTimingRow,
+    JobTimingReport, JobTimingRow, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS,
+    NodeidTiming, PytestTimingReport, PytestTimingRow, ShardTiming, TargetTiming,
+    collect_harness_timing, collect_job_timing, collect_pytest_timing,
 };
 pub use complete_umbrella::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
@@ -387,7 +387,8 @@ pub use storage::{
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use test_shards::{
-    TestShardMap, TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards,
+    TestShardMap, TestShardTiming, pack_test_shards, pack_test_shards_with_fixed_startup,
+    read_makefile_shards, rewrite_makefile_shards,
 };
 pub use text::{
     balanced_fence_line_indices, ensure_ascii_json, is_positive_decimal, is_python_whitespace,

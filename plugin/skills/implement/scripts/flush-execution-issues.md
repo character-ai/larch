@@ -53,7 +53,7 @@ Invariants:
   failure if desired.
 
 Makefile wiring: `make test-flush-execution-issues`, included in
-`test-harnesses-4`.
+`test-harnesses-3`.
 
 Harness coverage: empty input, single-section record composition, multi-section
 record composition, idempotent rerun, partial-flush retry, and `run-log` failure

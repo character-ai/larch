@@ -1,13 +1,24 @@
 //! Deterministic test-shard packing and Makefile shard-line handling.
 
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::BTreeMap};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+};
 
 /// One measured test target used by the LPT packer.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TestShardTiming {
     pub target: String,
     pub seconds: f64,
+    /// Optional group whose members must remain on one shard so its setup cost
+    /// is paid once instead of being duplicated on fresh runners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub affinity_group: Option<String>,
+    /// Setup cost paid once for every shard that receives `affinity_group`.
+    /// Every member of one group must declare the same value.
+    #[serde(default)]
+    pub affinity_setup_seconds: f64,
 }
 
 /// Shard members keyed by their one-based shard identifier.
@@ -21,8 +32,14 @@ struct ShardState {
 }
 
 struct WeightedTarget {
-    target: String,
+    targets: Vec<String>,
     seconds: f64,
+}
+
+struct WeightedWorkload {
+    targets: Vec<String>,
+    seconds: f64,
+    setup_seconds: f64,
 }
 
 /// Pack measured targets and optional unmeasured extras with greedy LPT.
@@ -41,26 +58,44 @@ pub fn pack_test_shards(
     guard: &str,
     extras: &[String],
 ) -> Result<TestShardMap, String> {
+    pack_test_shards_with_fixed_startup(timings, n_shards, guard, extras, 0.0)
+}
+
+/// Pack measured targets while charging a fixed startup cost to every shard.
+///
+/// Affinity-group members remain together and their declared setup cost is
+/// charged once to the group. This keeps a packer from reporting an optimistic
+/// spread by treating a shared compile or setup cost as free on a new runner.
+///
+/// # Errors
+///
+/// Returns an error when the fixed startup or a timing is negative or
+/// non-finite, an affinity group is empty, or group members disagree about the
+/// setup cost.
+pub fn pack_test_shards_with_fixed_startup(
+    timings: &[TestShardTiming],
+    n_shards: u32,
+    guard: &str,
+    extras: &[String],
+    fixed_startup_seconds: f64,
+) -> Result<TestShardMap, String> {
     if n_shards == 0 {
         return Err("n_shards must be at least 1".to_owned());
     }
-
-    let mut targets = Vec::with_capacity(timings.len().saturating_add(extras.len()));
-    for timing in timings {
-        if !timing.seconds.is_finite() || timing.seconds < 0.0 {
-            return Err(format!(
-                "timing for {:?} must be a non-negative finite number",
-                timing.target
-            ));
-        }
-        targets.push(WeightedTarget {
-            target: timing.target.clone(),
-            seconds: normalize_zero(timing.seconds),
-        });
+    if !fixed_startup_seconds.is_finite() || fixed_startup_seconds < 0.0 {
+        return Err("fixed startup seconds must be a non-negative finite number".to_owned());
     }
+
+    let mut targets = workloads_from_timings(timings)?
+        .into_iter()
+        .map(|workload| WeightedTarget {
+            targets: workload.targets,
+            seconds: workload.seconds + workload.setup_seconds,
+        })
+        .collect::<Vec<_>>();
     targets.sort_by(|left, right| right.seconds.total_cmp(&left.seconds));
     targets.extend(extras.iter().cloned().map(|target| WeightedTarget {
-        target,
+        targets: vec![target],
         seconds: 0.0,
     }));
 
@@ -69,7 +104,7 @@ pub fn pack_test_shards(
     let mut shards = (1..=n_shards)
         .map(|id| ShardState {
             id,
-            total: 0.0,
+            total: normalize_zero(fixed_startup_seconds),
             item_count: 0,
             targets: Vec::new(),
         })
@@ -86,7 +121,7 @@ pub fn pack_test_shards(
         let shard = &mut shards[lightest];
         shard.total += target.seconds;
         shard.item_count += 1;
-        shard.targets.push(target.target);
+        shard.targets.extend(target.targets);
     }
 
     if !guard.is_empty() {
@@ -103,6 +138,72 @@ pub fn pack_test_shards(
         .into_iter()
         .map(|shard| (shard.id, shard.targets))
         .collect())
+}
+
+fn workloads_from_timings(timings: &[TestShardTiming]) -> Result<Vec<WeightedWorkload>, String> {
+    let mut workloads = Vec::new();
+    let mut affinity_indexes = HashMap::<String, usize>::new();
+    for timing in timings {
+        validate_timing(timing)?;
+        let seconds = normalize_zero(timing.seconds);
+        let setup_seconds = normalize_zero(timing.affinity_setup_seconds);
+        let Some(affinity_group) = timing.affinity_group.as_deref() else {
+            if setup_seconds != 0.0 {
+                return Err(format!(
+                    "target {:?} declares affinity setup seconds without an affinity group",
+                    timing.target
+                ));
+            }
+            workloads.push(WeightedWorkload {
+                targets: vec![timing.target.clone()],
+                seconds,
+                setup_seconds: 0.0,
+            });
+            continue;
+        };
+        if affinity_group.is_empty() {
+            return Err(format!(
+                "affinity group for {:?} must not be empty",
+                timing.target
+            ));
+        }
+        let index = *affinity_indexes
+            .entry(affinity_group.to_owned())
+            .or_insert_with(|| {
+                let index = workloads.len();
+                workloads.push(WeightedWorkload {
+                    targets: Vec::new(),
+                    seconds: 0.0,
+                    setup_seconds,
+                });
+                index
+            });
+        let workload = &mut workloads[index];
+        if workload.setup_seconds.to_bits() != setup_seconds.to_bits() {
+            return Err(format!(
+                "affinity group {affinity_group:?} has inconsistent setup seconds"
+            ));
+        }
+        workload.seconds += seconds;
+        workload.targets.push(timing.target.clone());
+    }
+    Ok(workloads)
+}
+
+fn validate_timing(timing: &TestShardTiming) -> Result<(), String> {
+    if !timing.seconds.is_finite() || timing.seconds < 0.0 {
+        return Err(format!(
+            "timing for {:?} must be a non-negative finite number",
+            timing.target
+        ));
+    }
+    if !timing.affinity_setup_seconds.is_finite() || timing.affinity_setup_seconds < 0.0 {
+        return Err(format!(
+            "affinity setup seconds for {:?} must be a non-negative finite number",
+            timing.target
+        ));
+    }
+    Ok(())
 }
 
 /// Read literal single-line `test-harnesses-N:` rules from Makefile text.
@@ -174,7 +275,10 @@ fn parse_shard_line(line: &str) -> Option<(u32, Vec<String>)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{TestShardTiming, pack_test_shards, read_makefile_shards, rewrite_makefile_shards};
+    use super::{
+        TestShardTiming, pack_test_shards, pack_test_shards_with_fixed_startup,
+        read_makefile_shards, rewrite_makefile_shards,
+    };
     use std::collections::BTreeMap;
 
     fn timings(values: &[(&str, f64)]) -> Vec<TestShardTiming> {
@@ -183,6 +287,8 @@ mod tests {
             .map(|(target, seconds)| TestShardTiming {
                 target: (*target).to_owned(),
                 seconds: *seconds,
+                affinity_group: None,
+                affinity_setup_seconds: 0.0,
             })
             .collect()
     }
@@ -227,6 +333,57 @@ mod tests {
             Err("n_shards must be at least 1".to_owned())
         );
         assert!(pack_test_shards(&timings(&[("test-a", -1.0)]), 1, "", &[]).is_err());
+        assert!(pack_test_shards_with_fixed_startup(&[], 1, "", &[], -1.0).is_err());
+    }
+
+    #[test]
+    fn pack_keeps_affinity_members_together_and_charges_setup_once() {
+        let timings = vec![
+            TestShardTiming {
+                target: "test-compile-a".to_owned(),
+                seconds: 9.0,
+                affinity_group: Some("cargo-workspace".to_owned()),
+                affinity_setup_seconds: 12.0,
+            },
+            TestShardTiming {
+                target: "test-compile-b".to_owned(),
+                seconds: 1.0,
+                affinity_group: Some("cargo-workspace".to_owned()),
+                affinity_setup_seconds: 12.0,
+            },
+            TestShardTiming {
+                target: "test-independent".to_owned(),
+                seconds: 11.0,
+                affinity_group: None,
+                affinity_setup_seconds: 0.0,
+            },
+        ];
+
+        let packed = pack_test_shards_with_fixed_startup(&timings, 2, "", &[], 7.0)
+            .expect("pack affinity workload");
+
+        assert_eq!(packed[&1], ["test-compile-a", "test-compile-b"]);
+        assert_eq!(packed[&2], ["test-independent"]);
+    }
+
+    #[test]
+    fn pack_rejects_inconsistent_affinity_setup_costs() {
+        let timings = vec![
+            TestShardTiming {
+                target: "test-a".to_owned(),
+                seconds: 1.0,
+                affinity_group: Some("shared".to_owned()),
+                affinity_setup_seconds: 2.0,
+            },
+            TestShardTiming {
+                target: "test-b".to_owned(),
+                seconds: 1.0,
+                affinity_group: Some("shared".to_owned()),
+                affinity_setup_seconds: 3.0,
+            },
+        ];
+
+        assert!(pack_test_shards(&timings, 1, "", &[]).is_err());
     }
 
     #[test]
