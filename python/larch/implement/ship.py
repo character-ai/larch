@@ -1226,15 +1226,15 @@ def _merge_pr_after_log_reconciliation(
     return merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
 
 
-def _resume_queued_merge(
+def _finish_queued_merge(
     *,
     runner: Runner,
     working: RunContext,
-    resume: ResumePlan,
+    counters: ShipReconciliationCounters,
     repo_root: str,
     base_ref: str,
 ) -> ShipResult:
-    """Resume a durable queue wait without replaying pre-merge mutations."""
+    """Wait for an accepted queue entry without replaying pre-merge mutations."""
     if working.pr_number is None:
         raise Stalled("queued merge state lacks a PR number")
     try:
@@ -1253,10 +1253,10 @@ def _resume_queued_merge(
             ctx=stalled,
             result=Outcome.STALLED,
             step=config.SHIP_STALL_STEP_MERGE,
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
-            transient_retries=resume.transient_retries,
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
         )
         return ShipResult(
             Outcome.STALLED,
@@ -1266,12 +1266,6 @@ def _resume_queued_merge(
             detail=str(exc),
         )
 
-    counters = ShipReconciliationCounters(
-        iteration=resume.iteration,
-        rebase_count=resume.rebase_count,
-        fix_attempts=resume.fix_attempts,
-        transient_retries=resume.transient_retries,
-    )
     merged_or_terminal = _merge_pr_after_log_reconciliation(
         runner=runner,
         working=working,
@@ -1290,10 +1284,10 @@ def _resume_queued_merge(
     _write_ship_state(
         completed,
         phase="postmerge" if pr_closed else "merge",
-        iteration=resume.iteration,
-        rebase_count=resume.rebase_count,
-        fix_attempts=resume.fix_attempts,
-        transient_retries=resume.transient_retries,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
     )
     if not pr_closed:
         detail = merged.error or f"merge did not complete: {merged.result}"
@@ -1304,10 +1298,10 @@ def _resume_queued_merge(
             ),
             result=Outcome.STALLED,
             step=config.SHIP_STALL_STEP_MERGE,
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
-            transient_retries=resume.transient_retries,
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
         )
         _publish_post_pr_terminal_snapshot(
             runner=runner,
@@ -1325,10 +1319,10 @@ def _resume_queued_merge(
         runner=runner,
         working=completed,
         cwd=repo_root,
-        iteration=resume.iteration,
-        rebase_count=resume.rebase_count,
-        fix_attempts=resume.fix_attempts,
-        transient_retries=resume.transient_retries,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
     )
 
 
@@ -1663,10 +1657,10 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 return destalled
             pr_context = destalled
             if pr_context.merge_result == config.MERGE_RESULT_QUEUED:
-                return _resume_queued_merge(
+                return _finish_queued_merge(
                     runner=runner,
                     working=pr_context,
-                    resume=resume,
+                    counters=_resume_reconciliation_counters(resume),
                     repo_root=repo_root,
                     base_ref=base_ref,
                 )
@@ -1843,9 +1837,6 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 empty_checks_startup_deadline_sec=empty_checks_startup_deadline_sec,
                 ci_fix_rebase_pending=working.ci_fix_rebase_pending,
                 cwd=repo_root,
-                wait_for_merge=(
-                    working.merge_result == config.MERGE_RESULT_QUEUED
-                ),
             )
             initial_startup_deadline_available = False
             last_monitored_head = current_head
@@ -2118,12 +2109,12 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 )
             if merged.result == config.MERGE_RESULT_QUEUED:
                 ci_not_ready_guard.reset()
-                working = working.with_(
+                queued_working = working.with_(
                     merge_result=config.MERGE_RESULT_QUEUED,
                     pr_closed=False,
                 )
                 _write_ship_state(
-                    working,
+                    queued_working,
                     phase="merge",
                     iteration=iteration,
                     rebase_count=rebase_count,
@@ -2134,12 +2125,23 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
                 _progress_note(
                     step="8",
                     text=(
-                        f"queued PR #{working.pr_number} for merge"
-                        if working.pr_number
+                        f"queued PR #{queued_working.pr_number} for merge"
+                        if queued_working.pr_number
                         else "queued PR for merge"
                     ),
                 )
-                continue
+                return _finish_queued_merge(
+                    runner=runner,
+                    working=queued_working,
+                    counters=ShipReconciliationCounters(
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    ),
+                    repo_root=repo_root,
+                    base_ref=base_ref,
+                )
             pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
             working = working.with_(
                 merge_result=merged.result,

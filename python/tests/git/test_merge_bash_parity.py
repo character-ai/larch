@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
 """Bash parity for merge MERGE_RESULT classification."""
 
 from __future__ import annotations

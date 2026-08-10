@@ -16,7 +16,6 @@ from larch.implement import ci_monitor
 from larch.core import config
 from larch.core import redact
 from larch.agents.agents import LaunchFailure, TierAttempt
-from larch.git import gh
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
@@ -1516,32 +1515,6 @@ def test_wait_for_pr_merge_times_out_without_claiming_completion() -> None:
             poll_interval=1,
             sleep_fn=lambda _delay: None,
         )
-
-
-def test_monitor_wait_for_merge_uses_pr_state_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        ci_monitor,
-        "wait_for_pr_merge",
-        lambda *_args, **_kwargs: gh.PullRequest(1, "u", "MERGED", "feat"),
-    )
-    monkeypatch.setattr(
-        ci_monitor,
-        "poll_ci",
-        lambda *_args, **_kwargs: pytest.fail("queued wait must not poll PR checks"),
-    )
-
-    result = ci_monitor.monitor(
-        RecordingRunner(),
-        pr=1,
-        repo="o/r",
-        wait_for_merge=True,
-    )
-
-    assert result.action == "already_merged"
-    assert result.ci_status == "merged"
-    assert result.result.outcome is Outcome.OK
 
 
 def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:

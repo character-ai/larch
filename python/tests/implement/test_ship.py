@@ -2819,17 +2819,17 @@ def test_merge_queue_result_is_persisted_and_waited_before_postmerge(
         encoding="utf-8",
     )
     _open_pr_merge_loop_stubs(monkeypatch)
-    wait_modes: list[bool] = []
+    monitor_calls: list[bool] = []
+    queue_waits: list[int] = []
 
-    def monitor(*_args: object, **kwargs: object) -> object:
-        wait_for_merge = bool(kwargs.get("wait_for_merge"))
-        wait_modes.append(wait_for_merge)
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        monitor_calls.append(True)
         return type(
             "M",
             (),
             {
                 "result": StepResult(Outcome.OK),
-                "action": "already_merged" if wait_for_merge else "merge",
+                "action": "merge",
                 "goto_rebase": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
@@ -2851,6 +2851,11 @@ def test_merge_queue_result_is_persisted_and_waited_before_postmerge(
         return type("MR", (), {"result": result, "error": ""})()
 
     monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "wait_for_pr_merge",
+        lambda *_args, **kwargs: queue_waits.append(int(kwargs["pr"])),
+    )
     monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
     monkeypatch.setattr(
         ship,
@@ -2865,7 +2870,8 @@ def test_merge_queue_result_is_persisted_and_waited_before_postmerge(
     )
 
     assert result.outcome is Outcome.OK
-    assert wait_modes == [False, True]
+    assert monitor_calls == [True]
+    assert queue_waits == [7]
     assert not merge_results
 
 

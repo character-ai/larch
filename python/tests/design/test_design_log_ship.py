@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
 """Unit tests for design_log_ship.py."""
 
 from __future__ import annotations

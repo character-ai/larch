@@ -1801,7 +1801,6 @@ def monitor(
     cwd: str | None = None,
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
-    wait_for_merge: bool = False,
 ) -> MonitorResult:
     """Driver entrypoint for CI monitor loop.
 
@@ -1811,37 +1810,6 @@ def monitor(
     inline-fix parameters (``plan_file``, ``launch_fn``, ``ctx``,
     ``transient_retries``) were removed with that behavior.
     """
-    if wait_for_merge:
-        try:
-            _ = wait_for_pr_merge(
-                runner,
-                pr=pr,
-                repo=repo,
-                sleep_fn=sleep_fn,
-                cwd=cwd,
-            )
-        except ShipError as exc:
-            return MonitorResult(
-                action="bail",
-                ci_status="error",
-                behind_count=0,
-                failed_run_id=None,
-                goto_rebase=False,
-                iterations=iteration,
-                result=StepResult(outcome=Outcome.STALLED, detail=str(exc)),
-                ci_fix_rebase_pending=ci_fix_rebase_pending,
-            )
-        return MonitorResult(
-            action="already_merged",
-            ci_status="merged",
-            behind_count=0,
-            failed_run_id=None,
-            goto_rebase=False,
-            iterations=iteration,
-            result=StepResult(outcome=Outcome.OK),
-            ci_fix_rebase_pending=ci_fix_rebase_pending,
-        )
-
     status, decision = poll_ci(
         runner,
         pr=pr,

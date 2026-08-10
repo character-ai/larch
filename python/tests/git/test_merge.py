@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
 """Tests for merge.py."""
 
 from __future__ import annotations
