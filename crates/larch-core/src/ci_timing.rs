@@ -1031,7 +1031,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(harness_shard_medians(&rows)[0].seconds, 22.0);
+        assert!((harness_shard_medians(&rows)[0].seconds - 22.0).abs() < f64::EPSILON);
         assert_eq!(
             harness_target_medians(&rows),
             [TargetTiming {

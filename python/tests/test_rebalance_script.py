@@ -9,6 +9,7 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -42,7 +43,7 @@ def _complete_harness_report(
     shards: dict[int, list[str]] | None = None,
     *,
     run_ids: tuple[int, ...] = (11, 12),
-) -> object:
+) -> Any:
     shards = shards or {1: ["test-a", "test-b"], 2: ["test-c"]}
     target_seconds = {"test-a": 20.0, "test-b": 10.0, "test-c": 15.0}
     rows: list[object] = []
@@ -83,7 +84,7 @@ def _complete_jobs_report(
     run_ids: tuple[int, ...] = (11, 12),
     shard_one_seconds: float = 141.0,
     shard_two_seconds: float = 125.0,
-) -> object:
+) -> Any:
     rows = tuple(
         rebalance.JobTimingRow(run_id=run_id, shard=shard, seconds=seconds)
         for run_id in run_ids
@@ -432,7 +433,7 @@ def _ci_report(
     harness_rows: tuple[object, ...] = (),
     bootstrap_rows: tuple[object, ...] = (),
     job_rows: tuple[object, ...] = (),
-) -> object:
+) -> Any:
     return rebalance.CiTimingReport(
         kind=kind,
         row_count=row_count,
@@ -949,7 +950,7 @@ def _sample_harness_plan() -> object:
 
 def _verification_harness_report(
     *, run_id: int = 301, include_bootstrap: bool = True
-) -> object:
+) -> Any:
     rows = (
         rebalance.HarnessTimingRow(run_id, 1, "test-b", 2.0),
         rebalance.HarnessTimingRow(run_id, 2, "test-a", 1.0),
@@ -971,7 +972,7 @@ def _verification_harness_report(
     )
 
 
-def _verification_jobs_report(*, shard_one_seconds: float = 20.0) -> object:
+def _verification_jobs_report(*, shard_one_seconds: float = 20.0) -> Any:
     rows = (
         rebalance.JobTimingRow(301, 1, shard_one_seconds),
         rebalance.JobTimingRow(301, 2, 10.0),
@@ -989,15 +990,21 @@ def test_harness_verification_fails_on_measured_wall_clock_regression(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    def fake_collect_wall_clock(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_jobs_report()
+
+    def fake_run_ci_timing(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_harness_report()
+
     monkeypatch.setattr(
         rebalance,
         "_collect_wall_clock",
-        lambda *_args, **_kwargs: _verification_jobs_report(),
+        fake_collect_wall_clock,
     )
     monkeypatch.setattr(
         rebalance,
         "_run_ci_timing",
-        lambda *_args, **_kwargs: _verification_harness_report(),
+        fake_run_ci_timing,
     )
     args = rebalance._parse_args(argv=["--kind", "harness", "--repo", "o/r"])
 
@@ -1015,15 +1022,21 @@ def test_harness_evidence_failure_cannot_use_experimental_override(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    def fake_collect_wall_clock(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_jobs_report(shard_one_seconds=10.0)
+
+    def fake_run_ci_timing(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_harness_report(include_bootstrap=False)
+
     monkeypatch.setattr(
         rebalance,
         "_collect_wall_clock",
-        lambda *_args, **_kwargs: _verification_jobs_report(shard_one_seconds=10.0),
+        fake_collect_wall_clock,
     )
     monkeypatch.setattr(
         rebalance,
         "_run_ci_timing",
-        lambda *_args, **_kwargs: _verification_harness_report(include_bootstrap=False),
+        fake_run_ci_timing,
     )
     args = rebalance._parse_args(
         argv=[
@@ -1050,15 +1063,21 @@ def test_harness_verification_rejects_a_different_complete_timing_cohort(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    def fake_collect_wall_clock(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_jobs_report(shard_one_seconds=10.0)
+
+    def fake_run_ci_timing(*_args: Any, **_kwargs: Any) -> Any:
+        return _verification_harness_report(run_id=302)
+
     monkeypatch.setattr(
         rebalance,
         "_collect_wall_clock",
-        lambda *_args, **_kwargs: _verification_jobs_report(shard_one_seconds=10.0),
+        fake_collect_wall_clock,
     )
     monkeypatch.setattr(
         rebalance,
         "_run_ci_timing",
-        lambda *_args, **_kwargs: _verification_harness_report(run_id=302),
+        fake_run_ci_timing,
     )
     args = rebalance._parse_args(argv=["--kind", "harness", "--repo", "o/r"])
 
@@ -1397,9 +1416,15 @@ def test_main_harness_noop_rejects_an_over_budget_baseline(
         **{**plan.__dict__, "baseline_slowest_wall_clock": 301.0}
     )
 
+    def fake_prepare_harness_plan(*_args: Any, **_kwargs: Any) -> Any:
+        return over_budget
+
+    def fake_plan_is_noop(*_args: Any, **_kwargs: Any) -> bool:
+        return True
+
     monkeypatch.setattr(
-        rebalance, "_prepare_harness_plan", lambda *_args, **_kwargs: over_budget
+        rebalance, "_prepare_harness_plan", fake_prepare_harness_plan
     )
-    monkeypatch.setattr(rebalance, "_plan_is_noop", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(rebalance, "_plan_is_noop", fake_plan_is_noop)
 
     assert rebalance.main(["--kind", "harness", "--repo", "o/r"]) == 1
