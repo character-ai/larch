@@ -33,25 +33,39 @@ use std::{
     sync::LazyLock,
 };
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, Timelike, Utc, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Timelike, Utc, Weekday,
+};
 use larch_adapters::{
     GixRepository,
-    github::{AuditPullRequest, AuditRunsService},
+    github::{
+        AuditPullRequest, AuditRunsService, IssueMutationOwner, LiveMutationRequest,
+        OctocrabGitHubService,
+    },
+    runtime::Cancellation,
 };
 use larch_core::{
-    AssessmentKind, CompletenessOutcome, GitHubIssueList, GitHubIssueState, GitHubService, Head,
-    ReachabilityContext, RepositoryRead, Revision, RunLogCorpus, glob_matches, scan_required_files,
-    single_line, validate_ship_outcome_record,
+    AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssueList,
+    GitHubIssueSearch, GitHubIssueState, GitHubOperationErrorKind, GitHubService, Head,
+    ReachabilityContext, RepositoryRead, Revision, RunLogCorpus, bug_title_match, glob_matches,
+    scan_required_files, single_line, validate_ship_outcome_record,
 };
 use regex::Regex;
 use serde_json::{Value, json};
 
 use crate::{
     admission_commands::{fetch_origin_main, pull_origin_main},
-    argparse_compat::{missing, parse_with_flags, usage_error},
+    argparse_compat::{
+        looks_like_option, missing, parse_with_flags, split_inline_option, usage_error,
+    },
     claude_commands::parse_uint,
     github_repository_resolution::{RemoteRepoResult, repository_ref, resolve_remote_repo},
     github_service::with_github_service,
+    issue_mutation_support::{
+        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, authorization_request, authorized,
+        flat_error,
+    },
+    learn_from_bugs_commands::audit_scan_boundary,
     run_log_publication_commands::synchronized_corpus_root,
 };
 
@@ -69,11 +83,25 @@ const INVARIANT_OUTCOME: &str = "architectural-invariant-outcome.json";
 const CLEAN_GUIDELINE: &str = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.";
 const CLEAN_INVARIANT: &str = "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.";
 const OUTCOME_CUTOVER: (u64, u64, u64) = (52, 4, 16);
+const AUDIT_NUDGE_THRESHOLD: usize = 25;
+const AUDIT_ERROR_CHARS: usize = 500;
+const AUDIT_NEVER_RUN_ADVISORY: &str =
+    "Advisory: /learn-from-bugs has never run for this repo; consider running /learn-from-bugs.";
 
 static DESIGN_TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(DESIGN_TITLE).expect("static design title regex"));
 static DESIGN_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(DESIGN_ID).expect("static design id regex"));
+static AUDIT_IMPLEMENT_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\[(?:Run Logs Audit |Implement Run Logs Audit ).* Report\]")
+        .expect("static implement audit title regex")
+});
+static AUDIT_DESIGN_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\[Design Run Logs Audit .* Report\]").expect("static design audit title regex")
+});
+static LEGACY_REPOSITORY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$").expect("static legacy repository regex")
+});
 static EXON_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|")
         .expect("static exon regex")
@@ -109,6 +137,16 @@ fn audit_help(verb: &str) -> ExitCode {
             "usage: cli.py audit-runs compute-counters [-h] --scan-results-dir SCAN_RESULTS_DIR [--prior-frontmatter PRIOR_FRONTMATTER]"
         }
         "pacific-timestamp" => "usage: cli.py audit-runs pacific-timestamp [-h]",
+        "title" => {
+            "usage: cli.py audit-runs title [-h] --skill SKILL --pr-list PR_LIST --timestamp TIMESTAMP"
+        }
+        "title-match" => "usage: cli.py audit-runs title-match [-h] --skill SKILL --title TITLE",
+        "bugs-backlog-nudge" => {
+            "usage: cli.py audit-runs bugs-backlog-nudge [-h] --repo REPO --root ROOT"
+        }
+        "close-priors" => {
+            "usage: cli.py audit-runs close-priors [-h] --skill SKILL --new-issue-number NEW_ISSUE_NUMBER [--repo REPO] [--operator-invoked]"
+        }
         _ => "usage: cli.py audit-runs [options]",
     };
     println!("{usage}");
@@ -137,6 +175,544 @@ fn parsed_or_usage(
         return Err(usage_error(usage, program, &error, 2));
     }
     Ok(parsed)
+}
+
+fn parsed_or_usage_without_abbreviation(
+    arguments: &[OsString],
+    options: &[&'static str],
+    usage: &str,
+    program: &str,
+) -> Result<crate::argparse_compat::ParsedCommandLine, ExitCode> {
+    let parsed = parse_with_flags(arguments, options, &[], 0);
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(usage, program, error, 2));
+    }
+    let abbreviated = arguments
+        .iter()
+        .filter_map(|argument| {
+            let text = argument.to_string_lossy();
+            let (name, _) = split_inline_option(&text);
+            (looks_like_option(argument) && name.starts_with('-') && !options.contains(&name))
+                .then(|| argument.clone())
+        })
+        .collect::<Vec<_>>();
+    if !abbreviated.is_empty() {
+        let error = crate::argparse_compat::join_arguments(&abbreviated);
+        return Err(usage_error(
+            usage,
+            program,
+            &format!("unrecognized arguments: {error}"),
+            2,
+        ));
+    }
+    if let Some(error) = parsed.error() {
+        return Err(usage_error(usage, program, &error, 2));
+    }
+    Ok(parsed)
+}
+
+fn audit_title_skill(skill: &str, program: &str) -> bool {
+    if matches!(skill, "design" | "implement") {
+        return true;
+    }
+    if skill.is_empty() {
+        eprintln!("{program}: --skill is required (allowed: design, implement)");
+    } else {
+        eprintln!("{program}: --skill must be design or implement (got: {skill})");
+    }
+    false
+}
+
+fn audit_pr_numbers(value: &str) -> Vec<String> {
+    let mut numbers = value
+        .split(',')
+        .filter_map(|token| {
+            let token = token.trim();
+            (!token.is_empty() && token.bytes().all(|byte| byte.is_ascii_digit())).then(|| {
+                let normalized = token.trim_start_matches('0');
+                if normalized.is_empty() {
+                    "0".to_owned()
+                } else {
+                    normalized.to_owned()
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    numbers.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+    numbers.dedup();
+    numbers
+}
+
+fn increment_decimal(value: &str) -> String {
+    let mut bytes = value.as_bytes().to_vec();
+    for index in (0..bytes.len()).rev() {
+        if bytes[index] != b'9' {
+            bytes[index] += 1;
+            return String::from_utf8(bytes).expect("decimal bytes stay UTF-8");
+        }
+        bytes[index] = b'0';
+    }
+    let mut incremented = String::with_capacity(value.len() + 1);
+    incremented.push('1');
+    incremented.push_str(&String::from_utf8(bytes).expect("decimal bytes stay UTF-8"));
+    incremented
+}
+
+fn render_audit_title(skill: &str, pr_list: &str, timestamp: &str) -> Option<String> {
+    let numbers = audit_pr_numbers(pr_list);
+    let first = numbers.first()?;
+    let last = numbers.last()?;
+    let prs = if numbers.len() == 1 {
+        format!("#{first}")
+    } else if numbers
+        .windows(2)
+        .all(|pair| increment_decimal(&pair[0]) == pair[1])
+    {
+        format!("#{first}-#{last}")
+    } else {
+        format!("#{first}-#{last} ({} total)", numbers.len())
+    };
+    let prefix = if skill == "implement" {
+        "Implement Run Logs Audit"
+    } else {
+        "Design Run Logs Audit"
+    };
+    Some(format!("[{prefix} {timestamp} Report] PRs {prs}"))
+}
+
+/// Print the title wire for one new audit report.
+#[must_use]
+pub fn title(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("title");
+    }
+    const USAGE: &str =
+        "usage: cli.py audit-runs title [-h] --skill SKILL --pr-list PR_LIST --timestamp TIMESTAMP";
+    let parsed = match parsed_or_usage(
+        arguments,
+        &["--skill", "--pr-list", "--timestamp"],
+        &[],
+        USAGE,
+        "cli.py audit-runs title",
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--skill", parsed.value("--skill").is_some()),
+        ("--pr-list", parsed.value("--pr-list").is_some()),
+        ("--timestamp", parsed.value("--timestamp").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, "cli.py audit-runs title", &missing(&required), 2);
+    }
+    let skill = string_option(&parsed, "--skill");
+    if !audit_title_skill(&skill, "audit-title.sh") {
+        return ExitCode::FAILURE;
+    }
+    let pr_list = string_option(&parsed, "--pr-list");
+    let timestamp = string_option(&parsed, "--timestamp");
+    let Some(title) = render_audit_title(&skill, &pr_list, &timestamp) else {
+        eprintln!("audit-title.sh: --pr-list contains no valid PR numbers");
+        return ExitCode::FAILURE;
+    };
+    println!("TITLE={title}");
+    ExitCode::SUCCESS
+}
+
+/// Exit successfully when a title is one of the audit-report title families.
+#[must_use]
+pub fn title_match(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("title-match");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs title-match [-h] --skill SKILL --title TITLE";
+    let parsed = match parsed_or_usage(
+        arguments,
+        &["--skill", "--title"],
+        &[],
+        USAGE,
+        "cli.py audit-runs title-match",
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--skill", parsed.value("--skill").is_some()),
+        ("--title", parsed.value("--title").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(
+            USAGE,
+            "cli.py audit-runs title-match",
+            &missing(&required),
+            2,
+        );
+    }
+    let skill = string_option(&parsed, "--skill");
+    if !audit_title_skill(&skill, "audit-title-matcher.sh") {
+        return ExitCode::FAILURE;
+    }
+    if matches_audit_title(&skill, &string_option(&parsed, "--title")) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+fn parse_utc_instant(raw: &str) -> Option<DateTime<Utc>> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if let Ok(value) = DateTime::parse_from_rfc3339(raw) {
+        return Some(value.with_timezone(&Utc));
+    }
+    for format in [
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+    ] {
+        if let Ok(value) = NaiveDateTime::parse_from_str(raw, format) {
+            return Some(Utc.from_utc_datetime(&value));
+        }
+    }
+    NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+        .ok()
+        .and_then(|value| value.and_hms_opt(0, 0, 0))
+        .map(|value| Utc.from_utc_datetime(&value))
+}
+
+#[derive(Debug)]
+enum NudgeReadFailure {
+    Malformed(String),
+    Service(String),
+}
+
+impl NudgeReadFailure {
+    fn from_github(error: larch_core::GitHubOperationError) -> Self {
+        let detail = error.to_string();
+        if error.kind() == GitHubOperationErrorKind::MalformedResponse {
+            Self::Malformed(detail)
+        } else {
+            Self::Service(detail)
+        }
+    }
+
+    fn into_wire(self) -> String {
+        match self {
+            Self::Malformed(detail) => format!("malformed:{detail}"),
+            Self::Service(detail) => format!("service:{detail}"),
+        }
+    }
+}
+
+async fn bugs_backlog_nudge_count_remote(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &larch_core::GitHubRepositoryRef,
+    boundary: DateTime<Utc>,
+) -> Result<usize, NudgeReadFailure> {
+    let boundary_text = boundary.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let request = GitHubIssueSearch {
+        repo: repository.clone(),
+        query: format!("{BUG_PREFIX} in:title closed:>{boundary_text}"),
+        limit: service.transport_policy().limits().items(),
+    };
+    let rows = service
+        .search_issues(&request, cancellation)
+        .await
+        .map_err(NudgeReadFailure::from_github)?;
+    Ok(rows
+        .iter()
+        .filter(|issue| {
+            issue.state == GitHubIssueState::Closed
+                && !issue.is_pull_request
+                && bug_title_match(&issue.title)
+                && parse_utc_instant(&issue.closed_at).is_some_and(|closed_at| closed_at > boundary)
+        })
+        .count())
+}
+
+fn print_bugs_backlog_nudge_failure(detail: String) {
+    if let Some(detail) = detail.strip_prefix("malformed:") {
+        eprintln!(
+            "audit-runs bugs-backlog-nudge: gh issue list returned invalid JSON: {}",
+            flat_error(detail, AUDIT_ERROR_CHARS)
+        );
+    } else {
+        let detail = detail.strip_prefix("service:").unwrap_or(&detail);
+        eprintln!(
+            "audit-runs bugs-backlog-nudge: gh issue list failed: {}",
+            flat_error(detail, AUDIT_ERROR_CHARS)
+        );
+    }
+}
+
+/// Read the bounded bug backlog and print its non-mutating advisory when needed.
+#[must_use]
+pub fn bugs_backlog_nudge(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("bugs-backlog-nudge");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs bugs-backlog-nudge [-h] --repo REPO --root ROOT";
+    let parsed = match parsed_or_usage_without_abbreviation(
+        arguments,
+        &["--repo", "--root"],
+        USAGE,
+        "cli.py audit-runs bugs-backlog-nudge",
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo", parsed.value("--repo").is_some()),
+        ("--root", parsed.value("--root").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(
+            USAGE,
+            "cli.py audit-runs bugs-backlog-nudge",
+            &missing(&required),
+            2,
+        );
+    }
+    let repo = string_option(&parsed, "--repo");
+    if !LEGACY_REPOSITORY_RE.is_match(&repo) {
+        eprintln!("audit-runs bugs-backlog-nudge: --repo must be OWNER/REPO");
+        return ExitCode::from(2);
+    }
+    let root = PathBuf::from(string_option(&parsed, "--root"));
+    let Some((state_repo, boundary)) = audit_scan_boundary(&root) else {
+        println!("{AUDIT_NEVER_RUN_ADVISORY}");
+        return ExitCode::SUCCESS;
+    };
+    if !state_repo.eq_ignore_ascii_case(&repo) {
+        println!("{AUDIT_NEVER_RUN_ADVISORY}");
+        return ExitCode::SUCCESS;
+    }
+    let Some(boundary) = parse_utc_instant(&boundary) else {
+        println!("{AUDIT_NEVER_RUN_ADVISORY}");
+        return ExitCode::SUCCESS;
+    };
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            print_bugs_backlog_nudge_failure("service:invalid repository".to_owned());
+            return ExitCode::FAILURE;
+        }
+    };
+    let count = with_github_service(async |service, cancellation| {
+        bugs_backlog_nudge_count_remote(service, cancellation, &repository, boundary)
+            .await
+            .map_err(NudgeReadFailure::into_wire)
+    });
+    let count = match count {
+        Ok(count) => count,
+        Err(error) => {
+            print_bugs_backlog_nudge_failure(error.into_detail());
+            return ExitCode::FAILURE;
+        }
+    };
+    if count > AUDIT_NUDGE_THRESHOLD {
+        println!(
+            "Advisory: {count} closed [BUG] issues accumulated since the last /learn-from-bugs scan; consider running /learn-from-bugs."
+        );
+    }
+    ExitCode::SUCCESS
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ClosePriorsOutcome {
+    NoPrior,
+    Ambiguous,
+    Closed(u64),
+    Failed { number: u64, reason: String },
+}
+
+#[derive(Debug)]
+enum ClosePriorsFailure {
+    ListMalformed,
+    ListFailed,
+}
+
+impl ClosePriorsFailure {
+    fn into_wire(self) -> String {
+        match self {
+            Self::ListMalformed => "malformed-list".to_owned(),
+            Self::ListFailed => "failed-list".to_owned(),
+        }
+    }
+}
+
+fn close_prior_failure_reason(reason: &str) -> String {
+    match reason {
+        "comment-write-failed" => "gh issue comment failed".to_owned(),
+        "close-failed" => "gh issue close failed".to_owned(),
+        "close-read-back-failed" => "close-postcondition-unverified".to_owned(),
+        _ => reason.to_owned(),
+    }
+}
+
+async fn close_priors_remote(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &larch_core::GitHubRepositoryRef,
+    skill: &str,
+    new_issue_number: &str,
+    authorization: &LiveMutationRequest<'_>,
+) -> Result<ClosePriorsOutcome, ClosePriorsFailure> {
+    let rows = service
+        .list_issues(
+            &GitHubIssueList {
+                repo: repository.clone(),
+                state: GitHubIssueState::Open,
+                labels: vec!["audit-report".to_owned()],
+                limit: service.transport_policy().limits().items(),
+            },
+            cancellation,
+        )
+        .await
+        .map_err(|error| {
+            if error.kind() == GitHubOperationErrorKind::MalformedResponse {
+                ClosePriorsFailure::ListMalformed
+            } else {
+                ClosePriorsFailure::ListFailed
+            }
+        })?;
+    let candidates = rows
+        .iter()
+        .filter(|issue| {
+            issue.state == GitHubIssueState::Open
+                && !issue.is_pull_request
+                && issue.number.to_string() != new_issue_number
+                && matches_audit_title(skill, &issue.title)
+        })
+        .collect::<Vec<_>>();
+    if candidates.len() > 1 {
+        return Ok(ClosePriorsOutcome::Ambiguous);
+    }
+    let Some(prior) = candidates.first() else {
+        return Ok(ClosePriorsOutcome::NoPrior);
+    };
+    let comment = format!("Superseded by #{new_issue_number}");
+    let owner = IssueMutationOwner::new(service);
+    match owner
+        .close_with_comment(
+            cancellation,
+            authorization,
+            repository,
+            prior.number,
+            GitHubCloseReason::Completed,
+            Some(&comment),
+        )
+        .await
+    {
+        Ok(_) => Ok(ClosePriorsOutcome::Closed(prior.number)),
+        Err(error) => Ok(ClosePriorsOutcome::Failed {
+            number: prior.number,
+            reason: close_prior_failure_reason(error.reason()),
+        }),
+    }
+}
+
+/// Close the one unambiguous prior audit report after a new report is filed.
+#[must_use]
+pub fn close_priors(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("close-priors");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs close-priors [-h] --skill SKILL --new-issue-number NEW_ISSUE_NUMBER [--repo REPO] [--operator-invoked]";
+    let parsed = match parsed_or_usage(
+        arguments,
+        &["--skill", "--new-issue-number", "--repo"],
+        &["--operator-invoked"],
+        USAGE,
+        "cli.py audit-runs close-priors",
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--skill", parsed.value("--skill").is_some()),
+        (
+            "--new-issue-number",
+            parsed.value("--new-issue-number").is_some(),
+        ),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(
+            USAGE,
+            "cli.py audit-runs close-priors",
+            &missing(&required),
+            2,
+        );
+    }
+    let skill = string_option(&parsed, "--skill");
+    if !audit_title_skill(&skill, "audit-close-priors.sh") {
+        return ExitCode::FAILURE;
+    }
+    let authorization = authorization_request("", "", "", parsed.flag("--operator-invoked"));
+    if let Err(reason) = authorized(&authorization) {
+        println!("CLOSE_PRIORS_REFUSED=true");
+        println!("REASON={MUTATION_REFUSAL_REASON}:{reason}");
+        return ExitCode::from(EXIT_MUTATION_REFUSED);
+    }
+    let repo = parsed.value("--repo").map_or_else(
+        || "character-ai/larch".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            println!("ISSUE_LIST_FAILED=true");
+            println!("REASON=gh issue list failed");
+            return ExitCode::FAILURE;
+        }
+    };
+    let new_issue_number = string_option(&parsed, "--new-issue-number");
+    let result = with_github_service(async |service, cancellation| {
+        close_priors_remote(
+            service,
+            cancellation,
+            &repository,
+            &skill,
+            &new_issue_number,
+            &authorization,
+        )
+        .await
+        .map_err(ClosePriorsFailure::into_wire)
+    });
+    let outcome = match result {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            println!("ISSUE_LIST_FAILED=true");
+            let reason = if error.into_detail() == "malformed-list" {
+                "gh issue list returned invalid JSON"
+            } else {
+                "gh issue list failed"
+            };
+            println!("REASON={reason}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match outcome {
+        ClosePriorsOutcome::NoPrior => ExitCode::SUCCESS,
+        ClosePriorsOutcome::Ambiguous => {
+            println!("CLOSE_PRIORS_REFUSED=true");
+            println!("REASON=ambiguous-match");
+            ExitCode::from(EXIT_MUTATION_REFUSED)
+        }
+        ClosePriorsOutcome::Closed(number) => {
+            println!("CLOSED_NUMBER={number}");
+            ExitCode::SUCCESS
+        }
+        ClosePriorsOutcome::Failed { number, reason } => {
+            println!("CLOSE_FAILED={number}\tREASON={reason}");
+            ExitCode::SUCCESS
+        }
+    }
 }
 
 fn valid_skill(skill: &str, program: &str) -> bool {
@@ -659,13 +1235,8 @@ fn matches_skill(skill: &str, title: &str) -> bool {
 }
 
 fn matches_audit_title(skill: &str, title: &str) -> bool {
-    (skill == "implement"
-        && (title.starts_with("[Run Logs Audit ")
-            || title.starts_with("[Implement Run Logs Audit "))
-        && title.contains(" Report]"))
-        || (skill == "design"
-            && title.starts_with("[Design Run Logs Audit ")
-            && title.contains(" Report]"))
+    (skill == "implement" && AUDIT_IMPLEMENT_TITLE_RE.is_match(title))
+        || (skill == "design" && AUDIT_DESIGN_TITLE_RE.is_match(title))
 }
 
 fn frontmatter_last_pr(body: &str) -> Option<u64> {

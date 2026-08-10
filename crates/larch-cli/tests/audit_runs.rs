@@ -168,6 +168,76 @@ fn pacific_timestamp_refuses_extra_arguments() {
 }
 
 #[test]
+fn title_matching_nudge_and_prior_close_keep_their_command_wires() {
+    let title = larch()
+        .args([
+            "audit-runs",
+            "title",
+            "--skill",
+            "implement",
+            "--pr-list",
+            "3,1,2",
+            "--timestamp",
+            "T",
+        ])
+        .output()
+        .expect("title command");
+    assert!(title.status.success());
+    assert_eq!(
+        String::from_utf8(title.stdout).expect("UTF-8 title output"),
+        "TITLE=[Implement Run Logs Audit T Report] PRs #1-#3\n"
+    );
+
+    let matching = larch()
+        .args([
+            "audit-runs",
+            "title-match",
+            "--skill",
+            "design",
+            "--title",
+            "[Design Run Logs Audit T Report]",
+        ])
+        .output()
+        .expect("title-match command");
+    assert!(matching.status.success());
+    assert!(matching.stdout.is_empty());
+
+    let nudge = larch()
+        .args([
+            "audit-runs",
+            "bugs-backlog-nudge",
+            "--repo",
+            "not-a-repository",
+            "--root",
+            ".",
+        ])
+        .output()
+        .expect("nudge command");
+    assert_eq!(nudge.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8(nudge.stderr).expect("UTF-8 nudge stderr"),
+        "audit-runs bugs-backlog-nudge: --repo must be OWNER/REPO\n"
+    );
+
+    let refused = larch()
+        .args([
+            "audit-runs",
+            "close-priors",
+            "--skill",
+            "implement",
+            "--new-issue-number",
+            "99",
+        ])
+        .output()
+        .expect("close-priors command");
+    assert_eq!(refused.status.code(), Some(5));
+    assert_eq!(
+        String::from_utf8(refused.stdout).expect("UTF-8 close-priors output"),
+        "CLOSE_PRIORS_REFUSED=true\nREASON=unauthorized-mutation:unauthorized-mutation\n"
+    );
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // One archived run covers each published scanner contract.
 fn scan_and_counter_cover_present_artifacts_and_all_counter_outcomes() {
     let sandbox = TempDir::new().expect("sandbox");

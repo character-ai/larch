@@ -71,10 +71,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("bootstrap", "resolve-non-interactive"): ("larch.state.bootstrap", "resolve_non_interactive_main", False),
     ("residual-bash", "paths"): ("larch.core.residual_bash", "paths_main", True),
     ("verify", "main"): ("larch.core.verify_main", "main", False),
-    ("audit-runs", "title"): ("larch.issue.audit_runs", "title_main", False),
-    ("audit-runs", "title-match"): ("larch.issue.audit_runs", "title_match_main", False),
-    ("audit-runs", "bugs-backlog-nudge"): ("larch.issue.audit_runs", "bugs_backlog_nudge_main", False),
-    ("audit-runs", "close-priors"): ("larch.issue.audit_runs", "close_priors_main", False),
     ("complete-umbrella", "ship-leaf"): (
         "larch.implement.complete_umbrella_ship",
         "main",

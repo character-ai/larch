@@ -3,5 +3,5 @@
 Home for the issue pipeline:
 ``issue_wire``, ``issue_create``, ``tracking_issue``,
 ``file_oos``, ``oos``,
-``audit_runs`` and ``execution_issues``.
+``execution_issues``.
 """

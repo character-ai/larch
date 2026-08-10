@@ -206,7 +206,7 @@ enum Domain {
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
-    /// Run-log audit preflight, mapping, scanning, and counters.
+    /// Run-log audit preflight, titles, advisory, mapping, scanning, and closure.
     #[command(subcommand, name = "audit-runs")]
     AuditRuns(AuditRunsCommand),
     /// Bounded filed-bug evidence and verification commands.
@@ -460,6 +460,18 @@ enum AuditRunsCommand {
     /// Print the current `America/Los_Angeles` audit timestamp.
     #[command(name = "pacific-timestamp", disable_help_flag = true)]
     PacificTimestamp(RawCompatibilityArguments),
+    /// Render one audit-report title from a PR list.
+    #[command(disable_help_flag = true)]
+    Title(RawCompatibilityArguments),
+    /// Test whether a title belongs to the selected audit-report family.
+    #[command(name = "title-match", disable_help_flag = true)]
+    TitleMatch(RawCompatibilityArguments),
+    /// Print a non-mutating /learn-from-bugs backlog advisory.
+    #[command(name = "bugs-backlog-nudge", disable_help_flag = true)]
+    BugsBacklogNudge(RawCompatibilityArguments),
+    /// Close one unambiguous prior audit report with verified read-back.
+    #[command(name = "close-priors", disable_help_flag = true)]
+    ClosePriors(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1689,6 +1701,16 @@ fn run(
             }
             AuditRunsCommand::PacificTimestamp(arguments) => {
                 audit_runs_commands::pacific_timestamp(&arguments.arguments)
+            }
+            AuditRunsCommand::Title(arguments) => audit_runs_commands::title(&arguments.arguments),
+            AuditRunsCommand::TitleMatch(arguments) => {
+                audit_runs_commands::title_match(&arguments.arguments)
+            }
+            AuditRunsCommand::BugsBacklogNudge(arguments) => {
+                audit_runs_commands::bugs_backlog_nudge(&arguments.arguments)
+            }
+            AuditRunsCommand::ClosePriors(arguments) => {
+                audit_runs_commands::close_priors(&arguments.arguments)
             }
         }),
         Domain::AnalyzeBugs(command) => Ok(match command {

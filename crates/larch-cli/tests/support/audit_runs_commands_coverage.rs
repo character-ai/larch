@@ -9,7 +9,7 @@ use crate::github_service::with_test_github_service;
 use chrono::{TimeZone, Utc};
 use larch_adapters::github::OctocrabGitHubService;
 use larch_test_support::{IssueServiceExchange, IssueServiceStub};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     ffi::OsString,
     fs,
@@ -88,6 +88,28 @@ fn audit_issue(number: u64, title: &str, body: &str) -> Value {
     issue["state"] = json!("closed");
     issue["closed_at"] = json!("2026-08-09T12:00:00Z");
     issue
+}
+
+fn open_audit_issue(number: u64, title: &str) -> Value {
+    let mut issue = audit_issue(number, title, "");
+    issue["state"] = json!("open");
+    issue["closed_at"] = Value::Null;
+    issue["updated_at"] = json!("2026-08-09T12:00:00Z");
+    issue
+}
+
+fn audit_comment(body: &str) -> Value {
+    let issue = open_audit_issue(7, "[Implement Run Logs Audit 2026 Report]");
+    json!({
+        "id": 11,
+        "node_id": "C_11",
+        "url": "https://api.github.com/repos/o/r/issues/comments/11",
+        "html_url": "https://github.com/o/r/issues/7#issuecomment-11",
+        "body": body,
+        "user": issue["user"].clone(),
+        "created_at": "2026-08-09T12:00:00Z",
+        "updated_at": "2026-08-09T12:00:00Z",
+    })
 }
 
 fn loopback_service(base: String) -> Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> {
@@ -185,6 +207,157 @@ fn compatibility_helpers_keep_parser_and_mapping_boundaries() {
     assert_eq!(clean_reason("  line\n\tvalue\u{0000}  "), "line  value");
     assert_eq!(nonempty_or("", "fallback"), "fallback");
     assert_eq!(nonempty_or("value", "fallback"), "value");
+}
+
+#[test]
+fn audit_title_helpers_keep_the_python_title_and_matching_boundaries() {
+    assert_eq!(
+        render_audit_title("implement", "3, 1, 2, 002", "T"),
+        Some("[Implement Run Logs Audit T Report] PRs #1-#3".to_owned())
+    );
+    assert_eq!(
+        render_audit_title("design", "10,20,30", "T"),
+        Some("[Design Run Logs Audit T Report] PRs #10-#30 (3 total)".to_owned())
+    );
+    assert_eq!(
+        render_audit_title("implement", "999999999999999999999999", "T"),
+        Some("[Implement Run Logs Audit T Report] PRs #999999999999999999999999".to_owned())
+    );
+    assert_eq!(render_audit_title("implement", ", ,", "T"), None);
+    assert!(matches_audit_title(
+        "implement",
+        "[Run Logs Audit 2026 Report] old"
+    ));
+    assert!(matches_audit_title(
+        "implement",
+        "[Implement Run Logs Audit 2026 Report] old"
+    ));
+    assert!(matches_audit_title(
+        "design",
+        "[Design Run Logs Audit 2026 Report] old"
+    ));
+    assert!(!matches_audit_title(
+        "implement",
+        "[Run Logs Audit 2026 Report missing"
+    ));
+    assert!(!matches_audit_title(
+        "design",
+        "[Design Run Logs Audit 2026\nReport]"
+    ));
+    assert_eq!(
+        parse_utc_instant("2026-08-09"),
+        Some(Utc.with_ymd_and_hms(2026, 8, 9, 0, 0, 0).unwrap())
+    );
+}
+
+#[test]
+fn backlog_nudge_uses_a_bounded_typed_read_without_comments() {
+    let mut recent = audit_issue(7, "[DONE] [BUG] fixed", "");
+    recent["closed_at"] = json!("2026-08-09T02:00:00Z");
+    let mut before = audit_issue(8, "[BUG] old", "");
+    before["closed_at"] = json!("2026-08-09T01:00:00Z");
+    let plain = audit_issue(9, "plain task", "");
+    let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+        200,
+        json!({
+            "total_count": 3,
+            "incomplete_results": false,
+            "items": [recent, before, plain],
+        })
+        .to_string(),
+    )
+    .expect("search response")])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let boundary = parse_utc_instant("2026-08-09T01:00:00Z").expect("boundary");
+        let count = with_github_service(async |service, cancellation| {
+            bugs_backlog_nudge_count_remote(service, cancellation, &repository, boundary)
+                .await
+                .map_err(NudgeReadFailure::into_wire)
+        })
+        .expect("typed search succeeds");
+        assert_eq!(count, 1);
+    });
+    let requests = server.finish().expect("recorded requests");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "GET");
+    assert!(requests.iter().all(|request| request.method != "POST"));
+}
+
+#[test]
+fn prior_closure_refuses_ambiguity_and_verifies_one_close() {
+    let one = open_audit_issue(7, "[Implement Run Logs Audit 2026 Report]");
+    let two = open_audit_issue(8, "[Implement Run Logs Audit 2026 Report]");
+    let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+        200,
+        json!([one, two]).to_string(),
+    )
+    .expect("prior list")])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let authorization = authorization_request("", "", "", true);
+        let outcome = with_github_service(async |service, cancellation| {
+            close_priors_remote(
+                service,
+                cancellation,
+                &repository,
+                "implement",
+                "99",
+                &authorization,
+            )
+            .await
+            .map_err(ClosePriorsFailure::into_wire)
+        })
+        .expect("typed list succeeds");
+        assert_eq!(outcome, ClosePriorsOutcome::Ambiguous);
+    });
+    let requests = server.finish().expect("recorded requests");
+    assert_eq!(requests.len(), 1);
+    assert!(requests.iter().all(|request| request.method != "POST"));
+
+    let prior = open_audit_issue(7, "[Implement Run Logs Audit 2026 Report]");
+    let mut closed = prior.clone();
+    closed["state"] = json!("closed");
+    closed["closed_at"] = json!("2026-08-09T12:01:00Z");
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(200, json!([prior.clone()]).to_string())
+            .expect("prior list"),
+        IssueServiceExchange::any_json(200, prior.to_string()).expect("prior snapshot"),
+        IssueServiceExchange::any_json(201, audit_comment("Superseded by #99").to_string())
+            .expect("comment response"),
+        IssueServiceExchange::any_json(200, closed.to_string()).expect("closed response"),
+    ])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let authorization = authorization_request("", "", "", true);
+        let outcome = with_github_service(async |service, cancellation| {
+            close_priors_remote(
+                service,
+                cancellation,
+                &repository,
+                "implement",
+                "99",
+                &authorization,
+            )
+            .await
+            .map_err(ClosePriorsFailure::into_wire)
+        })
+        .expect("typed close succeeds");
+        assert_eq!(outcome, ClosePriorsOutcome::Closed(7));
+    });
+    let requests = server.finish().expect("recorded requests");
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[2].method, "POST");
+    assert_eq!(requests[3].method, "PATCH");
+    let comment: Value = serde_json::from_slice(&requests[2].body.bytes).expect("comment JSON");
+    assert_eq!(comment["body"], "Superseded by #99");
 }
 
 #[test]
