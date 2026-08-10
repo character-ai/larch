@@ -3905,6 +3905,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  rust-coverage-benchmark:", 1
     )[0]
     rust_coverage_benchmark = workflow.split("\n  rust-coverage-benchmark:", 1)[1].split(
+        "\n  rust-phase-overlap-benchmark:", 1
+    )[0]
+    rust_phase_overlap_benchmark = workflow.split(
+        "\n  rust-phase-overlap-benchmark:", 1
+    )[1].split(
         "\n  rust-coverage-target-cache-benchmark:", 1
     )[0]
     rust_target_cache_benchmark = workflow.split(
@@ -4152,6 +4157,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ) == 1
     assert 'NEXTEST_TEST_THREADS: "16"' in rust_full_job
     assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_benchmark
+    assert "RUST_COVERAGE_PHASE_MODE: sequential" in rust_full_job
+    assert "RUST_COVERAGE_PHASE_MODE: sequential" in rust_coverage_benchmark
     assert "NEXTEST_TEST_THREADS=16" in rust_testing
     assert "Post-policy nextest-tail candidate evidence" in rust_testing
     assert "if: github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark" in rust_coverage_benchmark
@@ -4165,6 +4172,17 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "needs: [rust-selection]" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
+    assert "rust_phase_overlap_benchmark:" in workflow
+    assert "github.event_name == 'workflow_dispatch' && inputs.rust_phase_overlap_benchmark" in rust_phase_overlap_benchmark
+    assert "runs-on: ubuntu-24.04" in rust_phase_overlap_benchmark
+    assert "phase_mode: [sequential, parallel]" in rust_phase_overlap_benchmark
+    assert "sample: [1, 2, 3]" in rust_phase_overlap_benchmark
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_phase_overlap_benchmark
+    assert "RUST_COVERAGE_PHASE_MODE: ${{ matrix.phase_mode }}" in rust_phase_overlap_benchmark
+    assert 'COVERAGE_PROFILE_BENCHMARK: "false"' in rust_phase_overlap_benchmark
+    assert 'COVERAGE_TARGET_CACHE_ENABLED: "true"' in rust_phase_overlap_benchmark
+    assert 'COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"' in rust_phase_overlap_benchmark
+    assert "Verify generated plugin runtime projection is clean" in rust_phase_overlap_benchmark
     assert (
         "github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark"
         " && github.ref == 'refs/heads/main'"
@@ -4216,6 +4234,28 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert timing_phase in rust_coverage
     assert "workflow_dispatch-read-only" in rust_coverage
     assert "workflow_dispatch-main-benchmark-hit" in rust_coverage
+    assert 'case "${RUST_COVERAGE_PHASE_MODE:?}" in' in rust_coverage
+    assert "require_process_scoped_profile()" in rust_coverage
+    assert "*%p*" in rust_coverage
+    assert "start_timed_background()" in rust_coverage
+    assert "wait_for_timed_background()" in rust_coverage
+    parallel_phases = rust_coverage.split("run_parallel_coverage_phases() {", 1)[1].split(
+        'thread_counts="$NEXTEST_TEST_THREADS"', 1
+    )[0]
+    assert 'wait_for_timed_background "test-execution-${test_threads}"' in parallel_phases
+    assert 'wait_for_timed_background "repository-policy-${test_threads}"' in parallel_phases
+    assert "parallel Rust coverage phase failed" in parallel_phases
+    assert parallel_phases.index('wait_for_timed_background "test-execution-${test_threads}"') < parallel_phases.index(
+        "parallel Rust coverage phase failed"
+    )
+    assert parallel_phases.index('wait_for_timed_background "repository-policy-${test_threads}"') < parallel_phases.index(
+        "parallel Rust coverage phase failed"
+    )
+    phase_mode_switch = rust_coverage.split('case "$RUST_COVERAGE_PHASE_MODE" in', 1)[1].split(
+        'if run_timed "coverage-report-${test_threads}"', 1
+    )[0]
+    assert 'run_parallel_coverage_phases "$test_threads"' in phase_mode_switch
+    assert 'run_timed "coverage-report-${test_threads}"' not in phase_mode_switch
     coverage_binary = "target/llvm-cov-target/debug/larch"
     assert f'coverage_larch="$GITHUB_WORKSPACE/{coverage_binary}"' in rust_coverage
     assert 'test -x "$coverage_larch"' in rust_coverage
@@ -4292,6 +4332,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "## Rust repository policy rule timings" in rust_coverage
     assert "rust-repository-policy-rule-timings-*" in rust_testing
     assert "repository-policy scan" in rust_testing
+    assert "rust_phase_overlap_benchmark=true" in rust_testing
+    assert "three `sequential` control samples" in rust_testing
+    assert "three `parallel` candidate samples" in rust_testing
+    assert "process placeholder" in rust_testing
+    assert "before `cargo llvm-cov report`" in rust_testing
     for cache_contract in (
         "restore-only cache action",
         "workflow_dispatch-read-only",

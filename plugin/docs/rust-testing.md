@@ -462,6 +462,34 @@ their median. A candidate that varies by more than 10% across its first two
 samples is rerun before comparison. The coverage line gate is unchanged; a
 profile whose report fails it is not eligible.
 
+### Rust test-policy overlap measurement contract
+
+A manual dispatch with `rust_phase_overlap_benchmark=true` runs the
+`rust-phase-overlap-benchmark` matrix: three `sequential` control samples and
+three `parallel` candidate samples at one commit on `ubuntu-24.04`. Every cell
+uses the same pinned coverage tools, dependency-cache policy, test profile,
+`NEXTEST_TEST_THREADS=16`, and 88.000% line threshold. The matrix is
+observational and cannot change the protected `rust-full` producer's
+`sequential` mode.
+
+After compilation and the required doctests, the candidate starts nextest and
+the one repository-policy scan together. Each branch requires the
+`LLVM_PROFILE_FILE` process placeholder, writes its timing row and complete
+stdout/stderr to a distinct runner-temp file, and is explicitly awaited. The
+action emits both labeled logs and timing rows before deciding success. A
+failure from either branch fails the job before `cargo llvm-cov report`, so the
+coverage threshold and LCOV run only after every coverage-producing process
+has exited successfully. The coverage-built executable, plugin projection
+validation, LCOV artifact, policy timing artifact, and uniquely named
+integration artifact remain required for every eligible sample.
+
+Compare the raw nextest, policy, report, end-to-end, and job durations only
+within one cache class. Retain parallel production execution only when all
+three paired candidate samples pass every preserved check and improve the
+median end-to-end job time without worsening the Rust gate or total workflow
+median. Otherwise retain the sequential producer and record the measured
+result.
+
 ### Current-main-derived candidate evidence
 
 [Benchmark run 31151194045](https://github.com/character-ai/larch/actions/runs/31151194045)
