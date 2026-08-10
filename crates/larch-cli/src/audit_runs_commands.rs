@@ -2360,3 +2360,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/support/audit_runs_commands_coverage.rs"]
+mod coverage_tests;
