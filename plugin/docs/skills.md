@@ -421,7 +421,7 @@ Audit recently-merged larch run logs for the selected skill (`--skill=design|imp
 
 **Source**: [`.claude/skills/larch-size/SKILL.md`](../.claude/skills/larch-size/SKILL.md)
 
-Report larch repository line counts (tracked Bash, Python, and Markdown) and `larch-logs` size breakdowns. Runs `python3 "$PWD/.claude/skills/larch-size/scripts/larch_size.py"` from the repo root and passes the output through unchanged. Takes no flags.
+Report larch repository line counts (tracked Bash, Python, and Markdown) and `larch-logs` size breakdowns. Runs `"$PWD/scripts/larch.sh" repo size` from the repo root and passes the output through unchanged. Takes no flags.
 
 ### `/rebalance-tests`
 

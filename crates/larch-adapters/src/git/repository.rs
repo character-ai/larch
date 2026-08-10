@@ -204,6 +204,9 @@ impl GixRepository {
 
     /// Return every path represented in the repository index.
     ///
+    /// A newly initialized repository has no index file and therefore returns
+    /// an empty path list.
+    ///
     /// # Errors
     ///
     /// Returns a stable, redacted repository error when the trusted repository
@@ -211,7 +214,7 @@ impl GixRepository {
     pub fn tracked_paths(&self) -> Result<Vec<GitPath>, RepositoryError> {
         let repository = self.local()?;
         let index = repository
-            .index()
+            .index_or_empty()
             .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
         let mut paths: Vec<GitPath> = index
             .entries()
