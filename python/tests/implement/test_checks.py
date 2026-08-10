@@ -4239,18 +4239,35 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "*%p*" in rust_coverage
     assert "start_timed_background()" in rust_coverage
     assert "wait_for_timed_background()" in rust_coverage
+    assert "record_timed_background()" in rust_coverage
+    waited_background = rust_coverage.split("wait_for_timed_background() {", 1)[1].split(
+        "record_timed_background()", 1
+    )[0]
+    assert "cat " not in waited_background
+    assert "test -s" not in waited_background
+    recorded_background = rust_coverage.split("record_timed_background() {", 1)[1].split(
+        'profile_started="$(date +%s)"', 1
+    )[0]
+    assert "BACKGROUND_PHASE_COLLECTION_STATUS" in recorded_background
+    assert "return 0" in recorded_background
     parallel_phases = rust_coverage.split("run_parallel_coverage_phases() {", 1)[1].split(
         'thread_counts="$NEXTEST_TEST_THREADS"', 1
     )[0]
-    assert 'wait_for_timed_background "test-execution-${test_threads}"' in parallel_phases
-    assert 'wait_for_timed_background "repository-policy-${test_threads}"' in parallel_phases
+    assert 'wait_for_timed_background "$nextest_pid"' in parallel_phases
+    assert 'wait_for_timed_background "$policy_pid"' in parallel_phases
+    assert 'record_timed_background "test-execution-${test_threads}"' in parallel_phases
+    assert 'record_timed_background "repository-policy-${test_threads}"' in parallel_phases
     assert "parallel Rust coverage phase failed" in parallel_phases
-    assert parallel_phases.index('wait_for_timed_background "test-execution-${test_threads}"') < parallel_phases.index(
+    assert parallel_phases.index('wait_for_timed_background "$nextest_pid"') < parallel_phases.index(
+        'wait_for_timed_background "$policy_pid"'
+    )
+    assert parallel_phases.index('wait_for_timed_background "$policy_pid"') < parallel_phases.index(
+        'record_timed_background "test-execution-${test_threads}"'
+    )
+    assert parallel_phases.index('record_timed_background "repository-policy-${test_threads}"') < parallel_phases.index(
         "parallel Rust coverage phase failed"
     )
-    assert parallel_phases.index('wait_for_timed_background "repository-policy-${test_threads}"') < parallel_phases.index(
-        "parallel Rust coverage phase failed"
-    )
+    assert "nextest-collection=%s policy-collection=%s" in parallel_phases
     phase_mode_switch = rust_coverage.split('case "$RUST_COVERAGE_PHASE_MODE" in', 1)[1].split(
         'if run_timed "coverage-report-${test_threads}"', 1
     )[0]

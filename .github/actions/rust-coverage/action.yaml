@@ -292,19 +292,49 @@ runs:
         }
 
         wait_for_timed_background() {
-          phase="$1"
-          pid="$2"
-          timing_output="$3"
-          log_output="$4"
+          pid="$1"
           if wait "$pid"; then
             BACKGROUND_PHASE_STATUS=0
           else
             BACKGROUND_PHASE_STATUS=$?
           fi
-          test -s "$timing_output"
-          printf '\n===== %s output =====\n' "$phase"
-          cat "$log_output"
-          cat "$timing_output" >> "$COVERAGE_TIMING_FILE"
+        }
+
+        record_timed_background() {
+          phase="$1"
+          phase_status="$2"
+          timing_output="$3"
+          log_output="$4"
+          collection_status=0
+
+          if ! printf '\n===== %s output =====\n' "$phase"; then
+            collection_status=1
+          fi
+          if [ -r "$log_output" ]; then
+            if ! cat "$log_output"; then
+              collection_status=1
+              printf 'cannot read %s log: %s\n' "$phase" "$log_output" >&2 || :
+            fi
+          else
+            collection_status=1
+            printf 'missing or unreadable %s log: %s\n' "$phase" "$log_output" >&2 || :
+          fi
+
+          if [ -s "$timing_output" ]; then
+            if ! cat "$timing_output" >> "$COVERAGE_TIMING_FILE"; then
+              collection_status=1
+              printf 'cannot append %s timing: %s\n' "$phase" "$timing_output" >&2 || :
+            fi
+          else
+            collection_status=1
+            printf 'missing or empty %s timing: %s\n' "$phase" "$timing_output" >&2 || :
+            if ! printf '%s\t0\tfailure\ttiming-record-missing;exit=%s\n' \
+              "$phase" "$phase_status" >> "$COVERAGE_TIMING_FILE"; then
+              printf 'cannot write fallback %s timing record\n' "$phase" >&2 || :
+            fi
+          fi
+          BACKGROUND_PHASE_COLLECTION_STATUS="$collection_status"
+          return 0
         }
 
         profile_started="$(date +%s)"
@@ -376,16 +406,26 @@ runs:
             run_repository_policy "$test_threads"
           policy_pid="$BACKGROUND_PHASE_PID"
 
-          wait_for_timed_background "test-execution-${test_threads}" "$nextest_pid" \
-            "$nextest_timing" "$nextest_log"
+          # Reap both producers before any log or timing-file I/O. A missing
+          # file is an infrastructure failure, not a reason to leave the
+          # other coverage producer running.
+          wait_for_timed_background "$nextest_pid"
           nextest_status="$BACKGROUND_PHASE_STATUS"
-          wait_for_timed_background "repository-policy-${test_threads}" "$policy_pid" \
-            "$policy_timing" "$policy_log"
+          wait_for_timed_background "$policy_pid"
           policy_status="$BACKGROUND_PHASE_STATUS"
 
-          if [ "$nextest_status" -ne 0 ] || [ "$policy_status" -ne 0 ]; then
-            printf 'parallel Rust coverage phase failed: nextest=%s policy=%s\n' \
-              "$nextest_status" "$policy_status" >&2
+          record_timed_background "test-execution-${test_threads}" "$nextest_status" \
+            "$nextest_timing" "$nextest_log"
+          nextest_collection_status="$BACKGROUND_PHASE_COLLECTION_STATUS"
+          record_timed_background "repository-policy-${test_threads}" "$policy_status" \
+            "$policy_timing" "$policy_log"
+          policy_collection_status="$BACKGROUND_PHASE_COLLECTION_STATUS"
+
+          if [ "$nextest_status" -ne 0 ] || [ "$policy_status" -ne 0 ] \
+            || [ "$nextest_collection_status" -ne 0 ] || [ "$policy_collection_status" -ne 0 ]; then
+            printf 'parallel Rust coverage phase failed: nextest=%s policy=%s nextest-collection=%s policy-collection=%s\n' \
+              "$nextest_status" "$policy_status" "$nextest_collection_status" \
+              "$policy_collection_status" >&2
             return 1
           fi
         }
