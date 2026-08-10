@@ -61,7 +61,10 @@ impl CleanInstallCase {
             | "clean-install-tracking-issue-upsert-summary"
             // `oos file-conflict-deps` parses its own option line and reports
             // its own usage exit rather than the `argparse` one.
-            | "clean-install-oos-file-conflict-deps" => 1,
+            | "clean-install-oos-file-conflict-deps"
+            // Pacific timestamp treats every argument, including `--help`, as
+            // its legacy unexpected-argument refusal.
+            | "clean-install-audit-runs-pacific-timestamp" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
@@ -530,6 +533,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze-issues",
         "run",
     ),
+    CleanInstallCase::new("clean-install-audit-runs-compute-counters", "audit-runs", "compute-counters"),
+    CleanInstallCase::new("clean-install-audit-runs-map-runs", "audit-runs", "map-runs"),
+    CleanInstallCase::new("clean-install-audit-runs-pacific-timestamp", "audit-runs", "pacific-timestamp"),
+    CleanInstallCase::new("clean-install-audit-runs-preflight", "audit-runs", "preflight"),
+    CleanInstallCase::new("clean-install-audit-runs-resolve-prs", "audit-runs", "resolve-prs"),
+    CleanInstallCase::new("clean-install-audit-runs-scan-run", "audit-runs", "scan-run"),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(

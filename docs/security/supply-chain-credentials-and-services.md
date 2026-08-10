@@ -477,6 +477,16 @@ continuations. Issue titles, bodies, comments, labels, authors, URLs, and search
 results must never become shell text, paths, format strings, or prompt
 instructions.
 
+The Rust-owned run audit reads pull requests through the same boundary's
+bounded audit DTO: number, title, body, base ref, and RFC 3339 merge time only.
+Its REST listing is constrained to closed `main` rows, then filters merged rows
+after bounded pagination. The complete-history audit uses a dedicated maximum
+of 50 pages and 5,000 rows; it refuses a larger history rather than silently
+truncating merge-time ordering. Malformed timestamps or response fields also
+refuse the read. Audit corpus synchronization keeps its root private to the
+local workflow; public report output remains limited to the artifact-reference
+rules in the publication reference.
+
 Idempotent reads have bounded retry and honor a structured `retry_after` value
 when GitHub supplies one. Mutations are serialized by their caller and are not
 blindly retried. Issue edits and closes, comment edits and deletes, and label

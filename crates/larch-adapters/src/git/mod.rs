@@ -551,8 +551,9 @@ mod tests {
             &PullRequest {
                 remote: GitRemote::new("origin").unwrap(),
                 refspec: Some(GitRefspec::new("main").unwrap()),
+                fast_forward_only: true,
             },
-            &["pull", "origin", "main"],
+            &["pull", "--ff-only", "origin", "main"],
         );
         check(
             &StashRequest::Push {

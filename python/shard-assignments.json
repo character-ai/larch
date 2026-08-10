@@ -871,7 +871,6 @@
   "tests/issue/test_analyze_bugs.py::test_sweep_enumeration_selects_merges_only_and_excludes_flush_release_and_logs_only": 14,
   "tests/issue/test_analyze_bugs.py::test_sweep_first_parent_merge_evidence_and_symbols": 19,
   "tests/issue/test_analyze_bugs.py::test_sweep_prepare_cli_fence_and_help": 8,
-  "tests/issue/test_audit_runs.py::test_pacific_timestamp_main_emits_pacific_source": 11,
   "tests/issue/test_deps_audit.py::test_apply_edges_only_skips_rewrites_and_closes": 8,
   "tests/issue/test_issue_mutation.py::test_implementation_lease_mutation_is_run_scoped_and_terminal_atomic": 9,
   "tests/issue/test_issue_wire.py::test_implementation_lease_roundtrip_and_malformed_refusal": 5,

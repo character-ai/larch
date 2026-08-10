@@ -953,11 +953,13 @@ verb = "compute-counters"
 python_module = "larch.issue.audit_runs"
 python_function = "compute_counters_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-compute-counters"
 
 [[commands]]
 domain = "audit-runs"
@@ -965,11 +967,13 @@ verb = "map-runs"
 python_module = "larch.issue.audit_runs"
 python_function = "map_runs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-map-runs"
 
 [[commands]]
 domain = "audit-runs"
@@ -977,11 +981,13 @@ verb = "pacific-timestamp"
 python_module = "larch.issue.audit_runs"
 python_function = "pacific_timestamp_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-pacific-timestamp"
 
 [[commands]]
 domain = "audit-runs"
@@ -989,11 +995,13 @@ verb = "preflight"
 python_module = "larch.issue.audit_runs"
 python_function = "preflight_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-preflight"
 
 [[commands]]
 domain = "audit-runs"
@@ -1001,11 +1009,13 @@ verb = "resolve-prs"
 python_module = "larch.issue.audit_runs"
 python_function = "resolve_prs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-resolve-prs"
 
 [[commands]]
 domain = "audit-runs"
@@ -1013,11 +1023,13 @@ verb = "scan-run"
 python_module = "larch.issue.audit_runs"
 python_function = "scan_run_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8188
+clean_install_test = "clean-install-audit-runs-scan-run"
 
 [[commands]]
 domain = "audit-runs"
@@ -9636,8 +9648,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/write-final-report.md"
 kind = "skill"
-python = ["audit-runs scan-run", "render run-summary"]
-rust = ["final-report write", "run-log verify-completeness", "stall-recovery normalize-outcome"]
+python = ["render run-summary"]
+rust = ["audit-runs scan-run", "final-report write", "run-log verify-completeness", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "skills/implement/scripts/write-final-report.sh"

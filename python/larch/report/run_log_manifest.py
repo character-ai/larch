@@ -363,6 +363,37 @@ def _implement_code_review_voting_reached(run_dir: Path) -> bool:
     return _verify_has_file(run_dir=run_dir, relative_path="code-review-tally.json")
 
 
+def implement_step8_reachable(run_dir: Path, manifest: object | None) -> bool:
+    """Return whether a compatible implement manifest reached Step 8 artifacts."""
+    if not isinstance(manifest, Mapping):
+        return False
+    manifest_mapping = cast("Mapping[str, Any]", manifest)
+    raw_steps = manifest_mapping.get("steps_ran")
+    if isinstance(raw_steps, Mapping) and cast("Mapping[str, Any]", raw_steps).get("step8") is False:
+        return False
+    # The retired audit helper treated a malformed ``steps_ran`` value as
+    # nonempty: it must not activate the terminal-bail shortcut and hide a
+    # reachable artifact. Keep that compatibility boundary before parsing it
+    # into the typed compatibility model, which otherwise normalizes it to {}.
+    if raw_steps is not None and not isinstance(raw_steps, Mapping):
+        return any(
+            _verify_has_file(run_dir=run_dir, relative_path=relative_path)
+            for relative_path in (
+                "version-bump-reasoning.md",
+                "final-summary.md",
+                "run-statistics.md",
+            )
+        )
+    typed = Manifest.from_json(manifest_mapping)
+    return _verify_condition_reached(
+        condition="step8",
+        run_dir=run_dir,
+        manifest_data=typed,
+        manifest_status=_manifest_field(manifest=typed, key="status"),
+        manifest_pr_number=_manifest_field(manifest=typed, key="pr_number"),
+    )
+
+
 def _load_run_manifest(run_dir: Path) -> Manifest | None:
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
@@ -804,6 +835,7 @@ __all__ = [
     "_read_state_kv",
     "_resolve_log_root",
     "effective_run_id",
+    "implement_step8_reachable",
     "manifest_status",
     "parse_pr_number",
     "read_durable_flags",

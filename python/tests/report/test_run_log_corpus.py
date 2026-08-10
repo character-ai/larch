@@ -10,13 +10,25 @@ from typing import cast
 
 import pytest
 
-from larch.report import run_log_corpus
+from larch.report import run_log_corpus, run_log_manifest
 
 # pytest.MonkeyPatch is used by enumeration-error coverage below.
 
 
 def _write_manifest(run_dir: Path, payload: object, *, name: str = "manifest.json") -> None:
     _ = (run_dir / name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_implement_step8_reachable_preserves_malformed_steps_artifact_fallback(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "final-summary.md").write_text(
+        "## /implement: bailed\n", encoding="utf-8"
+    )
+
+    assert run_log_manifest.implement_step8_reachable(
+        tmp_path, {"steps_ran": []}
+    )
 
 
 def test_synchronized_repository_log_root_is_a_typed_rust_consumer(

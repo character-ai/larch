@@ -24,6 +24,7 @@ mod agent_review;
 mod analyze_bugs_commands;
 mod analyze_issues_commands;
 mod argparse_compat;
+mod audit_runs_commands;
 mod bgjob_adapt;
 mod bgjob_commands;
 mod blocker_commands;
@@ -205,6 +206,9 @@ enum Domain {
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
+    /// Run-log audit preflight, mapping, scanning, and counters.
+    #[command(subcommand, name = "audit-runs")]
+    AuditRuns(AuditRunsCommand),
     /// Bounded filed-bug evidence and verification commands.
     #[command(subcommand, name = "analyze-bugs")]
     AnalyzeBugs(AnalyzeBugsCommand),
@@ -434,6 +438,28 @@ enum AnalyzeIssuesCommand {
     /// Render the cumulative-growth chart from a bucketed TSV.
     #[command(name = "render-chart", disable_help_flag = true)]
     RenderChart(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum AuditRunsCommand {
+    /// Refuse an unsafe audit checkout or unsynchronized run-log corpus.
+    #[command(disable_help_flag = true)]
+    Preflight(RawCompatibilityArguments),
+    /// Resolve a bounded natural-language PR selection.
+    #[command(name = "resolve-prs", disable_help_flag = true)]
+    ResolvePrs(RawCompatibilityArguments),
+    /// Map selected pull requests to run-log directories.
+    #[command(name = "map-runs", disable_help_flag = true)]
+    MapRuns(RawCompatibilityArguments),
+    /// Scan one mapped run for audit evidence.
+    #[command(name = "scan-run", disable_help_flag = true)]
+    ScanRun(RawCompatibilityArguments),
+    /// Aggregate scan NDJSON into report counters.
+    #[command(name = "compute-counters", disable_help_flag = true)]
+    ComputeCounters(RawCompatibilityArguments),
+    /// Print the current `America/Los_Angeles` audit timestamp.
+    #[command(name = "pacific-timestamp", disable_help_flag = true)]
+    PacificTimestamp(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1643,6 +1669,26 @@ fn run(
             }
             AnalyzeIssuesCommand::RenderChart(arguments) => {
                 rendering_commands::render_chart(&arguments.arguments)
+            }
+        }),
+        Domain::AuditRuns(command) => Ok(match command {
+            AuditRunsCommand::Preflight(arguments) => {
+                audit_runs_commands::preflight(&arguments.arguments)
+            }
+            AuditRunsCommand::ResolvePrs(arguments) => {
+                audit_runs_commands::resolve_prs(&arguments.arguments)
+            }
+            AuditRunsCommand::MapRuns(arguments) => {
+                audit_runs_commands::map_runs(&arguments.arguments)
+            }
+            AuditRunsCommand::ScanRun(arguments) => {
+                audit_runs_commands::scan_run(&arguments.arguments)
+            }
+            AuditRunsCommand::ComputeCounters(arguments) => {
+                audit_runs_commands::compute_counters(&arguments.arguments)
+            }
+            AuditRunsCommand::PacificTimestamp(arguments) => {
+                audit_runs_commands::pacific_timestamp(&arguments.arguments)
             }
         }),
         Domain::AnalyzeBugs(command) => Ok(match command {
