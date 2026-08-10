@@ -96,6 +96,7 @@ fn loopback_service(base: String) -> Arc<dyn Fn() -> OctocrabGitHubService + Sen
 
 #[test]
 #[allow(clippy::too_many_lines)] // One table preserves small Python-compatible scalar boundaries.
+#[allow(clippy::cognitive_complexity)] // The boundary table deliberately groups related legacy rules.
 fn compatibility_helpers_keep_parser_and_mapping_boundaries() {
     let arguments = [OsString::from("--help")];
     assert!(wants_help(&arguments));
@@ -188,6 +189,7 @@ fn compatibility_helpers_keep_parser_and_mapping_boundaries() {
 
 #[test]
 #[allow(clippy::too_many_lines)] // The fixture intentionally spans every safe artifact reader branch.
+#[allow(clippy::cognitive_complexity)] // One archived fixture keeps related hostile-input cases together.
 fn artifact_readers_and_review_classifiers_handle_complete_and_degraded_runs() {
     let temporary = tempdir().expect("temporary run");
     let run = fixture_run(temporary.path());
@@ -297,7 +299,7 @@ fn artifact_readers_and_review_classifiers_handle_complete_and_degraded_runs() {
 
     assert!(invalid_run_directory(&run, "implement").is_none());
     assert!(
-        invalid_run_directory(&run.parent().expect("skill root"), "implement")
+        invalid_run_directory(run.parent().expect("skill root"), "implement")
             .expect("skill root rejected")
             .contains("specific run")
     );
@@ -312,7 +314,10 @@ fn artifact_readers_and_review_classifiers_handle_complete_and_degraded_runs() {
         parent_issue_number(&run.join("parent-issue.md")),
         Some("12".to_owned())
     );
-    assert_eq!(parent_issue_candidates(&[run.clone()], "12"), [run.clone()]);
+    assert_eq!(
+        parent_issue_candidates(std::slice::from_ref(&run), "12"),
+        vec![run.clone()]
+    );
     assert!(manifest_epoch(&run) > 0.0);
     assert_eq!(
         manifest_fields(&run.join("manifest.json")),
@@ -326,6 +331,7 @@ fn artifact_readers_and_review_classifiers_handle_complete_and_degraded_runs() {
 
 #[test]
 #[allow(clippy::too_many_lines)] // Every result branch is an operator-visible audit classification.
+#[allow(clippy::cognitive_complexity)] // Related artifact outcomes share one archived run fixture.
 fn signal_execution_and_timing_scans_preserve_artifact_evidence() {
     let temporary = tempdir().expect("temporary run");
     let run = fixture_run(temporary.path());
