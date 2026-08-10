@@ -55,7 +55,7 @@ After `PREFLIGHT_OK=true` and before `resolve-prs`, run the advisory once:
 
 ```bash
 NUDGE_RC=0
-NUDGE_OUT=$(python3 "$PWD/python/cli.py" audit-runs bugs-backlog-nudge \
+NUDGE_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs bugs-backlog-nudge \
   --repo "<owner/name>" \
   --root "$PWD" 2>"$TMPDIR/bugs-backlog-nudge.err") || NUDGE_RC=$?
 ```
@@ -133,7 +133,7 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise by reusing the title shapes from `python/audit_runs.py title matching helpers` (all three audit-report families). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise by reusing `scripts/larch.sh audit-runs title-match` (all three audit-report families). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
 - **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IMPLEMENTING]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
 For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
@@ -228,13 +228,13 @@ PACIFIC_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs pacific-timest
 PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=//p')
 # → PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
 
-TITLE_OUT=$(python3 "$PWD/python/cli.py" audit-runs title \
+TITLE_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs title \
   --skill "$SKILL" --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
 # stdout is KV-shaped: each line is `KEY=value`. The title script prints `TITLE=...` (not a bare title string).
 TITLE=$(printf '%s\n' "$TITLE_OUT" | sed -n 's/^TITLE=//p')
 ```
 
-Contracts: `scripts/larch.sh audit-runs pacific-timestamp`, `python/cli.py audit-runs title`.
+Contracts: `scripts/larch.sh audit-runs pacific-timestamp`, `scripts/larch.sh audit-runs title`.
 
 ### Label
 
@@ -336,16 +336,16 @@ cumulative_counters:
 After the new audit report is filed:
 
 ```bash
-python3 "$PWD/python/cli.py" audit-runs close-priors \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs close-priors \
   --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>" \
   --operator-invoked
 ```
 
 The `--operator-invoked` flag is required. Omitting it causes a refusal before any `gh` call.
 
-Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line. If `gh issue list` fails up front, the CLI prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If temporary `--body-file` setup fails before the comment loop, the CLI prints `BODY_FILE_FAILED=true` plus `REASON=...` and exits non-zero. After any `python/cli.py audit-runs close-priors` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `BODY_FILE_FAILED=` even when the exit code is `0`. Do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
+Stdout is KV-shaped. A verified close emits `CLOSED_NUMBER=<N>`. A close failure can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line. If the bounded issue list fails up front, the CLI prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If more than one matching prior is found, it refuses before any comment or close with `CLOSE_PRIORS_REFUSED=true`, `REASON=ambiguous-match`, and the mutation-refusal exit code. The shared issue-mutation owner authorizes the mutation and verifies the comment and close read-back. After any `scripts/larch.sh audit-runs close-priors` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `CLOSE_PRIORS_REFUSED=` even when the exit code is `0`. Do not treat `CLOSED_NUMBER=` as unconditional full success.
 
-Contract: `python/cli.py audit-runs close-priors`.
+Contract: `scripts/larch.sh audit-runs close-priors`.
 
 ## Output to chat
 
@@ -373,7 +373,7 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 ```
 parse --skill (design|implement) → $SKILL; fail-fast if missing/invalid
 scripts/larch.sh audit-runs preflight --skill $SKILL → PREFLIGHT_OK + CORPUS_ROOT / fail-fast
-python/cli.py audit-runs bugs-backlog-nudge --repo <owner/name> --root $PWD → chat-only advisory
+scripts/larch.sh audit-runs bugs-backlog-nudge --repo <owner/name> --root $PWD → chat-only advisory
 scripts/larch.sh audit-runs resolve-prs --skill $SKILL → full stdout KV contract
 scripts/larch.sh audit-runs map-runs --skill $SKILL → run-map.tsv
 for each PR:
@@ -381,29 +381,28 @@ for each PR:
 scripts/larch.sh audit-runs compute-counters    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
 [LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
 scripts/larch.sh audit-runs pacific-timestamp → PACIFIC_TIMESTAMP (extract from stdout KV)
-python/cli.py audit-runs title --skill $SKILL → TITLE
+scripts/larch.sh audit-runs title --skill $SKILL → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 issue create-one                → file audit report
-python/cli.py audit-runs close-priors --skill $SKILL → close prior audit-report issues for this skill
+scripts/larch.sh audit-runs close-priors --skill $SKILL → close one unambiguous prior audit-report issue for this skill
 [LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
 [LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
 ```
 
 ## Scripts
 
-- `python/audit_runs.py title matching helpers`: per-skill audit-report title matching
+- `scripts/larch.sh audit-runs title-match`: per-skill audit-report title matching
 - `scripts/larch.sh audit-runs preflight`: typed Git fetch/pull, repo-identity, concurrency guard, and one corpus synchronization
-- `python/cli.py audit-runs bugs-backlog-nudge`: chat-only `/learn-from-bugs` backlog advisory
+- `scripts/larch.sh audit-runs bugs-backlog-nudge`: chat-only `/learn-from-bugs` backlog advisory
 - `scripts/larch.sh audit-runs resolve-prs`: verbal-description → PR_LIST
 - `scripts/larch.sh audit-runs map-runs`: PR → run-log directory mapping (TSV)
 - `scripts/larch.sh audit-runs scan-run`: all scans against one run-log dir; NDJSON output
 - `scripts/larch.sh audit-runs compute-counters`: sum scan deltas + prior totals; KV output
 - `scripts/larch.sh audit-runs pacific-timestamp`: portable Pacific timestamp
-- `python/cli.py audit-runs title`: generate report title string
-- `python/cli.py audit-runs close-priors`: close prior audit-report issues
-- `crates/larch-cli/tests/audit_runs.rs`: Rust audit scan, counter, and timestamp wire coverage
-- `python/tests/issue/test_audit_runs.py`: retained Python title, advisory, and close-helper coverage
+- `scripts/larch.sh audit-runs title`: generate report title string
+- `scripts/larch.sh audit-runs close-priors`: close one unambiguous prior audit-report issue
+- `crates/larch-cli/tests/audit_runs.rs`: Rust audit scan, counter, timestamp, title, advisory, and closure wire coverage
 
 ## Anti-patterns
 

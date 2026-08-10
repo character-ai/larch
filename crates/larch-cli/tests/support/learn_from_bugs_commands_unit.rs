@@ -148,6 +148,23 @@ fn state_wire_is_sorted_and_ascii_safe() {
 }
 
 #[test]
+fn audit_scan_boundary_prefers_a_nonempty_scan_start_then_run_date() {
+    let mut scanned = state(Vec::new());
+    scanned.scan_started_at = Some("2026-08-09T10:00:00Z".to_owned());
+    assert_eq!(
+        audit_scan_boundary_from_state(scanned),
+        ("owner/repo".to_owned(), "2026-08-09T10:00:00Z".to_owned())
+    );
+
+    let mut fallback = state(Vec::new());
+    fallback.scan_started_at = Some(String::new());
+    assert_eq!(
+        audit_scan_boundary_from_state(fallback),
+        ("owner/repo".to_owned(), "2026-08-09".to_owned())
+    );
+}
+
+#[test]
 fn state_writer_detects_a_stale_snapshot_and_keeps_private_permissions() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("state.json");

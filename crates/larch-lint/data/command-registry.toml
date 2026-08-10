@@ -929,11 +929,13 @@ verb = "bugs-backlog-nudge"
 python_module = "larch.issue.audit_runs"
 python_function = "bugs_backlog_nudge_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8189
+clean_install_test = "clean-install-audit-runs-bugs-backlog-nudge"
 
 [[commands]]
 domain = "audit-runs"
@@ -941,11 +943,13 @@ verb = "close-priors"
 python_module = "larch.issue.audit_runs"
 python_function = "close_priors_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8189
+clean_install_test = "clean-install-audit-runs-close-priors"
 
 [[commands]]
 domain = "audit-runs"
@@ -1037,11 +1041,13 @@ verb = "title"
 python_module = "larch.issue.audit_runs"
 python_function = "title_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8189
+clean_install_test = "clean-install-audit-runs-title"
 
 [[commands]]
 domain = "audit-runs"
@@ -1049,11 +1055,13 @@ verb = "title-match"
 python_module = "larch.issue.audit_runs"
 python_function = "title_match_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7682
+migration_issue = 8189
+clean_install_test = "clean-install-audit-runs-title-match"
 
 [[commands]]
 domain = "bgjob"
@@ -8714,12 +8722,6 @@ path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
 rust = ["execution-issues flush", "timing mark"]
-
-[[callers]]
-path = "python/larch/issue/audit_runs.py"
-kind = "python-runtime"
-python = []
-rust = ["learn-from-bugs read-state"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"

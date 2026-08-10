@@ -51,7 +51,7 @@ Commands:
   generate           Regenerate or verify committed developer artifacts
   gantt              Generic ASCII Gantt rendering
   analyze-issues     Issue-backlog report rendering
-  audit-runs         Run-log audit preflight, mapping, scanning, and counters
+  audit-runs         Run-log audit preflight, titles, advisory, mapping, scanning, and closure
   analyze-bugs       Bounded filed-bug evidence and verification commands
   learn-from-bugs    Prepare compact bug-learning evidence and maintain its durable marker
   object-store       Narrow provider transports used by Python-owned run-log workflows

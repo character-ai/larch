@@ -178,7 +178,6 @@ test-anti-improvised-wakeup:
 
 test-audit-runs:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test audit_runs
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/issue/test_audit_runs.py -q
 
 
 test-sessionstart:

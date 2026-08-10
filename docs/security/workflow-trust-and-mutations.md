@@ -251,6 +251,12 @@ comment, close, or closed-state failure is never reported
 as a successful close. Python remains responsible only for issue callers that
 have not reached an explicit atomic cutover.
 
+`audit-runs close-priors` first performs a bounded labeled issue read and
+refuses without commenting or closing when more than one matching prior report
+is present. Its one permitted close goes through that same owner and emits a
+verified close result only after the comment and closed-state read-backs. The
+related backlog advisory is read-only and never posts a comment.
+
 ### Local mutation safety
 
 Wire files use closed key sets, single-line values, explicit size limits,

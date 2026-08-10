@@ -401,10 +401,6 @@ exclude = [
   # harnesses outside the skill prose surface (they are operator-invocable via
   # `make`, not via the skill's procedural body).
   "python/test_implement_dispatch.py",
-  # for the dev-only audit-runs skill. Referenced from Makefile
-  # (test-audit-runs target) and its sibling contract; not from SKILL.md
-  # runtime prose. Same Makefile-only pattern as test-analyze above.
-  "python/test_audit_runs.py",
   # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",

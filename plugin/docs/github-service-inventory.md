@@ -86,6 +86,10 @@ comment DTOs through the typed REST adapter, while the fixed closure-reference
 GraphQL operation stays inside the operations adapter. The offline `analyze`
 verb reads only its supplied snapshot and therefore has no GitHub-service row.
 
+`audit-report-issues` records #8189's bounded audit advisory and prior-report
+closure cutover. The advisory is read-only; prior closure uses the shared typed
+issue-mutation owner for authorization and close read-back.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -102,7 +106,8 @@ issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complet
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
 issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
-issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs bugs-backlog-nudge,audit-runs close-priors,issue migration-audit
+issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	issue migration-audit
+audit-report-issues	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	audit-runs bugs-backlog-nudge,audit-runs close-priors
 audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	audit-runs map-runs,audit-runs preflight,audit-runs resolve-prs
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *

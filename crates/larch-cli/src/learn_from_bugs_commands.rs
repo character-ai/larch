@@ -475,6 +475,28 @@ pub fn read_state(arguments: &[OsString]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Return the durable scan boundary used by the non-mutating audit advisory.
+///
+/// This reuses the same canonical-root and symlink-safe state reader as the
+/// public `read-state` wire. Invalid, absent, or unreadable state deliberately
+/// has no boundary so callers retain the legacy "never run" advisory.
+#[must_use]
+pub fn audit_scan_boundary(root: &Path) -> Option<(String, String)> {
+    let path = canonical_root(root)
+        .and_then(|root| state_path(&root))
+        .ok()?;
+    let state = read_state_file(&path).ok()??;
+    Some(audit_scan_boundary_from_state(state))
+}
+
+fn audit_scan_boundary_from_state(state: StateRecord) -> (String, String) {
+    let boundary = state
+        .scan_started_at
+        .filter(|value| !value.is_empty())
+        .unwrap_or(state.run_date);
+    (state.repo, boundary)
+}
+
 /// Dispatch `learn-from-bugs write-state`.
 #[must_use]
 #[allow(clippy::too_many_lines)] // Required-option parsing and exact output form one compatibility boundary.

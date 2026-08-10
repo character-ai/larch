@@ -533,12 +533,28 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze-issues",
         "run",
     ),
+    CleanInstallCase::new(
+        "clean-install-audit-runs-bugs-backlog-nudge",
+        "audit-runs",
+        "bugs-backlog-nudge",
+    ),
+    CleanInstallCase::new(
+        "clean-install-audit-runs-close-priors",
+        "audit-runs",
+        "close-priors",
+    ),
     CleanInstallCase::new("clean-install-audit-runs-compute-counters", "audit-runs", "compute-counters"),
     CleanInstallCase::new("clean-install-audit-runs-map-runs", "audit-runs", "map-runs"),
     CleanInstallCase::new("clean-install-audit-runs-pacific-timestamp", "audit-runs", "pacific-timestamp"),
     CleanInstallCase::new("clean-install-audit-runs-preflight", "audit-runs", "preflight"),
     CleanInstallCase::new("clean-install-audit-runs-resolve-prs", "audit-runs", "resolve-prs"),
     CleanInstallCase::new("clean-install-audit-runs-scan-run", "audit-runs", "scan-run"),
+    CleanInstallCase::new("clean-install-audit-runs-title", "audit-runs", "title"),
+    CleanInstallCase::new(
+        "clean-install-audit-runs-title-match",
+        "audit-runs",
+        "title-match",
+    ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(
