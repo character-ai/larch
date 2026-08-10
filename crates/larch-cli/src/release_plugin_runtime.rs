@@ -425,7 +425,6 @@ mod tests {
         assert!(paths.contains("agents/reviewer.md"));
         assert!(paths.contains("ARCHITECTURE.md"));
         assert!(paths.contains("SECURITY.md"));
-        assert!(paths.contains("docs/ci-latency-evidence.md"));
         assert!(paths.contains("docs/git-operation-inventory.md"));
         assert!(paths.contains("docs/github-service-inventory.md"));
         assert!(paths.contains("docs/google-service-inventory.md"));
@@ -447,6 +446,16 @@ mod tests {
         for path in DEV_ONLY_PYTHON {
             assert!(!paths.contains(*path));
         }
+    }
+
+    #[test]
+    fn includes_ci_latency_evidence_in_runtime_projection() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+
+        let paths = runtime_paths(&root).expect("runtime path selection");
+
+        assert!(paths.contains("docs/ci-latency-evidence.md"));
     }
 
     #[test]
