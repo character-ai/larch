@@ -108,6 +108,17 @@ The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
 being treated as a successful handoff.
 
+Every `rust-full` execution stages and verifies a policy-cache candidate after
+the coverage target has been pruned. It verifies the preserved integration
+artifact's regular-file shape, existing SHA-256, Rust-input digest, source SHA,
+and version before copying it, then proves the staged executable against that
+same checksum. Pull requests, merge candidates, and non-main full lanes use
+the fixed `current-checkout` provenance label and cannot publish the candidate.
+Only a successful `push` to `refs/heads/main` labels a candidate
+`refs/heads/main` and may publish it. Candidate staging therefore gives every
+full lane the same post-prune validation without granting cache-mutation
+authority to untrusted events.
+
 The `trusted-main-rust-policy` cache is a distinct executable cache, not a
 compiler-output cache or an artifact-provenance substitute. Only a successful
 full `push` to `refs/heads/main` may save it, and only after the coverage-built

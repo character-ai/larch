@@ -50,11 +50,21 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("checks", "rust-clippy"): ("larch.implement.checks", "rust_clippy_main", False),
     ("checks", "self-edit-log"): ("larch.implement.checks", "checks_self_edit_log_main", True),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
+    ("ci", "prepare-rust-integration-artifact"): (
+        "larch.implement.rust_policy_candidate",
+        "prepare_integration_artifact_main",
+        False,
+    ),
     ("ci", "rust-select"): ("larch.implement.rust_ci_selection", "rust_select_main", True),
     ("ci", "rust-select-summary"): (
         "larch.implement.rust_ci_selection",
         "rust_select_summary_main",
         True,
+    ),
+    ("ci", "stage-rust-policy-candidate"): (
+        "larch.implement.rust_policy_candidate",
+        "stage_policy_candidate_main",
+        False,
     ),
     ("bootstrap", "invoke"): ("larch.state.bootstrap", "invoke_main", True),
     ("bootstrap", "parse-routing"): ("larch.state.bootstrap", "parse_routing_main", True),
