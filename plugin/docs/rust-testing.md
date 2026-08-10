@@ -278,6 +278,38 @@ follows:
   uploads a uniquely named verification artifact rather than competing with the
   Python handoff.
 
+### Bash-shard Cargo target ownership
+
+The Bash-harness matrix deliberately excludes Cargo-backed Make targets. The
+following focused local targets are covered by the stronger `rust-full` action's
+`cargo llvm-cov nextest --no-report --workspace --all-features --locked`
+execution surface:
+
+Each listed Make recipe is the shared `$(HARNESS_MARK) --label $@ --` prefix
+followed by its table command; it has no other recipe lines.
+
+| Focused local Make target | Complete Cargo recipe | `rust-full` nextest surface |
+| --- | --- | --- |
+| `test-collect-agent-results` | `cargo test --locked --package larch-cli --test collector_commands` | `collector_commands` |
+| `test-analyze` | `cargo test --locked --package larch-cli --bin larch analyze_issues_commands` | `analyze_issues_commands` |
+| `test-fetch-combinable-issues-filter` | `cargo test --locked --package larch-cli combine_issues_commands --bin larch` | `combine_issues_commands` |
+| `test-blocker` | `cargo test --locked --package larch-core --lib prose_blockers` | `prose_blockers` |
+| `test-check-clean-tree` | `cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state` | `cli` |
+| `test-check-scope-reduction-marker` | `cargo test --locked --package larch-cli --test dirty_tree scope_` | `dirty_tree` |
+| `test-phantom-probe-with-warn` | `cargo test --locked --package larch-cli --test cli phantom_probe` | `cli` |
+| `test-git-commit-only` | `cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content` | `git_commands` |
+| `test-dispatch-code-voters` | `cargo test --locked --package larch-cli --test voter_dispatch_commands` | `voter_dispatch_commands` |
+| `test-check-mid-run-dirty-tree` | `cargo test --locked --package larch-cli --test dirty_tree` | `dirty_tree` |
+| `test-check-phantom-dirty` | `cargo test --locked --package larch-cli --test cli check_phantom_dirty` | `cli` |
+| `test-no-grouped-reuse-guard` | `cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse` | `waterfall_commands` |
+| `test-launch-claude-subprocess` | `cargo test --locked --package larch-cli --test claude_commands -- subprocess_` | `claude_commands` |
+| `test-launch-claude-review` | `cargo test --locked --package larch-cli --test claude_commands -- review_` | `claude_commands` |
+| `test-dispatch-with-waterfall` | `cargo test --locked --package larch-cli --test waterfall_commands` | `waterfall_commands` |
+
+The focused targets remain available for local debugging. They are not
+`test-harnesses-N` prerequisites, so a fresh Bash-harness runner does not
+duplicate the workspace test compilation.
+
 `rust-full` and the dispatch-only coverage measurement jobs install
 checksum-verified pinned `cargo-nextest` and `cargo-llvm-cov` binaries without
 a source-install fallback. Normal local checks use changed-path Clippy and do

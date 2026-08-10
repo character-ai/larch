@@ -36,10 +36,14 @@ append_section() {
   fi
 }
 
-# Single source of truth for documented standalone carve-outs (test-* recipe
-# targets that are deliberately NOT part of the test-harnesses aggregate). When
-# adding another standalone carve-out, append it to this list AND update the
-# Makefile comments near that target AND scripts/test-harness-shards-coverage.md.
+# Single source of truth for explicitly documented standalone aliases (test-*
+# recipe targets that are deliberately NOT part of the test-harnesses aggregate).
+# Cargo- and pytest-backed targets are automatically excluded from the
+# direct-Bash inventory, so new aliases in either lane do not need this list
+# solely to stay out of shards. Existing documented aliases remain listed here.
+# When adding another explicit standalone alias, append it to this list AND
+# update the Makefile comments near that target AND
+# scripts/test-harness-shards-coverage.md.
 # The carve-out list is consumed by every awk program in this script via the
 # CARVE_OUTS environment variable; do NOT hardcode names in additional awk
 # blocks.
@@ -63,10 +67,11 @@ CARVE_OUT_FN='
 
 # Unified direct-Bash-leaf inventory:
 # - recipe-bearing test-* targets whose complete recipe is Bash-harness work
-#   (no pytest invocation)
+#   (no pytest or Cargo invocation)
 # - recipe-bearing *-bash-harness leaves (including non-test-* names)
-# Excludes recipe-less aggregates, direct pytest recipes, and mixed recipes
-# that contain any pytest invocation. Shard members must be inventory leaves.
+# Excludes recipe-less aggregates, Cargo-focused recipes, direct pytest recipes,
+# and mixed recipes that contain either Cargo or pytest. Shard members must be
+# inventory leaves.
 extract_individual_targets() {
   local makefile="$1"
 
@@ -77,18 +82,25 @@ extract_individual_targets() {
       if (name ~ /-bash-harness\$/) return 1
       return 0
     }
+    function has_cargo_command(line) {
+      return line ~ /(^|[[:space:]])[@+-]*cargo([[:space:]]|$)/ || line ~ /(^|[[:space:]])[@+-]*[^[:space:]]*\/cargo([[:space:]]|$)/ || index(line, \"\$(CARGO\") || index(line, \"\${CARGO\") || index(line, \"\$\$CARGO\") || index(line, \"\$\${CARGO\")
+    }
+    function has_pytest_command(line) {
+      return line ~ /pytest/ || index(line, \"\$(PYTEST\") || index(line, \"\${PYTEST\") || index(line, \"\$\$PYTEST\") || index(line, \"\$\${PYTEST\")
+    }
     function flush(   keep) {
       if (cur == \"\") return
       keep = 0
-      if (has_recipe && !cur_is_pytest && is_inventory_candidate(cur) && !is_carve_out(cur)) {
+      if (has_recipe && !cur_is_pytest && !cur_is_cargo && is_inventory_candidate(cur) && !is_carve_out(cur)) {
         keep = 1
       }
       if (keep) print cur
       cur = \"\"
       cur_is_pytest = 0
+      cur_is_cargo = 0
       has_recipe = 0
     }
-    BEGIN { cur = \"\"; cur_is_pytest = 0; has_recipe = 0 }
+    BEGIN { cur = \"\"; cur_is_pytest = 0; cur_is_cargo = 0; has_recipe = 0 }
     /^[[:space:]]*#/ { next }
     /^[^[:space:]#][^:]*:/ {
       flush()
@@ -99,7 +111,8 @@ extract_individual_targets() {
     /^\t/ {
       if (cur != \"\") {
         has_recipe = 1
-        if (/pytest/) cur_is_pytest = 1
+        if (has_pytest_command(\$0)) cur_is_pytest = 1
+        if (has_cargo_command(\$0)) cur_is_cargo = 1
       }
       next
     }
@@ -108,8 +121,9 @@ extract_individual_targets() {
   " "$makefile" | sort -u
 }
 
-# Classify makefile targets for shard-member rejection: aggregate (recipe-less),
-# pytest (recipe contains pytest), or unknown (not declared).
+# Classify Makefile targets for shard-member rejection: aggregate (recipe-less),
+# cargo (recipe invokes Cargo), pytest (recipe contains pytest), or unknown
+# (not declared).
 extract_nonleaf_classifications() {
   local makefile="$1"
   local out="$2"
@@ -118,13 +132,21 @@ extract_nonleaf_classifications() {
     function flush() {
       if (cur == \"\") return
       if (!has_recipe) kind[cur] = \"aggregate\"
+      else if (cur_is_cargo) kind[cur] = \"cargo\"
       else if (cur_is_pytest) kind[cur] = \"pytest\"
       else kind[cur] = \"leaf\"
       cur = \"\"
       cur_is_pytest = 0
+      cur_is_cargo = 0
       has_recipe = 0
     }
-    BEGIN { cur = \"\"; cur_is_pytest = 0; has_recipe = 0 }
+    function has_cargo_command(line) {
+      return line ~ /(^|[[:space:]])[@+-]*cargo([[:space:]]|$)/ || line ~ /(^|[[:space:]])[@+-]*[^[:space:]]*\/cargo([[:space:]]|$)/ || index(line, \"\$(CARGO\") || index(line, \"\${CARGO\") || index(line, \"\$\$CARGO\") || index(line, \"\$\${CARGO\")
+    }
+    function has_pytest_command(line) {
+      return line ~ /pytest/ || index(line, \"\$(PYTEST\") || index(line, \"\${PYTEST\") || index(line, \"\$\$PYTEST\") || index(line, \"\$\${PYTEST\")
+    }
+    BEGIN { cur = \"\"; cur_is_pytest = 0; cur_is_cargo = 0; has_recipe = 0 }
     /^[[:space:]]*#/ { next }
     /^[^[:space:]#][^:]*:/ {
       flush()
@@ -134,7 +156,8 @@ extract_nonleaf_classifications() {
     /^\t/ {
       if (cur != \"\") {
         has_recipe = 1
-        if (/pytest/) cur_is_pytest = 1
+        if (has_pytest_command(\$0)) cur_is_pytest = 1
+        if (has_cargo_command(\$0)) cur_is_cargo = 1
       }
       next
     }
@@ -288,7 +311,7 @@ validate_makefile() {
     kind="$(awk -F '\t' -v n="$prereq" '$1 == n { print $2; exit }' "$nonleaf_kinds")"
     if [[ -z "$kind" ]]; then
       printf '%s\tunknown\n' "$prereq" >> "$nonleaf_in_shards"
-    elif [[ "$kind" == "aggregate" || "$kind" == "pytest" ]]; then
+    elif [[ "$kind" == "aggregate" || "$kind" == "cargo" || "$kind" == "pytest" ]]; then
       printf '%s\t%s\n' "$prereq" "$kind" >> "$nonleaf_in_shards"
     fi
   done < "$slice_all"
@@ -357,7 +380,7 @@ validate_makefile() {
   append_section "orphan in shards" "+" "$orphan"
   if [[ -s "$nonleaf_in_shards" ]]; then
     {
-      printf '@@ non-leaf in shards (aggregate, pytest, or unknown) @@\n'
+      printf '@@ non-leaf in shards (aggregate, cargo, pytest, or unknown) @@\n'
       while IFS=$'\t' read -r name kind; do
         printf '+ %s (%s)\n' "$name" "$kind"
       done < "$nonleaf_in_shards"
@@ -545,6 +568,43 @@ run_self_case() {
       awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-pytest"); gsub(/ test-zeta /, " test-zeta test-only-pytest "); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
+    cargo-recipe-in-shard)
+      # Cargo-backed targets are owned by rust-full and must not recompile in
+      # the direct-Bash harness matrix.
+      {
+        printf 'test-only-cargo:\n'
+        printf '\t@cargo test --locked --package larch-cli\n'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-cargo"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    cargo-path-recipe-in-shard)
+      # A command path still invokes Cargo directly.
+      {
+        printf 'test-only-cargo-path:\n'
+        printf '\t/usr/bin/cargo test --locked --package larch-cli\n'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-cargo-path"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    cargo-variable-recipe-in-shard)
+      # Make expands this conventional tool variable after the raw-recipe scan.
+      {
+        printf 'test-only-cargo-variable:\n'
+        printf '\t$%s test --locked --package larch-cli\n' '(CARGO)'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-cargo-variable"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    pytest-variable-recipe-in-shard)
+      # As with Cargo, Make expands the conventional pytest tool variable late.
+      {
+        printf 'test-only-pytest-variable:\n'
+        printf '\t$%s -q python/tests/example.py\n' '(PYTEST)'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-pytest-variable"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
     mixed-pytest-bash-in-shard)
       # Multi-command recipe containing pytest is not a Bash leaf.
       {
@@ -603,6 +663,10 @@ self_test() {
   run_self_case bash-harness-orphan-unknown 1 "non-leaf in shards"
   run_self_case aggregate-in-shard 1 "non-leaf in shards"
   run_self_case pytest-recipe-in-shard 1 "non-leaf in shards"
+  run_self_case cargo-recipe-in-shard 1 "test-only-cargo (cargo)"
+  run_self_case cargo-path-recipe-in-shard 1 "test-only-cargo-path (cargo)"
+  run_self_case cargo-variable-recipe-in-shard 1 "test-only-cargo-variable (cargo)"
+  run_self_case pytest-variable-recipe-in-shard 1 "test-only-pytest-variable (pytest)"
   run_self_case mixed-pytest-bash-in-shard 1 "non-leaf in shards"
 }
 
