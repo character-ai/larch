@@ -7726,7 +7726,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-append-comment"
 
 [[commands]]
@@ -7740,7 +7740,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-create-issue"
 
 [[commands]]
@@ -7754,7 +7754,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-mark-false-positive"
 
 [[commands]]
@@ -7768,7 +7768,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-read"
 
 [[commands]]
@@ -7782,7 +7782,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-rename"
 
 [[commands]]
@@ -7796,7 +7796,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8175
+migration_issue = 8346
 clean_install_test = "clean-install-tracking-issue-upsert-summary"
 
 [[commands]]
@@ -8511,7 +8511,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *"]
+rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"

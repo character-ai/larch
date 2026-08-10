@@ -25,8 +25,10 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `larch/implement/complete_umbrella_ship.py` — standalone leaf prepare and ship driver for `/complete-umbrella`. It reuses typed Git, GitHub, CI, redaction, retry, and issue-mutation owners without fabricating the `IMPLEMENT_TMPDIR` state required by `ship pr`. It persists a leaf-bound no-follow state file, waits five minutes between CI reads, emits a bounded failure digest, admin-merges green PRs, and verifies issue, branch, and synchronized-main postconditions.
 - **Phase 5** (live via default Python ship driver): `run_logs.py` is a typed Rust-command facade,
   `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
-  and `run_log_manifest.py` is read-only. `tokens.py`, `tracking_issue.py`,
-  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with session-local
+  and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure
+  PR-footer helpers; its lifecycle, sentinel, and GitHub behavior is Rust-owned behind
+  typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
+  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` are PR/merge/logging ports with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is

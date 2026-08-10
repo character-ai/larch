@@ -175,9 +175,9 @@ def test_teardown_stall_preserves_tmpdir_without_recreating_log_staging(
     monkeypatch.setattr(finalize.rust_runtime, "progress_deactivate", lambda *_args, **_kwargs: True)
     runner = RecordingRunner(
         responses=[
-            CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
-            CommandResult(("gh", "issue", "edit"), 0, "", "", 0.01),
-            CommandResult(("gh", "issue", "view"), 0, '{"url":"https://github.com/o/r/issues/1"}\n', "", 0.01),
+            CommandResult(("larch", "issue", "state"), 0, "STATE=OPEN\nURL=https://github.com/o/r/issues/1\nIS_PR=false\n", "", 0.01),
+            CommandResult(("larch", "tracking-issue", "rename"), 0, "RENAMED=true\nNEW_TITLE=[STALLED] Existing title\n", "", 0.01),
+            CommandResult(("larch", "issue", "info"), 0, "VALUE=https://github.com/o/r/issues/1\n", "", 0.01),
             CommandResult(("git", "status"), 0, " M file\n", "", 0.01),
             CommandResult(("git", "stash"), 0, "", "", 0.01),
             CommandResult(("git", "stash", "list"), 0, "stash@{0} larch-stalled-1-12\n", "", 0.01),

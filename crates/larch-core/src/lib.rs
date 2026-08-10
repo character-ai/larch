@@ -234,11 +234,11 @@ pub use issue::{
 };
 pub use issue_mutation::{
     CreatedIssue, IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationLease,
-    IssueMutationRequest, IssueMutationSnapshot, UMBRELLA_PROPOSAL_MARKER, VerifiedIssueMutation,
-    mutation_postcondition, mutation_would_change, redact_issue_create_request,
-    redact_issue_mutation_request, redact_issue_text_outbound, same_mutation_identity,
-    snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
-    verify_created_issue,
+    IssueMutationRequest, IssueMutationSnapshot, PlanReceiptIdentity, UMBRELLA_PROPOSAL_MARKER,
+    VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
+    parse_plan_receipt_identity, redact_issue_create_request, redact_issue_mutation_request,
+    redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
+    validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
 };
 pub use logging_util::emit_kv;
 pub use object_store::{

@@ -26,6 +26,7 @@ from larch.git import gh
 from larch.git import git
 from larch.core import proc
 from larch.core import redact
+from larch.core import rust_runtime
 from larch.report import report_tokens_cost
 from larch.report import tokens
 from larch.report import storage_config
@@ -984,11 +985,17 @@ def post_tracking_issue(
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     repo = _read_kv(path=session, key="REPO") or None
     try:
-        posted = tracking_issue.upsert_marker_summary(
-            proc, issue=issue, marker=f"<!-- larch:metadata v1 runid={run} -->",
-            content_file=str(summary), repo=repo,
+        posted = rust_runtime.tracking_issue_upsert_summary(
+            proc,
+            issue=issue,
+            marker=f"<!-- larch:metadata v1 runid={run} -->",
+            content_file=str(summary),
+            repo=repo or "",
+            run_id=run,
         )
-    except (tracking_issue.CliFailure, OSError, ValueError) as exc:
+        if posted.failed:
+            raise OSError(posted.error or "tracking-issue upsert-summary failed")
+    except (OSError, ValueError) as exc:
         err = " ".join(str(exc).split())[:500]
         _warn(f"tracking-issue upsert-summary failed: {err}")
     else:

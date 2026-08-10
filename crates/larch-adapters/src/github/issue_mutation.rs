@@ -6,10 +6,10 @@
 //! proof to `larch_core::issue_mutation`.
 
 use larch_core::{
-    CreatedIssue, GitHubCloseReason, GitHubIssue, GitHubIssueCreate, GitHubIssueEdit,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService, IssueCreateRequest, IssueMutationError,
-    IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, ProcessCancellation,
-    VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
+    CreatedIssue, GitHubCloseReason, GitHubComment, GitHubIssue, GitHubIssueCreate,
+    GitHubIssueEdit, GitHubIssueState, GitHubRepositoryRef, GitHubService, IssueCreateRequest,
+    IssueMutationError, IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
+    ProcessCancellation, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
     redact_issue_create_request, redact_issue_mutation_request, redact_issue_text_outbound,
     same_mutation_identity, snapshot_is_strictly_newer, validate_issue_mutation_request,
     verify_authorized_body_change, verify_created_issue,
@@ -94,9 +94,9 @@ impl<'service> IssueMutationOwner<'service> {
     /// Create one issue, redacting every outbound string before the request.
     ///
     /// Authorization is checked before GitHub is contacted at all, so an
-    /// unauthorized caller never reaches the network. The response GitHub
-    /// echoes is the read-back: a create that returns no usable number, node
-    /// id, or URL leaves an orphan the caller is told to close.
+    /// unauthorized caller never reaches the network. A usable response
+    /// identity is followed by an exact issue GET; a create whose response or
+    /// read-back cannot be proven leaves an orphan the caller is told to close.
     ///
     /// # Errors
     ///
@@ -127,11 +127,155 @@ impl<'service> IssueMutationOwner<'service> {
                 IssueCreateFailure::without_orphan(IssueMutationError::new("create-failed"))
                     .with_detail(error.to_string())
             })?;
-        verify_created_issue(&created).map_err(|error| IssueCreateFailure {
+        let echoed = verify_created_issue(&created).map_err(|error| IssueCreateFailure {
             error,
             orphan: (created.number != 0).then_some(created.number),
             detail: String::new(),
+        })?;
+        if !issue_url_matches(&echoed.url, &create.repo, echoed.number) {
+            return Err(IssueCreateFailure {
+                error: IssueMutationError::new("invalid-read-back"),
+                orphan: Some(echoed.number),
+                detail: String::new(),
+            });
+        }
+        let read_back = self
+            .service
+            .issue(&create.repo, echoed.number, cancellation)
+            .await
+            .map_err(|_| IssueCreateFailure {
+                error: IssueMutationError::new("invalid-read-back"),
+                orphan: Some(echoed.number),
+                detail: String::new(),
+            })?;
+        verify_created_read_back(&create, &echoed, &read_back).map_err(|error| IssueCreateFailure {
+            error,
+            orphan: Some(echoed.number),
+            detail: String::new(),
         })
+    }
+
+    /// Publish one comment and prove the exact redacted body by a list read-back.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable mutation reason when authorization, identity,
+    /// redaction, publication, or the response and list identities cannot be proven.
+    pub async fn create_comment(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+        body: &str,
+    ) -> Result<GitHubComment, IssueMutationError> {
+        authorize(authorization)?;
+        if issue == 0 {
+            return Err(IssueMutationError::new("invalid-identity"));
+        }
+        let redacted = redact_issue_text_outbound(body)?;
+        let _mutation = self.service.mutation_lock.lock().await;
+        let written = self
+            .service
+            .create_comment(repository, issue, &redacted, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("comment-write-failed"))?;
+        let echoed = verify_comment_read_back(written, &redacted, repository, issue, None)?;
+        self.read_comment_back(cancellation, repository, issue, echoed.id, &redacted)
+            .await
+    }
+
+    /// Replace one comment and prove its identity and exact redacted body from
+    /// the mutation response and a subsequent list read-back.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable mutation reason when authorization, identity,
+    /// redaction, publication, or the response and list identities cannot be proven.
+    pub async fn edit_comment(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+        comment_id: u64,
+        body: &str,
+    ) -> Result<GitHubComment, IssueMutationError> {
+        authorize(authorization)?;
+        if issue == 0 || comment_id == 0 {
+            return Err(IssueMutationError::new("invalid-identity"));
+        }
+        let redacted = redact_issue_text_outbound(body)?;
+        let _mutation = self.service.mutation_lock.lock().await;
+        let written = self
+            .service
+            .edit_comment(repository, comment_id, &redacted, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("comment-write-failed"))?;
+        let _echoed =
+            verify_comment_read_back(written, &redacted, repository, issue, Some(comment_id))?;
+        self.read_comment_back(cancellation, repository, issue, comment_id, &redacted)
+            .await
+    }
+
+    /// Delete one comment and prove it is absent from the issue comment list.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable mutation reason when authorization, identity, deletion,
+    /// or the absence read-back cannot be proven.
+    pub async fn delete_comment(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+        comment_id: u64,
+    ) -> Result<(), IssueMutationError> {
+        authorize(authorization)?;
+        if issue == 0 || comment_id == 0 {
+            return Err(IssueMutationError::new("invalid-identity"));
+        }
+        let _mutation = self.service.mutation_lock.lock().await;
+        self.service
+            .delete_comment(repository, comment_id, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("comment-delete-failed"))?;
+        let comments = self
+            .service
+            .list_comments(repository, issue, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("comment-read-back-failed"))?;
+        if comments.iter().any(|comment| comment.id == comment_id) {
+            Err(IssueMutationError::new("comment-read-back-failed"))
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn read_comment_back(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+        comment_id: u64,
+        expected_body: &str,
+    ) -> Result<GitHubComment, IssueMutationError> {
+        let comments = self
+            .service
+            .list_comments(repository, issue, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("comment-read-back-failed"))?;
+        let mut matching = comments
+            .into_iter()
+            .filter(|comment| comment.id == comment_id);
+        let comment = matching
+            .next()
+            .ok_or_else(|| IssueMutationError::new("comment-read-back-failed"))?;
+        if matching.next().is_some() {
+            return Err(IssueMutationError::new("comment-read-back-failed"));
+        }
+        verify_comment_read_back(comment, expected_body, repository, issue, Some(comment_id))
     }
 
     /// Close one issue as not planned, proving the close by its read-back.
@@ -336,7 +480,7 @@ impl<'service> IssueMutationOwner<'service> {
             .read_snapshot(&request.repository, request.issue, cancellation)
             .await?;
         if snapshot_is_strictly_newer(&before, &after)
-            && mutation_postcondition(&after, request, body)
+            && mutation_postcondition(&before, &after, request, body)
         {
             return Ok(VerifiedIssueMutation {
                 before,
@@ -353,6 +497,99 @@ fn authorize(authorization: &LiveMutationRequest<'_>) -> Result<(), IssueMutatio
         LiveMutationDecision::Authorized(_) => Ok(()),
         LiveMutationDecision::Refused(reason) => Err(IssueMutationError::new(reason)),
     }
+}
+
+fn verify_comment_read_back(
+    comment: GitHubComment,
+    expected_body: &str,
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+    expected_id: Option<u64>,
+) -> Result<GitHubComment, IssueMutationError> {
+    let identity_ok = comment.id != 0
+        && expected_id.is_none_or(|comment_id| comment.id == comment_id)
+        && comment_url_matches(&comment.url, repository, issue, comment.id);
+    if identity_ok && comment.body == expected_body {
+        Ok(comment)
+    } else {
+        Err(IssueMutationError::new("comment-read-back-failed"))
+    }
+}
+
+fn verify_created_read_back(
+    request: &GitHubIssueCreate,
+    echoed: &CreatedIssue,
+    issue: &GitHubIssue,
+) -> Result<CreatedIssue, IssueMutationError> {
+    let verified = verify_created_issue(issue)?;
+    let expected_labels = request
+        .labels
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let actual_labels = issue
+        .labels
+        .iter()
+        .map(|label| &label.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    if &verified != echoed
+        || !issue_url_matches(&verified.url, &request.repo, verified.number)
+        || issue.title != request.title
+        || issue.body != request.body
+        || actual_labels != expected_labels
+        || issue.is_pull_request
+    {
+        return Err(IssueMutationError::new("invalid-read-back"));
+    }
+    Ok(verified)
+}
+
+fn issue_url_matches(value: &str, repository: &GitHubRepositoryRef, issue: u64) -> bool {
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    let Some(segments) = url.path_segments() else {
+        return false;
+    };
+    let segments: Vec<&str> = segments.collect();
+    url.scheme() == "https"
+        && url.host_str() == Some("github.com")
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && segments.len() == 4
+        && segments[0].eq_ignore_ascii_case(repository.owner())
+        && segments[1].eq_ignore_ascii_case(repository.name())
+        && segments[2] == "issues"
+        && segments[3] == issue.to_string()
+}
+
+fn comment_url_matches(
+    value: &str,
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+    comment: u64,
+) -> bool {
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    let Some(segments) = url.path_segments() else {
+        return false;
+    };
+    let segments: Vec<&str> = segments.collect();
+    url.scheme() == "https"
+        && url.host_str() == Some("github.com")
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && segments.len() == 4
+        && segments[0].eq_ignore_ascii_case(repository.owner())
+        && segments[1].eq_ignore_ascii_case(repository.name())
+        && segments[2] == "issues"
+        && segments[3] == issue.to_string()
+        && url.fragment() == Some(format!("issuecomment-{comment}").as_str())
 }
 
 fn snapshot_from_issue(
@@ -389,7 +626,7 @@ fn verify_read_back(
     if !snapshot_is_strictly_newer(&before, &after) {
         return Err(IssueMutationError::new("non-fresh-read-back"));
     }
-    if !mutation_postcondition(&after, request, body) {
+    if !mutation_postcondition(&before, &after, request, body) {
         return Err(IssueMutationError::new("postcondition-failed"));
     }
     Ok(VerifiedIssueMutation {
@@ -408,7 +645,8 @@ mod tests {
     };
     use larch_core::{
         GitHubCloseReason, GitHubIssueState, GitHubRepositoryRef, IssueCreateRequest,
-        IssueMutationError, IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
+        IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
+        IssueMutationSnapshot,
     };
     use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
@@ -446,6 +684,8 @@ mod tests {
                 .expect("valid issue fixture");
         issue["id"] = json!(70);
         issue["number"] = json!(7);
+        issue["url"] = json!("https://api.github.com/repos/owner/repo/issues/7");
+        issue["html_url"] = json!("https://github.com/owner/repo/issues/7");
         issue["title"] = json!(title);
         issue["body"] = json!(body);
         issue["updated_at"] = json!(updated_at);
@@ -470,6 +710,24 @@ mod tests {
                 .collect(),
         );
         issue.to_string()
+    }
+
+    fn comment_json(id: u64, body: &str) -> String {
+        let user =
+            serde_json::from_str::<Value>(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
+                .expect("issue fixture")["user"]
+                .clone();
+        json!({
+            "id": id,
+            "node_id": format!("C_{id}"),
+            "url": format!("https://api.github.com/repos/owner/repo/issues/comments/{id}"),
+            "html_url": format!("https://github.com/owner/repo/issues/7#issuecomment-{id}"),
+            "body": body,
+            "user": user,
+            "created_at": "2026-07-19T00:00:00Z",
+            "updated_at": "2026-07-19T00:00:00Z",
+        })
+        .to_string()
     }
 
     fn repository() -> GitHubRepositoryRef {
@@ -533,8 +791,8 @@ mod tests {
 
     #[tokio::test]
     async fn authorization_refuses_before_the_first_github_read() {
-        let (service, server) = service(Vec::new());
-        let owner = IssueMutationOwner::new(&service);
+        let (github, server) = service(Vec::new());
+        let owner = IssueMutationOwner::new(&github);
         let cancellation = Cancellation::new();
         let request = IssueMutationRequest {
             repository: repository(),
@@ -746,6 +1004,66 @@ mod tests {
             1
         );
     }
+
+    #[tokio::test]
+    async fn initial_lease_and_implementing_title_land_in_one_verified_patch() {
+        let original = format!(
+            "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->\n",
+            "b".repeat(64),
+            "a".repeat(40),
+            "c".repeat(64),
+            "d".repeat(64),
+        );
+        let lease = format!(
+            "<!-- larch:implementation-lease v1 run_id=run-7 branch=feature/work base={} plan={} updated_at=2026-08-10T00:00:00Z -->",
+            "a".repeat(40),
+            "b".repeat(64),
+        );
+        let updated = format!("{original}\n{lease}\n");
+        let (service, server) = service(vec![
+            issue_response("[DESIGNED] Work", &original, &[], "2026-08-10T00:00:00Z"),
+            issue_response("[DESIGNED] Work", &original, &[], "2026-08-10T00:00:00Z"),
+            issue_response("[IMPLEMENTING] Work", &updated, &[], "2026-08-10T00:00:01Z"),
+            issue_response("[IMPLEMENTING] Work", &updated, &[], "2026-08-10T00:00:01Z"),
+        ]);
+        let owner = IssueMutationOwner::new(&service);
+        let cancellation = Cancellation::new();
+        let before = snapshot(&owner, &cancellation).await;
+        let mut request = mutation_request(
+            &before,
+            BTreeSet::from([
+                IssueMutationField::Title,
+                IssueMutationField::ImplementationLease,
+            ]),
+            Some("[IMPLEMENTING] Work"),
+            Some(&updated),
+            None,
+        );
+        request.marker = Some(String::from("implementation-lease"));
+        request.lease = Some(IssueMutationLease {
+            run_id: String::from("run-7"),
+            marker: String::from("implementation-lease"),
+        });
+
+        let result = owner
+            .apply(&cancellation, &operator_authorization(), &request)
+            .await
+            .expect("atomic activation succeeds");
+        let requests = server.finish().expect("stub finished");
+        let edit: Value = serde_json::from_slice(&requests[2].body.bytes).expect("edit JSON");
+
+        assert_eq!(result.after.title, "[IMPLEMENTING] Work");
+        assert_eq!(result.after.body, updated);
+        assert_eq!(edit["title"], "[IMPLEMENTING] Work");
+        assert_eq!(edit["body"], updated);
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.method == "PATCH")
+                .count(),
+            1
+        );
+    }
     #[tokio::test]
     async fn a_create_refuses_before_the_first_github_request() {
         let (service, server) = service(Vec::new());
@@ -767,12 +1085,18 @@ mod tests {
 
     #[tokio::test]
     async fn a_create_redacts_every_outbound_string_and_reads_back_its_identity() {
-        let (service, server) = service(vec![issue_response(
-            "Renamed",
-            "Body",
+        let redacted = issue_json(
+            "Renamed <REDACTED-TOKEN>",
+            "Body <REDACTED-TOKEN>",
             &["keep"],
             "2026-07-19T00:00:00Z",
-        )]);
+        );
+        let (service, server) = service(vec![
+            IssueServiceExchange::json("POST", "/repos/owner/repo/issues", 201, redacted.clone())
+                .expect("create response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/7", 200, redacted)
+                .expect("create read-back"),
+        ]);
         let owner = IssueMutationOwner::new(&service);
 
         let created = owner
@@ -791,11 +1115,181 @@ mod tests {
         let body: Value = serde_json::from_slice(&requests[0].body.bytes).expect("create JSON");
 
         assert_eq!((created.number, created.id), (7, 70));
-        assert_eq!(created.url, "https://github.com/o/r/issues/2");
+        assert_eq!(created.url, "https://github.com/owner/repo/issues/7");
         assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[1].method, "GET");
         assert_eq!(body["title"], "Renamed <REDACTED-TOKEN>");
         assert_eq!(body["body"], "Body <REDACTED-TOKEN>");
         assert_eq!(body["labels"], json!(["keep"]));
+    }
+
+    #[tokio::test]
+    async fn comment_mutations_are_authorized_redacted_and_read_back() {
+        let (service, server) = service(vec![
+            IssueServiceExchange::json(
+                "POST",
+                "/repos/owner/repo/issues/7/comments",
+                201,
+                comment_json(11, "note <REDACTED-TOKEN>"),
+            )
+            .expect("comment response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7/comments?per_page=100",
+                200,
+                format!("[{}]", comment_json(11, "note <REDACTED-TOKEN>")),
+            )
+            .expect("comment read-back"),
+            IssueServiceExchange::any_json(200, comment_json(11, "updated"))
+                .expect("comment response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7/comments?per_page=100",
+                200,
+                format!("[{}]", comment_json(11, "updated")),
+            )
+            .expect("comment read-back"),
+        ]);
+        let owner = IssueMutationOwner::new(&service);
+        let cancellation = Cancellation::new();
+
+        let created = owner
+            .create_comment(
+                &cancellation,
+                &operator_authorization(),
+                &repository(),
+                7,
+                "note ghp_abcdefghijklmnopqrst",
+            )
+            .await
+            .expect("create comment");
+        let edited = owner
+            .edit_comment(
+                &cancellation,
+                &operator_authorization(),
+                &repository(),
+                7,
+                11,
+                "updated",
+            )
+            .await
+            .expect("edit comment");
+        let requests = server.finish().expect("stub finished");
+        let create: Value = serde_json::from_slice(&requests[0].body.bytes).expect("create JSON");
+
+        assert_eq!((created.id, edited.id), (11, 11));
+        assert_eq!(create["body"], "note <REDACTED-TOKEN>");
+        assert_eq!(requests[2].method, "POST");
+    }
+
+    #[tokio::test]
+    async fn comment_mutations_refuse_before_github_and_reject_bad_echoes() {
+        let (github, server) = service(Vec::new());
+        let owner = IssueMutationOwner::new(&github);
+        let cancellation = Cancellation::new();
+        let error = owner
+            .create_comment(
+                &cancellation,
+                &denied_authorization(),
+                &repository(),
+                7,
+                "note",
+            )
+            .await
+            .expect_err("authorization must fail");
+        assert_eq!(error.reason(), "unauthorized-mutation");
+        assert!(server.finish().expect("stub finished").is_empty());
+
+        let (bad_echo_service, server) = service(vec![
+            IssueServiceExchange::any_json(200, comment_json(12, "wrong"))
+                .expect("comment response"),
+        ]);
+        let error = IssueMutationOwner::new(&bad_echo_service)
+            .edit_comment(
+                &cancellation,
+                &operator_authorization(),
+                &repository(),
+                7,
+                11,
+                "expected",
+            )
+            .await
+            .expect_err("mismatched response must fail");
+        assert_eq!(error.reason(), "comment-read-back-failed");
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let (bad_read_back_service, server) = service(vec![
+            IssueServiceExchange::any_json(200, comment_json(11, "expected"))
+                .expect("comment response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7/comments?per_page=100",
+                200,
+                format!("[{}]", comment_json(11, "wrong")),
+            )
+            .expect("comment read-back"),
+        ]);
+        let error = IssueMutationOwner::new(&bad_read_back_service)
+            .edit_comment(
+                &cancellation,
+                &operator_authorization(),
+                &repository(),
+                7,
+                11,
+                "expected",
+            )
+            .await
+            .expect_err("a mismatched GET read-back must fail");
+        assert_eq!(error.reason(), "comment-read-back-failed");
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
+
+        let mut foreign_url: Value =
+            serde_json::from_str(&comment_json(11, "expected")).expect("comment fixture");
+        foreign_url["html_url"] =
+            json!("https://attacker.test/owner/repo/issues/7#issuecomment-11");
+        let (foreign_service, server) = service(vec![
+            IssueServiceExchange::any_json(200, foreign_url.to_string()).expect("comment response"),
+        ]);
+        let error = IssueMutationOwner::new(&foreign_service)
+            .edit_comment(
+                &cancellation,
+                &operator_authorization(),
+                &repository(),
+                7,
+                11,
+                "expected",
+            )
+            .await
+            .expect_err("a foreign comment URL must fail");
+        assert_eq!(error.reason(), "comment-read-back-failed");
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn comment_delete_requires_an_absence_read_back() {
+        let (service, server) = service(vec![
+            IssueServiceExchange::json("DELETE", "/repos/owner/repo/issues/comments/11", 204, "")
+                .expect("delete response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/7/comments?per_page=100",
+                200,
+                "[]",
+            )
+            .expect("comment list"),
+        ]);
+
+        IssueMutationOwner::new(&service)
+            .delete_comment(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &repository(),
+                7,
+                11,
+            )
+            .await
+            .expect("absence proves deletion");
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
     }
 
     #[tokio::test]
@@ -804,8 +1298,8 @@ mod tests {
             serde_json::from_str(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
                 .expect("issue JSON");
         echo["id"] = json!(0);
-        let (service, server) = service(vec![response(201, echo.to_string())]);
-        let owner = IssueMutationOwner::new(&service);
+        let (invalid_service, server) = service(vec![response(201, echo.to_string())]);
+        let owner = IssueMutationOwner::new(&invalid_service);
 
         let failure = owner
             .create(
@@ -819,6 +1313,26 @@ mod tests {
         assert_eq!(failure.error.reason(), "invalid-read-back");
         assert_eq!(failure.orphan, Some(7));
         assert_eq!(server.finish().expect("stub finished").len(), 1);
+
+        let echo = issue_json("T", "B", &[], "2026-07-19T00:00:00Z");
+        let mut hostile_read_back: Value =
+            serde_json::from_str(&echo).expect("issue read-back fixture");
+        hostile_read_back["html_url"] = json!("https://attacker.test/owner/repo/issues/7");
+        let (service, server) = service(vec![
+            response(201, echo),
+            response(200, hostile_read_back.to_string()),
+        ]);
+        let failure = IssueMutationOwner::new(&service)
+            .create(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &create_request("T", "B", &[]),
+            )
+            .await
+            .expect_err("a foreign GET read-back URL must fail");
+        assert_eq!(failure.error.reason(), "invalid-read-back");
+        assert_eq!(failure.orphan, Some(7));
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
     }
 
     #[tokio::test]

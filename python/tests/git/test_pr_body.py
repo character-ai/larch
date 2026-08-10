@@ -590,13 +590,16 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     calls: list[dict[str, object]] = []
 
-    def fake_upsert(*_args: object, **kwargs: object) -> pr_body.tracking_issue.UpsertSummaryOutput:
+    def fake_upsert(*_args: object, **kwargs: object) -> pr_body.rust_runtime.TrackingIssueCommentOutput:
         calls.append(kwargs)
-        return pr_body.tracking_issue.UpsertSummaryOutput(
-            comment_id="1", comment_url="https://github.com/o/r/issues/42#issuecomment-1", updated=False
+        return pr_body.rust_runtime.TrackingIssueCommentOutput(
+            failed=False,
+            comment_id="1",
+            comment_url="https://github.com/o/r/issues/42#issuecomment-1",
+            updated=False,
         )
 
-    monkeypatch.setattr(pr_body.tracking_issue, "upsert_marker_summary", fake_upsert)
+    monkeypatch.setattr(pr_body.rust_runtime, "tracking_issue_upsert_summary", fake_upsert)
     result = pr_body.post_tracking_issue(tmp_path)
     assert result.exit_code == 0
     assert result.posted is True
@@ -605,6 +608,7 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     assert result.error == ""
     assert calls[0]["issue"] == "42"
     assert calls[0]["repo"] == "o/r"
+    assert calls[0]["run_id"] == "run-z"
 
 
 def test_post_tracking_issue_uses_unknown_version_when_plugin_metadata_is_unavailable(
@@ -620,13 +624,16 @@ def test_post_tracking_issue_uses_unknown_version_when_plugin_metadata_is_unavai
         *,
         issue: str,
         marker: str,
-        content_file: Path,
+        content_file: str,
         repo: str,
-    ) -> pr_body.tracking_issue.UpsertSummaryOutput:
-        _ = (issue, marker, content_file, repo)
-        return pr_body.tracking_issue.UpsertSummaryOutput(comment_id="1", comment_url="", updated=False)
+        run_id: str,
+    ) -> pr_body.rust_runtime.TrackingIssueCommentOutput:
+        _ = (issue, marker, content_file, repo, run_id)
+        return pr_body.rust_runtime.TrackingIssueCommentOutput(
+            failed=False, comment_id="1", comment_url="", updated=False
+        )
 
-    monkeypatch.setattr(pr_body.tracking_issue, "upsert_marker_summary", fake_upsert)
+    monkeypatch.setattr(pr_body.rust_runtime, "tracking_issue_upsert_summary", fake_upsert)
     monkeypatch.setattr(pr_body.config, "PLUGIN_JSON_PATH", "missing-plugin.json")
     result = pr_body.post_tracking_issue(tmp_path)
 

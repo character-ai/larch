@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
+from larch.core import config
 from larch.core.proc import CommandResult, ProcRunner, Runner
 from larch.core.repo_roots import larch_entrypoint
 from larch.core.run_context import RunContext
@@ -58,6 +60,57 @@ class IssueStateOutput:
     state: str = ""
     url: str = ""
     is_pr: bool = False
+
+
+@dataclass(frozen=True)
+class TrackingIssueCommentOutput:
+    """Validated comment result from the Rust tracking-issue owner."""
+
+    failed: bool
+    comment_id: str = ""
+    comment_url: str = ""
+    updated: bool = False
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class TrackingIssueCreateOutput:
+    """Validated create result from the Rust tracking-issue owner."""
+
+    failed: bool
+    issue_number: str = ""
+    issue_url: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class TrackingIssueTitleOutput:
+    """Validated title result from the Rust tracking-issue owner."""
+
+    failed: bool
+    changed: bool = False
+    new_title: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class TrackingIssueReadOutput:
+    """Validated read result from the Rust tracking-issue owner."""
+
+    failed: bool
+    values: Mapping[str, str]
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class TrackingIssueSentinelOutput:
+    """Validated local sentinel result from the Rust tracking-issue reader."""
+
+    failed: bool
+    issue_number: str = ""
+    run_id: str = ""
+    adopted: str = ""
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -501,6 +554,446 @@ def issue_state(
         state=values.get("STATE", ""),
         url=values.get("URL", ""),
         is_pr=values.get("IS_PR", "") == "true",
+    )
+
+
+def _tracking_issue_run(  # noqa: PLR0913 - owns one typed process envelope
+    runner: Runner,
+    *,
+    verb: str,
+    arguments: Sequence[str],
+    success_keys: frozenset[str],
+    cwd: str | None = None,
+    run_id: str = "",
+) -> tuple[CommandResult, dict[str, str]]:
+    child_env: Mapping[str, str] | None = (
+        None if not run_id else {**os.environ, "RUN_ID": run_id}
+    )
+    result = runner.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "tracking-issue",
+            verb,
+            *arguments,
+        ],
+        cwd=cwd,
+        env=child_env,
+    )
+    stdout_rows = larch_io.parse_kv(
+        result.stdout, duplicate_policy="all", skip_empty_key=True
+    )
+    stderr_rows = larch_io.parse_kv(
+        result.stderr, duplicate_policy="all", skip_empty_key=True
+    )
+    stdout = {key: rows[0] for key, rows in stdout_rows.items() if rows}
+    stderr = {key: rows[0] for key, rows in stderr_rows.items() if rows}
+    malformed = any(len(rows) != 1 for rows in (*stdout_rows.values(), *stderr_rows.values()))
+    conflicts = stdout.keys() & stderr.keys()
+    values = {**stderr, **stdout}
+    if malformed or conflicts:
+        values["FAILED"] = "true"
+        values["ERROR"] = "conflicting tracking-issue envelope"
+    elif (result.returncode == 0 and set(values) != set(success_keys)) or (
+        result.returncode != 0
+        and (
+            set(values) != {"FAILED", "ERROR"}
+            or values.get("FAILED") != "true"
+            or not values.get("ERROR")
+        )
+    ):
+        values["FAILED"] = "true"
+        values["ERROR"] = "invalid tracking-issue envelope"
+    return result, values
+
+
+def _tracking_error(result: CommandResult, values: Mapping[str, str]) -> str:
+    return (
+        values.get("ERROR", "")
+        or " ".join((result.stderr or result.stdout).split())[:500]
+        or "incomplete tracking-issue envelope"
+    )
+
+
+def _positive_ascii_decimal(value: str) -> bool:
+    return value.isascii() and value.isdigit() and bool(value.strip("0"))
+
+
+def tracking_issue_append_comment(  # noqa: PLR0913 - mirrors the Rust command option surface
+    runner: Runner,
+    *,
+    issue: str,
+    body_file: str,
+    repo: str = "",
+    lifecycle_marker: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueCommentOutput:
+    """Append one idempotent comment through ``scripts/larch.sh``."""
+    arguments = ["--issue", issue, "--body-file", body_file]
+    if lifecycle_marker:
+        arguments.extend(["--lifecycle-marker", lifecycle_marker])
+    if repo:
+        arguments.extend(["--repo", repo])
+    result, values = _tracking_issue_run(
+        runner,
+        verb="append-comment",
+        arguments=arguments,
+        success_keys=frozenset({"COMMENT_ID", "COMMENT_URL"}),
+        cwd=cwd,
+    )
+    failed = result.returncode != 0 or values.get("FAILED") == "true"
+    comment_id = values.get("COMMENT_ID", "")
+    comment_url = values.get("COMMENT_URL", "")
+    if not failed and (
+        not _positive_ascii_decimal(comment_id)
+        or f"#issuecomment-{comment_id}" not in comment_url
+    ):
+        failed = True
+    return TrackingIssueCommentOutput(
+        failed=failed,
+        comment_id=comment_id,
+        comment_url=comment_url,
+        error=_tracking_error(result, values) if failed else "",
+    )
+
+
+def tracking_issue_create(
+    runner: Runner,
+    *,
+    title: str,
+    body_file: str,
+    repo: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueCreateOutput:
+    """Create one tracking issue through ``scripts/larch.sh``."""
+    arguments = ["--title", title, "--body-file", body_file]
+    if repo:
+        arguments.extend(["--repo", repo])
+    result, values = _tracking_issue_run(
+        runner,
+        verb="create-issue",
+        arguments=arguments,
+        success_keys=frozenset({"ISSUE_NUMBER", "ISSUE_URL"}),
+        cwd=cwd,
+    )
+    failed = result.returncode != 0 or values.get("FAILED") == "true"
+    number = values.get("ISSUE_NUMBER", "")
+    url = values.get("ISSUE_URL", "")
+    if not failed and (
+        not _positive_ascii_decimal(number) or f"/issues/{number}" not in url
+    ):
+        failed = True
+    return TrackingIssueCreateOutput(
+        failed=failed,
+        issue_number=number,
+        issue_url=url,
+        error=_tracking_error(result, values) if failed else "",
+    )
+
+
+def tracking_issue_mark_false_positive(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueTitleOutput:
+    """Mark one title through ``scripts/larch.sh``."""
+    arguments = ["--issue", issue]
+    if repo:
+        arguments.extend(["--repo", repo])
+    result, values = _tracking_issue_run(
+        runner,
+        verb="mark-false-positive",
+        arguments=arguments,
+        success_keys=frozenset({"MARKED", "NEW_TITLE"}),
+        cwd=cwd,
+    )
+    failed = (
+        result.returncode != 0
+        or values.get("FAILED") == "true"
+        or not values
+    )
+    title = values.get("NEW_TITLE", "")
+    if not failed and (
+        values.get("MARKED") not in {"true", "false"}
+        or "[FALSE-POSITIVE]" not in title
+    ):
+        failed = True
+    return TrackingIssueTitleOutput(
+        failed=failed,
+        changed=values.get("MARKED") == "true",
+        new_title=title,
+        error=_tracking_error(result, values) if failed else "",
+    )
+
+
+def tracking_issue_read(
+    runner: Runner,
+    *,
+    arguments: Sequence[str],
+    cwd: str | None = None,
+) -> TrackingIssueReadOutput:
+    """Read a tracking issue or sentinel through ``scripts/larch.sh``."""
+    flags = frozenset(arguments[::2])
+    if "--sentinel" in flags:
+        success_keys = frozenset({"ISSUE_NUMBER", "RUN_ID", "ADOPTED"})
+    elif "--body-out" in flags:
+        success_keys = frozenset({"BODY_FILE", "BODY_SHA256"})
+    elif "--comment-marker" in flags:
+        success_keys = frozenset({"FOUND", "COMMENT_ID", "COMMENT_FILE"})
+    else:
+        success_keys = frozenset({"ISSUE_NUMBER", "TASK_SOURCE", "TASK_FILE"})
+    result, values = _tracking_issue_run(
+        runner,
+        verb="read",
+        arguments=arguments,
+        success_keys=success_keys,
+        cwd=cwd,
+    )
+    failed = (
+        result.returncode != 0
+        or values.get("FAILED") == "true"
+        or not values
+    )
+    return TrackingIssueReadOutput(
+        failed=failed,
+        values=values,
+        error=_tracking_error(result, values) if failed else "",
+    )
+
+
+def tracking_issue_read_marker(  # noqa: PLR0913 - mirrors the Rust command option surface
+    runner: Runner,
+    *,
+    issue: str,
+    marker: str,
+    output_file: str,
+    repo: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueReadOutput:
+    """Materialize one uniquely marker-owned comment through the Rust reader."""
+    arguments = [
+        "--issue",
+        issue,
+        "--comment-marker",
+        marker,
+        "--comment-out",
+        output_file,
+    ]
+    if repo:
+        arguments.extend(["--repo", repo])
+    result = tracking_issue_read(runner, arguments=arguments, cwd=cwd)
+    found = result.values.get("FOUND", "")
+    comment_id = result.values.get("COMMENT_ID", "")
+    try:
+        materialized = Path(output_file).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        materialized = ""
+        materialized_ok = False
+    else:
+        first_line = materialized.split("\n", 1)[0].removeprefix("\ufeff").removesuffix("\r")
+        materialized_ok = (found == "true" and first_line == marker) or (
+            found == "false" and not materialized
+        )
+    complete = (
+        found in {"true", "false"}
+        and result.values.get("COMMENT_FILE") == output_file
+        and materialized_ok
+        and (
+            (found == "true" and _positive_ascii_decimal(comment_id))
+            or (found == "false" and not comment_id)
+        )
+    )
+    if result.failed or complete:
+        return result
+    return TrackingIssueReadOutput(
+        failed=True,
+        values=result.values,
+        error="incomplete tracking-issue envelope",
+    )
+
+
+def tracking_issue_read_body(
+    runner: Runner,
+    *,
+    issue: str,
+    output_file: str,
+    repo: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueReadOutput:
+    """Materialize one exact issue body through the Rust reader."""
+    arguments = ["--issue", issue, "--body-out", output_file]
+    if repo:
+        arguments.extend(["--repo", repo])
+    result = tracking_issue_read(runner, arguments=arguments, cwd=cwd)
+    try:
+        materialized = Path(output_file).read_bytes()
+    except OSError:
+        materialized_ok = False
+    else:
+        digest = hashlib.sha256(materialized).hexdigest()
+        materialized_ok = (
+            result.values.get("BODY_FILE") == output_file
+            and result.values.get("BODY_SHA256") == digest
+        )
+    if result.failed or materialized_ok:
+        return result
+    return TrackingIssueReadOutput(
+        failed=True,
+        values=result.values,
+        error="incomplete tracking-issue envelope",
+    )
+
+
+def tracking_issue_read_sentinel(
+    runner: Runner,
+    *,
+    sentinel: str,
+    cwd: str | None = None,
+) -> TrackingIssueSentinelOutput:
+    """Read one adoption sentinel through ``scripts/larch.sh``."""
+    result = tracking_issue_read(
+        runner,
+        arguments=["--sentinel", sentinel],
+        cwd=cwd,
+    )
+    issue_number = result.values.get("ISSUE_NUMBER", "")
+    run_id = result.values.get("RUN_ID", "")
+    adopted = result.values.get("ADOPTED", "")
+    complete = (
+        (not issue_number or _positive_ascii_decimal(issue_number))
+        and (
+            not run_id
+            or (
+                run_id.isascii()
+                and all(character.isalnum() or character in "._-" for character in run_id)
+            )
+        )
+        and adopted in {"", "true", "false"}
+        and {"ISSUE_NUMBER", "RUN_ID", "ADOPTED"}.issubset(result.values)
+    )
+    failed = result.failed or not complete
+    return TrackingIssueSentinelOutput(
+        failed=failed,
+        issue_number=issue_number,
+        run_id=run_id,
+        adopted=adopted,
+        error=(
+            result.error
+            if result.failed
+            else "incomplete tracking-issue envelope" if not complete else ""
+        ),
+    )
+
+
+def tracking_issue_rename(  # noqa: PLR0913 - mirrors the Rust command option surface
+    runner: Runner,
+    *,
+    issue: str,
+    state: str,
+    repo: str = "",
+    run_id: str = "",
+    lease_branch: str = "",
+    head_sha: str = "",
+    expected_updated_at: str = "",
+    expected_body_sha256: str = "",
+    expected_title_sha256: str = "",
+    expected_labels_sha256: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueTitleOutput:
+    """Apply one plain, initial, or terminal title transition in Rust."""
+    arguments = ["--issue", issue, "--state", state]
+    for option, value in (
+        ("--repo", repo),
+        ("--run-id", run_id),
+        ("--lease-branch", lease_branch),
+        ("--head-sha", head_sha),
+        ("--expected-updated-at", expected_updated_at),
+        ("--expected-body-sha256", expected_body_sha256),
+        ("--expected-title-sha256", expected_title_sha256),
+        ("--expected-labels-sha256", expected_labels_sha256),
+    ):
+        if value:
+            arguments.extend([option, value])
+    result, values = _tracking_issue_run(
+        runner,
+        verb="rename",
+        arguments=arguments,
+        success_keys=frozenset({"RENAMED", "NEW_TITLE"}),
+        cwd=cwd,
+    )
+    failed = result.returncode != 0 or values.get("FAILED") == "true"
+    title = values.get("NEW_TITLE", "")
+    expected_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE.get(state, "")
+    if not failed and (
+        values.get("RENAMED") not in {"true", "false"}
+        or not expected_prefix
+        or not title.startswith(expected_prefix)
+    ):
+        failed = True
+    return TrackingIssueTitleOutput(
+        failed=failed,
+        changed=values.get("RENAMED") == "true",
+        new_title=title,
+        error=_tracking_error(result, values) if failed else "",
+    )
+
+
+def tracking_issue_upsert_summary(  # noqa: PLR0913 - mirrors the Rust command option surface
+    runner: Runner,
+    *,
+    issue: str,
+    marker: str,
+    content_file: str,
+    repo: str = "",
+    comment_id: str = "",
+    delete_if_empty: bool = False,
+    run_id: str = "",
+    cwd: str | None = None,
+) -> TrackingIssueCommentOutput:
+    """Upsert one marker comment through ``scripts/larch.sh``."""
+    arguments = ["--issue", issue, "--marker", marker, "--content-file", content_file]
+    if repo:
+        arguments.extend(["--repo", repo])
+    if comment_id:
+        arguments.extend(["--comment-id", comment_id])
+    if delete_if_empty:
+        arguments.extend(["--delete-if-empty", "true"])
+    result, values = _tracking_issue_run(
+        runner,
+        verb="upsert-summary",
+        arguments=arguments,
+        success_keys=frozenset({"COMMENT_ID", "COMMENT_URL", "UPDATED"}),
+        cwd=cwd,
+        run_id=run_id,
+    )
+    failed = result.returncode != 0 or values.get("FAILED") == "true"
+    result_id = values.get("COMMENT_ID", "")
+    url = values.get("COMMENT_URL", "")
+    content_empty = False
+    if delete_if_empty:
+        try:
+            content_empty = Path(content_file).read_text(encoding="utf-8").strip() == ""
+        except (OSError, UnicodeError):
+            failed = True
+    updated = values.get("UPDATED", "")
+    complete_empty_result = (
+        content_empty and not result_id and not url and updated == "false"
+    )
+    complete_comment_result = _positive_ascii_decimal(result_id) and (
+        (content_empty and not url) or f"#issuecomment-{result_id}" in url
+    )
+    if not failed and (
+        updated not in {"true", "false"}
+        or not (complete_empty_result or complete_comment_result)
+    ):
+        failed = True
+    return TrackingIssueCommentOutput(
+        failed=failed,
+        comment_id=result_id,
+        comment_url=url,
+        updated=updated == "true",
+        error=_tracking_error(result, values) if failed else "",
     )
 
 

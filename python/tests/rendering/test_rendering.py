@@ -180,6 +180,72 @@ def test_diagrams_upsert_dry_run_merges_sections(tmp_path: Path, capsys: pytest.
     assert "UPSERT_STATUS=ok" in out
 
 
+def test_diagrams_upsert_live_reads_and_mutates_only_through_rust(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    code = tmp_path / "code.md"
+    _ = code.write_text(
+        "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n",
+        encoding="utf-8",
+    )
+    existing = (
+        "<!-- larch:diagrams v1 -->\n\n"
+        "## Architecture Diagram\n\n```mermaid\nflowchart TD\n  A[Root]\n```\n"
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    def read_marker(
+        _runner: object, **kwargs: object
+    ) -> rendering.rust_runtime.TrackingIssueReadOutput:
+        output = Path(str(kwargs["output_file"]))
+        _ = output.write_text(existing, encoding="utf-8")
+        calls.append(("read", str(kwargs["issue"]), str(kwargs["repo"])))
+        return rendering.rust_runtime.TrackingIssueReadOutput(
+            failed=False,
+            values={"FOUND": "true", "COMMENT_ID": "11"},
+        )
+
+    def upsert(
+        _runner: object, **kwargs: object
+    ) -> rendering.rust_runtime.TrackingIssueCommentOutput:
+        content = Path(str(kwargs["content_file"])).read_text(encoding="utf-8")
+        calls.append(("upsert", str(kwargs["marker"]), content))
+        assert kwargs["delete_if_empty"] is True
+        return rendering.rust_runtime.TrackingIssueCommentOutput(
+            failed=False,
+            comment_id="11",
+            comment_url="https://github.com/owner/repo/issues/42#issuecomment-11",
+            updated=True,
+        )
+
+    monkeypatch.setattr(rendering.rust_runtime, "tracking_issue_read_marker", read_marker)
+    monkeypatch.setattr(rendering.rust_runtime, "tracking_issue_upsert_summary", upsert)
+
+    rc = rendering.diagrams_upsert_main(
+        [
+            "--issue",
+            "42",
+            "--repo",
+            "owner/repo",
+            "--code-flow-file",
+            str(code),
+            "--allow-external-paths",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert calls[0] == ("read", "42", "owner/repo")
+    assert calls[1][0:2] == ("upsert", "<!-- larch:diagrams v1 -->")
+    assert "## Architecture Diagram" in calls[1][2]
+    assert "## Code Flow Diagram" in calls[1][2]
+    assert "COMMENT_URL=https://github.com/owner/repo/issues/42#issuecomment-11" in captured.out
+    assert "UPDATED=true" in captured.out
+
+
 def test_render_lane_status_all_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     rc = rendering.render_lane_status_main(["--input", str(_lane_status_fixture(tmp_path, _all_ok_lane_body()))])

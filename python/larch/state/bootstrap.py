@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -27,7 +28,6 @@ from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body
-from larch.issue import tracking_issue
 from larch.report import progress_file, run_log_batch, run_logs, tokens
 from larch.agents import agents
 
@@ -605,11 +605,11 @@ def _phase_tracking(st: BootstrapState) -> None:
         return
     sentinel = Path(st.implement_tmpdir) / "parent-issue.md"
     if sentinel.is_file():
-        try:
-            read = tracking_issue.read_sentinel(str(sentinel))
-        except tracking_issue.CliFailure:
-            read = None
-        if read is not None and read.adopted == "true":
+        read = rust_runtime.tracking_issue_read_sentinel(
+            proc,
+            sentinel=str(sentinel),
+        )
+        if not read.failed and read.adopted == "true":
             issue = read.issue_number
             run_id = read.run_id
             if st.opts.issue_number and issue != st.opts.issue_number:
@@ -767,53 +767,140 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
     return True
 
 
+def _preflight_labels_sha256(value: object) -> str:
+    """Hash the exact admission-relevant label-name set from preflight."""
+    if not isinstance(value, list):
+        raise TypeError("preflight issue labels unavailable")
+    names: list[str] = []
+    for row in value:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str):
+            raise TypeError("preflight issue labels unavailable")
+        name = row["name"]
+        if not name:
+            raise ValueError("preflight issue labels unavailable")
+        names.append(name)
+    if len(names) != len(set(names)):
+        raise ValueError("preflight issue labels unavailable")
+    digest = hashlib.sha256()
+    for name in sorted(names):
+        encoded = name.encode()
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
 def _activate_tracking_lease(st: BootstrapState) -> bool:
-    """Create the verified lease, then set the active title prefix."""
-    lease_initialized = False
+    """Atomically create the verified lease and active title in Rust."""
+    activated = False
     repo = ""
+    post_body_path: Path | None = None
     try:
+        from larch.issue import migration_governance  # noqa: PLC0415 - keep bootstrap imports acyclic
+
         repo_root = _resolve_repo_root()
-        base_target_sha = git.rev_parse(
-            proc, "origin/main", cwd=repo_root
+        base_target = (
+            "upstream/main" if st.opts.forked_target == "true" else "origin/main"
         )
-        repo = st.repo or gh.resolve_repo(proc) or ""
+        base_target_sha = git.rev_parse(
+            proc, base_target, cwd=repo_root
+        )
+        repo = (
+            st.opts.upstream_repo
+            if st.opts.forked_target == "true"
+            else st.repo
+        ) or gh.resolve_repo(proc) or ""
         if not repo:
             raise OSError("repository unavailable for implementation lease")
-        _ = tracking_issue.initialize_implementation_lease(
+        issue_json_path = Path(st.opts.preflight_tmpdir) / "issue.json"
+        issue_snapshot = json.loads(issue_json_path.read_text(encoding="utf-8"))
+        if not isinstance(issue_snapshot, dict):
+            raise OSError("preflight issue freshness identity unavailable")
+        expected_updated_at = issue_snapshot.get("updatedAt", "")
+        expected_body = issue_snapshot.get("body", "")
+        expected_title = issue_snapshot.get("title", "")
+        expected_labels_sha256 = _preflight_labels_sha256(
+            issue_snapshot.get("labels")
+        )
+        if (
+            not isinstance(expected_updated_at, str)
+            or not expected_updated_at
+            or not isinstance(expected_body, str)
+            or not expected_body
+            or not isinstance(expected_title, str)
+            or not expected_title
+        ):
+            raise OSError("preflight issue freshness identity unavailable")
+        pre_verdict = migration_governance.evaluate_governance_gate(
             proc,
-            run=tracking_issue.ImplementationLeaseRun(
-                issue=st.issue_number_resolved,
-                repo=repo,
-                run_id=st.run_id,
-                cwd=repo_root,
-            ),
-            branch=st.branch_name,
+            issue=st.issue_number_resolved,
+            repo=repo,
+            body=expected_body,
+            repo_root=Path(repo_root).resolve(),
+            cwd=repo_root,
             head_sha=base_target_sha,
         )
-        lease_initialized = True
-        current_title = gh.issue_view_template_read(
-            proc, st.issue_number_resolved, "title", "{{.title}}", repo=repo
+        if not pre_verdict.ok:
+            reasons = ",".join(pre_verdict.blocking_reasons) or "unknown"
+            raise OSError(f"implementation-lease-admission-refused:{reasons}")
+        post_body_path = Path(st.implement_tmpdir) / "tracking-lease-post-body.md"
+        larch_io.atomic_write(
+            path=post_body_path,
+            text="",
+            prefix="tracking-lease-post-body.",
+            mode=0o600,
         )
-        if current_title.returncode != 0:
-            raise OSError(current_title.stderr)
-        _ = tracking_issue.rename_with_details(
+        renamed = rust_runtime.tracking_issue_rename(
             proc,
-            st.issue_number_resolved,
-            "implementing",
+            issue=st.issue_number_resolved,
+            state="implementing",
             repo=repo,
-            current_title=current_title.stdout.strip(),
+            run_id=st.run_id,
+            lease_branch=st.branch_name,
+            head_sha=base_target_sha,
+            expected_updated_at=expected_updated_at,
+            expected_body_sha256=hashlib.sha256(expected_body.encode()).hexdigest(),
+            expected_title_sha256=hashlib.sha256(expected_title.encode()).hexdigest(),
+            expected_labels_sha256=expected_labels_sha256,
+            cwd=repo_root,
         )
+        if renamed.failed:
+            raise OSError(renamed.error or "tracking-issue rename failed")
+        activated = True
+        post_read = rust_runtime.tracking_issue_read_body(
+            proc,
+            issue=st.issue_number_resolved,
+            output_file=str(post_body_path),
+            repo=repo,
+            cwd=repo_root,
+        )
+        if post_read.failed:
+            raise OSError(post_read.error or "tracking-issue post-admission read failed")
+        post_body = post_body_path.read_text(encoding="utf-8")
+        post_verdict = migration_governance.evaluate_governance_gate(
+            proc,
+            issue=st.issue_number_resolved,
+            repo=repo,
+            body=post_body,
+            repo_root=Path(repo_root).resolve(),
+            cwd=repo_root,
+            head_sha=base_target_sha,
+        )
+        if not post_verdict.ok:
+            reasons = ",".join(post_verdict.blocking_reasons) or "unknown"
+            raise OSError(f"implementation-lease-post-admission-refused:{reasons}")
     except Exception as exc:
         terminal_detail = ""
-        if lease_initialized and repo:
+        if activated and repo:
             try:
-                _ = tracking_issue.rename_terminal_with_lease(
+                terminal = rust_runtime.tracking_issue_rename(
                     proc,
-                    "stalled",
-                    run=tracking_issue.ImplementationLeaseRun(
-                        issue=st.issue_number_resolved, repo=repo, run_id=st.run_id
-                    ),
+                    issue=st.issue_number_resolved,
+                    state="stalled",
+                    repo=repo,
+                    run_id=st.run_id,
                 )
+                if terminal.failed:
+                    terminal_detail = f"; terminal lease update failed: {terminal.error}"
             except Exception as terminal_exc:
                 terminal_detail = f"; terminal lease update failed: {terminal_exc}"
         _tracking_bail(
@@ -822,6 +909,10 @@ def _activate_tracking_lease(st: BootstrapState) -> bool:
             result=exc,
         )
         return False
+    finally:
+        if post_body_path is not None:
+            with contextlib.suppress(OSError):
+                post_body_path.unlink(missing_ok=True)
     return True
 
 
@@ -1082,12 +1173,17 @@ def _upsert_plan_summary(st: BootstrapState) -> None:
     except OSError:
         return
     try:
-        tracking_issue.upsert_marker_summary(
-            proc, issue=issue, marker=f"<!-- larch:plan v1 runid={st.run_id} -->",
+        result = rust_runtime.tracking_issue_upsert_summary(
+            proc,
+            issue=issue,
+            marker=f"<!-- larch:plan v1 runid={st.run_id} -->",
             content_file=str(content),
-            repo=(st.opts.upstream_repo if st.opts.forked_target == "true" else st.repo) or None,
+            repo=(st.opts.upstream_repo if st.opts.forked_target == "true" else st.repo),
+            run_id=st.run_id,
         )
-    except (tracking_issue.CliFailure, OSError):
+        if result.failed:
+            return
+    except OSError:
         return
 
 

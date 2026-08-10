@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 from larch.core import rust_runtime
 from larch.core.proc import CommandResult
 from larch.core.rust_runtime import (
@@ -312,6 +315,288 @@ def test_issue_state_fails_closed_for_every_unusable_read() -> None:
         result = issue_state(runner, issue="7")
         assert result.failed
         assert (result.state, result.url, result.is_pr) == ("", "", False)
+
+
+def test_tracking_issue_wrappers_use_the_verified_runtime_and_type_each_envelope(
+    tmp_path: Path,
+) -> None:
+    comment_file = tmp_path / "comment.md"
+    _ = comment_file.write_text(
+        "<!-- larch:diagrams v1 -->\n\nexisting\n", encoding="utf-8"
+    )
+    issue_body_file = tmp_path / "issue-body.md"
+    issue_body = "# Plan\n\nbody\n"
+    _ = issue_body_file.write_text(issue_body, encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("larch",), 0, "COMMENT_ID=11\nCOMMENT_URL=u#issuecomment-11\n", "", 0.01),
+            CommandResult(("larch",), 0, "ISSUE_NUMBER=12\nISSUE_URL=https://example/issues/12\n", "", 0.01),
+            CommandResult(("larch",), 0, "MARKED=true\nNEW_TITLE=[FALSE-POSITIVE] Work\n", "", 0.01),
+            CommandResult(
+                ("larch",),
+                0,
+                f"FOUND=true\nCOMMENT_ID=11\nCOMMENT_FILE={comment_file}\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("larch",),
+                0,
+                f"BODY_FILE={issue_body_file}\nBODY_SHA256={hashlib.sha256(issue_body.encode()).hexdigest()}\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch",), 0, "RENAMED=true\nNEW_TITLE=[IMPLEMENTING] Work\n", "", 0.01),
+            CommandResult(("larch",), 0, "COMMENT_ID=11\nCOMMENT_URL=u#issuecomment-11\nUPDATED=true\n", "", 0.01),
+        ]
+    )
+    body = str(tmp_path / "body.md")
+
+    comment = rust_runtime.tracking_issue_append_comment(
+        runner, issue="7", body_file=body, repo="o/r", lifecycle_marker="started"
+    )
+    created = rust_runtime.tracking_issue_create(
+        runner, title="Work", body_file=body, repo="o/r"
+    )
+    marked = rust_runtime.tracking_issue_mark_false_positive(
+        runner, issue="7", repo="o/r"
+    )
+    read = rust_runtime.tracking_issue_read_marker(
+        runner,
+        issue="7",
+        marker="<!-- larch:diagrams v1 -->",
+        output_file=str(comment_file),
+        repo="o/r",
+    )
+    body_read = rust_runtime.tracking_issue_read_body(
+        runner,
+        issue="7",
+        output_file=str(issue_body_file),
+        repo="o/r",
+    )
+    renamed = rust_runtime.tracking_issue_rename(
+        runner,
+        issue="7",
+        state="implementing",
+        repo="o/r",
+        run_id="run-1",
+        lease_branch="work",
+        head_sha="a" * 40,
+        expected_updated_at="2026-08-10T00:00:00Z",
+        expected_body_sha256="b" * 64,
+        expected_title_sha256="c" * 64,
+        expected_labels_sha256="d" * 64,
+    )
+    upserted = rust_runtime.tracking_issue_upsert_summary(
+        runner,
+        issue="7",
+        marker="<!-- larch:diagrams v1 -->",
+        content_file=body,
+        repo="o/r",
+        run_id="run-1",
+    )
+
+    assert (comment.failed, comment.comment_id) == (False, "11")
+    assert (created.failed, created.issue_number) == (False, "12")
+    assert (marked.failed, marked.changed) == (False, True)
+    assert not read.failed
+    assert read.values["FOUND"] == "true"
+    assert not body_read.failed
+    assert (renamed.failed, renamed.changed) == (False, True)
+    assert (upserted.failed, upserted.updated) == (False, True)
+    assert all(Path(call[0]).name == "larch.sh" for call in runner.calls)
+    assert runner.calls[5][1:] == [
+        "tracking-issue",
+        "rename",
+        "--issue",
+        "7",
+        "--state",
+        "implementing",
+        "--repo",
+        "o/r",
+        "--run-id",
+        "run-1",
+        "--lease-branch",
+        "work",
+        "--head-sha",
+        "a" * 40,
+        "--expected-updated-at",
+        "2026-08-10T00:00:00Z",
+        "--expected-body-sha256",
+        "b" * 64,
+        "--expected-title-sha256",
+        "c" * 64,
+        "--expected-labels-sha256",
+        "d" * 64,
+    ]
+    assert runner.records[6].env is not None
+    assert runner.records[6].env["RUN_ID"] == "run-1"
+
+
+def test_tracking_issue_wrappers_fail_closed_for_refusals_and_missing_rows() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("larch",), 5, "FAILED=true\nERROR=unauthorized-mutation\n", "", 0.01),
+            CommandResult(("larch",), 0, "RENAMED=true\n", "", 0.01),
+            CommandResult(("larch",), 2, "", "FAILED=true\nERROR=ambiguous-comment-replay\n", 0.01),
+            CommandResult(
+                ("larch",),
+                0,
+                "ISSUE_NUMBER=7\nISSUE_NUMBER=8\nISSUE_URL=https://example/issues/8\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("larch",),
+                0,
+                "ISSUE_NUMBER=7\nISSUE_URL=https://example/issues/7\nUNEXPECTED=row\n",
+                "",
+                0.01,
+            ),
+        ]
+    )
+
+    created = rust_runtime.tracking_issue_create(
+        runner, title="Work", body_file="body.md"
+    )
+    renamed = rust_runtime.tracking_issue_rename(
+        runner, issue="7", state="done"
+    )
+    upserted = rust_runtime.tracking_issue_upsert_summary(
+        runner,
+        issue="7",
+        marker="<!-- larch:x -->",
+        content_file="body.md",
+    )
+    duplicated = rust_runtime.tracking_issue_create(
+        runner, title="Work", body_file="body.md"
+    )
+    unexpected = rust_runtime.tracking_issue_create(
+        runner, title="Work", body_file="body.md"
+    )
+
+    assert created.failed
+    assert created.error == "unauthorized-mutation"
+    assert renamed.failed
+    assert upserted.failed
+    assert upserted.error == "ambiguous-comment-replay"
+    assert duplicated.failed
+    assert duplicated.error == "conflicting tracking-issue envelope"
+    assert unexpected.failed
+    assert unexpected.error == "invalid tracking-issue envelope"
+
+
+def test_tracking_issue_delete_refusal_survives_non_utf8_content(tmp_path: Path) -> None:
+    content = tmp_path / "invalid.md"
+    _ = content.write_bytes(b"\xff")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                2,
+                "",
+                "FAILED=true\nERROR=content file was not UTF-8\n",
+                0.01,
+            )
+        ]
+    )
+
+    result = rust_runtime.tracking_issue_upsert_summary(
+        runner,
+        issue="7",
+        marker="<!-- larch:x -->",
+        content_file=str(content),
+        delete_if_empty=True,
+    )
+
+    assert result.failed
+    assert result.error == "content file was not UTF-8"
+
+
+def test_tracking_issue_sentinel_reader_is_typed_and_fails_closed() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "ISSUE_NUMBER=7\nRUN_ID=run-1\nADOPTED=true\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch",), 0, "ISSUE_NUMBER=0\n", "", 0.01),
+            CommandResult(
+                ("larch",),
+                0,
+                "ISSUE_NUMBER=7\nRUN_ID=run-1\nADOPTED=true\nFAILED=false\n",
+                "FAILED=true\nERROR=refused\n",
+                0.01,
+            ),
+            CommandResult(
+                ("larch",),
+                0,
+                "ISSUE_NUMBER=7\nRUN_ID=run-1\nADOPTED=true\nFAILED=false\n",
+                "",
+                0.01,
+            ),
+        ]
+    )
+
+    read = rust_runtime.tracking_issue_read_sentinel(
+        runner,
+        sentinel="/tmp/parent-issue.md",
+    )
+    malformed = rust_runtime.tracking_issue_read_sentinel(
+        runner,
+        sentinel="/tmp/parent-issue.md",
+    )
+    conflicted = rust_runtime.tracking_issue_read_sentinel(
+        runner,
+        sentinel="/tmp/parent-issue.md",
+    )
+    false_success = rust_runtime.tracking_issue_read_sentinel(
+        runner,
+        sentinel="/tmp/parent-issue.md",
+    )
+
+    assert (read.failed, read.issue_number, read.run_id, read.adopted) == (
+        False,
+        "7",
+        "run-1",
+        "true",
+    )
+    assert malformed.failed
+    assert conflicted.failed
+    assert conflicted.error == "conflicting tracking-issue envelope"
+    assert false_success.failed
+    assert false_success.error == "invalid tracking-issue envelope"
+    assert runner.calls[0][1:] == [
+        "tracking-issue",
+        "read",
+        "--sentinel",
+        "/tmp/parent-issue.md",
+    ]
+
+
+def test_tracking_issue_read_selects_its_envelope_from_flag_positions() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "BODY_FILE=--sentinel\nBODY_SHA256=digest\n",
+                "",
+                0.01,
+            )
+        ]
+    )
+
+    read = rust_runtime.tracking_issue_read(
+        runner,
+        arguments=["--issue", "7", "--body-out", "--sentinel"],
+    )
+
+    assert not read.failed
+    assert read.values == {"BODY_FILE": "--sentinel", "BODY_SHA256": "digest"}
 
 
 def test_issue_info_relays_the_value_row_and_absent_refusals() -> None:
