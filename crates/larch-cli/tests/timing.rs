@@ -57,6 +57,8 @@ impl Fixture {
             .env_remove("REVIEW_TMPDIR")
             .env_remove("SESSION_ENV_PATH")
             .env_remove("LARCH_TIMING_LEDGER")
+            .env_remove("LARCH_HARNESS_BOOTSTRAP_START_NS")
+            .env_remove("LARCH_HARNESS_BOOTSTRAP_KIND")
             .arg("timing")
             .args(arguments);
         command.output().expect("timing command should launch")

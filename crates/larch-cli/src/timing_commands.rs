@@ -11,9 +11,9 @@ use std::{
     env,
     ffi::OsString,
     fs,
-    io::{self, Write as _},
+    io::Write as _,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::ExitCode,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -395,44 +395,7 @@ pub fn task_kinds(_arguments: &[OsString]) -> ExitCode {
 
 /// Run one command and publish its wall-clock duration on stdout.
 pub fn harness_mark(arguments: &[OsString]) -> ExitCode {
-    let values: Vec<String> = arguments
-        .iter()
-        .map(|value| value.to_string_lossy().into_owned())
-        .collect();
-    let usage = "timing harness-mark requires --label <label> -- <command> [args...]";
-    let (label, command): (&str, &[String]) =
-        if values.first().is_some_and(|first| first == "--label") {
-            if values.len() < 4 || values[2] != "--" {
-                eprintln!("{usage}");
-                return ExitCode::from(2);
-            }
-            (values[1].as_str(), &values[3..])
-        } else if values.len() >= 3 && values[1] == "--" {
-            (values[0].as_str(), &values[2..])
-        } else if values.len() < 2 {
-            eprintln!("{usage}");
-            return ExitCode::from(2);
-        } else {
-            (values[0].as_str(), &values[1..])
-        };
-    let started = SystemTime::now();
-    // The harness wrapper must inherit the caller's stdio and exit code verbatim,
-    // which the bounded capturing runner cannot do.
-    let launch = Command::new(&command[0]).args(&command[1..]).status(); // lint-subprocess-via-runner: ok harness wrapper inherits stdio and the child exit code
-    let code = match launch {
-        Ok(status) => status.code().unwrap_or(1),
-        Err(error) => {
-            eprintln!("timing harness-mark: {error}");
-            match error.kind() {
-                io::ErrorKind::PermissionDenied => 126,
-                io::ErrorKind::NotFound => 127,
-                _ => 1,
-            }
-        }
-    };
-    let elapsed = started.elapsed().unwrap_or_default().as_secs_f64();
-    println!("LARCH_HARNESS_TIMING\t{label}\t{elapsed:.2}s");
-    ExitCode::from(u8::try_from(code).unwrap_or(1))
+    larch_harness_mark::harness_mark(arguments)
 }
 
 /// Mark one `/implement` step in both the token and timing ledgers.
