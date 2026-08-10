@@ -1,5 +1,5 @@
 # Format: <generator-verb>	<output-path>
-# Each generator verb is invoked as `python3 python/cli.py generate <verb> --check`.
+# Each generator verb is invoked as `cargo run --quiet --locked --package larch-cli -- generate <verb> --check`.
 # Column 2 remains the committed artifact validated by that verb.
 generate code-reviewer-agent	agents/code-reviewer.md
 generate reviewer-plan-fidelity-agent	agents/reviewer-plan-fidelity.md

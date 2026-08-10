@@ -1357,7 +1357,7 @@ jobs:
           cache: pip
           cache-dependency-path: .github/workflows/requirements-lint.txt
       - name: Walk generators registry and check for drift
-        run: python3 python/cli.py generate check
+        run: cargo run --quiet --locked --package larch-cli -- generate check
       - name: Install lint dependencies
         env:
           PIP_RETRIES: "5"

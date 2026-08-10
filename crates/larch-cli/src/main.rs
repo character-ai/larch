@@ -196,6 +196,9 @@ enum Domain {
     /// Clone-scoped progress breadcrumbs and the larch statusline.
     #[command(subcommand)]
     Progress(ProgressCommand),
+    /// Regenerate or verify committed developer artifacts.
+    #[command(disable_help_flag = true)]
+    Generate(RawCompatibilityArguments),
     /// Generic ASCII Gantt rendering.
     #[command(subcommand)]
     Gantt(GanttCommand),
@@ -1609,6 +1612,7 @@ fn run(
         Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
             Ok(object_store_commands::run(&arguments))
         }
+        Domain::Generate(arguments) => Ok(rendering_commands::generate(&arguments.arguments)),
         Domain::Gantt(GanttCommand::Render(arguments)) => {
             Ok(rendering_commands::gantt_render(&arguments.arguments))
         }

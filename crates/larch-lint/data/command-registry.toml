@@ -2930,11 +2930,13 @@ verb = "check"
 python_module = "larch.rendering.rendering"
 python_function = "generate_check_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-check"
 
 [[commands]]
 domain = "generate"
@@ -2942,11 +2944,13 @@ verb = "code-reviewer-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_code_reviewer_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-code-reviewer-agent"
 
 [[commands]]
 domain = "generate"
@@ -2954,11 +2958,12 @@ verb = "codex-implementer"
 python_module = "larch.rendering.rendering"
 python_function = "generate_codex_implementer_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -2966,11 +2971,12 @@ verb = "cursor-implementer"
 python_module = "larch.rendering.rendering"
 python_function = "generate_cursor_implementer_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -2978,11 +2984,13 @@ verb = "pre-rendered-reviewer-prompts"
 python_module = "larch.rendering.rendering"
 python_function = "generate_pre_rendered_reviewer_prompts_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-pre-rendered-reviewer-prompts"
 
 [[commands]]
 domain = "generate"
@@ -2990,11 +2998,13 @@ verb = "reviewer-code-robustness-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_code_robustness_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-code-robustness-agent"
 
 [[commands]]
 domain = "generate"
@@ -3002,11 +3012,12 @@ verb = "reviewer-correctness-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_correctness_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -3014,11 +3025,12 @@ verb = "reviewer-edge-cases-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_edge_cases_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -3026,11 +3038,13 @@ verb = "reviewer-plan-fidelity-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_plan_fidelity_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-plan-fidelity-agent"
 
 [[commands]]
 domain = "generate"
@@ -3038,11 +3052,12 @@ verb = "reviewer-security-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_security_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -3050,11 +3065,13 @@ verb = "reviewer-security-structure-tests-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_security_structure_tests_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-security-structure-tests-agent"
 
 [[commands]]
 domain = "generate"
@@ -3062,11 +3079,12 @@ verb = "reviewer-structure-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_structure_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -3074,11 +3092,12 @@ verb = "reviewer-testing-agent"
 python_module = "larch.rendering.rendering"
 python_function = "generate_reviewer_testing_agent_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "generate"
@@ -3086,11 +3105,12 @@ verb = "topology-docs"
 python_module = "larch.rendering.rendering"
 python_function = "generate_topology_docs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8100
 
 [[commands]]
 domain = "gh"
@@ -8352,7 +8372,7 @@ planning_issue = 7679
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "generate check", "residual-bash paths"]
+python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "residual-bash paths"]
 rust = ["lint gitleaks"]
 
 [[callers]]
@@ -8376,7 +8396,7 @@ rust = ["lint gitleaks"]
 [[callers]]
 path = "Makefile"
 kind = "ci"
-python = ["checks rust-clippy", "eval research", "generate check"]
+python = ["checks rust-clippy", "eval research"]
 rust = []
 
 [[callers]]
@@ -8401,60 +8421,6 @@ rust = ["push branch"]
 path = "agents/claude-self-reviewer.md"
 kind = "agent"
 python = ["review-and-fix write-pre-self-review-snapshot"]
-rust = []
-
-[[callers]]
-path = "agents/code-reviewer.md"
-kind = "agent"
-python = ["generate code-reviewer-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-code-robustness.md"
-kind = "agent"
-python = ["generate reviewer-code-robustness-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-correctness.md"
-kind = "agent"
-python = ["generate reviewer-correctness-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-edge-cases.md"
-kind = "agent"
-python = ["generate reviewer-edge-cases-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-plan-fidelity.md"
-kind = "agent"
-python = ["generate reviewer-plan-fidelity-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-security-structure-tests.md"
-kind = "agent"
-python = ["generate reviewer-security-structure-tests-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-security.md"
-kind = "agent"
-python = ["generate reviewer-security-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-structure.md"
-kind = "agent"
-python = ["generate reviewer-structure-agent"]
-rust = []
-
-[[callers]]
-path = "agents/reviewer-testing.md"
-kind = "agent"
-python = ["generate reviewer-testing-agent"]
 rust = []
 
 [[callers]]
@@ -8720,12 +8686,6 @@ path = "python/larch/lint/timing_task_kind_allowlist.py"
 kind = "python-runtime"
 python = []
 rust = ["timing task-kinds"]
-
-[[callers]]
-path = "python/larch/rendering/_rendering_generators.py"
-kind = "python-runtime"
-python = ["generate check", "generate code-reviewer-agent", "generate codex-implementer", "generate cursor-implementer", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-correctness-agent", "generate reviewer-edge-cases-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-agent", "generate reviewer-security-structure-tests-agent", "generate reviewer-structure-agent", "generate reviewer-testing-agent", "generate topology-docs"]
-rust = []
 
 [[callers]]
 path = "python/larch/rendering/rendering.py"
@@ -9234,13 +9194,13 @@ rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
 kind = "skill"
-python = ["checks run-relevant", "generate codex-implementer", "redact secrets"]
+python = ["checks run-relevant", "redact secrets"]
 rust = ["agent launch-codex-implement"]
 
 [[callers]]
 path = "skills/implement/prompts/cursor-implementer.md"
 kind = "skill"
-python = ["checks run-relevant", "generate cursor-implementer", "redact secrets"]
+python = ["checks run-relevant", "redact secrets"]
 rust = ["agent launch-cursor-implement"]
 
 [[callers]]
@@ -9798,14 +9758,14 @@ rust = ["bgjob wait"]
 [[callers]]
 path = "skills/shared/review-acceptance-rubric.md"
 kind = "skill"
-python = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent", "render plan-review", "render specialist", "render voter"]
-rust = []
+python = ["render plan-review", "render specialist", "render voter"]
+rust = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent"]
 
 [[callers]]
 path = "skills/shared/reviewer-templates.md"
 kind = "skill"
-python = ["generate *", "generate check"]
-rust = []
+python = []
+rust = ["generate check"]
 
 [[callers]]
 path = "skills/shared/run-lifecycle.md"

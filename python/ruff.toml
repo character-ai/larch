@@ -617,12 +617,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"_rendering_generators.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "rendering.py" = [
     "C901",
     "PLR0912",

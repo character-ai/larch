@@ -211,7 +211,7 @@ cutover is named in the last column.
 | `token report`, `token mark`, and `difficulty write-record` | Payloads that Rust flush or final-report code may request through the single `python_verb` seam. Rust controls all durable staging and mutation. | #7684. |
 | `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7679. |
 | `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
-| `larch.rendering.rendering` and `larch.rendering._rendering_generators` | Prompt, diagram, and generated-artifact payload renderers outside the closed commands. | Their exact registry rows belong to #7678, #7679, #7680, or #7685. |
+| `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7679, or #7680; committed-artifact generation is Rust-owned by #8100. |
 
 Issue 8086 ports the scanning half of the token pipeline: ledger and transcript
 discovery, per-model usage extraction, cache-read and cache-write accounting,
@@ -328,8 +328,9 @@ chat view: record parsing, turn and block rendering, tool-result classification,
 and reference-read normalization. `run-log checkpoint` and `run-log refresh` now
 render in process instead of through the `python_verb` seam, so transcript
 capture no longer spawns a child. The prompt renderers in
-`larch.rendering.rendering` and `larch.rendering._rendering_generators` keep
-their separately registered Python owners under #7678, #7679, #7680, and #7685.
+`larch.rendering.rendering` keep their separately registered Python owners
+under #7678, #7679, and #7680. Issue #8100 moved the committed-artifact
+generator registry to Rust.
 
 Three contract points changed deliberately, each named by the leaf's acceptance.
 Rendered strings escape `U+0085`, `U+2028`, and `U+2029`, which JSON leaves bare

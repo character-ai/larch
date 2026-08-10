@@ -16,7 +16,6 @@ from larch.core import proc
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
-from larch.rendering import _rendering_generators as generators
 from larch.rendering import _rendering_helpers as helpers
 from larch.review import voting
 from tests.support.design_wire import plan_body, run_params_json
@@ -158,46 +157,6 @@ def test_reviewer_renderer_preserves_ampersand_target(tmp_path: Path, capsys: py
     assert rc == 0
     assert "R&D findings" in out
     assert "context with {REVIEW_TARGET}" in out
-
-
-def test_generate_check_accepts_verb_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    assert rendering.generate_check_main([]) == 0
-
-
-def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    codex_text = rendering._implementer_text("codex")  # pyright: ignore[reportPrivateUsage]
-    cursor_text = rendering._implementer_text("cursor")  # pyright: ignore[reportPrivateUsage]
-    assert "SCOUT_MANIFEST_PATH" in codex_text
-    assert "optional best-effort" in codex_text
-    assert "TOOL_MODIFIED_HISTORY" not in codex_text
-    assert "SCOUT_MANIFEST_PATH" in cursor_text
-    assert "optional best-effort" in cursor_text
-    assert "cursor-modified-history" in cursor_text
-    for text in (codex_text, cursor_text):
-        assert "dyn-reuse" in text
-        assert "plan-scope-insufficient-reuse-owner" in text
-        assert "`needs_qa` resolves ambiguity only within approved scope" in text
-    for tool in ("codex", "cursor"):
-        assert generators.EXTERNAL_IMPLEMENTER_OUTPUT[tool].is_file()
-        assert not (REPO_ROOT / "agents" / f"{tool}-implementer.md").exists()
-
-
-def test_generated_reviewers_have_canonical_provenance_marker() -> None:
-    for verb in generators.REVIEWER_OUTPUT:
-        text = generators._reviewer_agent_text(verb)  # pyright: ignore[reportPrivateUsage]
-        assert "<!-- AUTO-GENERATED: Regenerate via:" in text
-        assert text.count(generators.REVIEWER_PROVENANCE) == 1
-
-
-def test_topology_header_uses_python_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    target = tmp_path / "topology.md"
-    monkeypatch.setenv("LARCH_TOPOLOGY_DOC", str(target))
-    assert rendering.generate_topology_docs_main([]) == 0
-    text = target.read_text(encoding="utf-8")
-    assert "Regenerate via: python3 python/cli.py generate topology-docs" in text
 
 
 def test_diagrams_upsert_dry_run_merges_sections(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1333,16 +1292,6 @@ def test_render_voter_injects_judge_ledger_rules(
     assert "Do not down-vote an `accepted` duplicate" in out
 
 
-def test_generate_code_reviewer_agent_check_matches_committed(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    assert rendering.generate_code_reviewer_agent_main(["--check"]) == 0
-
-
-def test_generate_check_keeps_all_reviewer_artifacts_in_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    assert rendering.generate_check_main([]) == 0
-
-
 def _specialist_agent(tmp_path: Path) -> Path:
     agent = tmp_path / "reviewer-temp.md"
     agent.write_text("---\nname: temp\ndescription: temp\n---\n# Body\n", encoding="utf-8")
@@ -1967,14 +1916,10 @@ def test_rendering_helpers_frontmatter_and_checksum(tmp_path: Path) -> None:
 
 
 def test_rendering_helper_imports_are_cycle_free() -> None:
-    """Load helpers and both callers in fresh interpreters without eager cycles."""
+    """Load helpers and their caller in fresh interpreters without eager cycles."""
     snippets = (
         "from larch.rendering import _rendering_helpers as h; "
         "assert h.RenderError is not None; print('helpers-ok')",
-        "from larch.rendering import _rendering_generators as g; "
-        "assert g.RenderError is not None; "
-        "assert 'larch.rendering.rendering' not in __import__('sys').modules; "
-        "print('generators-ok')",
         "from larch.rendering import rendering as r; "
         "from larch.rendering import _rendering_helpers as h; "
         "assert r.RenderError is h.RenderError; print('rendering-ok')",

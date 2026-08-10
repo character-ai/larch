@@ -126,7 +126,16 @@ impl CleanInstallCase {
             | "clean-install-combine-issues-list-open"
             | "clean-install-combine-issues-plan-audit"
             | "clean-install-combine-issues-plan-inherited"
-            | "clean-install-combine-issues-prose-audit" => 2,
+            | "clean-install-combine-issues-prose-audit"
+            // `generate` keeps its raw compatibility boundary, so `--help`
+            // proves that the verified wrapper reaches each selector while the
+            // selector rejects its unsupported extra argument.
+            | "clean-install-generate-check"
+            | "clean-install-generate-code-reviewer-agent"
+            | "clean-install-generate-pre-rendered-reviewer-prompts"
+            | "clean-install-generate-reviewer-code-robustness-agent"
+            | "clean-install-generate-reviewer-plan-fidelity-agent"
+            | "clean-install-generate-reviewer-security-structure-tests-agent" => 2,
             _ => 0,
         }
     }
@@ -545,6 +554,32 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-deps-plan", "deps", "plan"),
     CleanInstallCase::new("clean-install-deps-resolve-repo", "deps", "resolve-repo"),
     CleanInstallCase::new("clean-install-deps-write-proposals", "deps", "write-proposals"),
+    CleanInstallCase::new("clean-install-generate-check", "generate", "check"),
+    CleanInstallCase::new(
+        "clean-install-generate-code-reviewer-agent",
+        "generate",
+        "code-reviewer-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-pre-rendered-reviewer-prompts",
+        "generate",
+        "pre-rendered-reviewer-prompts",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-code-robustness-agent",
+        "generate",
+        "reviewer-code-robustness-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-plan-fidelity-agent",
+        "generate",
+        "reviewer-plan-fidelity-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-security-structure-tests-agent",
+        "generate",
+        "reviewer-security-structure-tests-agent",
+    ),
     CleanInstallCase::new(
         "clean-install-block-issue-add-blocked-by",
         "block-issue",

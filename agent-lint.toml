@@ -508,22 +508,18 @@ exclude = [
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
   "scripts/external-tool-registry.sh",
-  # python3 python/cli.py generate code-reviewer-agent is invoked through
-  # scripts/generators.tsv by python3 python/cli.py generate check. agent-lint's
-  # dead-script scanner does not resolve TSV registry entries, so the exemplar
-  # generator is excluded explicitly.
+  # Generated artifact headers retain these legacy Python commands for stable
+  # bytes. The Rust registry walker now owns execution, but agent-lint still
+  # sees the provenance strings and needs them excluded.
   "python3 python/cli.py generate code-reviewer-agent",
-  # These generators are invoked through the same scripts/generators.tsv
-  # registry walker. agent-lint does not resolve TSV rows, so exclude them
-  # alongside the exemplar generator above.
+  # The remaining frozen provenance headers use the same registry grammar.
   "python3 python/cli.py generate reviewer-plan-fidelity-agent",
   "python3 python/cli.py generate reviewer-code-robustness-agent",
   "python3 python/cli.py generate reviewer-security-structure-tests-agent",
   "python3 python/cli.py generate pre-rendered-reviewer-prompts",
   "python3 python/cli.py generate cursor-implementer",
   "python3 python/cli.py generate codex-implementer",
-  # python3 python/cli.py generate topology-docs is invoked through the same generator
-  # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
+  # The topology header is likewise frozen provenance, not a Python caller.
   "python3 python/cli.py generate topology-docs",
   # scripts/measure-*.sh are opt-in human-run measurement helpers for prompt
   # and run-log cost analysis. They have no Skill or hook caller by design, so

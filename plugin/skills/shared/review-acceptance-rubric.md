@@ -69,16 +69,16 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 
 - `python/cli.py render voter` — embeds rubric body verbatim for external voters
 - `skills/shared/reviewer-templates.md` — Necessity gate subsection for reviewer self-filter
-- `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `python3 python/cli.py generate code-reviewer-agent`)
-- `agents/reviewer-plan-fidelity.md` — generated (re-run `python3 python/cli.py generate reviewer-plan-fidelity-agent`)
-- `agents/reviewer-code-robustness.md` — generated (re-run `python3 python/cli.py generate reviewer-code-robustness-agent`)
-- `agents/reviewer-security-structure-tests.md` — generated (re-run `python3 python/cli.py generate reviewer-security-structure-tests-agent`)
-- `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
-- `agents/reviewer-correctness.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
-- `agents/reviewer-security.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
-- `agents/reviewer-structure.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
-- `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
-- `agents/pre-rendered/reviewer-*-body.txt` — generated from every specialist above (re-run `python3 python/cli.py generate pre-rendered-reviewer-prompts`)
+- `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate code-reviewer-agent`)
+- `agents/reviewer-plan-fidelity.md` — generated (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate reviewer-plan-fidelity-agent`)
+- `agents/reviewer-code-robustness.md` — generated (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate reviewer-code-robustness-agent`)
+- `agents/reviewer-security-structure-tests.md` — generated (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate reviewer-security-structure-tests-agent`)
+- `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-correctness.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-security.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-structure.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
+- `agents/pre-rendered/reviewer-*-body.txt` — generated from every specialist above (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`)
 - `python/cli.py render plan-review` — plan-review external prompts
 - `python/cli.py render specialist` — code-review external prompts (competition notice)
 - `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `python/cli.py render plan-review` and `python/cli.py render voter`
