@@ -593,6 +593,10 @@ outcome and time, and end-to-end time. Keep warm exact hits separate from cold
 or miss samples. Report raw values and medians. A pull-request or manual run
 does not substitute for a production push.
 
+The raw end-to-end record, including its explicit separation of controlled
+main-ref dispatches from production pushes, is in
+[`ci-latency-evidence.md`](ci-latency-evidence.md).
+
 ### Post-policy nextest-tail candidate evidence
 
 [Benchmark run 31219903417](https://github.com/character-ai/larch/actions/runs/31219903417)

@@ -14,6 +14,7 @@ const DIRECT_FILES: &[&str] = &[
     "LICENSE",
     "SECURITY.md",
     "docs/analysis-state.md",
+    "docs/ci-latency-evidence.md",
     "docs/configuration-and-permissions.md",
     "docs/dev-hook-audit.md",
     "docs/difficulty-floor-globs.tsv",
@@ -448,6 +449,16 @@ mod tests {
     }
 
     #[test]
+    fn includes_ci_latency_evidence_in_runtime_projection() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+
+        let paths = runtime_paths(&root).expect("runtime path selection");
+
+        assert!(paths.contains("docs/ci-latency-evidence.md"));
+    }
+
+    #[test]
     fn detects_missing_unexpected_and_changed_projection_files() {
         let fixture = fixture();
         let root = repository_root(fixture.path());
@@ -556,6 +567,7 @@ mod tests {
             [
                 "rm",
                 "--cached",
+                "docs/ci-latency-evidence.md",
                 "docs/dev-hook-audit.md",
                 "docs/progress-reporting.md",
                 "docs/rust-async-runtime.md",
@@ -569,7 +581,7 @@ mod tests {
         assert_eq!(
             runtime_paths(&root),
             Err(
-                "plugin runtime projection inputs are missing: docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
+                "plugin runtime projection inputs are missing: docs/ci-latency-evidence.md, docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
                     .to_owned()
             )
         );
