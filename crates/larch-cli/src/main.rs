@@ -454,6 +454,9 @@ enum AnalyzeBugsCommand {
 
 #[derive(Subcommand)]
 enum LearnFromBugsCommand {
+    /// Refresh durable proposal status against repository and GitHub evidence.
+    #[command(name = "check-proposals", disable_help_flag = true)]
+    CheckProposals(RawCompatibilityArguments),
     /// Fetch and compact closed bug reports into bounded artifacts.
     #[command(disable_help_flag = true)]
     Prepare(RawCompatibilityArguments),
@@ -469,6 +472,18 @@ enum LearnFromBugsCommand {
     /// Render one zone-list GitHub search expression.
     #[command(name = "resolve-zones", disable_help_flag = true)]
     ResolveZones(RawCompatibilityArguments),
+    /// Confirm that the analysis checkout's origin matches the publication repository.
+    #[command(name = "verify-origin", disable_help_flag = true)]
+    VerifyOrigin(RawCompatibilityArguments),
+    /// Validate the generated learn-from-bugs report before publication or filing.
+    #[command(name = "validate-report", disable_help_flag = true)]
+    ValidateReport(RawCompatibilityArguments),
+    /// Persist the checked proposal state without mutating a Git worktree.
+    #[command(name = "state-publish", disable_help_flag = true)]
+    StatePublish(RawCompatibilityArguments),
+    /// Translate proposal dependencies into `/issue` batch dependency rows.
+    #[command(name = "filing-deps", disable_help_flag = true)]
+    FilingDeps(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1645,6 +1660,9 @@ fn run(
             }
         }),
         Domain::LearnFromBugs(command) => Ok(match command {
+            LearnFromBugsCommand::CheckProposals(arguments) => {
+                learn_from_bugs_commands::check_proposals(&arguments.arguments)
+            }
             LearnFromBugsCommand::Prepare(arguments) => {
                 learn_from_bugs_commands::prepare(&arguments.arguments)
             }
@@ -1659,6 +1677,18 @@ fn run(
             }
             LearnFromBugsCommand::ResolveZones(arguments) => {
                 learn_from_bugs_commands::resolve_zones(&arguments.arguments)
+            }
+            LearnFromBugsCommand::VerifyOrigin(arguments) => {
+                learn_from_bugs_commands::verify_origin(&arguments.arguments)
+            }
+            LearnFromBugsCommand::ValidateReport(arguments) => {
+                learn_from_bugs_commands::validate_report(&arguments.arguments)
+            }
+            LearnFromBugsCommand::StatePublish(arguments) => {
+                learn_from_bugs_commands::state_publish(&arguments.arguments)
+            }
+            LearnFromBugsCommand::FilingDeps(arguments) => {
+                learn_from_bugs_commands::filing_deps(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {

@@ -207,7 +207,7 @@ fn proposal_targets_keep_python_validation_boundaries() {
         "check:crates/larch-cli/src/main.rs#run#again",
     ] {
         assert!(proposal_from_value(
-            &json!({
+        &json!({
                 "id": "bad-target",
                 "type": if target.starts_with("ARCHITECTURAL") { "guideline" } else if target.starts_with("check:") { "lint" } else { "test" },
                 "target": target,
@@ -233,6 +233,33 @@ fn proposal_targets_keep_python_validation_boundaries() {
         )
         .is_none()
     );
+    for filed_issue in [json!(0), json!(-1), json!(true), json!("1")] {
+        assert!(
+            proposal_from_value(
+                &json!({
+                    "id": "bad-filed-issue", "type": "lint", "target": "registration:lint",
+                    "run_date": "2026-08-09", "status": "pending", "filed_issue": filed_issue,
+                }),
+                None,
+            )
+            .is_none()
+        );
+    }
+}
+
+#[test]
+fn lint_registration_probe_ignores_comments_and_string_literals() {
+    let root = tempfile::tempdir().unwrap();
+    let cli = root.path().join("python/larch/cli.py");
+    fs::create_dir_all(cli.parent().unwrap()).unwrap();
+    fs::write(&cli, "# (\"lint\", \"audit\"): ignored\n_REGISTRY = {}\n").unwrap();
+    assert!(!lint_registration_adopted("audit", root.path()));
+    fs::write(
+        &cli,
+        "_REGISTRY = {(\"lint\", \"audit\"): (\"module\", \"main\")}\n",
+    )
+    .unwrap();
+    assert!(lint_registration_adopted("audit", root.path()));
 }
 
 #[cfg(unix)]
@@ -1080,6 +1107,43 @@ fn typed_issue_fetch_uses_the_loopback_github_service_for_all_states() {
         assert_eq!(closed[0].title, title);
     });
     assert_eq!(server.finish().expect("requests").len(), 2);
+}
+
+#[test]
+fn proposal_refresh_uses_the_typed_issue_service_and_records_both_evidence() {
+    let directory = tempfile::tempdir().expect("temporary repository");
+    fs::create_dir_all(directory.path().join("python/larch/lint")).expect("lint directory");
+    fs::write(
+        directory.path().join("python/larch/lint/lint_delta.py"),
+        "# adopted\n",
+    )
+    .expect("lint module");
+    let mut issue: Value = serde_json::from_str(include_str!(
+        "../../../larch-adapters/fixtures/github_issue.json"
+    ))
+    .expect("issue fixture");
+    issue["number"] = json!(71);
+    issue["id"] = json!(71);
+    issue["state"] = json!("closed");
+    issue["state_reason"] = json!("completed");
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(200, issue.to_string()).expect("typed issue exchange")
+    ])
+    .expect("issue service");
+    let base = server.base_url().to_owned();
+    let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    with_test_github_service(service, || {
+        let checked = refresh_proposals(
+            &[proposal("lint-delta", "pending", Some(71))],
+            directory.path(),
+            "owner/repo",
+        )
+        .expect("proposal refresh");
+        assert_eq!(checked[0].proposal.status, "adopted");
+        assert_eq!(checked[0].adoption_evidence.as_deref(), Some("both"));
+    });
+    assert_eq!(server.finish().expect("requests").len(), 1);
 }
 
 #[test]

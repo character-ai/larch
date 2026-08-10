@@ -13,9 +13,11 @@ import pytest
 
 from larch.core import architectural_guidelines as ag
 from larch.core import config
-from larch.issue import audit_runs, learn_from_bugs
+from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 from larch.report import storage_config
+
+_RUST_SCAN_BOUNDARY = audit_runs._learn_from_bugs_scan_boundary
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +33,25 @@ def _isolated_analysis_state(
         "load_tool_repository_storage",
         lambda **_kwargs: storage,
     )
+
+    def scan_boundary(root: Path) -> tuple[str, str] | None:
+        marker = root / ".learn-from-bugs-test-state.json"
+        if marker.is_symlink() or not marker.is_file():
+            return None
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        repo = payload.get("repo")
+        run_date = payload.get("run_date")
+        scan_started_at = payload.get("scan_started_at")
+        if not isinstance(repo, str) or not isinstance(run_date, str):
+            return None
+        return repo, scan_started_at if isinstance(scan_started_at, str) and scan_started_at else run_date
+
+    monkeypatch.setattr(audit_runs, "_learn_from_bugs_scan_boundary", scan_boundary)
 
 
 
@@ -106,8 +127,7 @@ def _write_learn_from_bugs_state(
     run_date: str = "2026-07-09T00:00:00Z",
     scan_started_at: str | None = "2026-07-09T01:00:00Z",
 ) -> None:
-    marker = learn_from_bugs.state_path(root)
-    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker = root / ".learn-from-bugs-test-state.json"
     payload: dict[str, object] = {
         "schema_version": 1,
         "run_date": run_date,
@@ -133,10 +153,26 @@ def test_learn_from_bugs_state_does_not_import_legacy_repository_state(
     legacy.parent.mkdir(parents=True)
     _ = legacy.write_text('{"schema_version":1}\n', encoding="utf-8")
 
-    marker = learn_from_bugs.state_path(tmp_path)
+    marker = tmp_path / ".learn-from-bugs-test-state.json"
 
     assert not marker.exists()
     assert legacy.read_text(encoding="utf-8") == '{"schema_version":1}\n'
+
+
+def test_learn_from_bugs_scan_boundary_reads_the_rust_state_wire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        return CommandResult(tuple(argv), 0, "LEARN_FROM_BUGS_STATE_FOUND=true\nREPO=o/r\nRUN_DATE=2026-07-09T00:00:00Z\nSCAN_STARTED_AT=2026-07-09T01:00:00Z\n", "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+    monkeypatch.setattr(audit_runs, "_learn_from_bugs_scan_boundary", _RUST_SCAN_BOUNDARY)
+
+    assert audit_runs._learn_from_bugs_scan_boundary(tmp_path) == ("o/r", "2026-07-09T01:00:00Z")
+    assert calls[0][1:] == ["learn-from-bugs", "read-state", "--root", str(tmp_path)]
 
 
 def test_bugs_backlog_nudge_missing_marker_prints_never_run_without_gh(
@@ -155,8 +191,7 @@ def test_bugs_backlog_nudge_missing_marker_prints_never_run_without_gh(
 def test_bugs_backlog_nudge_symlink_marker_is_unusable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    marker = learn_from_bugs.state_path(tmp_path)
-    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker = tmp_path / ".learn-from-bugs-test-state.json"
     marker.symlink_to(tmp_path / "target.json")
 
     def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:

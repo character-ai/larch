@@ -294,7 +294,7 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(C2.11) prose-only marker must require mechanical-alternative line")
     if "learn-from-bugs validate-report" not in text:
         failures.append("(C2.12) Step 4 must run report-contract validation before print/marker/filing")
-    if 'if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report' not in text:
+    if 'if ! "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs validate-report' not in text:
         failures.append("(C2.13) Step 4 must stop when report-contract validation fails")
     if "**Proposed regression tests.**" not in text:
         failures.append("(D.1) report must include Proposed regression tests section")
@@ -374,7 +374,7 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(O.5) successful create outcomes must precede marker commit")
     if "with private permissions and no Git mutation" not in text:
         failures.append("(Q.1) publication must be private local state without Git mutation")
-    if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish' not in text:
+    if '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" learn-from-bugs state-publish' not in text:
         failures.append("(Q.2) publication must delegate the whole flow to learn-from-bugs state-publish")
     state_publish_args = (
         '--root "$ANALYSIS_ROOT"',

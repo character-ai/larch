@@ -466,9 +466,19 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "runtime",
     ),
     CleanInstallCase::new(
+        "clean-install-learn-from-bugs-check-proposals",
+        "learn-from-bugs",
+        "check-proposals",
+    ),
+    CleanInstallCase::new(
         "clean-install-learn-from-bugs-coverage-index",
         "learn-from-bugs",
         "coverage-index",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-filing-deps",
+        "learn-from-bugs",
+        "filing-deps",
     ),
     CleanInstallCase::new(
         "clean-install-learn-from-bugs-prepare",
@@ -484,6 +494,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-learn-from-bugs-resolve-zones",
         "learn-from-bugs",
         "resolve-zones",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-state-publish",
+        "learn-from-bugs",
+        "state-publish",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-validate-report",
+        "learn-from-bugs",
+        "validate-report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-learn-from-bugs-verify-origin",
+        "learn-from-bugs",
+        "verify-origin",
     ),
     CleanInstallCase::new(
         "clean-install-learn-from-bugs-write-state",

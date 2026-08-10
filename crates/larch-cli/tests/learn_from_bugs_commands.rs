@@ -514,3 +514,148 @@ fn state_and_coverage_errors_report_contracts() {
     zones_missing.args(["learn-from-bugs", "resolve-zones"]);
     assert!(stderr(&zones_missing.assert().code(2)).contains("required: --zones"));
 }
+
+#[test]
+fn migrated_validation_and_state_commands_keep_their_public_wires() {
+    let fixture = Fixture::create();
+    let root = fixture.root.to_str().expect("UTF-8 fixture root");
+    let proposals_out = fixture.path("out/checked.jsonl");
+    let adoption_out = fixture.path("out/adoption.md");
+    let base_out = fixture.path("out/base.jsonl");
+    let mut check = fixture.command();
+    check.args([
+        "learn-from-bugs",
+        "check-proposals",
+        "--root",
+        root,
+        "--repo",
+        "acme/widget",
+        "--proposals-out",
+        proposals_out.to_str().expect("UTF-8 proposals output"),
+        "--adoption-out",
+        adoption_out.to_str().expect("UTF-8 adoption output"),
+        "--base-proposals-out",
+        base_out.to_str().expect("UTF-8 base output"),
+    ]);
+    let check = check.assert().success();
+    let check_stdout = stdout(&check);
+    assert!(check_stdout.contains("PROPOSALS_COUNT=0\n"));
+    assert!(check_stdout.contains("BASE_PROPOSALS_PATH="));
+    assert_eq!(
+        fs::read_to_string(&proposals_out).expect("checked output"),
+        ""
+    );
+    assert_eq!(fs::read_to_string(&base_out).expect("base output"), "");
+    assert!(
+        fs::read_to_string(&adoption_out)
+            .expect("adoption output")
+            .contains("- Adoption rate: 0.0%")
+    );
+
+    fixture.write("out/headline.md", "#### Origin distribution (selected=0)\n");
+    fixture.write(
+        "out/report.md",
+        "## Root-cause clusters\n\n#### Origin distribution (selected=0)\n\n## 3. Already covered\n",
+    );
+    let mut report = fixture.command();
+    report.args([
+        "learn-from-bugs",
+        "validate-report",
+        "--report",
+        fixture
+            .path("out/report.md")
+            .to_str()
+            .expect("UTF-8 report"),
+        "--headline",
+        fixture
+            .path("out/headline.md")
+            .to_str()
+            .expect("UTF-8 headline"),
+    ]);
+    assert_eq!(stdout(&report.assert().success()), "REPORT_CONTRACT=pass\n");
+
+    let mut origin = fixture.command();
+    origin.args([
+        "learn-from-bugs",
+        "verify-origin",
+        "--root",
+        root,
+        "--repo",
+        "acme/widget",
+    ]);
+    assert_eq!(
+        stdout(&origin.assert().success()),
+        "ORIGIN_REPO=acme/widget\nPUBLICATION_REPO=acme/widget\nORIGIN_MATCHES_REPO=true\n"
+    );
+
+    fixture.write("out/reconciled.jsonl", "");
+    let mut publish = fixture.command();
+    publish.args([
+        "learn-from-bugs",
+        "state-publish",
+        "--root",
+        root,
+        "--repo",
+        "acme/widget",
+        "--run-dir",
+        fixture.path("out").to_str().expect("UTF-8 run directory"),
+        "--search",
+        "[BUG] in:title",
+        "--state",
+        "closed",
+        "--selected-count",
+        "0",
+        "--highest-closed-issue-number-scanned",
+        "0",
+        "--run-date",
+        "2026-08-09",
+        "--scan-started-at",
+        "2026-08-09T12:00:00Z",
+        "--proposals-file",
+        fixture
+            .path("out/reconciled.jsonl")
+            .to_str()
+            .expect("UTF-8 proposals"),
+    ]);
+    let publish = publish.assert().success();
+    assert!(stdout(&publish).starts_with("STATE_PUBLISH_STATUS=saved\nSTATE_PATH="));
+}
+
+#[test]
+fn filing_dependency_translation_is_ready_for_issue_without_repair() {
+    let fixture = Fixture::create();
+    fixture.write(
+        "out/batch-issues.md",
+        "### First issue\n\nfirst body\n\n### Second issue\n\nsecond body\n",
+    );
+    fixture.write("out/proposal-batch-map.tsv", "first\t1\nsecond\t2\n");
+    fixture.write("out/proposal-deps.tsv", "first\tsecond\n");
+    let output = fixture.path("out/intra-batch-deps.tsv");
+    let mut command = fixture.command();
+    command.args([
+        "learn-from-bugs",
+        "filing-deps",
+        "--input-file",
+        fixture
+            .path("out/batch-issues.md")
+            .to_str()
+            .expect("UTF-8 input"),
+        "--proposal-map-file",
+        fixture
+            .path("out/proposal-batch-map.tsv")
+            .to_str()
+            .expect("UTF-8 map"),
+        "--proposal-deps-file",
+        fixture
+            .path("out/proposal-deps.tsv")
+            .to_str()
+            .expect("UTF-8 dependencies"),
+        "--output",
+        output.to_str().expect("UTF-8 output"),
+    ]);
+    command.assert().success();
+    assert_eq!(
+        fs::read_to_string(output).expect("dependency output"),
+        "1\t2\n"
+    );
+}

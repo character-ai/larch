@@ -3,14 +3,12 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 from pathlib import Path
 
 import pytest
 
 from larch.issue import validate_merged
-from larch.issue import learn_from_bugs
 
 
 def _state() -> validate_merged.ValidateMergedState:
@@ -57,8 +55,3 @@ def test_public_cli_uses_max_merges_not_issue_window() -> None:
     parser = validate_merged.prepare_main
     assert callable(parser)
     assert validate_merged.DEFAULT_MAX_MERGES == 20
-
-
-def test_learn_from_bugs_publication_has_no_worktree_command() -> None:
-    source = inspect.getsource(learn_from_bugs.run_state_publish)
-    assert "worktree" not in source
