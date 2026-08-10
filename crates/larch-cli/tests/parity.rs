@@ -7435,6 +7435,20 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         "resume bootstrap failed: {}",
         String::from_utf8_lossy(&resume.stderr)
     );
+    let token_ledger = fs::read_dir(&bootstrap_session)
+        .expect("read bootstrap session")
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("larch-tokens-"))
+        })
+        .expect("Step 0 bootstrap token ledger");
+    let token_rows = fs::read_to_string(token_ledger).expect("read Step 0 token ledger");
+    assert!(
+        token_rows.contains(r#""step":"Step 0 \u2014 preflight""#),
+        "bootstrap must mark the preflight token boundary; rows: {token_rows:?}"
+    );
 
     let expected = concat!(
         "IMPLEMENT_TMPDIR={SESSION}\n",

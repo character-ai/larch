@@ -425,7 +425,12 @@ fn run_infrastructure(options: &BootstrapOptions) -> Result<BootstrapState, Infr
         write_base_session_env(&state, options).map_err(|message| {
             InfrastructureFailure::new("write-session-env", &state.implement_tmpdir, message)
         })?;
-        let _ignored = crate::timing_commands::mark(&[OsString::from("Step 0 — preflight")]);
+        let _ignored = crate::timing_commands::telemetry_mark(&[
+            OsString::from("--implement-tmpdir"),
+            OsString::from(&state.implement_tmpdir),
+            OsString::from("--label"),
+            OsString::from("Step 0 — preflight"),
+        ]);
         refresh_reviewer_state(&mut state, options).map_err(|message| {
             InfrastructureFailure::new("reviewer-refresh", &state.implement_tmpdir, message)
         })?;
