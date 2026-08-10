@@ -2174,6 +2174,58 @@ def migration_audit_main(argv: list[str]) -> int:
         return config.MIGRATION_AUDIT_EXIT_UNAVAILABLE
 
 
+def governance_gate_main(argv: list[str]) -> int:
+    """Evaluate one existing governance gate for a Rust-owned caller.
+
+    The migration-governance module remains the single owner of blocker,
+    receipt, and active-owner admission policy.  This narrow machine envelope
+    lets the Rust Step 0 owner consume that policy without recreating it.
+    """
+    parser = argparse.ArgumentParser(prog="larch issue governance-gate")
+    _ = parser.add_argument("--issue", required=True)
+    _ = parser.add_argument("--repo", required=True)
+    _ = parser.add_argument("--body-file", required=True)
+    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--head-sha", required=True)
+    try:
+        args = parser.parse_args(argv)
+        issue = str(args.issue)
+        repository = str(args.repo)
+        body_file = Path(str(args.body_file))
+        repo_root = Path(str(args.repo_root))
+        head_sha = str(args.head_sha)
+        if not issue.isdigit() or int(issue) <= 0:
+            raise MigrationAuditError("--issue must be a positive issue number")
+        if _REPOSITORY_RE.fullmatch(repository) is None:
+            raise MigrationAuditError("--repo must be exactly owner/name")
+        if _SHA1_HEX_RE.fullmatch(head_sha) is None:
+            raise MigrationAuditError("--head-sha must be a 40-character hexadecimal SHA")
+        repo_root = larch_io.validate_trusted_directory(repo_root)
+        body = larch_io.read_trusted_text(body_file, root=body_file.parent)
+        verdict = evaluate_governance_gate(
+            proc,
+            issue=issue,
+            repo=repository,
+            body=body,
+            repo_root=repo_root,
+            cwd=str(repo_root),
+            head_sha=head_sha,
+        )
+    except (MigrationAuditError, ShipError, OSError, ValueError) as exc:
+        detail = redact.redact_secrets_only(str(exc)).replace("\n", " ").strip()
+        print("GOVERNANCE_OK=false")
+        print(f"ERROR: governance-gate: {detail[:500]}", file=sys.stderr)
+        return config.EXIT_USAGE
+    print(f"GOVERNANCE_OK={str(verdict.ok).lower()}")
+    if verdict.ok:
+        return config.EXIT_OK
+    print(
+        f"GOVERNANCE_REASONS={','.join(verdict.blocking_reasons) or 'unknown'}",
+        file=sys.stderr,
+    )
+    return config.EXIT_INTERNAL_ERROR
+
+
 # Re-export CommandResult for typed test doubles without importing proc at call sites.
 __all__ = [
     "BLOCKING_PARITY_REASONS",
@@ -2222,6 +2274,7 @@ __all__ = [
     "evaluate_governance_gate",
     "evaluate_owner_admission",
     "format_gate_refusal",
+    "governance_gate_main",
     "hash_blocker_rows",
     "hash_owner_rows",
     "hash_plan_block",

@@ -169,6 +169,16 @@ directory is revalidated before it becomes durable. The session identity and
 keepalive are confined writes; an identity-write failure closes the owned
 temporary directory rather than leaving a partial session state.
 
+Rust-owned `bootstrap invoke` completes its Step 0 continuation in
+`crates/larch-cli/src/implement_bootstrap_continuation.rs`. Continuation-owned
+session and preflight inputs are opened through canonical, no-follow confined
+paths; symlinked or non-regular routing, plan, sentinel, and lease-evidence
+files are refused rather than followed. Tracking-lease body snapshots are
+removed through the same confinement boundary after verification, including on
+the failure path. The narrow Python `issue governance-gate` machine envelope
+remains a policy consumer only: it validates its caller-supplied repository
+root and body-file boundary before evaluating the canonical governance policy.
+
 External CLI credentials may enter a child process environment. A live
 `OPENAI_API_KEY` stays out of larch-owned argv and copied config, but same-user
 or host-level process inspection can still observe the child environment. On

@@ -10,7 +10,7 @@ from typing import cast
 
 import pytest
 
-from larch.core import proc
+from larch.core import config, proc
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
 from larch.issue import issue_wire, migration_governance as mg
@@ -593,3 +593,75 @@ def test_main_returns_two_for_required_evidence_failure(
     assert captured.out == ""
     assert "required evidence failed" in captured.err
     assert secret not in captured.err
+
+
+def test_governance_gate_main_emits_a_machine_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body_file = tmp_path / "issue-body.md"
+    _ = body_file.write_text("issue body\n", encoding="utf-8")
+    observed: dict[str, object] = {}
+
+    def evaluate(*_args: object, **kwargs: object) -> mg.GovernanceGateVerdict:
+        observed.update(kwargs)
+        return mg.GovernanceGateVerdict(
+            parity=mg.ParityVerdict(()),
+            freshness=mg.FreshnessVerdict(()),
+        )
+
+    monkeypatch.setattr(mg, "evaluate_governance_gate", evaluate)
+
+    status = mg.governance_gate_main(
+        [
+            "--issue",
+            "8358",
+            "--repo",
+            "owner/repo",
+            "--body-file",
+            str(body_file),
+            "--repo-root",
+            str(tmp_path),
+            "--head-sha",
+            "a" * 40,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert captured.out == "GOVERNANCE_OK=true\n"
+    assert captured.err == ""
+    assert observed["issue"] == "8358"
+    assert observed["body"] == "issue body\n"
+    assert observed["head_sha"] == "a" * 40
+
+
+def test_governance_gate_main_refuses_a_symlinked_body(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "issue-body-target.md"
+    _ = target.write_text("issue body\n", encoding="utf-8")
+    body_file = tmp_path / "issue-body.md"
+    body_file.symlink_to(target)
+
+    status = mg.governance_gate_main(
+        [
+            "--issue",
+            "8358",
+            "--repo",
+            "owner/repo",
+            "--body-file",
+            str(body_file),
+            "--repo-root",
+            str(tmp_path),
+            "--head-sha",
+            "a" * 40,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == config.EXIT_USAGE
+    assert captured.out == "GOVERNANCE_OK=false\n"
+    assert "governance-gate:" in captured.err

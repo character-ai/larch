@@ -7422,9 +7422,8 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
     }
 }
 
-/// Pin the public bootstrap envelope after the Rust session phase on both
-/// paths. The verified wrapper supplies deterministic session setup while the
-/// real binary owns the command and invokes the remaining Python continuation.
+/// Pin the public Rust-owned bootstrap envelope on both paths. The verified
+/// wrapper supplies deterministic session setup without a Python continuation.
 #[cfg(unix)]
 #[test]
 fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
@@ -7434,8 +7433,18 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         .canonicalize()
         .expect("canonical source root");
     fs::remove_dir_all(fixture.root.join("python")).expect("remove seeded Python contract");
+    // The installed plugin still provides independently owned Python telemetry
+    // verbs.  The assertion below proves Step 0 itself does not require the
+    // retired continuation module.
     std::os::unix::fs::symlink(source_root.join("python"), fixture.root.join("python"))
-        .expect("link Python continuation");
+        .expect("link independently owned Python runtime");
+    assert!(
+        !fixture
+            .root
+            .join("python/larch/state/bootstrap.py")
+            .exists(),
+        "clean-install bootstrap fixture must not need the retired Python continuation"
+    );
     let bin = fixture.root.join("bin");
     fs::create_dir_all(&bin).expect("create fixture binary directory");
     let fixture_binary = bin.join("larch");
@@ -7494,7 +7503,7 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         "STALL_TRACKING=false\n",
         "REPO_UNAVAILABLE=true\n",
         "DEFERRED=true\n",
-        "REPO_ROOT={CWD}\n",
+        "REPO_ROOT={REPO_ROOT}\n",
         "CODEX_BINARY_FOUND=false\n",
         "CURSOR_BINARY_FOUND=false\n",
         "codex_available=false\n",
@@ -7508,15 +7517,112 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         String::from_utf8_lossy(output)
             .replace(&bootstrap_session.display().to_string(), "{SESSION}")
             .replace(
-                &env::current_dir()
-                    .expect("test working directory")
-                    .display()
-                    .to_string(),
-                "{CWD}",
+                &fixture.root.join("nested-repo").display().to_string(),
+                "{REPO_ROOT}",
             )
     };
     assert_eq!(normalize(&fresh.stdout), expected);
     assert_eq!(normalize(&resume.stdout), expected);
+}
+
+/// Exercise the native continuation's successful plan, coder, and routing
+/// path through the verified clean-install entrypoint.  The fixture is a
+/// forked target so it does not mutate a real tracking issue or branch.
+#[cfg(unix)]
+#[test]
+fn bootstrap_invoke_clean_install_runs_native_plan_coder_and_tail() {
+    let fixture = clean_install_fixture();
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical source root");
+    fs::remove_dir_all(fixture.root.join("python")).expect("remove seeded Python contract");
+    std::os::unix::fs::symlink(source_root.join("python"), fixture.root.join("python"))
+        .expect("link independently owned Python runtime");
+    assert!(
+        !fixture
+            .root
+            .join("python/larch/state/bootstrap.py")
+            .exists(),
+        "clean-install continuation must not need the retired Python owner"
+    );
+    let bin = fixture.root.join("bin");
+    fs::create_dir_all(&bin).expect("create fixture binary directory");
+    let fixture_binary = bin.join("larch");
+    fs::copy(&fixture.binary, &fixture_binary).expect("copy fixture binary");
+    let mut permissions = fs::metadata(&fixture_binary)
+        .expect("read fixture binary metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fixture_binary, permissions).expect("make fixture binary executable");
+
+    let session = fixture.root.join("bootstrap-full-session");
+    fs::create_dir_all(&session).expect("create bootstrap session");
+    fs::write(session.join(".bootstrap-test-repo-available"), "")
+        .expect("mark bootstrap fixture repository available");
+    let preflight = fixture.root.join("bootstrap-full-preflight");
+    fs::create_dir_all(&preflight).expect("create preflight directory");
+    fs::write(
+        preflight.join("plan-from-issue.txt"),
+        concat!(
+            "## Implementation Plan\n",
+            "Move the continuation into Rust.\n\n",
+            "## Test Plan\n",
+            "- Exercise the public bootstrap command.\n\n",
+            "review_status: approved\n",
+            "rounds_completed: 1\n",
+            "difficulty: MODERATE\n",
+            "diff_lines: 1\n",
+        ),
+    )
+    .expect("write preflight plan");
+
+    let output = run_bootstrap_forked_invoke(&fixture, &session, &preflight);
+    assert!(
+        output.status.success(),
+        "full bootstrap failed: {}\nevents: {}",
+        String::from_utf8_lossy(&output.stderr),
+        fs::read_to_string(&fixture.events).unwrap_or_default(),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for expected in [
+        format!("IMPLEMENT_TMPDIR={}", session.display()),
+        format!("PLAN_FILE={}", session.join("plan.txt").display()),
+        "ISSUE_NUMBER=8358".to_owned(),
+        "REPO=character-ai/larch".to_owned(),
+        "REPO_UNAVAILABLE=false".to_owned(),
+        "DEFERRED=true".to_owned(),
+        "coder=claude".to_owned(),
+        "ROUTE=continue".to_owned(),
+        "CHECKPOINT_NEXT=continue".to_owned(),
+        "REBASE_RC=0".to_owned(),
+        "BOOTSTRAP_NEXT=step2".to_owned(),
+    ] {
+        assert!(
+            stdout.contains(&format!("{expected}\n")),
+            "stdout: {stdout}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(session.join("plan.txt")).expect("read materialized plan"),
+        concat!(
+            "## Implementation Plan\n",
+            "Move the continuation into Rust.\n\n",
+            "## Test Plan\n",
+            "- Exercise the public bootstrap command.\n\n",
+            "diff_lines: 1\n",
+        )
+    );
+    assert_eq!(
+        fs::read_to_string(session.join("feature-description.txt"))
+            .expect("read materialized feature description"),
+        "Issue 8358 title\n\nIssue 8358 body"
+    );
+    assert_eq!(
+        fs::read_to_string(session.join("bootstrap-routing.env"))
+            .expect("read durable routing envelope"),
+        stdout
+    );
 }
 
 /// The public command must preserve the live session named by its environment,
@@ -7625,6 +7731,11 @@ fn run_bootstrap_invoke(
     let session_hint = fixture.root.join(".bootstrap-test-session");
     fs::write(&session_hint, format!("{}\n", session.display()))
         .expect("write bootstrap session hint");
+    let repo_root = if mode == "resume" {
+        fixture.root.join("unexpected-resume-root")
+    } else {
+        fixture.root.join("nested-repo")
+    };
     let mut command = Command::new("/bin/bash");
     command
         .arg(fixture.root.join("scripts/larch.sh"))
@@ -7648,7 +7759,7 @@ fn run_bootstrap_invoke(
         .env("LARCH_CLAUDE_PID", "4242")
         .env("LARCH_TEST_CACHE_HOME", &fixture.root)
         .env("XDG_CACHE_HOME", fixture.root.join("nested-cache"))
-        .env("REPO_ROOT", fixture.root.join("nested-repo"))
+        .env("REPO_ROOT", repo_root)
         .env("LARCH_STATUSLINE_DISABLE", "1")
         .env("CLAUDE_PLUGIN_OPTION_CODEX_EFFORT", "medium")
         .env("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "plugin-codex")
@@ -7665,13 +7776,58 @@ fn run_bootstrap_invoke(
         .env("LARCH_PROBE_RETRIES", "4")
         .env("LARCH_PROBE_TIMEOUT_RETRIES", "5")
         .env("LARCH_PROBE_TIMEOUT_SECONDS", "6")
-        .env("LARCH_PROBE_TTL_SECONDS", "7");
-    if mode == "resume" {
-        command.env("IMPLEMENT_TMPDIR", session);
-    }
+        .env("LARCH_PROBE_TTL_SECONDS", "7")
+        .env("IMPLEMENT_TMPDIR", session);
     let output = command.output().expect("run bootstrap invoke");
     fs::remove_file(session_hint).expect("remove bootstrap session hint");
     output
+}
+
+#[cfg(unix)]
+fn run_bootstrap_forked_invoke(
+    fixture: &CleanInstallFixture,
+    session: &Path,
+    preflight: &Path,
+) -> std::process::Output {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical test repository root");
+    Command::new("/bin/bash")
+        .arg(fixture.root.join("scripts/larch.sh"))
+        .args([
+            "bootstrap",
+            "invoke",
+            "--mode",
+            "initial",
+            "--issue-number",
+            "8358",
+            "--forked-target",
+            "true",
+            "--upstream-repo",
+            "character-ai/larch",
+            "--preflight-tmpdir",
+            &preflight.display().to_string(),
+            "--self-review-requested",
+            "true",
+            "--self-implement-requested",
+            "true",
+        ])
+        .current_dir(&fixture.root)
+        .env("HOME", &fixture.home)
+        .env("TMPDIR", &fixture.session)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("CLAUDE_PROJECT_DIR", repo_root)
+        .env("LARCH_BINARY", &fixture.wrapper)
+        .env("REAL_LARCH", &fixture.binary)
+        .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        .env("CLEAN_INSTALL_FAILURE", "")
+        .env("BOOTSTRAP_TEST_SESSION", session)
+        .env("IMPLEMENT_TMPDIR", session)
+        .env("LARCH_CLAUDE_PID", "4242")
+        .env("LARCH_TEST_CACHE_HOME", &fixture.root)
+        .output()
+        .expect("run forked bootstrap invoke")
 }
 
 /// Argument placeholder each clean-install case expands to the seeded session.
@@ -7729,11 +7885,16 @@ set -eu
 if [ -n "${CLEAN_INSTALL_EVENTS:-}" ]; then
   printf '%s\n' "$*" >> "$CLEAN_INSTALL_EVENTS"
 fi
-bootstrap_session=${BOOTSTRAP_TEST_SESSION:-}
+bootstrap_session=${BOOTSTRAP_TEST_SESSION:-${IMPLEMENT_TMPDIR:-}}
 if [ -z "$bootstrap_session" ] \
   && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
   && [ -r "$CLAUDE_PLUGIN_ROOT/.bootstrap-test-session" ]; then
   IFS= read -r bootstrap_session < "$CLAUDE_PLUGIN_ROOT/.bootstrap-test-session"
+fi
+bootstrap_repo_available=false
+if [ "${BOOTSTRAP_TEST_REPO_AVAILABLE:-}" = true ] \
+  || { [ -n "$bootstrap_session" ] && [ -f "$bootstrap_session/.bootstrap-test-repo-available" ]; }; then
+  bootstrap_repo_available=true
 fi
 if [ -n "$bootstrap_session" ]; then
   case "${1:-}:${2:-}" in
@@ -7742,37 +7903,77 @@ if [ -n "$bootstrap_session" ]; then
       exit 0
       ;;
     session:setup)
-      [ "${LARCH_CLAUDE_PID:-}" = 4242 ] || exit 78
-      [ "${XDG_CACHE_HOME:-}" = "$CLAUDE_PLUGIN_ROOT/nested-cache" ] || exit 78
-      [ "${REPO_ROOT:-}" = "$CLAUDE_PLUGIN_ROOT/nested-repo" ] || exit 78
-      [ "${LARCH_STATUSLINE_DISABLE:-}" = 1 ] || exit 78
-      [ "${CLAUDE_PLUGIN_OPTION_CODEX_EFFORT:-}" = medium ] || exit 78
-      [ "${CLAUDE_PLUGIN_OPTION_CODEX_MODEL:-}" = plugin-codex ] || exit 78
-      [ "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" = plugin-cursor ] || exit 78
-      [ "${LARCH_CODEX_EFFORT:-}" = high ] || exit 78
-      [ "${LARCH_CODEX_FIX_MODEL:-}" = fix-codex ] || exit 78
-      [ "${LARCH_CODEX_MODEL:-}" = impl-codex ] || exit 78
-      [ "${LARCH_CODEX_REVIEW_MODEL:-}" = review-codex ] || exit 78
-      [ "${LARCH_CODEX_VOTE_MODEL:-}" = vote-codex ] || exit 78
-      [ "${LARCH_CURSOR_MODEL:-}" = cursor-model ] || exit 78
-      [ "${LARCH_EXTERNAL_AUTH_RETRIES:-}" = 2 ] || exit 78
-      [ "${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-}" = 17 ] || exit 78
-      [ "${LARCH_PROBE_NEGATIVE_TTL_SECONDS:-}" = 3 ] || exit 78
-      [ "${LARCH_PROBE_RETRIES:-}" = 4 ] || exit 78
-      [ "${LARCH_PROBE_TIMEOUT_RETRIES:-}" = 5 ] || exit 78
-      [ "${LARCH_PROBE_TIMEOUT_SECONDS:-}" = 6 ] || exit 78
-      [ "${LARCH_PROBE_TTL_SECONDS:-}" = 7 ] || exit 78
+      if [ "$bootstrap_repo_available" != true ]; then
+        [ "${LARCH_CLAUDE_PID:-}" = 4242 ] || exit 78
+        [ "${XDG_CACHE_HOME:-}" = "$CLAUDE_PLUGIN_ROOT/nested-cache" ] || exit 78
+        [ "${REPO_ROOT:-}" = "$CLAUDE_PLUGIN_ROOT/nested-repo" ] || exit 78
+        [ "${LARCH_STATUSLINE_DISABLE:-}" = 1 ] || exit 78
+        [ "${CLAUDE_PLUGIN_OPTION_CODEX_EFFORT:-}" = medium ] || exit 78
+        [ "${CLAUDE_PLUGIN_OPTION_CODEX_MODEL:-}" = plugin-codex ] || exit 78
+        [ "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" = plugin-cursor ] || exit 78
+        [ "${LARCH_CODEX_EFFORT:-}" = high ] || exit 78
+        [ "${LARCH_CODEX_FIX_MODEL:-}" = fix-codex ] || exit 78
+        [ "${LARCH_CODEX_MODEL:-}" = impl-codex ] || exit 78
+        [ "${LARCH_CODEX_REVIEW_MODEL:-}" = review-codex ] || exit 78
+        [ "${LARCH_CODEX_VOTE_MODEL:-}" = vote-codex ] || exit 78
+        [ "${LARCH_CURSOR_MODEL:-}" = cursor-model ] || exit 78
+        [ "${LARCH_EXTERNAL_AUTH_RETRIES:-}" = 2 ] || exit 78
+        [ "${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-}" = 17 ] || exit 78
+        [ "${LARCH_PROBE_NEGATIVE_TTL_SECONDS:-}" = 3 ] || exit 78
+        [ "${LARCH_PROBE_RETRIES:-}" = 4 ] || exit 78
+        [ "${LARCH_PROBE_TIMEOUT_RETRIES:-}" = 5 ] || exit 78
+        [ "${LARCH_PROBE_TIMEOUT_SECONDS:-}" = 6 ] || exit 78
+        [ "${LARCH_PROBE_TTL_SECONDS:-}" = 7 ] || exit 78
+      fi
       mkdir -p "$bootstrap_session"
       printf '%s\n' 'bootstrap-session' > "$bootstrap_session/session-id"
-      printf '%s\n' \
-        "SESSION_TMPDIR=$bootstrap_session" \
-        'SESSION_ID=bootstrap-session' \
-        'REPO=' \
-        'REPO_UNAVAILABLE=true' \
-        'CLAUDE_BINARY_FOUND=false' \
-        'CODEX_BINARY_FOUND=false' \
-        'CURSOR_BINARY_FOUND=false'
+      if [ "$bootstrap_repo_available" = true ]; then
+        printf '%s\n' \
+          "SESSION_TMPDIR=$bootstrap_session" \
+          'SESSION_ID=bootstrap-session' \
+          'REPO=character-ai/larch' \
+          'REPO_UNAVAILABLE=false' \
+          'CLAUDE_BINARY_FOUND=false' \
+          'CODEX_BINARY_FOUND=false' \
+          'CURSOR_BINARY_FOUND=false'
+      else
+        printf '%s\n' \
+          "SESSION_TMPDIR=$bootstrap_session" \
+          'SESSION_ID=bootstrap-session' \
+          'REPO=' \
+          'REPO_UNAVAILABLE=true' \
+          'CLAUDE_BINARY_FOUND=false' \
+          'CODEX_BINARY_FOUND=false' \
+          'CURSOR_BINARY_FOUND=false'
+      fi
       exit 0
+      ;;
+    issue:context)
+      if [ "$bootstrap_repo_available" = true ]; then
+        printf '%s' 'Issue 8358 title' > "$bootstrap_session/upstream-issue-title.txt"
+        printf '%s' 'Issue 8358 body' > "$bootstrap_session/upstream-issue-body.txt"
+        printf '%s\n' \
+          "TITLE_FILE=$bootstrap_session/upstream-issue-title.txt" \
+          "BODY_FILE=$bootstrap_session/upstream-issue-body.txt"
+        exit 0
+      fi
+      ;;
+    dirty-tree:checkpoint)
+      if [ "$bootstrap_repo_available" = true ]; then
+        printf '%s\n' 'STATUS=clean'
+        exit 0
+      fi
+      ;;
+    push:checkpoint-probe)
+      if [ "$bootstrap_repo_available" = true ]; then
+        printf '%s\n' 'ROUTE=continue' 'CHECKPOINT_NEXT=continue' 'REBASE_OUTCOME=clean'
+        exit 0
+      fi
+      ;;
+    run-log:write|run-log:append-failure|run-log:append-entry|run-log:manifest|tracking-issue:upsert-summary)
+      if [ "$bootstrap_repo_available" = true ]; then
+        exit 0
+      fi
       ;;
   esac
 fi

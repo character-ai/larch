@@ -5,16 +5,16 @@ commands to the Rust owner: ``setup``, ``require-plugin-root``,
 ``validate-design-tmpdir``, ``write-id``, ``resolve-implement-tmpdir``, and
 ``cleanup-tmpdir`` no longer register here.
 ``require_plugin_root``, ``validate_design_tmpdir``, and ``write_id`` survive as
-library helpers because Python-owned commands in ``larch.design`` and
-``larch.state.bootstrap`` still call them in process; their CLI entrypoints and
-the fully orphaned implement-tmpdir resolver are gone.
+library helpers because Python-owned commands in ``larch.design`` still call
+them in process; their CLI entrypoints and the fully orphaned
+implement-tmpdir resolver are gone.
 
 Issue #8058 moved the eight session-env and run-flag writers — ``write-env``,
 ``write-design-env``, ``write-implement-env``, ``clear-implement-pointer``,
 ``persist-run-flags``, ``write-run-params``, ``restore-finalize-state``, and
 ``resolve-trusted-design-env`` — to the Rust owner, entrypoints and
 implementations alike. Nothing here writes a session-env file any more:
-``larch.state.bootstrap`` reaches session setup through the verified bootstrap
+the Rust-owned bootstrap reaches session setup through the verified bootstrap
 script, and the argument renderers below keep one owner for each writer flag
 spelling.
 ``read_finalize_state`` and ``write_finalize_state_merged`` stay because

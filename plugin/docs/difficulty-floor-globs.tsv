@@ -5,5 +5,5 @@ python/larch/**/redact*.py	MODERATE	Secret and redaction handling must receive a
 python/larch/implement/ship*.py	MODERATE	Ship and merge drivers affect PR publication, CI, and merge outcomes.
 python/larch/git/merge.py	MODERATE	Ship and merge drivers affect PR publication, CI, and merge outcomes.
 python/larch/state/session_env.py	MODERATE	Session-env writers affect cross-step state and resume behavior.
-python/larch/state/bootstrap.py	MODERATE	Session-env and bootstrap writers affect implement run materialization.
+crates/larch-cli/src/implement_bootstrap_continuation.rs	MODERATE	Step 0 session, tracking, branch, and routing behavior affects implement run materialization.
 .github/workflows/**	MODERATE	CI workflow changes affect validation and branch protection signals.

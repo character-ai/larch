@@ -3532,18 +3532,6 @@ planning_issue = 7685
 
 [[commands]]
 domain = "implement"
-verb = "bootstrap-continuation"
-python_module = "larch.state.bootstrap"
-python_function = "continuation_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7681
-
-[[commands]]
-domain = "implement"
 verb = "checks-commit-route"
 python_module = "larch.implement.implement_dispatch"
 python_function = "checks_commit_route_main"
@@ -4125,6 +4113,18 @@ python_removal = "complete"
 planning_issue = 7682
 migration_issue = 8168
 clean_install_test = "clean-install-issue-list-issues"
+
+[[commands]]
+domain = "issue"
+verb = "governance-gate"
+python_module = "larch.issue.migration_governance"
+python_function = "governance_gate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7681
 
 [[commands]]
 domain = "issue"
@@ -8931,12 +8931,6 @@ path = "python/larch/review/round_runner.py"
 kind = "python-runtime"
 python = []
 rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
-
-[[callers]]
-path = "python/larch/state/bootstrap.py"
-kind = "python-runtime"
-python = []
-rust = ["git snapshot-untracked", "run-log manifest", "session persist-run-flags"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"

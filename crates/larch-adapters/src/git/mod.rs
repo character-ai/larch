@@ -460,10 +460,21 @@ mod tests {
             &CheckoutRequest::Branch {
                 create: true,
                 force: false,
+                no_track: false,
                 name: GitRef::new("topic").unwrap(),
                 start_point: Some(GitRef::new("HEAD").unwrap()),
             },
             &["checkout", "-b", "topic", "HEAD"],
+        );
+        check(
+            &CheckoutRequest::Branch {
+                create: true,
+                force: false,
+                no_track: true,
+                name: GitRef::new("topic").unwrap(),
+                start_point: Some(GitRef::new("origin/main").unwrap()),
+            },
+            &["checkout", "-b", "--no-track", "topic", "origin/main"],
         );
         check(
             &CleanRequest {
@@ -674,8 +685,20 @@ mod tests {
             CheckoutRequest::Branch {
                 create: false,
                 force: false,
+                no_track: false,
                 name: GitRef::new("topic").unwrap(),
                 start_point: Some(GitRef::new("HEAD").unwrap()),
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            CheckoutRequest::Branch {
+                create: false,
+                force: false,
+                no_track: true,
+                name: GitRef::new("topic").unwrap(),
+                start_point: None,
             }
             .arguments()
             .is_err()
@@ -908,6 +931,7 @@ mod tests {
             CheckoutRequest::Branch {
                 create: false,
                 force: true,
+                no_track: false,
                 name: GitRef::new("topic").unwrap(),
                 start_point: None,
             }
@@ -1454,6 +1478,7 @@ mod tests {
                     CheckoutRequest::Branch {
                         create: false,
                         force: false,
+                        no_track: false,
                         name: GitRef::new("topic").unwrap(),
                         start_point: None,
                     },
@@ -1473,6 +1498,7 @@ mod tests {
                     CheckoutRequest::Branch {
                         create: false,
                         force: false,
+                        no_track: false,
                         name: GitRef::new("missing-branch").unwrap(),
                         start_point: None,
                     },

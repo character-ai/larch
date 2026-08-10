@@ -87,7 +87,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main", False),
     ("implement", "normalize-coder-scout"): ("larch.implement.implement_dispatch", "normalize_coder_scout_main", False),
     ("implement", "step-0-bootstrap"): ("larch.implement.implement_dispatch", "step0_bootstrap_main", False),
-    ("implement", "bootstrap-continuation"): ("larch.state.bootstrap", "continuation_main", True),
     ("implement", "step-0-degraded-gate"): ("larch.implement.implement_dispatch", "step0_degraded_gate_main", False),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main", False),
     ("implement", "step-5-review"): ("larch.implement.implement_dispatch", "step5_review_main", False),
@@ -267,6 +266,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("issue", "migration-audit"): (
         "larch.issue.migration_governance",
         "migration_audit_main",
+        True,
+    ),
+    ("issue", "governance-gate"): (
+        "larch.issue.migration_governance",
+        "governance_gate_main",
         True,
     ),
     ("alias", "generate"): ("larch.core.alias_skill", "generate_main", False),

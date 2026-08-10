@@ -11,20 +11,20 @@ errors=[]
 skill=Path('skills/implement/SKILL.md').read_text()
 ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 owner=Path('crates/larch-cli/src/push_rebase.rs').read_text()
-bootstrap=Path('python/larch/state/bootstrap.py').read_text()
+bootstrap=Path('crates/larch-cli/src/implement_bootstrap_continuation.rs').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
 step7a_py=Path('python/larch/implement/step_7a.py').read_text()
 
 if skill.count('larch-run.sh" scripts/larch.sh push checkpoint-probe 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
-if 'rust_runtime.checkpoint_probe(' not in bootstrap or 'step_prefix="1.r"' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must invoke the Rust checkpoint probe for 1.r')
+if 'fn run_1r_probe(' not in bootstrap or 'OsString::from("checkpoint-probe")' not in bootstrap:
+    errors.append('Rust bootstrap continuation must invoke the Rust checkpoint probe for 1.r')
 if 'plan materialization' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py 1.r probe must use plan materialization label')
+    errors.append('Rust bootstrap continuation 1.r probe must use plan materialization label')
 if 'forked_target' not in bootstrap or 'REBASE_RC' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must pass forked_target and synthesize REBASE_RC')
+    errors.append('Rust bootstrap continuation must pass forked_target and synthesize REBASE_RC')
 if '"CHECKPOINT_NEXT"' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must relay CHECKPOINT_NEXT')
+    errors.append('Rust bootstrap continuation must relay CHECKPOINT_NEXT')
 if 'CHECKPOINT_NEXT' not in owner or 'load-routing' not in owner:
     errors.append('crates/larch-cli/src/push_rebase.rs must emit CHECKPOINT_NEXT continue/load-routing directives')
 for needle in [
