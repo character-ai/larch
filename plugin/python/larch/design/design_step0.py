@@ -64,6 +64,17 @@ def _run_best_effort(*, command: Sequence[str], env: Mapping[str, str] | None = 
         subprocess.run(list(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(env) if env is not None else None, check=False)
 
 
+def _append_step0_execution_issue(*, design_tmpdir: Path, entry: str) -> None:
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(design_tmpdir / "execution-issues.md"),
+        category="Warnings",
+        entry=entry,
+    )
+    if outcome.failed:
+        print(f"**⚠ /design: could not record execution issue: {outcome.error}**", file=sys.stderr)
+
+
 def _pause_args(
     *, design_tmpdir: str | Path,
     env: Mapping[str, str] | None = None,
@@ -149,9 +160,10 @@ def relay_degraded_tools_gate_stdout(*, stdout: str, design_tmpdir: Path) -> dic
         elif line.startswith(("CODEX_STATE=", "CURSOR_STATE=")) or in_explanation:
             print(line)
     if state["PRESENCE_INPUT_EMPTY"] == "true":
-        with contextlib.suppress(OSError):
-            with (design_tmpdir / "execution-issues.md").open("a", encoding="utf-8") as handle:
-                handle.write("- Step 0 degraded-tools gate: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)\n")
+        _append_step0_execution_issue(
+            design_tmpdir=design_tmpdir,
+            entry="- Step 0 degraded-tools gate: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)",
+        )
     step0_status = "ok"
     if state["DEGRADED"] == "true":
         if state["BOTH_DOWN_SEEN"] == "true" and state["BOTH_DOWN"] == "true":
@@ -361,14 +373,17 @@ def step0_session_main(argv: Sequence[str]) -> int:
         check=False,
     )
     if gate.returncode != 0 or not any(line.startswith("DEGRADED=") for line in gate.stdout.splitlines()):
-        with contextlib.suppress(OSError):
-            with (design_path / "execution-issues.md").open("a", encoding="utf-8") as handle:
-                if gate.returncode != 0:
-                    handle.write(f"- Step 0 degraded-tools gate: subprocess exited {gate.returncode}\n")
-                else:
-                    handle.write("- Step 0 degraded-tools gate: stdout missing DEGRADED=\n")
-                if gate.stderr.strip():
-                    handle.write(f"  stderr: {gate.stderr.strip()}\n")
+        failure = (
+            f"subprocess exited {gate.returncode}"
+            if gate.returncode != 0
+            else "stdout missing DEGRADED="
+        )
+        if gate.stderr.strip():
+            failure = f"{failure}\n  stderr: {gate.stderr.strip()}"
+        _append_step0_execution_issue(
+            design_tmpdir=design_path,
+            entry=f"- Step 0 degraded-tools gate: {failure}",
+        )
         print("**⚠ /design: degraded-tools gate failed; aborting Step 0**", file=sys.stderr)
         return gate.returncode if gate.returncode != 0 else 1
     state = relay_degraded_tools_gate_stdout(stdout=gate.stdout, design_tmpdir=design_path)

@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "execution-issues.md": {
+      "text": "### Warnings\n\n- same\n\n### Tool Failures\n- same\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

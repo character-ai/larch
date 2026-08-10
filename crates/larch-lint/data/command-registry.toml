@@ -2828,7 +2828,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8176
+migration_issue = 8347
 clean_install_test = "clean-install-execution-issues-append"
 
 [[commands]]
@@ -2842,7 +2842,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8176
+migration_issue = 8347
 clean_install_test = "clean-install-execution-issues-flush"
 
 [[commands]]
@@ -2856,7 +2856,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8176
+migration_issue = 8347
 clean_install_test = "clean-install-execution-issues-flush-safety-net"
 
 [[commands]]
@@ -2870,7 +2870,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 planning_issue = 7682
-migration_issue = 8176
+migration_issue = 8347
 clean_install_test = "clean-install-execution-issues-refresh"
 
 [[commands]]
@@ -8514,7 +8514,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "tracking-issue *"]
+rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -8700,7 +8700,7 @@ rust = ["git commit", "timing mark"]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
 python = []
-rust = ["execution-issues refresh", "oos disposition-checkpoint", "oos file", "run-log manifest", "stall-recovery seed-terminal-state"]
+rust = ["oos disposition-checkpoint", "oos file", "run-log manifest", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_step18.py"
@@ -8724,7 +8724,7 @@ rust = ["run-log manifest"]
 path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
-rust = ["execution-issues flush", "timing mark"]
+rust = ["timing mark"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"
@@ -9462,7 +9462,7 @@ rust = ["kv get", "plugin read-version"]
 path = "skills/implement/scripts/refresh-execution-issues.sh"
 kind = "skill"
 python = []
-rust = ["kv get", "plugin read-version"]
+rust = ["execution-issues refresh"]
 
 [[callers]]
 path = "skills/implement/scripts/run-step-checks.md"

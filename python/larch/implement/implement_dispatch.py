@@ -13,7 +13,6 @@ import os
 import subprocess
 import time
 
-from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.implement import ship
 

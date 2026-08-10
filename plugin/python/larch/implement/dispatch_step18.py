@@ -26,7 +26,6 @@ from larch.implement.dispatch_helpers import (
     _rehydrate_plugin_root,
 )
 from larch.implement.dispatch_leg import _run_larch_capture
-from larch.issue import execution_issues
 from larch.report import run_log_batch
 from larch.state import finalize
 from larch.state._tokens import _abandoned_checks_bgjob_stall_step
@@ -162,8 +161,8 @@ def _record_terminal_shipping_refusal(*, implement_tmpdir: Path) -> bool:
         if any(persisted.get(key) != value for key, value in expected.items()):
             return False
         issue_log = implement_tmpdir / "execution-issues.md"
-        execution_issues.append_execution_issue(
-            issue_log,
+        run_log_batch.append_execution_issue(
+            log_file=issue_log,
             category="Tool Failures",
             entry=_TERMINAL_SHIPPING_REFUSAL_ENTRY,
         )

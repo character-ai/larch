@@ -10,12 +10,11 @@ import os
 import re
 import sys
 import tempfile
-import time
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
 from typing import cast
@@ -528,55 +527,16 @@ def execution_issue_identity(*, category: str, body: str) -> str:
     return hashlib.sha256(f"{category}\0{_normalize_body_for_hash(body)}".encode()).hexdigest()
 
 
-_APPEND_LOCK_ATTEMPTS = 100
-
-
-def _append_execution_issue(*, log_file: Path, category: str, entry: str) -> None:
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    if not log_file.exists():
-        log_file.write_text("", encoding="utf-8")
-    lock = log_file.with_name(log_file.name + ".lock.d")
-    for attempt in range(_APPEND_LOCK_ATTEMPTS):
-        try:
-            lock.mkdir()
-            break
-        except FileExistsError as exc:
-            if attempt == _APPEND_LOCK_ATTEMPTS - 1:
-                raise OSError(f"could not acquire lock: {lock}") from exc
-            time.sleep(0.05)
-    try:
-        text = log_file.read_text(encoding="utf-8", errors="replace")
-        header = f"### {category}"
-        if header in text.splitlines():
-            lines = text.splitlines()
-            out: list[str] = []
-            inserted = False
-            in_target = False
-            for line in lines:
-                if line == header:
-                    in_target = True
-                    out.append(line)
-                    continue
-                if in_target and line.startswith("### "):
-                    if not inserted:
-                        out.extend(["", entry.rstrip("\n")])
-                        inserted = True
-                    in_target = False
-                out.append(line)
-            if in_target and not inserted:
-                out.extend(["", entry.rstrip("\n")])
-            new_text = "\n".join(out) + "\n"
-        else:
-            prefix = "\n" if text else ""
-            new_text = text.rstrip("\n") + prefix + header + "\n\n" + entry.rstrip("\n") + "\n"
-        _atomic_write(path=log_file, content=new_text)
-    finally:
-        with suppress(OSError):
-            lock.rmdir()
-
-
 def append_execution_issue(*, log_file: Path, category: str, entry: str) -> None:
-    _append_execution_issue(log_file=log_file, category=category, entry=entry)
+    """Append through the sole Rust execution-issue mutation owner."""
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(log_file),
+        category=category,
+        entry=entry,
+    )
+    if outcome.failed:
+        raise OSError(outcome.error)
 
 
 _EXECUTION_ISSUE_CATEGORIES = {

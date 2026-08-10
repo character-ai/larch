@@ -15,7 +15,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.calibration import difficulty
-from larch.core import architectural_guidelines, redact
+from larch.core import architectural_guidelines, proc, redact, rust_runtime
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.report import storage_config
@@ -395,12 +395,7 @@ def _write_enriched_post_publish_summary(
     except OSError as exc:
         msg = f"design render-final-summary: failed to write enriched summary: {exc}"
         print(msg, file=sys.stderr)
-        ex_log = design_tmpdir / "execution-issues.md"
-        try:
-            with ex_log.open("a", encoding="utf-8") as fh:
-                _ = fh.write(f"\n### Warnings\n- **design-summary**: {msg}\n")
-        except OSError:
-            pass
+        _append_render_warning(design_tmpdir=design_tmpdir, message=msg)
         try:
             reloaded = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
             if out_file.is_file():
@@ -565,8 +560,14 @@ class FinalSummaryRenderRequest:
 
 def _append_render_warning(*, design_tmpdir: Path, message: str) -> None:
     with contextlib.suppress(OSError):
-        with (design_tmpdir / "execution-issues.md").open("a", encoding="utf-8") as fh:
-            _ = fh.write(f"\n### Warnings\n- **design-summary**: {message}\n")
+        outcome = rust_runtime.execution_issues_append(
+            proc.ProcRunner(),
+            log=str(design_tmpdir / "execution-issues.md"),
+            category="Warnings",
+            entry=f"- **design-summary**: {message}",
+        )
+        if outcome.failed:
+            raise OSError(outcome.error)
 
 
 def _missing_assessment_summary_warnings(design_tmpdir: Path) -> list[str]:

@@ -121,7 +121,7 @@ umbrella that owns their remaining consumers:
 
 | Surface | Rows | Owning issue | Basis |
 | --- | ---: | --- | --- |
-| `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176, a #7682 leaf; the planning issue never followed. |
+| `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176 and completed by corrective leaf #8347, which removed the retained Python mutation and caller paths. |
 | `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Live callers are the `/implement` prompts, the implementer agent base, `review-and-fix`, and the cross-repo failure-report script. |
 | `render reviewer`, `specialist`, `voter`, `findings-view`, `plan-review` | 5 | #7679 | Review-panel and voting prompt renderers, named by #8091 as staying with the review umbrella. |
 | `render lane-status` | 1 | #7678 | Vendor lane orchestration. |
@@ -175,7 +175,7 @@ the next cutover and does not create a second implementation.
 | #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
 | #7679 | `oos serialize` and `oos normalize-header`, plus `larch.issue.oos`, remain review-pipeline surfaces. |
 | #7680 | `clarify` stays in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. |
-| #7681 | `tracking post-issue` and `larch.issue.execution_issues` remain implementation workflow surfaces. |
+| #7681 | `tracking post-issue` remains an implementation workflow surface. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, `token cost`, `token render-cost-line`, and their analytical issue helpers remain research-owned. |
 | #7685 | `issue migration-audit`, `migration_governance`, and `open_rows` remain lint/developer-tooling owned. |

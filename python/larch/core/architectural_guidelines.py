@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import logging
 import os
 import re
@@ -1651,55 +1650,6 @@ def _format_deviation_warning_entry(note: str) -> str:
     return "\n".join(lines)
 
 
-def _warning_chunk_keys(body: str) -> set[str]:
-    from larch.report import exec_issue_detail  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush warning dedupe.
-    from larch.issue.execution_issues import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
-    keys: set[str] = set()
-    for chunk_body in execution_issue_chunks(body):
-        for key in exec_issue_detail.structured_body_dedupe_keys(chunk_body, _EXECUTION_WARNINGS_CATEGORY):
-            keys.add(f"{_EXECUTION_WARNINGS_CATEGORY}\0{key}")
-    return keys
-
-
-def _warning_chunk_source_shas(body: str) -> set[str]:
-    from larch.report.run_log_batch import _normalize_body_for_hash  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
-    from larch.issue.execution_issues import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
-    shas: set[str] = set()
-    for chunk_body in execution_issue_chunks(body):
-        normalized = _normalize_body_for_hash(chunk_body)
-        if normalized:
-            shas.add(hashlib.sha256(normalized.encode("utf-8")).hexdigest())
-    return shas
-
-
-def _section_body_lines(markdown: str, category: str) -> list[str]:
-    lines: list[str] = []
-    in_target = False
-    for line in markdown.splitlines():
-        if line.startswith("### "):
-            if in_target:
-                break
-            in_target = line == f"### {category}"
-            continue
-        if in_target:
-            lines.append(line)
-    return lines
-
-
-def _existing_warning_keys_from_markdown(path: Path) -> set[str]:
-    from larch.report.run_log_batch import _redact_batch_payload  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
-    if not path.is_file() or path.is_symlink():
-        return set()
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return set()
-    body = "\n".join(_section_body_lines(text, _EXECUTION_WARNINGS_CATEGORY))
-    if not body.strip():
-        return set()
-    return _warning_chunk_keys(_redact_batch_payload(body))
-
-
 def _valid_run_id(run_id: str) -> bool:
     return bool(run_id and ".." not in run_id and "/" not in run_id and "\\" not in run_id and _RUN_ID_RE.fullmatch(run_id))
 
@@ -1726,63 +1676,34 @@ def _read_session_run_id(implement_tmpdir: Path) -> str:
     return run_id if _valid_run_id(run_id) else ""
 
 
-def _existing_warning_source_shas(batch_text: str) -> set[str]:
-    shas: set[str] = set()
-    for raw in batch_text.splitlines():
-        try:
-            parsed: object = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict):
-            continue
-        row = cast("dict[str, object]", parsed)
-        sha = row.get("source_sha256")
-        if row.get("category") == _EXECUTION_WARNINGS_CATEGORY and isinstance(sha, str):
-            shas.add(sha)
-    return shas
-
-
-def _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir: Path) -> tuple[set[str], set[str]]:
+def _execution_issue_batch_path(implement_tmpdir: Path) -> Path | None:
     run_id = _read_session_run_id(implement_tmpdir)
     if not run_id:
-        return set(), set()
-    batch_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "execution-issues.ndjson"
-    if not batch_path.is_file() or batch_path.is_symlink():
-        return set(), set()
-    try:
-        batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return set(), set()
-    from larch.issue.execution_issues import _existing_execution_issue_keys as existing_execution_issue_keys  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
-    return existing_execution_issue_keys(batch_text), _existing_warning_source_shas(batch_text)
+        return None
+    return implement_tmpdir / "larch-logs" / "implement" / run_id / "execution-issues.ndjson"
 
 
 def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
     """Append a guideline deviation warning unless the run already has the same warning."""
-    from larch.report.run_log_batch import _redact_batch_payload, append_execution_issue  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
+    from larch.core import proc, rust_runtime  # noqa: PLC0415  # lint-layering: typed Rust command facade avoids a core/report dependency cycle.
     entry = _format_deviation_warning_entry(note)
-    redacted_entry = _redact_batch_payload(entry)
     issue_log = implement_tmpdir / "execution-issues.md"
-    existing_keys = _existing_warning_keys_from_markdown(issue_log)
-    ndjson_keys, ndjson_shas = _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir)
-    known_keys = existing_keys | ndjson_keys
-    from larch.issue.execution_issues import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
-    kept_chunks: list[str] = []
-    for chunk_body in execution_issue_chunks(redacted_entry):
-        chunk_keys = _warning_chunk_keys(chunk_body)
-        chunk_shas = _warning_chunk_source_shas(chunk_body)
-        if chunk_keys <= known_keys or (chunk_shas and chunk_shas <= ndjson_shas):
-            continue
-        kept_chunks.append(chunk_body)
-        known_keys.update(chunk_keys)
-        ndjson_shas.update(chunk_shas)
-    if not kept_chunks:
-        return _APPEND_DEVIATION_DUPLICATE
-    try:
-        append_execution_issue(log_file=issue_log, category=_EXECUTION_WARNINGS_CATEGORY, entry="\n".join(kept_chunks))
-    except OSError:
+    batch_path = _execution_issue_batch_path(implement_tmpdir)
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(issue_log),
+        category=_EXECUTION_WARNINGS_CATEGORY,
+        entry=entry,
+        existing_batch=str(batch_path) if batch_path is not None else "",
+        redact_entry=True,
+    )
+    if outcome.failed:
         return _APPEND_DEVIATION_FAILED
-    return _APPEND_DEVIATION_OK
+    return (
+        _APPEND_DEVIATION_DUPLICATE
+        if outcome.status == "duplicate"
+        else _APPEND_DEVIATION_OK
+    )
 
 
 def _append_deviation_note_main(argv: list[str], *, kind: AssessmentKind) -> int:

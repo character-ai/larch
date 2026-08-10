@@ -49,10 +49,7 @@ const PYTHON_READER_OWNERS: &[&str] = &[
     "python/larch/core/env_file.py",
 ];
 const PYTHON_EMITTER_OWNER: &str = "python/larch/core/logging_util.py";
-const PYTHON_EMITTER_GUARDED: &[&str] = &[
-    "python/larch/issue/issue_create.py",
-    "python/larch/issue/execution_issues.py",
-];
+const PYTHON_EMITTER_GUARDED: &[&str] = &["python/larch/issue/issue_create.py"];
 
 const OPTION_ITER_NAMES: &[&str] = &["args", "argv", "options", "tokens"];
 const OPTION_BINDING_NAMES: &[&str] = &["arg", "token", "opt", "option", "argv_item"];

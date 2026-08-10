@@ -15,6 +15,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.issue import issue_mutation
 from larch.errors import ShipError
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
@@ -398,13 +399,16 @@ def _run_gh(*, repo: str, argv: list[str]) -> proc.CommandResult:
 
 
 def _append_warning_log(*, design_tmpdir: Path, site: str, tool: str, detail: str) -> None:
-    log = design_tmpdir / "execution-issues.md"
-    heading = "### Warnings\n"
     entry = f"- **Step {site}: {tool} failed (exit 1)**:\n  ```\n{detail.rstrip()}\n  ```\n"
-    existing = log.read_text(encoding="utf-8") if log.exists() else ""
-    if heading not in existing:
-        existing = existing.rstrip() + ("\n\n" if existing.strip() else "") + heading
-    _ = log.write_text(existing.rstrip() + "\n" + entry, encoding="utf-8")
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(design_tmpdir / "execution-issues.md"),
+        category="Warnings",
+        entry=entry,
+        redact_entry=True,
+    )
+    if outcome.failed:
+        raise OSError(outcome.error)
 
 
 def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:

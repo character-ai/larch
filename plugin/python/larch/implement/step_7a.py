@@ -152,27 +152,15 @@ def _checkpoint_execution_issues(implement_tmpdir: Path, *, run_id: str) -> str:
     issue_log = implement_tmpdir / "execution-issues.md"
     if not run_id:
         return "skip"
-    # lint-subprocess-via-runner: ok the Rust owner reports its outcome as a
-    # captured KEY=value envelope, not on this command's own contract stream.
-    flush = subprocess.run(
-        [
-            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-            "execution-issues", "flush",
-            "--log-root", str(log_root),
-            "--run-id", run_id,
-            "--issue-log", str(issue_log),
-            "--step-label", "7a",
-            "--source-label", "execution-issues.md Step 7a checkpoint",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
+    flush = rust_runtime.execution_issues_flush(
+        proc.ProcRunner(),
+        log_root=str(log_root),
+        run_id=run_id,
+        issue_log=str(issue_log),
+        step_label="7a",
+        source_label="execution-issues.md Step 7a checkpoint",
     )
-    status = next(
-        (line.split("=", 1)[1] for line in flush.stdout.splitlines() if line.startswith("FLUSH_STATUS=")),
-        "",
-    )
-    if flush.returncode == 0 and status in {"ok", "skip", "already-flushed", "no-records"}:
+    if not flush.failed:
         return "ok"
     return "degraded"
 

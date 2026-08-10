@@ -754,7 +754,14 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def fake_append_execution_issue(
+        _runner: object, *, log: str, category: str, entry: str, **_kwargs: object
+    ) -> SimpleNamespace:
+        Path(log).write_text(f"### {category}\n\n{entry}\n", encoding="utf-8")
+        return SimpleNamespace(failed=False, status="appended", error="")
+
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.rust_runtime, "execution_issues_append", fake_append_execution_issue)
     monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     buf = StringIO()
@@ -1821,7 +1828,14 @@ def test_step0_session_fails_on_degraded_gate_nonzero_rc(tmp_path: Path, monkeyp
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def fake_append_execution_issue(
+        _runner: object, *, log: str, category: str, entry: str, **_kwargs: object
+    ) -> SimpleNamespace:
+        Path(log).write_text(f"### {category}\n\n{entry}\n", encoding="utf-8")
+        return SimpleNamespace(failed=False, status="appended", error="")
+
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.rust_runtime, "execution_issues_append", fake_append_execution_issue)
     monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     buf = StringIO()

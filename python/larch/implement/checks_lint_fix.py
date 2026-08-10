@@ -39,7 +39,7 @@ from larch.core import proc
 from larch.core import redact
 from larch.git import git
 from larch.core.repo_roots import larch_entrypoint, plugin_root
-from larch.issue import execution_issues
+from larch.report import run_log_batch
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner
 
@@ -1406,8 +1406,8 @@ def _append_attempt_execution_issue(
         f"- lint-fix tier={tier} category={issue_kind}; {detail}"
     ).strip()
     with contextlib.suppress(OSError):
-        execution_issues.append_execution_issue(
-            issue_log, category="Tool Failures", entry=entry
+        run_log_batch.append_execution_issue(
+            log_file=issue_log, category="Tool Failures", entry=entry
         )
 
 

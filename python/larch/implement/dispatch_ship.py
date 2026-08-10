@@ -19,6 +19,7 @@ from larch.issue import file_oos
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
@@ -1228,18 +1229,10 @@ def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
     ok, _run_id = _step8_oos_checkpoint_bookkeeping(implement_tmpdir)
     if ok:
         with contextlib.suppress(Exception):
-            # lint-subprocess-via-runner: ok the Rust owner publishes its own
-            # KEY=value envelope, which must not reach this command's stdout.
-            subprocess.run(
-                [
-                    str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-                    "execution-issues", "refresh",
-                    "--implement-tmpdir", str(implement_tmpdir),
-                    "--best-effort",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
+            rust_runtime.execution_issues_refresh(
+                proc.ProcRunner(),
+                implement_tmpdir=str(implement_tmpdir),
+                best_effort=True,
             )
         _emit_kv(key="OOS_CHECKPOINT_RC", value=0)
         _emit_kv(key="NEXT_ACTION", value="reship")

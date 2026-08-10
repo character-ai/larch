@@ -8,11 +8,11 @@
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
     ffi::OsString,
     fs,
-    io::Write as _,
+    io::{Read as _, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
     thread,
@@ -24,8 +24,10 @@ use larch_core::{
     BatchInfo, BatchMode, CompletenessOutcome, EXECUTION_ISSUE_CATEGORIES, FAILURE_CATEGORIES,
     FailureEntry, ManifestDocument, ManifestRecord, ManifestV2Seed, ReachabilityContext,
     RunLogLayout, RunLogSlug, Sanitizer, compose_execution_issue, compose_failure_entry,
-    contains_recognized_session_tmpdir_pointer, emit_kv, is_round_sidecar_file, lookup_batch,
-    normalize_run_log_text, redact_run_log_payload, round_artifact_included,
+    contains_recognized_session_tmpdir_pointer, emit_kv, execution_issue_body_keys,
+    execution_issue_chunks, execution_issue_sections, existing_execution_issue_keys,
+    is_round_sidecar_file, lookup_batch, normalize_run_log_text, normalized_body_sha256,
+    redact_batch_payload, redact_run_log_payload, round_artifact_included,
     sanitize_diagram_capture, scan_required_files, stage_round_artifact, validate_batch_payload,
     validate_failure_counts,
 };
@@ -147,6 +149,36 @@ pub fn read_lossy(path: &Path) -> Result<String, String> {
     fs::read(path)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
         .map_err(|error| format!("{}: {error}", path.display()))
+}
+
+/// Read one validated regular file without following a swapped leaf symlink.
+pub fn read_regular_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    assert_no_symlink_path_or_ancestors(path)?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::libc::O_NOFOLLOW);
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "refusing to read non-regular file: {}",
+            path.display()
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(bytes)
+}
+
+/// Read one validated regular file as UTF-8 with replacement.
+pub fn read_regular_lossy(path: &Path) -> Result<String, String> {
+    read_regular_bytes(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Run the Rust-owned `run-log init` command.
@@ -956,6 +988,49 @@ fn failure_body(output_file: &str, exit_code: &str) -> Result<String, String> {
 /// every supported filesystem, so two processes appending concurrently never
 /// interleave a record.
 pub fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> Result<(), String> {
+    append_execution_issue_filtered(log_file, category, entry, None, false, true).map(|_outcome| ())
+}
+
+/// Result of one category-keyed execution-issue append.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionIssueAppendOutcome {
+    /// At least one new Markdown chunk was durably appended.
+    Appended,
+    /// Every input chunk was already present in the live or durable ledger.
+    Duplicate,
+}
+
+/// Append only execution-issue chunks not already present in either ledger.
+///
+/// The live Markdown read, category-keyed dedupe, and atomic replacement share
+/// the same directory lock. This prevents two sibling callers from both
+/// deciding that a chunk is new before either publishes it. A supplied batch
+/// is read as append-only NDJSON; malformed rows are ignored while a symlink,
+/// non-file, or unreadable batch is refused.
+///
+/// # Errors
+///
+/// Returns a message when a path is unsafe, a source cannot be read, redaction
+/// refuses a chunk, the lock cannot be acquired, or the atomic write fails.
+pub fn append_execution_issue_filtered(
+    log_file: &Path,
+    category: &str,
+    entry: &str,
+    existing_batch: Option<&Path>,
+    redact_entry: bool,
+    spaced_sections: bool,
+) -> Result<ExecutionIssueAppendOutcome, String> {
+    let local_log = log_file
+        .parent()
+        .is_some_and(|parent| parent.as_os_str().is_empty())
+        .then(|| Path::new(".").join(log_file));
+    let log_file = local_log.as_deref().unwrap_or(log_file);
+    if fs::symlink_metadata(log_file).is_ok_and(|metadata| !metadata.is_file()) {
+        return Err(format!(
+            "refusing to append through non-regular log file: {}",
+            log_file.display()
+        ));
+    }
     assert_no_symlink_path_or_ancestors(log_file)?;
     if let Some(parent) = log_file.parent()
         && !parent.as_os_str().is_empty()
@@ -963,6 +1038,20 @@ pub fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> R
         fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     }
     assert_no_symlink_path_or_ancestors(log_file)?;
+    let batch_text = match existing_batch {
+        None => String::new(),
+        Some(path) => match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(format!(
+                    "refusing to read non-regular execution-issues batch: {}",
+                    path.display()
+                ));
+            }
+            Ok(_metadata) => read_regular_lossy(path)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(format!("{}: {error}", path.display())),
+        },
+    };
     let lock = log_file.with_file_name(format!("{}.lock.d", base_name(log_file)));
     acquire_append_lock(&lock)?;
     // Initialization belongs to the same critical section as read-modify-write.
@@ -972,15 +1061,96 @@ pub fn append_execution_issue(log_file: &Path, category: &str, entry: &str) -> R
         if !log_file.exists() {
             write_run_log_file(log_file, "")?;
         }
-        read_lossy(log_file).and_then(|existing| {
-            write_run_log_file(
-                log_file,
-                &compose_execution_issue(&existing, category, entry),
-            )
-        })
+        let existing = read_regular_lossy(log_file)?;
+        let mut known = existing_execution_issue_keys(&batch_text);
+        for (existing_category, section) in execution_issue_sections(&existing) {
+            for chunk in execution_issue_chunks(&section) {
+                known.extend(execution_issue_body_keys(&existing_category, &chunk));
+            }
+        }
+        let dedupe_category = if EXECUTION_ISSUE_CATEGORIES.contains(&category) {
+            category
+        } else {
+            "Warnings"
+        };
+        let durable_shas = existing_category_shas(&batch_text, dedupe_category);
+        let mut kept = Vec::new();
+        for chunk in execution_issue_chunks(entry) {
+            let chunk = if redact_entry {
+                redact_batch_payload(&chunk)
+                    .map_err(|_refusal| "redaction failed for run-log batch payload".to_owned())?
+            } else {
+                chunk
+            };
+            let keys = execution_issue_body_keys(dedupe_category, &chunk);
+            let digest = normalized_body_sha256(&chunk);
+            if (!keys.is_empty() && keys.is_subset(&known)) || durable_shas.contains(&digest) {
+                continue;
+            }
+            known.extend(keys);
+            kept.push(chunk);
+        }
+        if kept.is_empty() {
+            return Ok(ExecutionIssueAppendOutcome::Duplicate);
+        }
+        let entry = kept.join("\n");
+        let composed = if spaced_sections {
+            compose_execution_issue(&existing, category, &entry)
+        } else {
+            compose_compact_execution_issue(&existing, category, &entry)
+        };
+        write_run_log_file(log_file, &composed)?;
+        Ok(ExecutionIssueAppendOutcome::Appended)
     })();
     let _ = fs::remove_dir(&lock);
     result
+}
+
+/// Compose the historical quiet `execution-issues append` Markdown spacing.
+fn compose_compact_execution_issue(existing: &str, category: &str, entry: &str) -> String {
+    let heading = format!("### {category}");
+    let mut lines: Vec<String> = existing.lines().map(str::to_owned).collect();
+    let Some(section) = lines.iter().position(|line| *line == heading) else {
+        return format!(
+            "{}{}{heading}\n{}\n",
+            existing.trim_end(),
+            if existing.trim().is_empty() {
+                ""
+            } else {
+                "\n\n"
+            },
+            entry.trim_end()
+        );
+    };
+    let mut insert = lines
+        .iter()
+        .enumerate()
+        .skip(section + 1)
+        .find(|(_index, line)| line.starts_with("### "))
+        .map_or(lines.len(), |(index, _line)| index);
+    while insert > section + 1 && lines[insert - 1].is_empty() {
+        insert -= 1;
+    }
+    lines.insert(insert, entry.trim_end().to_owned());
+    format!("{}\n", lines.join("\n").trim_end())
+}
+
+/// Return source hashes already published for one category.
+fn existing_category_shas(batch_text: &str, category: &str) -> BTreeSet<String> {
+    batch_text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|value| match value {
+            Value::Object(row)
+                if row.get("category") == Some(&Value::String(category.to_owned())) =>
+            {
+                row.get("source_sha256")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            }
+            _other => None,
+        })
+        .collect()
 }
 
 /// Stage one replace-mode batch without emitting a nested command envelope.
@@ -1255,10 +1425,10 @@ fn non_empty_env(key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_execution_issue, append_object_field, glob_hit, rebase_under_tmpdir,
-        stage_append_batch, write_run_log_file,
+        ExecutionIssueAppendOutcome, append_execution_issue, append_execution_issue_filtered,
+        append_object_field, glob_hit, rebase_under_tmpdir, stage_append_batch, write_run_log_file,
     };
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, thread};
 
     #[test]
     fn appended_field_preserves_the_rest_of_the_row() {
@@ -1347,5 +1517,168 @@ mod tests {
         .expect_err("execution issue ancestor refusal");
         assert!(!outside.join("implement").exists());
         assert!(!outside.join("new").exists());
+    }
+
+    #[test]
+    fn filtered_append_deduplicates_chunks_by_category_across_both_ledgers() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = fs::canonicalize(dir.path()).expect("canonical temp dir");
+        let log = root.join("execution-issues.md");
+        let batch = root.join("execution-issues.ndjson");
+        fs::write(&log, "### Warnings\n\n- first\n").expect("live ledger");
+        fs::write(
+            &batch,
+            concat!(
+                "not-json\n",
+                "{\"body\":\"- third\\n\",\"category\":\"Warnings\"}\n",
+                "{\"body\":42,\"category\":\"Warnings\"}\n"
+            ),
+        )
+        .expect("durable ledger");
+
+        let outcome = append_execution_issue_filtered(
+            &log,
+            "Warnings",
+            "- first\n- second\n- third\n",
+            Some(&batch),
+            false,
+            true,
+        )
+        .expect("filtered append");
+        assert_eq!(outcome, ExecutionIssueAppendOutcome::Appended);
+        let text = fs::read_to_string(&log).expect("updated live ledger");
+        assert_eq!(text.matches("- first").count(), 1);
+        assert_eq!(text.matches("- second").count(), 1);
+        assert_eq!(text.matches("- third").count(), 0);
+
+        let other_category = append_execution_issue_filtered(
+            &log,
+            "Tool Failures",
+            "- first\n",
+            Some(&batch),
+            false,
+            true,
+        )
+        .expect("category-keyed append");
+        assert_eq!(other_category, ExecutionIssueAppendOutcome::Appended);
+        assert_eq!(
+            fs::read_to_string(&log)
+                .expect("category-keyed ledger")
+                .matches("- first")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn filtered_append_serializes_concurrent_writers_without_loss() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = fs::canonicalize(dir.path()).expect("canonical temp dir");
+        let log = root.join("execution-issues.md");
+        let writers: Vec<_> = (0..12)
+            .map(|index| {
+                let log = log.clone();
+                thread::spawn(move || {
+                    append_execution_issue(&log, "Warnings", &format!("- warning-{index}"))
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().expect("writer thread").expect("append");
+        }
+        let text = fs::read_to_string(&log).expect("concurrent ledger");
+        for index in 0..12 {
+            assert_eq!(
+                text.lines()
+                    .filter(|line| *line == format!("- warning-{index}"))
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn filtered_append_refuses_hostile_batch_paths() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = fs::canonicalize(dir.path()).expect("canonical temp dir");
+        let log = root.join("execution-issues.md");
+        let target = root.join("batch.ndjson");
+        let link = root.join("linked-batch.ndjson");
+        fs::write(&target, "").expect("batch");
+        std::os::unix::fs::symlink(&target, &link).expect("batch symlink");
+
+        let error = append_execution_issue_filtered(
+            &log,
+            "Warnings",
+            "- warning",
+            Some(&link),
+            false,
+            true,
+        )
+        .expect_err("symlinked batch must be refused");
+        assert!(error.contains("non-regular execution-issues batch"));
+        assert!(!log.exists());
+
+        let hostile_root = root.join("hostile-root");
+        let linked_root = root.join("linked-root");
+        fs::create_dir(&hostile_root).expect("hostile root");
+        fs::write(hostile_root.join("batch.ndjson"), "").expect("nested batch");
+        std::os::unix::fs::symlink(&hostile_root, &linked_root).expect("ancestor symlink");
+        let error = append_execution_issue_filtered(
+            &log,
+            "Warnings",
+            "- warning",
+            Some(&linked_root.join("batch.ndjson")),
+            false,
+            true,
+        )
+        .expect_err("symlinked batch ancestor must be refused");
+        assert!(error.contains("refusing symlinked path or ancestor"));
+        assert!(!log.exists());
+    }
+
+    #[test]
+    fn filtered_append_normalizes_unknown_categories_for_durable_dedupe() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = fs::canonicalize(dir.path()).expect("canonical temp dir");
+        let log = root.join("execution-issues.md");
+        let batch = root.join("execution-issues.ndjson");
+        fs::write(
+            &batch,
+            "{\"body\":\"- custom warning\\n\",\"category\":\"Warnings\"}\n",
+        )
+        .expect("durable ledger");
+
+        let durable = append_execution_issue_filtered(
+            &log,
+            "Custom Heading",
+            "- custom warning",
+            Some(&batch),
+            false,
+            true,
+        )
+        .expect("normalized durable dedupe");
+        assert_eq!(durable, ExecutionIssueAppendOutcome::Duplicate);
+
+        let first = append_execution_issue_filtered(
+            &log,
+            "Custom Heading",
+            "- live warning",
+            None,
+            false,
+            true,
+        )
+        .expect("first custom append");
+        let repeated = append_execution_issue_filtered(
+            &log,
+            "Custom Heading",
+            "- live warning",
+            None,
+            false,
+            true,
+        )
+        .expect("repeated custom append");
+        assert_eq!(first, ExecutionIssueAppendOutcome::Appended);
+        assert_eq!(repeated, ExecutionIssueAppendOutcome::Duplicate);
     }
 }
