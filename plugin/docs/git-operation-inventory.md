@@ -36,6 +36,7 @@ crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
 crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read

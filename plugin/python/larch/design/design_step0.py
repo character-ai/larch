@@ -25,7 +25,6 @@ from larch.core import config, proc, rust_runtime
 
 from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
 from larch.design.design_router import _parse_stdout_kv, _write_kv_file
-from larch.state import bootstrap
 from larch.design.design_step0_env import (
     _emit_parse_kvs,
     _emit_step0_init_rows,
@@ -279,7 +278,19 @@ def step0_session_main(argv: Sequence[str]) -> int:
     repo_root = repo_roots.consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
-    bootstrap._install_statusline_best_effort()
+    _run_best_effort(
+        command=[
+            str(repo_roots.larch_entrypoint(plugin_root)),
+            "progress",
+            "install-statusline",
+            "--plugin-root",
+            str(plugin_root),
+            "--repo-root",
+            str(repo_root),
+            "--notice",
+        ],
+        env=os.environ,
+    )
     _run_best_effort(
         command=_cli_cmd(plugin_root, "progress", "clear", "--repo-root", str(repo_root)),
         env=os.environ,

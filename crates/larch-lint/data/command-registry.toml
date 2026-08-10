@@ -1181,11 +1181,13 @@ verb = "invoke"
 python_module = "larch.state.bootstrap"
 python_function = "invoke_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8067
+clean_install_test = "clean-install-bootstrap-invoke"
 
 [[commands]]
 domain = "bootstrap"
@@ -1193,11 +1195,13 @@ verb = "parse-routing"
 python_module = "larch.state.bootstrap"
 python_function = "parse_routing_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8067
+clean_install_test = "clean-install-bootstrap-parse-routing"
 
 [[commands]]
 domain = "bootstrap"
@@ -1205,11 +1209,13 @@ verb = "resolve-non-interactive"
 python_module = "larch.state.bootstrap"
 python_function = "resolve_non_interactive_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8067
+clean_install_test = "clean-install-bootstrap-resolve-non-interactive"
 
 [[commands]]
 domain = "calibration-replay"
@@ -1571,11 +1577,13 @@ verb = "run"
 python_module = "larch.core.cleanup_skill"
 python_function = "run_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8067
+clean_install_test = "clean-install-cleanup-run"
 
 [[commands]]
 domain = "combine-issues"
@@ -3475,6 +3483,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7685
+
+[[commands]]
+domain = "implement"
+verb = "bootstrap-continuation"
+python_module = "larch.state.bootstrap"
+python_function = "continuation_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7681
 
 [[commands]]
 domain = "implement"
@@ -7294,11 +7314,13 @@ verb = "check"
 python_module = "larch.agents.agents"
 python_function = "status_check_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8067
+clean_install_test = "clean-install-status-check"
 
 [[commands]]
 domain = "test-shard"
@@ -8484,7 +8506,7 @@ rust = []
 path = "python/larch/agents/_auth.py"
 kind = "python-runtime"
 python = []
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "agent resolve-model-pins"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate"]
 
 [[callers]]
 path = "python/larch/agents/_claude_runner.py"
@@ -8592,7 +8614,7 @@ rust = ["timing mark"]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-statusline", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8849,8 +8871,8 @@ rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
 [[callers]]
 path = "python/larch/state/bootstrap.py"
 kind = "python-runtime"
-python = ["implement kill-active-leg"]
-rust = ["git snapshot-untracked", "run-log manifest", "session entry-gate", "session persist-run-flags", "session setup", "session write-implement-env"]
+python = []
+rust = ["git snapshot-untracked", "run-log manifest", "session persist-run-flags"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
@@ -8863,12 +8885,6 @@ path = "python/larch/state/session_env.py"
 kind = "python-runtime"
 python = []
 rust = ["session write-env"]
-
-[[callers]]
-path = "scripts/cleanup-sessionstart.sh"
-kind = "hook"
-python = ["cleanup run"]
-rust = ["bgjob reap"]
 
 [[callers]]
 path = "scripts/external-tool-registry.sh"
@@ -8945,8 +8961,8 @@ rust = []
 [[callers]]
 path = "skills/cleanup/SKILL.md"
 kind = "skill"
-python = ["cleanup run"]
-rust = []
+python = []
+rust = ["cleanup run"]
 
 [[callers]]
 path = "skills/combine-issues/SKILL.md"
@@ -9233,8 +9249,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9473,8 +9489,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-0-bootstrap.md"
 kind = "skill"
-python = ["bootstrap invoke"]
-rust = ["admission fork-env"]
+python = []
+rust = ["admission fork-env", "bootstrap invoke"]
 
 [[callers]]
 path = "skills/implement/scripts/step-0-bootstrap.sh"
@@ -9851,8 +9867,8 @@ rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claud
 [[callers]]
 path = "skills/status/SKILL.md"
 kind = "skill"
-python = ["status check"]
-rust = []
+python = []
+rust = ["status check"]
 
 [[callers]]
 path = "skills/triage/SKILL.md"

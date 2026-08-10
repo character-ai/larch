@@ -24,8 +24,8 @@ The dirty-tree recovery resume fence moved to `skills/implement/references/boots
 - Inline `session read-key` calls are banned from SKILL.md fences.
 - The `reship` and `ci-fix` Step 8+ branches must run `ship pre-fix-rebase` before stale-handoff clear or the ci-fixer subagent loop, except the documented phase14 continuation skip.
 - If any post-Step-0 fence targets `python/cli.py`, the harness also pins that the emitted launcher dispatches `.py` targets through `python3`.
-- The generated `larch-run.sh` sandbox pins `.sh` and `.py` argv passthrough, invalid-target rejection, `--print-plugin-root` resolution (plugin-root.env and session-env.sh tiers), awk fallback parity with `step-0-bootstrap.sh`, and resume partial-upgrade emission when `plugin-root.env` exists but `larch-run.sh` is absent.
-- The PID-keyed `implement-run-$PPID.sh` sandbox separately proves the stable runner reaches `larch-run.sh` when `IMPLEMENT_TMPDIR` is unset.
+- Rust bootstrap coverage pins generated `larch-run.sh` `.sh` and `.py` argv passthrough, invalid-target rejection, and `--print-plugin-root` resolution through both `plugin-root.env` and `session-env.sh`.
+- Session-lifecycle coverage separately owns the PID-keyed `implement-run-$PPID.sh` stable-runner contract.
 
 ## Caller
 

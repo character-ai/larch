@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -17,8 +16,7 @@ from typing import cast
 
 from larch.core import config
 from larch import io as larch_io
-from larch.core import logging_util
-from larch.core.proc import ProcRunner, Runner
+from larch.core.proc import ProcRunner
 from larch.core.repo_roots import larch_entrypoint
 
 from larch.agents._types import (
@@ -30,7 +28,6 @@ from larch.agents._types import (
     CodexGateSignal,
     DegradedToolsResult,
     _err,
-    _plugin_root,
     _env_int,
 )
 from larch.agents._launch_failure import resolve_model_args
@@ -331,93 +328,3 @@ def degraded_tools_result(
         presence_input_empty=larch_io.kv_value(text=stdout, key="PRESENCE_INPUT_EMPTY", duplicate_policy="first").strip().lower() == "true",
         explanation=tuple(explanation),
     )
-
-
-def resolve_model_pins(*, codex_state: str, cursor_state: str) -> tuple[str, str, str, str]:
-    """Shell out to `agent resolve-model-pins`; return (cursor_status, cursor_detail, codex_status, codex_detail)."""
-    cmd = [
-        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-        "agent",
-        "resolve-model-pins",
-        "--codex-state",
-        codex_state,
-        "--cursor-state",
-        cursor_state,
-    ]
-    result = ProcRunner().run(cmd)
-    stdout = result.stdout or ""
-    return (
-        larch_io.kv_value(text=stdout, key="CURSOR_MODEL_PINS", duplicate_policy="first").strip(),
-        larch_io.kv_value(text=stdout, key="CURSOR_MODEL_PIN_DETAIL", duplicate_policy="first").strip(),
-        larch_io.kv_value(text=stdout, key="CODEX_MODEL_PINS", duplicate_policy="first").strip(),
-        larch_io.kv_value(text=stdout, key="CODEX_MODEL_PIN_DETAIL", duplicate_policy="first").strip(),
-    )
-
-
-def _read_plugin_version_best_effort() -> str:
-    root = _plugin_root()
-    try:
-        parsed: object = json.loads((root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return "unknown"
-    if isinstance(parsed, dict):
-        value = parsed.get("version")
-        if value is not None:
-            version = str(value).splitlines()[0].strip("\r")
-            if version and version != "null":
-                return version
-    return "unknown"
-
-
-def status_check_main(argv: list[str] | None = None, *, runner: Runner | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py status check")
-    try:
-        parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    _ = runner  # retained for call-site compatibility; pins resolve via Rust CLI
-    version = _read_plugin_version_best_effort()
-    try:
-        reviewer_result = check_reviewers()
-    except Exception:  # pylint: disable=broad-except
-        reviewer_result = CheckReviewersResult(
-            codex_binary_found=False,
-            cursor_binary_found=False,
-            codex_present=False,
-            cursor_present=False,
-        )
-    codex_binary_found = str(reviewer_result.codex_binary_found).lower()
-    cursor_binary_found = str(reviewer_result.cursor_binary_found).lower()
-    codex_present = str(reviewer_result.codex_present).lower()
-    cursor_present = str(reviewer_result.cursor_present).lower()
-    degraded = degraded_tools_result(
-        codex_binary_found=codex_binary_found,
-        codex_present=codex_present,
-        cursor_binary_found=cursor_binary_found,
-        cursor_present=cursor_present,
-        skill="status",
-    )
-    cursor_pins, cursor_detail, codex_pins, codex_detail = resolve_model_pins(
-        codex_state=degraded.codex_state,
-        cursor_state=degraded.cursor_state,
-    )
-    logging_util.emit_kv(key="LARCH_PLUGIN_VERSION", value=version)
-    logging_util.emit_kv(key="CODEX_BINARY_FOUND", value=str(codex_binary_found))
-    logging_util.emit_kv(key="CURSOR_BINARY_FOUND", value=str(cursor_binary_found))
-    logging_util.emit_kv(key="CODEX_PRESENT", value=str(codex_present))
-    logging_util.emit_kv(key="CURSOR_PRESENT", value=str(cursor_present))
-    logging_util.emit_kv(key="CODEX_STATE", value=degraded.codex_state)
-    logging_util.emit_kv(key="CURSOR_STATE", value=degraded.cursor_state)
-    logging_util.emit_kv(key="DEGRADED", value=str(degraded.degraded).lower())
-    if degraded.codex_state == "probe-failed":
-        gate_detail = reviewer_result.codex_gate_detail or _current_codex_gate_detail()
-        if gate_detail is not None:
-            logging_util.emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
-    logging_util.emit_kv(key="CURSOR_MODEL_PINS", value=cursor_pins or "skipped")
-    if cursor_detail:
-        logging_util.emit_kv(key="CURSOR_MODEL_PIN_DETAIL", value=cursor_detail)
-    logging_util.emit_kv(key="CODEX_MODEL_PINS", value=codex_pins or "skipped")
-    if codex_detail:
-        logging_util.emit_kv(key="CODEX_MODEL_PIN_DETAIL", value=codex_detail)
-    return 0

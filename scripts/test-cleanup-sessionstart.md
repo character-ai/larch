@@ -1,8 +1,8 @@
 # scripts/test-cleanup-sessionstart.sh contract
 
-Regression harness for `scripts/cleanup-sessionstart.sh`, the SessionStart wrapper that launches `python3 python/cli.py cleanup run` in the background.
+Regression harness for `scripts/cleanup-sessionstart.sh`, the SessionStart wrapper that launches `scripts/larch.sh cleanup run` in the background.
 
-**Scope:** The harness pins the executable-bit precondition, `hooks/hooks.json` registration, missing-`python3` and missing-`cli.py` fail-open behavior, no-stdout contract, stub CLI argument receipt, background launch syntax, `disown`, and unconditional `exit 0` source invariant.
+**Scope:** The harness pins the executable-bit precondition, `hooks/hooks.json` registration, missing-runtime fail-open behavior, no-stdout contract, stub larch argument receipt, background launch syntax, `disown`, and unconditional `exit 0` source invariant.
 
 **Executable precondition:** The harness fails first if `scripts/cleanup-sessionstart.sh` is missing or not executable (`100755`). Hooks invoke the script directly, so this is part of the runtime contract.
 

@@ -28,10 +28,12 @@ mod audit_runs_commands;
 mod bgjob_adapt;
 mod bgjob_commands;
 mod blocker_commands;
+mod bootstrap_commands;
 mod child_process;
 mod ci_launcher_commands;
 mod ci_timing;
 pub(crate) mod claude_commands;
+mod cleanup_commands;
 mod collector_commands;
 mod combine_issues_commands;
 mod complete_umbrella_commands;
@@ -76,6 +78,7 @@ mod run_log_commands;
 mod run_log_entry_commands;
 pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
+mod runtime_entrypoint;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
@@ -88,6 +91,7 @@ mod slot_binding;
 mod stall_recovery_commands;
 mod stall_recovery_reporting;
 mod state_commands;
+mod status_commands;
 mod test_shards;
 mod timing_commands;
 mod tracking_issue_commands;
@@ -133,6 +137,9 @@ enum Domain {
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
+    /// Remove stale larch session directories and pointers.
+    #[command(subcommand)]
+    Cleanup(CleanupCommand),
     /// Durable background-job compatibility commands.
     #[command(subcommand)]
     Bgjob(BgjobCommand),
@@ -169,6 +176,9 @@ enum Domain {
     /// The `larch:plan` issue-body block carrying the `/design` handoff.
     #[command(subcommand, name = "plan-block")]
     PlanBlock(PlanBlockCommand),
+    /// Inspect the installed larch and external tool health.
+    #[command(subcommand)]
+    Status(StatusCommand),
     /// One named `larch:<marker>` issue-body block.
     #[command(subcommand, name = "named-block")]
     NamedBlock(NamedBlockCommand),
@@ -1051,8 +1061,31 @@ struct TrailingArguments {
 
 #[derive(Subcommand)]
 enum BootstrapCommand {
+    /// Run the session bootstrap routing state machine.
+    #[command(disable_help_flag = true)]
+    Invoke(RawCompatibilityArguments),
+    /// Parse a bootstrap stdout envelope into shell assignments.
+    #[command(name = "parse-routing", disable_help_flag = true)]
+    ParseRouting(RawCompatibilityArguments),
+    /// Resolve the non-interactive execution predicate.
+    #[command(name = "resolve-non-interactive", disable_help_flag = true)]
+    ResolveNonInteractive(RawCompatibilityArguments),
     /// Print the compiled version and target as machine-readable JSON.
     SelfCheck,
+}
+
+#[derive(Subcommand)]
+enum CleanupCommand {
+    /// Remove stale session directories, temporary files, and dangling pointers.
+    #[command(disable_help_flag = true)]
+    Run(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum StatusCommand {
+    /// Print plugin and external-reviewer health.
+    #[command(disable_help_flag = true)]
+    Check(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1401,6 +1434,15 @@ fn run(
 ) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
+        Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
+            Ok(bootstrap_commands::invoke(&arguments.arguments))
+        }
+        Domain::Bootstrap(BootstrapCommand::ParseRouting(arguments)) => {
+            Ok(bootstrap_commands::parse_routing(&arguments.arguments))
+        }
+        Domain::Bootstrap(BootstrapCommand::ResolveNonInteractive(arguments)) => Ok(
+            bootstrap_commands::resolve_non_interactive(&arguments.arguments),
+        ),
         Domain::Bootstrap(BootstrapCommand::SelfCheck) => {
             println!("{}", larch_core::bootstrap_self_check(metadata));
             Ok(ExitCode::SUCCESS)
@@ -1419,6 +1461,9 @@ fn run(
         }
         Domain::Bgjob(BgjobCommand::Reap(arguments)) => {
             Ok(bgjob_commands::reap(&arguments.arguments))
+        }
+        Domain::Cleanup(CleanupCommand::Run(arguments)) => {
+            Ok(cleanup_commands::run(&arguments.arguments))
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
@@ -1866,6 +1911,9 @@ fn run(
         Domain::RunLog(RunLogCommand::CleanupImplementLogs(arguments)) => Ok(
             run_log_cleanup_commands::cleanup_implement_logs(&arguments.arguments),
         ),
+        Domain::Status(StatusCommand::Check(arguments)) => {
+            Ok(status_commands::check(&arguments.arguments))
+        }
         Domain::RunLog(RunLogCommand::Publish(arguments)) => {
             Ok(run_log_publication_commands::publish(&arguments.arguments))
         }

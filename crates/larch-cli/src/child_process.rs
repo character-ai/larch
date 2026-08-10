@@ -12,9 +12,12 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ExternalProcessRunner as _, ExternalProgram, ProcessError, ProcessErrorKind, ProcessOutput,
-    ProcessRequest,
+    ExternalProcessRunner as _, ExternalProgram, HostUtilityProgram, ProcessError,
+    ProcessErrorKind, ProcessOutput, ProcessRequest,
 };
+
+const HOST_UTILITY_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
+const HOST_UTILITY_OUTPUT_LIMIT: usize = 16 * 1024;
 
 /// Build one bounded, captured child request for an approved program.
 ///
@@ -74,6 +77,26 @@ pub fn bounded_request_in(
 /// to run to completion.
 pub fn run_bounded(request: ProcessRequest) -> Result<ProcessOutput, String> {
     run_bounded_detailed(request).map_err(|error| error.message().to_owned())
+}
+
+/// Run one closed host-utility probe through the shared child owner.
+///
+/// # Errors
+/// Returns a stable message when the request cannot be constructed or the
+/// bounded probe cannot complete.
+pub fn run_host_utility(
+    program: HostUtilityProgram,
+    arguments: impl IntoIterator<Item = OsString>,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    let request = bounded_request(
+        ExternalProgram::HostUtility(program),
+        arguments,
+        timeout,
+        HOST_UTILITY_SHUTDOWN_GRACE,
+        HOST_UTILITY_OUTPUT_LIMIT,
+    )?;
+    run_bounded(request)
 }
 
 /// Run one bounded child and keep the typed failure when it does not complete.

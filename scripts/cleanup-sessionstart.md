@@ -1,6 +1,6 @@
 # scripts/cleanup-sessionstart.sh contract
 
-`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh` is the SessionStart hook that launches `python3 python/cli.py cleanup run` as a detached background process at session start. The cleanup command performs the age-based `larch-*` sweep, including `larch-report-tokens.*` roots preserved for advertised `/report-tokens` artifacts.
+`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh` is the SessionStart hook that launches `scripts/larch.sh cleanup run` as a detached background process at session start. The cleanup command performs the age-based `larch-*` sweep, including `larch-report-tokens.*` roots preserved for advertised `/report-tokens` artifacts.
 
 **Primary caller:** `hooks/hooks.json` `SessionStart` hook (matcher `startup|resume|clear|compact`, timeout 10).
 
@@ -11,7 +11,7 @@
 - Cleanup runs as a detached background process (`&` + `disown`); the hook exits before cleanup finishes.
 - Output from cleanup is redirected to `${TMPDIR:-/tmp}/larch-cleanup-sessionstart-$$.log` for post-hoc debugging.
 - The hook emits no advisory JSON. Cleanup is silent background maintenance and requires no operator action.
-- When `python3` or `cli.py` is unavailable, the hook exits 0 silently.
+- When the verified `scripts/larch.sh` bootstrap is unavailable, the hook exits 0 silently.
 
 **Harness:** `make test-cleanup-sessionstart` runs `scripts/test-cleanup-sessionstart.sh`.
 

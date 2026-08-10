@@ -1,6 +1,7 @@
 """Shared shell-style ``KEY=value`` env-file parser.
 
-Single source of truth for the lenient env-file reader used by ``cleanup_skill``;
+Single source of truth for the lenient env-file reader used by legacy session
+artifacts;
 keeping it isolated avoids re-introducing duplicate parser code when new readers
 need the same shell-style grammar.
 """

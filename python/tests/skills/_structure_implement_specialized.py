@@ -221,11 +221,11 @@ def run(repo_root: Path) -> list[str]:
         require("skills/im/SKILL.md", "`--force`, `-f`", "im SKILL forwards -f alias")
         require("skills/f/SKILL.md", "--force --self-review --self-implement", "f SKILL preset flags")
         require("skills/f/SKILL.md", 'args: --lifecycle-parent-context "$CONTEXT_FILE" --force --self-review --self-implement $ARGUMENTS', "f SKILL forwards lifecycle handoff and preset args")
-        require("python/tests/state/test_bootstrap.py", "test_invoke_refuses_symlinked_bootstrap_routing_env", "bootstrap refusal-path test")
-        require("python/tests/state/test_bootstrap.py", "BOOTSTRAP_NEXT=cleanup", "bootstrap refusal-path emits directive")
+        require("crates/larch-cli/tests/parity.rs", "bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths", "Rust bootstrap refusal-path test")
+        require("crates/larch-cli/tests/parity.rs", "BOOTSTRAP_NEXT=cleanup", "Rust bootstrap refusal-path emits directive")
         require("python/tests/state/test_bootstrap.py", "test_bootstrap_next_routing", "bootstrap routes continuing tails to Step 2")
         require("python/tests/state/test_bootstrap.py", "test_bootstrap_next_routing_matrix", "bootstrap routes degraded tails")
-        require("python/tests/state/test_bootstrap.py", "BOOTSTRAP_NEXT=rebase-routing", "bootstrap resume malformed route directive test")
+        require("python/tests/state/test_bootstrap.py", '"rebase-routing"', "bootstrap resume malformed route directive test")
         forbid(skill, "${force_requested:+--force}", "SKILL preflight force argv")
         forbid(skill, "If `false` and `force_requested=false`, print `**❌ Issue #<N> has no larch:plan block", "SKILL prompt-side missing-plan fallback prose")
         forbid(skill, "If the script exits **1** and prints `MALFORMED=...`, then when `force_requested=false`", "SKILL prompt-side malformed-plan fallback prose")
@@ -347,7 +347,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_bootstrap.py", "FORKED_TARGET", "step-0 resume fork metadata rehydration in Python")
         require("python/larch/implement/dispatch_bootstrap.py", "CALLER_ENV_PATH", "step-0 fork metadata caller-env parse in Python")
         require("python/larch/implement/dispatch_bootstrap.py", "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Python")
-        require("python/larch/state/bootstrap.py", "preflight-tmpdir.env", "bootstrap preflight tmpdir persistence")
+        require("crates/larch-cli/src/bootstrap_commands.rs", "preflight-tmpdir.env", "Rust bootstrap preflight tmpdir persistence")
         require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Python")
         forbid("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship wrapper must not retain state rehydration")
         require("skills/implement/scripts/step-8-python-guard.sh", "sys.version_info >= (3, 11)", "step-8 shared python 3.11 guard")
@@ -666,7 +666,8 @@ def run(repo_root: Path) -> list[str]:
         require(skill, 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial', "Step 0 initial bootstrap wrapper")
         require("skills/implement/references/bootstrap-recovery.md", 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', "Step 0 resume bootstrap wrapper relocated")
         forbid("skills/implement/scripts/step-0-bootstrap.sh", "set +e", "step-0 bootstrap thin wrapper has no set +e body")
-        require("python/larch/state/bootstrap.py", 'preserve_coder=args.resume == "true"', "bootstrap parse-routing resume preserves coder")
+        require("crates/larch-cli/src/bootstrap_commands.rs", "if options.resume {", "Rust bootstrap parse-routing resume preserves coder")
+        require("crates/larch-cli/src/bootstrap_commands.rs", "shell_assignments(&merged, options.resume)", "Rust bootstrap parse-routing preserves existing coder exports")
         forbid(skill, launcher + "skills/implement/scripts/step-0-degraded-gate.sh", "SKILL active flow must not call step-0-degraded-gate.sh")
         require("python/larch/state/bootstrap.py", "degraded-tools-gate", "bootstrap absorbed degraded gate")
         require("python/larch/state/bootstrap.py", "rust_runtime.checkpoint_probe(", "bootstrap uses the typed absorbed 1.r probe")
@@ -1232,4 +1233,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 392
+LEGACY_ASSERTION_LABEL_COUNT = 393

@@ -181,15 +181,21 @@ lanes or remove the readable credential source. See
 [Configuration and Permissions](../configuration-and-permissions.md) for the
 current launcher and authentication settings.
 
-`/cleanup` removes stale session-cache and temporary entries by age and bounded
-nested-activity checks. `LARCH_CLEANUP_RETENTION_DAYS` controls the retention
-window. Cleanup does not wait for all Claude processes to exit, and matching
-loose temporary files do not receive nested-directory activity protection.
-Deletion is permanent and does not redact first. A failed directory activity
-scan skips that directory, while a failed top-level enumeration skips that
-pass. See [Configuration and Permissions](../configuration-and-permissions.md)
-for the operator setting and [Larch Run Logs](../run-logs.md#retention) for
-run-log retention.
+Rust-owned `cleanup run` removes stale session-cache and temporary entries by
+age and bounded nested-activity checks. `LARCH_CLEANUP_RETENTION_DAYS`
+controls the retention window. Before a sweep it protects directories named by
+the current session environment and by current session pointers, so a live
+session is retained even when its top-level timestamp is old. An unreadable or
+malformed current pointer skips the age-based sweep rather than risking a live
+session. Every target is confined below a canonical temporary root; symlinked
+entries are skipped rather than followed. Cleanup may unlink only a dangling design-session pointer, and
+reaps a stale implement pointer only when it is a regular file. Matching loose
+temporary files do not receive nested-directory activity protection. Deletion
+is permanent and does not redact first. A failed directory activity scan skips
+that directory, while a failed top-level enumeration skips that pass. See
+[Configuration and Permissions](../configuration-and-permissions.md) for the
+operator setting and [Larch Run Logs](../run-logs.md#retention) for run-log
+retention.
 
 The opt-in `scripts/audit-edit-write.sh` developer hook is intentionally
 unredacted. Its gitignored JSONL can contain file paths, file contents,

@@ -26,6 +26,7 @@ Commands:
   agent              Vendor-agent launch and diagnostic commands
   blocker            Issue blocker discovery
   block-issue        Native issue blocked-by dependency mutations
+  cleanup            Remove stale larch session directories and pointers
   bgjob              Durable background-job compatibility commands
   ci-timing          Collect GitHub Actions timing inputs for test rebalancing
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
@@ -38,6 +39,7 @@ Commands:
   git                Local Git repository commands
   issue              GitHub issue reads and issue-body wire helpers
   plan-block         The `larch:plan` issue-body block carrying the `/design` handoff
+  status             Inspect the installed larch and external tool health
   named-block        One named `larch:<marker>` issue-body block
   plan               Implementation-plan readers
   tracking-issue     The tracking issue's lifecycle: reads, comments, titles, and summaries
