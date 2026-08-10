@@ -629,13 +629,14 @@ test-implement-finalize:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'not cleanup'
 
 test-implement-bootstrap:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or phase_coder'
 
 test-implement-bootstrap-invoke:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper or absorbed_degraded or absorbed_1r or degraded_prompt_required or phantom_stdout'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test parity bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths
 
 test-parse-bootstrap-routing-envelope:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests
 
 # Behavioral authority moved to Rust with #8176: the verbs are covered by
 # `cargo test --package larch-cli --bin larch execution_issue_commands`, which

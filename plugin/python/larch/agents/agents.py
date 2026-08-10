@@ -151,8 +151,6 @@ from larch.agents._auth import (  # noqa: F401
     _read_codex_gate_detail,
     _codex_gate_detail_max_age,
     _current_codex_gate_detail,
-    _read_plugin_version_best_effort,
-    resolve_model_pins,
 )
 from larch.agents._claude_runner import (  # noqa: F401
     _canonical,

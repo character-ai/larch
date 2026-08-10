@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-cleanup-sessionstart.sh — Regression harness for scripts/cleanup-sessionstart.sh.
 # Pins: executable hook precondition, hooks.json registration, always-exit-0
-# invariant, python3/cli.py skip-when-missing contract, no-stdout contract, and
-# background spawn contract (& + disown).
+# invariant, verified-runtime skip-when-missing contract, no-stdout contract,
+# and background spawn contract (& + disown).
 
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
@@ -16,12 +16,7 @@ if [[ ! -x "$SCRIPT" ]]; then
     exit 1
 fi
 
-REAL_PYTHON3=$(command -v python3 || true)
 BASH_BIN=$(command -v bash || true)
-if [[ -z "$REAL_PYTHON3" || ! -x "$REAL_PYTHON3" ]]; then
-    echo "FAIL: harness python3 not on PATH" >&2
-    exit 1
-fi
 if [[ -z "$BASH_BIN" || ! -x "$BASH_BIN" ]]; then
     echo "FAIL: could not resolve bash on ambient PATH" >&2
     exit 1
@@ -100,19 +95,21 @@ else
     echo "  FAIL: hooks.json must register cleanup-sessionstart.sh under SessionStart" >&2
 fi
 
-echo "=== Case 1: python3 missing → always exits 0 ==="
+echo "=== Case 1: verified runtime missing → always exits 0 ==="
 build_bin "$tmp/c1_bin"
+mkdir -p "$tmp/c1-empty-root"
 mkdir -p "$tmp/c1-cwd"
 rc=0
 (cd "$tmp/c1-cwd" && env -i PATH="$tmp/c1_bin" TMPDIR="$tmp" \
+    CLAUDE_PLUGIN_ROOT="$tmp/c1-empty-root" \
     "$BASH_BIN" "$SCRIPT" > "$tmp/c1.out" 2> "$tmp/c1.err") || rc=$?
 assert_eq "$rc" "0" "case 1: exit code 0"
-assert_empty "$(cat "$tmp/c1.out")" "case 1: no stdout when python3 absent"
+assert_empty "$(cat "$tmp/c1.out")" "case 1: no stdout when runtime is absent"
 
-echo "=== Case 2: cli.py missing → always exits 0 ==="
+echo "=== Case 2: verified runtime not executable → always exits 0 ==="
 build_bin "$tmp/c2_bin"
-ln -sf "$REAL_PYTHON3" "$tmp/c2_bin/python3"
-mkdir -p "$tmp/c2-empty-root/python"
+mkdir -p "$tmp/c2-empty-root/scripts"
+: > "$tmp/c2-empty-root/scripts/larch.sh"
 mkdir -p "$tmp/c2-cwd"
 rc=0
 (cd "$tmp/c2-cwd" && env -i \
@@ -121,24 +118,21 @@ rc=0
     CLAUDE_PLUGIN_ROOT="$tmp/c2-empty-root" \
     "$BASH_BIN" "$SCRIPT" > "$tmp/c2.out" 2> "$tmp/c2.err") || rc=$?
 assert_eq "$rc" "0" "case 2: exit code 0"
-assert_empty "$(cat "$tmp/c2.out")" "case 2: no stdout when cli.py absent"
+assert_empty "$(cat "$tmp/c2.out")" "case 2: no stdout when runtime is not executable"
 
-echo "=== Case 3: normal run with stub CLI → exits 0, no stdout ==="
+echo "=== Case 3: normal run with stub runtime → exits 0, no stdout ==="
 build_bin "$tmp/c3_bin"
-ln -sf "$REAL_PYTHON3" "$tmp/c3_bin/python3"
-mkdir -p "$tmp/c3-fake-root/python"
+mkdir -p "$tmp/c3-fake-root/scripts"
 SENTINEL="$tmp/c3-sentinel"
-# Stub cli.py writes a sentinel file when invoked with the expected verb.
-cat > "$tmp/c3-fake-root/python/cli.py" <<'PYEOF'
-import os
-import sys
-
-if len(sys.argv) >= 3 and sys.argv[1] == "cleanup" and sys.argv[2] == "run":
-    sentinel = os.environ.get("LARCH_CLEANUP_TEST_SENTINEL", "")
-    if sentinel:
-        open(sentinel, "w", encoding="utf-8").close()
-sys.exit(0)
-PYEOF
+# Stub larch.sh writes a sentinel file when invoked with the expected verb.
+cat > "$tmp/c3-fake-root/scripts/larch.sh" <<'SHEOF'
+#!/bin/sh
+if [ "${1:-}" = cleanup ] && [ "${2:-}" = run ] && [ -n "${LARCH_CLEANUP_TEST_SENTINEL:-}" ]; then
+    : > "$LARCH_CLEANUP_TEST_SENTINEL"
+fi
+exit 0
+SHEOF
+chmod +x "$tmp/c3-fake-root/scripts/larch.sh"
 mkdir -p "$tmp/c3-cwd"
 rc=0
 (cd "$tmp/c3-cwd" && env -i \
@@ -150,8 +144,8 @@ rc=0
 assert_eq "$rc" "0" "case 3: exit code 0"
 assert_empty "$(cat "$tmp/c3.out")" "case 3: no stdout on normal run"
 
-echo "=== Case 4: background spawn — CLI is invoked ==="
-# The hook exits immediately; the background python3 stub from case 3 writes
+echo "=== Case 4: background spawn — runtime is invoked ==="
+# The hook exits immediately; the background runtime stub from case 3 writes
 # the sentinel asynchronously. Poll for up to 10 seconds.
 waited=0
 while [[ ! -f "$SENTINEL" && "$waited" -lt 10 ]]; do
@@ -160,11 +154,11 @@ while [[ ! -f "$SENTINEL" && "$waited" -lt 10 ]]; do
 done
 if [[ -f "$SENTINEL" ]]; then
     PASS=$((PASS + 1))
-    echo "  ok: case 4: background CLI was invoked (sentinel written within ${waited}s)"
+    echo "  ok: case 4: background runtime was invoked (sentinel written within ${waited}s)"
 else
     FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("case 4: background CLI was not invoked within 10s timeout")
-    echo "  FAIL: case 4: background CLI was not invoked within 10s timeout" >&2
+    FAILED_TESTS+=("case 4: background runtime was not invoked within 10s timeout")
+    echo "  FAIL: case 4: background runtime was not invoked within 10s timeout" >&2
 fi
 
 echo "=== Case 5: source-level spawn contract ==="

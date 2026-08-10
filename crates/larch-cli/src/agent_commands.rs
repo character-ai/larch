@@ -671,6 +671,13 @@ fn codex_gate_message_for_probe_failed(
         .map(|detail| CodexGateMessage::new(detail.message().to_owned()))
 }
 
+/// Read the current Codex gate detail for a status renderer without exposing
+/// the probe cache as another command surface.
+pub fn current_codex_probe_detail(codex_binary_found: &str, codex_present: &str) -> Option<String> {
+    codex_gate_message_for_probe_failed(codex_binary_found, codex_present)
+        .map(|detail| detail.message().to_owned())
+}
+
 fn parse_codex_usage(arguments: &ParseCodexUsageArguments) -> ExitCode {
     let totals = match parse_codex_usage_file(&arguments.events_jsonl) {
         Ok(totals) => totals,

@@ -58,7 +58,7 @@ suppress = [
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
 # python/test_bootstrap.py is the regression harness for
-# python/cli.py bootstrap parse-routing (Makefile
+# scripts/larch.sh bootstrap parse-routing (Makefile
 # `test-parse-bootstrap-routing-envelope`). The parser is structurally invoked
 # from skills/implement/SKILL.md, while the harness is Makefile-only.
 # is the offline regression harness for the public fork-setup coordinator. It
@@ -930,7 +930,7 @@ exclude = [
   "python/test_agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  # python/cli.py cleanup run. Not cited from SKILL.md by design
+  # scripts/larch.sh cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
   # python/test_pr_body.py is the regression harness for the
   # PR-body summary composer. It is referenced from Makefile and from the

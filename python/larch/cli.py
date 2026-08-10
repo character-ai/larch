@@ -14,7 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("status", "check"): ("larch.agents.agents", "status_check_main", False),
     ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
     ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
     ("calibration-replay", "validate-manifest"): (
@@ -66,9 +65,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "stage_policy_candidate_main",
         False,
     ),
-    ("bootstrap", "invoke"): ("larch.state.bootstrap", "invoke_main", True),
-    ("bootstrap", "parse-routing"): ("larch.state.bootstrap", "parse_routing_main", True),
-    ("bootstrap", "resolve-non-interactive"): ("larch.state.bootstrap", "resolve_non_interactive_main", False),
     ("residual-bash", "paths"): ("larch.core.residual_bash", "paths_main", True),
     ("verify", "main"): ("larch.core.verify_main", "main", False),
     ("complete-umbrella", "ship-leaf"): (
@@ -97,6 +93,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main", False),
     ("implement", "normalize-coder-scout"): ("larch.implement.implement_dispatch", "normalize_coder_scout_main", False),
     ("implement", "step-0-bootstrap"): ("larch.implement.implement_dispatch", "step0_bootstrap_main", False),
+    ("implement", "bootstrap-continuation"): ("larch.state.bootstrap", "continuation_main", True),
     ("implement", "step-0-degraded-gate"): ("larch.implement.implement_dispatch", "step0_degraded_gate_main", False),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main", False),
     ("implement", "step-5-review"): ("larch.implement.implement_dispatch", "step5_review_main", False),
@@ -280,7 +277,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ),
     ("alias", "generate"): ("larch.core.alias_skill", "generate_main", False),
     ("alias", "resolve-target"): ("larch.core.alias_skill", "resolve_target_main", False),
-    ("cleanup", "run"): ("larch.core.cleanup_skill", "run_main", False),
     ("forked-repo", "setup"): ("larch.core.forked_repo", "setup_main", False),
     ("design", "parse-flags"): ("larch.design.design_argv", "parse_flags_main", True),
     ("design", "step0-parse"): ("larch.design.design_step0_env", "step0_parse_main", True),

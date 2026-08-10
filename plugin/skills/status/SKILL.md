@@ -17,7 +17,7 @@ Print the current larch version and health status of external vendor tools (Code
 <!-- step:1 — Run status check -->
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" status check
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" status check
 ```
 
 Parse all KV pairs from stdout without `eval`/`source`. Extract at minimum:

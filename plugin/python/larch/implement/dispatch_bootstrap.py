@@ -212,7 +212,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, P
 
     non_interactive = args.non_interactive
     if non_interactive == "":
-        resolved = _invoke_cli(["bootstrap", "resolve-non-interactive"])
+        resolved = _invoke_larch(["bootstrap", "resolve-non-interactive"])
         non_interactive = "true" if resolved.stdout.strip() == "true" else "false"
 
     invoke_args = [
@@ -235,7 +235,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, P
         "--non-interactive", non_interactive,
         "--difficulty", args.difficulty,
     ]
-    result = _invoke_cli(invoke_args)
+    result = _invoke_larch(invoke_args)
     values = _parse_kv(result.stdout or "")
     if (
         result.returncode == 0

@@ -575,10 +575,14 @@ identities, requires explicit confirmation, and reprobes immediately before its
 destructive mirror push. A confirmed sync can delete or overwrite fork refs.
 URL overrides remain operator-supplied trust inputs.
 
-`/cleanup` and SessionStart cleanup use fixed roots, name allowlists, age gates,
-bounded nested-activity checks, and symlink rejection. Retention is not an
-active-run lock. Stale private session state can be deleted permanently when it
-passes those gates.
+Rust-owned `/cleanup` and SessionStart cleanup use fixed roots, name
+allowlists, age gates, bounded nested-activity checks, and symlink rejection.
+The sweep collects session directories named by live environment state and
+current pointers before it considers deletion; those live directories remain
+protected regardless of age. An unreadable current pointer makes the
+age-based sweep fail closed. Retention is not a lock for an unknown or
+unreferenced stale session. Stale private session state can be deleted
+permanently when it passes those gates.
 
 SessionStart maintenance hooks are fail-soft and non-blocking. They must not
 turn local paths, logs, or subprocess diagnostics into advisory instructions.

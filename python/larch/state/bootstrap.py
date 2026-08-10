@@ -11,7 +11,6 @@ import io
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -28,7 +27,7 @@ from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body
-from larch.report import progress_file, run_log_batch, run_logs, tokens
+from larch.report import run_log_batch, run_logs
 from larch.agents import agents
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -96,25 +95,8 @@ def _resolve_repo_root() -> str:
             or str(Path.cwd()))
 
 
-def _install_statusline_best_effort() -> None:
-    _ = rust_runtime.install_statusline(
-        proc,
-        plugin_root=str(_REPO_ROOT),
-        repo_root=str(Path.cwd()),
-        notice=True,
-    )
-
-
 def _valid_run_id(value: str) -> bool:
     return bool(value) and _RUN_ID_RE.fullmatch(value) is not None
-
-
-def _activatable_run_id(run_id: str) -> bool:
-    try:
-        progress_file.validate_run_id(run_id)
-    except ValueError:
-        return False
-    return True
 
 
 def _valid_issue(value: str) -> bool:
@@ -167,90 +149,6 @@ def _merge_write_ship_seed_input(*, tmpdir: str, values: dict[str, str], only_mi
     ordered = ("MERGE", "DRAFT", "FORKED_TARGET", "NO_ADMIN_FALLBACK", "NO_LOGS_COMMIT", "DIFFICULTY_OVERRIDE", "DEFERRED", "MANIFEST_PATH", "TOOL_LABEL")
     text = "".join(f"{key}={data.get(key, '')}\n" for key in ordered if key in data)
     _atomic_text(path=path, text=text)
-
-
-def _materialize_main_health_env(st: BootstrapState) -> None:
-    if not st.implement_tmpdir or not st.opts.preflight_tmpdir:
-        return
-    source = Path(st.opts.preflight_tmpdir) / "main-health.env"
-    if not source.is_file() or source.is_symlink():
-        return
-    target = Path(st.implement_tmpdir) / "main-health.env"
-    try:
-        text = source.read_text(encoding="utf-8", errors="replace")
-        _atomic_text(path=target, text=text)
-    except OSError:
-        return
-
-
-def _materialize_preflight_sidecars(st: BootstrapState) -> None:
-    if not st.opts.preflight_tmpdir:
-        return
-    _atomic_text(path=Path(st.implement_tmpdir) / "preflight-tmpdir.env", text=f"PREFLIGHT_TMPDIR={st.opts.preflight_tmpdir}\n")
-    _materialize_main_health_env(st)
-
-def _write_larch_run_sh(implement_tmpdir: str) -> bool:
-    if not implement_tmpdir:
-        return False
-    path = Path(implement_tmpdir) / "larch-run.sh"
-    script = """#!/usr/bin/env bash
-set -uo pipefail
-
-IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}"
-export IMPLEMENT_TMPDIR
-
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-export CLAUDE_PLUGIN_ROOT
-
-[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || { printf '%s\\n' 'larch-run.sh: CLAUDE_PLUGIN_ROOT could not be resolved' >&2; exit 2; }
-[ "${1:-}" = "--print-plugin-root" ] && { printf '%s\\n' "$CLAUDE_PLUGIN_ROOT"; exit 0; }
-[ "$#" -ge 1 ] || { printf '%s\\n' 'larch-run.sh: missing relative script path' >&2; exit 2; }
-
-script=$1
-shift
-case "$script" in
-  /*|*..*) printf '%s\\n' "larch-run.sh: invalid relative script path: $script" >&2; exit 2 ;;
-esac
-
-_larch_cleanup_active_leg() {
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
-}
-
-case "$script" in
-  *.py)
-    _larch_active_leg_owner_token="$(python3 -c 'import uuid; print(uuid.uuid4().hex)' 2>/dev/null || printf '%s.%s.%s\n' "$$" "$(date +%s)" "${RANDOM:-0}")"
-    export __OWNER_TOKEN_ENV__="$_larch_active_leg_owner_token"
-    trap _larch_cleanup_active_leg EXIT INT TERM
-    python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
-    rc=$?
-    _larch_cleanup_active_leg
-    trap - EXIT INT TERM
-    exit "$rc"
-    ;;
-  *.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
-  *) printf '%s\\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
-esac
-"""
-    script = script.replace("__OWNER_TOKEN_ENV__", config.ENV_ACTIVE_LEG_OWNER_TOKEN)
-    try:
-        _atomic_text(path=path, text=script)
-        path.chmod(0o755)
-    except OSError:
-        return False
-    return True
-
-
-def _resolve_resume_implement_tmpdir(*, claude_pid: str) -> str:
-    if not re.fullmatch(r"[1-9][0-9]{0,6}", claude_pid):
-        return ""
-    pointer = Path.home() / ".cache" / "larch" / "sessions" / f"current-implement-env-{claude_pid}.sh"
-    if not pointer.is_file() or pointer.is_symlink():
-        return ""
-    tmpdir = _read_simple_kv(path=pointer, key="IMPLEMENT_TMPDIR")
-    if not tmpdir or not Path(tmpdir).is_absolute():
-        return ""
-    return tmpdir
 
 
 def _read_key(*, path: Path, key: str, default: str = "") -> str:
@@ -393,23 +291,6 @@ def _write_base_session_env(st: BootstrapState) -> None:
             st.emit_step_failed("write-session-env")
 
 
-def _write_claude_source_snapshot(st: BootstrapState) -> None:
-    if not st.implement_tmpdir:
-        return
-    target = Path(st.implement_tmpdir) / "claude-source.env"
-    if target.is_file() and target.stat().st_size > 0:
-        return
-    result = tokens.token_claude_source()
-    if not result.available:
-        return
-    _atomic_text(
-        path=target,
-        text=(f"TRANSCRIPT_PATH={result.transcript_path}\n"
-              f"SESSION_DIR={result.session_dir or ''}\n"
-              f"SESSION_UUID={result.session_uuid}\n"),
-    )
-
-
 def _persist_run_flags(st: BootstrapState) -> bool:
     if not st.implement_tmpdir:
         return True
@@ -429,172 +310,8 @@ def _persist_run_flags(st: BootstrapState) -> bool:
     return True
 
 
-def _ensure_plugin_root_env(st: BootstrapState) -> None:
-    plugin_env = Path(st.implement_tmpdir) / "plugin-root.env"
-    if not plugin_env.is_file():
-        _ = session_env.run_write_env(session_env.WriteEnvParams(
-            output=str(plugin_env), repo_unavailable=None,
-            plugin_root_only=True, value=str(_REPO_ROOT),
-        ))
-
-
-def _restore_resume_progress(st: BootstrapState) -> None:
-    st.run_id = st.read_session(key="LARCH_RUN_ID") or st.resolve_run_id()
-    if _activatable_run_id(st.run_id):
-        with contextlib.suppress(OSError, ValueError):
-            _ = rust_runtime.progress_activate(
-                proc,
-                repo_root=str(Path.cwd()),
-                run_id=st.run_id,
-            )
-
-
 def _self_subagents_only(opts: BootstrapOptions) -> bool:
     return opts.self_review_requested == "true" and opts.self_implement_requested == "true"
-
-
-def _refresh_reviewer_state(st: BootstrapState) -> None:
-    if _self_subagents_only(st.opts):
-        return
-    reviewer = agents.check_reviewers(
-        skip_codex_probe=st.opts.skip_codex_probe,
-        skip_cursor_probe=st.opts.skip_cursor_probe,
-    )
-    reviewer_kv = reviewer.kv()
-    st.codex_present = reviewer_kv.get("CODEX_PRESENT", st.codex_present)
-    st.cursor_present = reviewer_kv.get("CURSOR_PRESENT", st.cursor_present)
-    st.codex_binary_found = reviewer_kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
-    st.cursor_binary_found = reviewer_kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
-    _write_base_session_env(st)
-
-
-def _resolve_entry_gate(st: BootstrapState) -> bool:
-    """Record the Rust-owned entry-gate decision, reporting whether it resolved."""
-    gate = proc.run([
-        str(larch_entrypoint(_REPO_ROOT)), "session", "entry-gate",
-        "--mode", "implement", "--current-branch", st.current_branch,
-        "--is-main", st.is_main, "--is-user-branch", st.is_user_branch,
-        "--user-prefix", st.user_prefix,
-    ])
-    if gate.returncode != 0:
-        return False
-    fields = larch_io.parse_kv(gate.stdout, duplicate_policy="last")
-    st.entry_gate = fields.get("ENTRY_GATE", "")
-    st.skip_branch_check = fields.get("SKIP_BRANCH_CHECK", "")
-    return True
-
-
-def _phase_infra(st: BootstrapState) -> None:
-    _ = rust_runtime.progress_clear(proc, repo_root=str(Path.cwd()))
-    branch = pr.check_branch_state(proc)
-    if branch.exit_code != 0:
-        st.emit_step_failed("create-branch")
-    st.current_branch = branch.current_branch
-    st.is_main = str(branch.is_main).lower()
-    st.is_user_branch = str(branch.is_user_branch).lower()
-    st.user_prefix = branch.user_prefix
-    if not _resolve_entry_gate(st):
-        st.emit_step_failed("session-entry-gate")
-        return
-
-    if st.opts.resume_plan_tail and st.implement_tmpdir and st.session_env().is_file():
-        st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (Path(st.implement_tmpdir) / "session-id").is_file() else ""
-        st.repo = st.read_session(key="REPO")
-        st.repo_unavailable = st.read_session(key="REPO_UNAVAILABLE", default="false")
-        st.codex_present = st.read_session(key="CODEX_PRESENT")
-        st.cursor_present = st.read_session(key="CURSOR_PRESENT")
-        st.claude_binary_found = st.read_session(key="CLAUDE_BINARY_FOUND")
-        st.codex_binary_found = st.read_session(key="CODEX_BINARY_FOUND")
-        st.cursor_binary_found = st.read_session(key="CURSOR_BINARY_FOUND")
-        _restore_resume_progress(st)
-        _ensure_plugin_root_env(st)
-    else:
-        skip_external_tool_probes = _self_subagents_only(st.opts)
-        setup_argv = [
-            str(larch_entrypoint(_REPO_ROOT)), "session", "setup",
-            "--prefix", "claude-implement",
-        ]
-        if st.skip_branch_check == "true":
-            setup_argv.append("--skip-branch-check")
-        if st.opts.skip_codex_probe or skip_external_tool_probes:
-            setup_argv.append("--skip-codex-probe")
-        if st.opts.skip_cursor_probe or skip_external_tool_probes:
-            setup_argv.append("--skip-cursor-probe")
-        if st.opts.caller_env:
-            setup_argv.extend(["--caller-env", st.opts.caller_env])
-        setup = proc.run(setup_argv)
-        if setup.returncode != 0:
-            st.emit_step_failed("session-setup")
-            return
-        try:
-            setup_fields = larch_io.parse_kv(setup.stdout, duplicate_policy="last")
-        except ValueError:
-            st.emit_step_failed("session-setup")
-            return
-        st.implement_tmpdir = setup_fields.get("SESSION_TMPDIR", "")
-        st.session_id = setup_fields.get("SESSION_ID", "")
-        if not st.implement_tmpdir or not st.session_id or not Path(st.implement_tmpdir).is_dir():
-            st.emit_step_failed("session-setup")
-            return
-        os.environ["IMPLEMENT_TMPDIR"] = st.implement_tmpdir
-        st.repo = setup_fields.get("REPO", "")
-        st.repo_unavailable = setup_fields.get("REPO_UNAVAILABLE", "false")
-        st.codex_present = setup_fields.get("CODEX_PRESENT", "")
-        st.cursor_present = setup_fields.get("CURSOR_PRESENT", "")
-        st.claude_binary_found = setup_fields.get("CLAUDE_BINARY_FOUND", "")
-        st.codex_binary_found = setup_fields.get("CODEX_BINARY_FOUND", "")
-        st.cursor_binary_found = setup_fields.get("CURSOR_BINARY_FOUND", "")
-        _materialize_preflight_sidecars(st)
-        st.run_id = st.resolve_run_id()
-        if _activatable_run_id(st.run_id):
-            with contextlib.suppress(OSError, ValueError):
-                _ = rust_runtime.progress_activate(
-                    proc,
-                    repo_root=str(Path.cwd()),
-                    run_id=st.run_id,
-                )
-        _write_claude_source_snapshot(st)
-        _write_base_session_env(st)
-        _ = tokens.token_mark(step="Step 0 — preflight")
-        _ = rust_runtime.timing_mark(
-            proc,
-            label="Step 0 — preflight",
-            skill="implement",
-        )
-        _refresh_reviewer_state(st)
-    _install_statusline_best_effort()
-    if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):
-        st.emit_step_failed("larch-run")
-    pid = os.environ.get("LARCH_CLAUDE_PID", "")
-    if pid and st.implement_tmpdir:
-        written = proc.run([
-            str(larch_entrypoint(_REPO_ROOT)), "session", "write-implement-env",
-            "--claude-pid", pid,
-            "--implement-tmpdir", st.implement_tmpdir,
-            "--cwd", str(Path.cwd()),
-        ])
-        if written.returncode != 0:
-            diag = Path(st.implement_tmpdir) / "write-implement-env-warning.log"
-            with contextlib.suppress(OSError):
-                diag.write_text(written.stderr.strip(), encoding="utf-8")
-            if diag.is_file():
-                _append_failure_with_entry_fallback(
-                    st,
-                    site="implement-bootstrap write-implement-env",
-                    tool="session write-implement-env",
-                    exit_code="1",
-                    category="Warnings",
-                    output_file=diag,
-                    status_label="failed",
-                )
-            st.emit_step_failed("write-implement-env")
-    elif st.implement_tmpdir and not pid:
-        st.emit_step_failed("write-implement-env")
-    st.codex_available = "true" if st.codex_binary_found == "true" else "false"
-    st.cursor_available = "true" if st.cursor_binary_found == "true" else "false"
-    _err(f"→ step0: infra ready (tmpdir={st.implement_tmpdir} session={st.session_id})")
-
-
 def _phase_tracking(st: BootstrapState) -> None:
     if st.repo_unavailable == "true":
         st.branch_selected = "repo-unavailable-skip"
@@ -1310,17 +1027,33 @@ def _emit_final(st: BootstrapState) -> None:
         _emit_kv(key=key, value=value)
 
 
-def run_bootstrap(opts: BootstrapOptions) -> int:
-    st = BootstrapState(opts)
+def _run_bootstrap_after_infra(st: BootstrapState) -> int:
+    """Continue the tracking/plan owner after Rust has published session state.
+
+    `bootstrap invoke` owns the session-infrastructure phase in Rust.  The
+    tracking-issue, plan, and implementer-selection phases remain with #7681,
+    the `/implement` owner, until their dedicated migration leaf lands. The
+    handoff file is Rust-authored, session-confined state; this function never
+    recreates a session or re-runs the entry gate.
+    """
+    opts = st.opts
     try:
-        _phase_infra(st)
         if opts.up_to_phase in {"tracking", "plan", "coder", "all"}:
             _phase_tracking(st)
             if _valid_run_id(st.run_id):
                 _write_base_session_env(st)
-        if opts.up_to_phase in {"plan", "coder", "all"} and not st.implement_bail_reason and st.stall_tracking != "true" and st.repo_unavailable != "true":
+        if (
+            opts.up_to_phase in {"plan", "coder", "all"}
+            and not st.implement_bail_reason
+            and st.stall_tracking != "true"
+            and st.repo_unavailable != "true"
+        ):
             _phase_plan(st)
-        if opts.up_to_phase in {"coder", "all"} and not st.implement_bail_reason and st.stall_tracking != "true":
+        if (
+            opts.up_to_phase in {"coder", "all"}
+            and not st.implement_bail_reason
+            and st.stall_tracking != "true"
+        ):
             _phase_coder(st)
         _emit_final(st)
         return 0
@@ -1330,63 +1063,58 @@ def run_bootstrap(opts: BootstrapOptions) -> int:
         _emit_kv(key="STEP_FAILED", value="internal-error")
         if st.implement_tmpdir:
             with contextlib.suppress(OSError):
-                (Path(st.implement_tmpdir) / "bootstrap-internal-error.log").write_text(_single_line(str(exc)) + "\n", encoding="utf-8")
+                (Path(st.implement_tmpdir) / "bootstrap-internal-error.log").write_text(
+                    _single_line(str(exc)) + "\n", encoding="utf-8"
+                )
         return BOOTSTRAP_CONTRACT_FAILURE
 
 
-def bootstrap_main(argv: list[str]) -> int:
-    os.environ["LARCH_QUIET_DISABLE"] = "1"
-    parser = argparse.ArgumentParser(prog="bootstrap internal", add_help=True)
-    parser.add_argument("--up-to-phase", required=True, choices=["infra", "tracking", "plan", "coder", "all"])
-    parser.add_argument("--caller-env", default="")
-    parser.add_argument("--issue-number", default="")
-    parser.add_argument("--forked-target", default="false", choices=["true", "false"])
-    parser.add_argument("--merge-requested", default="false", choices=["true", "false"])
-    parser.add_argument("--draft-requested", default="false", choices=["true", "false"])
-    parser.add_argument("--no-admin-fallback", default="false", choices=["true", "false"])
-    parser.add_argument("--no-logs-commit", default="false", choices=["true", "false"])
-    parser.add_argument("--force-requested", default="false", choices=["true", "false"])
-    parser.add_argument("--self-review-requested", default="false", choices=["true", "false"])
-    parser.add_argument("--upstream-repo", default="")
-    parser.add_argument("--run-id", default="")
-    parser.add_argument("--coder", default="", choices=["", "claude", "codex", "cursor"])
-    parser.add_argument("--preflight-tmpdir", default="")
-    parser.add_argument("--resume-plan-tail", action="store_true")
-    parser.add_argument("--skip-codex-probe", action="store_true")
-    parser.add_argument("--skip-cursor-probe", action="store_true")
+def _restore_infra_state(*, opts: BootstrapOptions, infra_file: Path) -> BootstrapState | None:
+    """Read the Rust bootstrap handoff without trusting a symlinked file."""
+    if not infra_file.is_file() or infra_file.is_symlink():
+        return None
     try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return 2 if int(exc.code or 0) != 0 else 0
-    if args.issue_number and not args.issue_number.isdigit():
-        print("bootstrap: --issue-number must be numeric", file=sys.stderr)
-        return 2
-    if args.upstream_repo and re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", args.upstream_repo) is None:
-        print("bootstrap: --upstream-repo must be OWNER/REPO", file=sys.stderr)
-        return 2
-    if args.up_to_phase in {"plan", "coder", "all"} and args.issue_number and not args.preflight_tmpdir:
-        print("bootstrap: --preflight-tmpdir is required with --issue-number when --up-to-phase is plan, coder, or all", file=sys.stderr)
-        return 2
-    opts = BootstrapOptions(
-        up_to_phase=args.up_to_phase,
-        caller_env=args.caller_env,
-        issue_number=args.issue_number,
-        forked_target=args.forked_target,
-        merge_requested=args.merge_requested,
-        draft_requested=args.draft_requested,
-        no_admin_fallback=args.no_admin_fallback,
-        no_logs_commit=args.no_logs_commit,
-        force_requested=args.force_requested,
-        self_review_requested=args.self_review_requested,
-        upstream_repo=args.upstream_repo,
-        run_id=args.run_id,
-        preflight_tmpdir=args.preflight_tmpdir,
-        coder_opt=args.coder,
-        resume_plan_tail=args.resume_plan_tail,
-        skip_codex_probe=args.skip_codex_probe,
-        skip_cursor_probe=args.skip_cursor_probe,
-    )
-    return run_bootstrap(opts)
+        fields = larch_io.parse_kv(
+            infra_file.read_text(encoding="utf-8", errors="replace"),
+            key_pattern=_KEY_RE.pattern,
+            duplicate_policy="last",
+        )
+    except (OSError, ValueError):
+        return None
+    tmpdir = fields.get("IMPLEMENT_TMPDIR", "")
+    session_id = fields.get("SESSION_ID", "")
+    tmpdir_path = Path(tmpdir)
+    if (
+        not tmpdir
+        or not tmpdir_path.is_absolute()
+        or tmpdir_path.is_symlink()
+        or not tmpdir_path.is_dir()
+        or infra_file.parent != tmpdir_path
+        or not session_id
+    ):
+        return None
+    st = BootstrapState(opts, implement_tmpdir=tmpdir)
+    for field_name, key in (
+        ("current_branch", "CURRENT_BRANCH"),
+        ("is_main", "IS_MAIN"),
+        ("is_user_branch", "IS_USER_BRANCH"),
+        ("user_prefix", "USER_PREFIX"),
+        ("entry_gate", "ENTRY_GATE"),
+        ("skip_branch_check", "SKIP_BRANCH_CHECK"),
+        ("session_id", "SESSION_ID"),
+        ("repo", "REPO"),
+        ("repo_unavailable", "REPO_UNAVAILABLE"),
+        ("codex_present", "CODEX_PRESENT"),
+        ("cursor_present", "CURSOR_PRESENT"),
+        ("claude_binary_found", "CLAUDE_BINARY_FOUND"),
+        ("codex_binary_found", "CODEX_BINARY_FOUND"),
+        ("cursor_binary_found", "CURSOR_BINARY_FOUND"),
+        ("codex_available", "codex_available"),
+        ("cursor_available", "cursor_available"),
+        ("run_id", "RUN_ID"),
+    ):
+        setattr(st, field_name, fields.get(key, ""))
+    return st
 
 
 def _filtered_envelope(text: str, *, resume: bool) -> str:
@@ -1595,14 +1323,6 @@ def _resolve_non_interactive(
     return _parent_invocation_non_interactive()
 
 
-def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="bootstrap resolve-non-interactive", add_help=True)
-    parser.add_argument("--explicit", default="", choices=["", "true", "false"])
-    args = parser.parse_args(argv)
-    print("true" if _resolve_non_interactive(explicit=args.explicit) else "false")
-    return 0
-
-
 def _continue_predicate(data: dict[str, str]) -> bool:
     if data.get("IMPLEMENT_BAIL_REASON"):
         return False
@@ -1803,9 +1523,18 @@ def _run_absorbed_continue_tail(
     return ContinueTailResult(routing=routing, advisory_lines=advisory)
 
 
-def invoke_main(argv: list[str]) -> int:
+def continuation_main(argv: list[str]) -> int:
+    """Run the non-session bootstrap phases after the Rust infra handoff.
+
+    This internal `/implement` continuation is intentionally not the legacy
+    ``bootstrap invoke`` command.  Its explicit owner is the later implement
+    migration umbrella; Rust owns the public bootstrap command and calls this
+    only after it has atomically created or rehydrated the session state. The
+    remaining owner is #7681.
+    """
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="bootstrap invoke", add_help=True)
+    parser.add_argument("--infra-file", required=True)
     parser.add_argument("--mode", required=True, choices=["initial", "resume"])
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--forked-target", default="", choices=["", "true", "false"])
@@ -1828,17 +1557,25 @@ def invoke_main(argv: list[str]) -> int:
     except SystemExit as exc:
         return 1 if int(exc.code or 0) != 0 else 0
     env = os.environ
+    infra_file = Path(args.infra_file)
+    try:
+        infra_values = larch_io.parse_kv(
+            infra_file.read_text(encoding="utf-8", errors="replace"),
+            key_pattern=_KEY_RE.pattern,
+            duplicate_policy="last",
+        )
+    except (OSError, ValueError):
+        print("bootstrap invoke: Rust infrastructure handoff is unavailable", file=sys.stderr)
+        return 2
     issue = args.issue_number or env.get("TARGET_ISSUE_NUMBER") or env.get("ISSUE_NUMBER", "")
     caller_env = args.caller_env or env.get("CALLER_ENV_PATH") or env.get("SESSION_ENV_PATH", "")
     preflight = args.preflight_tmpdir or env.get("PREFLIGHT_TMPDIR", "")
     forked = args.forked_target or env.get("forked_target") or (env.get("FORKED_TARGET", "") if not env.get("forked_target") else "") or "false"
     upstream = args.upstream_repo or env.get("UPSTREAM_REPO", "")
     run_id = args.run_id or env.get("RUN_ID", "")
-    implement_tmpdir_env = env.get("IMPLEMENT_TMPDIR", "")
-    if args.mode == "resume" and not implement_tmpdir_env:
-        implement_tmpdir_env = _resolve_resume_implement_tmpdir(claude_pid=env.get("LARCH_CLAUDE_PID", ""))
-        if implement_tmpdir_env:
-            env["IMPLEMENT_TMPDIR"] = implement_tmpdir_env
+    implement_tmpdir_env = infra_values.get("IMPLEMENT_TMPDIR", "") or env.get("IMPLEMENT_TMPDIR", "")
+    if implement_tmpdir_env:
+        env["IMPLEMENT_TMPDIR"] = implement_tmpdir_env
     seed_file = Path(implement_tmpdir_env) / "ship-seed-input.env" if implement_tmpdir_env else Path()
     resume_seed = args.mode == "resume"
     merge_requested = (
@@ -1898,9 +1635,13 @@ def invoke_main(argv: list[str]) -> int:
         resume_plan_tail=args.mode == "resume",
         non_interactive=non_interactive,
     )
+    restored = _restore_infra_state(opts=opts, infra_file=infra_file)
+    if restored is None:
+        print("bootstrap invoke: Rust infrastructure handoff is invalid", file=sys.stderr)
+        return 2
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = run_bootstrap(opts)
+        rc = _run_bootstrap_after_infra(restored)
     out = buf.getvalue()
     if rc == BOOTSTRAP_CONTRACT_FAILURE:
         kv = larch_io.parse_kv(out, skip_comments=True, cr_strip="rstrip")
@@ -1976,53 +1717,3 @@ def invoke_main(argv: list[str]) -> int:
 
 def _parse_env_lines(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text, allowed_keys=ROUTING_KEYS, key_pattern=_KEY_RE.pattern)
-
-
-def _shell_assignments(data: dict[str, str], *, preserve_coder: bool) -> str:
-    lines: list[str] = []
-    for key in ROUTING_KEYS:
-        if preserve_coder and key in {"coder", "coder_fallback"}:
-            continue
-        if key in data and data[key] != "":
-            lines.append(f"{key}={shlex.quote(data[key])}")
-            lines.append(f"export {key}")
-        else:
-            lines.append(f"unset {key}")
-    return "\n".join(lines) + "\n"
-
-
-def parse_routing_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="bootstrap parse-routing", add_help=True)
-    parser.add_argument("--stdout-file", required=True)
-    parser.add_argument("--tmpdir", default="")
-    parser.add_argument("--resume", default="false", choices=["true", "false"])
-    parser.add_argument("--output", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return 1 if int(exc.code or 0) != 0 else 0
-    try:
-        stdout_text = Path(args.stdout_file).read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        print(f"bootstrap parse-routing: {exc}", file=sys.stderr)
-        return 1
-    stdout_data = _parse_env_lines(stdout_text)
-    tmpdir = args.tmpdir or stdout_data.get("IMPLEMENT_TMPDIR", "")
-    merged: dict[str, str] = {}
-    if tmpdir:
-        routing_file = Path(tmpdir) / "bootstrap-routing.env"
-        if routing_file.is_file() and not routing_file.is_symlink():
-            with contextlib.suppress(OSError):
-                merged.update(_parse_env_lines(routing_file.read_text(encoding="utf-8", errors="replace")))
-    for key, value in stdout_data.items():
-        if key not in merged or merged[key] == "":
-            merged[key] = value
-    if args.resume == "true":
-        merged.pop("coder", None)
-        merged.pop("coder_fallback", None)
-    text = _shell_assignments(merged, preserve_coder=args.resume == "true")
-    if args.output:
-        _atomic_text(path=Path(args.output), text=text)
-    else:
-        sys.stdout.write(text)
-    return 0

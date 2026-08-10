@@ -5,7 +5,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 #[cfg(unix)]
@@ -563,6 +563,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "title-match",
     ),
     CleanInstallCase::new("clean-install-blocker-all-open", "blocker", "all-open"),
+    CleanInstallCase::new("clean-install-bootstrap-invoke", "bootstrap", "invoke"),
+    CleanInstallCase::new(
+        "clean-install-bootstrap-parse-routing",
+        "bootstrap",
+        "parse-routing",
+    ),
+    CleanInstallCase::new(
+        "clean-install-bootstrap-resolve-non-interactive",
+        "bootstrap",
+        "resolve-non-interactive",
+    ),
+    CleanInstallCase::new("clean-install-cleanup-run", "cleanup", "run"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(
         "clean-install-combine-issues-close-eligible",
@@ -687,6 +699,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-named-block-write", "named-block", "write"),
     CleanInstallCase::new("clean-install-plan-scope-paths", "plan", "scope-paths"),
+    CleanInstallCase::new("clean-install-status-check", "status", "check"),
     CleanInstallCase::new("clean-install-plan-block-read", "plan-block", "read"),
     CleanInstallCase::new(
         "clean-install-plan-block-strip-body",
@@ -7386,6 +7399,205 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
     }
 }
 
+/// Pin the public bootstrap envelope after the Rust session phase on both
+/// paths. The verified wrapper supplies deterministic session setup while the
+/// real binary owns the command and invokes the remaining Python continuation.
+#[cfg(unix)]
+#[test]
+fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
+    let fixture = clean_install_fixture();
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical source root");
+    std::os::unix::fs::symlink(source_root.join("python"), fixture.root.join("python"))
+        .expect("link Python continuation");
+    let bin = fixture.root.join("bin");
+    fs::create_dir_all(&bin).expect("create fixture binary directory");
+    let fixture_binary = bin.join("larch");
+    fs::copy(&fixture.binary, &fixture_binary).expect("copy fixture binary");
+    let mut permissions = fs::metadata(&fixture_binary)
+        .expect("read fixture binary metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fixture_binary, permissions).expect("make fixture binary executable");
+
+    let bootstrap_session = fixture.root.join("bootstrap-session");
+    let fresh = run_bootstrap_invoke(&fixture, &bootstrap_session, "initial");
+    assert!(
+        fresh.status.success(),
+        "fresh bootstrap failed: {}",
+        String::from_utf8_lossy(&fresh.stderr)
+    );
+    let resume = run_bootstrap_invoke(&fixture, &bootstrap_session, "resume");
+    assert!(
+        resume.status.success(),
+        "resume bootstrap failed: {}",
+        String::from_utf8_lossy(&resume.stderr)
+    );
+
+    let expected = concat!(
+        "IMPLEMENT_TMPDIR={SESSION}\n",
+        "STALL_TRACKING=false\n",
+        "REPO_UNAVAILABLE=true\n",
+        "DEFERRED=true\n",
+        "REPO_ROOT={CWD}\n",
+        "CODEX_BINARY_FOUND=false\n",
+        "CURSOR_BINARY_FOUND=false\n",
+        "codex_available=false\n",
+        "cursor_available=false\n",
+        "RUN_ID=bootstrap-session\n",
+        "SELF_REVIEW_REQUESTED=true\n",
+        "SELF_IMPLEMENT_REQUESTED=true\n",
+        "BOOTSTRAP_NEXT=cleanup\n",
+    );
+    let normalize = |output: &[u8]| {
+        String::from_utf8_lossy(output)
+            .replace(&bootstrap_session.display().to_string(), "{SESSION}")
+            .replace(
+                &env::current_dir()
+                    .expect("test working directory")
+                    .display()
+                    .to_string(),
+                "{CWD}",
+            )
+    };
+    assert_eq!(normalize(&fresh.stdout), expected);
+    assert_eq!(normalize(&resume.stdout), expected);
+}
+
+/// The public command must preserve the live session named by its environment,
+/// even when the age gate would otherwise remove it from the cache root.
+#[cfg(unix)]
+#[test]
+fn cleanup_run_preserves_live_session_directory() {
+    let fixture = clean_install_fixture();
+    let live = fixture.home.join(".cache/larch/sessions/live-session");
+    fs::create_dir_all(&live).expect("create live session");
+    let old = SystemTime::now()
+        .checked_sub(Duration::from_secs(2 * 86_400))
+        .expect("old timestamp");
+    fs::File::open(&live)
+        .expect("open live session")
+        .set_times(fs::FileTimes::new().set_modified(old))
+        .expect("age live session");
+
+    let output = Command::new("/bin/bash")
+        .arg(fixture.root.join("scripts/larch.sh"))
+        .args(["cleanup", "run"])
+        .env("HOME", &fixture.home)
+        .env_remove("XDG_CACHE_HOME")
+        .env("TMPDIR", &fixture.session)
+        .env("IMPLEMENT_TMPDIR", &live)
+        .env("LARCH_CLEANUP_RETENTION_DAYS", "1")
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BINARY", &fixture.wrapper)
+        .env("REAL_LARCH", &fixture.binary)
+        .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        .env("CLEAN_INSTALL_FAILURE", "")
+        .output()
+        .expect("run cleanup");
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(live.is_dir(), "cleanup removed a live session");
+    assert!(String::from_utf8_lossy(&output.stdout).contains("CACHE_REMOVED=0"));
+}
+
+#[cfg(unix)]
+#[allow(clippy::literal_string_with_formatting_args)]
+#[test]
+fn status_check_preserves_the_health_envelope() {
+    let fixture = clean_install_fixture();
+    let entrypoint = fixture.root.join("scripts/larch.sh");
+    fs::write(
+        &entrypoint,
+        r#"#!/bin/sh
+case "${1:-}:${2:-}" in
+  agent:check-reviewers)
+    printf '%s\n' 'CODEX_BINARY_FOUND=true' 'CURSOR_BINARY_FOUND=true' 'CODEX_PRESENT=false' 'CURSOR_PRESENT=true' 'CODEX_PROBE_DETAIL=update Codex'
+    ;;
+  agent:degraded-tools-gate)
+    printf '%s\n' 'CODEX_STATE=probe-failed' 'CURSOR_STATE=ok' 'DEGRADED=true'
+    ;;
+  agent:resolve-model-pins)
+    printf '%s\n' 'CURSOR_MODEL_PINS=unknown-id' 'CURSOR_MODEL_PIN_DETAIL=CURSOR_MODEL=missing' 'CODEX_MODEL_PINS=skipped' 'CODEX_MODEL_PIN_DETAIL=vendor probe not ok'
+    ;;
+  *) exit 1 ;;
+esac
+"#,
+    )
+    .expect("write fake larch entrypoint");
+    let mut permissions = fs::metadata(&entrypoint)
+        .expect("read entrypoint permissions")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("make entrypoint executable");
+
+    let output = Command::new(&fixture.binary)
+        .args(["status", "check"])
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .output()
+        .expect("run status");
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!(
+            concat!(
+                "LARCH_PLUGIN_VERSION={}\n",
+                "CODEX_BINARY_FOUND=true\n",
+                "CURSOR_BINARY_FOUND=true\n",
+                "CODEX_PRESENT=false\n",
+                "CURSOR_PRESENT=true\n",
+                "CODEX_STATE=probe-failed\n",
+                "CURSOR_STATE=ok\n",
+                "DEGRADED=true\n",
+                "CODEX_PROBE_DETAIL=update Codex\n",
+                "CURSOR_MODEL_PINS=unknown-id\n",
+                "CURSOR_MODEL_PIN_DETAIL=CURSOR_MODEL=missing\n",
+                "CODEX_MODEL_PINS=skipped\n",
+                "CODEX_MODEL_PIN_DETAIL=vendor probe not ok\n",
+            ),
+            env!("CARGO_PKG_VERSION"),
+        )
+    );
+}
+
+#[cfg(unix)]
+fn run_bootstrap_invoke(
+    fixture: &CleanInstallFixture,
+    session: &Path,
+    mode: &str,
+) -> std::process::Output {
+    let mut command = Command::new("/bin/bash");
+    command
+        .arg(fixture.root.join("scripts/larch.sh"))
+        .args([
+            "bootstrap",
+            "invoke",
+            "--mode",
+            mode,
+            "--self-review-requested",
+            "true",
+            "--self-implement-requested",
+            "true",
+        ])
+        .env("HOME", &fixture.home)
+        .env("TMPDIR", &fixture.session)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BINARY", &fixture.wrapper)
+        .env("REAL_LARCH", &fixture.binary)
+        .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        .env("CLEAN_INSTALL_FAILURE", "")
+        .env("BOOTSTRAP_TEST_SESSION", session)
+        .env("LARCH_CLAUDE_PID", "4242")
+        .env("LARCH_TEST_CACHE_HOME", &fixture.root);
+    if mode == "resume" {
+        command.env("IMPLEMENT_TMPDIR", session);
+    }
+    command.output().expect("run bootstrap invoke")
+}
+
 /// Argument placeholder each clean-install case expands to the seeded session.
 const CLEAN_INSTALL_SESSION_TOKEN: &str = "%SESSION%";
 /// Argument placeholder each clean-install case expands to the isolated home.
@@ -7403,6 +7615,7 @@ struct CleanInstallFixture {
     binary: PathBuf,
 }
 
+#[allow(clippy::literal_string_with_formatting_args, clippy::too_many_lines)]
 fn clean_install_fixture() -> CleanInstallFixture {
     let temporary = tempfile::tempdir().expect("clean-install tempdir");
     let temporary_root = fs::canonicalize(temporary.path()).expect("canonical clean-install root");
@@ -7416,6 +7629,15 @@ fn clean_install_fixture() -> CleanInstallFixture {
         scripts.join("larch.sh"),
     )
     .expect("copy verified bootstrap script");
+    #[cfg(unix)]
+    {
+        let script = scripts.join("larch.sh");
+        let mut permissions = fs::metadata(&script)
+            .expect("read clean-install script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(script, permissions).expect("make clean-install script executable");
+    }
     fs::write(
         manifest_directory.join("plugin.json"),
         format!(
@@ -7430,6 +7652,27 @@ fn clean_install_fixture() -> CleanInstallFixture {
         r#"#!/bin/sh
 set -eu
 printf '%s\n' "$*" >> "$CLEAN_INSTALL_EVENTS"
+if [ -n "${BOOTSTRAP_TEST_SESSION:-}" ]; then
+  case "${1:-}:${2:-}" in
+    git:current-branch)
+      printf '%s\n' 'BRANCH=bootstrap-parity'
+      exit 0
+      ;;
+    session:setup)
+      mkdir -p "$BOOTSTRAP_TEST_SESSION"
+      printf '%s\n' 'bootstrap-session' > "$BOOTSTRAP_TEST_SESSION/session-id"
+      printf '%s\n' \
+        "SESSION_TMPDIR=$BOOTSTRAP_TEST_SESSION" \
+        'SESSION_ID=bootstrap-session' \
+        'REPO=' \
+        'REPO_UNAVAILABLE=true' \
+        'CLAUDE_BINARY_FOUND=false' \
+        'CODEX_BINARY_FOUND=false' \
+        'CURSOR_BINARY_FOUND=false'
+      exit 0
+      ;;
+  esac
+fi
 case "$CLEAN_INSTALL_FAILURE" in
   version)
     if [ "$1" = --version ]; then printf '%s\n' 'larch 0.0.0'; exit 0; fi
@@ -7476,7 +7719,10 @@ exec "$REAL_LARCH" "$@"
     // seeded link and target are what let a clean dispatch complete.
     fs::write(
         session.join("design-env.sh"),
-        "export SESSION_ID=clean-install\n",
+        format!(
+            "DESIGN_TMPDIR={}\nexport SESSION_ID=clean-install\n",
+            session.display()
+        ),
     )
     .expect("seed clean-install design env");
     #[cfg(unix)]
