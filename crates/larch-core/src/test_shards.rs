@@ -125,8 +125,11 @@ pub fn rewrite_makefile_shards(source: &str, shards: &TestShardMap) -> String {
         {
             output.push_str("test-harnesses-");
             output.push_str(&shard.to_string());
-            output.push_str(": ");
-            output.push_str(&prerequisites.join(" "));
+            output.push(':');
+            if !prerequisites.is_empty() {
+                output.push(' ');
+                output.push_str(&prerequisites.join(" "));
+            }
             output.push('\n');
         } else {
             output.push_str(line);
@@ -275,7 +278,10 @@ mod tests {
 
         let rewritten = rewrite_makefile_shards(
             source,
-            &BTreeMap::from([(20, vec!["test-first".to_owned(), "test-last".to_owned()])]),
+            &BTreeMap::from([
+                (3, Vec::new()),
+                (20, vec!["test-first".to_owned(), "test-last".to_owned()]),
+            ]),
         );
         assert_eq!(
             rewritten,

@@ -96,21 +96,23 @@ lint-only:
 # bash-only shards after pruning 193 pytest-wrapper targets that duplicated the python-tests job).
 # Each test-harnesses-N rule below stays on a single physical line (no `\` continuations); the
 # drift-detection script `scripts/test-harness-shards-coverage.sh` parses these lines literally.
-# Shard members must be direct Bash leaves (recipe-bearing test-* or *-bash-harness with no pytest).
+# Shard members must be direct Bash leaves (recipe-bearing test-* or *-bash-harness
+# with no pytest or Cargo invocation). Cargo-focused targets remain available for
+# local debugging; rust-full owns their required CI coverage.
 # Public aggregates (pytest + smoke) and pytest-only leaves stay out of shard lists; run via
 # make py-test or the local developer aggregate targets.
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: test-collect-agent-results test-blocker
+test-harnesses-1:
 
-test-harnesses-2: test-check-mid-run-dirty-tree test-fetch-combinable-issues-filter test-analyze
+test-harnesses-2:
 
-test-harnesses-3: test-design-step3-mav test-fluff-analysis test-gate-b-apply-mode test-design-step3-review test-check-clean-tree test-hook-anti-read-poll test-launch-claude-subprocess test-git-commit-only test-check-scope-reduction-marker test-cache-key-discipline test-block-submodule test-references-headers test-launch-claude-review test-no-grouped-reuse-guard test-plan-adequacy-audit oos-disposition-gate-bash-harness test-pause-skill test-audit-edit-write test-implement-anti-halt test-design-clarify test-implement-step8-exit3-first-fixer test-implement-step2-routing test-anti-halt test-implement-positional-issue test-fluff-analysis-corpus
+test-harnesses-3: test-design-step3-mav test-fluff-analysis test-gate-b-apply-mode test-design-step3-review test-hook-anti-read-poll test-cache-key-discipline test-block-submodule test-references-headers test-plan-adequacy-audit oos-disposition-gate-bash-harness test-pause-skill test-audit-edit-write test-implement-anti-halt test-design-clarify test-implement-step8-exit3-first-fixer test-implement-step2-routing test-anti-halt test-implement-positional-issue test-fluff-analysis-corpus
 
-test-harnesses-4: test-prompt-template-invariants test-step3-orchestrator-fence test-read-result-env test-check-phantom-dirty test-dispatch-code-voters test-file-failure-report-cross-repo test-cleanup-sessionstart test-design-step3b-tail test-token-vendor-scrapers test-resolve-upstream-larch-repo test-architectural-guidelines-step test-extinct-notification-stack test-phantom-probe-with-warn test-hook-deny-run-in-background write-final-report-bash-harness step-7a-bash-harness test-subskill-anchors flush-execution-issues-bash-harness test-sessionstart-statusline test-orchestrator-scope-sync test-research-angle-prompts test-legacy-title-prefix-literals-scope test-anti-improvised-wakeup test-effort-prose test-implement-cleanup-roundtrip
+test-harnesses-4: test-prompt-template-invariants test-step3-orchestrator-fence test-read-result-env test-file-failure-report-cross-repo test-cleanup-sessionstart test-design-step3b-tail test-token-vendor-scrapers test-resolve-upstream-larch-repo test-architectural-guidelines-step test-extinct-notification-stack test-hook-deny-run-in-background write-final-report-bash-harness step-7a-bash-harness test-subskill-anchors flush-execution-issues-bash-harness test-sessionstart-statusline test-orchestrator-scope-sync test-research-angle-prompts test-legacy-title-prefix-literals-scope test-anti-improvised-wakeup test-effort-prose test-implement-cleanup-roundtrip
 
-test-harnesses-5: test-harness-shards-coverage test-step3-review-cap test-findings-classification test-dispatch-with-waterfall test-voter-calibration test-design-step3-entry test-design-multi-round-integration test-sessionstart test-deny-edit-write test-cache-root-validation test-implement-fence-shape test-external-tool-registry test-pipe-sigpipe-safety test-hook-stop-fail-close test-check-stale-plugin test-render-cost-line-callsites test-implement-timing-rehydration test-quick-mode-docs-sync test-rejected-analysis test-triage-structure test-step-8-oos-checkpoint test-implement-rebase-macro test-brainstorm-prompts test-synthesis-subagent test-implement-relevant-checks-anti-halt
+test-harnesses-5: test-harness-shards-coverage test-step3-review-cap test-findings-classification test-voter-calibration test-design-step3-entry test-design-multi-round-integration test-sessionstart test-deny-edit-write test-cache-root-validation test-implement-fence-shape test-external-tool-registry test-pipe-sigpipe-safety test-hook-stop-fail-close test-check-stale-plugin test-render-cost-line-callsites test-implement-timing-rehydration test-quick-mode-docs-sync test-rejected-analysis test-triage-structure test-step-8-oos-checkpoint test-implement-rebase-macro test-brainstorm-prompts test-synthesis-subagent test-implement-relevant-checks-anti-halt
 
 test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
