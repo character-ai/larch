@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SETUP_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-deps --skip-preflight --skip-branch-check --skip-repo-check)
+SETUP_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup --prefix claude-deps --skip-preflight --skip-branch-check --skip-repo-check)
 printf '%s\n' "$SETUP_OUT"
 DEPS_TMPDIR=""
 while IFS= read -r setup_line; do case "$setup_line" in SESSION_TMPDIR=*) DEPS_TMPDIR="${setup_line#SESSION_TMPDIR=}" ;; esac; done <<< "$SETUP_OUT"

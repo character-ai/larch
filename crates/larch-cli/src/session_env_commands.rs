@@ -174,41 +174,61 @@ pub fn write_env(arguments: &[OsString]) -> ExitCode {
         emit_usage_error(WRITE_ENV_USAGE, "session write-env", &error);
         return ExitCode::FAILURE;
     }
+    finish(write_env_from_parsed(&parsed))
+}
+
+/// Run the existing session-env writer for `session setup` without emitting.
+///
+/// Setup publishes its ordered stdout envelope before writer diagnostics, just
+/// as the former subprocess composition did.  This helper keeps the write and
+/// validation owner in this module while returning that later diagnostic to
+/// the setup composition root.
+pub fn write_env_for_setup(arguments: &[OsString]) -> Result<(), String> {
+    let parsed = parse_with_flags(arguments, WRITE_ENV_OPTIONS, &["--plugin-root-only"], 0);
+    if let Some(error) = parsed.error() {
+        return Err(redact(&format!(
+            "{WRITE_ENV_USAGE}session write-env: error: {error}"
+        ))
+        .text()
+        .to_owned());
+    }
+    write_env_from_parsed(&parsed)
+        .map_err(|error| redact(&format!("ERROR={error}")).text().to_owned())
+}
+
+fn write_env_from_parsed(parsed: &ParsedCommandLine) -> Result<(), String> {
     let output = text(parsed.value("--output"));
-    let result = (|| -> Result<(), String> {
-        if output.is_empty() {
-            return Err(MISSING_WRITE_ENV_ARGUMENTS.to_owned());
-        }
-        let out_path = PathBuf::from(&output);
-        if parsed.flag("--plugin-root-only") {
-            let value = text(parsed.value("--value"));
-            if !is_valid_plugin_root_value(&value) {
-                return Ok(());
-            }
-            return write_plugin_root_env(&out_path, &value);
-        }
-        let rows = write_env_rows(&parsed)?;
-        validate_writer_keys(&rows, &WRITE_ENV_KEYS)?;
-        validate_no_newlines(&rows)?;
-        if output == "/dev/null" {
+    if output.is_empty() {
+        return Err(MISSING_WRITE_ENV_ARGUMENTS.to_owned());
+    }
+    let out_path = PathBuf::from(&output);
+    if parsed.flag("--plugin-root-only") {
+        let value = text(parsed.value("--value"));
+        if !is_valid_plugin_root_value(&value) {
             return Ok(());
         }
-        confirm_writable_session_target(&out_path, &output)?;
-        write_confined_file(&out_path, &render_kv(&rows)?, 0o600, "session-env")?;
-        // The sidecar is written only when the row set carries a plugin root,
-        // which is exactly when the environment supplied a valid one.
-        let Some((_key, plugin_root)) = rows
-            .iter()
-            .find(|(key, _value)| *key == "LARCH_CLAUDE_PLUGIN_ROOT")
-        else {
-            return Ok(());
-        };
-        write_plugin_root_env(
-            &parent_directory(&out_path).join("plugin-root.env"),
-            plugin_root,
-        )
-    })();
-    finish(result)
+        return write_plugin_root_env(&out_path, &value);
+    }
+    let rows = write_env_rows(parsed)?;
+    validate_writer_keys(&rows, &WRITE_ENV_KEYS)?;
+    validate_no_newlines(&rows)?;
+    if output == "/dev/null" {
+        return Ok(());
+    }
+    confirm_writable_session_target(&out_path, &output)?;
+    write_confined_file(&out_path, &render_kv(&rows)?, 0o600, "session-env")?;
+    // The sidecar is written only when the row set carries a plugin root,
+    // which is exactly when the environment supplied a valid one.
+    let Some((_key, plugin_root)) = rows
+        .iter()
+        .find(|(key, _value)| *key == "LARCH_CLAUDE_PLUGIN_ROOT")
+    else {
+        return Ok(());
+    };
+    write_plugin_root_env(
+        &parent_directory(&out_path).join("plugin-root.env"),
+        plugin_root,
+    )
 }
 
 /// Validate every `write-env` flag and compose its rows in wire order.

@@ -154,6 +154,16 @@ stable published batches. A publisher may copy a bounded, registered,
 sanitized projection into a published artifact. The raw source remains
 session-private.
 
+`session setup` is Rust-owned in
+`crates/larch-cli/src/session_setup_commands.rs`. It reads the allowlisted
+caller-env handoff before preflight, so malformed wire input cannot trigger a
+Git mutation. Its session directory is created through the shared
+`TemporaryRoot` and `SecureTempDir` adapters: prefixes cannot escape the
+session root, creation is private where the platform supports it, and the
+directory is revalidated before it becomes durable. The session identity and
+keepalive are confined writes; an identity-write failure closes the owned
+temporary directory rather than leaving a partial session state.
+
 External CLI credentials may enter a child process environment. A live
 `OPENAI_API_KEY` stays out of larch-owned argv and copied config, but same-user
 or host-level process inspection can still observe the child environment. On

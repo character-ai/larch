@@ -510,40 +510,41 @@ def _phase_infra(st: BootstrapState) -> None:
         _ensure_plugin_root_env(st)
     else:
         skip_external_tool_probes = _self_subagents_only(st.opts)
+        setup_argv = [
+            str(larch_entrypoint(_REPO_ROOT)), "session", "setup",
+            "--prefix", "claude-implement",
+        ]
+        if st.skip_branch_check == "true":
+            setup_argv.append("--skip-branch-check")
+        if st.opts.skip_codex_probe or skip_external_tool_probes:
+            setup_argv.append("--skip-codex-probe")
+        if st.opts.skip_cursor_probe or skip_external_tool_probes:
+            setup_argv.append("--skip-cursor-probe")
+        if st.opts.caller_env:
+            setup_argv.extend(["--caller-env", st.opts.caller_env])
+        setup = proc.run(setup_argv)
+        if setup.returncode != 0:
+            st.emit_step_failed("session-setup")
+            return
         try:
-            setup = session_env.setup(
-                prefix="claude-implement",
-                skip_branch_check=st.skip_branch_check == "true",
-                skip_codex_probe=st.opts.skip_codex_probe or skip_external_tool_probes,
-                skip_cursor_probe=st.opts.skip_cursor_probe or skip_external_tool_probes,
-                caller_env=st.opts.caller_env,
-            )
-        except (OSError, ValueError, session_env.SessionSetupError):
+            setup_fields = larch_io.parse_kv(setup.stdout, duplicate_policy="last")
+        except ValueError:
             st.emit_step_failed("session-setup")
             return
-        if setup.exit_code != 0:
+        st.implement_tmpdir = setup_fields.get("SESSION_TMPDIR", "")
+        st.session_id = setup_fields.get("SESSION_ID", "")
+        if not st.implement_tmpdir or not st.session_id or not Path(st.implement_tmpdir).is_dir():
             st.emit_step_failed("session-setup")
             return
-        st.implement_tmpdir = str(setup.session_tmpdir)
         os.environ["IMPLEMENT_TMPDIR"] = st.implement_tmpdir
-        st.session_id = setup.session_id
-        st.repo = setup.repo
-        st.repo_unavailable = setup.repo_unavailable
-        st.codex_present = setup.codex_present
-        st.cursor_present = setup.cursor_present
-        st.claude_binary_found = setup.claude_binary_found
-        st.codex_binary_found = setup.codex_binary_found
-        st.cursor_binary_found = setup.cursor_binary_found
+        st.repo = setup_fields.get("REPO", "")
+        st.repo_unavailable = setup_fields.get("REPO_UNAVAILABLE", "false")
+        st.codex_present = setup_fields.get("CODEX_PRESENT", "")
+        st.cursor_present = setup_fields.get("CURSOR_PRESENT", "")
+        st.claude_binary_found = setup_fields.get("CLAUDE_BINARY_FOUND", "")
+        st.codex_binary_found = setup_fields.get("CODEX_BINARY_FOUND", "")
+        st.cursor_binary_found = setup_fields.get("CURSOR_BINARY_FOUND", "")
         _materialize_preflight_sidecars(st)
-        session_id_path = Path(st.implement_tmpdir) / "session-id"
-        if st.session_id:
-            with contextlib.suppress(OSError):
-                _atomic_text(path=session_id_path, text=f"{st.session_id}\n")
-        else:
-            with contextlib.suppress(OSError):
-                session_env.write_id(output=session_id_path)
-        if not st.session_id and session_id_path.is_file():
-            st.session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
         st.run_id = st.resolve_run_id()
         if _activatable_run_id(st.run_id):
             with contextlib.suppress(OSError, ValueError):

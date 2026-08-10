@@ -744,7 +744,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         joined = " ".join(cmd)
-        if cmd[2:4] == ["session", "setup"]:
+        if cmd[1:3] == ["session", "setup"]:
             return fake_setup(cmd, **kwargs)
         if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
@@ -914,7 +914,7 @@ def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fa
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(list(cmd))
         joined = " ".join(cmd)
-        if cmd[2:4] == ["session", "setup"]:
+        if cmd[1:3] == ["session", "setup"]:
             return fake_setup(cmd, **kwargs)
         if list(cmd[1:3]) == ["run-log", "lifecycle-start"]:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")
@@ -960,7 +960,7 @@ def test_step0_session_refreshes_reviewer_values_before_writing_env(
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(list(cmd))
         # proc.run passes argv as a tuple; keep membership checks tuple/list-safe.
-        if list(cmd[2:4]) == ["session", "setup"]:
+        if list(cmd[1:3]) == ["session", "setup"]:
             return subprocess.CompletedProcess(cmd, 0, f"SESSION_TMPDIR={design}\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
         if "lifecycle-start" in cmd:
             return subprocess.CompletedProcess(cmd, 0, "LIFECYCLE_STARTED=true\n", "")

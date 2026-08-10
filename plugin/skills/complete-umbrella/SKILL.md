@@ -70,7 +70,7 @@ Require `UMBRELLA_STARTED=true` and the exact umbrella number. This mutation is 
 Create `COMPLETE_UMBRELLA_TMPDIR` with:
 
 ```bash
-SETUP_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup \
+SETUP_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup \
   --prefix claude-complete-umbrella \
   --skip-preflight \
   --skip-branch-check \

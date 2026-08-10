@@ -298,13 +298,40 @@ fn sentinel_adopts(issue: u64, tmpdir: &str, run_id: &str) -> bool {
 ///
 /// Exit codes carry the refusal: `1` is a branch refusal, `2` a dirty-tree or
 /// stash refusal, and `3` an argument, fetch, sync, or rebase failure.
-pub fn preflight(arguments: &[OsString]) -> ExitCode {
+/// The captured outcome of the clean-main preflight.
+///
+/// `session setup` needs the same state transition without leaking the
+/// preflight's success envelope into its own stdout contract.  Keep the
+/// decision and its rendering together so the standalone command and the
+/// composed caller cannot drift.
+pub struct PreflightResult {
+    exit_code: u8,
+    stdout: String,
+    stderr: String,
+}
+
+impl PreflightResult {
+    #[must_use]
+    pub(crate) const fn exit_code(&self) -> u8 {
+        self.exit_code
+    }
+
+    #[must_use]
+    pub(crate) fn combined_output(&self) -> String {
+        format!("{}{}", self.stdout, self.stderr)
+    }
+}
+
+/// Enforce the clean-main entry contract and capture its compatibility output.
+pub fn preflight_result(arguments: &[OsString]) -> PreflightResult {
     let (skip_branch_check, skip_clean_check) = match preflight_flags(arguments) {
         Ok(flags) => flags,
         Err(unknown) => {
-            eprint!("{PREFLIGHT_USAGE}");
-            eprintln!("Unknown option: {unknown}");
-            return ExitCode::from(3);
+            return PreflightResult {
+                exit_code: 3,
+                stdout: String::new(),
+                stderr: format!("{PREFLIGHT_USAGE}Unknown option: {unknown}\n"),
+            };
         }
     };
     // One repository read serves the branch, cleanliness, and sentinel rules.
@@ -312,7 +339,7 @@ pub fn preflight(arguments: &[OsString]) -> ExitCode {
     if !skip_branch_check {
         let current = current_branch_name(repository.as_ref());
         if current != "main" {
-            return preflight_failure(
+            return preflight_failure_result(
                 &format!(
                     "Not on main branch (on '{current}'). Switch to main first, or pass --skip-branch-check."
                 ),
@@ -326,17 +353,31 @@ pub fn preflight(arguments: &[OsString]) -> ExitCode {
     // The Git mutations run in the same clone the rules just read.
     let working_directory = env::current_dir().unwrap_or_default();
     if !fetch_origin_main(&working_directory) {
-        return preflight_failure("git fetch origin main failed.", 3);
+        return preflight_failure_result("git fetch origin main failed.", 3);
     }
     if !skip_branch_check && let MainSync::Blocked { ahead } = main_sync() {
-        return preflight_failure(&main_sync_blocked_message(ahead), 3);
+        return preflight_failure_result(&main_sync_blocked_message(ahead), 3);
     }
     if !skip_branch_check && !skip_clean_check && !rebase_onto_origin_main(&working_directory) {
-        return preflight_failure("git rebase origin/main failed.", 3);
+        return preflight_failure_result("git rebase origin/main failed.", 3);
     }
     clear_stalled_sentinel(repository.as_ref(), skip_clean_check);
-    emit_kv("PREFLIGHT", "ok");
-    ExitCode::SUCCESS
+    PreflightResult {
+        exit_code: 0,
+        stdout: "PREFLIGHT=ok\n".to_owned(),
+        stderr: String::new(),
+    }
+}
+
+/// Enforce the clean-main entry contract and sync the tree with `origin/main`.
+///
+/// Exit codes carry the refusal: `1` is a branch refusal, `2` a dirty-tree or
+/// stash refusal, and `3` an argument, fetch, sync, or rebase failure.
+pub fn preflight(arguments: &[OsString]) -> ExitCode {
+    let result = preflight_result(arguments);
+    print!("{}", result.stdout);
+    eprint!("{}", result.stderr);
+    ExitCode::from(result.exit_code)
 }
 
 /// Resolve the two boolean flags, naming the first token that is neither.
@@ -359,10 +400,12 @@ fn preflight_flags(arguments: &[OsString]) -> Result<(bool, bool), String> {
     Ok((skip_branch_check, skip_clean_check))
 }
 
-fn preflight_failure(message: &str, code: u8) -> ExitCode {
-    emit_kv("PREFLIGHT", "fail");
-    emit_kv("PREFLIGHT_ERROR", &single_line(message));
-    ExitCode::from(code)
+fn preflight_failure_result(message: &str, code: u8) -> PreflightResult {
+    PreflightResult {
+        exit_code: code,
+        stdout: format!("PREFLIGHT=fail\nPREFLIGHT_ERROR={}\n", single_line(message)),
+        stderr: String::new(),
+    }
 }
 
 /// Name the checked-out branch, or the empty string when there is none.
@@ -383,9 +426,9 @@ fn short_branch_name(name: &RefName) -> String {
 }
 
 /// Refuse a working tree that is dirty, unreadable, or carries stashed work.
-fn clean_tree_refusal(repository: Option<&GixRepository>) -> Option<ExitCode> {
+fn clean_tree_refusal(repository: Option<&GixRepository>) -> Option<PreflightResult> {
     let unreadable = || {
-        Some(preflight_failure(
+        Some(preflight_failure_result(
             "Could not determine working-tree cleanliness (helper produced no CLEAN= line).",
             2,
         ))
@@ -394,7 +437,7 @@ fn clean_tree_refusal(repository: Option<&GixRepository>) -> Option<ExitCode> {
         return unreadable();
     };
     match repository.local_status(&StatusOptions::default()) {
-        Ok(status) if status.is_dirty() => Some(preflight_failure(
+        Ok(status) if status.is_dirty() => Some(preflight_failure_result(
             "Working tree is not clean. Commit or stash changes first.",
             2,
         )),
@@ -404,9 +447,9 @@ fn clean_tree_refusal(repository: Option<&GixRepository>) -> Option<ExitCode> {
 }
 
 /// Refuse when `refs/stash` exists, the reference `git stash list` reports on.
-fn stash_refusal(repository: &GixRepository) -> Option<ExitCode> {
+fn stash_refusal(repository: &GixRepository) -> Option<PreflightResult> {
     let Ok(references) = repository.references() else {
-        return Some(preflight_failure(
+        return Some(preflight_failure_result(
             "Could not determine git stash cleanliness. Inspect git stash list and re-run.",
             2,
         ));
@@ -415,7 +458,7 @@ fn stash_refusal(repository: &GixRepository) -> Option<ExitCode> {
         .iter()
         .any(|reference| reference.name.as_bytes() == b"refs/stash")
         .then(|| {
-            preflight_failure(
+            preflight_failure_result(
                 "Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop.",
                 2,
             )
@@ -900,16 +943,22 @@ mod tests {
         // A clean tree with no stash admits; a new untracked file refuses.
         assert!(clean_tree_refusal(Some(&opened)).is_none());
         assert_eq!(
-            clean_tree_refusal(None),
-            Some(ExitCode::from(2)),
+            clean_tree_refusal(None).map(|result| result.exit_code()),
+            Some(2),
             "an unreadable repository is a cleanliness refusal, not a pass"
         );
         fixture.write("stray.txt", b"stray\n").expect("stray file");
-        assert_eq!(clean_tree_refusal(Some(&opened)), Some(ExitCode::from(2)));
+        assert_eq!(
+            clean_tree_refusal(Some(&opened)).map(|result| result.exit_code()),
+            Some(2)
+        );
 
         // Stashed work refuses even once the tree itself reads clean again.
         fixture.git(["stash", "push", "-u"]).expect("stash");
-        assert_eq!(clean_tree_refusal(Some(&opened)), Some(ExitCode::from(2)));
+        assert_eq!(
+            clean_tree_refusal(Some(&opened)).map(|result| result.exit_code()),
+            Some(2)
+        );
     }
 
     #[test]

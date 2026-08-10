@@ -4,7 +4,7 @@ Detects whether the installed larch plugin cache is behind the working-tree vers
 
 ## Primary caller
 
-`python/cli.py session setup` — invoked after a successful preflight when `--skip-preflight` is not set. Session-setup emits a human-readable warning via `emit` when `STALE_PLUGIN_CHECK=working-tree-ahead`, making the warning visible in the Bash tool output seen by the orchestrator. Unexpected helper failures are logged once via `larch_err` and session setup continues.
+`scripts/larch.sh session setup` — invoked after a successful preflight when `--skip-preflight` is not set. The Rust session-setup owner emits a human-readable warning when the working-tree version is ahead, making the warning visible in the Bash tool output seen by the orchestrator. Unexpected stale-check failures are warn-only and session setup continues.
 
 ## Dev-clone detection
 
@@ -26,4 +26,4 @@ Implementation source: `scripts/check-stale-plugin.sh` keeps the dev-clone marke
 
 ## Edit-in-sync
 
-When changing output keys or detection logic, update `python/cli.py session setup` (the warning emission block) and `scripts/test-check-stale-plugin.sh` in the same PR.
+When changing output keys or detection logic, update `crates/larch-cli/src/session_setup_commands.rs` (the warning emission block) and `scripts/test-check-stale-plugin.sh` in the same PR.

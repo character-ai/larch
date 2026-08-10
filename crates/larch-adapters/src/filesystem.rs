@@ -529,6 +529,23 @@ impl SecureTempDir {
         self.inner.path()
     }
 
+    /// Keep this verified directory after the handle drops.
+    ///
+    /// The directory is revalidated at the persistence boundary.  A failed
+    /// revalidation leaves cleanup enabled only when it can still be proven
+    /// safe by [`Drop`]; otherwise the replacement is left for inspection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathSafetyError`] when the owned directory or its root changed
+    /// before it could become a durable session resource.
+    pub fn keep(mut self) -> Result<PathBuf, PathSafetyError> {
+        self.confined.revalidate()?;
+        let path = self.inner.path().to_path_buf();
+        self.inner.disable_cleanup(true);
+        Ok(path)
+    }
+
     /// Revalidate and remove the owned directory now.
     ///
     /// # Errors
