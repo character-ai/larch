@@ -14,6 +14,7 @@ const DIRECT_FILES: &[&str] = &[
     "LICENSE",
     "SECURITY.md",
     "docs/analysis-state.md",
+    "docs/ci-latency-evidence.md",
     "docs/configuration-and-permissions.md",
     "docs/dev-hook-audit.md",
     "docs/difficulty-floor-globs.tsv",
@@ -424,6 +425,7 @@ mod tests {
         assert!(paths.contains("agents/reviewer.md"));
         assert!(paths.contains("ARCHITECTURE.md"));
         assert!(paths.contains("SECURITY.md"));
+        assert!(paths.contains("docs/ci-latency-evidence.md"));
         assert!(paths.contains("docs/git-operation-inventory.md"));
         assert!(paths.contains("docs/github-service-inventory.md"));
         assert!(paths.contains("docs/google-service-inventory.md"));
@@ -556,6 +558,7 @@ mod tests {
             [
                 "rm",
                 "--cached",
+                "docs/ci-latency-evidence.md",
                 "docs/dev-hook-audit.md",
                 "docs/progress-reporting.md",
                 "docs/rust-async-runtime.md",
@@ -569,7 +572,7 @@ mod tests {
         assert_eq!(
             runtime_paths(&root),
             Err(
-                "plugin runtime projection inputs are missing: docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
+                "plugin runtime projection inputs are missing: docs/ci-latency-evidence.md, docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
                     .to_owned()
             )
         );
