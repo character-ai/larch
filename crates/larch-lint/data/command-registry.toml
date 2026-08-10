@@ -8427,7 +8427,7 @@ planning_issue = 7679
 path = ".github/workflows/ci.yaml"
 kind = "ci"
 python = ["checks contains-pins", "ci rust-select", "ci rust-select-summary", "ci stage-rust-policy-candidate", "residual-bash paths"]
-rust = ["lint gitleaks"]
+rust = []
 
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"

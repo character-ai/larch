@@ -1333,17 +1333,19 @@ jobs:
 
           for directory in "$HOME/.cache" "$HOME/.cache/larch" "$HOME/.cache/larch/tools" "$gitleaks_cache_root" "${gitleaks_cache_root}/${GITLEAKS_VERSION}" "$gitleaks_cache_dir"; do
             if [ -e "$directory" ] || [ -L "$directory" ]; then
-              test -d "$directory" && test ! -L "$directory" || {
+              if [ ! -d "$directory" ] || [ -L "$directory" ]; then
                 echo "::error::gitleaks cache directory is not a real directory: $directory"
                 exit 1
-              }
+              fi
             else
               mkdir "$directory"
             fi
           done
 
           gitleaks_is_verified() {
-            test -f "$gitleaks_binary" && test ! -L "$gitleaks_binary" || return 1
+            if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+              return 1
+            fi
             actual_sha256="$(sha256sum "$gitleaks_binary" | awk '{print $1}')"
             test "$actual_sha256" = "$GITLEAKS_BINARY_SHA256" || return 1
             test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"
@@ -1365,10 +1367,10 @@ jobs:
             test -f "${temporary}/gitleaks" && test ! -L "${temporary}/gitleaks"
             printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "${temporary}/gitleaks" | sha256sum --check --strict --status -
             if [ -e "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
-              test -f "$gitleaks_binary" && test ! -L "$gitleaks_binary" || {
+              if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
                 echo "::error::gitleaks cache entry is not a regular file: $gitleaks_binary"
                 exit 1
-              }
+              fi
               rm -f -- "$gitleaks_binary"
             fi
             install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"

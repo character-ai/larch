@@ -4473,8 +4473,8 @@ def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> 
 
     assert "if ! gitleaks_is_verified; then" in gitleaks
     assert "gitleaks_is_verified || {" in gitleaks
-    assert 'test -d "$directory" && test ! -L "$directory"' in gitleaks
-    assert 'test -f "$gitleaks_binary" && test ! -L "$gitleaks_binary"' in gitleaks
+    assert '[ ! -d "$directory" ] || [ -L "$directory" ]' in gitleaks
+    assert '[ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]' in gitleaks
     assert "gitleaks cache entry is not a regular file" in gitleaks
     assert "verified gitleaks release failed post-install validation" in gitleaks
     assert gitleaks.count("env -i") == 3
