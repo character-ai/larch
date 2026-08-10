@@ -7,7 +7,7 @@
 
 use std::{collections::BTreeSet, path::Path};
 
-use toml::Value;
+use toml::{Value, map::Map};
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
 
@@ -89,6 +89,56 @@ impl HandoffCommand {
 struct RetainedModule {
     path: &'static str,
     planning_issue: i64,
+}
+
+type RegistryTable = Map<String, Value>;
+
+/// A command-registry row with its selector parsed once for the issue-domain
+/// audit. Keeping this representation local makes the audit's three-way
+/// ownership decision explicit: completed leaf, named hand-off, or stale
+/// umbrella ownership.
+struct RegistryCommand<'a> {
+    table: &'a RegistryTable,
+    domain: &'a str,
+    verb: &'a str,
+    selector: String,
+}
+
+impl<'a> RegistryCommand<'a> {
+    fn parse(value: &'a Value) -> Option<Self> {
+        let table = value.as_table()?;
+        let domain = registry_text(table, "domain");
+        let verb = registry_text(table, "verb");
+        Some(Self {
+            table,
+            domain,
+            verb,
+            selector: [domain, verb].join(" "),
+        })
+    }
+
+    fn text(&self, key: &str) -> Option<&str> {
+        self.table.get(key).and_then(Value::as_str)
+    }
+
+    fn integer(&self, key: &str) -> Option<i64> {
+        self.table.get(key).and_then(Value::as_integer)
+    }
+
+    fn has_final_cutover(&self) -> bool {
+        [
+            ("owner", "rust"),
+            ("implementation_parity", "complete"),
+            ("consumer_cutover", "complete"),
+            ("python_removal", "complete"),
+        ]
+        .into_iter()
+        .all(|(key, expected)| self.text(key) == Some(expected))
+    }
+}
+
+fn registry_text<'a>(table: &'a RegistryTable, key: &str) -> &'a str {
+    table.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
 impl RetainedModule {
@@ -312,20 +362,12 @@ impl Rule for IssuePythonFreeRule {
 }
 
 fn is_in_scope_row(value: &Value) -> bool {
-    let Some(table) = value.as_table() else {
+    let Some(command) = RegistryCommand::parse(value) else {
         return false;
     };
-    let domain = table
-        .get("domain")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let verb = table
-        .get("verb")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    expected_command(domain, verb).is_some()
-        || handoff_command(domain, verb).is_some()
-        || table.get("planning_issue").and_then(Value::as_integer) == Some(UMBRELLA_ISSUE)
+    expected_command(command.domain, command.verb).is_some()
+        || handoff_command(command.domain, command.verb).is_some()
+        || command.integer("planning_issue") == Some(UMBRELLA_ISSUE)
 }
 
 fn expected_command(domain: &str, verb: &str) -> Option<&'static ExpectedCommand> {
@@ -343,72 +385,55 @@ fn handoff_command(domain: &str, verb: &str) -> Option<&'static HandoffCommand> 
 fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
     let mut found = BTreeSet::new();
     let mut handoffs = BTreeSet::new();
-    for value in commands {
-        let Some(table) = value.as_table() else {
-            continue;
-        };
-        let domain = table
-            .get("domain")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let verb = table
-            .get("verb")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let selector = format!("{domain} {verb}");
-        if let Some(expected) = expected_command(domain, verb) {
-            found.insert(selector.clone());
-            if table.get("owner").and_then(Value::as_str) != Some("rust")
-                || table.get("implementation_parity").and_then(Value::as_str) != Some("complete")
-                || table.get("consumer_cutover").and_then(Value::as_str) != Some("complete")
-                || table.get("python_removal").and_then(Value::as_str) != Some("complete")
-            {
+    for command in commands.iter().filter_map(RegistryCommand::parse) {
+        if let Some(expected) = expected_command(command.domain, command.verb) {
+            found.insert(command.selector.clone());
+            if !command.has_final_cutover() {
                 findings.push(registry_finding(format!(
-                    "non-final issue-domain command row: {selector}; expected Rust ownership with complete parity, cutover, and Python removal"
+                    "non-final issue-domain command row: {}; expected Rust ownership with complete parity, cutover, and Python removal",
+                    command.selector
                 )));
             }
-            if table.get("migration_issue").and_then(Value::as_integer)
-                != Some(expected.migration_issue)
-            {
+            if command.integer("migration_issue") != Some(expected.migration_issue) {
                 findings.push(registry_finding(format!(
-                    "issue-domain migration leaf drift: {selector}; expected #{}",
+                    "issue-domain migration leaf drift: {}; expected #{}",
+                    command.selector,
                     expected.migration_issue
                 )));
             }
-            if table.get("planning_issue").and_then(Value::as_integer)
-                != Some(expected.planning_issue)
-            {
+            if command.integer("planning_issue") != Some(expected.planning_issue) {
                 findings.push(registry_finding(format!(
-                    "issue-domain planning owner drift: {selector}; expected #{}",
+                    "issue-domain planning owner drift: {}; expected #{}",
+                    command.selector,
                     expected.planning_issue
                 )));
             }
-            if table.get("python_module").and_then(Value::as_str) != Some(expected.python_module)
-                || table.get("python_function").and_then(Value::as_str)
-                    != Some(expected.python_function)
+            if command.text("python_module") != Some(expected.python_module)
+                || command.text("python_function") != Some(expected.python_function)
             {
                 findings.push(registry_finding(format!(
-                    "issue-domain retired Python target drift: {selector}; expected {}.{}",
+                    "issue-domain retired Python target drift: {}; expected {}.{}",
+                    command.selector,
                     expected.python_module, expected.python_function
                 )));
             }
             continue;
         }
-        if let Some(handoff) = handoff_command(domain, verb) {
-            handoffs.insert(selector.clone());
-            if table.get("planning_issue").and_then(Value::as_integer)
-                != Some(handoff.planning_issue)
-            {
+        if let Some(handoff) = handoff_command(command.domain, command.verb) {
+            handoffs.insert(command.selector.clone());
+            if command.integer("planning_issue") != Some(handoff.planning_issue) {
                 findings.push(registry_finding(format!(
-                    "issue-domain hand-off drift: {selector}; expected #{}",
+                    "issue-domain hand-off drift: {}; expected #{}",
+                    command.selector,
                     handoff.planning_issue
                 )));
             }
             continue;
         }
-        if table.get("planning_issue").and_then(Value::as_integer) == Some(UMBRELLA_ISSUE) {
+        if command.integer("planning_issue") == Some(UMBRELLA_ISSUE) {
             findings.push(registry_finding(format!(
-                "unclosed #{UMBRELLA_ISSUE} ledger row: {selector}; name the umbrella that owns its migration"
+                "unclosed #{UMBRELLA_ISSUE} ledger row: {}; name the umbrella that owns its migration",
+                command.selector
             )));
         }
     }
