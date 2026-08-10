@@ -74,7 +74,7 @@ fn wrapper_does_not_leak_bootstrap_metadata_to_the_child() {
             "--",
             "/bin/sh",
             "-c",
-            "test -z \"${LARCH_HARNESS_BOOTSTRAP_START_NS:-}\" && test -z \"${LARCH_HARNESS_BOOTSTRAP_KIND:-}\"",
+            "test -z \"$LARCH_HARNESS_BOOTSTRAP_START_NS\" && test -z \"$LARCH_HARNESS_BOOTSTRAP_KIND\"",
         ])
         .output()
         .expect("harness wrapper should launch");
