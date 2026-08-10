@@ -14,7 +14,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc
+from larch.core import config, logging_util, proc, rust_runtime
 from larch.core import redact
 from larch.core.repo_roots import larch_entrypoint
 from larch.state.session_env import validate_design_tmpdir
@@ -178,8 +178,14 @@ capture_contract_stream_to_paths = _capture_contract_stream_to_paths
 
 def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
     path = design_tmpdir / "execution-issues.md"
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(message if message.endswith("\n") else message + "\n")
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(path),
+        category="Warnings",
+        entry=message,
+    )
+    if outcome.failed:
+        raise OSError(outcome.error)
 
 
 def _emit_core_kvs(rows: Iterable[tuple[str, str]]) -> None:

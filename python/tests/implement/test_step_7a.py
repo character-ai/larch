@@ -161,7 +161,7 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
         argv: list[str] = [str(part) for part in cast("Sequence[str]", args[0])] if args else []
         if "execution-issues" in argv:
             flushes.append(argv[argv.index("execution-issues"):])
-            return subprocess.CompletedProcess(argv, 0, "FLUSH_STATUS=ok\nRECORDS=0\n", "")
+            return subprocess.CompletedProcess(argv, 0, "FLUSH_STATUS=skip\nRECORDS=0\n", "")
         return subprocess.CompletedProcess(["python"], 0, "", "")
 
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)

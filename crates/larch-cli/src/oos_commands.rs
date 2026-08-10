@@ -44,7 +44,7 @@ use serde_json::Value;
 
 use crate::{
     argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
-    execution_issue_commands::append_execution_issue,
+    run_log_entry_commands::append_execution_issue,
 };
 
 /// Publish one `argparse`-shaped usage refusal at this domain's usage code.

@@ -279,7 +279,14 @@ def _ballot_block_count(ballot_file: Path) -> int | None:
 
 def _log_review_core_issue(*, review_tmpdir: Path, message: str) -> None:
     with contextlib.suppress(OSError):
-        _append_text(path=review_tmpdir / "execution-issues.md", text=f"REVIEW CORE WARNING: {message}\n")
+        outcome = rust_runtime.execution_issues_append(
+            proc.ProcRunner(),
+            log=str(review_tmpdir / "execution-issues.md"),
+            category="Warnings",
+            entry=f"- REVIEW CORE WARNING: {message}",
+        )
+        if outcome.failed:
+            raise OSError(outcome.error)
 
 def _write_proposer_sidecar_and_neutralize(*, ballot_file: Path, proposer_map: Path) -> None:
     voting.write_proposer_map(ballot_file=ballot_file, map_file=proposer_map)

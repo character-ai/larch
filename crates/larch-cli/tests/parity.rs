@@ -7596,6 +7596,84 @@ fn run_clean_install_case(
     command.output().expect("run clean-install selector")
 }
 
+#[test]
+fn execution_issue_append_matches_the_frozen_python_behavior() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let reference = fixture_directory.join("execution_issues_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+    let cases = [
+        (
+            "execution-issues-append-category-keyed",
+            "Tool Failures",
+            "- same",
+            "",
+            vec![SeedFile::text(
+                "execution-issues.md",
+                "### Warnings\n\n- same\n",
+            )],
+        ),
+        (
+            "execution-issues-append-chunked-durable-dedupe",
+            "Warnings",
+            "- first\n- second\n- third",
+            "execution-issues.ndjson",
+            vec![
+                SeedFile::text("execution-issues.md", "### Warnings\n\n- first\n"),
+                SeedFile::text(
+                    "execution-issues.ndjson",
+                    concat!(
+                        "malformed\n",
+                        "{\"body\":\"- third\\n\",\"category\":\"Warnings\"}\n"
+                    ),
+                ),
+            ],
+        ),
+        (
+            "execution-issues-append-duplicate",
+            "Warnings",
+            "- same",
+            "",
+            vec![SeedFile::text(
+                "execution-issues.md",
+                "### Warnings\n\n- same\n",
+            )],
+        ),
+    ];
+    for (name, category, entry, batch, seed_files) in cases {
+        let mut common = vec![
+            "--log".to_owned(),
+            "{sandbox}/execution-issues.md".to_owned(),
+            "--category".to_owned(),
+            category.to_owned(),
+            "--entry".to_owned(),
+            entry.to_owned(),
+        ];
+        if !batch.is_empty() {
+            common.extend([
+                "--existing-batch".to_owned(),
+                format!("{{sandbox}}/{batch}"),
+            ]);
+        }
+        let case = ParityCase {
+            name,
+            python: Program::new(&python)
+                .args(std::iter::once(path_text(&reference).to_owned()).chain(common.clone())),
+            rust: Program::new(&rust).args(
+                ["execution-issues".to_owned(), "append".to_owned()]
+                    .into_iter()
+                    .chain(common),
+            ),
+            seed_files,
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        };
+        let golden = golden_directory.join(format!("{name}.golden.json"));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 fn fixture_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rust-parity")
 }

@@ -136,7 +136,7 @@ test-append-tool-failure:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
 
 test-append-execution-issue:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/issue/test_execution_issues.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test execution_issues_contract append_
 
 test-validate-research-output:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/research/test_research_eval.py

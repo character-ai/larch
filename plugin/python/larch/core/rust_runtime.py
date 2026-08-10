@@ -114,6 +114,36 @@ class TrackingIssueSentinelOutput:
 
 
 @dataclass(frozen=True)
+class ExecutionIssuesAppendOutput:
+    """Validated result from the Rust execution-issue append owner."""
+
+    failed: bool
+    status: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class ExecutionIssuesFlushOutput:
+    """Validated result from one Rust execution-issue flush boundary."""
+
+    failed: bool
+    status: str = ""
+    records: int = 0
+    append_log_file: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class ExecutionIssuesRefreshOutput:
+    """Validated result from the Rust execution-issue refresh owner."""
+
+    failed: bool
+    refreshed: bool = False
+    reason: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class IssueParsedItem:
     """One item published by the Rust-owned ``issue parse-input`` command."""
 
@@ -554,6 +584,227 @@ def issue_state(
         state=values.get("STATE", ""),
         url=values.get("URL", ""),
         is_pr=values.get("IS_PR", "") == "true",
+    )
+
+
+def _execution_issues_run(
+    runner: Runner,
+    *,
+    verb: str,
+    arguments: Sequence[str],
+    cwd: str | None = None,
+) -> tuple[CommandResult, dict[str, str], bool]:
+    """Invoke one execution-issue verb and reject ambiguous KV envelopes."""
+    result = runner.run(
+        [
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+            "execution-issues",
+            verb,
+            *arguments,
+        ],
+        cwd=cwd,
+    )
+    rows = larch_io.parse_kv(
+        result.stdout, duplicate_policy="all", skip_empty_key=True
+    )
+    malformed_line = any(
+        "=" not in line or not line.split("=", 1)[0]
+        for line in result.stdout.splitlines()
+    )
+    malformed = malformed_line or any(len(values) != 1 for values in rows.values())
+    return result, {key: values[0] for key, values in rows.items() if values}, malformed
+
+
+def _execution_issues_error(result: CommandResult, values: Mapping[str, str]) -> str:
+    return (
+        values.get("ERROR", "")
+        or " ".join((result.stderr or result.stdout).split())[:500]
+        or "invalid execution-issues envelope"
+    )
+
+
+def execution_issues_append(  # noqa: PLR0913 - mirrors the Rust execution-issues append option surface
+    runner: Runner,
+    *,
+    log: str,
+    category: str,
+    entry: str,
+    existing_batch: str = "",
+    redact_entry: bool = False,
+    cwd: str | None = None,
+) -> ExecutionIssuesAppendOutput:
+    """Append category-keyed Markdown chunks through ``scripts/larch.sh``."""
+    arguments = [
+        "--log",
+        log,
+        "--category",
+        category,
+        "--entry",
+        entry,
+        "--report-status",
+        "--spaced-section",
+    ]
+    if existing_batch:
+        arguments.extend(["--existing-batch", existing_batch])
+    if redact_entry:
+        arguments.append("--redact")
+    result, values, malformed = _execution_issues_run(
+        runner, verb="append", arguments=arguments, cwd=cwd
+    )
+    status = values.get("APPEND_STATUS", "")
+    failed = (
+        result.returncode != 0
+        or malformed
+        or set(values) != {"APPEND_STATUS"}
+        or status not in {"appended", "duplicate"}
+    )
+    return ExecutionIssuesAppendOutput(
+        failed=failed,
+        status=status,
+        error=(
+            _execution_issues_error(result, values)
+            if failed and result.returncode != 0
+            else "invalid execution-issues envelope" if failed else ""
+        ),
+    )
+
+
+def _execution_issues_flush(  # noqa: PLR0913 - owns one typed process envelope
+    runner: Runner,
+    *,
+    verb: str,
+    log_root: str,
+    run_id: str,
+    issue_log: str = "",
+    batch: str = "execution-issues",
+    step_label: str = "",
+    source_label: str = "",
+    record_file: str = "",
+    cwd: str | None = None,
+) -> ExecutionIssuesFlushOutput:
+    arguments = ["--log-root", log_root, "--run-id", run_id]
+    for option, value in (
+        ("--issue-log", issue_log),
+        ("--step-label", step_label),
+        ("--source-label", source_label),
+        ("--record-file", record_file),
+    ):
+        if value:
+            arguments.extend([option, value])
+    if batch != "execution-issues":
+        arguments.extend(["--batch", batch])
+    result, values, malformed = _execution_issues_run(
+        runner, verb=verb, arguments=arguments, cwd=cwd
+    )
+    status = values.get("FLUSH_STATUS", "")
+    records_text = values.get("RECORDS", "")
+    allowed = {"FLUSH_STATUS", "RECORDS", "APPEND_LOG_FILE", "ERROR"}
+    failed = (
+        result.returncode != 0
+        or malformed
+        or not set(values).issubset(allowed)
+        or not {"FLUSH_STATUS", "RECORDS"}.issubset(values)
+        or status
+        not in {"skip", "already-flushed", "no-records", "ok", "rendered"}
+        or not records_text.isascii()
+        or not records_text.isdigit()
+        or (status in {"skip", "already-flushed", "no-records"} and records_text != "0")
+        or (status == "ok" and records_text == "0")
+        or "ERROR" in values
+    )
+    return ExecutionIssuesFlushOutput(
+        failed=failed,
+        status=status,
+        records=int(records_text) if records_text.isascii() and records_text.isdigit() else 0,
+        append_log_file=values.get("APPEND_LOG_FILE", ""),
+        error=_execution_issues_error(result, values) if failed else "",
+    )
+
+
+def execution_issues_flush(  # noqa: PLR0913 - mirrors the Rust execution-issues flush option surface
+    runner: Runner,
+    *,
+    log_root: str,
+    run_id: str,
+    issue_log: str = "",
+    batch: str = "execution-issues",
+    step_label: str = "",
+    source_label: str = "",
+    cwd: str | None = None,
+) -> ExecutionIssuesFlushOutput:
+    """Publish and clear one execution-issue ledger through Rust."""
+    return _execution_issues_flush(
+        runner,
+        verb="flush",
+        log_root=log_root,
+        run_id=run_id,
+        issue_log=issue_log,
+        batch=batch,
+        step_label=step_label,
+        source_label=source_label,
+        cwd=cwd,
+    )
+
+
+def execution_issues_flush_safety_net(  # noqa: PLR0913 - mirrors the Rust execution-issues safety-net option surface
+    runner: Runner,
+    *,
+    log_root: str,
+    run_id: str,
+    issue_log: str = "",
+    batch: str = "execution-issues",
+    step_label: str = "",
+    source_label: str = "",
+    record_file: str = "",
+    cwd: str | None = None,
+) -> ExecutionIssuesFlushOutput:
+    """Publish without clearing, or render records, through Rust."""
+    return _execution_issues_flush(
+        runner,
+        verb="flush-safety-net",
+        log_root=log_root,
+        run_id=run_id,
+        issue_log=issue_log,
+        batch=batch,
+        step_label=step_label,
+        source_label=source_label,
+        record_file=record_file,
+        cwd=cwd,
+    )
+
+
+def execution_issues_refresh(
+    runner: Runner,
+    *,
+    implement_tmpdir: str,
+    best_effort: bool = False,
+    cwd: str | None = None,
+) -> ExecutionIssuesRefreshOutput:
+    """Refresh the run metadata projection through the Rust owner."""
+    arguments = ["--implement-tmpdir", implement_tmpdir]
+    if best_effort:
+        arguments.append("--best-effort")
+    result, values, malformed = _execution_issues_run(
+        runner, verb="refresh", arguments=arguments, cwd=cwd
+    )
+    refreshed = values.get("REFRESHED", "")
+    allowed = {"REFRESHED", "REASON", "ERROR"}
+    valid_detail = not ({"REASON", "ERROR"} <= set(values))
+    failed = (
+        result.returncode != 0
+        or malformed
+        or not set(values).issubset(allowed)
+        or refreshed not in {"true", "false"}
+        or not valid_detail
+        or (refreshed == "true" and "ERROR" in values)
+        or (refreshed == "false" and not values.get("ERROR"))
+        or refreshed == "false"
+    )
+    return ExecutionIssuesRefreshOutput(
+        failed=failed,
+        refreshed=refreshed == "true" and not failed,
+        reason=values.get("REASON", ""),
+        error=_execution_issues_error(result, values) if failed else "",
     )
 
 

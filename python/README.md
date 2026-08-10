@@ -43,8 +43,9 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   completed-implement-run cleanup. None of these Python modules replaces a
   Rust-owned run-log command.
 - `larch/core/rust_runtime.py` is the typed ship-facing facade for Rust
-  `run-log refresh`, `final-report write`, and `progress` commands. It keeps
-  established Python result and error contracts without staging an artifact.
+  `run-log refresh`, `tracking-issue`, `execution-issues`, `final-report write`,
+  and `progress` commands. It keeps established Python result and error
+  contracts without staging an artifact.
 - `larch/report/object_store.py` remains a compatibility/test provider adapter;
   it has no production run-log command caller.
 - `tests/`: unit tests mirror package layout under `python/tests/`.

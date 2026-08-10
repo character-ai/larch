@@ -56,7 +56,11 @@ use crate::{
     argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
     child_process::{bounded_request, run_bounded},
     python_verb::plugin_root_directory,
-    run_log_entry_commands::write_run_log_file,
+    run_log_entry_commands::{
+        ExecutionIssueAppendOutcome, append_execution_issue as append_execution_issue_atomic,
+        append_execution_issue_filtered, clear_execution_issue_if_unchanged, plugin_version,
+        read_optional_regular_lossy, read_regular_bytes, read_regular_lossy, write_run_log_file,
+    },
 };
 
 /// Deadline for one re-entry into the verified larch executable.
@@ -138,17 +142,17 @@ pub trait ExecutionIssueEffects {
     fn upsert_summary(&self, request: &SummaryRequest<'_>) -> EffectOutput;
 }
 
-/// The live effects, each one re-entering this same verified binary.
+/// The live effects, each one re-entering through the verified bootstrap.
 ///
 /// Python spawned the plugin entrypoint for the batch append and the Python CLI
 /// for the summary comment. Both verbs now live in this binary, so the live
-/// impl re-invokes it rather than resolving a second runtime, and each verb
+/// impl re-invokes `scripts/larch.sh` rather than resolving a second runtime, and each verb
 /// still sees a captured child result instead of interleaved output on its own
 /// contract stream.
 pub struct LiveEffects;
 
 impl LiveEffects {
-    /// Run the verified larch executable again with `arguments`.
+    /// Run the verified larch bootstrap again with `arguments`.
     ///
     /// Both verbs it reaches for are Rust-owned and publish their own
     /// `KEY=value` envelope, so they run as bounded captured children rather
@@ -158,7 +162,7 @@ impl LiveEffects {
         let Some(root) = plugin_root_directory() else {
             return Self::unavailable("could not resolve the plugin root");
         };
-        let Ok(program) = LarchProgram::binary(&root) else {
+        let Ok(program) = LarchProgram::bootstrap(&root) else {
             return Self::unavailable("could not resolve the larch executable");
         };
         let request = bounded_request(
@@ -294,7 +298,52 @@ impl FlushRequest<'_> {
         if self.batch != EXECUTION_ISSUES_BATCH {
             return Some(("failed", "--batch must be execution-issues".to_owned()));
         }
+        if let Err(message) = assert_no_symlink_path_or_ancestors(self.issue_log) {
+            return Some(("failed", message));
+        }
+        if fs::symlink_metadata(self.issue_log).is_ok_and(|metadata| !metadata.is_file()) {
+            return Some((
+                "failed",
+                format!(
+                    "--issue-log must be a regular file: {}",
+                    self.issue_log.display()
+                ),
+            ));
+        }
+        let batch_path = self.batch_path();
+        if let Err(message) = assert_no_symlink_path_or_ancestors(&batch_path) {
+            return Some(("failed", message));
+        }
+        if fs::symlink_metadata(&batch_path).is_ok_and(|metadata| !metadata.is_file()) {
+            return Some((
+                "failed",
+                format!(
+                    "execution-issues batch must be a regular file: {}",
+                    batch_path.display()
+                ),
+            ));
+        }
         None
+    }
+
+    /// Reject hostile state files only the clearing flush reads or writes.
+    fn validate_sentinels(&self) -> Result<(), String> {
+        for (path, label) in [
+            (self.sentinel_dir().join(FLUSHED_SENTINEL), "flush sentinel"),
+            (
+                self.sentinel_dir().join(STEP7A_SENTINEL),
+                "Step 7a sentinel",
+            ),
+        ] {
+            assert_no_symlink_path_or_ancestors(&path)?;
+            if fs::symlink_metadata(&path).is_ok_and(|metadata| !metadata.is_file()) {
+                return Err(format!(
+                    "{label} must be a regular file: {}",
+                    path.display()
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -314,19 +363,42 @@ fn read_lossy(path: &Path) -> String {
     )
 }
 
+/// Read required file bytes as UTF-8 with replacement, preserving IO errors.
+fn read_lossy_required(path: &Path) -> Result<String, String> {
+    read_regular_lossy(path)
+}
+
 /// Whether one path is a regular file carrying at least one byte.
-fn non_empty_file(path: &Path) -> bool {
-    fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+///
+/// Missing files are empty. Every other metadata failure and every hostile
+/// file type is an error so a flush cannot silently publish an empty result for
+/// a ledger it could not inspect.
+fn non_empty_regular_file(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => Ok(metadata.len() > 0),
+        Ok(_metadata) => Err(format!(
+            "execution-issues ledger must be a regular file: {}",
+            path.display()
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("{}: {error}", path.display())),
+    }
 }
 
 /// Hex SHA-256 of one file's exact bytes.
-fn sha256_file(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
+#[cfg(test)]
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let bytes = read_regular_bytes(path)?;
+    Ok(sha256_bytes(&bytes))
+}
+
+/// Hex SHA-256 of one exact byte snapshot.
+fn sha256_bytes(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(64);
-    for byte in Sha256::digest(&bytes) {
+    for byte in Sha256::digest(bytes) {
         let _written = write!(&mut out, "{byte:02x}");
     }
-    Some(out)
+    out
 }
 
 /// Compose the records one ledger still owes the staged batch, atomically.
@@ -344,10 +416,42 @@ pub fn write_execution_issue_records(
     batch_path: Option<&Path>,
     labels: RecordLabels<'_>,
 ) -> Result<usize, String> {
-    let batch_text = batch_path
-        .filter(|path| path.is_file())
-        .map_or_else(String::new, read_lossy);
-    let records = execution_issue_records(&read_lossy(issue_log), &batch_text, labels)
+    write_execution_issue_records_snapshot(issue_log, record_file, batch_path, labels)
+        .map(|(records, _snapshot)| records)
+}
+
+/// Compose records from one exact live-ledger snapshot.
+///
+/// Returning the source bytes lets the clearing flush compare-and-clear under
+/// the append lock after its external batch append. This closes the window in
+/// which a later writer could otherwise be erased by the final clear.
+fn write_execution_issue_records_snapshot(
+    issue_log: &Path,
+    record_file: &Path,
+    batch_path: Option<&Path>,
+    labels: RecordLabels<'_>,
+) -> Result<(usize, Vec<u8>), String> {
+    assert_no_symlink_path_or_ancestors(issue_log)?;
+    let batch_text = match batch_path {
+        Some(path) => {
+            assert_no_symlink_path_or_ancestors(path)?;
+            read_optional_regular_lossy(path, "execution-issues batch must be a regular file")?
+        }
+        None => String::new(),
+    };
+    let issue_bytes = match fs::symlink_metadata(issue_log) {
+        Ok(metadata) if metadata.is_file() => read_regular_bytes(issue_log)?,
+        Ok(_metadata) => {
+            return Err(format!(
+                "execution-issues ledger must be a regular file: {}",
+                issue_log.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => return Err(format!("{}: {error}", issue_log.display())),
+    };
+    let issue_text = String::from_utf8_lossy(&issue_bytes);
+    let records = execution_issue_records(&issue_text, &batch_text, labels)
         .map_err(|RedactionRefusal| "redaction failed for run-log batch payload".to_owned())?;
     let payload = if records.is_empty() {
         String::new()
@@ -355,14 +459,51 @@ pub fn write_execution_issue_records(
         format!("{}\n", records.join("\n"))
     };
     write_run_log_file(record_file, &payload)?;
-    Ok(records.len())
+    Ok((records.len(), issue_bytes))
 }
 
 /// Record one wrapper failure back into the ledger it could not publish.
 fn append_failure(issue_log: &Path, site: &str, message: &str) {
-    let existing = read_lossy(issue_log);
-    let appended = format!("{existing}\n### Tool Failures\n- **{site}**: {message}\n");
-    let _written = fs::write(issue_log, appended);
+    let _recorded = append_execution_issue_atomic(
+        issue_log,
+        "Tool Failures",
+        &format!("- **{site}**: {message}"),
+    );
+}
+
+/// Preserve one flush failure in its source ledger and return the stable wire.
+fn flush_failure(issue_log: &Path, site: &str, message: &str, append_log: String) -> FlushOutcome {
+    append_failure(issue_log, site, message);
+    FlushOutcome {
+        rc: 1,
+        status: "failed",
+        records: 0,
+        append_log,
+    }
+}
+
+/// Record one published snapshot and clear it only if no writer raced it.
+fn finalize_clearing_flush(
+    issue_log: &Path,
+    sentinel: &Path,
+    digest: &str,
+    snapshot: &[u8],
+) -> Result<(), String> {
+    write_run_log_file(sentinel, &format!("{digest}\n"))?;
+    let _cleared = clear_execution_issue_if_unchanged(issue_log, snapshot)?;
+    Ok(())
+}
+
+/// Persist the Step 7a checkpoint when this is the pre-bump flush.
+fn mark_step7a_checkpoint(request: &FlushRequest<'_>) -> Result<(), String> {
+    if request.step_label != "7a" {
+        return Ok(());
+    }
+    let checkpoint = request.sentinel_dir().join(STEP7A_SENTINEL);
+    if checkpoint.is_file() {
+        return Ok(());
+    }
+    write_run_log_file(&checkpoint, "")
 }
 
 /// Publish the pending ledger tail and clear the ledger.
@@ -378,34 +519,65 @@ pub fn flush_with<E: ExecutionIssueEffects>(
             append_log: reason,
         };
     }
-    let sentinel_dir = request.sentinel_dir();
-    if request.step_label == "7a" {
-        let _touched = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(sentinel_dir.join(STEP7A_SENTINEL));
-    }
-    if !non_empty_file(request.issue_log) {
+    if let Err(reason) = request.validate_sentinels() {
         return FlushOutcome {
-            rc: 0,
-            status: "skip",
+            rc: VALIDATION_FAILED_RC,
+            status: "failed",
             records: 0,
-            append_log: String::new(),
+            append_log: reason,
         };
     }
-    let Some(digest) = sha256_file(request.issue_log) else {
-        return FlushOutcome {
-            rc: 0,
-            status: "skip",
-            records: 0,
-            append_log: String::new(),
-        };
+    if let Err(message) = mark_step7a_checkpoint(request) {
+        return flush_failure(
+            request.issue_log,
+            "flush-execution-issues",
+            &message,
+            String::new(),
+        );
+    }
+    let non_empty = match non_empty_regular_file(request.issue_log) {
+        Ok(non_empty) => non_empty,
+        Err(message) => {
+            return flush_failure(
+                request.issue_log,
+                "flush-execution-issues",
+                &message,
+                String::new(),
+            );
+        }
     };
-    let sentinel = sentinel_dir.join(FLUSHED_SENTINEL);
+    if !non_empty {
+        return FlushOutcome {
+            rc: 0,
+            status: "skip",
+            records: 0,
+            append_log: String::new(),
+        };
+    }
+    let sentinel = request.sentinel_dir().join(FLUSHED_SENTINEL);
     let batch_path = request.batch_path();
-    if already_flushed(&sentinel, &digest, &batch_path, request.issue_log) {
-        let _written = fs::write(&sentinel, format!("{digest}\n"));
-        let _cleared = fs::write(request.issue_log, "");
+    let (snapshot, digest, already_published) =
+        match flush_digest_state(request, &sentinel, &batch_path) {
+            Ok(state) => state,
+            Err(message) => {
+                return flush_failure(
+                    request.issue_log,
+                    "flush-execution-issues",
+                    &message,
+                    String::new(),
+                );
+            }
+        };
+    if already_published {
+        let finalized = finalize_clearing_flush(request.issue_log, &sentinel, &digest, &snapshot);
+        if let Err(message) = finalized {
+            return flush_failure(
+                request.issue_log,
+                "flush-execution-issues",
+                &message,
+                String::new(),
+            );
+        }
         return FlushOutcome {
             rc: 0,
             status: "already-flushed",
@@ -413,7 +585,7 @@ pub fn flush_with<E: ExecutionIssueEffects>(
             append_log: String::new(),
         };
     }
-    let outcome = publish(
+    let (outcome, published_snapshot) = publish(
         effects,
         request,
         &batch_path,
@@ -421,10 +593,33 @@ pub fn flush_with<E: ExecutionIssueEffects>(
         "flush-execution-issues",
     );
     if outcome.rc == 0 {
-        let _written = fs::write(&sentinel, format!("{digest}\n"));
-        let _cleared = fs::write(request.issue_log, "");
+        let snapshot = published_snapshot.unwrap_or(snapshot);
+        let published_digest = sha256_bytes(&snapshot);
+        let finalized =
+            finalize_clearing_flush(request.issue_log, &sentinel, &published_digest, &snapshot);
+        if let Err(message) = finalized {
+            return flush_failure(
+                request.issue_log,
+                "flush-execution-issues",
+                &message,
+                outcome.append_log,
+            );
+        }
     }
     outcome
+}
+
+/// Read the live digest and determine whether its records are already durable.
+fn flush_digest_state(
+    request: &FlushRequest<'_>,
+    sentinel: &Path,
+    batch_path: &Path,
+) -> Result<(Vec<u8>, String, bool), String> {
+    let snapshot = read_regular_bytes(request.issue_log)?;
+    let digest = sha256_bytes(&snapshot);
+    let issue_text = String::from_utf8_lossy(&snapshot);
+    let already_published = already_flushed(sentinel, &digest, batch_path, &issue_text)?;
+    Ok((snapshot, digest, already_published))
 }
 
 /// Publish the pending ledger tail without clearing the ledger.
@@ -440,7 +635,23 @@ pub fn flush_safety_net_with<E: ExecutionIssueEffects>(
             append_log: reason,
         };
     }
-    if !non_empty_file(request.issue_log) {
+    let non_empty = match non_empty_regular_file(request.issue_log) {
+        Ok(non_empty) => non_empty,
+        Err(message) => {
+            append_failure(
+                request.issue_log,
+                "flush-execution-issues-safety-net",
+                &message,
+            );
+            return FlushOutcome {
+                rc: 1,
+                status: "failed",
+                records: 0,
+                append_log: String::new(),
+            };
+        }
+    };
+    if !non_empty {
         return FlushOutcome {
             rc: 0,
             status: "skip",
@@ -459,6 +670,7 @@ pub fn flush_safety_net_with<E: ExecutionIssueEffects>(
         ),
         "flush-execution-issues-safety-net",
     )
+    .0
 }
 
 /// Whether the staged batch already carries this exact ledger.
@@ -467,18 +679,34 @@ pub fn flush_safety_net_with<E: ExecutionIssueEffects>(
 /// resumed run, a cleaned session — the batch itself is probed, first for the
 /// whole-file digest an older writer stored and then for the per-entry hashes
 /// the current writer stores.
-fn already_flushed(sentinel: &Path, digest: &str, batch_path: &Path, issue_log: &Path) -> bool {
-    if sentinel.is_file() && read_lossy(sentinel).trim() == digest {
-        return true;
+fn already_flushed(
+    sentinel: &Path,
+    digest: &str,
+    batch_path: &Path,
+    issue_text: &str,
+) -> Result<bool, String> {
+    match fs::symlink_metadata(sentinel) {
+        Ok(metadata) if metadata.is_file() => {
+            if read_lossy_required(sentinel)?.trim() == digest {
+                return Ok(true);
+            }
+        }
+        Ok(_metadata) => {
+            return Err(format!(
+                "flush sentinel must be a regular file: {}",
+                sentinel.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("{}: {error}", sentinel.display())),
     }
-    if !batch_path.is_file() {
-        return false;
-    }
-    let batch_text = read_lossy(batch_path);
+    let batch_text =
+        read_optional_regular_lossy(batch_path, "execution-issues batch must be a regular file")?;
     if batch_text.contains(&format!("\"source_sha256\":\"{digest}\"")) {
-        return true;
+        return Ok(true);
     }
-    batch_contains_all_sections(&read_lossy(issue_log), &batch_text).unwrap_or(false)
+    batch_contains_all_sections(issue_text, &batch_text)
+        .map_err(|RedactionRefusal| "redaction failed for run-log batch payload".to_owned())
 }
 
 /// Compose records, append them, and report what the append decided.
@@ -488,7 +716,7 @@ fn publish<E: ExecutionIssueEffects>(
     batch_path: &Path,
     append_log_name: &str,
     site: &str,
-) -> FlushOutcome {
+) -> (FlushOutcome, Option<Vec<u8>>) {
     let sentinel_dir = request.sentinel_dir();
     // The append-log name already carries this process's id, so the staging
     // file it derives is unique: two flushes in one session directory cannot
@@ -500,94 +728,66 @@ fn publish<E: ExecutionIssueEffects>(
         step: request.step_label,
         source: request.source_label,
     };
-    let composed =
-        write_execution_issue_records(request.issue_log, &record_path, Some(batch_path), labels);
+    let composed = write_execution_issue_records_snapshot(
+        request.issue_log,
+        &record_path,
+        Some(batch_path),
+        labels,
+    );
+    let mut snapshot = None;
     let (rc, status, records) = match composed {
         Err(message) => {
             append_failure(request.issue_log, site, &message);
             (1, "failed", 0)
         }
-        Ok(0) => (0, "no-records", 0),
-        Ok(records) => {
+        Ok((0, source)) => {
+            snapshot = Some(source);
+            (0, "no-records", 0)
+        }
+        Ok((records, source)) => {
+            snapshot = Some(source);
             let output = effects.append_records(request.log_root, request.run_id, &record_path);
-            let _written = fs::write(&append_log, output.captured());
-            if output.succeeded() {
+            let captured = write_run_log_file(&append_log, &output.captured());
+            if output.succeeded() && captured.is_ok() {
                 (0, "ok", records)
             } else {
-                append_failure(request.issue_log, site, &output.status_text());
+                append_failure(
+                    request.issue_log,
+                    site,
+                    &captured.err().unwrap_or_else(|| output.status_text()),
+                );
                 (1, "failed", 0)
             }
         }
     };
     let _removed = fs::remove_file(&record_path);
-    FlushOutcome {
-        rc,
-        status,
-        records,
-        append_log: append_log_text,
-    }
-}
-
-/// Insert one entry under its category heading, exactly once.
-///
-/// # Errors
-///
-/// Returns a message when the ledger path is not a regular file or the write
-/// fails.
-pub fn append_execution_issue(log: &Path, category: &str, entry: &str) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(log).ok();
-    if metadata.is_some_and(|data| !data.is_file()) {
-        return Err(format!(
-            "refusing to append through non-regular log file: {}",
-            log.display()
-        ));
-    }
-    let text = read_lossy(log);
-    if text.contains(entry) {
-        return Ok(());
-    }
-    let heading = format!("### {category}");
-    let lines: Vec<String> = split_text_lines(&text)
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-    let updated = lines.iter().position(|line| *line == heading).map_or_else(
-        || {
-            format!(
-                "{}{}{heading}\n{entry}\n",
-                text.trim_end(),
-                if text.trim().is_empty() { "" } else { "\n\n" }
-            )
+    (
+        FlushOutcome {
+            rc,
+            status,
+            records,
+            append_log: append_log_text,
         },
-        |section| {
-            let mut insert = lines
-                .iter()
-                .enumerate()
-                .skip(section + 1)
-                .find(|(_index, line)| line.starts_with("### "))
-                .map_or(lines.len(), |(index, _line)| index);
-            while insert > section + 1 && lines[insert - 1].is_empty() {
-                insert -= 1;
-            }
-            let mut rows = lines.clone();
-            rows.insert(insert, entry.to_owned());
-            format!("{}\n", rows.join("\n").trim_end())
-        },
-    );
-    if let Some(parent) = log.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-        fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    }
-    fs::write(log, updated).map_err(|error| format!("{}: {error}", log.display()))
+        snapshot,
+    )
 }
 
 /// Read the first `KEY=value` row from one file, the way the wire reader does.
+#[cfg(test)]
 fn read_kv(path: &Path, key: &str) -> String {
+    read_kv_checked(path, key).unwrap_or_default()
+}
+
+/// Read one optional KV file without collapsing an unsafe or unreadable file
+/// into a missing value.
+fn read_kv_checked(path: &Path, key: &str) -> Result<String, String> {
+    let text = read_optional_regular_lossy(path, "session metadata must be a regular file")?;
     let prefix = format!("{key}=");
-    read_lossy(path)
+    Ok(text
         .split('\n')
         .find_map(|line| line.strip_prefix(&prefix))
         .map(|value| value.trim_matches('\r').to_owned())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 /// What one refresh decided.
@@ -601,6 +801,58 @@ pub struct RefreshOutcome {
     pub detail: String,
 }
 
+/// Return a failed refresh and preserve its diagnostic in the pending ledger.
+fn refresh_failure(implement_tmpdir: &Path, best_effort: bool, detail: String) -> RefreshOutcome {
+    append_failure(
+        &implement_tmpdir.join(LEDGER_BASENAME),
+        "refresh-execution-issues",
+        &detail,
+    );
+    RefreshOutcome {
+        rc: u8::from(!best_effort),
+        refreshed: false,
+        detail,
+    }
+}
+
+/// Publish and capture one prepared metadata summary through the typed effect.
+fn publish_refresh<E: ExecutionIssueEffects>(
+    effects: &E,
+    implement_tmpdir: &Path,
+    best_effort: bool,
+    request: &SummaryRequest<'_>,
+) -> RefreshOutcome {
+    let output = effects.upsert_summary(request);
+    let stdout_capture = write_run_log_file(
+        &implement_tmpdir.join("refresh-execution-issues.out"),
+        &output.stdout,
+    );
+    let stderr_capture = write_run_log_file(
+        &implement_tmpdir.join("refresh-execution-issues.err"),
+        &output.stderr,
+    );
+    if let Err(error) = stdout_capture.and(stderr_capture) {
+        return refresh_failure(implement_tmpdir, best_effort, error);
+    }
+    if output.succeeded() {
+        return RefreshOutcome {
+            rc: 0,
+            refreshed: true,
+            detail: String::new(),
+        };
+    }
+    let detail = collapsed_diagnostic(&output.stderr);
+    refresh_failure(
+        implement_tmpdir,
+        best_effort,
+        if detail.is_empty() {
+            output.status_text()
+        } else {
+            detail
+        },
+    )
+}
+
 /// Project the pending execution-issue count onto the tracking issue.
 pub fn refresh_with<E: ExecutionIssueEffects>(
     effects: &E,
@@ -608,7 +860,10 @@ pub fn refresh_with<E: ExecutionIssueEffects>(
     best_effort: bool,
     log_reference: &dyn Fn(Option<&Path>, &str, &Path) -> String,
 ) -> RefreshOutcome {
-    if !implement_tmpdir.is_dir() {
+    if !implement_tmpdir.is_dir()
+        || implement_tmpdir.is_symlink()
+        || assert_no_symlink_path_or_ancestors(implement_tmpdir).is_err()
+    {
         return RefreshOutcome {
             rc: if best_effort { 0 } else { VALIDATION_FAILED_RC },
             refreshed: false,
@@ -617,8 +872,25 @@ pub fn refresh_with<E: ExecutionIssueEffects>(
     }
     let parent_issue = implement_tmpdir.join("parent-issue.md");
     let session_env = implement_tmpdir.join("session-env.sh");
-    let issue = read_kv(&parent_issue, "ISSUE_NUMBER");
-    let run_id = resolve_run_id(implement_tmpdir, &parent_issue);
+    let session_id = implement_tmpdir.join("session-id");
+    if [&parent_issue, &session_env, &session_id]
+        .into_iter()
+        .any(|path| path.is_symlink())
+    {
+        return refresh_failure(
+            implement_tmpdir,
+            best_effort,
+            "session metadata must not be symlinked".to_owned(),
+        );
+    }
+    let issue = match read_kv_checked(&parent_issue, "ISSUE_NUMBER") {
+        Ok(issue) => issue,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
+    let run_id = match resolve_run_id(&parent_issue, &session_id) {
+        Ok(run_id) => run_id,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
     if issue.is_empty() || issue == "0" {
         return RefreshOutcome {
             rc: 0,
@@ -627,13 +899,16 @@ pub fn refresh_with<E: ExecutionIssueEffects>(
         };
     }
     if !issue.chars().all(|character| character.is_ascii_digit()) {
-        return RefreshOutcome {
-            rc: u8::from(!best_effort),
-            refreshed: false,
-            detail: "ISSUE_NUMBER must be numeric".to_owned(),
-        };
+        return refresh_failure(
+            implement_tmpdir,
+            best_effort,
+            "ISSUE_NUMBER must be numeric".to_owned(),
+        );
     }
-    let repo_root = read_kv(&session_env, "REPO_ROOT");
+    let repo_root = match read_kv_checked(&session_env, "REPO_ROOT") {
+        Ok(repo_root) => repo_root,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
     let reference = log_reference(
         (!repo_root.is_empty()).then(|| Path::new(&repo_root)),
         &run_id,
@@ -644,53 +919,47 @@ pub fn refresh_with<E: ExecutionIssueEffects>(
             .join("manifest.json"),
     );
     let summary = implement_tmpdir.join("summary-metadata.md");
-    let body = compose_summary_metadata(implement_tmpdir, &summary, &issue, &run_id, &reference);
-    if let Err(error) = fs::write(&summary, body) {
-        return RefreshOutcome {
-            rc: u8::from(!best_effort),
-            refreshed: false,
-            detail: format!("{}: {error}", summary.display()),
-        };
+    let version = plugin_version();
+    let body = match compose_summary_metadata(
+        implement_tmpdir,
+        &summary,
+        &issue,
+        &run_id,
+        &reference,
+        &version,
+    ) {
+        Ok(body) => body,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
+    if let Err(error) = write_run_log_file(&summary, &body) {
+        return refresh_failure(implement_tmpdir, best_effort, error);
     }
-    let output = effects.upsert_summary(&SummaryRequest {
-        issue: &issue,
-        marker: &format!("<!-- larch:metadata v1 runid={run_id} -->"),
-        content_file: &summary,
-        repo: &read_kv(&session_env, "REPO"),
-    });
-    let _written = fs::write(
-        implement_tmpdir.join("refresh-execution-issues.out"),
-        &output.stdout,
-    );
-    let _written = fs::write(
-        implement_tmpdir.join("refresh-execution-issues.err"),
-        &output.stderr,
-    );
-    if output.succeeded() {
-        return RefreshOutcome {
-            rc: 0,
-            refreshed: true,
-            detail: String::new(),
-        };
-    }
-    RefreshOutcome {
-        rc: u8::from(!best_effort),
-        refreshed: false,
-        detail: collapsed_diagnostic(&output.stderr),
-    }
+    let repo = match read_kv_checked(&session_env, "REPO") {
+        Ok(repo) => repo,
+        Err(message) => return refresh_failure(implement_tmpdir, best_effort, message),
+    };
+    let marker = format!("<!-- larch:metadata v1 runid={run_id} -->");
+    publish_refresh(
+        effects,
+        implement_tmpdir,
+        best_effort,
+        &SummaryRequest {
+            issue: &issue,
+            marker: &marker,
+            content_file: &summary,
+            repo: &repo,
+        },
+    )
 }
 
 /// Resolve the run slug from the parent-issue row, else the session sentinel.
-fn resolve_run_id(implement_tmpdir: &Path, parent_issue: &Path) -> String {
-    let run_id = read_kv(parent_issue, "RUN_ID");
+fn resolve_run_id(parent_issue: &Path, session_id: &Path) -> Result<String, String> {
+    let run_id = read_kv_checked(parent_issue, "RUN_ID")?;
     if !run_id.is_empty() {
-        return run_id;
+        return Ok(run_id);
     }
-    let session_id = implement_tmpdir.join("session-id");
-    if session_id.is_file() {
-        return read_lossy(&session_id).trim().to_owned();
-    }
-    String::new()
+    read_optional_regular_lossy(session_id, "session metadata must be a regular file")
+        .map(|value| value.trim().to_owned())
 }
 
 /// Render the metadata comment body, preserving rows this refresh does not own.
@@ -705,26 +974,52 @@ fn compose_summary_metadata(
     issue: &str,
     run_id: &str,
     reference: &str,
-) -> String {
+    version: &str,
+) -> Result<String, String> {
     let issue_log = implement_tmpdir.join(LEDGER_BASENAME);
-    let count = if non_empty_file(&issue_log) {
-        split_text_lines(&read_lossy(&issue_log))
+    let count = if non_empty_regular_file(&issue_log)? {
+        split_text_lines(&read_lossy_required(&issue_log)?)
             .into_iter()
             .filter(|line| line.starts_with("- "))
             .count()
     } else {
         0
     };
-    let existing = if summary.is_file() {
-        read_lossy(summary)
-    } else {
-        String::new()
+    let existing = match fs::symlink_metadata(summary) {
+        Ok(metadata) if metadata.is_file() => read_lossy_required(summary)?,
+        Ok(_metadata) => {
+            return Err(format!(
+                "summary metadata must be a regular file: {}",
+                summary.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("{}: {error}", summary.display())),
     };
     let mut kept: Vec<String> = if existing.is_empty() {
+        let session_env = implement_tmpdir.join("session-env.sh");
+        let agent = read_kv_checked(&session_env, "AGENT")?;
+        let coder = read_kv_checked(&session_env, "CODER")?;
         vec![
             format!("Run ID: `{run_id}`"),
             format!("Run log: {reference}"),
             format!("Tracking issue: #{issue}"),
+            format!(
+                "Agent: `{}`",
+                if agent.is_empty() { "claude" } else { &agent }
+            ),
+            format!(
+                "Coder: `{}`",
+                if coder.is_empty() { "claude" } else { &coder }
+            ),
+            format!(
+                "Larch version: `{}`",
+                if version.is_empty() {
+                    "unknown"
+                } else {
+                    version
+                }
+            ),
         ]
     } else {
         let mut rows: Vec<String> = split_text_lines(&existing)
@@ -736,7 +1031,7 @@ fn compose_summary_metadata(
         rows
     };
     kept.push(format!("Execution issues pending flush: `{count}`"));
-    format!("{}\n", kept.join("\n"))
+    Ok(format!("{}\n", kept.join("\n")))
 }
 
 /// Collapse one child's stderr into a single bounded diagnostic row.
@@ -761,7 +1056,12 @@ fn is_replaced_metadata_row(line: &str) -> bool {
 /// Run the Rust-owned `execution-issues append` command.
 #[must_use]
 pub fn append(arguments: &[OsString]) -> ExitCode {
-    let parsed = parse_with_flags(arguments, &["--log", "--category", "--entry"], &[], 0);
+    let parsed = parse_with_flags(
+        arguments,
+        &["--log", "--category", "--entry", "--existing-batch"],
+        &["--redact", "--report-status", "--spaced-section"],
+        0,
+    );
     if let Some(error) = parsed.error() {
         return usage_error(APPEND_USAGE, "cli.py execution-issues append", &error);
     }
@@ -779,8 +1079,30 @@ pub fn append(arguments: &[OsString]) -> ExitCode {
         || "Tool Failures".to_owned(),
         |value| value.to_string_lossy().into_owned(),
     );
-    match append_execution_issue(Path::new(log), &category, &entry.to_string_lossy()) {
-        Ok(()) => ExitCode::SUCCESS,
+    let existing_batch = parsed
+        .value("--existing-batch")
+        .filter(|value| !value.is_empty())
+        .map(Path::new);
+    match append_execution_issue_filtered(
+        Path::new(log),
+        &category,
+        &entry.to_string_lossy(),
+        existing_batch,
+        parsed.flag("--redact"),
+        parsed.flag("--spaced-section"),
+    ) {
+        Ok(outcome) => {
+            if parsed.flag("--report-status") {
+                emit_kv(
+                    "APPEND_STATUS",
+                    match outcome {
+                        ExecutionIssueAppendOutcome::Appended => "appended",
+                        ExecutionIssueAppendOutcome::Duplicate => "duplicate",
+                    },
+                );
+            }
+            ExitCode::SUCCESS
+        }
         Err(message) => {
             eprintln!("cli.py execution-issues append: error: {message}");
             ExitCode::FAILURE
@@ -880,8 +1202,8 @@ fn render_records(values: &FlushArguments, record_file: &Path) -> ExitCode {
         .join("implement")
         .join(&values.run_id)
         .join("execution-issues.ndjson");
-    let composed = if non_empty_file(&values.issue_log) {
-        write_execution_issue_records(
+    let composed = match non_empty_regular_file(&values.issue_log) {
+        Ok(true) => write_execution_issue_records(
             &values.issue_log,
             record_file,
             Some(&batch_path),
@@ -889,9 +1211,9 @@ fn render_records(values: &FlushArguments, record_file: &Path) -> ExitCode {
                 step: &values.step_label,
                 source: &values.source_label,
             },
-        )
-    } else {
-        write_run_log_file(record_file, "").map(|()| 0)
+        ),
+        Ok(false) => write_run_log_file(record_file, "").map(|()| 0),
+        Err(message) => Err(message),
     };
     match composed {
         Ok(records) => {
@@ -931,7 +1253,10 @@ fn confined_record_destination(
         .join("implement")
         .join(&values.run_id)
         .join("execution-issues.ndjson");
-    if batch_path.is_symlink() || assert_no_symlink_path_or_ancestors(log_root).is_err() {
+    if assert_no_symlink_path_or_ancestors(&values.issue_log).is_err()
+        || assert_no_symlink_path_or_ancestors(record_file).is_err()
+        || assert_no_symlink_path_or_ancestors(&batch_path).is_err()
+    {
         return false;
     }
     let (Some(record_parent), Some(staging_parent)) = (record_file.parent(), log_root.parent())
@@ -1130,13 +1455,16 @@ fn pins_disabled_publication(manifest: &Path, run_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        EffectOutput, ExecutionIssueEffects, FlushArguments, FlushRequest, LEDGER_BASENAME,
-        SummaryRequest, append, append_execution_issue, collapsed_diagnostic,
+        EffectOutput, ExecutionIssueEffects, FLUSHED_SENTINEL, FlushArguments, FlushRequest,
+        LEDGER_BASENAME, STEP7A_SENTINEL, SummaryRequest, append, collapsed_diagnostic,
         compose_summary_metadata, confined_record_destination, flush, flush_arguments,
-        flush_safety_net, flush_safety_net_with, flush_with, pins_disabled_publication, read_kv,
-        refresh, refresh_with, run_log_reference, sha256_file, write_execution_issue_records,
+        flush_safety_net, flush_safety_net_with, flush_with, pins_disabled_publication,
+        plugin_version, read_kv, refresh, refresh_with, run_log_reference, sha256_file,
+        write_execution_issue_records,
     };
-    use crate::argparse_compat::parse_with_flags;
+    use crate::{
+        argparse_compat::parse_with_flags, run_log_entry_commands::append_execution_issue,
+    };
     use larch_core::RecordLabels;
     use std::process::ExitCode;
     use std::{
@@ -1152,6 +1480,7 @@ mod tests {
         append_code: Option<i32>,
         summary_code: Option<i32>,
         summary_stderr: String,
+        late_append: Option<(PathBuf, String)>,
         seen: RefCell<Vec<String>>,
     }
 
@@ -1162,6 +1491,7 @@ mod tests {
                 append_code: Some(0),
                 summary_code: Some(0),
                 summary_stderr: String::new(),
+                late_append: None,
                 seen: RefCell::new(Vec::new()),
             }
         }
@@ -1183,6 +1513,9 @@ mod tests {
         ) -> EffectOutput {
             let payload = fs::read_to_string(record_file).unwrap_or_default();
             self.seen.borrow_mut().push(payload.clone());
+            if let Some((log, entry)) = &self.late_append {
+                append_execution_issue(log, "Warnings", entry).expect("late append");
+            }
             if self.append_code == Some(0) {
                 if let Some(parent) = self.batch.parent() {
                     fs::create_dir_all(parent).expect("batch parent must be creatable");
@@ -1298,6 +1631,71 @@ mod tests {
             (batch.rc, batch.append_log.as_str()),
             (2, "--batch must be execution-issues")
         );
+    }
+
+    #[test]
+    fn flush_refuses_a_symlinked_live_ledger_before_publishing() {
+        let session = session("### Warnings\n- one\n");
+        let target = session.tmpdir.join("real-ledger.md");
+        fs::rename(&session.issue_log, &target).expect("move ledger");
+        std::os::unix::fs::symlink(&target, &session.issue_log).expect("ledger symlink");
+        let effects = FakeEffects::new(&session.batch);
+
+        let outcome = flush_with(&effects, &request(&session, "7a"));
+
+        assert_eq!((outcome.rc, outcome.status), (2, "failed"));
+        assert!(effects.seen.borrow().is_empty());
+        assert!(!session.batch.exists());
+        assert_eq!(
+            fs::read_to_string(target).expect("target ledger"),
+            "### Warnings\n- one\n"
+        );
+    }
+
+    #[test]
+    fn flush_refuses_symlinked_sentinels_before_clearing_the_ledger() {
+        for sentinel_name in [FLUSHED_SENTINEL, STEP7A_SENTINEL] {
+            let session = session("### Warnings\n- one\n");
+            let target = session.tmpdir.join(format!("real-{sentinel_name}"));
+            fs::write(&target, "hostile sentinel\n").expect("sentinel target");
+            std::os::unix::fs::symlink(&target, session.tmpdir.join(sentinel_name))
+                .expect("sentinel symlink");
+            let effects = FakeEffects::new(&session.batch);
+
+            let outcome = flush_with(&effects, &request(&session, "7a"));
+
+            assert_eq!((outcome.rc, outcome.status), (2, "failed"));
+            assert!(effects.seen.borrow().is_empty());
+            assert!(!session.batch.exists());
+            assert_eq!(
+                fs::read_to_string(&session.issue_log).expect("retained ledger"),
+                "### Warnings\n- one\n"
+            );
+            assert_eq!(
+                fs::read_to_string(target).expect("unchanged target"),
+                "hostile sentinel\n"
+            );
+        }
+    }
+
+    #[test]
+    fn flush_retains_and_records_the_ledger_when_post_append_capture_fails() {
+        let session = session("### Warnings\n- one\n");
+        let append_log = session.tmpdir.join(format!(
+            "flush-execution-issues-append.{}.log",
+            std::process::id()
+        ));
+        fs::create_dir(&append_log).expect("hostile append-log directory");
+        let effects = FakeEffects::new(&session.batch);
+
+        let outcome = flush_with(&effects, &request(&session, "7a"));
+
+        assert_eq!((outcome.rc, outcome.status), (1, "failed"));
+        let ledger = fs::read_to_string(&session.issue_log).expect("retained ledger");
+        assert!(ledger.contains("- one"));
+        assert!(ledger.contains("flush-execution-issues"));
+        assert!(session.batch.is_file(), "the first append remains durable");
+        assert!(!session.tmpdir.join(FLUSHED_SENTINEL).exists());
     }
 
     #[test]
@@ -1432,6 +1830,37 @@ mod tests {
     }
 
     #[test]
+    fn a_writer_that_appends_during_publication_is_never_cleared() {
+        let session = session("### Warnings\n- original\n");
+        let effects = FakeEffects {
+            late_append: Some((session.issue_log.clone(), "- later".to_owned())),
+            ..FakeEffects::new(&session.batch)
+        };
+
+        let first = flush_with(&effects, &request(&session, "7a"));
+
+        assert_eq!((first.rc, first.status, first.records), (0, "ok", 1));
+        let pending = fs::read_to_string(&session.issue_log).expect("pending ledger");
+        assert!(pending.contains("- original"));
+        assert!(pending.contains("- later"));
+
+        let retry_effects = FakeEffects::new(&session.batch);
+        let retry = flush_with(&retry_effects, &request(&session, "7a"));
+        assert_eq!((retry.rc, retry.status, retry.records), (0, "ok", 1));
+        assert_eq!(
+            fs::read_to_string(&session.issue_log).expect("cleared ledger"),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(&session.batch)
+                .expect("durable batch")
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[test]
     fn flush_recognizes_a_whole_file_digest_an_older_writer_stored() {
         let session = session("### Warnings\n- one\n");
         let digest = sha256_file(&session.issue_log).expect("ledger must hash");
@@ -1556,6 +1985,30 @@ mod tests {
     }
 
     #[test]
+    fn the_safety_net_ignores_sentinels_it_neither_reads_nor_writes() {
+        for sentinel_name in [FLUSHED_SENTINEL, STEP7A_SENTINEL] {
+            let session = session("### Warnings\n- one\n");
+            let target = session.tmpdir.join(format!("real-{sentinel_name}"));
+            fs::write(&target, "hostile sentinel\n").expect("sentinel target");
+            std::os::unix::fs::symlink(&target, session.tmpdir.join(sentinel_name))
+                .expect("sentinel symlink");
+            let effects = FakeEffects::new(&session.batch);
+
+            let outcome = flush_safety_net_with(&effects, &request(&session, "18"));
+
+            assert_eq!((outcome.rc, outcome.status, outcome.records), (0, "ok", 1));
+            assert_eq!(
+                fs::read_to_string(&session.issue_log).expect("retained ledger"),
+                "### Warnings\n- one\n"
+            );
+            assert_eq!(
+                fs::read_to_string(target).expect("unchanged target"),
+                "hostile sentinel\n"
+            );
+        }
+    }
+
+    #[test]
     fn the_safety_net_dedupes_rows_the_pre_push_flush_already_published() {
         let session = session("### Warnings\n\n- shared warning\n");
         let effects = FakeEffects::new(&session.batch);
@@ -1641,8 +2094,11 @@ mod tests {
             format!("ISSUE_NUMBER={issue}\nRUN_ID=run-1\n"),
         )
         .expect("parent issue must be writable");
-        fs::write(session.tmpdir.join("session-env.sh"), "REPO=owner/name\n")
-            .expect("session env must be writable");
+        fs::write(
+            session.tmpdir.join("session-env.sh"),
+            "REPO=owner/name\nAGENT=claude\nCODER=codex\n",
+        )
+        .expect("session env must be writable");
         session
     }
 
@@ -1687,6 +2143,32 @@ mod tests {
         assert_eq!((strict.rc, strict.refreshed), (1, false));
         assert_eq!(strict.detail, "ISSUE_NUMBER must be numeric");
         assert_eq!(lenient.rc, 0);
+        assert!(
+            fs::read_to_string(&session.issue_log)
+                .expect("failure ledger")
+                .contains("**refresh-execution-issues**: ISSUE_NUMBER must be numeric")
+        );
+    }
+
+    #[test]
+    fn refresh_refuses_symlinked_session_metadata_and_records_the_failure() {
+        let session = refresh_session("42");
+        let target = session.tmpdir.join("real-session-id");
+        let link = session.tmpdir.join("session-id");
+        fs::write(&target, "run-target\n").expect("session target");
+        std::os::unix::fs::symlink(&target, &link).expect("session symlink");
+        let effects = FakeEffects::new(&session.batch);
+
+        let outcome = refresh_with(&effects, &session.tmpdir, false, &fixed_reference);
+
+        assert_eq!((outcome.rc, outcome.refreshed), (1, false));
+        assert_eq!(outcome.detail, "session metadata must not be symlinked");
+        assert!(effects.seen.borrow().is_empty());
+        assert!(
+            fs::read_to_string(&session.issue_log)
+                .expect("failure ledger")
+                .contains("session metadata must not be symlinked")
+        );
     }
 
     #[test]
@@ -1701,7 +2183,10 @@ mod tests {
         assert_eq!((outcome.rc, outcome.refreshed), (0, true));
         assert_eq!(
             summary,
-            "Run ID: `run-1`\nRun log: provider `s3`, skill `implement`, run ID `run-1`\nTracking issue: #42\nExecution issues pending flush: `2`\n"
+            format!(
+                "Run ID: `run-1`\nRun log: provider `s3`, skill `implement`, run ID `run-1`\nTracking issue: #42\nAgent: `claude`\nCoder: `codex`\nLarch version: `{}`\nExecution issues pending flush: `2`\n",
+                plugin_version()
+            )
         );
         assert_eq!(
             effects.seen.borrow()[0],
@@ -1734,6 +2219,9 @@ mod tests {
                 .unwrap_or_default(),
             "FAILED=true\nERROR=no auth\n"
         );
+        let ledger = fs::read_to_string(&session.issue_log).expect("failure ledger");
+        assert_eq!(ledger.matches("**refresh-execution-issues**").count(), 1);
+        assert!(ledger.contains("FAILED=true ERROR=no auth"));
     }
 
     #[test]
@@ -1761,7 +2249,9 @@ mod tests {
         )
         .expect("summary must be writable");
 
-        let body = compose_summary_metadata(&session.tmpdir, &summary, "42", "run-1", "fresh");
+        let body =
+            compose_summary_metadata(&session.tmpdir, &summary, "42", "run-1", "fresh", "1.2.3")
+                .expect("summary composition");
 
         assert_eq!(
             body,
@@ -1801,6 +2291,15 @@ mod tests {
         ));
         assert!(!confined_record_destination(
             &session.tmpdir,
+            &session.tmpdir.join("records.ndjson"),
+            &values
+        ));
+        let hostile_batch_root = session.tmpdir.join("hostile-batch-root");
+        fs::create_dir(&hostile_batch_root).expect("hostile batch root");
+        std::os::unix::fs::symlink(&hostile_batch_root, session.log_root.join("implement"))
+            .expect("batch ancestor symlink");
+        assert!(!confined_record_destination(
+            &session.log_root,
             &session.tmpdir.join("records.ndjson"),
             &values
         ));

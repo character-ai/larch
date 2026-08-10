@@ -1,4 +1,4 @@
 # test-refresh-execution-issues.sh
 
-Offline harness covering metadata refresh with pending execution issue counts
-and required argument validation.
+Offline smoke test that pins exact argument, stream, exit-status, plugin-root
+override, and checkout-fallback delegation to `scripts/larch.sh`.

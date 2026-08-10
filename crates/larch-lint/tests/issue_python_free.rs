@@ -93,6 +93,10 @@ fn prepare(repository: &TempRepo) {
         "python/larch/issue/issue_wire.py",
         b"def helper() -> None:\n    return None\n",
     );
+    repository.write(
+        "skills/implement/scripts/refresh-execution-issues.sh",
+        b"exec \"$PLUGIN_ROOT/scripts/larch.sh\" execution-issues refresh \"$@\"\n",
+    );
 }
 
 /// A sample carries completed and hand-off rows, so only the unrepresented
@@ -227,5 +231,38 @@ fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
         ))
         .stdout(predicate::str::contains(
             "production caller routes a retired tracking command through python/cli.py",
+        ));
+}
+
+#[test]
+fn rejects_restored_execution_issue_module_and_import_callers() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/issue/execution_issues.py",
+        b"def append_execution_issue() -> None:\n    return None\n",
+    );
+    repository.write(
+        "python/larch/implement/dispatch.py",
+        b"from larch.issue import execution_issues\n\ndef run() -> None:\n    execution_issues.append_execution_issue()\n",
+    );
+    repository.write(
+        "skills/implement/scripts/refresh-execution-issues.sh",
+        b"\"$PLUGIN_ROOT/scripts/larch.sh\" tracking-issue upsert-summary\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "superseded Python execution-issues behavior returned",
+        ))
+        .stdout(predicate::str::contains(
+            "production caller imports the retired execution-issues owner",
+        ))
+        .stdout(predicate::str::contains(
+            "superseded Bash execution-issues refresh behavior returned",
         ));
 }

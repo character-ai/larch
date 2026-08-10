@@ -106,6 +106,149 @@ def test_progress_mutations_enter_through_the_typed_rust_owner() -> None:
     assert runner.calls[4][1:] == ["progress", "cleanup", "--retention-days", "7"]
 
 
+def test_execution_issue_workflows_use_validated_rust_envelopes() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("larch",), 0, "APPEND_STATUS=appended\n", "", 0.01),
+            CommandResult(
+                ("larch",),
+                0,
+                "FLUSH_STATUS=ok\nRECORDS=2\nAPPEND_LOG_FILE=/tmp/append.log\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch",), 0, "FLUSH_STATUS=rendered\nRECORDS=1\n", "", 0.01),
+            CommandResult(("larch",), 0, "REFRESHED=true\nREASON=issue-not-set\n", "", 0.01),
+        ],
+    )
+
+    appended = rust_runtime.execution_issues_append(
+        runner,
+        log="/tmp/execution-issues.md",
+        category="Warnings",
+        entry="- warning",
+        existing_batch="/tmp/execution-issues.ndjson",
+        redact_entry=True,
+    )
+    flushed = rust_runtime.execution_issues_flush(
+        runner,
+        log_root="/tmp/larch-logs",
+        run_id="run-1",
+        issue_log="/tmp/execution-issues.md",
+        step_label="7a",
+        source_label="checkpoint",
+    )
+    rendered = rust_runtime.execution_issues_flush_safety_net(
+        runner,
+        log_root="/tmp/larch-logs",
+        run_id="run-1",
+        record_file="/tmp/records.ndjson",
+    )
+    refreshed = rust_runtime.execution_issues_refresh(
+        runner, implement_tmpdir="/tmp/session", best_effort=True
+    )
+
+    assert appended.status == "appended"
+    assert not appended.failed
+    assert flushed.status == "ok"
+    assert flushed.records == 2
+    assert not flushed.failed
+    assert flushed.append_log_file == "/tmp/append.log"
+    assert rendered.status == "rendered"
+    assert rendered.records == 1
+    assert refreshed.refreshed
+    assert refreshed.reason == "issue-not-set"
+    assert runner.calls[0][1:] == [
+        "execution-issues",
+        "append",
+        "--log",
+        "/tmp/execution-issues.md",
+        "--category",
+        "Warnings",
+        "--entry",
+        "- warning",
+        "--report-status",
+        "--spaced-section",
+        "--existing-batch",
+        "/tmp/execution-issues.ndjson",
+        "--redact",
+    ]
+    assert runner.calls[1][1:3] == ["execution-issues", "flush"]
+    assert runner.calls[2][1:3] == ["execution-issues", "flush-safety-net"]
+    assert runner.calls[3][1:] == [
+        "execution-issues",
+        "refresh",
+        "--implement-tmpdir",
+        "/tmp/session",
+        "--best-effort",
+    ]
+
+
+def test_execution_issue_facade_rejects_malformed_and_false_success_envelopes() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "APPEND_STATUS=appended\nAPPEND_STATUS=duplicate\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("larch",), 0, "FLUSH_STATUS=ok\nRECORDS=nope\n", "", 0.01),
+            CommandResult(("larch",), 0, "REFRESHED=false\n", "", 0.01),
+        ],
+    )
+
+    appended = rust_runtime.execution_issues_append(
+        runner, log="/tmp/log", category="Warnings", entry="- warning"
+    )
+    flushed = rust_runtime.execution_issues_flush(
+        runner, log_root="/tmp/larch-logs", run_id="run-1"
+    )
+    refreshed = rust_runtime.execution_issues_refresh(runner, implement_tmpdir="/tmp/session")
+
+    assert appended.failed
+    assert appended.error == "invalid execution-issues envelope"
+    assert flushed.failed
+    assert flushed.records == 0
+    assert refreshed.failed
+    assert not refreshed.refreshed
+
+
+def test_execution_issue_facade_preserves_best_effort_refresh_failure() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "REFRESHED=false\nERROR=tracking update failed\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("larch",),
+                0,
+                "diagnostic\nAPPEND_STATUS=appended\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    refreshed = rust_runtime.execution_issues_refresh(
+        runner, implement_tmpdir="/tmp/session", best_effort=True
+    )
+    appended = rust_runtime.execution_issues_append(
+        runner, log="/tmp/log", category="Warnings", entry="- warning"
+    )
+
+    assert refreshed.failed
+    assert not refreshed.refreshed
+    assert refreshed.error == "tracking update failed"
+    assert appended.failed
+    assert appended.error == "invalid execution-issues envelope"
+
+
 def test_timing_mutations_enter_through_the_typed_rust_owner() -> None:
     runner = RecordingRunner(
         responses=[

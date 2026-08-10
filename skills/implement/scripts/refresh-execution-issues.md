@@ -1,7 +1,8 @@
 # refresh-execution-issues.sh
 
-Refreshes the `larch:metadata` tracking-issue summary with the current
-execution-issue count while preserving the existing metadata fields.
+Thin compatibility wrapper for the Rust-owned `execution-issues refresh`
+command. It resolves the plugin root, enters through `scripts/larch.sh`, and
+forwards arguments, output, and the exit status unchanged.
 
 Usage:
 
@@ -9,13 +10,12 @@ Usage:
 refresh-execution-issues.sh --implement-tmpdir PATH
 ```
 
-All session state is read from files under `IMPLEMENT_TMPDIR` rather than
-CLI arguments to reduce non-determinism and context bloat:
+The Rust command reads session state from files under `IMPLEMENT_TMPDIR`:
 
 - `parent-issue.md` → `ISSUE_NUMBER`, `RUN_ID`
 - `session-env.sh` → `REPO`, `AGENT`, `CODER`
 
-Output:
+Its machine output is:
 
 - `REFRESHED=true|false`
 - `REASON=issue-not-set` when no tracking issue is set (skips cleanly)

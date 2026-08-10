@@ -21,8 +21,23 @@ const ISSUE_AUTHORITY_PATH: &str = "crates/larch-cli/src/issue_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7682;
 const PYTHON_ISSUE_ROOT: &str = "python/larch/issue/";
 const PYTHON_ISSUE_INIT: &str = "python/larch/issue/__init__.py";
+const EXECUTION_PYTHON_MODULE: &str = "python/larch/issue/execution_issues.py";
+const EXECUTION_REFRESH_WRAPPER: &str =
+    "skills/implement/scripts/refresh-execution-issues.sh";
 const TRACKING_PYTHON_MODULE: &str = "python/larch/issue/tracking_issue.py";
 const RUST_RUNTIME_FACADE: &str = "python/larch/core/rust_runtime.py";
+const EXECUTION_RUNTIME_WRAPPERS: [&str; 4] = [
+    "def execution_issues_append(",
+    "def execution_issues_flush(",
+    "def execution_issues_flush_safety_net(",
+    "def execution_issues_refresh(",
+];
+const RETIRED_EXECUTION_IMPORTS: [&str; 4] = [
+    "from larch.issue import execution_issues",
+    "from larch.issue.execution_issues import",
+    "larch.issue.execution_issues",
+    "execution_issues.append_execution_issue",
+];
 const RETIRED_TRACKING_CALLS: [&str; 14] = [
     "tracking_issue.append_comment",
     "tracking_issue.create_issue",
@@ -217,10 +232,10 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
     ExpectedCommand::new("deps", "plan", 8180, 7682, "larch.issue.deps_audit", "plan_main"),
     ExpectedCommand::new("deps", "resolve-repo", 8180, 7682, "larch.issue.deps_audit", "resolve_repo_main"),
     ExpectedCommand::new("deps", "write-proposals", 8180, 7682, "larch.issue.deps_audit", "write_proposals_main"),
-    ExpectedCommand::new("execution-issues", "append", 8176, 7682, "larch.issue.execution_issues", "append_execution_issue_main"),
-    ExpectedCommand::new("execution-issues", "flush", 8176, 7682, "larch.issue.execution_issues", "flush_execution_issues_main"),
-    ExpectedCommand::new("execution-issues", "flush-safety-net", 8176, 7682, "larch.issue.execution_issues", "flush_execution_issues_safety_net_main"),
-    ExpectedCommand::new("execution-issues", "refresh", 8176, 7682, "larch.issue.execution_issues", "refresh_execution_issues_main"),
+    ExpectedCommand::new("execution-issues", "append", 8347, 7682, "larch.issue.execution_issues", "append_execution_issue_main"),
+    ExpectedCommand::new("execution-issues", "flush", 8347, 7682, "larch.issue.execution_issues", "flush_execution_issues_main"),
+    ExpectedCommand::new("execution-issues", "flush-safety-net", 8347, 7682, "larch.issue.execution_issues", "flush_execution_issues_safety_net_main"),
+    ExpectedCommand::new("execution-issues", "refresh", 8347, 7682, "larch.issue.execution_issues", "refresh_execution_issues_main"),
     ExpectedCommand::new("issue", "add-blocked-by", 8170, 7682, "larch.issue.issue_create", "add_blocked_by_main"),
     ExpectedCommand::new("issue", "add-sub-issue", 8170, 7682, "larch.issue.issue_create", "add_sub_issue_main"),
     ExpectedCommand::new("issue", "allocate-candidates", 8168, 7682, "larch.issue.issue_create", "allocate_candidates_main"),
@@ -307,13 +322,12 @@ const HANDOFF_COMMANDS: [HandoffCommand; 21] = [
 
 /// The package initializer is structural. Every other top-level issue module
 /// must name the umbrella responsible for its next cutover.
-const RETAINED_MODULES: [RetainedModule; 21] = [
+const RETAINED_MODULES: [RetainedModule; 20] = [
     RetainedModule::new("python/larch/issue/_ground_truth.py", 7684),
     RetainedModule::new("python/larch/issue/_oos.py", 7684),
     RetainedModule::new("python/larch/issue/_report.py", 7684),
     RetainedModule::new("python/larch/issue/_util.py", 7684),
     RetainedModule::new("python/larch/issue/analyze_bugs.py", 7684),
-    RetainedModule::new("python/larch/issue/execution_issues.py", 7681),
     RetainedModule::new("python/larch/issue/file_oos.py", 7680),
     RetainedModule::new("python/larch/issue/issue_block.py", 7685),
     RetainedModule::new("python/larch/issue/issue_blocks.py", 7680),
@@ -383,12 +397,102 @@ impl Rule for IssuePythonFreeRule {
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
+        check_execution_python_boundary(repository, &mut findings)?;
         check_tracking_python_boundary(repository, &mut findings)?;
         check_retained_modules(repository, &mut findings);
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn check_execution_python_boundary(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    let retired_path = RepoPath::from_trusted(EXECUTION_PYTHON_MODULE);
+    if repository.paths().binary_search(&retired_path).is_ok() {
+        findings.push(Finding::new(
+            EXECUTION_PYTHON_MODULE,
+            1,
+            "superseded Python execution-issues behavior returned",
+        ));
+    }
+    for path in repository.paths() {
+        let relative = path.as_str();
+        if !relative.starts_with("python/larch/")
+            || !Path::new(relative)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        for token in RETIRED_EXECUTION_IMPORTS {
+            if let Some(offset) = source.find(token) {
+                findings.push(Finding::new(
+                    relative,
+                    line_for_offset(&source, offset),
+                    format!("production caller imports the retired execution-issues owner: {token}"),
+                ));
+            }
+        }
+    }
+    let facade_path = RepoPath::from_trusted(RUST_RUNTIME_FACADE);
+    if repository.paths().binary_search(&facade_path).is_ok() {
+        let source = repository.read_utf8(&facade_path)?;
+        for wrapper in EXECUTION_RUNTIME_WRAPPERS {
+            if !source.contains(wrapper) {
+                findings.push(Finding::new(
+                    RUST_RUNTIME_FACADE,
+                    1,
+                    format!("missing typed execution-issues runtime wrapper: {wrapper}"),
+                ));
+            }
+        }
+        for owner_token in ["larch_entrypoint(", "\"execution-issues\""] {
+            if !source.contains(owner_token) {
+                findings.push(Finding::new(
+                    RUST_RUNTIME_FACADE,
+                    1,
+                    format!("execution-issues runtime facade lost its verified owner: {owner_token}"),
+                ));
+            }
+        }
+    } else {
+        findings.push(Finding::new(
+            RUST_RUNTIME_FACADE,
+            1,
+            "missing typed execution-issues runtime facade",
+        ));
+    }
+    let refresh_path = RepoPath::from_trusted(EXECUTION_REFRESH_WRAPPER);
+    if repository.paths().binary_search(&refresh_path).is_ok() {
+        let source = repository.read_utf8(&refresh_path)?;
+        for token in ["scripts/larch.sh", "execution-issues refresh", "\"$@\""] {
+            if !source.contains(token) {
+                findings.push(Finding::new(
+                    EXECUTION_REFRESH_WRAPPER,
+                    1,
+                    format!("execution-issues refresh wrapper lost thin delegation: {token}"),
+                ));
+            }
+        }
+        if let Some(offset) = source.find("tracking-issue") {
+            findings.push(Finding::new(
+                EXECUTION_REFRESH_WRAPPER,
+                line_for_offset(&source, offset),
+                "superseded Bash execution-issues refresh behavior returned",
+            ));
+        }
+    } else {
+        findings.push(Finding::new(
+            EXECUTION_REFRESH_WRAPPER,
+            1,
+            "missing execution-issues refresh delegation wrapper",
+        ));
+    }
+    Ok(())
 }
 
 fn check_tracking_python_boundary(

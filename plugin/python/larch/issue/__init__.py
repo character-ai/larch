@@ -2,6 +2,5 @@
 
 Home for the issue pipeline:
 ``issue_wire``, ``issue_create``, ``tracking_issue``,
-``file_oos``, ``oos``,
-``execution_issues``.
+``file_oos``, and ``oos``. Execution-issue workflows are Rust-owned.
 """

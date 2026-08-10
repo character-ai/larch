@@ -303,12 +303,22 @@ def _write_fake_bootstrap(cli: Path) -> None:
     """Point the plugin's bootstrap script at the fake CLI beside it.
 
     `session write-design-env` is Rust-owned as of issue #8058, so /design reaches
-    it through `scripts/larch.sh`; forwarding keeps one recorded argv log.
+    it through `scripts/larch.sh`; forwarding keeps one recorded argv log. The
+    execution-issue lifecycle is Rust-owned too, so those calls use the shared
+    executable double instead of receiving the fake CLI's empty default wire.
     """
     bootstrap = cli.parents[1] / "scripts" / "larch.sh"
+    rust_stub = Path(__file__).resolve().parents[1] / "support" / "rust_agent_stub.py"
     bootstrap.parent.mkdir(parents=True, exist_ok=True)
     _ = bootstrap.write_text(
-        f'#!/usr/bin/env bash\nexec python3 "{cli}" "$@"\n', encoding="utf-8"
+        (
+            "#!/usr/bin/env bash\n"
+            'if [ "$#" -gt 0 ] && [ "$1" = "execution-issues" ]; then\n'
+            f'  exec python3 "{rust_stub}" "$@"\n'
+            "fi\n"
+            f'exec python3 "{cli}" "$@"\n'
+        ),
+        encoding="utf-8",
     )
     bootstrap.chmod(bootstrap.stat().st_mode | stat.S_IXUSR)
 

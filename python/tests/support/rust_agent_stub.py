@@ -1003,6 +1003,133 @@ def _append_execution_issue(*, log: Path, category: str, entry: str) -> None:
     _ = log.write_text(rendered, encoding="utf-8")
 
 
+def _execution_issue_chunks(body: str) -> list[str]:
+    chunks: list[str] = []
+    current: list[str] = []
+    in_fence = False
+    pending_break = False
+    for line in body.splitlines():
+        if not in_fence and not line.strip():
+            pending_break = bool(current)
+            continue
+        candidate = line.lstrip()
+        if candidate.startswith("- "):
+            candidate = candidate[2:].lstrip()
+        fence = candidate.startswith("```")
+        if not in_fence and line.startswith("- ") and current and not fence:
+            chunks.append("\n".join(current).strip() + "\n")
+            current = []
+            pending_break = False
+        if pending_break and current:
+            chunks.append("\n".join(current).strip() + "\n")
+            current = []
+        pending_break = False
+        current.append(line)
+        if fence:
+            in_fence = not in_fence
+    if current:
+        chunks.append("\n".join(current).strip() + "\n")
+    return chunks
+
+
+def _execution_issue_keys(markdown: str) -> set[tuple[str, str]]:
+    keys: set[tuple[str, str]] = set()
+    category = "Warnings"
+    body: list[str] = []
+    for line in [*markdown.splitlines(), "### __END__"]:
+        if line.startswith("### "):
+            for chunk in _execution_issue_chunks("\n".join(body)):
+                keys.add((category, chunk.strip()))
+            category = line[4:].strip()
+            body = []
+        else:
+            body.append(line)
+    return keys
+
+
+def _execution_issue_batch_keys(path: Path) -> set[tuple[str, str]]:
+    """Return valid category/body identities from one durable batch double."""
+    keys: set[tuple[str, str]] = set()
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            decoded = cast("object", json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(decoded, dict):
+            continue
+        row = cast("dict[str, object]", decoded)
+        durable_category = row.get("category")
+        durable_body = row.get("body")
+        if isinstance(durable_category, str) and isinstance(durable_body, str):
+            keys.update(
+                (durable_category, chunk.strip())
+                for chunk in _execution_issue_chunks(durable_body)
+            )
+    return keys
+
+
+def _execution_issues_append(arguments: list[str]) -> int:
+    log = Path(_flag(arguments, "--log"))
+    category = _flag(arguments, "--category") or "Tool Failures"
+    entry = _flag(arguments, "--entry")
+    existing = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    known = _execution_issue_keys(existing)
+    batch = _flag(arguments, "--existing-batch")
+    if batch and Path(batch).is_file():
+        known.update(_execution_issue_batch_keys(Path(batch)))
+    kept: list[str] = []
+    for chunk in _execution_issue_chunks(entry):
+        key = (category, chunk.strip())
+        if key in known:
+            continue
+        known.add(key)
+        kept.append(chunk)
+    status = "duplicate"
+    if kept:
+        _append_execution_issue(log=log, category=category, entry="\n".join(kept))
+        status = "appended"
+    if "--report-status" in arguments:
+        print(f"APPEND_STATUS={status}")
+    return 0
+
+
+def _execution_issues_flush_common(arguments: list[str], *, clear: bool) -> int:
+    issue_log = Path(_flag(arguments, "--issue-log"))
+    if not issue_log.is_file() or not issue_log.read_text(encoding="utf-8", errors="replace"):
+        print("FLUSH_STATUS=skip")
+        print("RECORDS=0")
+        return 0
+    records = sum(
+        1
+        for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines()
+        if line.startswith("- ")
+    )
+    print("FLUSH_STATUS=ok")
+    print(f"RECORDS={records}")
+    if records and clear:
+        _ = issue_log.write_text("", encoding="utf-8")
+    return 0
+
+
+def _execution_issues_flush(arguments: list[str]) -> int:
+    return _execution_issues_flush_common(arguments, clear=True)
+
+
+def _execution_issues_flush_safety_net(arguments: list[str]) -> int:
+    return _execution_issues_flush_common(arguments, clear=False)
+
+
+def _execution_issues_refresh(arguments: list[str]) -> int:
+    tmpdir = Path(_flag(arguments, "--implement-tmpdir"))
+    if not tmpdir.is_dir():
+        print("REFRESHED=false")
+        print("ERROR=--implement-tmpdir not found")
+        return 0 if "--best-effort" in arguments else 2
+    print("REFRESHED=true")
+    print("REASON=issue-not-set")
+    return 0
+
+
 def _bind_larch_package() -> None:
     """Make `larch.*` importable in this detached bootstrap process.
 
@@ -1856,6 +1983,10 @@ def main(arguments: list[str]) -> int:
             ("agent", "run-external-agent"): _run_external_agent,
             ("agent", "launch-review"): _launch_review,
             ("agent", "dispatch-waterfall"): _dispatch_waterfall,
+            ("execution-issues", "append"): _execution_issues_append,
+            ("execution-issues", "flush"): _execution_issues_flush,
+            ("execution-issues", "flush-safety-net"): _execution_issues_flush_safety_net,
+            ("execution-issues", "refresh"): _execution_issues_refresh,
             ("run-log", "append-failure"): _append_failure,
             ("run-log", "append-entry"): _append_entry,
             ("run-log", "archive"): _run_log_archive,

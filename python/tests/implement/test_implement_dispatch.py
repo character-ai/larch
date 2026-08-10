@@ -2644,6 +2644,14 @@ def test_step18_gate_logs_flush_refuses_terminal_shipping_without_pr(
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     _install_step18_normalize(monkeypatch, succeeded=False, outcome="shipping", pr_number="")
+
+    def fake_append_execution_issue(
+        _runner: object, *, log: str, category: str, entry: str, **_kwargs: object
+    ) -> SimpleNamespace:
+        Path(log).write_text(f"### {category}\n\n{entry}\n", encoding="utf-8")
+        return SimpleNamespace(failed=False, status="appended", error="")
+
+    monkeypatch.setattr(run_log_batch.rust_runtime, "execution_issues_append", fake_append_execution_issue)
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",

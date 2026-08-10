@@ -23,6 +23,7 @@ import tempfile
 import time
 from collections.abc import Callable, Sequence
 
+from larch.core import proc, rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 
 
@@ -532,9 +533,14 @@ def _touch_gatec(design: Path) -> None:
 
 def _append_execution_issue(*, design: Path, message: str) -> None:
     path = design / "execution-issues.md"
-    existing = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-    prefix = "" if existing.endswith("\n") or not existing else "\n"
-    _atomic_write_text(path=path, text=existing + prefix + f"- **Dialectic clarifier warning**: {message}\n")
+    outcome = rust_runtime.execution_issues_append(
+        proc.ProcRunner(),
+        log=str(path),
+        category="Warnings",
+        entry=f"- **Dialectic clarifier warning**: {message}",
+    )
+    if outcome.failed:
+        raise OSError(outcome.error)
 
 
 def _budget_seconds() -> float:

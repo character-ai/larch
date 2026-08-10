@@ -55,7 +55,6 @@ ENFORCED = (
     # #4459 follow-up batch: already-`-k`-sliced files whose selections had
     # coverage gaps / overlaps, closed into strict partitions with negligible
     # shard-timing shift (each catch-all absorbs only a handful of tests).
-    "python/tests/issue/test_execution_issues.py",
     "python/tests/state/test_finalize.py",
     "python/tests/state/test_stall_recovery.py",
     "python/tests/review/test_plan_review.py",
