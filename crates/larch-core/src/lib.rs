@@ -126,14 +126,15 @@ pub use github::{
     ASSET_MEDIA_TYPE, AssetDigest, AssetStreamGuard, CheckBucket, CheckRun, GitHubActionsError,
     GitHubActionsErrorKind, GitHubActionsFuture, GitHubActionsService, GitHubCloseReason,
     GitHubComment, GitHubFailureInput, GitHubFuture, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
-    GitHubLabelCreate, GitHubMutationOutcome, GitHubOperationError, GitHubOperationErrorKind,
+    GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult, GitHubIssueScan,
+    GitHubIssueSearch, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome,
+    GitHubListStop, GitHubMutationOutcome, GitHubOperationError, GitHubOperationErrorKind,
     GitHubRateLimitInputs, GitHubRepository, GitHubRepositoryRef, GitHubRequestKind,
     GitHubResponseLimits, GitHubRetryAction, GitHubService, GitHubTransportPolicy,
     ReconciledMutation, ReleaseDataError, ReleaseDataErrorKind, ReleaseState, RemoteAsset,
     TagObjectId, WorkflowDispatchRequest, WorkflowJob, WorkflowLogArchive, WorkflowRun,
     WorkflowRunFilters, classify_github_retry, reconcile_mutation, require_asset_content_type,
-    resolve_tag_object_id, select_release_for_staging, select_release_for_tag,
+    resolve_issue_list, resolve_tag_object_id, select_release_for_staging, select_release_for_tag,
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};

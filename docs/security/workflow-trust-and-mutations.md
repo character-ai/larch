@@ -522,11 +522,18 @@ pagination contract is canonical in
 [`supply-chain-credentials-and-services.md`](supply-chain-credentials-and-services.md#pull-request-review-and-dependency-operations).
 
 `/issue` treats fetched issue content as an untrusted corpus. Its delimiter
-wrappers are prompt-level defenses. Deduplication runs through a read-only
-verdict agent that cannot mutate the repository or GitHub. Issue creation uses
-the scoped live-mutation gate and outbound redaction. Public issue text still
-requires prompt-level removal of internal URLs, PII, and sensitive context that
-token-pattern redaction does not cover.
+wrappers are prompt-level defenses. Its candidate snapshot splits the query so
+the data contract holds within the reviewed transport bound: open issues are
+fetched exhaustively, so an over-bound open corpus fails closed rather than
+dropping blockers, while recent closed issues fill the remaining budget as a
+bounded-partial snapshot whose omitted older tail is reported instead of
+silently narrowing deduplication. A refused fetch names its real class,
+including the transport-limit case, and never mislabels the transport bound as a
+network, authentication, or rate-limit failure. Deduplication runs through a
+read-only verdict agent that cannot mutate the repository or GitHub. Issue
+creation uses the scoped live-mutation gate and outbound redaction. Public issue
+text still requires prompt-level removal of internal URLs, PII, and sensitive
+context that token-pattern redaction does not cover.
 
 `/deps` applies the same untrusted-corpus treatment to open issue titles,
 bodies, and comments. It validates rewrite, close, and dependency targets

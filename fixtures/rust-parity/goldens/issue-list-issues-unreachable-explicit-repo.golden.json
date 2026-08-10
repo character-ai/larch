@@ -3,7 +3,7 @@
   "files": {},
   "side_effects": {},
   "stderr": {
-    "text": "WARN: gh api --paginate failed for repo o/r (network, auth, or rate limit)\n"
+    "text": "WARN: GitHub client unavailable for repo o/r (credential or setup)\n"
   },
   "stdout": {
     "text": "LIST_STATUS=failed\n"

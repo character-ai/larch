@@ -42,7 +42,12 @@ appear in more than one row when it consumes several typed adapter operations.
 Issue-dependency adapter parity landed in #7841, and sub-issue adapter parity
 in #8164. The `issue-reads` row records the #7682 command cutovers so far: the
 issue query verbs moved to Rust in #8167, and `issue list-issues` plus
-`issue fetch-issue-details` followed in #8168. The `issue-creation` row records
+`issue fetch-issue-details` followed in #8168. The shared typed list operation
+returns a bounded result that separates returned issue rows from raw REST rows
+scanned and reports truncation, so each caller declares exhaustive or
+bounded-partial intent rather than treating every page-bound refusal as a
+transport failure; the contract is canonical in
+[`supply-chain-credentials-and-services.md`](security/supply-chain-credentials-and-services.md). The `issue-creation` row records
 the #8169 cutover of `issue create-one`, `issue write-sentinel`, and
 `issue cleanup-failed`; its writes run through the shared issue-mutation owner,
 and `write-sentinel` is grouped with them because it is the receipt a completed

@@ -30,11 +30,13 @@ use crate::{
 use chrono::{Days, NaiveDate, Utc};
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain};
 use larch_core::{
-    GitHubComment, GitHubIssue, GitHubIssueList, GitHubIssueState, GitHubService,
+    GitHubComment, GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult,
+    GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef, GitHubService,
     GitHubTransportPolicy, ParsedItem, allocate_candidates as allocate, emit_kv, parse_issue_input,
     title_is_archival, unsigned_integer,
 };
 use std::{
+    collections::HashSet,
     env,
     ffi::OsString,
     fmt::Write as _,
@@ -386,44 +388,151 @@ fn parse_list_arguments(arguments: &[OsString]) -> Result<(u64, Option<String>),
 
 /// Read the snapshot and shape one TSV row per admitted issue.
 ///
-/// The list runs against the shared transport policy's item bound rather than
-/// the legacy per-command `--limit 100000`, so the snapshot is the newest issues
-/// within that bound. Pull requests are filtered here because the REST list
-/// returns them alongside issues, where `gh issue list` did not.
+/// The `/issue` data contract needs every open issue for dependency analysis and
+/// a recent-closed sample for deduplication, but a single newest-first
+/// `state=all` scan cannot both stay inside the reviewed transport bound and
+/// guarantee the whole open set. So this splits the query: open issues are
+/// fetched exhaustively (a truncated open corpus fails closed), and recent
+/// closed issues fill only the remaining output budget as a bounded-partial
+/// snapshot whose omitted tail is reported. Pull requests are filtered here
+/// because the REST list returns them alongside issues, where `gh issue list`
+/// did not.
 fn snapshot_rows(repo: &str, closed_window: u64) -> Result<Vec<String>, String> {
     let cutoff = closed_window_cutoff(closed_window);
     let reference = repository_ref(repo).map_err(|()| "repository slug is invalid".to_owned())?;
-    let bound = GitHubTransportPolicy::github_com().limits().items();
-    let listed = with_github_service(async |service, cancellation| {
-        let request = GitHubIssueList {
-            repo: reference.clone(),
-            state: GitHubIssueState::All,
-            labels: Vec::new(),
-            limit: service.transport_policy().limits().items(),
-        };
-        service
-            .list_issues(&request, cancellation)
-            .await
-            .map_err(|error| error.to_string())
-    })
-    // A refused snapshot is reported the same way whether the client could not
-    // be built or the read itself failed. The adapter's own detail is never
-    // surfaced, so the warning can neither leak a credential nor vary by run.
-    .map_err(|_failure| {
-        format!("gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
-    })?;
-    if listed.len() >= bound {
-        // A truncated snapshot still produces a usable `LIST_STATUS=ok`, so say
-        // so: dedup silently reasoning over a partial corpus is the failure the
-        // operator would otherwise never see.
+    let budget = GitHubTransportPolicy::github_com().limits().items();
+
+    // Open issues are exhaustive: dependency analysis promises coverage of every
+    // open issue, so an over-bound open corpus fails closed rather than dropping
+    // blockers. The dedup agent applies its own 500-row cap later.
+    let open = list_snapshot(
+        &reference,
+        GitHubIssueState::Open,
+        budget,
+        GitHubIssueListMode::Exhaustive,
+    )
+    .map_err(|failure| failure.warning(repo))?;
+
+    // Recent closed issues fill the remaining output budget as a bounded-partial
+    // snapshot: the transport bound never fails the command here, and an omitted
+    // older-closed tail is reported instead of silently narrowing dedup.
+    let remaining = budget.saturating_sub(open.issues.len());
+    let closed = if closed_window == 0 || remaining == 0 {
+        None
+    } else {
+        Some(
+            list_snapshot(
+                &reference,
+                GitHubIssueState::Closed,
+                remaining,
+                GitHubIssueListMode::BoundedPartial,
+            )
+            .map_err(|failure| failure.warning(repo))?,
+        )
+    };
+
+    if closed.as_ref().is_some_and(|result| result.truncated) {
+        // Truncation here means the closed scan stopped before its feed ended,
+        // whether it hit GitHub's page/item ceiling or exhausted the output
+        // budget left after the open issues. Either way older eligible closed
+        // issues are absent, so the warning names that effect, not a mechanism.
         eprintln!(
-            "WARN: issue snapshot reached the {bound}-issue transport bound for repo {repo}; older issues are absent"
+            "WARN: recent-closed snapshot for repo {repo} was truncated to fit the reviewed output budget; older eligible closed issues were omitted from deduplication"
         );
     }
-    Ok(listed
-        .iter()
-        .filter_map(|issue| snapshot_row(issue, closed_window, &cutoff))
-        .collect())
+
+    let empty: [GitHubIssue; 0] = [];
+    let closed_issues = closed
+        .as_ref()
+        .map_or(&empty[..], |result| result.issues.as_slice());
+    let mut rows: Vec<(u64, String)> = Vec::new();
+    let mut seen: HashSet<u64> = HashSet::new();
+    for issue in open.issues.iter().chain(closed_issues) {
+        if !seen.insert(issue.number) {
+            continue;
+        }
+        if let Some(row) = snapshot_row(issue, closed_window, &cutoff) {
+            rows.push((issue.number, row));
+        }
+    }
+    // Deterministic newest-first ordering after the split query.
+    rows.sort_by(|left, right| right.0.cmp(&left.0));
+    Ok(rows.into_iter().map(|(_, row)| row).collect())
+}
+
+/// Fetch one issue-state snapshot, preserving the typed refusal class.
+///
+/// The adapter's own detail never leaves this boundary; only the failure class
+/// crosses it, so the operator warning names auth, permission, rate limit,
+/// timeout, cancellation, transport, or the transport bound without leaking a
+/// credential or varying by run.
+fn list_snapshot(
+    reference: &GitHubRepositoryRef,
+    state: GitHubIssueState,
+    limit: usize,
+    mode: GitHubIssueListMode,
+) -> Result<GitHubIssueListResult, SnapshotFailure> {
+    let outcome = with_github_service(async |service, cancellation| {
+        let request = GitHubIssueList {
+            repo: reference.clone(),
+            state,
+            labels: Vec::new(),
+            limit,
+            mode,
+        };
+        Ok(service
+            .list_issues(&request, cancellation)
+            .await
+            .map_err(|error| error.kind()))
+    });
+    match outcome {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(kind)) => Err(SnapshotFailure::Kind(kind)),
+        // The closure never returns its own error, so the only `Err` here is a
+        // client that could not be built.
+        Err(_setup) => Err(SnapshotFailure::Setup),
+    }
+}
+
+/// A refused snapshot fetch, classified so the operator warning names the real
+/// cause instead of a generic network, auth, or rate-limit guess.
+enum SnapshotFailure {
+    /// The GitHub client could not be built (credential or runtime setup).
+    Setup,
+    /// The built client refused the read with this typed failure class.
+    Kind(GitHubOperationErrorKind),
+}
+
+impl SnapshotFailure {
+    /// A stable, secret-free warning line for this class.
+    fn warning(&self, repo: &str) -> String {
+        use GitHubOperationErrorKind as Kind;
+        match self {
+            Self::Setup => {
+                format!("GitHub client unavailable for repo {repo} (credential or setup)")
+            }
+            Self::Kind(Kind::LimitExceeded) => format!(
+                "issue snapshot for repo {repo} exceeded the reviewed transport page and item bound"
+            ),
+            Self::Kind(Kind::Authentication) => {
+                format!("GitHub authentication failed for repo {repo}")
+            }
+            Self::Kind(Kind::Permission | Kind::SsoRequired | Kind::NotFound) => {
+                format!("GitHub denied access to repo {repo}")
+            }
+            Self::Kind(Kind::RateLimited) => format!("GitHub rate limit reached for repo {repo}"),
+            Self::Kind(Kind::DeadlineExceeded) => {
+                format!("GitHub request timed out for repo {repo}")
+            }
+            Self::Kind(Kind::Cancelled) => format!("GitHub request was cancelled for repo {repo}"),
+            Self::Kind(
+                Kind::Transport
+                | Kind::MalformedResponse
+                | Kind::InvalidInput
+                | Kind::AmbiguousMutation,
+            ) => format!("gh api request failed for repo {repo} (network or transport error)"),
+        }
+    }
 }
 
 /// Shape one admitted issue as its TSV row, or drop it.

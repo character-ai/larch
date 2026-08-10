@@ -46,9 +46,9 @@ use larch_adapters::{
 };
 use larch_core::{
     AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssueList,
-    GitHubIssueSearch, GitHubIssueState, GitHubOperationErrorKind, GitHubService, Head,
-    ReachabilityContext, RepositoryRead, Revision, RunLogCorpus, bug_title_match, glob_matches,
-    scan_required_files, single_line, validate_ship_outcome_record,
+    GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState, GitHubOperationErrorKind,
+    GitHubService, Head, ReachabilityContext, RepositoryRead, Revision, RunLogCorpus,
+    bug_title_match, glob_matches, scan_required_files, single_line, validate_ship_outcome_record,
 };
 use regex::Regex;
 use serde_json::{Value, json};
@@ -570,6 +570,9 @@ async fn close_priors_remote(
                 state: GitHubIssueState::Open,
                 labels: vec!["audit-report".to_owned()],
                 limit: service.transport_policy().limits().items(),
+                // Closing every prior report is fail-closed, so an over-bound
+                // corpus refuses rather than leaving priors open.
+                mode: GitHubIssueListMode::Exhaustive,
             },
             cancellation,
         )
@@ -582,6 +585,7 @@ async fn close_priors_remote(
             }
         })?;
     let candidates = rows
+        .issues
         .iter()
         .filter(|issue| {
             issue.state == GitHubIssueState::Open
@@ -859,10 +863,14 @@ pub fn preflight(arguments: &[OsString]) -> ExitCode {
                         state: GitHubIssueState::All,
                         labels: vec!["audit-report".to_owned()],
                         limit: 50,
+                        // The probe degrades to an empty set on failure, so a
+                        // bounded partial snapshot is the intended contract.
+                        mode: GitHubIssueListMode::BoundedPartial,
                     },
                     cancellation,
                 )
                 .await
+                .map(|listed| listed.issues)
                 .unwrap_or_default();
             let cutoff = (Utc::now() - Duration::minutes(5)).to_rfc3339();
             if issues
@@ -1058,12 +1066,16 @@ async fn resolve_prs_remote<S: AuditRunsService + GitHubService + ?Sized>(
                     state: GitHubIssueState::All,
                     labels: vec!["audit-report".to_owned()],
                     limit: service.transport_policy().limits().items(),
+                    // Resolving the newest prior report must see every prior, so
+                    // an over-bound corpus fails closed rather than mis-ordering.
+                    mode: GitHubIssueListMode::Exhaustive,
                 },
                 cancellation,
             )
             .await
             .map_err(|_| format!("gh issue list failed while resolving prior audit-report issue for --skill={skill}"))?;
         let mut reports = issues
+            .issues
             .into_iter()
             .filter(|issue| !issue.is_pull_request && matches_audit_title(skill, &issue.title))
             .collect::<Vec<_>>();

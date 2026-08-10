@@ -3,9 +3,11 @@
 use crate::github::{GitHubCompletionError, OctocrabGitHubService, octocrab_status};
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
-    GitHubLabelCreate, GitHubOperationError, GitHubOperationErrorKind, GitHubRepository,
+    GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult, GitHubIssueScan,
+    GitHubIssueSearch, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome,
+    GitHubListStop, GitHubOperationError, GitHubOperationErrorKind, GitHubRepository,
     GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, ProcessCancellation,
+    resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::Serialize;
@@ -68,7 +70,7 @@ impl GitHubService for OctocrabGitHubService {
         &'a self,
         request: &'a GitHubIssueList,
         cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>> {
+    ) -> GitHubFuture<'a, GitHubIssueListResult> {
         Box::pin(async move {
             self.guarded(cancellation, async {
                 validate_repo(&request.repo)?;
@@ -97,6 +99,7 @@ impl GitHubService for OctocrabGitHubService {
                     &request.repo,
                     first,
                     request.limit,
+                    request.mode,
                     RateBucket::Core,
                     cancellation,
                 )
@@ -136,10 +139,12 @@ impl GitHubService for OctocrabGitHubService {
                     &request.repo,
                     first,
                     request.limit,
+                    GitHubIssueListMode::Exhaustive,
                     RateBucket::Search,
                     cancellation,
                 )
                 .await
+                .map(|result| result.issues)
             })
             .await
         })
@@ -583,36 +588,52 @@ impl OctocrabGitHubService {
         repository: &GitHubRepositoryRef,
         mut page: Page<models::issues::Issue>,
         limit: usize,
+        mode: GitHubIssueListMode,
         rate_bucket: RateBucket,
         cancellation: &dyn ProcessCancellation,
-    ) -> Result<Vec<GitHubIssue>, GitHubOperationError> {
+    ) -> Result<GitHubIssueListResult, GitHubOperationError> {
         let mut output = Vec::new();
+        let mut scan = GitHubIssueScan::new(limit, self.policy);
         let expected_repository_url = format!(
             "https://api.github.com/repos/{}/{}",
             repository.owner(),
             repository.name()
         );
-        for page_index in 0..self.policy.limits().pages() {
+        for page_index in 0..scan.pages_limit() {
             validate_json(&page, self.policy)?;
-            for value in page.take_items() {
-                if value.pull_request.is_some()
-                    || value.repository_url.as_str() != expected_repository_url
-                {
-                    continue;
+            let items = page.take_items();
+            let count = items.len();
+            for (index, value) in items.into_iter().enumerate() {
+                // Every raw REST row, pull requests and foreign-repository rows
+                // included, counts against the transport item bound; only
+                // matching issue rows reach the caller.
+                let retain = value.pull_request.is_none()
+                    && value.repository_url.as_str() == expected_repository_url;
+                if scan.count_row(retain) {
+                    output.push(issue_from_model(value, self.policy)?);
                 }
-                if output.len() >= limit {
-                    return Ok(output);
+                if let Some(stop) = scan.stop() {
+                    let continuation = index + 1 < count || page.next.is_some();
+                    return finish_list(output, scan.raw_scanned(), stop, continuation, mode);
                 }
-                output.push(issue_from_model(value, self.policy)?);
-            }
-            if output.len() >= limit {
-                return Ok(output);
             }
             let Some(next) = page.next.clone() else {
-                return Ok(output);
+                return finish_list(
+                    output,
+                    scan.raw_scanned(),
+                    GitHubListStop::Exhausted,
+                    false,
+                    mode,
+                );
             };
-            if page_index + 1 == self.policy.limits().pages() {
-                return Err(limit_error("GitHub pagination page limit exceeded"));
+            if page_index + 1 == scan.pages_limit() {
+                return finish_list(
+                    output,
+                    scan.raw_scanned(),
+                    GitHubListStop::PageLimit,
+                    true,
+                    mode,
+                );
             }
             validate_next(&next.to_string())?;
             page = self
@@ -621,7 +642,13 @@ impl OctocrabGitHubService {
                 })
                 .await?;
         }
-        Ok(output)
+        finish_list(
+            output,
+            scan.raw_scanned(),
+            GitHubListStop::Exhausted,
+            false,
+            mode,
+        )
     }
 
     async fn collect_comments(
@@ -1001,6 +1028,21 @@ fn limit_error(detail: impl AsRef<str>) -> GitHubOperationError {
     operation_error(GitHubOperationErrorKind::LimitExceeded, detail)
 }
 
+/// Resolve a stopped scan, mapping an exhaustive refusal to the typed
+/// page-limit error the exhaustive callers already branch on.
+fn finish_list(
+    issues: Vec<GitHubIssue>,
+    raw_rows_scanned: usize,
+    stop: GitHubListStop,
+    continuation: bool,
+    mode: GitHubIssueListMode,
+) -> Result<GitHubIssueListResult, GitHubOperationError> {
+    match resolve_issue_list(issues, raw_rows_scanned, stop, continuation, mode) {
+        GitHubListOutcome::Complete(result) => Ok(result),
+        GitHubListOutcome::Refused => Err(limit_error("GitHub pagination page limit exceeded")),
+    }
+}
+
 fn validate_json<T: Serialize>(
     value: &T,
     policy: GitHubTransportPolicy,
@@ -1190,6 +1232,7 @@ mod tests {
             state: GitHubIssueState::All,
             labels: vec![String::from("bug")],
             limit: 1,
+            mode: GitHubIssueListMode::Exhaustive,
         };
         let search = GitHubIssueSearch {
             repo: repo.clone(),
@@ -1268,6 +1311,7 @@ mod tests {
                 state,
                 labels: Vec::new(),
                 limit: 1,
+                mode: GitHubIssueListMode::BoundedPartial,
             };
             succeeds!(service.list_issues(&list, &cancellation));
         }
@@ -1304,6 +1348,41 @@ mod tests {
             service.repository(&repo, &cancelled),
             GitHubOperationErrorKind::Cancelled
         );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn list_issues_returns_a_typed_bounded_result_that_counts_filtered_rows() {
+        // One issue row and one pull-request row on a single terminal page: the
+        // pull request counts against the raw scan but never reaches the caller,
+        // and a feed that ends within every bound is not truncated.
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let mut pull_request = issue.clone();
+        pull_request["pull_request"] = json!({
+            "url": "https://api.github.com/repos/o/r/pulls/2",
+            "html_url": "https://github.com/o/r/pull/2",
+            "diff_url": "https://github.com/o/r/pull/2.diff",
+            "patch_url": "https://github.com/o/r/pull/2.patch",
+        });
+        let body = json!([issue, pull_request]).to_string();
+        let (service, server) = stub_service(vec![(200, body)]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let cancellation = Cancellation::new();
+        let request = GitHubIssueList {
+            repo,
+            state: GitHubIssueState::All,
+            labels: Vec::new(),
+            limit: 50,
+            mode: GitHubIssueListMode::BoundedPartial,
+        };
+        let result = service
+            .list_issues(&request, &cancellation)
+            .await
+            .expect("list succeeds");
+        assert_eq!(result.issues.len(), 1);
+        assert_eq!(result.raw_rows_scanned, 2);
+        assert!(!result.truncated);
         server.join().expect("stub completed");
     }
 }

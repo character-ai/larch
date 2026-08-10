@@ -441,9 +441,10 @@ def list_issues(argv: list[str]) -> int:
         return 0
     emit_kv("LIST_STATUS", "failed")
     if repo:
-        # An explicit repository reaches the client, which cannot be built and
-        # cannot reach the API. Python reported both the same way.
-        warn(f"WARN: gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
+        # An explicit repository reaches the client, which cannot be built in
+        # the parity environment. The command now names that setup failure class
+        # instead of a generic network, auth, or rate-limit guess.
+        warn(f"WARN: GitHub client unavailable for repo {repo} (credential or setup)")
     else:
         warn(UNRESOLVABLE_REPO_WARNING)
     return 0

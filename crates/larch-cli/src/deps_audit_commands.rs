@@ -30,11 +30,11 @@ use larch_adapters::{
 };
 use larch_core::{
     DepsEdge, DepsFetchedIssue, DepsIssueMap, DepsLiveIssue, DepsPlanInputs, GH_ERROR_CHARS,
-    GitHubIssue, GitHubIssueList, GitHubIssueState, GitHubOperationError, GitHubOperationErrorKind,
-    GitHubRepositoryRef, GitHubService as _, IssueMutationField, IssueMutationRequest,
-    IssueMutationSnapshot, MUTATION_ERROR_CHARS, deps_compact_json, deps_explicit_refs,
-    deps_failed_fetch, deps_fetch_artifacts, deps_flat_error, deps_issue_map, deps_normal_edge,
-    deps_plan, deps_plan_writes_allowed, deps_pretty_json, deps_proposal_edges,
+    GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueState, GitHubOperationError,
+    GitHubOperationErrorKind, GitHubRepositoryRef, GitHubService as _, IssueMutationField,
+    IssueMutationRequest, IssueMutationSnapshot, MUTATION_ERROR_CHARS, deps_compact_json,
+    deps_explicit_refs, deps_failed_fetch, deps_fetch_artifacts, deps_flat_error, deps_issue_map,
+    deps_normal_edge, deps_plan, deps_plan_writes_allowed, deps_pretty_json, deps_proposal_edges,
     deps_proposal_mutations, deps_revalidate_edge, deps_sanitize_outbound_body,
     deps_snapshot_numbers, deps_validate_snapshot_membership, deps_warning, emit_kv,
     json_positive_integer, python_str,
@@ -241,26 +241,21 @@ impl DepsGateway for LiveDeps {
             detail,
         })?;
         let bound = self.service.transport_policy().limits().items();
+        // A dependency audit must reason over every open issue, so the open
+        // snapshot is exhaustive: an over-bound corpus fails closed through
+        // `read_failure` rather than silently narrowing the audit's reach.
         let request = GitHubIssueList {
             repo: repository,
             state: GitHubIssueState::Open,
             labels: Vec::new(),
             limit: bound,
+            mode: GitHubIssueListMode::Exhaustive,
         };
         let listed = self
             .runtime
             .block_on(async { self.service.list_issues(&request, &self.cancellation).await })
             .map_err(|error| read_failure(&error))?;
-        let rows = open_rows_from(listed);
-        if rows.len() >= bound {
-            // A truncated snapshot would silently narrow the audit's reach, and
-            // a bounded read is not a failed one, so it is reported rather than
-            // refused.
-            eprintln!(
-                "WARN: open-issue snapshot reached the {bound}-issue transport bound for repo {repo}; older issues are absent"
-            );
-        }
-        Ok(rows)
+        Ok(open_rows_from(listed.issues))
     }
 
     fn comments(&self, repo: &str, issue: u64) -> Result<Vec<(u64, String)>, String> {
