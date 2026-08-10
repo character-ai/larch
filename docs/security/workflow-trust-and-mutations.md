@@ -322,7 +322,7 @@ timed-out or orphaned child only through validated process-group termination.
 
 ### CI cache trust
 
-The [CI Rust tool bootstrap and caches](supply-chain-credentials-and-services.md#ci-rust-tool-bootstrap-and-caches)
+The [CI tool bootstrap and caches](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches)
 section is the canonical cache-class and publication contract. Pull-request and
 merge-group workflows may consume only the explicitly scoped default-branch
 cache classes; they do not gain authority to publish a compiler-output cache or
@@ -369,7 +369,7 @@ Skip ownership is explicit rather than extension-based. Each root or path
 family in the allowlist names the normal lint, agent, Python, plugin, and/or
 trusted-main repository-policy job that continues to validate it. The
 `trusted-main-rust-policy` cache trust contract is canonical in
-[Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-rust-tool-bootstrap-and-caches).
+[Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches).
 The selection job and skip job both verify that content-derived identity before
 they execute it. A cache miss or failed verification selects `full`; no
 pull-request-provided Rust binary is accepted for `skip`.

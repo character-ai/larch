@@ -772,8 +772,14 @@ mod tests {
     }
 
     #[test]
-    fn extract_binary_accepts_only_the_regular_top_level_member() {
-        let archive_bytes = archive("gitleaks", b"fixture");
+    fn extract_binary_accepts_documented_release_shape_and_rejects_missing_target() {
+        // The pinned upstream release includes documentation beside the binary.
+        // CI validates that fixed member allowlist and extracts only the binary.
+        let archive_bytes = archive_members(&[
+            ("LICENSE", b"license" as &[u8]),
+            ("README.md", b"readme" as &[u8]),
+            ("gitleaks", b"fixture" as &[u8]),
+        ]);
         assert_eq!(
             extract_binary(&archive_bytes).expect("extract fixture"),
             b"fixture"
@@ -1140,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_and_ci_scans_share_the_verified_bootstrap_entrypoint() {
+    fn manual_and_ci_scans_use_separate_verified_bootstraps() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let precommit = fs::read_to_string(root.join(".pre-commit-config.yaml"))
             .expect("pre-commit configuration");
@@ -1149,16 +1155,21 @@ mod tests {
         assert!(precommit.contains(
             "\"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh\" lint gitleaks --mode working-tree"
         ));
+        assert!(workflow.contains("GITLEAKS_VERSION: \"8.18.4\""));
         assert!(
-            workflow
-                .contains("\"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh\" lint gitleaks --mode verify")
+            workflow.contains("ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d")
         );
-        assert!(workflow.contains(
-            "\"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh\" lint gitleaks --mode working-tree"
-        ));
-        assert!(workflow.contains(
-            "\"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh\" lint gitleaks --mode history --log-opts \"${BASE}..HEAD\""
-        ));
+        assert!(
+            workflow.contains("46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e")
+        );
+        assert!(workflow.contains("Prepare verified gitleaks release"));
+        assert!(workflow.contains("sha256sum --check --strict --status -"));
+        assert!(workflow.contains("--proto '=https' --proto-redir '=https'"));
+        assert!(workflow.contains("detect --source . --config \"$GITHUB_WORKSPACE/.gitleaks.toml\" --redact --no-banner --no-git"));
+        assert!(workflow.contains("detect --source . --config \"$GITHUB_WORKSPACE/.gitleaks.toml\" --redact --no-banner --log-opts \"${BASE}..HEAD\""));
+        assert!(workflow.contains("Save verified gitleaks binary"));
+        assert!(!workflow.contains("scripts/larch.sh\" lint gitleaks"));
+        assert!(!workflow.contains("cargo build --quiet --locked --package larch-cli"));
         assert!(!precommit.contains("checks gitleaks"));
         assert!(!workflow.contains("python/larch/lint/gitleaks.py"));
     }
@@ -1206,17 +1217,23 @@ mod tests {
     }
 
     fn archive(name: &str, contents: &[u8]) -> Vec<u8> {
+        archive_members(&[(name, contents)])
+    }
+
+    fn archive_members(members: &[(&str, &[u8])]) -> Vec<u8> {
         let mut bytes = Vec::new();
         {
             let encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::default());
             let mut bundle = tar::Builder::new(encoder);
-            let mut header = tar::Header::new_gnu();
-            header.set_size(u64::try_from(contents.len()).expect("fixture length"));
-            header.set_mode(0o755);
-            header.set_cksum();
-            bundle
-                .append_data(&mut header, name, contents)
-                .expect("append fixture member");
+            for &(name, contents) in members {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(u64::try_from(contents.len()).expect("fixture length"));
+                header.set_mode(0o755);
+                header.set_cksum();
+                bundle
+                    .append_data(&mut header, name, contents)
+                    .expect("append fixture member");
+            }
             bundle.finish().expect("finish tar fixture");
             let encoder = bundle.into_inner().expect("recover encoder");
             encoder.finish().expect("finish gzip fixture");

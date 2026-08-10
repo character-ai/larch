@@ -98,22 +98,27 @@ Larch uses three distinct scanner layers:
    `pass_filenames: false` keep the scan on the full working tree. Select it
    explicitly with `pre-commit run --hook-stage manual --all-files`; it is not
    part of the default commit hook or changed-file relevant checks.
-2. **CI working-tree and history scan**. The `gitleaks` CI job uses the same
-   wrapper, scans the working tree with `--no-git`, and scans the PR commit
-   range with full history available. This is the enforced backstop for the
-   opt-in local scan.
+2. **CI working-tree and history scan**. The `gitleaks` CI job uses a
+   workflow-local installer for the same pinned scanner release, avoiding a
+   full `larch-cli` build. It verifies the archive, extracted binary, cache
+   entry, and reported version before executing the scanner by absolute path in
+   a minimal credential-free environment.
+   It scans the working tree with `--no-git` and the PR commit range with full
+   history available. This is the enforced backstop for the opt-in local scan.
 3. **CI live-credential verification**. The `trufflehog` job pins the action to
    an immutable commit and pins its Docker version. `--only-verified` reports
    credentials that authenticate against a live provider. It does not replace
    pattern scanning because revoked, synthetic, or otherwise unverifiable
    token-shaped values may still be sensitive.
 
-The Gitleaks wrapper currently pins `v8.18.4`. TruffleHog currently pins the
-action commit corresponding to `v3.82.13` and sets `version: 3.82.13`. Scanner
-or checksum drift fails closed. The wrapper executes the verified Gitleaks cache
-file by its absolute path, rather than resolving a scanner from `PATH`; the
-child retains its normal `PATH` only so Gitleaks can invoke Git for bounded
-history scans.
+The local Rust wrapper and CI installer both pin Gitleaks `v8.18.4`.
+TruffleHog currently pins the action commit corresponding to `v3.82.13` and
+sets `version: 3.82.13`. Scanner or checksum drift fails closed. Both Gitleaks
+paths execute the verified cache file by its absolute path, rather than
+resolving a scanner from `PATH`; the child retains its normal `PATH` only so
+Gitleaks can invoke Git for bounded history scans. The CI installer rechecks
+the cache before each scan and allows cache publication only after a successful
+trusted-main run.
 
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
 covers the config itself, named residual-script and skill fixtures, the broad
@@ -537,7 +542,7 @@ egress contract.
 | Concern | Current owners |
 |---------|----------------|
 | Python redaction | `python/larch/core/redact.py` |
-| Rust checksum-pinned scanner | `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs` |
+| Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, and stale cleanup in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`; Python retains only persisted run-identity parsing in `python/larch/report/progress_file.py`. |
 | Mutable run-log flush and transcript staging | Rust owns checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/run_log_flush_commands.rs`. Atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. The only Python payload producers called by that boundary are #7684 `token report`, `token mark`, and `difficulty write-record`; `final-report write` additionally reads #7679 `token claude-source` and assessment payloads plus #7681 plan and PR payloads. Those Python payload commands cannot write a run-log batch, manifest, timing ledger, transcript, archive, or tracking comment. |

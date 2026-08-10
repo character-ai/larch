@@ -1,12 +1,15 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false
-"""Tests for checks.py (stub Runner only; no bash executed)."""
+"""Tests for checks.py and the narrow executable CI workflow contracts."""
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
 import subprocess
+import tarfile
+import textwrap
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -3921,7 +3924,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     python_rust_integration = workflow.split("\n  python-rust-integration:", 1)[1].split(
         "\n  gitleaks:", 1
     )[0]
-    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
     cargo_input_key = (
         "cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-"
@@ -3942,7 +3944,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert env_value in rust_lint
     assert cargo_input_key in rust_lint
     assert cargo_input_key in rust_coverage
-    assert cargo_input_key in gitleaks
 
     lint_target_cache = rust_lint.split("Restore Rust lint dependencies", 1)[1].split(
         "Check Rust formatting", 1
@@ -3976,13 +3977,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_target_save = rust_coverage.split("Save coverage dependencies", 1)[1].split(
         "Record coverage dependency cache save diagnostics", 1
     )[0]
-    gitleaks_input_cache = gitleaks.split("Restore Cargo inputs", 1)[1].split(
-        "Cache gitleaks binary", 1
-    )[0]
     for input_cache in (
         lint_input_cache,
         coverage_input_cache,
-        gitleaks_input_cache,
     ):
         assert "path: target" not in input_cache
         assert "actions/cache/restore@" + cache_sha in input_cache
@@ -4106,7 +4103,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Save coverage dependencies"
     )
 
-    for rust_job in (rust_lint, rust_coverage, gitleaks):
+    for rust_job in (rust_lint, rust_coverage):
         cargo_input_save = rust_job.split("Save Cargo inputs", 1)[1]
         assert "actions/cache/save@" + cache_sha in cargo_input_save
         assert (
@@ -4392,6 +4389,388 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         )
     )
     assert marker_paths == ["python/tests/report/test_run_lifecycle_consumer.py"]
+
+
+def test_gitleaks_ci_uses_a_direct_verified_scanner_without_rust_bootstrap() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
+        encoding="utf-8"
+    )
+    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
+    supply_chain = (
+        repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    artifacts = (
+        repo_root / "docs" / "security" / "artifacts-redaction-and-publication.md"
+    ).read_text(encoding="utf-8")
+    workflow_trust = (
+        repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
+    shipped_supply_chain = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    shipped_artifacts = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "artifacts-redaction-and-publication.md"
+    ).read_text(encoding="utf-8")
+    shipped_workflow_trust = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
+    cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
+    archive_sha = "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
+    binary_sha = "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
+    cache_key = (
+        "gitleaks-release-v2-${{ runner.os }}-${{ runner.arch }}-"
+        "${{ env.GITLEAKS_VERSION }}-${{ env.GITLEAKS_BINARY_SHA256 }}"
+    )
+
+    assert "runs-on: ubuntu-24.04" in gitleaks
+    assert "id: gitleaks-checkout-start" in gitleaks
+    assert "id: gitleaks-checkout-timing" in gitleaks
+    assert 'checkout_started="${{ steps.gitleaks-checkout-start.outputs.epoch_seconds }}"' in gitleaks
+    assert 'checkout_seconds="$(( $(date +%s) - checkout_started ))"' in gitleaks
+    assert 'test "$checkout_seconds" -ge 0' in gitleaks
+    assert "fetch-depth: 0" in gitleaks
+    assert 'GITLEAKS_VERSION: "8.18.4"' in gitleaks
+    assert archive_sha in gitleaks
+    assert binary_sha in gitleaks
+    for retired_bootstrap in (
+        "Install pinned Rust toolchain",
+        "Restore Cargo inputs",
+        "Save Cargo inputs",
+        "Build verified larch executable",
+        "scripts/larch.sh",
+        "cargo build",
+        "target/debug/larch",
+        "LARCH_BINARY",
+    ):
+        assert retired_bootstrap not in gitleaks
+
+    assert "id: gitleaks-cache" in gitleaks
+    assert "actions/cache/restore@" + cache_sha in gitleaks
+    assert "actions/cache/save@" + cache_sha in gitleaks
+    assert "actions/cache@v5" not in gitleaks
+    assert "path: ~/.cache/larch/tools/gitleaks" in gitleaks
+    assert cache_key in gitleaks
+    assert (
+        "success() && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+        " && steps.gitleaks-cache.outputs.cache-hit != 'true'"
+    ) in gitleaks
+    assert gitleaks.index("Save verified gitleaks binary") > gitleaks.index(
+        "Scan git history"
+    )
+
+    assert "if ! gitleaks_is_verified; then" in gitleaks
+    assert "gitleaks_is_verified || {" in gitleaks
+    assert '[ ! -d "$directory" ] || [ -L "$directory" ]' in gitleaks
+    assert '[ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]' in gitleaks
+    assert "gitleaks cache entry is not a regular file" in gitleaks
+    assert "verified gitleaks release failed post-install validation" in gitleaks
+    assert gitleaks.count("env -i") == 3
+    assert "GIT_TERMINAL_PROMPT=0" in gitleaks
+    assert "--proto '=https' --proto-redir '=https'" in gitleaks
+    assert (
+        "--retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120"
+        in gitleaks
+    )
+    assert "--max-filesize 16777216" in gitleaks
+    assert (
+        "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+        in gitleaks
+    )
+    assert gitleaks.count("sha256sum --check --strict --status -") >= 4
+    assert (
+        "expected_gitleaks_members=\"$(printf '%s\\n' LICENSE README.md gitleaks)\""
+        in gitleaks
+    )
+    assert (
+        'actual_gitleaks_members="$(tar -tzf "$gitleaks_archive" | LC_ALL=C sort)"'
+        in gitleaks
+    )
+    assert 'test "$actual_gitleaks_members" = "$expected_gitleaks_members"' in gitleaks
+    assert 'tar -xzf "$gitleaks_archive" -C "$temporary" -- gitleaks' in gitleaks
+    assert 'install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"' in gitleaks
+    assert 'test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"' in gitleaks
+
+    working_tree = gitleaks.split("- name: Scan working tree", 1)[1].split(
+        "- name: Scan git history", 1
+    )[0]
+    history = gitleaks.split("- name: Scan git history", 1)[1].split(
+        "- name: Save verified gitleaks binary", 1
+    )[0]
+    assert (
+        'detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --no-git'
+        in working_tree
+    )
+    assert (
+        "BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)"
+        in history
+    )
+    assert (
+        'detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --log-opts "${BASE}..HEAD"'
+        in history
+    )
+    assert "Record gitleaks phase timing metadata" in gitleaks
+    for phase in (
+        "checkout_seconds",
+        "rust_bootstrap_seconds: 0",
+        "rust_bootstrap: removed",
+        "verified_tool_preparation_seconds",
+        "working_tree_scan_seconds",
+        "history_scan_seconds",
+    ):
+        assert phase in gitleaks
+
+    assert "separate, no-Cargo scanner bootstrap" in supply_chain
+    assert "16 MiB archive-size cap" in supply_chain
+    assert (
+        "pull-request-provided executable cannot cross into the trusted-main cache"
+        in supply_chain
+    )
+    assert "workflow-local installer" in artifacts
+    assert "CI installer rechecks the cache before each scan" in " ".join(
+        artifacts.split()
+    )
+    assert "#ci-tool-bootstrap-and-caches" in workflow_trust
+    assert "#ci-rust-tool-bootstrap-and-caches" not in workflow_trust
+    assert shipped_supply_chain == supply_chain
+    assert shipped_artifacts == artifacts
+    assert shipped_workflow_trust == workflow_trust
+
+
+def _gitleaks_ci_preparation_script(repo_root: Path) -> str:
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
+        encoding="utf-8"
+    )
+    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
+    preparation = gitleaks.split(
+        "      - name: Prepare verified gitleaks release\n"
+        "        id: prepare-gitleaks\n"
+        "        run: |\n",
+        1,
+    )[1].split("      - name: Scan working tree", 1)[0]
+    return textwrap.dedent(preparation)
+
+
+def _write_gitleaks_ci_mock(path: Path, body: str) -> None:
+    path.write_text(f"#!/bin/bash\nset -euo pipefail\n{body}", encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _write_gitleaks_ci_archive(path: Path, members: tuple[str, ...]) -> None:
+    with tarfile.open(path, "w:gz") as archive:
+        for name in members:
+            if name == "gitleaks":
+                contents = b"""#!/bin/bash
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  printf '%s\n' credential-leak >> "$HOME/gitleaks-invocations"
+  exit 97
+fi
+printf '%s\n' "$*" >> "$HOME/gitleaks-invocations"
+if [ "${1:-}" = version ]; then
+  printf '%s\n' 8.18.4
+fi
+"""
+                mode = 0o755
+            else:
+                contents = name.encode()
+                mode = 0o644
+            header = tarfile.TarInfo(name)
+            header.size = len(contents)
+            header.mode = mode
+            archive.addfile(header, io.BytesIO(contents))
+
+
+def _gitleaks_ci_mock_tools(mock_bin: Path) -> None:
+    _write_gitleaks_ci_mock(
+        mock_bin / "curl",
+        """\
+output=""
+saw_max_filesize=false
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --max-filesize)
+      test "${2:-}" = 16777216
+      saw_max_filesize=true
+      shift 2
+      ;;
+    --output)
+      output="${2:?missing curl output path}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+test "$saw_max_filesize" = true
+test -n "$output"
+if [ "${TEST_CURL_FAILURE:-false}" = true ]; then
+  exit 22
+fi
+cp "$TEST_ARCHIVE_SOURCE" "$output"
+""",
+    )
+    _write_gitleaks_ci_mock(
+        mock_bin / "sha256sum",
+        """\
+if [ "${1:-}" = --check ]; then
+  check_count=0
+  if [ -f "$TEST_SHA256_CHECK_COUNT" ]; then
+    check_count="$(cat "$TEST_SHA256_CHECK_COUNT")"
+  fi
+  check_count="$((check_count + 1))"
+  printf '%s\n' "$check_count" > "$TEST_SHA256_CHECK_COUNT"
+  if [ "${TEST_SHA256_FAIL_AT:-0}" = "$check_count" ]; then
+    exit 1
+  fi
+  exit 0
+fi
+path=""
+for argument in "$@"; do
+  path="$argument"
+done
+if [ "$(cat "$path")" = corrupt ]; then
+  printf '%s  %s\n' unverified "$path"
+else
+  printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "$path"
+fi
+""",
+    )
+
+
+def _run_gitleaks_ci_preparation(
+    tmp_path: Path,
+    *,
+    archive_members: tuple[str, ...] = ("LICENSE", "README.md", "gitleaks"),
+    checksum_failure_at: int | None = None,
+    cache_kind: str = "cold",
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    repo_root = Path(__file__).resolve().parents[3]
+    tmp_path.mkdir(exist_ok=True)
+    mock_bin = tmp_path / "mock-bin"
+    mock_bin.mkdir()
+    _gitleaks_ci_mock_tools(mock_bin)
+    archive_source = tmp_path / "gitleaks.tar.gz"
+    _write_gitleaks_ci_archive(archive_source, archive_members)
+    home = tmp_path / "home"
+    home.mkdir()
+    temporary = tmp_path / "temporary"
+    temporary.mkdir()
+    cache_binary = (
+        home
+        / ".cache"
+        / "larch"
+        / "tools"
+        / "gitleaks"
+        / "8.18.4"
+        / "linux-x64"
+        / "gitleaks"
+    )
+    if cache_kind == "corrupt":
+        cache_binary.parent.mkdir(parents=True)
+        cache_binary.write_text("corrupt", encoding="utf-8")
+    elif cache_kind == "symlink":
+        cache_binary.parent.mkdir(parents=True)
+        cache_target = tmp_path / "untrusted-gitleaks"
+        cache_target.write_text("corrupt", encoding="utf-8")
+        cache_binary.symlink_to(cache_target)
+    elif cache_kind != "cold":
+        raise AssertionError(f"unknown cache fixture kind: {cache_kind}")
+    github_output = tmp_path / "github-output"
+    check_count = tmp_path / "sha256-check-count"
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "HOME": str(home),
+            "TMPDIR": str(temporary),
+            "PATH": f"{mock_bin}{os.pathsep}{environment['PATH']}",
+            "LANG": "C.UTF-8",
+            "GITHUB_OUTPUT": str(github_output),
+            "GITHUB_TOKEN": "must-not-reach-gitleaks",
+            "GITLEAKS_VERSION": "8.18.4",
+            "GITLEAKS_ARCHIVE_SHA256": "archive-sha256",
+            "GITLEAKS_BINARY_SHA256": "binary-sha256",
+            "TEST_ARCHIVE_SOURCE": str(archive_source),
+            "TEST_SHA256_CHECK_COUNT": str(check_count),
+        }
+    )
+    if checksum_failure_at is not None:
+        environment["TEST_SHA256_FAIL_AT"] = str(checksum_failure_at)
+    result = subprocess.run(
+        ["bash", "-c", _gitleaks_ci_preparation_script(repo_root)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    return result, home, github_output
+
+
+def test_gitleaks_ci_preparation_executes_a_hermetic_cold_miss_and_recovers_corrupt_cache(
+    tmp_path: Path,
+) -> None:
+    for cache_kind in ("cold", "corrupt"):
+        result, home, github_output = _run_gitleaks_ci_preparation(
+            tmp_path / cache_kind,
+            cache_kind=cache_kind,
+        )
+        assert result.returncode == 0, result.stderr
+        binary = (
+            home
+            / ".cache"
+            / "larch"
+            / "tools"
+            / "gitleaks"
+            / "8.18.4"
+            / "linux-x64"
+            / "gitleaks"
+        )
+        assert binary.is_file()
+        assert not binary.is_symlink()
+        assert (
+            home / "gitleaks-invocations"
+        ).read_text(encoding="utf-8") == "version\n"
+        assert "seconds=" in github_output.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("archive_members", "checksum_failure_at", "cache_kind"),
+    [
+        (("LICENSE", "README.md", "unexpected"), None, "cold"),
+        (("LICENSE", "README.md", "gitleaks"), 1, "cold"),
+        (("LICENSE", "README.md", "gitleaks"), 2, "cold"),
+        (("LICENSE", "README.md", "gitleaks"), None, "symlink"),
+    ],
+)
+def test_gitleaks_ci_preparation_rejects_invalid_material_before_execution(
+    tmp_path: Path,
+    archive_members: tuple[str, ...],
+    checksum_failure_at: int | None,
+    cache_kind: str,
+) -> None:
+    result, home, github_output = _run_gitleaks_ci_preparation(
+        tmp_path,
+        archive_members=archive_members,
+        checksum_failure_at=checksum_failure_at,
+        cache_kind=cache_kind,
+    )
+    assert result.returncode != 0
+    assert not (home / "gitleaks-invocations").exists()
+    assert not github_output.exists()
 
 
 def test_rust_ci_documentation_matches_producer_topology() -> None:

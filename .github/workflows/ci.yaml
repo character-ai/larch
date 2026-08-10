@@ -1273,56 +1273,176 @@ jobs:
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved
   # here to reduce `lint`'s wall-clock time) and (2) git-history scan
   # (covers the PR commit range; `fetch-depth: 0` supports merge-base lookup).
-  # Both use the same checksum-pinned release artifact path as local pre-commit.
+  # CI uses a separate checksum-pinned release bootstrap from local pre-commit.
   gitleaks:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
-      LARCH_BINARY: ${{ github.workspace }}/target/debug/larch
+      GITLEAKS_VERSION: "8.18.4"
+      GITLEAKS_ARCHIVE_SHA256: "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
+      GITLEAKS_BINARY_SHA256: "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
     steps:
-      - uses: actions/checkout@v6
+      - name: Start gitleaks checkout timing
+        id: gitleaks-checkout-start
+        run: printf 'epoch_seconds=%s\n' "$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Checkout gitleaks source
+        id: gitleaks-checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install pinned Rust toolchain
+      - name: Record gitleaks checkout timing
+        id: gitleaks-checkout-timing
         run: |
-          rustc --version
-          cargo --version
-      - name: Restore Cargo inputs
-        id: cargo-inputs-cache
+          set -euo pipefail
+          checkout_started="${{ steps.gitleaks-checkout-start.outputs.epoch_seconds }}"
+          case "$checkout_started" in
+            ''|*[!0-9]*)
+              echo "::error::gitleaks checkout start time is invalid"
+              exit 1
+              ;;
+          esac
+          checkout_seconds="$(( $(date +%s) - checkout_started ))"
+          test "$checkout_seconds" -ge 0
+          printf 'seconds=%s\n' "$checkout_seconds" >> "$GITHUB_OUTPUT"
+      # The named checkout, preparation, and scan steps expose the complete
+      # cold/warm phase timing surface in GitHub Actions. The cache hit in the
+      # summary below distinguishes warm scanner preparation from a download.
+      - name: Restore verified gitleaks binary
+        id: gitleaks-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
-      - name: Cache gitleaks binary
-        uses: actions/cache@v5
-        with:
           path: ~/.cache/larch/tools/gitleaks
-          key: gitleaks-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/larch-cli/src/gitleaks.rs', 'crates/larch-adapters/src/github/release.rs', 'crates/larch-core/src/process.rs', 'Cargo.lock') }}
-      - name: Build verified larch executable
-        run: cargo build --quiet --locked --package larch-cli
+          key: gitleaks-release-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.GITLEAKS_VERSION }}-${{ env.GITLEAKS_BINARY_SHA256 }}
       - name: Prepare verified gitleaks release
-        run: '"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode verify'
+        id: prepare-gitleaks
+        run: |
+          set -euo pipefail
+          gitleaks_cache_root="${HOME}/.cache/larch/tools/gitleaks"
+          gitleaks_cache_dir="${gitleaks_cache_root}/${GITLEAKS_VERSION}/linux-x64"
+          gitleaks_binary="${gitleaks_cache_dir}/gitleaks"
+
+          run_gitleaks() {
+            env -i \
+              PATH="$PATH" \
+              HOME="$HOME" \
+              TMPDIR="${TMPDIR:-/tmp}" \
+              LANG="${LANG:-C.UTF-8}" \
+              GIT_TERMINAL_PROMPT=0 \
+              "$gitleaks_binary" "$@"
+          }
+
+          for directory in "$HOME/.cache" "$HOME/.cache/larch" "$HOME/.cache/larch/tools" "$gitleaks_cache_root" "${gitleaks_cache_root}/${GITLEAKS_VERSION}" "$gitleaks_cache_dir"; do
+            if [ -e "$directory" ] || [ -L "$directory" ]; then
+              if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+                echo "::error::gitleaks cache directory is not a real directory: $directory"
+                exit 1
+              fi
+            else
+              mkdir "$directory"
+            fi
+          done
+
+          gitleaks_is_verified() {
+            if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+              return 1
+            fi
+            actual_sha256="$(sha256sum "$gitleaks_binary" | awk '{print $1}')"
+            test "$actual_sha256" = "$GITLEAKS_BINARY_SHA256" || return 1
+            test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"
+          }
+
+          if ! gitleaks_is_verified; then
+            temporary="$(mktemp -d)"
+            trap 'rm -rf "$temporary"' EXIT
+            gitleaks_archive="${temporary}/gitleaks.tar.gz"
+            curl --fail --location --proto '=https' --proto-redir '=https' \
+              --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 --max-filesize 16777216 \
+              --output "$gitleaks_archive" \
+              "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+            printf '%s  %s\n' "$GITLEAKS_ARCHIVE_SHA256" "$gitleaks_archive" | sha256sum --check --strict --status -
+            expected_gitleaks_members="$(printf '%s\n' LICENSE README.md gitleaks)"
+            actual_gitleaks_members="$(tar -tzf "$gitleaks_archive" | LC_ALL=C sort)"
+            test "$actual_gitleaks_members" = "$expected_gitleaks_members"
+            tar -xzf "$gitleaks_archive" -C "$temporary" -- gitleaks
+            test -f "${temporary}/gitleaks" && test ! -L "${temporary}/gitleaks"
+            printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "${temporary}/gitleaks" | sha256sum --check --strict --status -
+            if [ -e "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+              if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+                echo "::error::gitleaks cache entry is not a regular file: $gitleaks_binary"
+                exit 1
+              fi
+              rm -f -- "$gitleaks_binary"
+            fi
+            install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"
+          fi
+
+          gitleaks_is_verified || {
+            echo "::error::verified gitleaks release failed post-install validation"
+            exit 1
+          }
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
       - name: Scan working tree
-        run: '"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode working-tree'
+        id: scan-working-tree
+        run: |
+          set -euo pipefail
+          gitleaks_binary="${HOME}/.cache/larch/tools/gitleaks/${GITLEAKS_VERSION}/linux-x64/gitleaks"
+          run_gitleaks() {
+            env -i \
+              PATH="$PATH" \
+              HOME="$HOME" \
+              TMPDIR="${TMPDIR:-/tmp}" \
+              LANG="${LANG:-C.UTF-8}" \
+              GIT_TERMINAL_PROMPT=0 \
+              "$gitleaks_binary" "$@"
+          }
+          test -f "$gitleaks_binary" && test ! -L "$gitleaks_binary"
+          printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "$gitleaks_binary" | sha256sum --check --strict --status -
+          test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"
+          test -f .gitleaks.toml && test ! -L .gitleaks.toml
+          run_gitleaks detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --no-git
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
       - name: Scan git history
+        id: scan-history
         run: |
           set -euo pipefail
           # Limit scan to new commits in this PR to avoid false positives from
           # historical test-fixture keys in the main branch.
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
-          "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" lint gitleaks --mode history --log-opts "${BASE}..HEAD"
-      - name: Save Cargo inputs
-        id: cargo-inputs-save
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+          gitleaks_binary="${HOME}/.cache/larch/tools/gitleaks/${GITLEAKS_VERSION}/linux-x64/gitleaks"
+          run_gitleaks() {
+            env -i \
+              PATH="$PATH" \
+              HOME="$HOME" \
+              TMPDIR="${TMPDIR:-/tmp}" \
+              LANG="${LANG:-C.UTF-8}" \
+              GIT_TERMINAL_PROMPT=0 \
+              "$gitleaks_binary" "$@"
+          }
+          test -f "$gitleaks_binary" && test ! -L "$gitleaks_binary"
+          printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "$gitleaks_binary" | sha256sum --check --strict --status -
+          test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"
+          test -f .gitleaks.toml && test ! -L .gitleaks.toml
+          run_gitleaks detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --log-opts "${BASE}..HEAD"
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
+      - name: Save verified gitleaks binary
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gitleaks-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
+          path: ~/.cache/larch/tools/gitleaks
+          key: ${{ steps.gitleaks-cache.outputs.cache-primary-key }}
+      - name: Record gitleaks phase timing metadata
+        if: always()
+        run: |
+          {
+            echo "## Gitleaks timing metadata"
+            echo "- cache_hit: ${{ steps.gitleaks-cache.outputs.cache-hit }}"
+            echo "- checkout_seconds: ${{ steps.gitleaks-checkout-timing.outputs.seconds }}"
+            echo "- rust_bootstrap_seconds: 0"
+            echo "- rust_bootstrap: removed (no Cargo or larch bootstrap)"
+            echo "- verified_tool_preparation_seconds: ${{ steps.prepare-gitleaks.outputs.seconds }}"
+            echo "- working_tree_scan_seconds: ${{ steps.scan-working-tree.outputs.seconds }}"
+            echo "- history_scan_seconds: ${{ steps.scan-history.outputs.seconds }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
   # Generator and local metadata drift checks. Uses a sparse checkout because
