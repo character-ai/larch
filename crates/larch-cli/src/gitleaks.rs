@@ -1152,6 +1152,12 @@ mod tests {
             .expect("pre-commit configuration");
         let workflow =
             fs::read_to_string(root.join(".github/workflows/ci.yaml")).expect("CI workflow");
+        let bootstrap =
+            fs::read_to_string(root.join(".github/actions/gitleaks-bootstrap/action.yaml"))
+                .expect("gitleaks bootstrap action");
+        let cache_publication =
+            fs::read_to_string(root.join(".github/workflows/main-cache-publication.yaml"))
+                .expect("main cache publication workflow");
         assert!(precommit.contains(
             "\"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh\" lint gitleaks --mode working-tree"
         ));
@@ -1162,12 +1168,14 @@ mod tests {
         assert!(
             workflow.contains("46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e")
         );
-        assert!(workflow.contains("Prepare verified gitleaks release"));
-        assert!(workflow.contains("sha256sum --check --strict --status -"));
-        assert!(workflow.contains("--proto '=https' --proto-redir '=https'"));
+        assert!(workflow.contains("uses: ./.github/actions/gitleaks-bootstrap"));
+        assert!(bootstrap.contains("Prepare verified gitleaks release"));
+        assert!(bootstrap.contains("sha256sum --check --strict --status -"));
+        assert!(bootstrap.contains("--proto '=https' --proto-redir '=https'"));
         assert!(workflow.contains("detect --source . --config \"$GITHUB_WORKSPACE/.gitleaks.toml\" --redact --no-banner --no-git"));
         assert!(workflow.contains("detect --source . --config \"$GITHUB_WORKSPACE/.gitleaks.toml\" --redact --no-banner --log-opts \"${BASE}..HEAD\""));
-        assert!(workflow.contains("Save verified gitleaks binary"));
+        assert!(cache_publication.contains("Save verified gitleaks binary"));
+        assert!(!workflow.contains("Save verified gitleaks binary"));
         assert!(!workflow.contains("scripts/larch.sh\" lint gitleaks"));
         assert!(!workflow.contains("cargo build --quiet --locked --package larch-cli"));
         assert!(!precommit.contains("checks gitleaks"));
