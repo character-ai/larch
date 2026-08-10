@@ -532,3 +532,15 @@ def test_fail_open_debate_records_fallback_status(tmp_path: Path, monkeypatch: p
     assert status["state"] == "fallback"
     assert status["generation"] == design_dialectic.read_generation(tmp_path)
     assert not (tmp_path / design_dialectic.DIGEST_FILE).exists()
+
+
+def test_launcher_argv_uses_allowlisted_static_timing_kind(tmp_path: Path) -> None:
+    argv = design_dialectic._launcher_argv(
+        design=tmp_path,
+        prompt=tmp_path / "prompt.txt",
+        output=tmp_path / "output.txt",
+        timeout=30,
+    )
+
+    flag_index = argv.index("--timing-task-kind")
+    assert argv[flag_index + 1] == "claude-plan-generic"

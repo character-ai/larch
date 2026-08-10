@@ -541,7 +541,7 @@ pub fn check_token_budget_cap<E>(
 
 /// Validated task-kind token used by the vendor timing command.
 ///
-/// Literal constructor calls are checked against the canonical Python
+/// Literal constructor calls are checked against the canonical Rust
 /// allowlist by `timing-task-kind-allowlist`; dynamic values retain the legacy
 /// grammar check.
 #[derive(Clone, Debug, Eq, PartialEq)]

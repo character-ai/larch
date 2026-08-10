@@ -8733,12 +8733,6 @@ python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "va
 rust = []
 
 [[callers]]
-path = "python/larch/lint/timing_task_kind_allowlist.py"
-kind = "python-runtime"
-python = []
-rust = ["timing task-kinds"]
-
-[[callers]]
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []

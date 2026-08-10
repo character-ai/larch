@@ -621,7 +621,7 @@ def _ballot_text(*, candidates: CandidateSet, steelmen: dict[tuple[str, str], st
     return "\n".join(lines) + "\n"
 
 
-def _launcher_argv(*, design: Path, prompt: Path, output: Path, timeout: int, task_kind: str) -> list[str]:
+def _launcher_argv(*, design: Path, prompt: Path, output: Path, timeout: int) -> list[str]:
     return [
         str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "agent",
@@ -633,7 +633,7 @@ def _launcher_argv(*, design: Path, prompt: Path, output: Path, timeout: int, ta
         "--timeout",
         str(timeout),
         "--timing-task-kind",
-        task_kind,
+        "claude-plan-generic",
         "--allow-root",
         str(design),
     ]
@@ -766,7 +766,7 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
             prompt = prompt_dir / f"{name}.txt"
             output = design / f"dialectic-{name}.txt"
             _atomic_write_text(path=prompt, text=_slot_prompt(role="debater", decision=decision, option_key=option_key))
-            slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout, task_kind="claude_dialectic")))
+            slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout)))
     debater_outputs, debaters_ok = _run_slot_batch(slots, deadline=deadline)
     if not debaters_ok:
         _fail_open_status(design, kind=kind, candidates=candidates)
@@ -784,7 +784,7 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
         prompt = prompt_dir / f"{name}.txt"
         output = design / f"dialectic-{name}.txt"
         _atomic_write_text(path=prompt, text=ballot)
-        judge_slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout, task_kind="claude_dialectic")))
+        judge_slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout)))
     judge_outputs, judges_ok = _run_slot_batch(judge_slots, deadline=deadline)
     if not judges_ok:
         _fail_open_status(design, kind=kind, candidates=candidates)
