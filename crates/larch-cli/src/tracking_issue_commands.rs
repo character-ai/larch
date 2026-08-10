@@ -2604,7 +2604,7 @@ mod tests {
         let (mutation, lease, title) =
             initial_lease_mutation(&before, &reference, 7, &request).expect("admitted");
 
-        assert_eq!(title, "[IMPLEMENTING] Work");
+        assert_eq!(title, format!("{IMPLEMENTING_PREFIX}Work"));
         assert_eq!(
             (lease.run_id.as_str(), lease.branch.as_str()),
             ("run-7", "feature/work")

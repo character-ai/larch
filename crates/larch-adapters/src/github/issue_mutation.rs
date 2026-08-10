@@ -644,9 +644,9 @@ mod tests {
         runtime::Cancellation,
     };
     use larch_core::{
-        GitHubCloseReason, GitHubIssueState, GitHubRepositoryRef, IssueCreateRequest,
-        IssueMutationError, IssueMutationField, IssueMutationLease, IssueMutationRequest,
-        IssueMutationSnapshot,
+        GitHubCloseReason, GitHubIssueState, GitHubRepositoryRef, IMPLEMENTING_PREFIX,
+        IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationLease,
+        IssueMutationRequest, IssueMutationSnapshot,
     };
     use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
@@ -1052,9 +1052,9 @@ mod tests {
         let requests = server.finish().expect("stub finished");
         let edit: Value = serde_json::from_slice(&requests[2].body.bytes).expect("edit JSON");
 
-        assert_eq!(result.after.title, "[IMPLEMENTING] Work");
+        assert_eq!(result.after.title, format!("{IMPLEMENTING_PREFIX}Work"));
         assert_eq!(result.after.body, updated);
-        assert_eq!(edit["title"], "[IMPLEMENTING] Work");
+        assert_eq!(edit["title"], format!("{IMPLEMENTING_PREFIX}Work"));
         assert_eq!(edit["body"], updated);
         assert_eq!(
             requests
