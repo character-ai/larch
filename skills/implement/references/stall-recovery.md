@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Step 18a.
 
-**Contract**: Step 18a reports terminal failures only. It never files or prints at first detection. `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" stall-recovery` routes classification, attempts, normalization, escalation recording, report composition, corpus generation, Tier A deduplication, and chat output to Rust. Python owns only the contract lint.
+**Contract**: Step 18a reports terminal failures only. It never files or prints at first detection. `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" stall-recovery` routes classification, attempts, normalization, escalation recording, report composition, corpus generation, Tier A deduplication, chat output, and contract lint to Rust.
 
 **When to load**: MANDATORY before executing Step 18a active-stall recovery when `STALL_RECOVERY_REQUIRED=true`. Load before changing active-stall recovery report composition, escalation recording, or normalized outcome handling.
 

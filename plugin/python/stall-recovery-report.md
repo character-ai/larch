@@ -1,6 +1,6 @@
 # Stall-recovery runtime
 
-`scripts/larch.sh stall-recovery` owns every runtime command: classification, attempt history, retry policy, normalization, escalation recording, state mutation and validation, reporting, corpus generation, Tier A deduplication, Tier B validation, chat rendering, and development-clone detection. `python/cli.py stall-recovery lint` owns only the contract lint. Each command has one owner and no fallback.
+`scripts/larch.sh stall-recovery` owns every runtime command: classification, attempt history, retry policy, normalization, escalation recording, state mutation and validation, reporting, corpus generation, Tier A deduplication, Tier B validation, chat rendering, development-clone detection, and contract lint. Each command has one owner and no fallback.
 
 ## Canonical `/implement` artifacts
 
@@ -54,7 +54,7 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 - `validate-tier-b-public-file ...` rebuilds the effective sensitive corpus and applies the Tier B sensitive-token rejection boundary to bounded public comment bodies.
 - `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns. It collapses embedded carriage returns and newlines in accepted issue metadata before validation so the persisted env file remains one `KEY=value` row per line.
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
-- `is-larch-dev-clone`, `clear-stall`, and `seed-terminal-state` keep their existing operational roles through the Rust runtime. `lint` remains Python-owned.
+- `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles through the Rust runtime.
 
 `clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 

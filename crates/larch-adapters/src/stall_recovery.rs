@@ -468,7 +468,7 @@ fn append_escalation_tool_failure(root: &TemporaryRoot, reason: &str) {
         return;
     }
     let entry = format!(
-        "\n## Tool Failure: record-escalation\n\n- utc: `{}`\n- helper: `python/cli.py stall-recovery record-escalation`\n- reason: `{reason}`\n",
+        "\n## Tool Failure: record-escalation\n\n- utc: `{}`\n- helper: `scripts/larch.sh stall-recovery record-escalation`\n- reason: `{reason}`\n",
         Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
     );
     let _ = append_execution_issue(root, &path, &entry);

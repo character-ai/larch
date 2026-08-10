@@ -226,7 +226,7 @@ test-cache-key-discipline:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k cleanup_target_ok
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k cleanup_target_ok
 
 
 test-audit-edit-write:
@@ -559,13 +559,13 @@ test-run-step2-dispatch:
 test-step2-dispatch:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step2_dispatch
 
-# test-stall-recovery-report runs the remaining Python lint test and the focused Rust
+# test-stall-recovery-report runs the Rust contract-lint test and focused Rust
 # core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;
 # see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_stall_recovery.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test session_closeout stall_recovery_lint_uses_the_rust_owned_contract_check
 
 test-stall-recovery-report-2:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-core stall_recovery
@@ -626,10 +626,10 @@ test-quick-mode-docs-sync:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'not cleanup'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'not cleanup'
 
 test-implement-bootstrap:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or phase_coder'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or phase_coder'
 
 test-implement-bootstrap-invoke:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests
@@ -680,7 +680,7 @@ test-slack-issue-announce:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k slack_issue_announce
 
 test-step-16-17:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_closeout.py -q
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_closeout.py -q
 
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
@@ -701,7 +701,7 @@ test-render-cost-line:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line
 
 test-implement-cleanup-script:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/state/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
 
 test-harness-shards-coverage:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-harness-shards-coverage.sh

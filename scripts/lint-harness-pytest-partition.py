@@ -12,7 +12,7 @@ de-duplication of the five previously-untimed full-file pytest groups
 (test_agents/test_tokens/test_report_tokens_cost/test_timing/test_clarify),
 and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
 more already-sliced files (test_execution_issues/
-test_finalize/test_stall_recovery/
+test_finalize/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
 (test_run_logs/test_implement_dispatch/test_redact/test_release/
 test_design_lifecycle/test_plan_review_panel/test_decompose/test_plan_scout/
@@ -55,8 +55,7 @@ ENFORCED = (
     # #4459 follow-up batch: already-`-k`-sliced files whose selections had
     # coverage gaps / overlaps, closed into strict partitions with negligible
     # shard-timing shift (each catch-all absorbs only a handful of tests).
-    "python/tests/state/test_finalize.py",
-    "python/tests/state/test_stall_recovery.py",
+    "python/tests/implement/test_finalize.py",
     "python/tests/review/test_plan_review.py",
     # #4459 Bucket 1: files that previously paid full-file pytest runtime
     # under several target names, now sliced into strict per-target partitions.

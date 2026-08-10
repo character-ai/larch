@@ -6744,11 +6744,13 @@ verb = "local-cleanup"
 python_module = "larch.state.session_env"
 python_function = "local_cleanup_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8068
+clean_install_test = "clean-install-session-local-cleanup"
 
 [[commands]]
 domain = "session"
@@ -7148,11 +7150,13 @@ verb = "lint"
 python_module = "larch.state.stall_recovery"
 python_function = "lint_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7677
+migration_issue = 8068
+clean_install_test = "clean-install-stall-recovery-lint"
 
 [[commands]]
 domain = "stall-recovery"

@@ -293,8 +293,6 @@ exclude = [
   # so a SKILL.md reference is prohibited; exclude both until the lane is wired.
   "skills/implement/scripts/step-8-ci-fixer.sh",
   "skills/implement/scripts/test-step-8-ci-fixer.sh",
-  "python/cli.py stall-recovery",
-  "python/larch/state/stall_recovery.py",
   "python/larch/issue/file_oos.py",
   "python/test_file_oos.py",
   "scripts/test-implement-fence-shape.sh",
@@ -988,7 +986,6 @@ exclude = [
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-step-18.md",
-  "python/test_stall_recovery.py",
   "python/test_pr_body.py",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",

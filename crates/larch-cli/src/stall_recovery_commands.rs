@@ -1,5 +1,6 @@
 //! Thin compatibility boundary for Rust-owned stall-recovery commands.
 use crate::stall_recovery_reporting;
+use larch_adapters::GixRepository;
 use larch_adapters::stall_recovery::{
     AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
     StallRecoveryError, StateMutationError, classify, clear_stall, init_attempts,
@@ -7,8 +8,11 @@ use larch_adapters::stall_recovery::{
     record_attempt, record_escalation, seed_terminal_state, terminal_state_is_valid,
     tier_b_public_file_is_valid,
 };
-use larch_core::{IssueNormalization, artifact_prefix_valid, retry_policy, token_valid};
-use std::{collections::BTreeMap, env, ffi::OsString, path::PathBuf, process::ExitCode};
+use larch_core::{
+    IssueNormalization, RepositoryRead, artifact_prefix_valid, implementation_bail_tokens,
+    retry_policy, token_valid,
+};
+use std::{collections::BTreeMap, env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
 const GLOBAL_FLAGS: &[&str] = &[
     "--profile",
     "--artifact-prefix",
@@ -52,6 +56,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         return usage_error("missing subcommand");
     };
     match verb.as_str() {
+        "lint" => lint_command(command_arguments),
         "classify" => classify_command(&globals, command_arguments),
         "clear-stall" => clear(&globals, command_arguments),
         "init-attempts" => init_attempts_command(&globals, command_arguments),
@@ -72,6 +77,172 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         "populate-sensitive-corpus" => populate_sensitive_corpus(&globals, command_arguments),
         other => usage_error(&format!("unknown subcommand: {other}")),
     }
+}
+
+const REPORT_ALLOWLIST: &[&str] = &[
+    "chat-print\treport_kind\tREPORT_KIND\tenum",
+    "chat-print\tfailing_step\tSTALL_STEP\tenum",
+    "chat-print\tfailing_phase\tPHASE\tenum",
+    "chat-print\tfailure_class\tFAILURE_CLASS\tenum",
+    "chat-print\tbail_reason\tBAIL_REASON\texpanded-bail-token-union",
+    "chat-print\texit_code\tEXIT_CODE\tinteger-or-unknown",
+    "chat-print\tdispatcher\tDISPATCHER\tenum",
+    "chat-print\tmatched_classifier_pattern\tMATCHED_CLASSIFIER_PATTERN\tenum",
+    "chat-print\tlarch_version\tlarch-version\ttoken",
+    "chat-print\trun_id\tRUN_ID\ttoken-or-unknown",
+    "chat-print\tattempt_table\tattempts-file\tallowlisted-attempt-fields",
+    "chat-print\tescalation_site\tescalation-ledger\tenum",
+    "chat-print\tescalation_trigger\tescalation-ledger\tenum",
+    "chat-print\tfallback_escalation_marker\tescalation-fallback\tpresent-marker",
+    "chat-print\trecord_failure_marker\trecord-failure-marker\tpresent-marker",
+    "chat-print\trecord_escalation_tool_failure\texecution-issues\tpresent-marker",
+    "chat-print\tbounded_root_cause\tbounded-root-cause-file\tvalidated-larch-internal-prose",
+];
+
+const RETRY_POLICY_CLASSES: &[&str] = &[
+    "transient-infra",
+    "test-failure",
+    "lint-failure",
+    "dispatch-failure",
+    "protected-path",
+    "submodule-restricted",
+    "ci-fix-exhausted",
+    "same-cause-repeat",
+    "contract-failure",
+    "recoverable",
+    "unrecoverable",
+];
+
+/// Check that the checked-in public recovery contract agrees with Rust policy.
+fn lint_command(_arguments: &[String]) -> ExitCode {
+    let root = match contract_root() {
+        Ok(root) => root,
+        Err(message) => return command_error(&message),
+    };
+    let tsv_path = root.join("python/stall-recovery-report-allowlists.tsv");
+    let Ok(tsv) = fs::read_to_string(&tsv_path) else {
+        eprintln!(
+            "stall-recovery: missing allowlist TSV: {}",
+            tsv_path.display()
+        );
+        return ExitCode::from(1);
+    };
+    let tsv_lines = sorted_lines(tsv.lines().skip(1));
+    let code_lines = sorted_lines(REPORT_ALLOWLIST.iter().copied());
+    if tsv_lines != code_lines {
+        return command_error("allowlist drift between TSV and code");
+    }
+    let contract_path = root.join("python/stall-recovery-report.md");
+    let contract = fs::read_to_string(contract_path).unwrap_or_default();
+    let doc_allowlist = document_allowlist_lines(&contract);
+    if !doc_allowlist.is_empty() && tsv_lines != doc_allowlist {
+        return command_error("allowlist drift between TSV and doc");
+    }
+    let doc_retry = document_retry_policy_lines(&contract);
+    let code_retry = sorted_lines(RETRY_POLICY_CLASSES.iter().map(|class| {
+        let (attempts, delay) = retry_policy(class);
+        format!("{class}\t{attempts}\t{delay}")
+    }));
+    if !doc_retry.is_empty() && doc_retry != code_retry {
+        return command_error("retry-policy drift between code and doc");
+    }
+    if !token_valid("ci-local-unfixable:job_1,job-2", "trigger", false)
+        || token_valid("ci-local-unfixable:../../secret", "trigger", false)
+    {
+        return command_error("ci-local-unfixable compound grammar drift");
+    }
+    for token in implementation_bail_tokens() {
+        if !token_valid(token, "bail", false) {
+            return command_error(&format!("runtime bail token not render-safe: {token}"));
+        }
+    }
+    println!("LINT_OK=true");
+    ExitCode::SUCCESS
+}
+
+fn contract_root() -> Result<PathBuf, String> {
+    if env::var_os("CLAUDE_PLUGIN_ROOT").is_some_and(|value| !value.is_empty()) {
+        return crate::runtime_entrypoint::plugin_root()
+            .map_err(|error| format!("stall-recovery: {error}"));
+    }
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    Ok(GixRepository::discover(&cwd)
+        .ok()
+        .and_then(|repository| repository.location().work_dir)
+        .map(|path| PathBuf::from(String::from_utf8_lossy(path.as_bytes()).into_owned()))
+        .unwrap_or(cwd))
+}
+
+fn sorted_lines<I, S>(lines: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut values: Vec<String> = lines
+        .into_iter()
+        .map(|line| line.as_ref().to_owned())
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    values.sort();
+    values
+}
+
+fn document_allowlist_lines(contract: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut in_block = false;
+    for raw in contract.lines() {
+        match raw.trim() {
+            "<!-- stall-recovery-allowlist:begin -->" => {
+                in_block = true;
+                continue;
+            }
+            "<!-- stall-recovery-allowlist:end -->" => break,
+            _ => {}
+        }
+        if !in_block || !raw.contains('|') || raw.trim_start().starts_with("surface") {
+            continue;
+        }
+        let parts: Vec<&str> = raw
+            .trim()
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect();
+        if parts.len() >= 4 && parts[0] != "---" && parts[0] != "surface" {
+            values.push(parts[..4].join("\t"));
+        }
+    }
+    sorted_lines(values.iter().map(String::as_str))
+}
+
+fn document_retry_policy_lines(contract: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut in_table = false;
+    for raw in contract.lines() {
+        if raw.trim() == "| failure_class | attempts | delay |" {
+            in_table = true;
+            continue;
+        }
+        if in_table && raw.trim().starts_with("|---") {
+            continue;
+        }
+        if in_table && raw.trim().starts_with("| ") {
+            let parts: Vec<&str> = raw
+                .trim()
+                .trim_matches('|')
+                .split('|')
+                .map(|part| part.trim().trim_matches('`'))
+                .collect();
+            if parts.len() >= 3 {
+                values.push(parts[..3].join("\t"));
+            }
+            continue;
+        }
+        if in_table {
+            break;
+        }
+    }
+    sorted_lines(values.iter().map(String::as_str))
 }
 
 const COMPOSE_REPORT_FLAGS: &[&str] = &[

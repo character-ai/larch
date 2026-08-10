@@ -459,7 +459,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("redact", "scrub-log-secrets"): ("larch.core.redact", "main_scrub_log_secrets", False),
     ("redact", "scrub-submodule-paths"): ("larch.core.redact", "main_scrub_submodule_paths", False),
     ("verify", "skill-called"): ("larch.core.verify_skill", "main", False),
-    ("stall-recovery", "lint"): ("larch.state.stall_recovery", "lint_main", True),
     ("implement", "step-7a"): ("larch.implement.step_7a", "main", True),
     ("implement", "preflight"): ("larch.implement.preflight", "preflight_main", True),
     ("implement", "step-16"): ("larch.state.closeout", "step_16_main", True),
@@ -489,7 +488,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("ci", "failed-jobs"): ("larch.implement.ci", "failed_jobs_main", False),
     ("ci", "behind-count"): ("larch.implement.ci", "behind_count_main", False),
     ("ci", "rerun-failed"): ("larch.implement.ci", "rerun_failed_main", False),
-    ("session", "local-cleanup"): ("larch.state.session_env", "local_cleanup_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.
