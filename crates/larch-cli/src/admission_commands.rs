@@ -19,7 +19,7 @@ use crate::{
 };
 use larch_adapters::{
     FetchRequest, GitCli, GitCliError, GitCliPolicy, GitRef, GitRefspec, GitRemote, GixRepository,
-    NoopProcessObserver, PathIntent, RebaseRequest, TemporaryRoot, TokioProcessRunner,
+    NoopProcessObserver, PathIntent, PullRequest, RebaseRequest, TemporaryRoot, TokioProcessRunner,
     atomic_write_utf8,
     github::OctocrabGitHubService,
     read_kv_raw, remove_optional_file,
@@ -440,6 +440,14 @@ pub fn fetch_origin_main(working_directory: &Path) -> bool {
     false
 }
 
+/// Fast-forward a checked-out `main` after the shared origin fetch.
+pub fn pull_origin_main(working_directory: &Path) -> bool {
+    matches!(
+        run_git(working_directory, &PreflightGit::PullOriginMain),
+        GitOutcome::Succeeded
+    )
+}
+
 /// Replay the current branch onto `origin/main`, aborting a failed rebase.
 fn rebase_onto_origin_main(working_directory: &Path) -> bool {
     if matches!(
@@ -455,6 +463,7 @@ fn rebase_onto_origin_main(working_directory: &Path) -> bool {
 /// The Git mutations preflight performs, each a fixed argv with no free input.
 enum PreflightGit {
     FetchOriginMain,
+    PullOriginMain,
     RebaseOntoOriginMain,
     AbortRebase,
 }
@@ -492,6 +501,23 @@ fn run_git(working_directory: &Path, operation: &PreflightGit) -> GitOutcome {
                             refspec: Some(refspec),
                             quiet: true,
                             no_tags: false,
+                        },
+                        &cancellation,
+                    )
+                    .await,
+                )
+            }
+            PreflightGit::PullOriginMain => {
+                let (Ok(remote), Ok(refspec)) = (GitRemote::new("origin"), GitRefspec::new("main"))
+                else {
+                    return None;
+                };
+                Some(
+                    git.pull(
+                        PullRequest {
+                            remote,
+                            refspec: Some(refspec),
+                            fast_forward_only: true,
                         },
                         &cancellation,
                     )

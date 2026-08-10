@@ -795,6 +795,17 @@ impl RunLogCorpus {
             pending,
         }
     }
+
+    /// Return safe direct run directories below this corpus root.
+    ///
+    /// This is the compatibility form for an explicitly supplied skill root.
+    /// It shares the same containment and symlink handling as normal corpus
+    /// discovery rather than inviting a second audit-specific directory walk.
+    #[must_use]
+    pub fn safe_child_run_directories(&self) -> Vec<PathBuf> {
+        safe_child_directories(&self.root).directories
+    }
+
     fn discover_skill_roots(
         &self,
         pending: &mut VecDeque<RunLogCorpusEvent>,

@@ -228,6 +228,59 @@ pub struct ReleaseCandidatePullRequest {
     pub head_oid: String,
 }
 
+/// Bounded pull-request fields consumed by the run-audit reader.
+///
+/// This intentionally keeps the audit's read contract distinct from release
+/// notes and mutation DTOs: it needs a body, the target base, and merge time,
+/// but never exposes an arbitrary REST surface to a command caller.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditPullRequest {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub base_ref: String,
+    pub merged_at: Option<String>,
+}
+
+/// Typed, injectable GitHub reads consumed by the run-audit command domain.
+pub trait AuditRunsService: Sync {
+    fn audit_pull_request<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<AuditPullRequest, GitHubOperationError>> + Send + 'a;
+
+    fn list_audit_merged_main_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Vec<AuditPullRequest>, GitHubOperationError>> + Send + 'a;
+}
+
+impl AuditRunsService for OctocrabGitHubService {
+    fn audit_pull_request<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<AuditPullRequest, GitHubOperationError>> + Send + 'a {
+        Self::audit_pull_request(self, cancellation, owner, repo, number)
+    }
+
+    fn list_audit_merged_main_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Vec<AuditPullRequest>, GitHubOperationError>> + Send + 'a {
+        Self::list_audit_merged_main_pull_requests(self, cancellation, owner, repo)
+    }
+}
+
 /// Closed lifecycle states exposed by the release candidate check.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReleaseCandidatePullRequestState {
@@ -646,6 +699,78 @@ enum MergeExchangeError {
 }
 
 impl OctocrabGitHubService {
+    /// Read one pull request for the run-audit mapping and resolution commands.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, or response-contract
+    /// failure. The returned text has passed the transport's response bounds.
+    pub async fn audit_pull_request(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<AuditPullRequest, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/pulls/{number}");
+        let value = self
+            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
+            .await?;
+        parse_audit_pull_request(&value, self.policy.limits())
+    }
+
+    /// List merged pull requests targeting `main` through bounded pagination.
+    ///
+    /// The audit's chronology is defined by GitHub's `merged_at`, not by PR
+    /// number or close time, so malformed rows are rejected instead of being
+    /// silently re-ordered.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, response-contract, or
+    /// bounded-pagination failure.
+    pub async fn list_audit_merged_main_pull_requests(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<AuditPullRequest>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/pulls");
+        let limits = self.policy.limits();
+        let mut output = Vec::new();
+        for page in 1..=limits.pages() {
+            let page_text = page.to_string();
+            let parameters = [
+                ("state", "closed"),
+                ("per_page", "100"),
+                ("page", page_text.as_str()),
+            ];
+            let value = self
+                .fetch_json(
+                    cancellation,
+                    self.client.get(route.as_str(), Some(&parameters)),
+                )
+                .await?;
+            let rows = parse_audit_pull_requests(&value, limits)?;
+            let count = rows.len();
+            if output.len().saturating_add(count) > limits.items() {
+                return Err(GitHubOperationError::Malformed(
+                    "audit pull request list exceeds item bound",
+                ));
+            }
+            output.extend(rows.into_iter().filter(|pull_request| {
+                pull_request.base_ref == "main" && pull_request.merged_at.is_some()
+            }));
+            if count < RELEASE_PAGE_SIZE {
+                output.sort_by(|left, right| left.merged_at.cmp(&right.merged_at));
+                return Ok(output);
+            }
+        }
+        Err(GitHubOperationError::Malformed(
+            "audit pull request pagination exceeds page bound",
+        ))
+    }
+
     /// Read the lifecycle state and exact head object id of a release PR.
     ///
     /// # Errors
@@ -2334,6 +2459,48 @@ fn parse_pull_requests(
         .collect()
 }
 
+fn parse_audit_pull_request(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<AuditPullRequest, GitHubOperationError> {
+    let object = as_object(value)?;
+    let merged_at = optional_str(object, "merged_at", limits, "audit pull request merged_at")?;
+    if merged_at
+        .as_deref()
+        .is_some_and(|timestamp| DateTime::parse_from_rfc3339(timestamp).is_err())
+    {
+        return Err(GitHubOperationError::Malformed(
+            "audit pull request merged_at",
+        ));
+    }
+    Ok(AuditPullRequest {
+        number: required_u64(object, "number", "audit pull request number")?,
+        title: optional_str(object, "title", limits, "audit pull request title")?
+            .unwrap_or_default(),
+        body: optional_str(object, "body", limits, "audit pull request body")?.unwrap_or_default(),
+        base_ref: required_ref(object, "base", limits, "audit pull request base ref")?,
+        merged_at,
+    })
+}
+
+fn parse_audit_pull_requests(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<Vec<AuditPullRequest>, GitHubOperationError> {
+    let array = value
+        .as_array()
+        .ok_or(GitHubOperationError::Malformed("audit pull request list"))?;
+    if array.len() > RELEASE_PAGE_SIZE {
+        return Err(GitHubOperationError::Malformed(
+            "audit pull request page exceeds item bound",
+        ));
+    }
+    array
+        .iter()
+        .map(|element| parse_audit_pull_request(element, limits))
+        .collect()
+}
+
 fn parse_release_pull_request(
     value: &Value,
     limits: GitHubResponseLimits,
@@ -3257,8 +3424,8 @@ mod tests {
 #[cfg(test)]
 mod service_tests {
     use super::{
-        DependencyEdge, DependencyMutation, DependencyMutationReceipt, DependencyRef,
-        GitHubOperationError, LiveMutationRequest, MergeStateStatus, Mergeable,
+        AuditRunsService, DependencyEdge, DependencyMutation, DependencyMutationReceipt,
+        DependencyRef, GitHubOperationError, LiveMutationRequest, MergeStateStatus, Mergeable,
         OctocrabGitHubService, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
         PullRequestMergeResult, PullRequestSpec, PullRequestState, ReleasePlanningService,
         ReviewDecision, SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt,
@@ -3383,6 +3550,22 @@ mod service_tests {
         })
     }
 
+    fn audit_pull_request_value(
+        number: u64,
+        title: &str,
+        body: &str,
+        base: &str,
+        merged_at: Option<&str>,
+    ) -> serde_json::Value {
+        json!({
+            "number": number,
+            "title": title,
+            "body": body,
+            "base": { "ref": base },
+            "merged_at": merged_at,
+        })
+    }
+
     fn spec(head: &str) -> PullRequestSpec<'_> {
         PullRequestSpec {
             owner: "character-ai",
@@ -3480,6 +3663,46 @@ mod service_tests {
             .await
             .expect("valid list");
         assert_eq!(list.len(), 2);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn audit_runs_service_reads_and_filters_typed_pull_requests() {
+        let direct = audit_pull_request_value(
+            7,
+            "chore(larch-logs): design run ABCDEF01-2345-6789-ABCD-EF0123456789",
+            "Fixes #42",
+            "main",
+            Some("2026-08-09T12:00:00Z"),
+        );
+        let (service, server) = stub_service(vec![(200, direct.to_string())]);
+        let cancellation = Cancellation::new();
+        let pull = AuditRunsService::audit_pull_request(&service, &cancellation, "o", "r", 7)
+            .await
+            .expect("typed audit pull request");
+        assert_eq!(pull.number, 7);
+        assert_eq!(pull.body, "Fixes #42");
+        server.join().expect("stub completed");
+
+        let listed = json!([
+            audit_pull_request_value(3, "newer", "", "main", Some("2026-08-09T13:00:00Z")),
+            audit_pull_request_value(2, "other base", "", "release", Some("2026-08-09T11:00:00Z")),
+            audit_pull_request_value(1, "older", "", "main", Some("2026-08-09T10:00:00Z")),
+            audit_pull_request_value(4, "unmerged", "", "main", None),
+        ]);
+        let (service, server) = stub_service(vec![(200, listed.to_string())]);
+        let pulls = AuditRunsService::list_audit_merged_main_pull_requests(
+            &service,
+            &Cancellation::new(),
+            "o",
+            "r",
+        )
+        .await
+        .expect("filtered audit pulls");
+        assert_eq!(
+            pulls.iter().map(|pull| pull.number).collect::<Vec<_>>(),
+            [1, 3]
+        );
         server.join().expect("stub completed");
     }
 

@@ -102,7 +102,8 @@ issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complet
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
 issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
-issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs *,issue migration-audit
+issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs bugs-backlog-nudge,audit-runs close-priors,issue migration-audit
+audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	audit-runs map-runs,audit-runs preflight,audit-runs resolve-prs
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify label,issue migration-audit

@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use super::tolerance::terminal_bail_skip_signal;
+use super::tolerance::{stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal};
 
 static RELATIVE_PATH_ALLOWED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[A-Za-z0-9_./*-]+$").expect("static relative-path regex must compile")
@@ -20,6 +20,7 @@ pub struct ReachabilityContext<'a> {
     run_dir: &'a Path,
     manifest: &'a Value,
     manifest_pr_number: i64,
+    audit_pr_evidence: Option<i64>,
 }
 
 impl<'a> ReachabilityContext<'a> {
@@ -30,6 +31,19 @@ impl<'a> ReachabilityContext<'a> {
             run_dir,
             manifest,
             manifest_pr_number: manifest_pr_number(manifest),
+            audit_pr_evidence: None,
+        }
+    }
+
+    /// Bind a run to an audited PR when stale terminal headings carry no
+    /// durable manifest evidence yet.
+    #[must_use]
+    pub fn with_audit_pr(run_dir: &'a Path, manifest: &'a Value, pr: i64) -> Self {
+        Self {
+            run_dir,
+            manifest,
+            manifest_pr_number: manifest_pr_number(manifest),
+            audit_pr_evidence: (pr > 0).then_some(pr),
         }
     }
 
@@ -42,7 +56,15 @@ impl<'a> ReachabilityContext<'a> {
     }
 
     fn steps_ran_empty(&self) -> bool {
-        self.steps_ran().is_none_or(serde_json::Map::is_empty)
+        match self
+            .manifest
+            .as_object()
+            .and_then(|manifest| manifest.get("steps_ran"))
+        {
+            None | Some(Value::Null) => self.manifest.is_object(),
+            Some(Value::Object(steps)) => steps.is_empty(),
+            Some(_) => false,
+        }
     }
 
     fn step_flag(&self, step: &str) -> Option<bool> {
@@ -53,6 +75,12 @@ impl<'a> ReachabilityContext<'a> {
     }
 
     fn bail_skip(&self) -> bool {
+        if let Some(pr) = self.audit_pr_evidence {
+            let evidence = serde_json::json!({"pr_number": pr});
+            if stale_bail_heading_with_pr_evidence(self.run_dir, Some(&evidence), pr) {
+                return false;
+            }
+        }
         terminal_bail_skip_signal(self.run_dir, Some(self.manifest), self.manifest_pr_number)
     }
 
@@ -77,12 +105,18 @@ fn manifest_pr_number(manifest: &Value) -> i64 {
 }
 
 fn step5_reached(ctx: &ReachabilityContext<'_>) -> bool {
+    if ctx.step_flag("step5") == Some(false) {
+        return false;
+    }
     ctx.has_file("code-review-tally.json")
         || ctx.has_file("review-findings-full.jsonl")
         || step7a_reached(ctx)
 }
 
 fn step7a_reached(ctx: &ReachabilityContext<'_>) -> bool {
+    if ctx.step_flag("step7a") == Some(false) {
+        return false;
+    }
     let has_step7a_file = ctx.has_file("token-report.json")
         || ctx.has_file("timing-report.json")
         || ctx.has_file("execution-issues.ndjson")
@@ -94,6 +128,9 @@ fn step7a_reached(ctx: &ReachabilityContext<'_>) -> bool {
 }
 
 fn step8_reached(ctx: &ReachabilityContext<'_>) -> bool {
+    if ctx.step_flag("step8") == Some(false) {
+        return false;
+    }
     let has_version_bump = ctx.has_file("version-bump-reasoning.md");
     if ctx.steps_ran_empty() && !has_version_bump && ctx.bail_skip() {
         return false;
@@ -267,6 +304,63 @@ mod tests {
         let manifest = json!({"steps_ran": {"step9a1": false}});
         let ctx = ReachabilityContext::new(dir.path(), &manifest);
         assert_eq!(condition_reached(&ctx, "step9a1"), Ok(false));
+    }
+
+    #[test]
+    fn explicit_early_step_false_flags_win_over_artifact_fallbacks() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        for file in [
+            "code-review-tally.json",
+            "token-report.json",
+            "version-bump-reasoning.md",
+            "final-summary.md",
+        ] {
+            fs::write(dir.path().join(file), "present\n").expect("artifact should write");
+        }
+        let manifest = json!({"steps_ran": {"step5": false, "step7a": false, "step8": false}});
+        let ctx = ReachabilityContext::new(dir.path(), &manifest);
+        assert_eq!(condition_reached(&ctx, "step5"), Ok(false));
+        assert_eq!(condition_reached(&ctx, "step7a"), Ok(false));
+        assert_eq!(condition_reached(&ctx, "step8"), Ok(false));
+    }
+
+    #[test]
+    fn corrupt_manifest_does_not_activate_the_bail_skip() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            dir.path().join("final-summary.md"),
+            "## /implement: bailed\n",
+        )
+        .expect("summary should write");
+        let manifest = json!(null);
+        let ctx = ReachabilityContext::new(dir.path(), &manifest);
+        assert_eq!(condition_reached(&ctx, "step7a"), Ok(true));
+    }
+
+    #[test]
+    fn non_object_steps_ran_does_not_activate_the_bail_skip() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            dir.path().join("final-summary.md"),
+            "## /implement: bailed\n",
+        )
+        .expect("summary should write");
+        let manifest = json!({"steps_ran": "corrupt"});
+        let ctx = ReachabilityContext::new(dir.path(), &manifest);
+        assert_eq!(condition_reached(&ctx, "step7a"), Ok(true));
+    }
+
+    #[test]
+    fn audited_pr_evidence_keeps_stale_bails_reachable() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            dir.path().join("final-summary.md"),
+            "## /implement: bailed\n",
+        )
+        .expect("summary should write");
+        let manifest = json!({"steps_ran": {}});
+        let ctx = ReachabilityContext::with_audit_pr(dir.path(), &manifest, 7);
+        assert_eq!(condition_reached(&ctx, "step7a"), Ok(true));
     }
 
     #[test]

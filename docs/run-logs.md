@@ -197,7 +197,7 @@ When a knowledge file is absent, invalid, or empty for invariants, Gate C remove
 artifact before approval, so no stale copy is published. The artifacts publish
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
-`python/cli.py audit-runs scan-run --skill design`.
+`scripts/larch.sh audit-runs scan-run --skill design`.
 
 ### design accepted plan-review findings audit
 

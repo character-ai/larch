@@ -15,10 +15,10 @@ pub use attestation::{
 pub use issue_mutation::{IssueCreateFailure, IssueMutationOwner};
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
-    CreatedPullRequest, DependencyEdge, DependencyMutation, DependencyMutationReceipt,
-    DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable, PullRequest, PullRequestEdit,
-    PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult, PullRequestReviewState,
-    PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
+    AuditPullRequest, AuditRunsService, CreatedPullRequest, DependencyEdge, DependencyMutation,
+    DependencyMutationReceipt, DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable,
+    PullRequest, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult,
+    PullRequestReviewState, PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
     ReleaseCandidatePullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
     SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt, SubIssueRef,
 };

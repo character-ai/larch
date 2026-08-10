@@ -790,10 +790,16 @@ git_op!(MergeRequest, Merge);
 pub struct PullRequest {
     pub remote: GitRemote,
     pub refspec: Option<GitRefspec>,
+    /// Refuse a merge commit while synchronizing a checked-out branch.
+    pub fast_forward_only: bool,
 }
 impl PullRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
-        let mut a = vec![self.remote.as_os_str().into()];
+        let mut a = Vec::new();
+        if self.fast_forward_only {
+            a.push("--ff-only".into());
+        }
+        a.push(self.remote.as_os_str().into());
         if let Some(refspec) = &self.refspec {
             a.push(refspec.as_os_str().into());
         }
