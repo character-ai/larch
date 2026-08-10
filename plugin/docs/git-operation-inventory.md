@@ -88,7 +88,6 @@ python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/analyze_bugs.py	later-domain	#7684	diff,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/migration_governance.py	later-domain	#7685	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
-python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic

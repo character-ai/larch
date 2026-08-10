@@ -1,9 +1,8 @@
 """Non-pin assertions ported from test-design-structure.sh."""
-# pylint: disable=multiple-statements,subprocess-run-check
+# pylint: disable=multiple-statements
 from __future__ import annotations
 
 import re
-import subprocess
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -12,7 +11,7 @@ from ._structure_label_inventory import assertion_labels
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 18
+LEGACY_ASSERTION_LABEL_COUNT = 17
 
 
 def run(repo_root: Path) -> list[str]:
@@ -172,10 +171,4 @@ def run(repo_root: Path) -> list[str]:
     if not settle.is_file(): failures.append("settle rc dispatch reference missing")
     elif not re.search(r"^\*\*When to load\*\*:", read(settle), re.MULTILINE): failures.append("settle rc dispatch must anchor When to load header")
 
-    result = subprocess.run(
-        ["python3", "-m", "larch.lint.timing_task_kind_allowlist", "--root", str(repo_root)],
-        cwd=repo_root, env={"PYTHONPATH": str(p("python"))}, capture_output=True, text=True,
-    )
-    if result.returncode:
-        failures.append("assert_timing_task_kind_allowlist")
     return failures

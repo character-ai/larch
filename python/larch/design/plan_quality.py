@@ -1283,7 +1283,10 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
         cmd = launchers[tier] + ["--output", str(out_path), "--prompt-file", str(prompt), "--mode", "description", "--timeout", str(args.timeout), "--plan-file", str(plan), "--scope-files", str(findings)]
         if tier in {"codex", "cursor"}:
             cmd.extend(["--feature-file", str(feature)])
-            cmd.extend(["--timing-task-kind", f"{tier}-plan-autofix"])
+            if tier == "codex":
+                cmd.extend(["--timing-task-kind", "codex-plan-autofix"])
+            else:
+                cmd.extend(["--timing-task-kind", "cursor-plan-autofix"])
         rc = subprocess.run(cmd, check=False).returncode
         if rc != 0 or not out_path.is_file() or out_path.stat().st_size == 0:
             set_tier_status(ord_=ord_, status="no-patch")
