@@ -7429,11 +7429,26 @@ fn bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths() {
         "fresh bootstrap failed: {}",
         String::from_utf8_lossy(&fresh.stderr)
     );
+    let routing_target = bootstrap_session.join("routing-target.env");
+    fs::write(&routing_target, "prior\n").expect("write routing target");
+    let routing_file = bootstrap_session.join("bootstrap-routing.env");
+    fs::remove_file(&routing_file).expect("remove fresh routing envelope");
+    std::os::unix::fs::symlink(&routing_target, &routing_file).expect("symlink routing envelope");
     let resume = run_bootstrap_invoke(&fixture, &bootstrap_session, "resume");
     assert!(
         resume.status.success(),
         "resume bootstrap failed: {}",
         String::from_utf8_lossy(&resume.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&resume.stderr)
+            .contains("refusing to overwrite symlinked bootstrap-routing.env"),
+        "resume must retain a hostile routing-file target: {:?}",
+        String::from_utf8_lossy(&resume.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&routing_target).expect("read routing target"),
+        "prior\n"
     );
     let token_ledger = fs::read_dir(&bootstrap_session)
         .expect("read bootstrap session")

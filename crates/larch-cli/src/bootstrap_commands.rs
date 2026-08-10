@@ -1499,17 +1499,16 @@ mod tests {
         };
 
         let shell = run(&["scripts/echo-argv.sh", "one", "two words"]);
-        assert!(shell.status.success(), "{:?}", shell);
+        assert!(shell.status.success(), "{shell:?}");
         assert_eq!(
             String::from_utf8_lossy(&shell.stdout),
             "SH_ARGV=one|two words\n"
         );
         let python = run(&["python/echo_argv.py", "alpha", "beta gamma"]);
-        assert!(python.status.success(), "{:?}", python);
+        assert!(python.status.success(), "{python:?}");
         assert!(
             String::from_utf8_lossy(&python.stdout).contains("PY_ARGV=alpha|beta gamma"),
-            "{:?}",
-            python
+            "{python:?}"
         );
         assert_eq!(
             run(&["/tmp/not-allowed.sh"]).status.code(),
@@ -1546,7 +1545,7 @@ mod tests {
             .env_remove("IMPLEMENT_TMPDIR")
             .output()
             .expect("resolve fallback root");
-        assert!(root.status.success(), "{:?}", root);
+        assert!(root.status.success(), "{root:?}");
         assert_eq!(
             String::from_utf8_lossy(&root.stdout).trim(),
             plugin.display().to_string()
