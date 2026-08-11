@@ -640,7 +640,7 @@ async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
     };
     assert_eq!(
         error,
-        "direct leaf #41 violates the exact lifecycle-title invariant"
+        "direct leaf #41 is closed without the exact [DONE] lifecycle title"
     );
     server.join().expect("title stub completed");
 
@@ -668,6 +668,44 @@ async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
         "direct leaf #41 violates the exact first-line body invariant"
     );
     server.join().expect("body stub completed");
+}
+
+#[tokio::test]
+async fn finish_refuses_a_closed_implementing_leaf_before_mutating_the_parent() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let stale_leaf = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Implement it",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(404, "{}"),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, &stale_leaf),
+    ]);
+
+    let error = finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect_err("terminal title drift must stop completion");
+    assert_eq!(
+        error,
+        "direct leaf #41 is closed without the exact [DONE] lifecycle title"
+    );
+    server
+        .join()
+        .expect("completion stopped before a parent mutation request");
 }
 
 #[tokio::test]

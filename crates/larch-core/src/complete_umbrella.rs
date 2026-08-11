@@ -158,6 +158,12 @@ pub fn validate_complete_umbrella_leaf(issue: &GitHubIssue, umbrella: u64) -> Re
         GitHubIssueState::All => false,
     };
     if !title_valid {
+        if issue.state == GitHubIssueState::Closed {
+            return Err(format!(
+                "direct leaf #{} is closed without the exact [DONE] lifecycle title",
+                issue.number
+            ));
+        }
         return Err(format!(
             "direct leaf #{} violates the exact lifecycle-title invariant",
             issue.number
@@ -357,6 +363,13 @@ mod tests {
                 5
             )
             .is_ok()
+        );
+        assert_eq!(
+            validate_complete_umbrella_leaf(
+                &leaf("[IMPLEMENTING] [LEAF OF 5] Task", GitHubIssueState::Closed),
+                5
+            ),
+            Err("direct leaf #9 is closed without the exact [DONE] lifecycle title".to_owned())
         );
         assert!(
             validate_complete_umbrella_leaf(
