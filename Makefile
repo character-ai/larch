@@ -629,7 +629,8 @@ test-implement-finalize:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'not cleanup'
 
 test-implement-bootstrap:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or phase_coder'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_bootstrap_continuation::tests
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test parity bootstrap_invoke_clean_install_runs_native_plan_coder_and_tail
 
 test-implement-bootstrap-invoke:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests

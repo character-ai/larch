@@ -329,6 +329,7 @@ pub enum CheckoutRequest {
     Branch {
         create: bool,
         force: bool,
+        no_track: bool,
         name: GitRef,
         start_point: Option<GitRef>,
     },
@@ -363,10 +364,20 @@ impl CheckoutRequest {
             Self::Branch {
                 create,
                 force,
+                no_track,
                 name,
                 start_point,
             } => {
                 let mut a = Vec::new();
+                if !*create && *no_track {
+                    return Err(err(
+                        GitCliInputErrorKind::UnsupportedCombination,
+                        "checkout --no-track requires create (-b/-B)",
+                    ));
+                }
+                if *no_track {
+                    a.push("--no-track".into());
+                }
                 if *create {
                     a.push(OsString::from(if *force { "-B" } else { "-b" }));
                 } else if *force {

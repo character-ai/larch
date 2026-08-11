@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 from larch.agents import agents
 from larch.calibration import difficulty
-from larch.state import bootstrap
 from larch.implement import checks
 from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
@@ -48,26 +47,6 @@ def _tool_order_probe(monkeypatch: pytest.MonkeyPatch, module: Any, expected_rol
 
     monkeypatch.setattr(module.external_defaults, "tool_order", fake_tool_order)
     return seen
-
-
-def test_bootstrap_phase_coder_uses_step2_coder_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _tool_order_probe(monkeypatch, bootstrap, "implement.step2_coder", ("cursor", "codex", "claude"))
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan\n", encoding="utf-8")
-    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    state = bootstrap.BootstrapState(
-        opts=bootstrap.BootstrapOptions(up_to_phase="all"),
-        implement_tmpdir=str(tmp_path),
-        repo_unavailable="false",
-        codex_available="true",
-        cursor_available="true",
-        plan_file=str(plan),
-    )
-
-    bootstrap._phase_coder(state)
-
-    assert seen == ["implement.step2_coder"]
-    assert state.coder == "cursor"
 
 
 def test_rebase_conflict_loop_uses_rebase_conflict_fixer_role(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -706,5 +685,4 @@ def test_debate_roles_do_not_alter_existing_panels() -> None:
     # Existing panels remain unchanged in size/shape after debate registration.
     assert len(review_slots) == 6
     assert external_defaults.tool_order("implement.step2_coder") == ("codex", "cursor", "claude")
-
 

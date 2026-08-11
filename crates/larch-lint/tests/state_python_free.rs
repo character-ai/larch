@@ -77,6 +77,7 @@ fn rejects_python_dispatch_implementations_and_retired_tests() {
         b"def local_cleanup_main():\n    pass\n",
     );
     repository.write("python/larch/state/stall_recovery.py", b"pass\n");
+    repository.write("python/larch/state/bootstrap.py", b"pass\n");
     repository.write("python/larch/bgjob/unapproved.py", b"pass\n");
     repository.write("python/tests/state/test_old.py", b"pass\n");
     repository.write("python/tests/bgjob/test_old.py", b"pass\n");
@@ -97,6 +98,9 @@ fn rejects_python_dispatch_implementations_and_retired_tests() {
         ))
         .stdout(predicate::str::contains(
             "unapproved Python state or background-job implementation",
+        ))
+        .stdout(predicate::str::contains(
+            "python/larch/state/bootstrap.py:1: unapproved Python state or background-job implementation",
         ))
         .stdout(predicate::str::contains(
             "retired #7677 Python test surface returned",

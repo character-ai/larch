@@ -181,6 +181,7 @@ fn run_git(cwd: &Path, operation: LocalCleanupGit<'_>) -> bool {
                     CheckoutRequest::Branch {
                         create: false,
                         force: false,
+                        no_track: false,
                         name,
                         start_point: None,
                     },

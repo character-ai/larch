@@ -1,12 +1,13 @@
 //! Bootstrap routing compatibility commands.
 //!
 //! `parse-routing` and `resolve-non-interactive` are self-contained state
-//! adapters. `invoke` owns the session-infrastructure phase; tracking, plan,
-//! and coder selection stay behind their explicitly named `/implement`
-//! continuation until their #7681 migration leaf is complete.
+//! adapters. `invoke` owns all of Step 0; its continuation phase lives in the
+//! private implementation module so one public command owns the complete
+//! session, tracking, plan, coder-selection, and routing contract.
 
 use crate::{
     agent_commands,
+    bootstrap_support::{valid_run_id, write_session_text},
     child_process::run_host_utility,
     progress_commands,
     python_verb::run_python_verb,
@@ -17,19 +18,19 @@ use larch_adapters::{GixRepository, TemporaryRoot, atomic_write_utf8_in};
 use larch_core::{
     ConfigKey, ConfigScope, CrStrip, DuplicatePolicy, GateDecision, HostUtilityProgram, KvDocument,
     ParseOptions, RepositoryRead, entry_gate, shell_quote, validate_progress_run_id,
+    validate_repo_root_value,
 };
 use std::{
     collections::BTreeMap,
     env,
     ffi::OsString,
-    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
 };
 
-const ROUTING_KEYS: &[&str] = &[
+pub const ROUTING_KEYS: &[&str] = &[
     "IMPLEMENT_TMPDIR",
     "IMPLEMENT_BAIL_REASON",
     "STALL_TRACKING",
@@ -152,20 +153,14 @@ pub fn resolve_non_interactive(arguments: &[OsString]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Create or restore the session-owned half of Step 0, then call the named
-/// tracking/plan continuation through the bounded Python-verb seam.
-///
-/// This is an ownership split, not a fallback: session creation, env
-/// publication, source snapshotting, reviewer refresh, live-session pointer,
-/// and the bootstrap handoff are all Rust-owned here. The continuation owns
-/// only the later tracking, planning, and coder-selection surfaces assigned to
-/// #7681, the `/implement` migration umbrella.
+/// Create or restore the Step 0 session, then complete its Rust-owned
+/// tracking, plan, coder-selection, and routing phases.
 pub fn invoke(arguments: &[OsString]) -> ExitCode {
     if is_help(arguments) {
         print_invoke_usage();
         return ExitCode::SUCCESS;
     }
-    let options = match BootstrapOptions::parse(arguments) {
+    let mut options = match BootstrapOptions::parse(arguments) {
         Ok(options) => options,
         Err(message) => {
             eprintln!("bootstrap invoke: {message}");
@@ -183,40 +178,8 @@ pub fn invoke(arguments: &[OsString]) -> ExitCode {
         Ok(state) => state,
         Err(failure) => return emit_infrastructure_failure(&failure),
     };
-    let handoff = Path::new(&state.implement_tmpdir).join("bootstrap-infra.env");
-    if let Err(message) = write_handoff(&state, &handoff) {
-        let failure =
-            InfrastructureFailure::new("bootstrap-handoff", &state.implement_tmpdir, message);
-        return emit_infrastructure_failure(&failure);
-    }
-
-    let mut continuation = vec![
-        OsString::from("implement"),
-        OsString::from("bootstrap-continuation"),
-        OsString::from("--infra-file"),
-        handoff.into_os_string(),
-    ];
-    continuation.extend(arguments.iter().cloned());
-    let delegated = match run_python_verb(continuation, Duration::from_secs(120)) {
-        Ok(output) => output,
-        Err(message) => {
-            let failure = InfrastructureFailure::new(
-                "bootstrap-continuation",
-                &state.implement_tmpdir,
-                message,
-            );
-            return emit_infrastructure_failure(&failure);
-        }
-    };
-    print!("{}", String::from_utf8_lossy(delegated.stdout()));
-    eprint!("{}", String::from_utf8_lossy(delegated.stderr()));
-    ExitCode::from(
-        delegated
-            .status()
-            .code()
-            .and_then(|code| u8::try_from(code).ok())
-            .unwrap_or(1),
-    )
+    options.resolve_continuation_defaults(&state.implement_tmpdir);
+    crate::implement_bootstrap_continuation::run(state, &options)
 }
 
 const BOOL_VALUES: &[&str] = &["", "true", "false"];
@@ -224,25 +187,36 @@ const CODER_VALUES: &[&str] = &["", "claude", "codex", "cursor"];
 const DIFFICULTY_VALUES: &[&str] = &["", "TRIVIAL", "MODERATE", "HARD"];
 
 #[derive(Clone, Debug)]
-struct BootstrapOptions {
-    mode: InvokeMode,
-    forked_target: String,
-    run_id: String,
-    preflight_tmpdir: String,
-    caller_env: String,
-    self_review_requested: String,
-    self_implement_requested: String,
-    skip_codex_probe: bool,
-    skip_cursor_probe: bool,
+pub struct BootstrapOptions {
+    pub(crate) mode: InvokeMode,
+    pub(crate) issue_number: String,
+    pub(crate) forked_target: String,
+    pub(crate) merge_requested: String,
+    pub(crate) draft_requested: String,
+    pub(crate) no_admin_fallback: String,
+    pub(crate) no_logs_commit: String,
+    pub(crate) force_requested: String,
+    pub(crate) difficulty_override: String,
+    pub(crate) upstream_repo: String,
+    pub(crate) run_id: String,
+    pub(crate) preflight_tmpdir: String,
+    pub(crate) caller_env: String,
+    pub(crate) coder_opt: String,
+    pub(crate) non_interactive: String,
+    pub(crate) self_review_requested: String,
+    pub(crate) self_implement_requested: String,
+    pub(crate) skip_codex_probe: bool,
+    pub(crate) skip_cursor_probe: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InvokeMode {
+pub enum InvokeMode {
     Initial,
     Resume,
 }
 
 impl BootstrapOptions {
+    #[allow(clippy::too_many_lines)] // Parsing preserves the public bootstrap argv contract.
     fn parse(arguments: &[OsString]) -> Result<Self, String> {
         let mut values = BTreeMap::new();
         let known = [
@@ -320,7 +294,45 @@ impl BootstrapOptions {
         ]));
         Ok(Self {
             mode,
+            issue_number: first_nonempty(&[
+                value(&values, "--issue-number", ""),
+                environment("TARGET_ISSUE_NUMBER"),
+                environment("ISSUE_NUMBER"),
+            ]),
             forked_target,
+            merge_requested: first_nonempty(&[
+                value(&values, "--merge-requested", ""),
+                bool_environment("merge"),
+                bool_environment("MERGE"),
+            ]),
+            draft_requested: first_nonempty(&[
+                value(&values, "--draft-requested", ""),
+                bool_environment("draft"),
+                bool_environment("DRAFT"),
+            ]),
+            no_admin_fallback: first_nonempty(&[
+                value(&values, "--no-admin-fallback", ""),
+                bool_environment("no_admin_fallback"),
+                bool_environment("NO_ADMIN_FALLBACK"),
+            ]),
+            no_logs_commit: first_nonempty(&[
+                value(&values, "--no-logs-commit", ""),
+                bool_environment("no_logs_commit"),
+                bool_environment("NO_LOGS_COMMIT"),
+            ]),
+            force_requested: bool_or_default(&first_nonempty(&[
+                value(&values, "--force-requested", ""),
+                bool_environment("force_requested"),
+            ])),
+            difficulty_override: first_nonempty(&[
+                value(&values, "--difficulty", ""),
+                environment("difficulty"),
+                environment("DIFFICULTY_OVERRIDE"),
+            ]),
+            upstream_repo: first_nonempty(&[
+                value(&values, "--upstream-repo", ""),
+                environment("UPSTREAM_REPO"),
+            ]),
             run_id: first_nonempty(&[value(&values, "--run-id", ""), environment("RUN_ID")]),
             preflight_tmpdir: first_nonempty(&[
                 value(&values, "--preflight-tmpdir", ""),
@@ -331,6 +343,15 @@ impl BootstrapOptions {
                 environment("CALLER_ENV_PATH"),
                 environment("SESSION_ENV_PATH"),
             ]),
+            coder_opt: if mode == InvokeMode::Resume {
+                String::new()
+            } else {
+                first_nonempty(&[value(&values, "--coder", ""), environment("coder")])
+            },
+            non_interactive: first_nonempty(&[
+                value(&values, "--non-interactive", ""),
+                bool_environment("non_interactive"),
+            ]),
             self_review_requested,
             self_implement_requested,
             skip_codex_probe: false,
@@ -338,35 +359,84 @@ impl BootstrapOptions {
         })
     }
 
-    fn resume(&self) -> bool {
+    pub(crate) fn resume(&self) -> bool {
         self.mode == InvokeMode::Resume
     }
 
-    fn self_subagents_only(&self) -> bool {
+    pub(crate) fn self_subagents_only(&self) -> bool {
         self.self_review_requested == "true" && self.self_implement_requested == "true"
+    }
+
+    fn resolve_continuation_defaults(&mut self, tmpdir: &str) {
+        let seed = Path::new(tmpdir).join("ship-seed-input.env");
+        let resume = self.resume();
+        let seed_value = |key: &str| {
+            if resume {
+                read_env_file(&seed, key)
+            } else {
+                String::new()
+            }
+        };
+        self.merge_requested = bool_or_default(&first_nonempty(&[
+            self.merge_requested.clone(),
+            seed_value("MERGE"),
+        ]));
+        self.draft_requested = bool_or_default(&first_nonempty(&[
+            self.draft_requested.clone(),
+            seed_value("DRAFT"),
+        ]));
+        self.no_admin_fallback = bool_or_default(&first_nonempty(&[
+            self.no_admin_fallback.clone(),
+            seed_value("NO_ADMIN_FALLBACK"),
+        ]));
+        self.no_logs_commit = bool_or_default(&first_nonempty(&[
+            self.no_logs_commit.clone(),
+            seed_value("NO_LOGS_COMMIT"),
+        ]));
+        if !DIFFICULTY_VALUES.contains(&self.difficulty_override.as_str()) {
+            self.difficulty_override.clear();
+        }
+        if !CODER_VALUES.contains(&self.coder_opt.as_str()) {
+            self.coder_opt.clear();
+        }
+        self.non_interactive = if BOOL_VALUES.contains(&self.non_interactive.as_str()) {
+            self.non_interactive.clone()
+        } else {
+            String::new()
+        };
     }
 }
 
 #[derive(Clone, Debug, Default)]
-struct BootstrapState {
-    current_branch: String,
-    is_main: String,
-    is_user_branch: String,
-    user_prefix: String,
-    entry_gate: String,
-    skip_branch_check: String,
-    implement_tmpdir: String,
-    session_id: String,
-    repo: String,
-    repo_unavailable: String,
-    codex_present: String,
-    cursor_present: String,
-    claude_binary_found: String,
-    codex_binary_found: String,
-    cursor_binary_found: String,
-    codex_available: String,
-    cursor_available: String,
-    run_id: String,
+pub struct BootstrapState {
+    pub(crate) current_branch: String,
+    pub(crate) is_main: String,
+    pub(crate) is_user_branch: String,
+    pub(crate) user_prefix: String,
+    pub(crate) entry_gate: String,
+    pub(crate) skip_branch_check: String,
+    pub(crate) implement_tmpdir: String,
+    pub(crate) session_id: String,
+    pub(crate) repo: String,
+    pub(crate) repo_unavailable: String,
+    pub(crate) codex_present: String,
+    pub(crate) cursor_present: String,
+    pub(crate) claude_binary_found: String,
+    pub(crate) codex_binary_found: String,
+    pub(crate) cursor_binary_found: String,
+    pub(crate) codex_available: String,
+    pub(crate) cursor_available: String,
+    pub(crate) run_id: String,
+    pub(crate) issue_number_resolved: String,
+    pub(crate) branch_selected: String,
+    pub(crate) deferred: String,
+    pub(crate) stall_tracking: String,
+    pub(crate) branch_name: String,
+    pub(crate) branch_action: String,
+    pub(crate) plan_file: String,
+    pub(crate) coder: String,
+    pub(crate) coder_fallback: String,
+    pub(crate) implement_bail_reason: String,
 }
 
 #[derive(Clone, Debug)]
@@ -648,13 +718,6 @@ fn resolved_run_id(options: &BootstrapOptions, state: &BootstrapState) -> String
     }
 }
 
-fn valid_run_id(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-}
-
 fn activatable_run_id(value: &str) -> bool {
     validate_progress_run_id(value).is_some()
 }
@@ -730,13 +793,21 @@ fn write_claude_source_snapshot(state: &BootstrapState) {
     let _ignored = write_session_text(&state.implement_tmpdir, "claude-source.env", &text, 0o600);
 }
 
-fn write_base_session_env(
+pub fn write_base_session_env(
     state: &BootstrapState,
     options: &BootstrapOptions,
 ) -> Result<(), String> {
     let root = plugin_root()?;
     let tmpdir = Path::new(&state.implement_tmpdir);
     let session_env = tmpdir.join("session-env.sh");
+    let prior_repo_root = read_session_env(&state.implement_tmpdir, "REPO_ROOT");
+    let repo_root = if !prior_repo_root.is_empty()
+        && validate_repo_root_value(&prior_repo_root, "REPO_ROOT").is_ok()
+    {
+        prior_repo_root
+    } else {
+        resolve_repo_root()
+    };
     let prior_claude_source = read_session_env(&state.implement_tmpdir, "LARCH_CLAUDE_SOURCE_FILE");
     let claude_source = if prior_claude_source.is_empty() {
         let source = tmpdir.join("claude-source.env");
@@ -754,7 +825,7 @@ fn write_base_session_env(
         OsString::from("--repo"),
         OsString::from(&state.repo),
         OsString::from("--repo-root"),
-        OsString::from(resolve_repo_root()),
+        OsString::from(repo_root),
         OsString::from("--repo-unavailable"),
         OsString::from(if state.repo_unavailable.is_empty() {
             "false"
@@ -908,52 +979,6 @@ fn write_implement_pointer(state: &BootstrapState) -> Result<(), String> {
     }
 }
 
-fn write_handoff(state: &BootstrapState, path: &Path) -> Result<(), String> {
-    let mut rows = vec![
-        ("CURRENT_BRANCH", &state.current_branch),
-        ("IS_MAIN", &state.is_main),
-        ("IS_USER_BRANCH", &state.is_user_branch),
-        ("USER_PREFIX", &state.user_prefix),
-        ("ENTRY_GATE", &state.entry_gate),
-        ("SKIP_BRANCH_CHECK", &state.skip_branch_check),
-        ("IMPLEMENT_TMPDIR", &state.implement_tmpdir),
-        ("SESSION_ID", &state.session_id),
-        ("REPO", &state.repo),
-        ("REPO_UNAVAILABLE", &state.repo_unavailable),
-        ("CODEX_PRESENT", &state.codex_present),
-        ("CURSOR_PRESENT", &state.cursor_present),
-        ("CLAUDE_BINARY_FOUND", &state.claude_binary_found),
-        ("CODEX_BINARY_FOUND", &state.codex_binary_found),
-        ("CURSOR_BINARY_FOUND", &state.cursor_binary_found),
-        ("codex_available", &state.codex_available),
-        ("cursor_available", &state.cursor_available),
-        ("RUN_ID", &state.run_id),
-    ];
-    rows.sort_by_key(|(key, _)| *key);
-    let text = rows
-        .into_iter()
-        .fold(String::new(), |mut text, (key, value)| {
-            writeln!(text, "{key}={}", single_line(value)).expect("write to String cannot fail");
-            text
-        });
-    let parent = path
-        .parent()
-        .ok_or_else(|| "bootstrap handoff lacks a session parent".to_owned())?;
-    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
-    let name = path
-        .file_name()
-        .ok_or_else(|| "bootstrap handoff lacks a filename".to_owned())?;
-    let target = root.path().join(name);
-    atomic_write_utf8_in(&root, &target, &text, false, 0o600).map_err(|error| error.to_string())
-}
-
-fn write_session_text(tmpdir: &str, name: &str, text: &str, mode: u32) -> Result<(), String> {
-    let root =
-        TemporaryRoot::resolve(Some(Path::new(tmpdir))).map_err(|error| error.to_string())?;
-    let target = root.path().join(name);
-    atomic_write_utf8_in(&root, &target, text, false, mode).map_err(|error| error.to_string())
-}
-
 fn trusted_session_env(tmpdir: &str) -> bool {
     if !trusted_session_directory(tmpdir) {
         return false;
@@ -1034,10 +1059,6 @@ fn first_kv_value(text: &str, expected: &str) -> String {
 
 fn read_text_lossy(path: &Path) -> Result<String, std::io::Error> {
     fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
-
-fn single_line(value: &str) -> String {
-    value.replace(['\n', '\r'], " ")
 }
 
 fn parse_kv(text: &str) -> BTreeMap<String, String> {

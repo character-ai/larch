@@ -19,7 +19,7 @@ test_design_lifecycle/test_plan_review_panel/test_decompose/test_plan_scout/
 test_design_summary), against regression. It does **not** yet enforce the
 invariant on the heavier `-k`-sliced files whose re-partition moves many
 tests between shards and needs wall-time re-measurement
-(test_review_and_fix.py, test_plan_quality.py, test_bootstrap.py,
+(test_review_and_fix.py, test_plan_quality.py,
 test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
 To bring another file under the guard, slice its targets and add it to
 ENFORCED.

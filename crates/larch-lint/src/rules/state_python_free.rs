@@ -41,7 +41,6 @@ const RETAINED_MODULES: &[&str] = &[
     "python/larch/state/__init__.py",
     "python/larch/state/_tokens.py",
     "python/larch/state/_validate.py",
-    "python/larch/state/bootstrap.py",
     "python/larch/state/closeout.py",
     "python/larch/state/finalize.py",
     "python/larch/state/session_env.py",

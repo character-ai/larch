@@ -285,7 +285,15 @@ fn remote_matches_head(branch: &str) -> bool {
 
 pub fn current_branch() -> Option<String> {
     let cwd = env::current_dir().ok()?;
-    let repo = GixRepository::discover(cwd).ok()?;
+    current_branch_from(&cwd)
+}
+
+/// Read the named branch for a caller-supplied repository root.
+///
+/// Callers with durable run state should use this instead of deriving a root
+/// from their ambient working directory.
+pub fn current_branch_from(root: &Path) -> Option<String> {
+    let repo = GixRepository::discover(root).ok()?;
     match repo.head().ok()? {
         Head::Symbolic { name, .. } | Head::Unborn { name } => short_branch_name(&name),
         Head::Detached { .. } => None,

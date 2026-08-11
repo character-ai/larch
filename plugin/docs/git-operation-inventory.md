@@ -38,6 +38,7 @@ crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/implement_bootstrap_continuation.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/launcher_support.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/learn_from_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
@@ -99,7 +100,6 @@ python/larch/review/coder_runner.py	later-domain	#7679	checkout
 python/larch/review/review_and_fix.py	later-domain	#7679	diff,ls-files,rev-parse,status
 python/larch/review/review_gather.py	later-domain	#7679	ls-files
 python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,ls-files,restore
-python/larch/state/bootstrap.py	later-domain	#7677	status
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse

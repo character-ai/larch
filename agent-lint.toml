@@ -56,19 +56,6 @@ suppress = [
 # skills/research/SKILL.md's hooks: frontmatter and is therefore not
 # excluded; the test script is referenced only from Makefile, matching the
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
-#
-# python/test_bootstrap.py is the regression harness for
-# scripts/larch.sh bootstrap parse-routing (Makefile
-# `test-parse-bootstrap-routing-envelope`). The parser is structurally invoked
-# from skills/implement/SKILL.md, while the harness is Makefile-only.
-# is the offline regression harness for the public fork-setup coordinator. It
-# creates local bare upstream/fork repositories, stubs `gh`, and is referenced
-# only from Makefile (make py-test) plus the
-# coordinator sibling contract, matching the same Makefile-only harness pattern
-# as the skill-local test harnesses above. forked-repo remote helpers is a sourced-only
-# helper referenced by the coordinator via `source`, which agent-lint does not
-# follow. Both sibling .md files are excluded below.
-#
 # scripts/test-anti-halt-banners.sh is the regression harness for the
 # anti-halt continuation banner (closes #177). The harness asserts banner
 # presence in four orchestrator SKILL.md files (implement, review,
@@ -611,7 +598,6 @@ exclude = [
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "python/test_bootstrap.py",
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",

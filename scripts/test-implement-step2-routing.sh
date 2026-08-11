@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # scripts/larch.sh is the only approved Rust entrypoint and reads this root.
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
-BOOTSTRAP_SH="$REPO_ROOT/python/larch/state/bootstrap.py"
+BOOTSTRAP_RS="$REPO_ROOT/crates/larch-cli/src/implement_bootstrap_continuation.rs"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 DISPATCH_PY="$REPO_ROOT/python/larch/implement/dispatch_step2.py"
 
@@ -52,13 +52,13 @@ if [[ "$RUST_AVAILABLE" == 1 ]]; then
 else
     echo "SKIP: external-defaults role implement.step2_coder (no built larch binary; set LARCH_BINARY)" >&2
 fi
-assert_contains "$BOOTSTRAP_SH" 'from larch.calibration.difficulty import resolve_step2_effective_difficulty' "shared difficulty resolver import"
-assert_contains "$BOOTSTRAP_SH" 'config.CODER_TOOL_ORDER_BY_DIFFICULTY.get(' "difficulty-keyed coder preference"
-assert_contains "$BOOTSTRAP_SH" 'external_defaults.tool_order("implement.step2_coder")' "invalid-difficulty registry fallback"
+assert_contains "$BOOTSTRAP_RS" 'fn coder_order_for_difficulty' "Rust difficulty-keyed coder preference"
+assert_contains "$BOOTSTRAP_RS" 'const CURSOR_FIRST: &[&str] = &["cursor", "codex", "claude"]' "moderate coder order"
+assert_contains "$BOOTSTRAP_RS" 'const CODEX_FIRST: &[&str] = &["codex", "cursor", "claude"]' "hard coder order"
 assert_contains "$DISPATCH_PY" 'difficulty.resolve_step2_effective_difficulty(tmpdir)' "shared dispatch difficulty resolver"
 assert_not_contains "$DISPATCH_PY" 'def _resolve_step2_difficulty' "duplicate dispatch difficulty resolver"
-assert_contains "$BOOTSTRAP_SH" 'for candidate in order:' "single selected coder loop"
-assert_contains "$BOOTSTRAP_SH" 'st.coder = "claude"' "claude terminal waterfall"
+assert_contains "$BOOTSTRAP_RS" '.find(|candidate| match *candidate {' "single selected coder loop"
+assert_contains "$BOOTSTRAP_RS" '.unwrap_or("claude")' "claude terminal waterfall"
 assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 bootstrap invoke wrapper"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
 # shellcheck disable=SC2016 # literal source text, not shell.
@@ -66,8 +66,8 @@ assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 
 # shellcheck disable=SC2016 # literal source text, not shell.
 # shellcheck disable=SC2016 # literal source text, not shell.
 assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
-assert_contains "$BOOTSTRAP_SH" 'st.opts.coder_opt == "cursor"' "explicit cursor branch"
-assert_contains "$BOOTSTRAP_SH" 'st.opts.coder_opt == "codex"' "explicit codex branch"
+assert_contains "$BOOTSTRAP_RS" '"cursor" => &["cursor", "codex", "claude"]' "explicit cursor branch"
+assert_contains "$BOOTSTRAP_RS" '"codex" => &["codex", "cursor", "claude"]' "explicit codex branch"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
 # shellcheck disable=SC2016 # literal source text, not shell.
 # shellcheck disable=SC2016 # literal source text, not shell.

@@ -736,7 +736,7 @@ fn review_detail(implement_tmpdir: &Path, run_dir: &Path) -> String {
 }
 
 /// Render the provider-neutral run-log reference for the summary.
-fn run_log_reference(session: &Path, run_id: &str, implement_tmpdir: &Path) -> String {
+pub fn run_log_reference(session: &Path, run_id: &str, implement_tmpdir: &Path) -> String {
     if run_id.is_empty() {
         return "N/A".to_owned();
     }
