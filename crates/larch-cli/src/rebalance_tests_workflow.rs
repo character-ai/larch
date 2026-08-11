@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, env, process::ExitCode, time::Duration};
+use std::{collections::BTreeMap, env, future::Future, process::ExitCode, time::Duration};
 
 use crate::{github_repository_resolution, test_shards};
 use chrono::Utc;
@@ -222,7 +222,7 @@ struct ProductionWorkflow {
     runtime: LarchRuntime,
     cancellation: Cancellation,
     runner: TokioProcessRunner,
-    github: OctocrabGitHubService,
+    github: Option<OctocrabGitHubService>,
     git_policy: GitCliPolicy,
     created_branch: Option<String>,
     pushed_branch: Option<String>,
@@ -255,7 +255,7 @@ impl ProductionWorkflow {
             runtime,
             cancellation,
             runner,
-            github,
+            github: Some(github),
             git_policy,
             created_branch: None,
             pushed_branch: None,
@@ -264,6 +264,12 @@ impl ProductionWorkflow {
 
     fn git(&self) -> GitCli<'_, TokioProcessRunner> {
         GitCli::new(&self.runner, self.git_policy.clone())
+    }
+
+    fn github(&self) -> Result<&OctocrabGitHubService, String> {
+        self.github
+            .as_ref()
+            .ok_or_else(|| "GitHub service was not initialized".to_owned())
     }
 
     fn repository_for(arguments: &RebalanceRunArguments) -> Result<GitHubRepositoryRef, String> {
@@ -343,6 +349,7 @@ impl ProductionWorkflow {
         arguments: &RebalanceRunArguments,
         repository: &GitHubRepositoryRef,
     ) -> Result<PreparedPlan, String> {
+        let github = self.github()?;
         let current_harness = arguments
             .kind
             .includes_harness()
@@ -365,7 +372,7 @@ impl ProductionWorkflow {
             let harness = if let Some(shards) = &current_harness {
                 let targets = shards.values().flatten().cloned().collect::<Vec<_>>();
                 let timing = collect_harness_timing(
-                    &self.github,
+                    github,
                     repository,
                     &selection,
                     &targets,
@@ -374,7 +381,7 @@ impl ProductionWorkflow {
                 .await
                 .map_err(|error| error.to_string())?;
                 let jobs = collect_job_timing(
-                    &self.github,
+                    github,
                     repository,
                     &timing.sampled_run_ids,
                     &self.cancellation,
@@ -387,7 +394,7 @@ impl ProductionWorkflow {
             }?;
             let pytest = if current_assignments.is_some() {
                 Some(
-                    collect_pytest_timing(&self.github, repository, &selection, &self.cancellation)
+                    collect_pytest_timing(github, repository, &selection, &self.cancellation)
                         .await
                         .map_err(|error| error.to_string())?,
                 )
@@ -524,12 +531,13 @@ impl ProductionWorkflow {
         head_sha: &str,
         n_runs: usize,
     ) -> Result<Vec<u64>, String> {
+        let github = self.github()?;
         self.runtime.block_on(async {
             let mut seen = Vec::new();
             let mut completed = Vec::new();
             for _ in 0..n_runs {
                 let mut before = list_workflow_ids(
-                    &self.github,
+                    github,
                     repository,
                     workflow,
                     branch,
@@ -540,8 +548,7 @@ impl ProductionWorkflow {
                 before.extend(&seen);
                 before.sort_unstable();
                 before.dedup();
-                let outcome = self
-                    .github
+                let outcome = github
                     .dispatch_workflow(
                         &WorkflowDispatchRequest {
                             repository: repository.clone(),
@@ -556,7 +563,7 @@ impl ProductionWorkflow {
                     return Err("workflow dispatch outcome is ambiguous; refusing to guess a verification run".to_owned());
                 }
                 let run = wait_for_completed_run(
-                    &self.github,
+                    github,
                     repository,
                     workflow,
                     branch,
@@ -592,10 +599,11 @@ impl WorkflowPort for ProductionWorkflow {
                 &harness.current_shards,
                 &harness.proposed_shards,
             )?;
-            let makefile = self.makefile(larch_adapters::PathIntent::Write)?;
+            let source = self.makefile(larch_adapters::PathIntent::Read)?;
+            let target = self.makefile(larch_adapters::PathIntent::Write)?;
             written.push(Artifact::Makefile);
             if let Err(error) =
-                test_shards::write_makefile_shard_map(&makefile, &harness.proposed_shards)
+                test_shards::write_makefile_shard_map(&source, &target, &harness.proposed_shards)
             {
                 return Err(self.rollback_write_failure(
                     &written,
@@ -702,9 +710,10 @@ impl WorkflowPort for ProductionWorkflow {
         self.push_branch(branch)?;
         self.checkout_main()?;
         let body = pull_request_body(arguments, plan);
+        let github = self.github()?;
         let created = self
             .runtime
-            .block_on(self.github.create_pull_request(
+            .block_on(github.create_pull_request(
                 &self.cancellation,
                 &PullRequestSpec {
                     owner: plan.repository.owner(),
@@ -769,6 +778,7 @@ impl WorkflowPort for ProductionWorkflow {
             &pull_request.head_sha,
             arguments.n_verify_runs,
         )?;
+        let github = self.github()?;
         let (harness_pair, pytest) = self.runtime.block_on(async {
             let harness = if let Some(harness_plan) = &plan.harness {
                 let targets = harness_plan
@@ -779,7 +789,7 @@ impl WorkflowPort for ProductionWorkflow {
                     .collect::<Vec<_>>();
                 let selection = CiTimingRunSelection::Explicit(run_ids.clone());
                 let timing = collect_harness_timing(
-                    &self.github,
+                    github,
                     &plan.repository,
                     &selection,
                     &targets,
@@ -787,14 +797,10 @@ impl WorkflowPort for ProductionWorkflow {
                 )
                 .await
                 .map_err(|error| error.to_string())?;
-                let jobs = collect_job_timing(
-                    &self.github,
-                    &plan.repository,
-                    &run_ids,
-                    &self.cancellation,
-                )
-                .await
-                .map_err(|error| error.to_string())?;
+                let jobs =
+                    collect_job_timing(github, &plan.repository, &run_ids, &self.cancellation)
+                        .await
+                        .map_err(|error| error.to_string())?;
                 Ok::<_, String>(Some((timing, jobs)))
             } else {
                 Ok(None)
@@ -802,14 +808,9 @@ impl WorkflowPort for ProductionWorkflow {
             let pytest = if plan.python.is_some() {
                 let selection = CiTimingRunSelection::Explicit(run_ids.clone());
                 Some(
-                    collect_pytest_timing(
-                        &self.github,
-                        &plan.repository,
-                        &selection,
-                        &self.cancellation,
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?,
+                    collect_pytest_timing(github, &plan.repository, &selection, &self.cancellation)
+                        .await
+                        .map_err(|error| error.to_string())?,
                 )
             } else {
                 None
@@ -1103,6 +1104,10 @@ async fn list_workflow_ids(
         )
         .await
         .map_err(|error| format!("cannot list verification workflow runs: {error}"))?;
+    workflow_ids_from_runs(runs, head_sha)
+}
+
+fn workflow_ids_from_runs(runs: Vec<WorkflowRun>, head_sha: &str) -> Result<Vec<u64>, String> {
     validate_verification_runs(&runs, head_sha)?;
     Ok(runs.into_iter().map(|run| run.database_id).collect())
 }
@@ -1127,16 +1132,35 @@ async fn wait_for_completed_run(
     excluded: &[u64],
     cancellation: &Cancellation,
 ) -> Result<u64, String> {
+    wait_for_completed_run_from(
+        || async {
+            service
+                .list_workflow_runs(
+                    repository,
+                    &verification_run_filters(workflow, branch, head_sha),
+                    cancellation,
+                )
+                .await
+                .map_err(|error| format!("cannot wait for verification workflow: {error}"))
+        },
+        head_sha,
+        excluded,
+    )
+    .await
+}
+
+async fn wait_for_completed_run_from<F, Fut>(
+    mut list_runs: F,
+    head_sha: &str,
+    excluded: &[u64],
+) -> Result<u64, String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Vec<WorkflowRun>, String>>,
+{
     let started = tokio::time::Instant::now();
     loop {
-        let runs = service
-            .list_workflow_runs(
-                repository,
-                &verification_run_filters(workflow, branch, head_sha),
-                cancellation,
-            )
-            .await
-            .map_err(|error| format!("cannot wait for verification workflow: {error}"))?;
+        let runs = list_runs().await?;
         if let Some(run_id) = select_verification_run(&runs, excluded, head_sha)? {
             return Ok(run_id);
         }
@@ -1276,277 +1300,5 @@ fn parse_compile_affinity(value: &str) -> Result<CompileAffinityArgument, String
     })
 }
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Clone, Copy)]
-    enum Failure {
-        Dirty,
-        Stale,
-        StaleBeforeWrite,
-        Write,
-        Publish,
-        Verify,
-    }
-
-    struct FixtureWorkflow {
-        failure: Option<Failure>,
-        noop: bool,
-        events: Vec<&'static str>,
-    }
-
-    impl FixtureWorkflow {
-        fn new(failure: Option<Failure>, noop: bool) -> Self {
-            Self {
-                failure,
-                noop,
-                events: Vec::new(),
-            }
-        }
-    }
-
-    impl WorkflowPort for FixtureWorkflow {
-        fn prepare(&mut self, _arguments: &RebalanceRunArguments) -> Result<PreparedPlan, String> {
-            self.events.push("prepare");
-            match self.failure {
-                Some(Failure::Dirty) => return Err("dirty repository".to_owned()),
-                Some(Failure::Stale) => return Err("stale immutable-main evidence".to_owned()),
-                _ => {}
-            }
-            Ok(PreparedPlan {
-                kind: RebalanceKind::Python,
-                repository: GitHubRepositoryRef::new("owner", "repo").unwrap(),
-                harness: None,
-                python: Some(PythonPlan {
-                    assignments: BTreeMap::from([("test::one".to_owned(), 1)]),
-                    shard_count: 1,
-                    changed: !self.noop,
-                }),
-                decision: if self.noop { "noop" } else { "change" }.to_owned(),
-            })
-        }
-
-        fn revalidate_for_write(&mut self) -> Result<(), String> {
-            self.events.push("revalidate");
-            matches!(self.failure, Some(Failure::StaleBeforeWrite))
-                .then_some(Err("stale immutable-main evidence".to_owned()))
-                .unwrap_or(Ok(()))
-        }
-
-        fn write_candidates(&mut self, _plan: &PreparedPlan) -> Result<Vec<Artifact>, String> {
-            self.events.push("write");
-            if matches!(self.failure, Some(Failure::Write)) {
-                self.events.push("write-rollback");
-                return Err("candidate write failed".to_owned());
-            }
-            Ok(vec![Artifact::Assignments])
-        }
-
-        fn publish(
-            &mut self,
-            _arguments: &RebalanceRunArguments,
-            _plan: &PreparedPlan,
-            _artifacts: &[Artifact],
-            branch: &str,
-        ) -> Result<PublishedPullRequest, String> {
-            self.events.push("publish");
-            if matches!(self.failure, Some(Failure::Publish)) {
-                return Err("push failed".to_owned());
-            }
-            Ok(PublishedPullRequest {
-                number: 1,
-                url: "https://example.invalid/pull/1".to_owned(),
-                branch: branch.to_owned(),
-                head_sha: "a".repeat(40),
-            })
-        }
-
-        fn recover_publish_failure(
-            &mut self,
-            _artifacts: &[Artifact],
-            _branch: &str,
-        ) -> Result<(), String> {
-            self.events.push("publish-rollback");
-            Ok(())
-        }
-
-        fn verify(
-            &mut self,
-            _arguments: &RebalanceRunArguments,
-            _plan: &PreparedPlan,
-            _pull_request: &PublishedPullRequest,
-        ) -> Result<(), String> {
-            self.events.push("verify");
-            matches!(self.failure, Some(Failure::Verify))
-                .then_some(Err("verification failed".to_owned()))
-                .unwrap_or(Ok(()))
-        }
-    }
-
-    fn arguments() -> RebalanceRunArguments {
-        RebalanceRunArguments {
-            kind: RebalanceKind::Python,
-            repo: Some(GitHubRepositoryRef::new("owner", "repo").unwrap()),
-            n_runs: 1,
-            branch_prefix: "rebalance-shards".to_owned(),
-            n_verify_runs: 1,
-            n_python_shards: None,
-            balance_threshold: 15.0,
-            max_shard_wall_clock: 300.0,
-            experimental_wall_clock_override: None,
-            compile_affinity: Vec::new(),
-            workflow: "ci.yaml".to_owned(),
-            baseline_branch: "main".to_owned(),
-            dry_run: false,
-        }
-    }
-
-    #[test]
-    fn offline_success_fixture_writes_publishes_and_verifies() {
-        let mut fixture = FixtureWorkflow::new(None, false);
-        assert_eq!(execute(&mut fixture, &arguments()), Ok(ExitCode::SUCCESS));
-        assert_eq!(
-            fixture.events,
-            ["prepare", "revalidate", "write", "publish", "verify"]
-        );
-    }
-
-    #[test]
-    fn offline_noop_and_dry_run_fixtures_never_mutate() {
-        for (noop, dry_run) in [(true, false), (false, true)] {
-            let mut arguments = arguments();
-            arguments.dry_run = dry_run;
-            let mut fixture = FixtureWorkflow::new(None, noop);
-            assert_eq!(execute(&mut fixture, &arguments), Ok(ExitCode::SUCCESS));
-            assert_eq!(fixture.events, ["prepare"]);
-        }
-    }
-
-    #[test]
-    fn offline_dirty_and_stale_fixtures_refuse_before_writes() {
-        for failure in [Failure::Dirty, Failure::Stale] {
-            let mut fixture = FixtureWorkflow::new(Some(failure), false);
-            assert!(execute(&mut fixture, &arguments()).is_err());
-            assert_eq!(fixture.events, ["prepare"]);
-        }
-    }
-
-    #[test]
-    fn offline_post_plan_staleness_refuses_before_writes() {
-        let mut fixture = FixtureWorkflow::new(Some(Failure::StaleBeforeWrite), false);
-        assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(fixture.events, ["prepare", "revalidate"]);
-    }
-
-    #[test]
-    fn offline_candidate_write_fixture_rolls_back_before_publish() {
-        let mut fixture = FixtureWorkflow::new(Some(Failure::Write), false);
-        assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(
-            fixture.events,
-            ["prepare", "revalidate", "write", "write-rollback"]
-        );
-    }
-
-    #[test]
-    fn offline_push_or_pr_failure_fixture_restores_candidates_and_branch() {
-        let mut fixture = FixtureWorkflow::new(Some(Failure::Publish), false);
-        assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(
-            fixture.events,
-            [
-                "prepare",
-                "revalidate",
-                "write",
-                "publish",
-                "publish-rollback"
-            ]
-        );
-    }
-
-    #[test]
-    fn offline_verification_failure_fixture_keeps_the_created_pr() {
-        let mut fixture = FixtureWorkflow::new(Some(Failure::Verify), false);
-        assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(
-            fixture.events,
-            ["prepare", "revalidate", "write", "publish", "verify"]
-        );
-    }
-
-    #[test]
-    fn parsers_reject_unsafe_workflow_inputs() {
-        assert!(parse_branch_prefix("branch;rm").is_err());
-        assert!(parse_selector("main branch").is_err());
-        assert!(parse_compile_affinity("target=group:0\n").is_err());
-        assert!(parse_compile_affinity("target=group:0").is_ok());
-    }
-
-    #[test]
-    fn explicit_repository_must_match_origin() {
-        let origin = GitHubRepositoryRef::new("owner", "repo").unwrap();
-        assert_eq!(
-            selected_repository(None, origin.clone()),
-            Ok(origin.clone())
-        );
-        assert_eq!(
-            selected_repository(Some(&origin), origin.clone()),
-            Ok(origin.clone())
-        );
-        assert!(
-            selected_repository(
-                Some(&GitHubRepositoryRef::new("other", "repo").unwrap()),
-                origin
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn verification_run_selection_requires_one_matching_dispatch() {
-        let run = |id: u64, event: &str, head_sha: &str, status: &str| WorkflowRun {
-            database_id: id,
-            status: status.to_owned(),
-            conclusion: Some("success".to_owned()),
-            head_sha: head_sha.to_owned(),
-            event: event.to_owned(),
-            attempt: 1,
-        };
-        let expected = "a";
-        assert_eq!(
-            select_verification_run(
-                &[run(2, WORKFLOW_EVENT, expected, "completed")],
-                &[],
-                expected
-            ),
-            Ok(Some(2))
-        );
-        assert!(
-            select_verification_run(&[run(3, "push", expected, "completed")], &[], expected)
-                .is_err()
-        );
-        assert!(
-            select_verification_run(
-                &[
-                    run(4, WORKFLOW_EVENT, expected, "completed"),
-                    run(5, WORKFLOW_EVENT, expected, "completed")
-                ],
-                &[],
-                expected
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn assignment_format_and_subject_match_the_existing_contract() {
-        assert_eq!(
-            assignments_json(&BTreeMap::from([("b".to_owned(), 2), ("a".to_owned(), 1)])),
-            "{\n  \"a\": 1,\n  \"b\": 2\n}\n"
-        );
-        assert_eq!(
-            commit_subject(RebalanceKind::All),
-            "chore: rebalance test shards (harness+python)"
-        );
-    }
-}
+#[path = "../tests/support/rebalance_tests_workflow_unit.rs"]
+mod tests;

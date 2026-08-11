@@ -158,13 +158,17 @@ pub fn read_makefile_shard_map(path: &ConfinedPath) -> Result<TestShardMap, Stri
     Ok(read_makefile_shards(&source))
 }
 
-pub fn write_makefile_shard_map(path: &ConfinedPath, shards: &TestShardMap) -> Result<(), String> {
+pub fn write_makefile_shard_map(
+    source: &ConfinedPath,
+    target: &ConfinedPath,
+    shards: &TestShardMap,
+) -> Result<(), String> {
     if shards.keys().any(|shard| *shard == 0) {
         return Err("shard identifiers must be at least 1".to_owned());
     }
-    let source = read_utf8(path).map_err(|error| error.to_string())?;
+    let source = read_utf8(source).map_err(|error| error.to_string())?;
     let rewritten = rewrite_makefile_shards(&source, shards);
-    atomic_write_utf8(path, &rewritten, 0o644).map_err(|error| error.to_string())
+    atomic_write_utf8(target, &rewritten, 0o644).map_err(|error| error.to_string())
 }
 
 /// Prove a rewritten harness map preserves the candidate's partition contract.
