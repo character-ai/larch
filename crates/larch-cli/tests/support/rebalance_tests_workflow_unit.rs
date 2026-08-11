@@ -566,7 +566,7 @@ fn plan_response_prepares_selected_legs() {
         )
         .expect("complete response prepares both legs");
     assert!(!prepared.is_noop());
-    let mut noop = prepared.clone();
+    let mut noop = prepared;
     noop.harness.as_mut().expect("harness leg").changed = false;
     noop.python.as_mut().expect("python leg").changed = false;
     assert!(noop.is_noop());
@@ -777,11 +777,42 @@ fn offline_verification_failure_fixture_keeps_the_created_pr() {
 }
 
 #[test]
-fn parsers_reject_unsafe_workflow_inputs() {
+fn parsers_accept_safe_rebalance_inputs() {
+    assert_eq!(parse_run_count("1"), Ok(1));
+    assert_eq!(
+        parse_run_count(&larch_core::MAX_CI_TIMING_RUNS.to_string()),
+        Ok(larch_core::MAX_CI_TIMING_RUNS)
+    );
+    assert_eq!(parse_positive_u32("2"), Ok(2));
+    assert_eq!(parse_positive_f64("1.5"), Ok(1.5));
+    assert_eq!(
+        parse_experiment_note(" experiment-42 "),
+        Ok("experiment-42".to_owned())
+    );
+    assert_eq!(
+        parse_branch_prefix("rebalance-123"),
+        Ok("rebalance-123".to_owned())
+    );
+    assert_eq!(parse_selector("ci.yaml"), Ok("ci.yaml".to_owned()));
+    let affinity = parse_compile_affinity("target=group:0.5").expect("valid affinity");
+    assert_eq!(affinity.target, "target");
+    assert_eq!(affinity.group, "group");
+    assert!((affinity.setup_seconds - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn parsers_reject_unsafe_rebalance_inputs() {
+    assert!(parse_run_count("0").is_err());
+    assert!(parse_run_count("not-a-number").is_err());
+    assert!(parse_positive_u32("0").is_err());
+    assert!(parse_positive_f64("NaN").is_err());
+    assert!(parse_experiment_note(" \t ").is_err());
     assert!(parse_branch_prefix("branch;rm").is_err());
+    assert!(parse_branch_prefix("Uppercase").is_err());
     assert!(parse_selector("main branch").is_err());
+    assert!(parse_selector("-branch").is_err());
     assert!(parse_compile_affinity("target=group:0\n").is_err());
-    assert!(parse_compile_affinity("target=group:0").is_ok());
+    assert!(parse_compile_affinity("target=group:-1").is_err());
 }
 
 #[test]
