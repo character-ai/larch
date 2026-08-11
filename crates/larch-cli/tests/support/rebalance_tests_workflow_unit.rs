@@ -839,10 +839,10 @@ fn pull_request_text_preserves_selected_legs() {
     assert!(body.contains("- Experimental wall-clock override: experiment-42"));
     assert!(body.ends_with('\n'));
 
-    let mut python_only = prepared.clone();
+    let mut python_only = prepared;
     python_only.harness = None;
     python_only.kind = RebalanceKind::Python;
-    let mut python_arguments = body_arguments.clone();
+    let mut python_arguments = body_arguments;
     python_arguments.kind = RebalanceKind::Python;
     let body = pull_request_body(&python_arguments, &python_only);
     assert!(!body.contains("- Experimental wall-clock override:"));
@@ -1039,10 +1039,13 @@ fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
     assert_eq!(Artifact::Makefile.path(), MAKEFILE);
     assert_eq!(Artifact::Assignments.path(), ASSIGNMENTS);
     assert_eq!(
-        predicted_packed_spread(&BTreeMap::from([(1, 10.0), (2, 6.0)])),
-        4.0
+        predicted_packed_spread(&BTreeMap::from([(1, 10.0), (2, 6.0)])).to_bits(),
+        4.0_f64.to_bits()
     );
-    assert_eq!(predicted_packed_spread(&BTreeMap::new()), 0.0);
+    assert_eq!(
+        predicted_packed_spread(&BTreeMap::new()).to_bits(),
+        0.0_f64.to_bits()
+    );
 
     let fixture = GitFixture::new();
     let mut workflow = fixture.workflow();
