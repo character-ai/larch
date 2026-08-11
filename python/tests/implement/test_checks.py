@@ -4034,7 +4034,7 @@ def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> 
     ).read_text(encoding="utf-8")
 
     def run_diagnostic(
-        start: str, end: str, outcome: str, job_status: str
+        start: str, end: str, outcome: str, prior_failure_or_cancelled: str
     ) -> subprocess.CompletedProcess[str]:
         script = (
             coverage_action.split(start, 1)[1]
@@ -4052,7 +4052,6 @@ def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> 
             "${{ steps.coverage-target-cache.outputs.cache-hit }}",
             "$DIAGNOSTIC_CACHE_HIT",
         )
-        script = script.replace("${{ job.status }}", "$DIAGNOSTIC_JOB_STATUS")
         environment: dict[str, str] = os.environ.copy()
         environment.update(
             {
@@ -4065,7 +4064,7 @@ def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> 
                     tmp_path / "coverage-inventory.tsv"
                 ),
                 "DIAGNOSTIC_CACHE_HIT": "",
-                "DIAGNOSTIC_JOB_STATUS": job_status,
+                "COVERAGE_PRIOR_FAILURE_OR_CANCELLATION": prior_failure_or_cancelled,
                 "DIAGNOSTIC_OUTCOME": outcome,
                 "GITHUB_ENV": str(tmp_path / "github-env"),
             }
@@ -4088,10 +4087,10 @@ def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> 
             "Upload coverage target cache inventory",
         ),
     ):
-        prior_failure = run_diagnostic(start, end, "skipped", "failure")
+        prior_failure = run_diagnostic(start, end, "skipped", "true")
         assert prior_failure.returncode == 0, prior_failure.stderr
 
-        unexpected_skip = run_diagnostic(start, end, "skipped", "success")
+        unexpected_skip = run_diagnostic(start, end, "skipped", "false")
         assert unexpected_skip.returncode != 0
         assert "unexpected coverage target" in unexpected_skip.stderr
 
@@ -4336,8 +4335,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "steps.coverage-target-cache-prune.outcome == 'success'" in coverage_target_save
     assert "env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'" in coverage_target_save
     assert "skipped)" in coverage_target_prune_diagnostics
-    assert 'job_status="${{ job.status }}"' in coverage_target_prune_diagnostics
-    assert "failure|cancelled" in coverage_target_prune_diagnostics
+    assert (
+        'prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"'
+        in coverage_target_prune_diagnostics
+    )
+    assert '"$prior_failure_or_cancelled" = true' in coverage_target_prune_diagnostics
+    assert "if: failure() && !cancelled()" in rust_coverage
+    assert "if: cancelled()" in rust_coverage
     assert "coverage-target-cache-restore" in rust_coverage
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
@@ -4353,8 +4357,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'restored_bytes="$((restored_kib * 1024))"' in coverage_target_restore_diagnostics
     assert "restored_bytes=0" in coverage_target_restore_diagnostics
     assert "skipped)" in coverage_target_restore_diagnostics
-    assert 'job_status="${{ job.status }}"' in coverage_target_restore_diagnostics
-    assert "failure|cancelled" in coverage_target_restore_diagnostics
+    assert (
+        'prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"'
+        in coverage_target_restore_diagnostics
+    )
+    assert '"$prior_failure_or_cancelled" = true' in coverage_target_restore_diagnostics
     assert "*skipped*) outcome=skipped" in cache_restore_timing
     assert "rust-coverage-target-cache-inventory" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
