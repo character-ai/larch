@@ -12,12 +12,14 @@ use std::{
 
 use flate2::{Compression, GzBuilder, read::GzDecoder};
 use larch_adapters::{
-    PathIntent, TemporaryRoot, TokioProcessRunner, atomic_write_bytes, atomic_write_utf8,
+    GixRepository, PathIntent, TemporaryRoot, TokioProcessRunner, atomic_write_bytes,
+    atomic_write_utf8,
     github::{AttestationOperations, OctocrabAttestationTransport, OctocrabGitHubService},
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ArtifactAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag, emit_kv,
+    ArtifactAttestationRequest, Head, ObjectKind, ReleaseAssetSubject, ReleaseSourceCommit,
+    ReleaseTag, RepositoryRead, emit_kv,
 };
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -84,6 +86,7 @@ pub struct CandidateArguments {
     pub repo_root: PathBuf,
     pub tag: String,
     pub source_commit: String,
+    pub verify_checkout: bool,
 }
 
 pub struct PackageArguments {
@@ -119,6 +122,7 @@ pub fn asset_candidate(arguments: &CandidateArguments) -> ExitCode {
         &arguments.repo_root,
         &arguments.tag,
         &arguments.source_commit,
+        arguments.verify_checkout,
     ) {
         Ok(identity) => {
             emit_kv("VERSION", &identity.version);
@@ -209,6 +213,7 @@ fn validate_candidate(
     repo_root: &Path,
     tag: &str,
     source_commit: &str,
+    verify_checkout: bool,
 ) -> Result<ReleaseIdentity, AssetError> {
     let root = repo_root
         .canonicalize()
@@ -239,7 +244,42 @@ fn validate_candidate(
             "Cargo workspace version {cargo_version} does not match plugin version {plugin_version}"
         )));
     }
-    identity(plugin_version, tag, source_commit)
+    let identity = identity(plugin_version, tag, source_commit)?;
+    if verify_checkout {
+        verify_checkout_identity(&root, &identity.source_commit)?;
+    }
+    Ok(identity)
+}
+
+fn verify_checkout_identity(root: &Path, source_commit: &str) -> Result<(), AssetError> {
+    let repository = GixRepository::open(root)
+        .map_err(|_| AssetError::new("checked-out repository identity is unavailable"))?;
+    let target = match repository
+        .head()
+        .map_err(|_| AssetError::new("checked-out repository identity is unavailable"))?
+    {
+        Head::Detached { target } | Head::Symbolic { target, .. } => target,
+        Head::Unborn { .. } => {
+            return Err(AssetError::new(
+                "checked-out repository identity is unavailable",
+            ));
+        }
+    };
+    match repository.object(&target) {
+        Ok(Some(object)) if object.kind == ObjectKind::Commit => {}
+        _ => {
+            return Err(AssetError::new(
+                "checked-out repository identity is unavailable",
+            ));
+        }
+    }
+    let actual = target.to_hex();
+    if actual != source_commit {
+        return Err(AssetError::new(
+            "checked-out commit does not match the supplied source commit",
+        ));
+    }
+    Ok(())
 }
 
 fn package_asset_inner(arguments: &PackageArguments) -> Result<(), AssetError> {

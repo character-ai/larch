@@ -19,12 +19,9 @@ Keep the block tab-separated and sort each row's operation names.
 <!-- git-ownership-matrix:start -->
 ```text
 surface	owner	issue	operations
-.claude/skills/agnix-fix/SKILL.md	later-domain	#7685	remote
 .claude/skills/audit-runs/SKILL.md	later-domain	#7684	log,show
 .claude/skills/rebalance-tests/scripts/rebalance.py	later-domain	#7685	checkout
 .claude/skills/release/SKILL.md	later-domain	#7674	add,checkout,commit,fetch,merge,merge-base,rev-parse
-.github/workflows/ci.yaml	later-domain	#7685	cat-file,diff,fetch,ls-files,merge-base,rev-parse,worktree
-.github/workflows/rust-release-assets.yaml	later-domain	#7685	rev-parse
 .pre-commit-config.yaml	later-domain	#7686	rev-parse
 agents/_implementer-base.md	later-domain	#7678	commit
 agents/claude-self-reviewer.md	later-domain	#7678	merge-base
@@ -36,6 +33,7 @@ crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
@@ -46,6 +44,7 @@ crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_network.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_rebase.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/release_common.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/release_assets.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_plugin_runtime.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
@@ -85,7 +84,6 @@ python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbo
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
 python/larch/implement/dispatch_recovery.py	later-domain	#7681	rev-parse
 python/larch/implement/dispatch_step2.py	later-domain	#7681	rev-parse
-python/larch/implement/rust_ci_selection.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base

@@ -15,10 +15,13 @@ def test_release_workflow_uses_staged_rust_executable_for_asset_commands() -> No
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     assert "python3 python/cli.py release" not in workflow
     assert "gh attestation verify" not in workflow
-    assert "./target/release/larch release asset-candidate" in workflow
-    assert '"./target/$TARGET/release/larch" release package-asset' in workflow
-    assert "./target/release/larch release collect-assets" in workflow
-    assert "./target/release/larch release validate-assets" in workflow
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate' in workflow
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" release package-asset' in workflow
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" release collect-assets' in workflow
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" release validate-assets' in workflow
+    assert "LARCH_BINARY=" in workflow
+    assert "--verify-checkout" in workflow
+    assert "git rev-parse" not in workflow
     assert "--verify-attestations" in workflow
     assert "gh auth login --hostname github.com --with-token" in workflow
     assert "unset GH_TOKEN GITHUB_TOKEN" in workflow

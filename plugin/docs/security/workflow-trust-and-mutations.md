@@ -343,17 +343,17 @@ publish compiler output.
 
 ### CI Rust selection trust
 
-The pull-request `rust-selection` job has read-only workflow permissions. It
-checks out GitHub's tested merge candidate at bounded depth 8, then proves the
-base commit, candidate commit, and base ancestry are locally available. If
-valid commit identities need more history, it fetches complete branch history
-and repeats the same proof; an invalid identity or unavailable history proof
-selects `full`. Only then does it create a base worktree and execute selector
-code from that trusted base. Candidate code can supply the tree being
-classified, but cannot
+The pull-request `rust-selection` job has read-only workflow permissions. The
+checkout action supplies GitHub's tested merge candidate with full history, and
+a separate checkout supplies the pull-request base. The job builds that base's
+`larch` executable and invokes its `ci rust-select` command through
+`scripts/larch.sh`. The command proves the base commit, candidate commit, and
+base ancestry before it reads the candidate diff. An invalid identity,
+unavailable history proof, missing trusted base executable, or selector failure
+selects `full`. Candidate code can supply the tree being classified, but cannot
 author the classifier that authorizes a non-full lane. Selector, workflow,
-coverage-action, and selector-redaction/process changes are explicit global
-`full` triggers.
+coverage-action, and selector-redaction/workspace-metadata changes are explicit
+global `full` triggers.
 
 The selector validates commit identity, checked-out state, and base ancestry
 before it inspects a diff. Missing history, a malformed or empty diff, unknown
@@ -383,7 +383,7 @@ to `full` if trusted-main policy validation fails. Only a reviewed workflow
 update may set a class-specific value to `true`. A candidate checkout, selector
 output, cache result, or pull-request label cannot promote a class.
 
-Every dynamic JSON and summary string passes through the Python core redaction
+Every dynamic JSON and summary string passes through the Rust core redaction
 boundary and a residual-secret rescan; redaction failure emits a static `full`
 result without changed-path data. The step summary HTML-escapes those redacted
 fields. The structured result preserves the classifier proposal and adds the

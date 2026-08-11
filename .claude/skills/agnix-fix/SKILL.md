@@ -54,35 +54,20 @@ Before touching the fork, confirm the current clone is wired to upstream `agent-
 
 Strict owner/repo match — substring-style globs would silently accept `agent-sh/agnix-experimental`, `notagent-sh/agnix`, etc.
 
+The typed GitHub command emits the exact JSON stream that `jq` parses; diagnostics remain on stderr.
+
 ```bash
 UPSTREAM_REPO=agent-sh/agnix
-UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null) || UPSTREAM_URL=""
-# Normalize HTTPS (https://github.com/owner/repo[.git]) and SSH (git@github.com:owner/repo[.git],
-# ssh://git@github.com/owner/repo[.git]) forms to "owner/repo". The first sed expression handles
-# SSH forms; the second handles HTTPS / scp-less forms.
-UPSTREAM_NWO=$(printf '%s\n' "$UPSTREAM_URL" \
-  | sed -E \
-      -e 's#^(ssh://)?git@github[.]com[:/]##' \
-      -e 's#^(https?://)?(www[.])?github[.]com[:/]##' \
-      -e 's#[.]git$##' \
-      -e 's#/+$##')
+UPSTREAM_NWO=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh remote-repo upstream 2>/dev/null) || UPSTREAM_NWO=""
 if [[ "$UPSTREAM_NWO" != "$UPSTREAM_REPO" ]]; then
-  echo "**ERROR: 'upstream' remote resolves to '$UPSTREAM_NWO' (raw: '$UPSTREAM_URL'), not '$UPSTREAM_REPO'. /agnix-fix only runs from a clone whose upstream is agent-sh/agnix.**"
+  echo "**ERROR: 'upstream' remote resolves to '$UPSTREAM_NWO', not '$UPSTREAM_REPO'. /agnix-fix only runs from a clone whose upstream is agent-sh/agnix.**"
   exit 1
 fi
-```
-
-`gh` stderr is captured separately so warnings or auth hints cannot corrupt the JSON stream that `jq` parses.
-
-```bash
-GH_STDERR=$(mktemp -t agnix-fix-gh-stderr.XXXXXX)
-if ! ISSUE_JSON=$(gh issue view "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --json title,body,state,url 2>"$GH_STDERR"); then
-  echo "**ERROR: gh issue view failed for $UPSTREAM_REPO#$ISSUE_NUMBER. Check authentication and that the issue exists.**"
-  cat "$GH_STDERR" >&2
-  rm -f "$GH_STDERR"
+if ! ISSUE_JSON=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh agnix-issue \
+  --issue "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO"); then
+  echo "**ERROR: typed issue read failed for $UPSTREAM_REPO#$ISSUE_NUMBER. Check authentication and that the issue exists.**"
   exit 1
 fi
-rm -f "$GH_STDERR"
 
 URL=$(echo "$ISSUE_JSON" | jq -r '.url')
 STATE=$(echo "$ISSUE_JSON" | jq -r '.state')
@@ -103,16 +88,13 @@ fi
 
 <!-- step:3 — Provision skip-changelog Label on the Fork (Best-Effort) -->
 
-Detection uses `gh api` (machine-readable HTTP status) instead of grepping the `gh label list` table, which is not a stable contract.
+The typed command lists the label state, creates the exact label only when absent, and re-reads after a concurrent-create response.
 
 ```bash
-FORK_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || FORK_REPO=""
+FORK_REPO=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh resolve-repo 2>/dev/null) || FORK_REPO=""
 if [[ -n "$FORK_REPO" ]]; then
-  if ! gh api "repos/$FORK_REPO/labels/skip-changelog" --silent 2>/dev/null; then
-    gh label create skip-changelog --repo "$FORK_REPO" \
-      --description "PR does not require a CHANGELOG entry" --color ededed 2>/dev/null \
-      || true
-  fi
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh agnix-ensure-label --repo "$FORK_REPO" \
+    >/dev/null 2>&1 || true
 fi
 ```
 
@@ -120,7 +102,7 @@ Failure is non-fatal — the operator can add `[skip changelog]` to the PR title
 
 <!-- step:4 — Operator briefing (no FEATURE_FILE handoff to /implement) -->
 
-`/implement` Preflight reads the `larch:plan` block from GitHub via `scripts/larch.sh plan-block read` and wraps issue title/body/plan in the `<reviewer_issue_title>` / `<reviewer_issue_body>` / `<reviewer_plan>` trust-boundary envelope for the adequacy audit (`skills/implement/references/preflight-plan-audit.md`). Step 1 then re-fetches the full upstream issue into `$IMPLEMENT_TMPDIR/feature-description.txt` via `gh issue view` (with `--repo "$UPSTREAM_REPO"` under `--forked`). **Do not** compose a separate delimiter-wrapped `FEATURE_FILE` expecting `/implement` to consume it — the implementer path overwrites feature text from GitHub and does not treat ad-hoc local files as authoritative.
+`/implement` Preflight reads the `larch:plan` block from GitHub via `scripts/larch.sh plan-block read` and wraps issue title/body/plan in the `<reviewer_issue_title>` / `<reviewer_issue_body>` / `<reviewer_plan>` trust-boundary envelope for the adequacy audit (`skills/implement/references/preflight-plan-audit.md`). Step 1 then re-fetches the full upstream issue into `$IMPLEMENT_TMPDIR/feature-description.txt` through its typed GitHub owner (with `--repo "$UPSTREAM_REPO"` under `--forked`). **Do not** compose a separate delimiter-wrapped `FEATURE_FILE` expecting `/implement` to consume it — the implementer path overwrites feature text from GitHub and does not treat ad-hoc local files as authoritative.
 
 Before invoking `/implement`, keep the CI-monitoring and changelog guidance from this skill's **CI-monitoring contract** section in orchestrator context (and in PR titles / `CHANGELOG.md` as appropriate). The upstream issue body was already fetched in Step 2 for your own verification; `/implement` repeats the read against the same upstream issue number.
 

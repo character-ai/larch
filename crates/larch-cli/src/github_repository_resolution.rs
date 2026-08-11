@@ -12,7 +12,11 @@ use std::{
 
 use crate::github_service::{ServiceFailure, with_github_service};
 use larch_adapters::GixRepository;
-use larch_core::{GitHubRepositoryRef, GitHubService, Remote, RepositoryRead};
+use larch_core::{
+    GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubRepositoryRef, GitHubService, Remote,
+    RepositoryRead, SafeText,
+};
+use serde::Serialize;
 
 const REMOTE_USAGE: &str = "Usage: github-remote-repo.sh <remote-name-or-url>";
 const REMOTE_PARSE_ERROR: &str = "github-remote-repo.sh: cannot parse remote";
@@ -87,6 +91,106 @@ pub fn run_remote_repo(args: &[String]) -> ExitCode {
 
 pub fn run_resolve_repo(args: &[String]) -> ExitCode {
     ExitCode::from(emit_resolve_repo(resolve_repo_command(args)))
+}
+
+/// Read one upstream agnix issue without exposing an arbitrary `gh` command.
+pub fn agnix_issue(repository: &GitHubRepositoryRef, issue: u64) -> ExitCode {
+    if issue == 0 {
+        eprintln!("ERROR=issue number must be positive");
+        return ExitCode::FAILURE;
+    }
+    let result = with_github_service(async |service, cancellation| {
+        let issue = service
+            .issue(repository, issue, cancellation)
+            .await
+            .map_err(|error| error.to_string())?;
+        let payload = AgnixIssuePayload {
+            body: SafeText::from_untrusted(&issue.body).to_string(),
+            state: match issue.state {
+                GitHubIssueState::Open => "OPEN",
+                GitHubIssueState::Closed => "CLOSED",
+                GitHubIssueState::All => return Err("GitHub issue state is invalid".to_owned()),
+            }
+            .to_owned(),
+            title: SafeText::from_untrusted(&issue.title).to_string(),
+            url: SafeText::from_untrusted(&issue.url).to_string(),
+        };
+        serde_json::to_string(&payload).map_err(|_| "cannot serialize GitHub issue".to_owned())
+    });
+    match result {
+        Ok(payload) => {
+            println!("{payload}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("ERROR={}", SafeText::diagnostic(error.into_detail()));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Idempotently provision the one optional agnix fork label.
+pub fn agnix_ensure_label(repository: &GitHubRepositoryRef) -> ExitCode {
+    let result = with_github_service(async |service, cancellation| {
+        let labels = service
+            .list_labels(repository, cancellation)
+            .await
+            .map_err(|error| error.to_string())?;
+        let Some(request) = agnix_label_request(repository, &labels) else {
+            return Ok("PRESENT");
+        };
+        match service.create_label(&request, cancellation).await {
+            Ok(_) => Ok("CREATED"),
+            Err(create_error) => {
+                let labels = service
+                    .list_labels(repository, cancellation)
+                    .await
+                    .map_err(|_| create_error.to_string())?;
+                if agnix_label_request(repository, &labels).is_none() {
+                    Ok("PRESENT")
+                } else {
+                    Err(create_error.to_string())
+                }
+            }
+        }
+    });
+    match result {
+        Ok(status) => {
+            println!("LABEL_STATUS={status}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("ERROR={}", SafeText::diagnostic(error.into_detail()));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn agnix_label_request(
+    repository: &GitHubRepositoryRef,
+    labels: &[GitHubLabel],
+) -> Option<GitHubLabelCreate> {
+    if labels
+        .iter()
+        .any(|label| label.name.eq_ignore_ascii_case("skip-changelog"))
+    {
+        None
+    } else {
+        Some(GitHubLabelCreate {
+            repo: repository.clone(),
+            name: "skip-changelog".to_owned(),
+            color: "ededed".to_owned(),
+            description: "PR does not require a CHANGELOG entry".to_owned(),
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct AgnixIssuePayload {
+    body: String,
+    state: String,
+    title: String,
+    url: String,
 }
 
 fn emit_remote_repo(result: RemoteRepoResult) -> u8 {
@@ -484,4 +588,34 @@ fn parse_repository_ref(slug: &str) -> Result<GitHubRepositoryRef, ()> {
 fn open_cwd_repository() -> Option<GixRepository> {
     let cwd = env::current_dir().ok()?;
     GixRepository::discover(cwd).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agnix_label_request;
+    use larch_core::{GitHubLabel, GitHubRepositoryRef};
+
+    #[test]
+    fn absent_agnix_label_builds_the_exact_typed_create_request() {
+        let repository = GitHubRepositoryRef::new("agent-sh", "agnix").expect("repository");
+        let request = agnix_label_request(&repository, &[]).expect("missing label request");
+
+        assert_eq!(request.repo, repository);
+        assert_eq!(request.name, "skip-changelog");
+        assert_eq!(request.color, "ededed");
+        assert_eq!(request.description, "PR does not require a CHANGELOG entry");
+    }
+
+    #[test]
+    fn existing_agnix_label_is_idempotent_even_when_case_differs() {
+        let repository = GitHubRepositoryRef::new("agent-sh", "agnix").expect("repository");
+        let labels = [GitHubLabel {
+            id: 1,
+            name: "Skip-Changelog".to_owned(),
+            color: "ededed".to_owned(),
+            description: String::new(),
+        }];
+
+        assert!(agnix_label_request(&repository, &labels).is_none());
+    }
 }

@@ -8,15 +8,16 @@ cannot authorize a non-full lane.
 
 ## Historical classification baseline
 
-For each row, the current deterministic selector ran with the recorded PR base
-and tested merge SHA in a detached worktree. The mode is therefore an
+For each row, the deterministic selector ran with the recorded PR base and
+tested merge SHA in an isolated candidate checkout. The mode is therefore an
 executable classifier result. The linked required full Rust backstop also
 completed successfully for every candidate.
 
 The replay command was:
 
 ```bash
-python3 python/cli.py ci rust-select \
+CLAUDE_PLUGIN_ROOT=<trusted-base> LARCH_BINARY=<trusted-base>/target/debug/larch \
+  <trusted-base>/scripts/larch.sh ci rust-select \
   --event-name pull_request \
   --base-sha <recorded-base> \
   --head-sha <tested-merge-candidate> \
@@ -24,7 +25,7 @@ python3 python/cli.py ci rust-select \
 ```
 
 The selector source was the implementation in this change. In CI it executes
-from the trusted pull-request base while it reads the candidate worktree as
+from the trusted pull-request base while it reads the candidate checkout as
 data. Replaying immutable candidates lets this record compare the final
 classifier with exact trees that had a successful full backstop.
 
@@ -254,7 +255,7 @@ demonstrate a critical-path reduction against comparable full-backstop samples.
 
 To roll back selection immediately, apply the `full-rust-ci` label to a pull
 request. To roll back a decision class permanently, keep its enforcement value
-`false`, remove its audited owner from `rust_ci_selection.py`, or route its
-path to a global `full` trigger. A cache miss, schema change, input-identity
-mismatch, checksum failure, or provenance failure already falls back to `full`
-without an operator action.
+`false`, remove its audited owner from `crates/larch-cli/src/ci_selection.rs`,
+or route its path to a global `full` trigger. A cache miss, schema change,
+input-identity mismatch, checksum failure, or provenance failure already falls
+back to `full` without an operator action.

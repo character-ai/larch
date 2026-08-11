@@ -121,7 +121,7 @@ issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682	com
 issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	issue add-sub-issue
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
-issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
+issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682,#7685	complete	complete	complete	gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
 issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
@@ -131,11 +131,11 @@ audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	co
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7685	pending	pending	pending	clarify label,issue migration-audit
+agnix-label-provision	crates/larch-adapters/src/github_rest.rs	rust	#7685	complete	complete	complete	gh agnix-ensure-label
 pull-request-implement	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	implement checks-commit-route,implement checks-result-identity,implement checks-step5-resume,implement cleanup,implement clone-tag,implement commit,implement commit-route,implement kill-active-leg,implement normalize-coder-scout,implement preflight,implement recovery-paths,implement run-dispatch,implement run-step-checks,implement scope-disposition,implement step-0-bootstrap,implement step-0-degraded-gate,implement step-16,implement step-16-16a,implement step-16-17,implement step-17,implement step-18,implement step-2-post-dispatch,implement step-5-resume,implement step-5-review,implement step-6-entry,implement step-7a,implement step-8-oos-checkpoint,implement step-8-python-guard,implement step-8-seed-initial,implement step-8-ship,implement step2-dispatch
 pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	retired	#7681	not-applicable	complete	complete	implement step-18-gate-finalize
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	python	#7995	pending	pending	pending	implement step-18-gate-logs-flush,implement step-19
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design *,pr *,ship *
-pull-request-rust-selection	crates/larch-adapters/src/github/operations.rs	python	#8216	pending	pending	pending	ci rust-select,ci rust-select-summary
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary

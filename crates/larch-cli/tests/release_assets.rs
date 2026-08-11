@@ -4,6 +4,7 @@ use std::{
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use assert_cmd::Command as AssertCommand;
@@ -363,6 +364,48 @@ fn asset_candidate_rejects_malformed_metadata_and_identity_inputs() {
 }
 
 #[test]
+fn asset_candidate_rejects_a_checkout_that_does_not_match_the_release_commit() {
+    let root = TempDir::new().expect("temporary repository");
+    fs::create_dir(root.path().join(".claude-plugin")).expect("plugin directory");
+    fs::write(
+        root.path().join(".claude-plugin/plugin.json"),
+        "{\"version\":\"1.2.3\"}\n",
+    )
+    .expect("plugin manifest");
+    fs::write(
+        root.path().join("Cargo.toml"),
+        "[workspace]\n[workspace.package]\nversion = \"1.2.3\"\n",
+    )
+    .expect("workspace manifest");
+    git(root.path(), &["init", "--quiet"]);
+    git(
+        root.path(),
+        &["config", "user.email", "test@example.invalid"],
+    );
+    git(root.path(), &["config", "user.name", "Larch test"]);
+    git(root.path(), &["add", "--all"]);
+    git(
+        root.path(),
+        &["commit", "--quiet", "-m", "release candidate"],
+    );
+
+    let actual = git_output(root.path(), &["rev-parse", "HEAD"]);
+    let mut matching = candidate_args(root.path(), TAG, &actual);
+    matching.push("--verify-checkout".into());
+    larch().args(matching).assert().success();
+
+    let mut mismatched = candidate_args(root.path(), TAG, SOURCE_COMMIT);
+    mismatched.push("--verify-checkout".into());
+    larch()
+        .args(mismatched)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "checked-out commit does not match the supplied source commit",
+        ));
+}
+
+#[test]
 fn package_rejects_unsafe_inputs_and_output_roots() {
     let root = TempDir::new().expect("temp");
     let (binary, license) = write_inputs(root.path());
@@ -632,6 +675,28 @@ fn candidate_args(root: &Path, tag: &str, source_commit: &str) -> Vec<String> {
         "--source-commit".into(),
         source_commit.into(),
     ]
+}
+
+fn git(root: &Path, arguments: &[&str]) {
+    let output = Command::new("git")
+        .args(arguments)
+        .current_dir(root)
+        .output()
+        .expect("run fixture git");
+    assert!(output.status.success(), "fixture git command failed");
+}
+
+fn git_output(root: &Path, arguments: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(arguments)
+        .current_dir(root)
+        .output()
+        .expect("run fixture git");
+    assert!(output.status.success(), "fixture git command failed");
+    String::from_utf8(output.stdout)
+        .expect("fixture Git output")
+        .trim()
+        .to_owned()
 }
 
 fn package_all(root: &Path) -> (PathBuf, PathBuf) {

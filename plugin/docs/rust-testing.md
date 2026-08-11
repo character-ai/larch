@@ -343,17 +343,20 @@ slow-test status and final status output remain visible in the job log.
 
 ### Pull-request Rust selection
 
-`rust-selection` runs only for pull requests. It checks out GitHub's tested
-merge candidate at bounded depth 8, then proves the base and candidate commits
-and their ancestry before creating a detached worktree at the pull-request
-base. If valid commit identities need more history, it fetches full branch
-history and repeats the proof; a malformed identity or failed fetch or proof
-selects `full`. It then executes the stdlib-only selector from that trusted
-base worktree. The selector
-inspects the candidate checkout only as data. A pull request therefore cannot
-change selector code and use that change to choose a narrower path; changes to
-the selector, CI workflow, coverage action, or its redaction/process
-dependencies are global inputs and run `full`.
+`rust-selection` runs only for pull requests. The checkout action supplies the
+tested merge candidate with full history, and a second checkout action supplies
+the pull-request base in an isolated directory. The job builds the base's
+`larch` executable and invokes `ci rust-select` through `scripts/larch.sh`; the
+typed command proves the base and candidate commit identities and ancestry
+before it reads the candidate diff. A missing trusted checkout or executable,
+malformed identity, unavailable history proof, or command failure selects
+`full`. The first pull request carrying a new selector command can therefore
+fall back safely when its base predates that command.
+
+The selector inspects the candidate checkout only as data. A pull request
+cannot change selector code and use that change to choose a narrower path;
+changes to the selector, CI workflow, coverage action, or its redaction and
+workspace-metadata dependencies are global inputs and run `full`.
 
 The selector verifies both commits, the candidate checkout, and base ancestry
 before it reads the diff. An unavailable history proof, missing commit,
@@ -361,8 +364,8 @@ non-ancestor base, empty or malformed diff, unsupported status, metadata parse
 failure, unknown path, unsupported workspace shape, or internal error selects
 `full`. It emits one redacted deterministic JSON result as the
 `rust-ci-selection` artifact and renders a concise step summary. Every dynamic
-field crosses the Python core redaction boundary and a residual-secret rescan;
-a scrub failure emits a static `full` result with no changed-path data. The
+field crosses the Rust core redaction boundary and a residual-secret rescan; a
+scrub failure emits a static `full` result with no changed-path data. The
 summary HTML-escapes the redacted data. The artifact preserves the classifier's
 `mode` as `proposed_mode` and records the lane's `effective_mode`, reason,
 `rollout_state`, and `observation_only` value after trusted-cache validation
