@@ -360,6 +360,44 @@ jobs:
           persist-credentials: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      - name: Restore trusted main Rust policy binary
+        id: trusted-main-policy-cache
+        continue-on-error: true
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/trusted-main-rust-policy
+          key: ${{ steps.main-cache-keys.outputs.rust-policy }}
+      - name: Verify trusted main Rust policy binary
+        id: trusted-main-policy-validation
+        env:
+          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+          TRUSTED_POLICY_CACHE_HIT: ${{ steps.trusted-main-policy-cache.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          policy_dir="$RUNNER_TEMP/trusted-main-rust-policy"
+          valid=false
+          if [ "$TRUSTED_POLICY_CACHE_HIT" = true ] && [ -d "$policy_dir" ]; then
+            if (
+              set -euo pipefail
+              test -n "$RUST_POLICY_INPUTS_SHA256"
+              for policy_file in larch larch.sha256 producer-ref rust-inputs-sha256 source-sha version; do
+                test -f "$policy_dir/$policy_file"
+                test ! -L "$policy_dir/$policy_file"
+              done
+              (
+                cd "$policy_dir"
+                sha256sum --check --strict larch.sha256
+              )
+              test "$(<"$policy_dir/rust-inputs-sha256")" = "$RUST_POLICY_INPUTS_SHA256"
+              test "$(<"$policy_dir/producer-ref")" = refs/heads/main
+              source_sha="$(<"$policy_dir/source-sha")"
+              [[ "$source_sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
+              test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"
+            ); then
+              valid=true
+            fi
+          fi
+          printf 'valid=%s\n' "$valid" >> "$GITHUB_OUTPUT"
       - name: Select Rust CI mode from the trusted base
         id: proposed-selection
         env:
@@ -367,14 +405,14 @@ jobs:
           RUST_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RUST_CI_HEAD_SHA: ${{ github.sha }}
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+          TRUSTED_POLICY_VALID: ${{ steps.trusted-main-policy-validation.outputs.valid }}
         run: |
           set -euo pipefail
           selector_result="$RUNNER_TEMP/rust-ci-selection.json"
           selector_root="$GITHUB_WORKSPACE/.rust-ci-selector-base"
-          selector_binary="$selector_root/target/debug/larch"
+          selector_binary="$RUNNER_TEMP/trusted-main-rust-policy/larch"
           selector_history_source=full-history-checkout
           selector_history_milliseconds=0
-          selector_worktree_milliseconds=0
           selector_command_milliseconds=0
           fallback_selection() {
             fallback_reason="${1:-selector-workflow-failed}"
@@ -402,29 +440,25 @@ jobs:
               validation_owners: []
             }' > "$selector_result"
           }
-          if [ "${{ steps.selector-base.outcome }}" = success ] && [ -d "$selector_root" ]; then
-            selector_worktree_started_milliseconds="$(date +%s%3N)"
-            if (cd "$selector_root" && cargo build --locked --package larch-cli --bin larch); then
-              selector_worktree_milliseconds="$(( $(date +%s%3N) - selector_worktree_started_milliseconds ))"
-              selector_command_started_milliseconds="$(date +%s%3N)"
-              if ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
-                "$selector_root/scripts/larch.sh" ci rust-select \
-                  --event-name "$RUST_CI_EVENT_NAME" \
-                  --base-sha "$RUST_CI_BASE_SHA" \
-                  --head-sha "$RUST_CI_HEAD_SHA" \
-                  --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
-                printf '%s\n' '::warning::Rust selector command failed; using the full Rust CI fallback.'
-                fallback_selection
-              fi
-              selector_command_milliseconds="$(( $(date +%s%3N) - selector_command_started_milliseconds ))"
-            else
-              printf '%s\n' '::warning::Trusted-base selector build failed; using the full Rust CI fallback.'
-              fallback_selection selector-base-command-unavailable
-            fi
-          else
+          if [ "${{ steps.selector-base.outcome }}" != success ] || [ ! -d "$selector_root" ]; then
             selector_history_source=unavailable
             printf '%s\n' '::warning::Trusted selector base checkout was unavailable; using the full Rust CI fallback.'
             fallback_selection selector-base-checkout-unavailable
+          elif [ "$TRUSTED_POLICY_VALID" != true ] || [ ! -x "$selector_binary" ]; then
+            printf '%s\n' '::warning::Trusted main selector executable was unavailable or invalid; using the full Rust CI fallback.'
+            fallback_selection trusted-main-policy-unavailable-or-invalid
+          else
+            selector_command_started_milliseconds="$(date +%s%3N)"
+            if ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
+              "$selector_root/scripts/larch.sh" ci rust-select \
+                --event-name "$RUST_CI_EVENT_NAME" \
+                --base-sha "$RUST_CI_BASE_SHA" \
+                --head-sha "$RUST_CI_HEAD_SHA" \
+                --repo-root "$GITHUB_WORKSPACE" > "$selector_result"; then
+              printf '%s\n' '::warning::Rust selector command failed; using the full Rust CI fallback.'
+              fallback_selection
+            fi
+            selector_command_milliseconds="$(( $(date +%s%3N) - selector_command_started_milliseconds ))"
           fi
           if [ ! -f "$selector_result" ]; then
             fallback_selection selector-workflow-failed
@@ -461,11 +495,11 @@ jobs:
             fallback_selection
             read_selection_outputs
           fi
-          if [ -x "$selector_binary" ] && ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
+          if [ "$TRUSTED_POLICY_VALID" = true ] && [ -x "$selector_binary" ] && ! CLAUDE_PLUGIN_ROOT="$selector_root" LARCH_BINARY="$selector_binary" \
             "$selector_root/scripts/larch.sh" ci rust-select-summary \
               --result-file "$selector_result" >> "$GITHUB_STEP_SUMMARY"; then
             printf '%s\n' '::warning::Rust selector summary failed; the full fallback remains available.'
-          elif [ ! -x "$selector_binary" ]; then
+          elif [ "$TRUSTED_POLICY_VALID" != true ] || [ ! -x "$selector_binary" ]; then
             printf '%s\n' '## Rust CI selection'
             printf '%s\n' "Proposed mode: \`full\` because the trusted selector executable was unavailable."
           fi
@@ -473,7 +507,6 @@ jobs:
           {
             printf 'RUST_SELECTION_HISTORY_MILLISECONDS=%s\n' "$selector_history_milliseconds"
             printf 'RUST_SELECTION_HISTORY_SOURCE=%s\n' "$selector_history_source"
-            printf 'RUST_SELECTION_WORKTREE_MILLISECONDS=%s\n' "$selector_worktree_milliseconds"
             printf 'RUST_SELECTION_COMMAND_MILLISECONDS=%s\n' "$selector_command_milliseconds"
           } >> "$GITHUB_ENV"
           {
@@ -481,53 +514,13 @@ jobs:
             printf '| Phase | Milliseconds | Detail |\n'
             printf '| --- | ---: | --- |\n'
             printf '| Candidate history | %s | %s |\n' "$selector_history_milliseconds" "$selector_history_source"
-            printf '| Trusted-base command build | %s | trusted base checkout |\n' "$selector_worktree_milliseconds"
-            printf '| Selector command | %s | trusted-base CLI |\n' "$selector_command_milliseconds"
+            printf '| Selector command | %s | trusted-base wrapper with trusted-main CLI |\n' "$selector_command_milliseconds"
           } >> "$GITHUB_STEP_SUMMARY"
           {
             printf 'mode=%s\n' "$mode"
             printf 'partial_packages=%s\n' "$partial_packages"
             printf 'partial_doctest_packages=%s\n' "$partial_doctest_packages"
           } >> "$GITHUB_OUTPUT"
-      - name: Restore trusted main Rust policy binary
-        id: trusted-main-policy-cache
-        if: steps.proposed-selection.outputs.mode == 'skip'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.temp }}/trusted-main-rust-policy
-          key: ${{ steps.main-cache-keys.outputs.rust-policy }}
-      - name: Verify trusted main Rust policy binary
-        id: trusted-main-policy-validation
-        if: steps.proposed-selection.outputs.mode == 'skip'
-        env:
-          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-          TRUSTED_POLICY_CACHE_HIT: ${{ steps.trusted-main-policy-cache.outputs.cache-hit }}
-        run: |
-          set -euo pipefail
-          policy_dir="$RUNNER_TEMP/trusted-main-rust-policy"
-          valid=false
-          if [ "$TRUSTED_POLICY_CACHE_HIT" = true ] && [ -d "$policy_dir" ]; then
-            if (
-              set -euo pipefail
-              test -n "$RUST_POLICY_INPUTS_SHA256"
-              for policy_file in larch larch.sha256 producer-ref rust-inputs-sha256 source-sha version; do
-                test -f "$policy_dir/$policy_file"
-                test ! -L "$policy_dir/$policy_file"
-              done
-              (
-                cd "$policy_dir"
-                sha256sum --check --strict larch.sha256
-              )
-              test "$(<"$policy_dir/rust-inputs-sha256")" = "$RUST_POLICY_INPUTS_SHA256"
-              test "$(<"$policy_dir/producer-ref")" = refs/heads/main
-              source_sha="$(<"$policy_dir/source-sha")"
-              [[ "$source_sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
-              test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"
-            ); then
-              valid=true
-            fi
-          fi
-          printf 'valid=%s\n' "$valid" >> "$GITHUB_OUTPUT"
       - name: Resolve effective Rust CI mode
         id: effective-mode
         env:
@@ -594,7 +587,7 @@ jobs:
           path: ${{ runner.temp }}/rust-ci-selection.json
           if-no-files-found: error
       - name: Upload verified trusted main policy binary
-        if: steps.trusted-main-policy-validation.outputs.valid == 'true'
+        if: steps.effective-mode.outputs.mode == 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trusted-main-rust-policy

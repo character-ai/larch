@@ -244,6 +244,54 @@ broad topology change. The bounded checkout is retained because it removes a
 measured serial cost while preserving trusted-base execution, artifact upload,
 and fail-closed behavior.
 
+## Trusted selector executable reuse (2026-08-10)
+
+The Rust CLI cutover in [#8368](https://github.com/character-ai/larch/pull/8368)
+introduced a new serialized cost: `rust-selection` built the complete
+pull-request-base `larch-cli` before any Rust producer could start. Three
+successful pull-request runs show the regression:
+
+| Run | `rust-selection` | Trusted selector build | `rust-full` | Trigger to last job |
+| --- | ---: | ---: | ---: | ---: |
+| [31448285158](https://github.com/character-ai/larch/actions/runs/31448285158) | 219 s | 196.462 s | 433 s | 764 s |
+| [31449591839](https://github.com/character-ai/larch/actions/runs/31449591839) | 227 s | 202.441 s | 425 s | 703 s |
+| [31451833760](https://github.com/character-ai/larch/actions/runs/31451833760) | 217 s | cold full-CLI build | 344 s | 612 s |
+
+A comparable successful run before that cutover, [31448985417](https://github.com/character-ai/larch/actions/runs/31448985417),
+completed selection in 11 seconds and `rust-full` in 318 seconds. The later
+full-lane samples also exposed exact dependency-cache misses, but those misses
+do not justify a broad restore fallback: prior measurements showed that the
+fallback transferred a large incompatible target without avoiding a cold
+build.
+
+Issue [#8378](https://github.com/character-ai/larch/issues/8378) removes only
+the selector build. Selection restores and validates the existing exact
+`trusted-main-rust-policy` executable before invoking the pull-request-base
+wrapper. A miss, invalid artifact, or Rust-input change produces a static
+`full` decision. The producer dependency remains intentional: starting
+`rust-full` before selection would either waste a full run on a selected
+`partial` or `skip` path, or weaken the exact-one-producer assertion in
+`rust-coverage`.
+
+The first live implementation run confirmed that the compiled selector was the
+serialized regression:
+
+| Run | `rust-selection` | Exact policy restore | Selector command | Policy artifact upload | Prelude to `rust-full` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [#8381, initial implementation](https://github.com/character-ai/larch/actions/runs/31462693997/job/93689229788) | 36 s | hit, 3 s | 0.185 s | 6 s | 39 s |
+
+The three regressed controls have a 219-second median selection duration, so
+the initial implementation removed 183 seconds (84%). The immediately prior
+[#8380 run](https://github.com/character-ai/larch/actions/runs/31461751099)
+spent 222 seconds from selection start to `rust-full` start; #8381 spent 39
+seconds, a reduction of 183 seconds (82%). The initial run still uploaded the
+44 MB verified policy handoff on its selected `full` path. The final workflow
+uploads that artifact only for an effective `skip`, its sole consumer, so full
+and partial decisions avoid another measured six seconds of serialized work.
+The same run's `rust-full` lane passed in 272 seconds, then `rust-coverage` and
+`rust-gate` passed; the complete workflow took 350 seconds from trigger through
+the last job.
+
 ## Timing interpretation and rollback
 
 The historical full `rust-coverage` samples above are contextual baselines: the

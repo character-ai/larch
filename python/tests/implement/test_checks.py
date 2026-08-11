@@ -3920,6 +3920,17 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     publication = (
         repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
     ).read_text(encoding="utf-8")
+    rust_probe = publication.split("\n  main-cache-probe:", 1)[1].split(
+        "\n  main-cache-merge-group-source:", 1
+    )[0]
+    rust_promotion_lookup = (
+        publication.split("\n  main-cache-rust-promotion:", 1)[1]
+        .split("\n      - name: Download Cargo inputs candidate", 1)[0]
+    )
+    rust_promotion = publication.split("\n  main-cache-rust-promotion:", 1)[1]
+    gitleaks_publisher = publication.split("\n  main-cache-gitleaks:", 1)[1].split(
+        "\n  main-cache-probe:", 1
+    )[0]
     source_resolver = (
         repo_root / "crates" / "larch-core" / "src" / "main_cache.rs"
     ).read_text(encoding="utf-8")
@@ -3986,6 +3997,33 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "actions/download-artifact@" in publication
     assert "run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}" in publication
     assert "ci verify-main-cache-candidate" in publication
+    canonical_rust_cache_paths = (
+        "path: |\n            ~/.cargo/registry\n            ~/.cargo/git",
+        "path: target/debug",
+        "path: ~/.cargo/bin/cargo-nextest",
+        "path: ~/.cargo/bin/cargo-llvm-cov",
+        "path: target/llvm-cov-target",
+        "path: ${{ runner.temp }}/trusted-main-rust-policy",
+    )
+    for lookup_job in (rust_probe, rust_promotion_lookup):
+        for cache_path in canonical_rust_cache_paths:
+            assert cache_path in lookup_job
+    for cache_path in canonical_rust_cache_paths:
+        assert rust_promotion.count(cache_path) == 2
+    assert "path: ${{ runner.temp }}/main-cache-probe/" not in rust_probe
+    assert "path: ${{ runner.temp }}/main-cache-promoted/" not in rust_promotion
+    for canonical_materialization in (
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/registry" "$HOME/.cargo/registry"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/rust-lint-deps/debug" "$GITHUB_WORKSPACE/target/debug"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-nextest/cargo-nextest" "$HOME/.cargo/bin/cargo-nextest"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov" "$HOME/.cargo/bin/cargo-llvm-cov"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/coverage-target/llvm-cov-target" "$GITHUB_WORKSPACE/target/llvm-cov-target"',
+        '--policy-dir "$RUNNER_TEMP/trusted-main-rust-policy"',
+    ):
+        assert canonical_materialization in rust_promotion
+    assert "/*\n            !/larch-logs/" in gitleaks_publisher
+    assert "/.github/actions/main-cache-keys/" not in gitleaks_publisher
     for validation_operation in (
         "pre-commit run",
         "pytest",
@@ -5226,12 +5264,12 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "continue-on-error: true" in selector_job
     assert "persist-credentials: false" in selector_job
     assert "selector-base-checkout-unavailable" in selector_job
-    assert "selector-base-command-unavailable" in selector_job
+    assert "trusted-main-policy-unavailable-or-invalid" in selector_job
     assert "selector_history_source=full-history-checkout" in selector_job
     assert "RUST_SELECTION_HISTORY_MILLISECONDS" in selector_job
-    assert "RUST_SELECTION_WORKTREE_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_COMMAND_MILLISECONDS" in selector_job
-    assert "cargo build --locked --package larch-cli --bin larch" in selector_job
+    assert "cargo build --locked --package larch-cli --bin larch" not in selector_job
+    assert 'selector_binary="$RUNNER_TEMP/trusted-main-rust-policy/larch"' in selector_job
     assert '"$selector_root/scripts/larch.sh" ci rust-select' in selector_job
     assert '"$selector_root/scripts/larch.sh" ci rust-select-summary' in selector_job
     assert "PYTHONPATH" not in selector_job
@@ -5248,6 +5286,18 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "'**/*.rs'" not in selector_job
     assert "sha256sum --check --strict larch.sha256" in selector_job
     assert "TRUSTED_POLICY_VALID" in selector_job
+    assert "if: steps.proposed-selection.outputs.mode == 'skip'" not in selector_job
+    assert "if: steps.effective-mode.outputs.mode == 'skip'" in selector_job
+    assert selector_job.index("Restore trusted main Rust policy binary") < selector_job.index(
+        "Select Rust CI mode from the trusted base"
+    )
+    assert selector_job.index("Verify trusted main Rust policy binary") < selector_job.index(
+        "Select Rust CI mode from the trusted base"
+    )
+    policy_restore = selector_job.split("Restore trusted main Rust policy binary", 1)[1].split(
+        "Verify trusted main Rust policy binary", 1
+    )[0]
+    assert "continue-on-error: true" in policy_restore
     assert "RUST_CI_FORCE_FULL" in selector_job
     assert "full-rust-ci" in selector_job
     assert "RUST_CI_PARTIAL_ENFORCEMENT" in selector_job
@@ -5330,7 +5380,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "Only the trusted\npublisher may save it",
         "exact successful merge-group source",
         "exact key binds",
-        "The skip lane\nrepeats those checks",
+        "trusted pull-request-base wrapper",
+        "without compiling or executing pull-request code",
+        "The skip\nlane is the only consumer of an artifact handoff",
         "Skip enforcement is enabled only after",
     ):
         assert required_detail in supply_chain

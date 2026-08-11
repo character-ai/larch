@@ -299,8 +299,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           sparse-checkout: |
-            /.github/actions/gitleaks-bootstrap/
-            /.github/actions/main-cache-keys/
+            /*
+            !/larch-logs/
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
@@ -335,37 +335,39 @@ jobs:
       - id: cargo-inputs-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/cargo-inputs
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
           lookup-only: true
       - id: rust-lint-deps-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/rust-lint-deps
+          path: target/debug
           key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
           lookup-only: true
       - id: nextest-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/cargo-nextest
+          path: ~/.cargo/bin/cargo-nextest
           key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
           lookup-only: true
       - id: llvm-cov-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/cargo-llvm-cov
+          path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
           lookup-only: true
       - id: coverage-target-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/coverage-target
+          path: target/llvm-cov-target
           key: ${{ steps.main-cache-keys.outputs.coverage-target }}
           lookup-only: true
       - id: rust-policy-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-probe/rust-policy
+          path: ${{ runner.temp }}/trusted-main-rust-policy
           key: ${{ steps.main-cache-keys.outputs.rust-policy }}
           lookup-only: true
       - id: evaluate
@@ -451,37 +453,39 @@ jobs:
       - id: cargo-inputs-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/cargo-inputs
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
           lookup-only: true
       - id: rust-lint-deps-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/rust-lint-deps
+          path: target/debug
           key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
           lookup-only: true
       - id: nextest-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/cargo-nextest
+          path: ~/.cargo/bin/cargo-nextest
           key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
           lookup-only: true
       - id: llvm-cov-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/cargo-llvm-cov
+          path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
           lookup-only: true
       - id: coverage-target-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/coverage-target
+          path: target/llvm-cov-target
           key: ${{ steps.main-cache-keys.outputs.coverage-target }}
           lookup-only: true
       - id: rust-policy-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/rust-policy
+          path: ${{ runner.temp }}/trusted-main-rust-policy
           key: ${{ steps.main-cache-keys.outputs.rust-policy }}
           lookup-only: true
       - name: Download Cargo inputs candidate
@@ -508,13 +512,22 @@ jobs:
             --source-sha "$GITHUB_SHA" \
             --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
             --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
+      - name: Materialize verified Cargo inputs at canonical cache paths
+        if: steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test ! -L "$HOME/.cargo"
+          mkdir -p "$HOME/.cargo"
+          rm -rf -- "$HOME/.cargo/registry" "$HOME/.cargo/git"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/registry" "$HOME/.cargo/registry"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"
       - name: Save verified Cargo inputs
         if: success() && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
-            ${{ runner.temp }}/main-cache-promoted/cargo-inputs/registry
-            ${{ runner.temp }}/main-cache-promoted/cargo-inputs/git
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
       - name: Download Rust lint dependency candidate
         if: steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
@@ -540,11 +553,19 @@ jobs:
             --source-sha "$GITHUB_SHA" \
             --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
             --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
+      - name: Materialize verified Rust lint dependencies at canonical cache path
+        if: steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test ! -L "$GITHUB_WORKSPACE/target"
+          mkdir -p "$GITHUB_WORKSPACE/target"
+          rm -rf -- "$GITHUB_WORKSPACE/target/debug"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/rust-lint-deps/debug" "$GITHUB_WORKSPACE/target/debug"
       - name: Save verified Rust lint dependencies
         if: success() && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/rust-lint-deps/debug
+          path: target/debug
           key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
       - name: Download cargo-nextest candidate
         if: steps.nextest-cache.outputs.cache-hit != 'true'
@@ -576,11 +597,20 @@ jobs:
             "cargo-nextest ${CARGO_NEXTEST_VERSION}"|"cargo-nextest ${CARGO_NEXTEST_VERSION} "*|"cargo-nextest ${CARGO_NEXTEST_VERSION}"$'\n'*) ;;
             *) printf 'unexpected cargo-nextest version: %s\n' "$nextest_version" >&2; exit 1 ;;
           esac
+      - name: Materialize verified cargo-nextest at canonical cache path
+        if: steps.nextest-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test ! -L "$HOME/.cargo"
+          test ! -L "$HOME/.cargo/bin"
+          mkdir -p "$HOME/.cargo/bin"
+          rm -f -- "$HOME/.cargo/bin/cargo-nextest"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-nextest/cargo-nextest" "$HOME/.cargo/bin/cargo-nextest"
       - name: Save verified cargo-nextest
         if: success() && steps.nextest-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/cargo-nextest/cargo-nextest
+          path: ~/.cargo/bin/cargo-nextest
           key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
       - name: Download cargo-llvm-cov candidate
         if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
@@ -612,11 +642,20 @@ jobs:
             "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"|"cargo-llvm-cov ${CARGO_LLVM_COV_VERSION} "*|"cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"$'\n'*) ;;
             *) printf 'unexpected cargo-llvm-cov version: %s\n' "$llvm_cov_version" >&2; exit 1 ;;
           esac
+      - name: Materialize verified cargo-llvm-cov at canonical cache path
+        if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test ! -L "$HOME/.cargo"
+          test ! -L "$HOME/.cargo/bin"
+          mkdir -p "$HOME/.cargo/bin"
+          rm -f -- "$HOME/.cargo/bin/cargo-llvm-cov"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov" "$HOME/.cargo/bin/cargo-llvm-cov"
       - name: Save verified cargo-llvm-cov
         if: success() && steps.llvm-cov-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov
+          path: ~/.cargo/bin/cargo-llvm-cov
           key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
       - name: Download coverage target candidate
         if: steps.coverage-target-cache.outputs.cache-hit != 'true'
@@ -659,11 +698,19 @@ jobs:
               exit 1
             }
           done < "$workspace_targets"
+      - name: Materialize verified coverage dependencies at canonical cache path
+        if: steps.coverage-target-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test ! -L "$GITHUB_WORKSPACE/target"
+          mkdir -p "$GITHUB_WORKSPACE/target"
+          rm -rf -- "$GITHUB_WORKSPACE/target/llvm-cov-target"
+          mv -- "$RUNNER_TEMP/main-cache-promoted/coverage-target/llvm-cov-target" "$GITHUB_WORKSPACE/target/llvm-cov-target"
       - name: Save verified coverage target dependencies
         if: success() && steps.coverage-target-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/coverage-target/llvm-cov-target
+          path: target/llvm-cov-target
           key: ${{ steps.main-cache-keys.outputs.coverage-target }}
       - name: Download Rust policy candidate
         if: steps.rust-policy-cache.outputs.cache-hit != 'true'
@@ -693,12 +740,12 @@ jobs:
             --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
           python3 python/cli.py ci promote-rust-policy-candidate \
             --artifact-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact/policy" \
-            --policy-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy" \
+            --policy-dir "$RUNNER_TEMP/trusted-main-rust-policy" \
             --source-sha "$GITHUB_SHA" \
             --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
       - name: Save promoted trusted main Rust policy
         if: success() && steps.rust-policy-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/main-cache-promoted/rust-policy
+          path: ${{ runner.temp }}/trusted-main-rust-policy
           key: ${{ steps.main-cache-keys.outputs.rust-policy }}

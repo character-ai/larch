@@ -346,13 +346,18 @@ slow-test status and final status output remain visible in the job log.
 
 `rust-selection` runs only for pull requests. The checkout action supplies the
 tested merge candidate with full history, and a second checkout action supplies
-the pull-request base in an isolated directory. The job builds the base's
-`larch` executable and invokes `ci rust-select` through `scripts/larch.sh`; the
+the pull-request base in an isolated directory. Before selection, the job
+restores and validates the exact `trusted-main-rust-policy` cache entry. It
+invokes `ci rust-select` through the base's `scripts/larch.sh` wrapper with that
+validated executable. The base checkout therefore owns the command surface,
+while the executable has the cache's content-derived trusted-main identity. The
 typed command proves the base and candidate commit identities and ancestry
-before it reads the candidate diff. A missing trusted checkout or executable,
-malformed identity, unavailable history proof, or command failure selects
-`full`. The first pull request carrying a new selector command can therefore
-fall back safely when its base predates that command.
+before it reads the candidate diff. A missing trusted checkout, cache miss,
+invalid executable, malformed identity, unavailable history proof, or command
+failure selects `full`. A Rust-input change also changes the exact cache key and
+therefore selects `full`; selection never compiles or executes pull-request
+code. The first pull request carrying a new selector command can still fall
+back safely when its base predates that command.
 
 The selector inspects the candidate checkout only as data. A pull request
 cannot change selector code and use that change to choose a narrower path;
@@ -418,9 +423,11 @@ root and crate manifests, root or crate build scripts, lockfile, toolchain,
 and `.cargo/` inputs. The cache has no broad fallback. The selection job
 verifies regular-file shape, content checksum, input identity,
 `refs/heads/main` provenance, source-SHA shape, and executable version before
-it permits an enforced `skip`. The `rust-skip` job verifies the downloaded
-handoff again. A cache miss or any validation failure selects `full` before
-another lane can rely on it.
+it permits an enforced `skip` or uses the executable to calculate any non-full
+proposal. The selection job uploads the verified handoff only when `skip`
+is the effective mode. The `rust-skip` job verifies the downloaded files again.
+Full and partial decisions do not pay for that artifact transfer. A cache miss
+or any validation failure selects `full` before another lane can rely on it.
 
 `Cargo.lock`, any Cargo manifest, `rust-toolchain.toml`, `.cargo/`, build
 scripts, Makefiles, `deny.toml`, Rust CI/profile files, and selector machinery

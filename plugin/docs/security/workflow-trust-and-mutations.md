@@ -376,15 +376,17 @@ publish compiler output.
 
 The pull-request `rust-selection` job has read-only workflow permissions. The
 checkout action supplies GitHub's tested merge candidate with full history, and
-a separate checkout supplies the pull-request base. The job builds that base's
-`larch` executable and invokes its `ci rust-select` command through
-`scripts/larch.sh`. The command proves the base commit, candidate commit, and
-base ancestry before it reads the candidate diff. An invalid identity,
-unavailable history proof, missing trusted base executable, or selector failure
-selects `full`. Candidate code can supply the tree being classified, but cannot
-author the classifier that authorizes a non-full lane. Selector, workflow,
-coverage-action, and selector-redaction/workspace-metadata changes are explicit
-global `full` triggers.
+a separate checkout supplies the pull-request base. The job uses that base's
+`scripts/larch.sh` wrapper but does not build an executable there. It restores
+the exact `trusted-main-rust-policy` cache entry, validates its content-derived
+identity, and supplies that executable to the base wrapper's `ci rust-select`
+command. The command proves the base commit, candidate commit, and base ancestry
+before it reads the candidate diff. An invalid identity, unavailable history
+proof, missing or invalid trusted-main executable, or selector failure selects
+`full`. Candidate code can supply the tree being classified, but cannot author
+or execute the classifier that authorizes a non-full lane. Selector, workflow,
+coverage-action, Rust-input, and selector-redaction/workspace-metadata changes
+are explicit global `full` triggers or exact-cache misses.
 
 The selector validates commit identity, checked-out state, and base ancestry
 before it inspects a diff. Missing history, a malformed or empty diff, unknown
@@ -402,8 +404,10 @@ trusted-main repository-policy job that continues to validate it. The
 `trusted-main-rust-policy` cache trust contract is canonical in
 [Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches).
 The selection job and skip job both verify that content-derived identity before
-they execute it. A cache miss or failed verification selects `full`; no
-pull-request-provided Rust binary is accepted for `skip`.
+they execute it. The selection job additionally executes it only through the
+trusted base wrapper and uploads the verified handoff only for an effective
+`skip` decision. A cache miss or failed verification selects `full`; no
+pull-request-provided Rust binary is accepted for selection or `skip`.
 
 `RUST_CI_PARTIAL_ENFORCEMENT` remains `false` while the partial class is under
 observation. `RUST_CI_SKIP_ENFORCEMENT` is `true` only because its durable live
