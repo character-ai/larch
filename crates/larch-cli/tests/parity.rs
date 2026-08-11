@@ -1727,6 +1727,85 @@ fn session_kv_commands_have_reviewed_parity() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn bgjob_commands_have_frozen_black_box_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("bgjob_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+    let completed_result = "BGJOB_RC=0\nBGJOB_ELAPSED_S=7\nSTEP=demo\n";
+    let cases = vec![
+        ParityCase {
+            name: "bgjob-start-missing-command",
+            python: Program::new(&python).args([path_text(&python_fixture), "start"]),
+            rust: Program::new(&rust).args(["bgjob", "start"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "bgjob-wait-completed-envelope",
+            python: Program::new(&python).args([
+                path_text(&python_fixture),
+                "wait",
+                "--step",
+                "demo",
+                "--tmpdir",
+                "{sandbox}/session",
+                "--max-wait-s",
+                "0",
+            ]),
+            rust: Program::new(&rust).args([
+                "bgjob",
+                "wait",
+                "--step",
+                "demo",
+                "--tmpdir",
+                "{sandbox}/session",
+                "--max-wait-s",
+                "0",
+            ]),
+            seed_files: vec![SeedFile::text(
+                "session/bgjob/demo.result.env",
+                completed_result,
+            )],
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "bgjob-status-empty-registry",
+            python: Program::new(&python).args([path_text(&python_fixture), "status"]),
+            rust: Program::new(&rust).args(["bgjob", "status"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "bgjob-reap-empty-registry",
+            python: Program::new(&python).args([path_text(&python_fixture), "reap"]),
+            rust: Program::new(&rust).args(["bgjob", "reap"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "bgjob-adapt-missing-command",
+            python: Program::new(&python).args([path_text(&python_fixture), "adapt"]),
+            rust: Program::new(&rust).args(["bgjob", "adapt"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+    ];
+
+    for case in cases {
+        let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 struct StallRecoveryFixture {
     name: &'static str,
     verb: &'static str,

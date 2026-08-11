@@ -122,18 +122,22 @@ impl ProcessIdentityHost for SystemProcessIdentityHost {
     }
 
     fn pgrep_group(&self, process_group_id: i32) -> Vec<i32> {
+        self.pgrep_group_checked(process_group_id)
+            .unwrap_or_default()
+    }
+
+    fn pgrep_group_checked(&self, process_group_id: i32) -> Option<Vec<i32>> {
         let process_group_text = process_group_id.to_string();
-        let stdout = self
-            .run_host_utility(
-                HostUtilityProgram::Pgrep,
-                &["-g", &process_group_text],
-                Duration::from_secs(5),
-            )
-            .ok()
-            .filter(|(code, _)| *code == 0)
-            .map(|(_, stdout)| stdout)
-            .unwrap_or_default();
-        parse_pid_list(&stdout)
+        match self.run_host_utility(
+            HostUtilityProgram::Pgrep,
+            &["-g", &process_group_text],
+            Duration::from_secs(5),
+        ) {
+            Ok((0, stdout)) => Some(parse_pid_list(&stdout)),
+            // `pgrep` reserves 1 for a successful empty match.
+            Ok((1, _)) => Some(Vec::new()),
+            Ok(_) | Err(_) => None,
+        }
     }
 
     fn signal_process(&self, process_id: i32, signal: TerminateSignal) -> bool {

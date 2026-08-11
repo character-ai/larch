@@ -8,18 +8,24 @@
 use crate::argparse_compat::{split_inline_option, take_option_value, utf8_arguments};
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
-    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_HARD_DEADLINE_GRACE_S,
-    BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity, OwnerValidationState,
-    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_owner_validation,
-    checked_dir, child_liveness, daemon_liveness, daemon_poll_interval_s, ensure_under,
-    entry_expired, epoch_now, iter_entries, log_paths, log_tail, merge_rows, ordered_rows,
-    orphan_diagnostic, owner_grace_s, owner_pid_candidate, private_atomic_write, read_entry,
-    read_for, read_process_identity, render_rows, resolve_run_id, result_env_path, result_rows,
-    startup_env_path, startup_in_progress, startup_rows, terminate_validated_process_group,
+    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD,
+    BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT,
+    BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
+    OwnerValidationState, ProcessIdentityHost, ProcessIdentityValidationPolicy,
+    RecordedProcessIdentity, RecoveryClaim, RegistryEntry, ValidationResult, bgjob_dir,
+    check_owner_validation, checked_dir, child_identity_policy, child_liveness, claim_recovery,
+    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
+    iter_entries, log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
+    owner_pid_candidate, private_atomic_write, read_entry, read_for, read_process_identity,
+    recovery_claim_entry_path, release_recovery_claim, render_rows, resolve_run_id,
+    result_env_path, result_rows, startup_env_path, startup_in_progress, startup_rows,
+    terminate_validated_process_group_and_confirm, terminate_validated_process_group_with_policy,
     unlink_entry, validate_run_id, validate_slug, validate_timing_overrides, write_entry,
 };
-use nix::unistd::{Pid, getpgid, setsid};
+use nix::{
+    sys::signal::{Signal, killpg},
+    unistd::{Pid, getpgid, setsid},
+};
 use std::{
     env,
     ffi::OsString,
@@ -47,6 +53,7 @@ const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 const MIN_POLL_SLEEP: f64 = 0.05;
 const DAEMON_CALLER: &str = "bgjob-daemon";
 const REAP_CALLER: &str = "bgjob-reap";
+const RECOVERY_CALLER: &str = "bgjob-recovery";
 
 #[derive(Clone, Debug, Default)]
 struct StartArguments {
@@ -158,7 +165,7 @@ pub fn status(arguments: &[OsString]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Remove finished, unreadable, and expired registry entries.
+/// Remove finished, unreadable, and recoverably abandoned registry entries.
 #[must_use]
 pub fn reap(arguments: &[OsString]) -> ExitCode {
     if requests_help(arguments) {
@@ -172,24 +179,33 @@ pub fn reap(arguments: &[OsString]) -> ExitCode {
             count += 1;
             continue;
         };
-        let completed = fs::symlink_metadata(&entry.result_env)
-            .is_ok_and(|metadata| !metadata.file_type().is_symlink() && metadata.is_file());
-        if completed
-            || (!child_liveness(&host, &entry).live && !daemon_liveness(&host, &entry).live)
-        {
-            unlink_entry(&path);
-            count += 1;
+        let daemon = daemon_liveness(&host, &entry);
+        let completed = read_completed_result(&entry.result_env, &entry.step).is_some();
+        if completed {
+            // A current daemon unlinks its own completed row. When it has
+            // already died, recovery verifies the group before either keeping
+            // the terminal envelope or removing it for safe teardown.
+            if daemon.live {
+                continue;
+            }
+            if matches!(
+                recover_abandoned_entry(&host, &path, &entry, REAP_CALLER, "reap-completed-result",),
+                RecoveryOutcome::Recovered | RecoveryOutcome::Gone
+            ) {
+                count += 1;
+            }
             continue;
         }
-        if entry_expired(&entry) {
-            let _ = terminate_validated_process_group(
-                &host,
-                &entry.child,
-                None,
-                REAP_CALLER,
-                "expired-registry",
-            );
-            unlink_entry(&path);
+        // A live daemon is the sole normal owner of its child and timeout
+        // path. Reap recovers only after the daemon has died, which avoids
+        // racing a healthy daemon's result publication and unlink.
+        if daemon.live {
+            continue;
+        }
+        if matches!(
+            recover_abandoned_entry(&host, &path, &entry, REAP_CALLER, "reap-daemon-dead"),
+            RecoveryOutcome::Recovered | RecoveryOutcome::Gone
+        ) {
             count += 1;
         }
     }
@@ -559,13 +575,23 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
         open_verified_log(&stderr_log, &spec.log_dir).map_err(|error| one_line(&error))?;
     let mut child =
         spawn_job(spec, stdout_handle, stderr_handle).map_err(|error| one_line(&error))?;
-    let startup = acknowledge_start(spec, &child)?;
+    let startup = match acknowledge_start(spec, &child) {
+        Ok(startup) => startup,
+        Err(error) => {
+            // Before the row exists the daemon still owns this direct child
+            // handle. Clean its dedicated group on an acknowledgement failure
+            // so a cancelled launcher cannot strand an unregistered child.
+            kill_and_reap(&host, &mut child, None);
+            return Err(error);
+        }
+    };
     match register_and_monitor(&host, spec, &mut child, &stdout_log, &stderr_log, &startup) {
         Ok(()) => Ok(()),
         Err(message) => {
-            // Publish the failed result before dropping the startup marker: a
-            // wait that sees neither artifact reports a spurious dead daemon.
-            let _ = write_result(spec, "2", 0);
+            // An error before a confirmed terminal teardown must not forge a
+            // completed envelope. If registration succeeded its durable row
+            // remains for recovery; otherwise the foreground waiter reports
+            // the non-success dead diagnostic after the startup grace.
             let _ = fs::remove_file(&startup);
             Err(message)
         }
@@ -589,13 +615,27 @@ fn register_and_monitor(
         .collect::<Vec<_>>()
         .join(" ");
     let Some(child_identity) = capture_identity(host, child_pid, &expected) else {
-        // A child that finished before its identity could be bound is a
-        // completed job, not a launch failure: an exited process leaves no
-        // `ps` row to bind, so record its real result code instead.
+        // An exited leader may have left children behind in its group. Publish
+        // its real result only after an independent group probe proves there
+        // is no unowned work; a missing `ps` row alone is not that proof.
         if let Ok(Some(status)) = child.try_wait() {
-            write_result(spec, &exit_token(status), 0)?;
-            let _ = fs::remove_file(startup);
-            return Ok(());
+            if host
+                .pgrep_group_checked(child_pid)
+                .is_some_and(|members| members.is_empty())
+            {
+                write_result(spec, &exit_token(status), 0)?;
+                let _ = fs::remove_file(startup);
+                return Ok(());
+            }
+            append_teardown_diagnostic_at(
+                &spec.log_dir,
+                &spec.step,
+                "identity-capture",
+                "child-exited-group-unproven",
+            );
+            return Err(format!(
+                "could not capture process identity for pid {child_pid}: child group remains unproven"
+            ));
         }
         kill_and_reap(host, child, None);
         return Err(format!(
@@ -615,6 +655,7 @@ fn register_and_monitor(
         clone_path: env::current_dir().map_err(|error| one_line(&error))?,
         daemon: daemon_identity,
         child: child_identity.clone(),
+        child_allows_exec: true,
         owner: spec.owner.recorded.clone(),
         start_epoch: epoch_now(),
         budget_s: spec.budget_s,
@@ -649,19 +690,45 @@ fn kill_and_reap(
 ) {
     match identity {
         Some(identity) => {
-            let _ = terminate_validated_process_group(
+            let validation = terminate_validated_process_group_with_policy(
                 host,
                 identity,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
                 None,
                 DAEMON_CALLER,
                 "startup-failed",
             );
+            if !validation.ok {
+                kill_direct_child_group(child);
+            }
         }
-        None => {
-            let _ = child.kill();
-        }
+        None => kill_direct_child_group(child),
     }
     reap_child(child, CHILD_REAP_TIMEOUT);
+}
+
+/// Kill the dedicated process group of a child we still own directly.
+///
+/// This is limited to startup failures before a durable identity can be
+/// recorded. `spawn_job` creates this group with the child's own PID, and the
+/// unreaped `Child` handle prevents PID reuse while the direct cleanup runs.
+fn kill_direct_child_group(child: &mut Child) {
+    let Ok(child_pid) = i32::try_from(child.id()) else {
+        let _ = child.kill();
+        return;
+    };
+    let group = getpgid(Some(Pid::from_raw(child_pid)))
+        .ok()
+        .map(Pid::as_raw)
+        .filter(|pgid| *pgid == child_pid);
+    if let Some(group) = group {
+        let group = Pid::from_raw(group);
+        let _ = killpg(group, Signal::SIGTERM);
+        thread::sleep(IDENTITY_CAPTURE_SLEEP);
+        let _ = killpg(group, Signal::SIGKILL);
+    } else {
+        let _ = child.kill();
+    }
 }
 
 fn spawn_job(spec: &JobSpec, stdout: File, stderr: File) -> std::io::Result<Child> {
@@ -717,14 +784,15 @@ fn monitor(
     let budget = Duration::from_secs(u64::try_from(spec.budget_s.max(0)).unwrap_or(u64::MAX));
     let started = Instant::now();
     let mut owner_state = OwnerValidationState::default();
-    let rc_token = loop {
+    let terminal = loop {
         let now = started.elapsed();
-        if let Some(status) = child.try_wait().map_err(|error| one_line(&error))? {
-            break exit_token(status);
+        match child.try_wait() {
+            Ok(Some(status)) => break MonitorTerminal::Exited(exit_token(status)),
+            Ok(None) => {}
+            Err(error) => break MonitorTerminal::WaitError(one_line(&error)),
         }
         if now >= budget {
-            terminate(host, child_identity, BGJOB_RC_TIMEOUT);
-            break BGJOB_RC_TIMEOUT.to_owned();
+            break MonitorTerminal::Teardown(BGJOB_RC_TIMEOUT);
         }
         let step = check_owner_validation(
             host,
@@ -736,26 +804,83 @@ fn monitor(
         owner_state = step.state;
         if let (true, Some(validation)) = (step.orphaned, step.validation.as_ref()) {
             append_orphan_diagnostic(spec, validation, owner_state.failure_count);
-            terminate(host, child_identity, BGJOB_RC_ORPHANED);
-            break BGJOB_RC_ORPHANED.to_owned();
+            break MonitorTerminal::Teardown(BGJOB_RC_ORPHANED);
         }
         thread::sleep(poll);
     };
+    let (rc_token, teardown_reason) = match terminal {
+        MonitorTerminal::Exited(rc) => (rc, "child-exited"),
+        MonitorTerminal::Teardown(reason) => (reason.to_owned(), reason),
+        MonitorTerminal::WaitError(reason) => {
+            append_teardown_diagnostic(spec, "child-wait-error", &reason);
+            ("2".to_owned(), "child-wait-error")
+        }
+    };
     let elapsed_s = i64::try_from(started.elapsed().as_secs()).unwrap_or(i64::MAX);
-    if rc_token == BGJOB_RC_TIMEOUT || rc_token == BGJOB_RC_ORPHANED {
-        reap_child(child, CHILD_REAP_TIMEOUT);
+    if let Err(reason) = terminate_and_confirm_child(
+        host,
+        child,
+        child_identity,
+        ProcessIdentityValidationPolicy::AllowCommandTransition,
+        &TeardownRequest {
+            log_dir: &spec.log_dir,
+            step: &spec.step,
+            reason: teardown_reason,
+            caller: DAEMON_CALLER,
+        },
+    ) {
+        append_teardown_diagnostic(spec, teardown_reason, &reason);
+        // Retain the registry and omit a terminal result: daemon-death
+        // recovery can retry from the durable identity instead of claiming a
+        // timed-out/orphaned group is gone when it is not.
+        return Ok(());
     }
     write_result(spec, &rc_token, elapsed_s)?;
     unlink_entry(registry);
     Ok(())
 }
 
-fn terminate(
+enum MonitorTerminal {
+    Exited(String),
+    Teardown(&'static str),
+    WaitError(String),
+}
+
+struct TeardownRequest<'a> {
+    log_dir: &'a Path,
+    step: &'a str,
+    reason: &'a str,
+    caller: &'a str,
+}
+
+fn terminate_and_confirm_child(
     host: &SystemProcessIdentityHost,
+    child: &mut Child,
     child_identity: &RecordedProcessIdentity,
-    reason: &str,
-) {
-    let _ = terminate_validated_process_group(host, child_identity, None, DAEMON_CALLER, reason);
+    policy: ProcessIdentityValidationPolicy,
+    request: &TeardownRequest<'_>,
+) -> Result<(), String> {
+    let kill_log = request
+        .log_dir
+        .join(format!("{}.kill.log.jsonl", request.step));
+    let validation = terminate_validated_process_group_with_policy(
+        host,
+        child_identity,
+        policy,
+        Some(&kill_log),
+        request.caller,
+        request.reason,
+    );
+    if !validation.ok && validation.reason != "missing-pid" {
+        return Err(validation.reason);
+    }
+    reap_child(child, CHILD_REAP_TIMEOUT);
+    let confirmation = confirm_process_group_absent(host, child_identity, policy);
+    if confirmation.terminated {
+        Ok(())
+    } else {
+        Err(confirmation.reason)
+    }
 }
 
 fn reap_child(child: &mut Child, timeout: Duration) {
@@ -829,6 +954,22 @@ fn append_orphan_diagnostic(spec: &JobSpec, validation: &ValidationResult, failu
     }
 }
 
+fn append_teardown_diagnostic(spec: &JobSpec, context: &str, reason: &str) {
+    append_teardown_diagnostic_at(&spec.log_dir, &spec.step, context, reason);
+}
+
+fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reason: &str) {
+    let stderr_log = log_dir.join(format!("{step}.stderr.log"));
+    let _ = fs::create_dir_all(log_dir);
+    let text = render_rows(&[
+        ("BGJOB_TEARDOWN_CONTEXT".to_owned(), context.to_owned()),
+        ("BGJOB_TEARDOWN_REASON".to_owned(), reason.to_owned()),
+    ]);
+    if let Ok(mut handle) = open_verified_log(&stderr_log, log_dir) {
+        let _ = handle.write_all(text.as_bytes());
+    }
+}
+
 fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
     let root_metadata =
         fs::symlink_metadata(root).map_err(|error| BgjobError::Io(error.to_string()))?;
@@ -869,6 +1010,106 @@ fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
     }
 }
 
+enum RecoveryOutcome {
+    Recovered,
+    Busy,
+    Gone,
+    Failed(String),
+}
+
+/// Recover a registry row after its daemon dies.
+///
+/// A foreground waiter and `reap` share this one claim-and-teardown path. The
+/// exclusive lease prevents competing cleaners from racing signals or unlink,
+/// and a failed proof of absence deliberately leaves both the row and its
+/// diagnostic in place for a later retry.
+fn recover_abandoned_entry(
+    host: &SystemProcessIdentityHost,
+    registry: &Path,
+    observed: &RegistryEntry,
+    caller: &str,
+    context: &str,
+) -> RecoveryOutcome {
+    let claim = match claim_recovery(host, registry) {
+        Ok(RecoveryClaim::Acquired(claim)) => claim,
+        Ok(RecoveryClaim::Busy) => return RecoveryOutcome::Busy,
+        Ok(RecoveryClaim::Gone) => return RecoveryOutcome::Gone,
+        Err(error) => {
+            let reason = format!("recovery-claim-{}", one_line(&error));
+            append_teardown_diagnostic_at(&observed.log_dir, &observed.step, context, &reason);
+            return RecoveryOutcome::Failed(reason);
+        }
+    };
+    let Some(entry) = read_entry(recovery_claim_entry_path(&claim)) else {
+        release_recovery_claim(&claim);
+        return RecoveryOutcome::Gone;
+    };
+    if daemon_liveness(host, &entry).live {
+        release_recovery_claim(&claim);
+        return RecoveryOutcome::Busy;
+    }
+    if read_completed_result(&entry.result_env, &entry.step).is_some() {
+        // A completed envelope from a dead daemon is terminal only if its
+        // recorded group is independently absent. This also clears the
+        // daemon's row after a crash between result publication and unlink.
+        let confirmation =
+            confirm_process_group_absent(host, &entry.child, child_identity_policy(&entry));
+        if confirmation.terminated {
+            unlink_entry(recovery_claim_entry_path(&claim));
+            let removed = fs::symlink_metadata(recovery_claim_entry_path(&claim))
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+            release_recovery_claim(&claim);
+            if removed {
+                return RecoveryOutcome::Gone;
+            }
+            let reason = "registry-unlink-failed".to_owned();
+            append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
+            return RecoveryOutcome::Failed(reason);
+        }
+    }
+    if read_result(&entry.result_env).is_some()
+        && let Err(reason) = remove_result_residue(&entry.result_env)
+    {
+        let reason = format!("partial-result-remove-{reason}");
+        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
+        release_recovery_claim(&claim);
+        return RecoveryOutcome::Failed(reason);
+    }
+    let kill_log = entry.log_dir.join(format!("{}.kill.log.jsonl", entry.step));
+    let termination = terminate_validated_process_group_and_confirm(
+        host,
+        &entry.child,
+        child_identity_policy(&entry),
+        Some(&kill_log),
+        caller,
+        context,
+    );
+    if !termination.terminated {
+        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &termination.reason);
+        release_recovery_claim(&claim);
+        return RecoveryOutcome::Failed(termination.reason);
+    }
+    // Atomic publication means a dead daemon cannot leave a partial final
+    // envelope. Remove any regular residue before dropping the recovery row.
+    if let Err(reason) = remove_result_residue(&entry.result_env) {
+        let reason = format!("partial-result-remove-{reason}");
+        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
+        release_recovery_claim(&claim);
+        return RecoveryOutcome::Failed(reason);
+    }
+    unlink_entry(recovery_claim_entry_path(&claim));
+    let removed = fs::symlink_metadata(recovery_claim_entry_path(&claim))
+        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+    release_recovery_claim(&claim);
+    if removed {
+        RecoveryOutcome::Recovered
+    } else {
+        let reason = "registry-unlink-failed".to_owned();
+        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
+        RecoveryOutcome::Failed(reason)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Foreground wait
 // ---------------------------------------------------------------------------
@@ -890,7 +1131,7 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
         if Instant::now() >= hard_deadline {
             return Err("hard-deadline".to_owned());
         }
-        if let Some(rows) = read_result(&result_path) {
+        if let Some(rows) = read_completed_result(&result_path, &step) {
             return Ok(done_rows(&rows));
         }
         let (registry, entry) =
@@ -910,14 +1151,39 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
         if !daemon.live {
             // The daemon writes its result before exiting; re-read once so a
             // completion observed between the two reads is not reported dead.
-            if let Some(rows) = read_result(&result_path) {
+            if let Some(rows) = read_completed_result(&result_path, &step) {
                 return Ok(done_rows(&rows));
             }
-            let tail = stderr_tail(&entry);
-            return Ok(dead_rows(&[
-                ("BGJOB_DIAG", daemon.reason.as_str()),
-                ("STDERR_TAIL", tail.as_str()),
-            ]));
+            match recover_abandoned_entry(
+                &host,
+                &registry,
+                &entry,
+                RECOVERY_CALLER,
+                "daemon-dead-wait",
+            ) {
+                RecoveryOutcome::Recovered => {
+                    let tail = stderr_tail(&entry);
+                    return Ok(dead_rows(&[
+                        ("BGJOB_DIAG", "daemon-dead-recovered"),
+                        ("STDERR_TAIL", tail.as_str()),
+                    ]));
+                }
+                RecoveryOutcome::Failed(reason) => {
+                    let tail = stderr_tail(&entry);
+                    return Ok(dead_rows(&[
+                        ("BGJOB_DIAG", reason.as_str()),
+                        ("STDERR_TAIL", tail.as_str()),
+                    ]));
+                }
+                RecoveryOutcome::Busy | RecoveryOutcome::Gone => {
+                    // Another cleaner may have finished or a normal result
+                    // may have appeared. Re-enter through the result read
+                    // rather than publishing a terminal state while recovery
+                    // remains unresolved.
+                    thread::sleep(poll_sleep(parsed.poll_interval_s, deadline));
+                    continue;
+                }
+            }
         }
         if Instant::now() >= deadline {
             return Ok(wait_rows(parsed.max_wait_s));
@@ -933,7 +1199,7 @@ fn missing_registry(
     step: &str,
     deadline: Instant,
 ) -> Option<String> {
-    if let Some(rows) = read_result(result_path) {
+    if let Some(rows) = read_completed_result(result_path, step) {
         return Some(done_rows(&rows));
     }
     let tmpdir = PathBuf::from(&parsed.tmpdir);
@@ -945,7 +1211,7 @@ fn missing_registry(
     }
     // The daemon drops its startup marker only after a durable successor
     // exists, so re-read both before reporting an unrecoverable daemon.
-    if let Some(rows) = read_result(result_path) {
+    if let Some(rows) = read_completed_result(result_path, step) {
         return Some(done_rows(&rows));
     }
     if read_entry(registry).is_some() {
@@ -987,6 +1253,39 @@ fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
     Some(ordered_rows(&text))
 }
 
+fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
+    let rows = read_result(path)?;
+    let value = |key: &str| {
+        rows.iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    };
+    (value(BGJOB_RC_KEY).is_some_and(|value| !value.is_empty())
+        && value(BGJOB_ELAPSED_KEY).is_some_and(|value| !value.is_empty())
+        && value("STEP") == Some(step))
+    .then_some(rows)
+}
+
+fn remove_result_residue(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(one_line(&error)),
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err("unsafe-result-path".to_owned());
+        }
+        Ok(_) => {}
+    }
+    fs::remove_file(path)
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(|error| one_line(&error))
+}
+
 fn stderr_tail(entry: &RegistryEntry) -> String {
     let path = &entry.stderr_log;
     if fs::symlink_metadata(path)
@@ -1026,8 +1325,8 @@ mod tests {
     use super::{
         MIN_POLL_SLEEP, StartArguments, WaitArguments, checked_merge_env, daemon_arguments,
         dead_rows, done_rows, finish_start, inherited_owner, one_line, open_verified_log,
-        owner_from_rows, owner_rows, parse_start, parse_wait, poll_sleep, read_merge_text,
-        read_result, wait_rows, write_result,
+        owner_from_rows, owner_rows, parse_start, parse_wait, poll_sleep, read_completed_result,
+        read_merge_text, read_result, remove_result_residue, wait_rows, write_result,
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec,
@@ -1254,7 +1553,15 @@ mod tests {
         );
         assert!(sandbox.path().join("done.sentinel").is_file());
         assert_eq!(read_result(&result), Some(rows));
+        assert!(read_completed_result(&result, "demo-step").is_some());
         assert_eq!(read_result(&sandbox.path().join("bgjob/absent.env")), None);
+        fs::write(&result, "BGJOB_RC=0\n").expect("partial result");
+        assert!(
+            read_completed_result(&result, "demo-step").is_none(),
+            "a partial result must not claim a terminal completion"
+        );
+        remove_result_residue(&result).expect("remove partial result");
+        assert!(!result.exists());
 
         fs::write(&merge, "CUSTOM=carriage\r\n").expect("cr merge env");
         assert_eq!(read_merge_text(&merge), String::new());
