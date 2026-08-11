@@ -1,0 +1,167 @@
+{
+  "cache_classes": [
+    {
+      "id": "pip-lint",
+      "key_output": "pip-lint",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".github/workflows/requirements-lint.txt"],
+      "producer": "main-cache-lint",
+      "validation": "pinned requirements install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pip-shellcheck",
+      "key_output": "pip-shellcheck",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".pre-commit-config.yaml"],
+      "producer": "main-cache-lint",
+      "validation": "pinned shellcheck wheel install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pre-commit-hook-environments",
+      "key_output": "pre-commit",
+      "key_inputs": [".pre-commit-config.yaml"],
+      "producer": "main-cache-lint",
+      "validation": "pre-commit install-hooks",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pip-test-harnesses",
+      "key_output": "pip-test-harnesses",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".github/workflows/requirements-test-harnesses.txt"],
+      "producer": "main-cache-test-harnesses",
+      "validation": "pinned requirements install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "site-test-harnesses",
+      "key_output": "site-test-harnesses",
+      "key_inputs": ["ubuntu-24.04", "Python 3.11", ".github/workflows/requirements-test-harnesses.txt"],
+      "producer": "main-cache-test-harnesses",
+      "validation": "fresh interpreter site-packages install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pip-agent-linters",
+      "key_output": "pip-agent-linters",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".github/workflows/requirements-agent-linters.txt"],
+      "producer": "main-cache-agent-tools",
+      "validation": "pinned requirements install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "agent-lint",
+      "key_output": "agent-lint",
+      "key_inputs": ["runner OS", "agent-lint version"],
+      "producer": "main-cache-agent-tools",
+      "validation": "checksum and version verification",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "agnix",
+      "key_output": "agnix",
+      "key_inputs": ["runner OS", "agnix version"],
+      "producer": "main-cache-agent-tools",
+      "validation": "checksum and version verification",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pip-python-dev",
+      "key_output": "pip-python-dev",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-dev.txt"],
+      "producer": "main-cache-python-dev",
+      "validation": "pinned requirements install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "pip-python-test",
+      "key_output": "pip-python-test",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-test.txt"],
+      "producer": "main-cache-python-tests",
+      "validation": "pinned requirements install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "site-python-test",
+      "key_output": "site-python-test",
+      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-test.txt"],
+      "producer": "main-cache-python-tests",
+      "validation": "fresh interpreter site-packages install",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "gitleaks",
+      "key_output": "gitleaks",
+      "key_inputs": ["runner OS", "runner architecture", "gitleaks version", "gitleaks binary SHA-256"],
+      "producer": "main-cache-gitleaks",
+      "validation": "pinned archive, binary checksum, and version verification",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "cargo-inputs",
+      "key_output": "cargo-inputs",
+      "key_inputs": ["runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "exact successful merge-group artifact manifest",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "rust-lint-deps",
+      "key_output": "rust-lint-deps",
+      "key_inputs": ["runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "pruned exact successful merge-group artifact manifest",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "cargo-nextest",
+      "key_output": "cargo-nextest",
+      "key_inputs": ["runner OS", "runner architecture", "cargo-nextest version"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "checksum-verified merge-group artifact manifest",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "cargo-llvm-cov",
+      "key_output": "cargo-llvm-cov",
+      "key_inputs": ["runner OS", "runner architecture", "cargo-llvm-cov version"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "checksum-verified merge-group artifact manifest",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "coverage-target",
+      "key_output": "coverage-target",
+      "key_inputs": ["key prefix", "schema", "runner OS", "runner architecture", "target triple", "cargo-llvm-cov version", "test profile", "feature mode", "linker", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml", ".cargo/**"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "pruned, no-symlink merge-group artifact manifest",
+      "maximum_bytes": 1350000000,
+      "publication_event": "trusted-main"
+    },
+    {
+      "id": "rust-policy",
+      "key_output": "rust-policy",
+      "key_inputs": ["runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml", "build.rs", "crates/**/*.rs", ".cargo/**"],
+      "producer": "main-cache-rust-promotion",
+      "validation": "checksum, version, Rust-input identity, and merge-group artifact manifest",
+      "maximum_bytes": null,
+      "publication_event": "trusted-main"
+    }
+  ],
+  "schema_version": 1
+}

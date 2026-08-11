@@ -9,10 +9,14 @@ from larch.release import assets
 
 REPO_ROOT = Path(__file__).parents[3]
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "rust-release-assets.yaml"
+GITHUB_AUTH_CONFIG = (
+    REPO_ROOT / ".github" / "actions" / "github-auth-config" / "action.yaml"
+)
 
 
 def test_release_workflow_uses_staged_rust_executable_for_asset_commands() -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    github_auth_config = GITHUB_AUTH_CONFIG.read_text(encoding="utf-8")
     assert "python3 python/cli.py release" not in workflow
     assert "gh attestation verify" not in workflow
     assert '"$GITHUB_WORKSPACE/scripts/larch.sh" release asset-candidate' in workflow
@@ -23,8 +27,10 @@ def test_release_workflow_uses_staged_rust_executable_for_asset_commands() -> No
     assert "--verify-checkout" in workflow
     assert "git rev-parse" not in workflow
     assert "--verify-attestations" in workflow
-    assert "gh auth login --hostname github.com --with-token" in workflow
-    assert "unset GH_TOKEN GITHUB_TOKEN" in workflow
+    assert "uses: ./.github/actions/github-auth-config" in workflow
+    assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in workflow
+    assert "gh auth login --hostname github.com --with-token" in github_auth_config
+    assert "unset GH_TOKEN GITHUB_TOKEN" in github_auth_config
     assert "LARCH_GH_TOKEN=" not in workflow
     assert "actions/setup-python@" not in workflow
 

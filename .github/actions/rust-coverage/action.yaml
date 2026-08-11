@@ -16,7 +16,7 @@ runs:
           *) printf 'invalid coverage target cache enabled value: %s\n' "$COVERAGE_TARGET_CACHE_ENABLED" >&2; exit 1 ;;
         esac
         case "${COVERAGE_TARGET_CACHE_PUBLICATION:?}" in
-          main-push|main-dispatch-benchmark) ;;
+          main-cache-candidate|main-dispatch-benchmark) ;;
           *) printf 'invalid coverage target cache publication: %s\n' "$COVERAGE_TARGET_CACHE_PUBLICATION" >&2; exit 1 ;;
         esac
         case "${RUST_COVERAGE_PHASE_MODE:?}" in
@@ -43,6 +43,8 @@ runs:
           printf 'COVERAGE_TARGET_CACHE_SAVE_OUTCOME=disabled-unmeasured\n'
           printf 'COVERAGE_TARGET_CACHE_SAVE_SECONDS=0\n'
           printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=three-comparable-warm-samples-required\n'
+          printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=false\n'
+          printf 'COVERAGE_JOB_OUTCOME=success\n'
         } >> "$GITHUB_ENV"
     - name: Start Rust coverage cache restore timing
       shell: bash
@@ -54,13 +56,13 @@ runs:
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: ~/.cargo/bin/cargo-nextest
-        key: cargo-nextest-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_NEXTEST_VERSION }}
+        key: ${{ env.CARGO_NEXTEST_CACHE_KEY }}
     - name: Restore cargo-llvm-cov binary
       id: llvm-cov-cache
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: ~/.cargo/bin/cargo-llvm-cov
-        key: cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}
+        key: ${{ env.CARGO_LLVM_COV_CACHE_KEY }}
     - name: Restore Cargo inputs
       id: cargo-inputs-cache
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -68,7 +70,7 @@ runs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-        key: cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+        key: ${{ env.CARGO_INPUTS_CACHE_KEY }}
     - name: Start coverage dependency cache restore timing
       shell: bash
       run: |
@@ -88,7 +90,23 @@ runs:
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: target/llvm-cov-target
-        key: ${{ env.COVERAGE_TARGET_CACHE_KEY_PREFIX }}-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-${{ env.CARGO_LLVM_COV_VERSION }}-opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-incremental${{ env.CARGO_INCREMENTAL }}-features${{ env.RUST_COVERAGE_FEATURE_MODE }}-linker${{ env.RUST_COVERAGE_LINKER }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', '.cargo/**') }}
+        key: ${{ env.COVERAGE_TARGET_CACHE_KEY }}
+    # Keep the status functions in step conditions. job.status is not updated
+    # until the job finishes, so diagnostics must receive a persisted result.
+    - name: Mark prior Rust coverage failure before restore diagnostics
+      if: failure() && !cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=failure\n' >> "$GITHUB_ENV"
+    - name: Mark prior Rust coverage cancellation before restore diagnostics
+      if: cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=cancelled\n' >> "$GITHUB_ENV"
     - name: Record Rust coverage cache restore timing
       if: always()
       shell: bash
@@ -99,6 +117,7 @@ runs:
         outcomes="cargo-inputs=${{ steps.cargo-inputs-cache.outcome }};cargo-nextest=${{ steps.nextest-cache.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outcome }};coverage-target=${{ steps.coverage-target-cache.outcome }}"
         case "$outcomes" in
           *failure*) outcome=failure ;;
+          *skipped*) outcome=skipped ;;
           *) outcome=success ;;
         esac
         printf 'cache-restore\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" \
@@ -140,6 +159,17 @@ runs:
               ;;
             failure)
               restore_outcome=failure
+              restored_bytes=unavailable
+              ;;
+            skipped)
+              prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"
+              [ "$prior_failure_or_cancelled" = true ] || {
+                printf 'unexpected coverage target restore outcome: %s (prior failure or cancellation: %s)\n' \
+                  "$restore_step_outcome" "$prior_failure_or_cancelled" >&2
+                exit 1
+              }
+              cache_hit=unavailable
+              restore_outcome=skipped
               restored_bytes=unavailable
               ;;
             *) printf 'unexpected coverage target restore outcome: %s\n' "$restore_step_outcome" >&2; exit 1 ;;
@@ -564,6 +594,12 @@ runs:
           exit 1
         }
 
+        cache_symlink="$(find "$coverage_target_dir" -type l -print -quit)"
+        test -z "$cache_symlink" || {
+          printf 'coverage target cache retained forbidden symlink: %s\n' "$cache_symlink" >&2
+          exit 1
+        }
+
         workspace_targets="$RUNNER_TEMP/coverage-target-workspace-targets.txt"
         # Custom build scripts use the generic build_script_build filename,
         # which third-party dependencies also use. cargo clean owns their
@@ -623,6 +659,20 @@ runs:
             printf 'COVERAGE_TARGET_CACHE_SAVE_REASON=within-size-guard\n'
           fi
         } >> "$GITHUB_ENV"
+    - name: Mark prior Rust coverage failure before prune diagnostics
+      if: failure() && !cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=failure\n' >> "$GITHUB_ENV"
+    - name: Mark prior Rust coverage cancellation before prune diagnostics
+      if: cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=cancelled\n' >> "$GITHUB_ENV"
     - name: Record coverage dependency cache prune diagnostics
       if: always()
       shell: bash
@@ -633,6 +683,14 @@ runs:
           case "$prune_outcome" in
             success) ;;
             failure) ;;
+            skipped)
+              prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"
+              [ "$prior_failure_or_cancelled" = true ] || {
+                printf 'unexpected coverage target prune outcome: %s (prior failure or cancellation: %s)\n' \
+                  "$prune_outcome" "$prior_failure_or_cancelled" >&2
+                exit 1
+              }
+              ;;
             *) printf 'unexpected coverage target prune outcome: %s\n' "$prune_outcome" >&2; exit 1 ;;
           esac
         else
@@ -650,35 +708,100 @@ runs:
         name: rust-coverage-target-cache-inventory${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}
         path: ${{ runner.temp }}/coverage-target-cache-inventory.tsv
         if-no-files-found: error
-    - name: Start Rust coverage cache save timing
+    # Merge-group validation never writes a default-branch cache.  On an exact
+    # miss it stages regular-file, content-addressed candidates; the trusted
+    # main publisher verifies and saves those candidates after the queue has
+    # advanced main to this exact SHA.
+    - name: Stage cargo-nextest cache candidate
+      id: nextest-cache-candidate
+      if: success() && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+          --artifact-name main-cache-cargo-nextest-candidate \
+          --cache-class cargo-nextest \
+          --cache-key '${{ env.CARGO_NEXTEST_CACHE_KEY }}' \
+          --candidate-dir "$RUNNER_TEMP/main-cache-cargo-nextest-candidate" \
+          --maximum-bytes 0 \
+          --producer-event "$GITHUB_EVENT_NAME" \
+          --producer-job rust-full \
+          --producer-ref "$GITHUB_REF" \
+          --source-sha "$GITHUB_SHA" \
+          --source "cargo-nextest=$HOME/.cargo/bin/cargo-nextest" \
+          --tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"
+    - name: Upload cargo-nextest cache candidate
+      if: success() && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: main-cache-cargo-nextest-candidate
+        path: ${{ runner.temp }}/main-cache-cargo-nextest-candidate
+        if-no-files-found: error
+        overwrite: false
+    - name: Stage cargo-llvm-cov cache candidate
+      id: llvm-cov-cache-candidate
+      if: success() && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+          --artifact-name main-cache-cargo-llvm-cov-candidate \
+          --cache-class cargo-llvm-cov \
+          --cache-key '${{ env.CARGO_LLVM_COV_CACHE_KEY }}' \
+          --candidate-dir "$RUNNER_TEMP/main-cache-cargo-llvm-cov-candidate" \
+          --maximum-bytes 0 \
+          --producer-event "$GITHUB_EVENT_NAME" \
+          --producer-job rust-full \
+          --producer-ref "$GITHUB_REF" \
+          --source-sha "$GITHUB_SHA" \
+          --source "cargo-llvm-cov=$HOME/.cargo/bin/cargo-llvm-cov" \
+          --tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
+    - name: Upload cargo-llvm-cov cache candidate
+      if: success() && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: main-cache-cargo-llvm-cov-candidate
+        path: ${{ runner.temp }}/main-cache-cargo-llvm-cov-candidate
+        if-no-files-found: error
+        overwrite: false
+    - name: Stage pruned coverage dependency cache candidate
+      id: coverage-target-cache-candidate
+      if: >-
+        success() && github.event_name == 'merge_group' &&
+        env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-cache-candidate' &&
+        steps.coverage-target-cache.outputs.cache-hit != 'true' &&
+        steps.coverage-target-cache-prune.outcome == 'success' &&
+        env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+          --artifact-name main-cache-coverage-target-candidate \
+          --cache-class coverage-target \
+          --cache-key '${{ env.COVERAGE_TARGET_CACHE_KEY }}' \
+          --candidate-dir "$RUNNER_TEMP/main-cache-coverage-target-candidate" \
+          --maximum-bytes "$COVERAGE_TARGET_CACHE_MAX_BYTES" \
+          --producer-event "$GITHUB_EVENT_NAME" \
+          --producer-job rust-full \
+          --producer-ref "$GITHUB_REF" \
+          --source-sha "$GITHUB_SHA" \
+          --source "llvm-cov-target=$GITHUB_WORKSPACE/target/llvm-cov-target" \
+          --tool-version "cargo=$(cargo --version)" \
+          --tool-version "cargo-llvm-cov=$(cargo llvm-cov --version)"
+    - name: Upload pruned coverage dependency cache candidate
+      if: success() && steps.coverage-target-cache-candidate.outcome == 'success'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: main-cache-coverage-target-candidate
+        path: ${{ runner.temp }}/main-cache-coverage-target-candidate
+        if-no-files-found: error
+        overwrite: false
+    - name: Start Rust coverage cache publication timing
       if: always()
       shell: bash
       run: |
         set -euo pipefail
         printf 'COVERAGE_CACHE_SAVE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
-    - name: Save Cargo inputs
-      id: cargo-inputs-save
-      if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
-    - name: Save cargo-nextest binary
-      id: nextest-cache-save
-      if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nextest-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-      with:
-        path: ~/.cargo/bin/cargo-nextest
-        key: ${{ steps.nextest-cache.outputs.cache-primary-key }}
-    - name: Save cargo-llvm-cov binary
-      id: llvm-cov-cache-save
-      if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-      with:
-        path: ~/.cargo/bin/cargo-llvm-cov
-        key: ${{ steps.llvm-cov-cache.outputs.cache-primary-key }}
     - name: Start coverage dependency cache save timing
       if: always()
       shell: bash
@@ -693,8 +816,8 @@ runs:
       id: coverage-target-cache-save
       if: >-
         success() && env.COVERAGE_TARGET_CACHE_ENABLED == 'true' &&
-        ((env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-push' && github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-        (env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-dispatch-benchmark' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) &&
+        env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-dispatch-benchmark' &&
+        github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
         steps.coverage-target-cache.outputs.cache-hit != 'true' && steps.coverage-target-cache-prune.outcome == 'success' &&
         env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'
       uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -728,6 +851,20 @@ runs:
         printf 'coverage-target-cache-save\t%s\t%s\tpost_prune_bytes=%s;reason=%s\n' \
           "$save_seconds" "$save_outcome" "$COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES" \
           "$COVERAGE_TARGET_CACHE_SAVE_REASON" >> "$COVERAGE_TIMING_FILE"
+    - name: Mark prior Rust coverage failure before cache save timing
+      if: failure() && !cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=failure\n' >> "$GITHUB_ENV"
+    - name: Mark prior Rust coverage cancellation before cache save timing
+      if: cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=cancelled\n' >> "$GITHUB_ENV"
     - name: Record Rust coverage cache save timing
       if: always()
       shell: bash
@@ -737,38 +874,36 @@ runs:
         finished="$(date +%s)"
         event_name="${{ github.event_name }}"
         ref_name="${{ github.ref }}"
-        job_status="${{ job.status }}"
+        prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"
         cache_publication="${COVERAGE_TARGET_CACHE_PUBLICATION:?}"
         cache_hits="cargo-inputs=${{ steps.cargo-inputs-cache.outputs.cache-hit }};cargo-nextest=${{ steps.nextest-cache.outputs.cache-hit }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outputs.cache-hit }}"
         target_cache_hit="${{ steps.coverage-target-cache.outputs.cache-hit }}"
-        save_outcomes="cargo-inputs=${{ steps.cargo-inputs-save.outcome }};cargo-nextest=${{ steps.nextest-cache-save.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-save.outcome }};coverage-target=${{ steps.coverage-target-cache-save.outcome }}"
+        candidate_outcomes="cargo-nextest=${{ steps.nextest-cache-candidate.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache-candidate.outcome }};coverage-target=${{ steps.coverage-target-cache-candidate.outcome }}"
+        save_outcomes="coverage-target=${{ steps.coverage-target-cache-save.outcome }}"
         case "$cache_publication" in
-          main-push)
-            if [ "$event_name" = workflow_dispatch ]; then
+          main-cache-candidate)
+            if [ "$event_name" != merge_group ]; then
               outcome=skipped
-              detail="workflow_dispatch-read-only;${cache_hits}"
-            elif [ "$event_name" != push ] || [ "$ref_name" != refs/heads/main ]; then
-              outcome=skipped
-              detail="pull-request-or-other-read-only;${cache_hits}"
-            elif [ "$job_status" != success ]; then
+              detail="validation-read-only;${cache_hits}"
+            elif [ "$prior_failure_or_cancelled" = true ]; then
               outcome=skipped
               detail="job-not-success;${cache_hits}"
-            elif [ "$cache_hits" = 'cargo-inputs=true;cargo-nextest=true;cargo-llvm-cov=true' ]; then
+            elif [ "$cache_hits" = 'cargo-inputs=true;cargo-nextest=true;cargo-llvm-cov=true' ] && [ "$target_cache_hit" = true ]; then
               outcome=skipped
               detail="all-primary-keys-hit;${cache_hits}"
-            elif [[ "$save_outcomes" == *failure* ]]; then
+            elif [[ "$candidate_outcomes" == *failure* ]]; then
               outcome=failure
-              detail="$save_outcomes"
+              detail="$candidate_outcomes"
             else
               outcome=success
-              detail="$save_outcomes"
+              detail="staged-for-trusted-main-publication;${candidate_outcomes}"
             fi
             ;;
           main-dispatch-benchmark)
             if [ "$event_name" != workflow_dispatch ] || [ "$ref_name" != refs/heads/main ]; then
               outcome=skipped
               detail="benchmark-main-dispatch-required;${cache_hits}"
-            elif [ "$job_status" != success ]; then
+            elif [ "$prior_failure_or_cancelled" = true ]; then
               outcome=skipped
               detail="job-not-success;${cache_hits}"
             elif [[ "$save_outcomes" == *failure* ]]; then
@@ -795,6 +930,20 @@ runs:
         esac
         printf 'cache-save\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" "$detail" \
           >> "$COVERAGE_TIMING_FILE"
+    - name: Mark prior Rust coverage failure before total timing
+      if: failure() && !cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=failure\n' >> "$GITHUB_ENV"
+    - name: Mark prior Rust coverage cancellation before total timing
+      if: cancelled()
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=true\n' >> "$GITHUB_ENV"
+        printf 'COVERAGE_JOB_OUTCOME=cancelled\n' >> "$GITHUB_ENV"
     - name: Record total Rust coverage job timing
       if: always()
       shell: bash
@@ -802,7 +951,7 @@ runs:
         set -euo pipefail
         started="${COVERAGE_JOB_TIMING_STARTED:?}"
         finished="$(date +%s)"
-        job_outcome="${{ job.status }}"
+        job_outcome="${COVERAGE_JOB_OUTCOME:?}"
         printf 'job-total-after-runner-setup\t%s\t%s\tcoverage-cache-policy=%s\n' \
           "$((finished - started))" "$job_outcome" "$COVERAGE_TARGET_CACHE_ENABLED" >> "$COVERAGE_TIMING_FILE"
     - name: Summarize Rust coverage phase timings

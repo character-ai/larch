@@ -243,19 +243,19 @@ jobs:
           subject-path: |
             dist/larch-v${{ needs.metadata.outputs.version }}-manifest.json
             dist/larch-v${{ needs.metadata.outputs.version }}-SHA256SUMS
+      - name: Configure isolated GitHub CLI credentials
+        id: github-auth
+        uses: ./.github/actions/github-auth-config
+        with:
+          token: ${{ github.token }}
       - name: Validate assets and attestations
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}
           VERSION: ${{ needs.metadata.outputs.version }}
           SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
         run: |
           set -euo pipefail
-          export GH_CONFIG_DIR="$RUNNER_TEMP/larch-gh"
-          mkdir -p "$GH_CONFIG_DIR"
-          chmod 700 "$GH_CONFIG_DIR"
-          printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$GH_CONFIG_DIR" gh auth login --hostname github.com --with-token
-          unset GH_TOKEN GITHUB_TOKEN
           release_larch="$GITHUB_WORKSPACE/target/release/larch"
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$release_larch" \
             "$GITHUB_WORKSPACE/scripts/larch.sh" release validate-assets \

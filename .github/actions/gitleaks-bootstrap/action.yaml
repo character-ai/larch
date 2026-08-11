@@ -1,0 +1,80 @@
+name: Verified gitleaks bootstrap
+description: Install or revalidate the checksum-pinned gitleaks binary without scanning the repository.
+
+outputs:
+  seconds:
+    description: Elapsed bootstrap time in seconds.
+    value: ${{ steps.prepare-gitleaks.outputs.seconds }}
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare verified gitleaks release
+      id: prepare-gitleaks
+      shell: bash
+      run: |
+        set -euo pipefail
+        gitleaks_cache_root="${HOME}/.cache/larch/tools/gitleaks"
+        gitleaks_cache_dir="${gitleaks_cache_root}/${GITLEAKS_VERSION}/linux-x64"
+        gitleaks_binary="${gitleaks_cache_dir}/gitleaks"
+
+        run_gitleaks() {
+          env -i \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            TMPDIR="${TMPDIR:-/tmp}" \
+            LANG="${LANG:-C.UTF-8}" \
+            GIT_TERMINAL_PROMPT=0 \
+            "$gitleaks_binary" "$@"
+        }
+
+        for directory in "$HOME/.cache" "$HOME/.cache/larch" "$HOME/.cache/larch/tools" "$gitleaks_cache_root" "${gitleaks_cache_root}/${GITLEAKS_VERSION}" "$gitleaks_cache_dir"; do
+          if [ -e "$directory" ] || [ -L "$directory" ]; then
+            if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+              echo "::error::gitleaks cache directory is not a real directory: $directory"
+              exit 1
+            fi
+          else
+            mkdir "$directory"
+          fi
+        done
+
+        gitleaks_is_verified() {
+          if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+            return 1
+          fi
+          actual_sha256="$(sha256sum "$gitleaks_binary" | awk '{print $1}')"
+          test "$actual_sha256" = "$GITLEAKS_BINARY_SHA256" || return 1
+          test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"
+        }
+
+        if ! gitleaks_is_verified; then
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          gitleaks_archive="${temporary}/gitleaks.tar.gz"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120 --max-filesize 16777216 \
+            --output "$gitleaks_archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          printf '%s  %s\n' "$GITLEAKS_ARCHIVE_SHA256" "$gitleaks_archive" | sha256sum --check --strict --status -
+          expected_gitleaks_members="$(printf '%s\n' LICENSE README.md gitleaks)"
+          actual_gitleaks_members="$(tar -tzf "$gitleaks_archive" | LC_ALL=C sort)"
+          test "$actual_gitleaks_members" = "$expected_gitleaks_members"
+          tar -xzf "$gitleaks_archive" -C "$temporary" -- gitleaks
+          test -f "${temporary}/gitleaks" && test ! -L "${temporary}/gitleaks"
+          printf '%s  %s\n' "$GITLEAKS_BINARY_SHA256" "${temporary}/gitleaks" | sha256sum --check --strict --status -
+          if [ -e "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+            if [ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]; then
+              echo "::error::gitleaks cache entry is not a regular file: $gitleaks_binary"
+              exit 1
+            fi
+            rm -f -- "$gitleaks_binary"
+          fi
+          install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"
+        fi
+
+        gitleaks_is_verified || {
+          echo "::error::verified gitleaks release failed post-install validation"
+          exit 1
+        }
+        printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"

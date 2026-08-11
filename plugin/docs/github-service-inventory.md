@@ -113,7 +113,7 @@ issue-mutation owner for authorization and close read-back.
 <!-- github-service-ownership:start -->
 ```text
 operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
-actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing pytest,gh run-logs,gh workflow-path
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing merge-group-source,ci-timing pytest,gh run-logs,gh workflow-path
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
 comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7685	pending	pending	pending	clarify *,issue migration-audit
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	deps *

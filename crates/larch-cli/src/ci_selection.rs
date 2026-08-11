@@ -1228,7 +1228,7 @@ fn render_summary(selection: &Selection) -> String {
     let base = html_code(selection.base_sha.as_deref().unwrap_or("unavailable"));
     let head = html_code(selection.head_sha.as_deref().unwrap_or("unavailable"));
     let mut result = format!(
-        "## Rust CI selection\n\nProposed mode: {mode}. Non-full modes retain their named validation owners; main remains a full-run backstop.\n\n- Base: {base} ({})\n- Head: {head}\n- Dependency policy: {}\n",
+        "## Rust CI selection\n\nProposed mode: {mode}. Non-full modes retain their named validation owners; the merge queue remains the full-run backstop.\n\n- Base: {base} ({})\n- Head: {head}\n- Dependency policy: {}\n",
         html_code(&selection.base_source),
         html_code(&selection.dependency_policy.reason),
     );

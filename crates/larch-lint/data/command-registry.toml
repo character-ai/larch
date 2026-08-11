@@ -1477,6 +1477,42 @@ planning_issue = 8319
 
 [[commands]]
 domain = "ci"
+verb = "promote-rust-policy-candidate"
+python_module = "larch.implement.rust_policy_candidate"
+python_function = "promote_policy_candidate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8362
+
+[[commands]]
+domain = "ci"
+verb = "stage-main-cache-candidate"
+python_module = "larch.implement.main_cache_candidate"
+python_function = "stage_main_cache_candidate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8362
+
+[[commands]]
+domain = "ci"
+verb = "verify-main-cache-candidate"
+python_module = "larch.implement.main_cache_candidate"
+python_function = "verify_main_cache_candidate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8362
+
+[[commands]]
+domain = "ci"
 verb = "status"
 python_module = "larch.implement.ci"
 python_function = "status_main"
@@ -1526,6 +1562,20 @@ python_removal = "complete"
 planning_issue = 7685
 migration_issue = 8098
 clean_install_test = "clean-install-ci-timing-jobs"
+
+[[commands]]
+domain = "ci-timing"
+verb = "merge-group-source"
+python_module = "larch.implement.main_cache_candidate"
+python_function = "resolve_main_cache_merge_group_source_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 8362
+migration_issue = 8362
+clean_install_test = "clean-install-ci-timing-merge-group-source"
 
 [[commands]]
 domain = "ci-timing"
@@ -8515,8 +8565,14 @@ planning_issue = 7679
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "ci stage-rust-policy-candidate", "residual-bash paths"]
+python = ["checks contains-pins", "ci stage-main-cache-candidate", "ci stage-rust-policy-candidate", "residual-bash paths"]
 rust = ["ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "release plugin-runtime"]
+
+[[callers]]
+path = ".github/workflows/main-cache-publication.yaml"
+kind = "ci"
+python = ["ci promote-rust-policy-candidate", "ci verify-main-cache-candidate"]
+rust = []
 
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import shutil
@@ -15,6 +16,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -3771,6 +3773,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
 def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    publication = (
+        repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
+    ).read_text(encoding="utf-8")
     linting = (repo_root / "docs" / "linting.md").read_text(encoding="utf-8")
     coverage_action = (
         repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
@@ -3810,6 +3815,7 @@ def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
     )[0]
 
     assert "merge_group:\n    types: [checks_requested]" in workflow_trigger
+    assert "\n  push:" not in workflow_trigger
     assert "if: github.event_name == 'pull_request'" in rust_selection
     assert "github.event_name != 'pull_request'" in rust_full
     assert "if: always()" in test_harnesses_gate
@@ -3824,7 +3830,10 @@ def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
 
     assert tuple(re.findall(r"^- `([^`]+)`$", ruleset_section, re.MULTILINE)) == required_contexts
     assert "source-bound to the GitHub Actions integration (`15368`)" in ruleset_section
-    assert "strict_required_status_checks_policy` remains false" in ruleset_section
+    assert "strict_required_status_checks_policy" in ruleset_section
+    assert "full, read-only validation lane before each merge" in ruleset_section
+    assert "trusted cache-publication workflow" in ruleset_section
+    assert "exact final main\nSHA" in ruleset_section
     assert "Do not require a matrix leg or a conditional implementation detail." in ruleset_section
     for merge_queue_parameter in (
         "`ALLGREEN`",
@@ -3879,8 +3888,262 @@ def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
         )[0]
         assert re.search(r"^    if:", job, re.MULTILINE) is None, unconditionally_reported_job
 
-    for trusted_cache_surface in (rust_full, coverage_action):
-        assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in trusted_cache_surface
+    assert "actions/cache/save@" not in rust_full
+    assert "github.event_name == 'push'" not in workflow
+    assert "main-cache-candidate" in coverage_action
+    assert "main-cache-publication" in publication
+    assert "push:\n    branches:\n      - main" in publication
+    assert "workflow_dispatch:" in publication
+    assert "push:refs/heads/main|workflow_dispatch:refs/heads/main" in publication
+    assert "group: main-cache-publication" in publication
+    assert "cancel-in-progress: true" in publication
+
+
+def test_main_cache_inventory_and_publication_contract() -> None:
+    """Keep cache names, keys, validation, and trusted writers in lockstep."""
+    repo_root = Path(__file__).resolve().parents[3]
+    inventory_value: object = json.loads(
+        (repo_root / ".github" / "main-cache-inventory.json").read_text(encoding="utf-8")
+    )
+    assert isinstance(inventory_value, dict)
+    # json.loads returns an unparameterized dict; JSON object keys are strings.
+    inventory = cast("dict[str, object]", inventory_value)
+    key_action = (
+        repo_root / ".github" / "actions" / "main-cache-keys" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    validation = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
+        encoding="utf-8"
+    )
+    coverage_action = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    publication = (
+        repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
+    ).read_text(encoding="utf-8")
+    source_resolver = (
+        repo_root / "crates" / "larch-core" / "src" / "main_cache.rs"
+    ).read_text(encoding="utf-8")
+    github_auth_config = (
+        repo_root / ".github" / "actions" / "github-auth-config" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    candidate_helper = (
+        repo_root / "python" / "larch" / "implement" / "main_cache_candidate.py"
+    ).read_text(encoding="utf-8")
+
+    assert inventory["schema_version"] == 1
+    classes_value = inventory["cache_classes"]
+    assert isinstance(classes_value, list)
+    classes = cast("list[object]", classes_value)
+    assert len(classes) == 18
+    cache_class_ids: list[str] = []
+    for raw_entry in classes:
+        assert isinstance(raw_entry, dict)
+        # The JSON object is constrained by the assertions below.
+        entry = cast("dict[str, object]", raw_entry)
+        cache_class = entry["id"]
+        key_output = entry["key_output"]
+        producer = entry["producer"]
+        key_inputs = entry["key_inputs"]
+        validation_prerequisite = entry["validation"]
+        publication_event = entry["publication_event"]
+        assert isinstance(cache_class, str)
+        assert isinstance(key_output, str)
+        assert isinstance(producer, str)
+        assert isinstance(key_inputs, list)
+        assert isinstance(validation_prerequisite, str)
+        assert publication_event == "trusted-main"
+        assert key_inputs
+        assert validation_prerequisite
+        cache_class_ids.append(cache_class)
+        assert f"  {key_output}:" in key_action
+        assert f"  {producer}:" in publication
+        canonical_key_reference = f"steps.main-cache-keys.outputs.{key_output}"
+        assert canonical_key_reference in validation
+        assert canonical_key_reference in publication
+    assert len(set(cache_class_ids)) == len(classes)
+
+    assert "actions/cache/save@" not in validation
+    assert "cache: pip" not in validation
+    assert "main-cache-merge-group-source" in publication
+    assert "ci-timing merge-group-source" in publication
+    assert 'source-sha "$GITHUB_SHA"' in publication
+    assert "uses: ./.github/actions/github-auth-config" in publication
+    assert "GH_TOKEN:" not in publication
+    assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in publication
+    assert "gh api" not in publication
+    assert "resolve_main_cache_merge_group_source" in source_resolver
+    assert "workflow: Some(CI_WORKFLOW.to_owned())" in source_resolver
+    assert "event: Some(MERGE_GROUP.to_owned())" in source_resolver
+    assert "status: Some(COMPLETED.to_owned())" in source_resolver
+    assert "commit: Some(source_sha.to_owned())" in source_resolver
+    assert "expected exactly one successful CI merge-group run" in source_resolver
+    assert "successful merge-group producer is missing required Rust jobs" in source_resolver
+    assert "gh auth login --hostname github.com --with-token" in github_auth_config
+    assert "gh auth status --hostname github.com >/dev/null" in github_auth_config
+    assert 'mktemp -d "$RUNNER_TEMP/larch-gh.XXXXXX"' in github_auth_config
+    assert "unset GH_TOKEN GITHUB_TOKEN" in github_auth_config
+    assert "config-dir=%s" in github_auth_config
+    assert "actions/download-artifact@" in publication
+    assert "run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}" in publication
+    assert "ci verify-main-cache-candidate" in publication
+    for validation_operation in (
+        "pre-commit run",
+        "pytest",
+        "gitleaks detect",
+        "cargo llvm-cov",
+        "cargo nextest run",
+        "make test-harnesses",
+    ):
+        assert validation_operation not in publication
+    assert "candidate producer event is not merge_group" in candidate_helper
+    assert "candidate producer ref is not a merge-queue ref" in candidate_helper
+    assert "candidate payload members do not match its manifest" in candidate_helper
+    assert "candidate tool versions do not match the publisher contract" in candidate_helper
+    assert "_reject_tree_symlinks" in candidate_helper
+    assert (
+        '--tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"'
+        in coverage_action
+    )
+    assert (
+        '--tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"'
+        in coverage_action
+    )
+
+    candidate_artifacts = {
+        "cargo-inputs": "main-cache-cargo-inputs-candidate",
+        "rust-lint-deps": "main-cache-rust-lint-deps-candidate",
+        "cargo-nextest": "main-cache-cargo-nextest-candidate",
+        "cargo-llvm-cov": "main-cache-cargo-llvm-cov-candidate",
+        "coverage-target": "main-cache-coverage-target-candidate",
+        "rust-policy": "main-cache-rust-policy-candidate",
+    }
+    for cache_class, artifact_name in candidate_artifacts.items():
+        assert artifact_name in validation or artifact_name in coverage_action
+        assert artifact_name in publication
+        assert f"--cache-class {cache_class}" in publication
+        assert f"--artifact-name {artifact_name}" in publication
+    assert "overwrite: false" in validation
+    assert "overwrite: false" in coverage_action
+
+
+def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> None:
+    """Replay skipped cache steps after a prior failure without masking it."""
+    repo_root = Path(__file__).resolve().parents[3]
+    coverage_action = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
+
+    def run_diagnostic(
+        start: str, end: str, outcome: str, prior_failure_or_cancelled: str
+    ) -> subprocess.CompletedProcess[str]:
+        script = (
+            coverage_action.split(start, 1)[1]
+            .split(end, 1)[0]
+            .split("run: |\n", 1)[1]
+            .split("\n    - name:", 1)[0]
+        )
+        script = textwrap.dedent(script).replace(
+            "${{ steps.coverage-target-cache.outcome }}", "$DIAGNOSTIC_OUTCOME"
+        )
+        script = script.replace(
+            "${{ steps.coverage-target-cache-prune.outcome }}", "$DIAGNOSTIC_OUTCOME"
+        )
+        script = script.replace(
+            "${{ steps.coverage-target-cache.outputs.cache-hit }}",
+            "$DIAGNOSTIC_CACHE_HIT",
+        )
+        environment: dict[str, str] = os.environ.copy()
+        environment.update(
+            {
+                "COVERAGE_TARGET_CACHE_ENABLED": "true",
+                "COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES": "unavailable",
+                "COVERAGE_TARGET_CACHE_RESTORE_STARTED": "0",
+                "COVERAGE_TARGET_CACHE_SAVE_REASON": "not-available",
+                "COVERAGE_TIMING_FILE": str(tmp_path / "coverage-timing.tsv"),
+                "COVERAGE_TARGET_CACHE_INVENTORY": str(
+                    tmp_path / "coverage-inventory.tsv"
+                ),
+                "DIAGNOSTIC_CACHE_HIT": "",
+                "COVERAGE_PRIOR_FAILURE_OR_CANCELLATION": prior_failure_or_cancelled,
+                "DIAGNOSTIC_OUTCOME": outcome,
+                "GITHUB_ENV": str(tmp_path / "github-env"),
+            }
+        )
+        return subprocess.run(
+            ["bash", "-c", script],
+            check=False,
+            capture_output=True,
+            env=environment,
+            text=True,
+        )
+
+    for start, end in (
+        (
+            "Record coverage dependency cache restore diagnostics",
+            "Start Rust coverage tool setup timing",
+        ),
+        (
+            "Record coverage dependency cache prune diagnostics",
+            "Upload coverage target cache inventory",
+        ),
+    ):
+        prior_failure = run_diagnostic(start, end, "skipped", "true")
+        assert prior_failure.returncode == 0, prior_failure.stderr
+
+        unexpected_skip = run_diagnostic(start, end, "skipped", "false")
+        assert unexpected_skip.returncode != 0
+        assert "unexpected coverage target" in unexpected_skip.stderr
+
+
+def test_github_auth_config_keeps_action_token_out_of_typed_operation(tmp_path: Path) -> None:
+    """Execute the credential bootstrap with a fake gh client and inspect its boundary."""
+    repo_root = Path(__file__).resolve().parents[3]
+    action = (
+        repo_root / ".github" / "actions" / "github-auth-config" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    script = textwrap.dedent(action.split("run: |\n", 1)[1])
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        'test -z "${GH_TOKEN:-}"\n'
+        'test -z "${GITHUB_TOKEN:-}"\n'
+        'test -n "${GH_CONFIG_DIR:-}"\n'
+        'test -d "$GH_CONFIG_DIR"\n'
+        'case "$1 $2" in\n'
+        "  'auth login') IFS= read -r token; test \"$token\" = expected-action-token ;;\n"
+        "  'auth status') ;;\n"
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    github_output = tmp_path / "github-output"
+    environment: dict[str, str] = os.environ.copy()
+    environment.update(
+        {
+            "GH_TOKEN": "expected-action-token",
+            "GITHUB_OUTPUT": str(github_output),
+            "GITHUB_TOKEN": "must-not-reach-gh",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "RUNNER_TEMP": str(tmp_path),
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    config_dir = Path(github_output.read_text(encoding="utf-8").strip().removeprefix("config-dir="))
+    assert config_dir.is_dir()
+    assert config_dir.parent == tmp_path
+    assert config_dir.stat().st_mode & 0o077 == 0
 
 
 def test_rust_ci_cache_tool_and_gate_contract() -> None:
@@ -3890,6 +4153,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     supply_chain = (
         repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
     ).read_text(encoding="utf-8")
+    supply_chain_text = " ".join(supply_chain.split())
     workflow_trust = (
         repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
@@ -3900,7 +4164,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     )[0]
     policy_candidate_stage = rust_full_job.split(
         "Stage and verify Rust policy cache candidate", 1
-    )[1].split("Save trusted main Rust policy binary", 1)[0]
+    )[1].split("Upload Rust policy cache candidate", 1)[0]
     rust_coverage_job = workflow.split("\n  rust-coverage:", 1)[1].split(
         "\n  rust-coverage-benchmark:", 1
     )[0]
@@ -3930,10 +4194,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  gitleaks:", 1
     )[0]
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
-    cargo_input_key = (
-        "cargo-inputs-v1-${{ runner.os }}-${{ runner.arch }}-"
-        "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}"
-    )
 
     assert "concurrency:" in workflow
     assert "group: ${{ github.workflow }}-${{ github.event_name == 'pull_request'" in workflow
@@ -3947,8 +4207,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         'CARGO_PROFILE_TEST_DEBUG: "0"',
     ):
         assert env_value in rust_lint
-    assert cargo_input_key in rust_lint
-    assert cargo_input_key in rust_coverage
+    assert "uses: ./.github/actions/main-cache-keys" in rust_lint
+    assert "key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}" in rust_lint
+    assert "key: ${{ env.CARGO_INPUTS_CACHE_KEY }}" in rust_coverage
 
     lint_target_cache = rust_lint.split("Restore Rust lint dependencies", 1)[1].split(
         "Check Rust formatting", 1
@@ -3958,11 +4219,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "crates/**/*.rs" not in rust_lint
     assert "cargo clean --workspace" in rust_lint
     assert "actions/cache/restore@" + cache_sha in rust_lint
-    assert "actions/cache/save@" + cache_sha in rust_lint
-    assert (
-        "github.event_name == 'push' && github.ref == 'refs/heads/main'"
-        " && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'"
-    ) in rust_lint
+    assert "actions/cache/save@" + cache_sha not in rust_lint
+    assert "Stage Rust lint dependency cache candidate" in rust_lint
+    assert "main-cache-rust-lint-deps-candidate" in rust_lint
 
     lint_input_cache = rust_lint.split("Restore Cargo inputs", 1)[1].split(
         "Restore Rust lint dependencies", 1
@@ -3976,9 +4235,15 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_target_restore_diagnostics = rust_coverage.split(
         "Record coverage dependency cache restore diagnostics", 1
     )[1].split("Start Rust coverage tool setup timing", 1)[0]
+    cache_restore_timing = rust_coverage.split(
+        "Record Rust coverage cache restore timing", 1
+    )[1].split("Record coverage dependency cache restore diagnostics", 1)[0]
     coverage_target_prune = rust_coverage.split(
         "Prune coverage workspace products before target cache save", 1
     )[1].split("Record coverage dependency cache prune diagnostics", 1)[0]
+    coverage_target_prune_diagnostics = rust_coverage.split(
+        "Record coverage dependency cache prune diagnostics", 1
+    )[1].split("Upload coverage target cache inventory", 1)[0]
     coverage_target_save = rust_coverage.split("Save coverage dependencies", 1)[1].split(
         "Record coverage dependency cache save diagnostics", 1
     )[0]
@@ -3990,18 +4255,6 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert "actions/cache/restore@" + cache_sha in input_cache
         assert "actions/cache@" + cache_sha not in input_cache
 
-    coverage_target_key = (
-        "${{ env.COVERAGE_TARGET_CACHE_KEY_PREFIX }}-${{ env.COVERAGE_TARGET_CACHE_SCHEMA }}-"
-        "${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_COVERAGE_TARGET_TRIPLE }}-"
-        "${{ env.CARGO_LLVM_COV_VERSION }}-"
-        "opt${{ env.CARGO_PROFILE_TEST_OPT_LEVEL }}-"
-        "test-debug${{ env.CARGO_PROFILE_TEST_DEBUG }}-"
-        "incremental${{ env.CARGO_INCREMENTAL }}-"
-        "features${{ env.RUST_COVERAGE_FEATURE_MODE }}-"
-        "linker${{ env.RUST_COVERAGE_LINKER }}-"
-        "${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', "
-        "'crates/**/Cargo.toml', '.cargo/**') }}"
-    )
     assert (
         "COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && "
         "inputs.coverage_target_cache_benchmark && 'false' || 'true' }}"
@@ -4021,12 +4274,12 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         if "github.event_name" in body or "github.ref" in body
     }
     assert event_varying_steps == {
-        "Restore trusted main Rust policy cache key",
-        "Save trusted main Rust policy binary",
+        "Look up trusted main Rust policy cache key",
+        "Stage and verify Rust policy cache candidate",
+        "Upload Rust policy cache candidate",
     }
     for step_name in event_varying_steps:
-        assert "actions/cache/" in named_full_steps[step_name]
-        assert "run: |" not in named_full_steps[step_name]
+        assert "main-cache" in named_full_steps[step_name] or "actions/cache/" in named_full_steps[step_name]
     named_coverage_steps = {
         match.group("name"): match.group("body")
         for match in re.finditer(
@@ -4036,11 +4289,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     }
     for coverage_step in named_coverage_steps.values():
         if "run: |" in coverage_step:
-            assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" not in coverage_step
+            assert "github.event_name == 'push'" not in coverage_step
     for coverage_job in (rust_full_job, rust_coverage_benchmark):
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
-        assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-push"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-cache-candidate"' in coverage_job
         assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
         assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
         assert 'RUST_COVERAGE_LINKER: "runner-default"' in coverage_job
@@ -4048,7 +4301,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage_benchmark
     assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage_benchmark
     assert "path: target/llvm-cov-target" in coverage_target_restore
-    assert coverage_target_key in coverage_target_restore
+    assert "key: ${{ env.COVERAGE_TARGET_CACHE_KEY }}" in coverage_target_restore
     assert "actions/cache/restore@" + cache_sha in coverage_target_restore
     assert "restore-keys:" not in coverage_target_restore
     assert "~/.cargo" not in coverage_target_restore
@@ -4076,13 +4329,19 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert run_specific_output in coverage_target_prune
     assert "actions/cache/save@" + cache_sha in coverage_target_save
     assert "path: target/llvm-cov-target" in coverage_target_save
-    assert "env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-push'" in coverage_target_save
-    assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in coverage_target_save
     assert "env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-dispatch-benchmark'" in coverage_target_save
     assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in coverage_target_save
     assert "steps.coverage-target-cache.outputs.cache-hit != 'true'" in coverage_target_save
     assert "steps.coverage-target-cache-prune.outcome == 'success'" in coverage_target_save
     assert "env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'" in coverage_target_save
+    assert "skipped)" in coverage_target_prune_diagnostics
+    assert (
+        'prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"'
+        in coverage_target_prune_diagnostics
+    )
+    assert '"$prior_failure_or_cancelled" = true' in coverage_target_prune_diagnostics
+    assert "if: failure() && !cancelled()" in rust_coverage
+    assert "if: cancelled()" in rust_coverage
     assert "coverage-target-cache-restore" in rust_coverage
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
@@ -4097,6 +4356,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'du -sk "$coverage_target_dir"' in coverage_target_restore_diagnostics
     assert 'restored_bytes="$((restored_kib * 1024))"' in coverage_target_restore_diagnostics
     assert "restored_bytes=0" in coverage_target_restore_diagnostics
+    assert "skipped)" in coverage_target_restore_diagnostics
+    assert (
+        'prior_failure_or_cancelled="${COVERAGE_PRIOR_FAILURE_OR_CANCELLATION:?}"'
+        in coverage_target_restore_diagnostics
+    )
+    assert '"$prior_failure_or_cancelled" = true' in coverage_target_restore_diagnostics
+    assert "*skipped*) outcome=skipped" in cache_restore_timing
     assert "rust-coverage-target-cache-inventory" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
         "Prune coverage workspace products before target cache save"
@@ -4111,22 +4377,23 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Save coverage dependencies"
     )
 
-    for rust_job in (rust_lint, rust_coverage):
-        cargo_input_save = rust_job.split("Save Cargo inputs", 1)[1]
-        assert "actions/cache/save@" + cache_sha in cargo_input_save
-        assert (
-            "github.event_name == 'push' && github.ref == 'refs/heads/main'"
-            " && steps.cargo-inputs-cache.outputs.cache-hit != 'true'"
-        ) in cargo_input_save
-        assert "key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}" in cargo_input_save
+    assert "Stage Cargo inputs cache candidate" in rust_lint
+    assert "main-cache-cargo-inputs-candidate" in rust_lint
+    assert "Stage Cargo inputs cache candidate" not in rust_coverage
+    for candidate_name in (
+        "Stage cargo-nextest cache candidate",
+        "Stage cargo-llvm-cov cache candidate",
+        "Stage pruned coverage dependency cache candidate",
+    ):
+        assert candidate_name in rust_coverage
 
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
     assert "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1" in rust_deny
     assert "arguments: --locked --all-features" in rust_deny
     assert "path: ~/.cargo/bin/cargo-nextest" in rust_coverage
     assert "path: ~/.cargo/bin/cargo-llvm-cov" in rust_coverage
-    assert "cargo-nextest-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_NEXTEST_VERSION }}" in rust_coverage
-    assert "cargo-llvm-cov-bin-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_LLVM_COV_VERSION }}" in rust_coverage
+    assert "key: ${{ env.CARGO_NEXTEST_CACHE_KEY }}" in rust_coverage
+    assert "key: ${{ env.CARGO_LLVM_COV_CACHE_KEY }}" in rust_coverage
     for checksum in (
         "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311",
         "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550",
@@ -4240,7 +4507,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "cache-save",
     ):
         assert timing_phase in rust_coverage
-    assert "workflow_dispatch-read-only" in rust_coverage
+    assert "validation-read-only" in rust_coverage
     assert "workflow_dispatch-main-benchmark-hit" in rust_coverage
     assert 'case "${RUST_COVERAGE_PHASE_MODE:?}" in' in rust_coverage
     assert "require_process_scoped_profile()" in rust_coverage
@@ -4333,20 +4600,27 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "sha256sum larch > larch.sha256" not in prepared_artifact
     assert "github.event_name" not in prepared_artifact
     assert "github.ref" not in prepared_artifact
-    assert "github.event_name" not in policy_candidate_stage
+    assert "github.event_name == 'merge_group'" in policy_candidate_stage
     assert "github.ref" not in policy_candidate_stage
-    assert policy_candidate_stage.count("$GITHUB_EVENT_NAME") == 1
-    assert policy_candidate_stage.count("$GITHUB_REF") == 1
+    assert policy_candidate_stage.count("$GITHUB_EVENT_NAME") == 2
+    assert policy_candidate_stage.count("$GITHUB_REF") == 2
+    assert 'mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"' in policy_candidate_stage
+    assert policy_candidate_stage.index(
+        'mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"'
+    ) < policy_candidate_stage.index("ci stage-rust-policy-candidate")
     for candidate_argument in (
         "ci stage-rust-policy-candidate",
         '--artifact-dir "$RUNNER_TEMP/larch-linux-test-binary"',
-        '--policy-dir "$RUNNER_TEMP/trusted-main-rust-policy"',
+        '--policy-dir "$RUNNER_TEMP/main-cache-rust-policy/policy"',
         '--event-name "$GITHUB_EVENT_NAME"',
         '--ref "$GITHUB_REF"',
         '--source-sha "$GITHUB_SHA"',
         '--rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"',
     ):
         assert candidate_argument in policy_candidate_stage
+    assert "ci stage-main-cache-candidate" in policy_candidate_stage
+    assert "--cache-class rust-policy" in policy_candidate_stage
+    assert '--source "policy=$RUNNER_TEMP/main-cache-rust-policy/policy"' in policy_candidate_stage
     assert "target/llvm-cov-target" not in policy_candidate_stage
     assert rust_coverage.index('run_timed "repository-policy-${test_threads}"') < rust_coverage.index(
         "coverage-report-${test_threads}"
@@ -4369,20 +4643,21 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "before `cargo llvm-cov report`" in rust_testing
     for cache_contract in (
         "restore-only cache action",
-        "workflow_dispatch-read-only",
-        "cannot publish Cargo inputs",
+        "validation-read-only",
+        "cannot publish Cargo\ninputs",
     ):
         assert cache_contract in rust_testing
     assert "rust-build-test" not in rust_testing
     assert "coverage-target executable" in rust_testing
     assert "workflow_dispatch" in supply_chain
     assert "cannot publish" in supply_chain
-    assert "coverage compiler-dependency cache" in supply_chain
-    assert "three comparable warm-cache" in supply_chain
+    assert "coverage compiler-dependency cache" in supply_chain_text
+    assert "same exact keys" in supply_chain_text
+    assert "successful `CI` merge-group run" in supply_chain_text
     assert "restore-keys" in supply_chain
-    assert "Every `rust-full` execution stages and verifies a policy-cache candidate" in supply_chain
+    assert "successful `rust-full` merge-group run stages" in supply_chain
     assert "same checksum" in supply_chain
-    assert "current-checkout" in supply_chain
+    assert "fixed `merge-group` label" in supply_chain
     assert "primary-key miss" in supply_chain
     assert "2 GiB" in supply_chain
     assert "coverage-target-deps-benchmark" in supply_chain
@@ -4399,7 +4674,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "Upload coverage-built Rust executable for cross-language integration tests"
     )
     assert rust_coverage.index("Upload coverage-built Rust executable for cross-language integration tests") < rust_coverage.index(
-        "Save cargo-nextest binary"
+        "Stage cargo-nextest cache candidate"
     )
 
     assert "needs: [rust-selection, rust-full, rust-partial, rust-skip]" in rust_coverage_job
@@ -4472,6 +4747,15 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
         encoding="utf-8"
     )
     gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
+    bootstrap = (
+        repo_root / ".github" / "actions" / "gitleaks-bootstrap" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    publication = (
+        repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
+    ).read_text(encoding="utf-8")
+    publisher = publication.split("\n  main-cache-gitleaks:", 1)[1].split(
+        "\n  main-cache-probe:", 1
+    )[0]
     supply_chain = (
         repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
     ).read_text(encoding="utf-8")
@@ -4505,10 +4789,6 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
     cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
     archive_sha = "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
     binary_sha = "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
-    cache_key = (
-        "gitleaks-release-v2-${{ runner.os }}-${{ runner.arch }}-"
-        "${{ env.GITLEAKS_VERSION }}-${{ env.GITLEAKS_BINARY_SHA256 }}"
-    )
 
     assert "runs-on: ubuntu-24.04" in gitleaks
     assert "id: gitleaks-checkout-start" in gitleaks
@@ -4529,55 +4809,56 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
 
     assert "id: gitleaks-cache" in gitleaks
     assert "actions/cache/restore@" + cache_sha in gitleaks
-    assert "actions/cache/save@" + cache_sha in gitleaks
+    assert "actions/cache/save@" + cache_sha not in gitleaks
     assert "actions/cache@v5" not in gitleaks
     assert "path: ~/.cache/larch/tools/gitleaks" in gitleaks
-    assert cache_key in gitleaks
-    assert (
-        "success() && github.event_name == 'push' && github.ref == 'refs/heads/main'"
-        " && steps.gitleaks-cache.outputs.cache-hit != 'true'"
-    ) in gitleaks
-    assert gitleaks.index("Save verified gitleaks binary") > gitleaks.index(
-        "Scan git history"
-    )
+    assert "key: ${{ steps.main-cache-keys.outputs.gitleaks }}" in gitleaks
+    main_cache_keys = (
+        repo_root / ".github" / "actions" / "main-cache-keys" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    assert "printf 'gitleaks=gitleaks-release-v2-%s-%s-%s-%s\\n'" in main_cache_keys
+    assert '"$RUNNER_OS" "$RUNNER_ARCH" "$GITLEAKS_VERSION" "$GITLEAKS_BINARY_SHA256"' in main_cache_keys
+    assert "uses: ./.github/actions/gitleaks-bootstrap" in gitleaks
+    assert "actions/cache/save@" + cache_sha in publisher
+    assert "gitleaks detect" not in publisher
 
-    assert "if ! gitleaks_is_verified; then" in gitleaks
-    assert "gitleaks_is_verified || {" in gitleaks
-    assert '[ ! -d "$directory" ] || [ -L "$directory" ]' in gitleaks
-    assert '[ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]' in gitleaks
-    assert "gitleaks cache entry is not a regular file" in gitleaks
-    assert "verified gitleaks release failed post-install validation" in gitleaks
-    assert gitleaks.count("env -i") == 3
-    assert "GIT_TERMINAL_PROMPT=0" in gitleaks
-    assert "--proto '=https' --proto-redir '=https'" in gitleaks
+    assert "if ! gitleaks_is_verified; then" in bootstrap
+    assert "gitleaks_is_verified || {" in bootstrap
+    assert '[ ! -d "$directory" ] || [ -L "$directory" ]' in bootstrap
+    assert '[ ! -f "$gitleaks_binary" ] || [ -L "$gitleaks_binary" ]' in bootstrap
+    assert "gitleaks cache entry is not a regular file" in bootstrap
+    assert "verified gitleaks release failed post-install validation" in bootstrap
+    assert (gitleaks + bootstrap).count("env -i") == 3
+    assert "GIT_TERMINAL_PROMPT=0" in bootstrap
+    assert "--proto '=https' --proto-redir '=https'" in bootstrap
     assert (
         "--retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 --max-time 120"
-        in gitleaks
+        in bootstrap
     )
-    assert "--max-filesize 16777216" in gitleaks
+    assert "--max-filesize 16777216" in bootstrap
     assert (
         "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-        in gitleaks
+        in bootstrap
     )
-    assert gitleaks.count("sha256sum --check --strict --status -") >= 4
+    assert bootstrap.count("sha256sum --check --strict --status -") >= 2
     assert (
         "expected_gitleaks_members=\"$(printf '%s\\n' LICENSE README.md gitleaks)\""
-        in gitleaks
+        in bootstrap
     )
     assert (
         'actual_gitleaks_members="$(tar -tzf "$gitleaks_archive" | LC_ALL=C sort)"'
-        in gitleaks
+        in bootstrap
     )
-    assert 'test "$actual_gitleaks_members" = "$expected_gitleaks_members"' in gitleaks
-    assert 'tar -xzf "$gitleaks_archive" -C "$temporary" -- gitleaks' in gitleaks
-    assert 'install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"' in gitleaks
-    assert 'test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"' in gitleaks
+    assert 'test "$actual_gitleaks_members" = "$expected_gitleaks_members"' in bootstrap
+    assert 'tar -xzf "$gitleaks_archive" -C "$temporary" -- gitleaks' in bootstrap
+    assert 'install -m 0755 "${temporary}/gitleaks" "$gitleaks_binary"' in bootstrap
+    assert 'test "$(run_gitleaks version)" = "$GITLEAKS_VERSION"' in bootstrap
 
     working_tree = gitleaks.split("- name: Scan working tree", 1)[1].split(
         "- name: Scan git history", 1
     )[0]
     history = gitleaks.split("- name: Scan git history", 1)[1].split(
-        "- name: Save verified gitleaks binary", 1
+        "- name: Record gitleaks phase timing metadata", 1
     )[0]
     assert (
         'detect --source . --config "$GITHUB_WORKSPACE/.gitleaks.toml" --redact --no-banner --no-git'
@@ -4605,7 +4886,7 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
     assert "typed Rust history resolver" in supply_chain
     assert "16 MiB archive-size cap" in supply_chain
     assert (
-        "pull-request-provided executable cannot cross into the trusted-main cache"
+        "pull-request-provided executable cannot cross into the\ntrusted-main cache"
         in supply_chain
     )
     assert "workflow-local installer" in artifacts
@@ -4620,16 +4901,16 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
 
 
 def _gitleaks_ci_preparation_script(repo_root: Path) -> str:
-    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
-        encoding="utf-8"
-    )
-    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
-    preparation = gitleaks.split(
-        "      - name: Prepare verified gitleaks release\n"
-        "        id: prepare-gitleaks\n"
-        "        run: |\n",
+    bootstrap = (
+        repo_root / ".github" / "actions" / "gitleaks-bootstrap" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    preparation = bootstrap.split(
+        "    - name: Prepare verified gitleaks release\n"
+        "      id: prepare-gitleaks\n"
+        "      shell: bash\n"
+        "      run: |\n",
         1,
-    )[1].split("      - name: Scan working tree", 1)[0]
+    )[1]
     return textwrap.dedent(preparation)
 
 
@@ -4880,8 +5161,8 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     assert "`rust-coverage` is not an execution lane: it is the stable required aggregate." in coverage_text
     assert "it validates the selected mode and every producer result" in coverage_text
     assert (
-        "Pushes to `main`, manual dispatches, scheduled runs, merge-queue runs, and unknown events "
-        "always use `rust-full`"
+        "Manual dispatches and merge-queue runs use `rust-full`; a normal `main` push runs only "
+        "trusted cache publication."
         in coverage_text
     )
     assert "`rust-partial` and `rust-skip` may be the selected producer only for pull requests." in coverage_text
@@ -4960,7 +5241,8 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "git merge-base" not in selector_job
     assert "git fetch" not in selector_job
     assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
-    assert "trusted-main-rust-policy-v1" in selector_job
+    assert "uses: ./.github/actions/main-cache-keys" in selector_job
+    assert "key: ${{ steps.main-cache-keys.outputs.rust-policy }}" in selector_job
     assert "'build.rs'" in selector_job
     assert "'crates/**/*.rs'" in selector_job
     assert "'**/*.rs'" not in selector_job
@@ -5025,7 +5307,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "Rust core redaction boundary",
         "scrub failure emits a static",
         "full-rust-ci",
-        "periodic full-run backstop",
+        "merge group is the per-merge full-run backstop",
         "observation-window-open",
         "Promotion is intentionally manual and class-specific",
     ):
@@ -5045,7 +5327,8 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     ):
         assert required_detail in workflow_trust
     for required_detail in (
-        "Only a successful\nfull `push` to `refs/heads/main` may save it",
+        "Only the trusted\npublisher may save it",
+        "exact successful merge-group source",
         "exact key binds",
         "The skip lane\nrepeats those checks",
         "Skip enforcement is enabled only after",

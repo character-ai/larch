@@ -20,6 +20,7 @@ _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SOURCE_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _CHECKSUM_RE: Final = re.compile(r"^([0-9a-f]{64})  larch\n$")
 _CURRENT_CHECKOUT_PROVENANCE: Final = "current-checkout"
+_MERGE_GROUP_PROVENANCE: Final = "merge-group"
 _TRUSTED_MAIN_PROVENANCE: Final = "refs/heads/main"
 _VERSION_TIMEOUT_SECONDS: Final = 10
 _HASH_CHUNK_BYTES: Final = 1024 * 1024
@@ -47,6 +48,16 @@ class PolicyCandidateRequest:
     policy_dir: Path
     event_name: str
     ref: str
+    source_sha: str
+    rust_inputs_sha256: str
+
+
+@dataclass(frozen=True)
+class PolicyPromotionRequest:
+    """Inputs needed to turn a verified merge-group bundle into main provenance."""
+
+    artifact_dir: Path
+    policy_dir: Path
     source_sha: str
     rust_inputs_sha256: str
 
@@ -152,7 +163,45 @@ def candidate_producer_ref(*, event_name: str, ref: str) -> str:
     """Return a fixed provenance label; arbitrary refs never enter the cache."""
     if event_name == "push" and ref == _TRUSTED_MAIN_PROVENANCE:
         return _TRUSTED_MAIN_PROVENANCE
+    if event_name == "merge_group":
+        return _MERGE_GROUP_PROVENANCE
     return _CURRENT_CHECKOUT_PROVENANCE
+
+
+def promote_policy_candidate(
+    request: PolicyPromotionRequest,
+    *,
+    version_reader: VersionReader = _read_binary_version,
+) -> VerifiedArtifact:
+    """Rewrite verified merge-group provenance only after the final SHA matches."""
+    source_sha = _require_source_sha(request.source_sha)
+    rust_inputs_sha256 = _require_sha256(request.rust_inputs_sha256, name="Rust-input digest")
+    artifact = _verify_bundle(
+        request.artifact_dir,
+        expected_producer_ref=_MERGE_GROUP_PROVENANCE,
+        expected_source_sha=source_sha,
+        expected_rust_inputs_sha256=rust_inputs_sha256,
+        version_reader=version_reader,
+    )
+    _replace_directory(request.policy_dir, label="promoted policy directory")
+    for filename in ("larch", "larch.sha256", "source-sha", "rust-inputs-sha256", "version"):
+        source = request.artifact_dir / filename
+        destination = request.policy_dir / filename
+        if filename == "larch":
+            _copy_executable(source, destination)
+        else:
+            _copy_regular_file(source, destination)
+    _write_text(request.policy_dir / "producer-ref", f"{_TRUSTED_MAIN_PROVENANCE}\n")
+    promoted = _verify_bundle(
+        request.policy_dir,
+        expected_producer_ref=_TRUSTED_MAIN_PROVENANCE,
+        expected_source_sha=source_sha,
+        expected_rust_inputs_sha256=rust_inputs_sha256,
+        version_reader=version_reader,
+    )
+    if promoted.sha256 != artifact.sha256:
+        raise CandidateError("promoted policy executable checksum does not match merge-group artifact")
+    return promoted
 
 
 def prepare_integration_artifact_main(argv: list[str]) -> int:
@@ -199,6 +248,28 @@ def stage_policy_candidate_main(argv: list[str]) -> int:
         _ = stage_policy_candidate(request)
     except CandidateError as exc:
         print(f"Rust policy candidate staging failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def promote_policy_candidate_main(argv: list[str]) -> int:
+    """CLI entrypoint for trusted main publication after artifact verification."""
+    parser = argparse.ArgumentParser(prog="cli.py ci promote-rust-policy-candidate")
+    _ = parser.add_argument("--artifact-dir", required=True)
+    _ = parser.add_argument("--policy-dir", required=True)
+    _ = parser.add_argument("--source-sha", required=True)
+    _ = parser.add_argument("--rust-inputs-sha256", required=True)
+    args = parser.parse_args(argv)
+    request = PolicyPromotionRequest(
+        artifact_dir=Path(str(args.artifact_dir)),
+        policy_dir=Path(str(args.policy_dir)),
+        source_sha=str(args.source_sha),
+        rust_inputs_sha256=str(args.rust_inputs_sha256),
+    )
+    try:
+        _ = promote_policy_candidate(request)
+    except CandidateError as exc:
+        print(f"Rust policy candidate promotion failed: {exc}", file=sys.stderr)
         return 1
     return 0
 

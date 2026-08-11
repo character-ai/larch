@@ -1,0 +1,704 @@
+name: Main cache publication
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: main-cache-publication
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  main-cache-admission:
+    name: main-cache-admission
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the trusted main publication boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            push:refs/heads/main|workflow_dispatch:refs/heads/main) ;;
+            *)
+              printf '::error::Main cache publication refuses %s on %s\n' "$GITHUB_EVENT_NAME" "$GITHUB_REF"
+              exit 1
+              ;;
+          esac
+
+  main-cache-lint:
+    name: main-cache-lint
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: pip-lint-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-lint }}
+      - id: pip-shellcheck-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-shellcheck }}
+      - id: pre-commit-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ steps.main-cache-keys.outputs.pre-commit }}
+      - name: Populate lint and pre-commit caches on a miss
+        if: steps.pip-lint-cache.outputs.cache-hit != 'true' || steps.pre-commit-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: |
+          set -euo pipefail
+          pip install -r .github/workflows/requirements-lint.txt
+          pre-commit install-hooks
+      - name: Populate shellcheck pip cache on a miss
+        if: steps.pip-shellcheck-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: pip install shellcheck-py==0.11.0.1
+      - name: Save lint pip cache
+        if: success() && steps.pip-lint-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-lint }}
+      - name: Save shellcheck pip cache
+        if: success() && steps.pip-shellcheck-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-shellcheck }}
+      - name: Save pre-commit hook environments
+        if: success() && steps.pre-commit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ steps.main-cache-keys.outputs.pre-commit }}
+
+  main-cache-test-harnesses:
+    name: main-cache-test-harnesses
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: site-packages
+        shell: bash
+        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
+      - id: pip-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-test-harnesses }}
+      - id: site-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ steps.main-cache-keys.outputs.site-test-harnesses }}
+      - name: Populate test-harness packages on a miss
+        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.site-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: pip install -r .github/workflows/requirements-test-harnesses.txt
+      - name: Save test-harness pip cache
+        if: success() && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-test-harnesses }}
+      - name: Save test-harness site-packages
+        if: success() && steps.site-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ steps.main-cache-keys.outputs.site-test-harnesses }}
+
+  main-cache-agent-tools:
+    name: main-cache-agent-tools
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: pip-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-agent-linters }}
+      - id: agent-lint-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: /usr/local/bin/agent-lint
+          key: ${{ steps.main-cache-keys.outputs.agent-lint }}
+      - id: agnix-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: /usr/local/bin/agnix
+          key: ${{ steps.main-cache-keys.outputs.agnix }}
+      - name: Populate agent-linter pip cache on a miss
+        if: steps.pip-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: pip install -r .github/workflows/requirements-agent-linters.txt
+      - uses: ./.github/actions/agent-tools-bootstrap
+      - name: Save agent-linter pip cache
+        if: success() && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-agent-linters }}
+      - name: Save verified agent-lint
+        if: success() && steps.agent-lint-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: /usr/local/bin/agent-lint
+          key: ${{ steps.main-cache-keys.outputs.agent-lint }}
+      - name: Save verified agnix
+        if: success() && steps.agnix-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: /usr/local/bin/agnix
+          key: ${{ steps.main-cache-keys.outputs.agnix }}
+
+  main-cache-python-dev:
+    name: main-cache-python-dev
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: pip-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-python-dev }}
+      - name: Populate Python development pip cache on a miss
+        if: steps.pip-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: pip install -r python/requirements-dev.txt
+      - name: Save Python development pip cache
+        if: success() && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-python-dev }}
+
+  main-cache-python-tests:
+    name: main-cache-python-tests
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/design/
+            !/larch-logs/shared/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: site-packages
+        shell: bash
+        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
+      - id: pip-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-python-test }}
+      - id: site-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ steps.main-cache-keys.outputs.site-python-test }}
+      - name: Populate Python test packages on a miss
+        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.site-cache.outputs.cache-hit != 'true'
+        env:
+          PIP_DEFAULT_TIMEOUT: "30"
+          PIP_RETRIES: "5"
+        run: pip install -r python/requirements-test.txt
+      - name: Save Python test pip cache
+        if: success() && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.main-cache-keys.outputs.pip-python-test }}
+      - name: Save Python test site-packages
+        if: success() && steps.site-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ steps.main-cache-keys.outputs.site-python-test }}
+
+  main-cache-gitleaks:
+    name: main-cache-gitleaks
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    env:
+      GITLEAKS_ARCHIVE_SHA256: "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
+      GITLEAKS_BINARY_SHA256: "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
+      GITLEAKS_VERSION: "8.18.4"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /.github/actions/gitleaks-bootstrap/
+            /.github/actions/main-cache-keys/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - id: gitleaks-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/larch/tools/gitleaks
+          key: ${{ steps.main-cache-keys.outputs.gitleaks }}
+      - uses: ./.github/actions/gitleaks-bootstrap
+      - name: Save verified gitleaks binary
+        if: success() && steps.gitleaks-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/larch/tools/gitleaks
+          key: ${{ steps.main-cache-keys.outputs.gitleaks }}
+
+  main-cache-probe:
+    name: main-cache-probe
+    needs: [main-cache-admission]
+    runs-on: ubuntu-24.04
+    outputs:
+      rust-candidates-needed: ${{ steps.evaluate.outputs.rust-candidates-needed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/cargo-inputs
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+          lookup-only: true
+      - id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/rust-lint-deps
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
+          lookup-only: true
+      - id: nextest-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/cargo-nextest
+          key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
+          lookup-only: true
+      - id: llvm-cov-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/cargo-llvm-cov
+          key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
+          lookup-only: true
+      - id: coverage-target-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/coverage-target
+          key: ${{ steps.main-cache-keys.outputs.coverage-target }}
+          lookup-only: true
+      - id: rust-policy-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-probe/rust-policy
+          key: ${{ steps.main-cache-keys.outputs.rust-policy }}
+          lookup-only: true
+      - id: evaluate
+        shell: bash
+        run: |
+          set -euo pipefail
+          hits='${{ steps.cargo-inputs-cache.outputs.cache-hit }},${{ steps.rust-lint-deps-cache.outputs.cache-hit }},${{ steps.nextest-cache.outputs.cache-hit }},${{ steps.llvm-cov-cache.outputs.cache-hit }},${{ steps.coverage-target-cache.outputs.cache-hit }},${{ steps.rust-policy-cache.outputs.cache-hit }}'
+          if [ "$hits" = 'true,true,true,true,true,true' ]; then
+            needed=false
+          else
+            needed=true
+          fi
+          printf 'rust-candidates-needed=%s\n' "$needed" >> "$GITHUB_OUTPUT"
+
+  main-cache-merge-group-source:
+    name: main-cache-merge-group-source
+    needs: [main-cache-probe]
+    if: needs.main-cache-probe.outputs.rust-candidates-needed == 'true'
+    runs-on: ubuntu-24.04
+    outputs:
+      run-id: ${{ steps.source.outputs.run-id }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - name: Configure isolated GitHub CLI credentials
+        id: github-auth
+        uses: ./.github/actions/github-auth-config
+        with:
+          token: ${{ github.token }}
+      - name: Resolve the exact successful merge-group producer run
+        id: source
+        shell: bash
+        env:
+          GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}
+        run: |
+          set -euo pipefail
+          cargo run --quiet --locked --package larch-cli -- \
+            ci-timing merge-group-source \
+            --repo "$GITHUB_REPOSITORY" \
+            --source-sha "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+  main-cache-rust-promotion:
+    name: main-cache-rust-promotion
+    needs: [main-cache-admission, main-cache-probe, main-cache-merge-group-source]
+    if: >-
+      always() && needs.main-cache-admission.result == 'success' &&
+      (needs.main-cache-probe.outputs.rust-candidates-needed == 'false' ||
+      needs.main-cache-merge-group-source.result == 'success')
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_LLVM_COV_BINARY_SHA256: "8bff2fb8e14655f92d50afe7873945c6e46981505f3f3469683bf11da1ff8042"
+      CARGO_LLVM_COV_VERSION: "0.8.7"
+      CARGO_NEXTEST_BINARY_SHA256: "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550"
+      CARGO_NEXTEST_VERSION: "0.9.137"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - id: main-cache-keys
+        uses: ./.github/actions/main-cache-keys
+      - name: Read pinned Rust toolchain identity
+        id: rust-toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_version="$(cargo --version)"
+          rustc_version="$(rustc --version)"
+          case "$cargo_version:$rustc_version" in
+            *$'\n'*|*$'\r'*) printf 'invalid Rust toolchain identity\n' >&2; exit 1 ;;
+          esac
+          printf 'cargo-version=%s\n' "$cargo_version" >> "$GITHUB_OUTPUT"
+          printf 'rustc-version=%s\n' "$rustc_version" >> "$GITHUB_OUTPUT"
+      - name: Prepare publication workspace
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/main-cache-promoted"
+      - id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/cargo-inputs
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+          lookup-only: true
+      - id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/rust-lint-deps
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
+          lookup-only: true
+      - id: nextest-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/cargo-nextest
+          key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
+          lookup-only: true
+      - id: llvm-cov-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/cargo-llvm-cov
+          key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
+          lookup-only: true
+      - id: coverage-target-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/coverage-target
+          key: ${{ steps.main-cache-keys.outputs.coverage-target }}
+          lookup-only: true
+      - id: rust-policy-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/rust-policy
+          key: ${{ steps.main-cache-keys.outputs.rust-policy }}
+          lookup-only: true
+      - name: Download Cargo inputs candidate
+        if: steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-cargo-inputs-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/cargo-inputs
+      - name: Verify Cargo inputs candidate
+        if: steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-inputs" \
+            --artifact-name main-cache-cargo-inputs-candidate \
+            --cache-class cargo-inputs \
+            --cache-key '${{ steps.main-cache-keys.outputs.cargo-inputs }}' \
+            --maximum-bytes 0 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/cargo-inputs" \
+            --producer-job rust-lint \
+            --source-sha "$GITHUB_SHA" \
+            --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
+            --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
+      - name: Save verified Cargo inputs
+        if: success() && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/main-cache-promoted/cargo-inputs/registry
+            ${{ runner.temp }}/main-cache-promoted/cargo-inputs/git
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+      - name: Download Rust lint dependency candidate
+        if: steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-rust-lint-deps-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/rust-lint-deps
+      - name: Verify Rust lint dependency candidate
+        if: steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/rust-lint-deps" \
+            --artifact-name main-cache-rust-lint-deps-candidate \
+            --cache-class rust-lint-deps \
+            --cache-key '${{ steps.main-cache-keys.outputs.rust-lint-deps }}' \
+            --maximum-bytes 0 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/rust-lint-deps" \
+            --producer-job rust-lint \
+            --source-sha "$GITHUB_SHA" \
+            --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
+            --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
+      - name: Save verified Rust lint dependencies
+        if: success() && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/rust-lint-deps/debug
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
+      - name: Download cargo-nextest candidate
+        if: steps.nextest-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-cargo-nextest-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/cargo-nextest
+      - name: Verify cargo-nextest candidate
+        if: steps.nextest-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-nextest" \
+            --artifact-name main-cache-cargo-nextest-candidate \
+            --cache-class cargo-nextest \
+            --cache-key '${{ steps.main-cache-keys.outputs.cargo-nextest }}' \
+            --maximum-bytes 0 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/cargo-nextest" \
+            --producer-job rust-full \
+            --source-sha "$GITHUB_SHA" \
+          --expected-tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"
+          nextest_binary="$RUNNER_TEMP/main-cache-promoted/cargo-nextest/cargo-nextest"
+          printf '%s  %s\n' "$CARGO_NEXTEST_BINARY_SHA256" "$nextest_binary" | sha256sum --check --strict --status -
+          nextest_version="$("$nextest_binary" --version)"
+          case "$nextest_version" in
+            "cargo-nextest ${CARGO_NEXTEST_VERSION}"|"cargo-nextest ${CARGO_NEXTEST_VERSION} "*|"cargo-nextest ${CARGO_NEXTEST_VERSION}"$'\n'*) ;;
+            *) printf 'unexpected cargo-nextest version: %s\n' "$nextest_version" >&2; exit 1 ;;
+          esac
+      - name: Save verified cargo-nextest
+        if: success() && steps.nextest-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/cargo-nextest/cargo-nextest
+          key: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
+      - name: Download cargo-llvm-cov candidate
+        if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-cargo-llvm-cov-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/cargo-llvm-cov
+      - name: Verify cargo-llvm-cov candidate
+        if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-llvm-cov" \
+            --artifact-name main-cache-cargo-llvm-cov-candidate \
+            --cache-class cargo-llvm-cov \
+            --cache-key '${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}' \
+            --maximum-bytes 0 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov" \
+            --producer-job rust-full \
+            --source-sha "$GITHUB_SHA" \
+          --expected-tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
+          llvm_cov_binary="$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov"
+          printf '%s  %s\n' "$CARGO_LLVM_COV_BINARY_SHA256" "$llvm_cov_binary" | sha256sum --check --strict --status -
+          llvm_cov_version="$("$llvm_cov_binary" --version)"
+          case "$llvm_cov_version" in
+            "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"|"cargo-llvm-cov ${CARGO_LLVM_COV_VERSION} "*|"cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"$'\n'*) ;;
+            *) printf 'unexpected cargo-llvm-cov version: %s\n' "$llvm_cov_version" >&2; exit 1 ;;
+          esac
+      - name: Save verified cargo-llvm-cov
+        if: success() && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov
+          key: ${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}
+      - name: Download coverage target candidate
+        if: steps.coverage-target-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-coverage-target-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/coverage-target
+      - name: Verify coverage target candidate
+        if: steps.coverage-target-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/coverage-target" \
+            --artifact-name main-cache-coverage-target-candidate \
+            --cache-class coverage-target \
+            --cache-key '${{ steps.main-cache-keys.outputs.coverage-target }}' \
+            --maximum-bytes 1350000000 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/coverage-target" \
+            --producer-job rust-full \
+            --source-sha "$GITHUB_SHA" \
+            --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
+            --expected-tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
+          coverage_target_dir="$RUNNER_TEMP/main-cache-promoted/coverage-target/llvm-cov-target"
+          test -d "$coverage_target_dir"
+          test -z "$(find "$coverage_target_dir" -type l -print -quit)"
+          test -z "$(find "$coverage_target_dir" -type f \( -name '*.profraw' -o -name '*-profraw-list' -o -name '*.profdata' -o -name '*.lcov' -o -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \) -print -quit)"
+          workspace_targets="$RUNNER_TEMP/main-cache-promoted/coverage-target-workspace-targets.txt"
+          cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[].targets[] | select((.kind | index("custom-build")) | not) | .name | gsub("-"; "_")' \
+            | LC_ALL=C sort -u > "$workspace_targets"
+          while IFS= read -r target_name; do
+            stale_workspace_product="$(find "$coverage_target_dir" -type f ! -name '*.d' \( \
+              -name "$target_name" -o -name "${target_name}-*" -o -name "lib${target_name}-*" \
+            \) -print -quit)"
+            test -z "$stale_workspace_product" || {
+              printf 'coverage target candidate retained workspace product: %s\n' "$stale_workspace_product" >&2
+              exit 1
+            }
+          done < "$workspace_targets"
+      - name: Save verified coverage target dependencies
+        if: success() && steps.coverage-target-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/coverage-target/llvm-cov-target
+          key: ${{ steps.main-cache-keys.outputs.coverage-target }}
+      - name: Download Rust policy candidate
+        if: steps.rust-policy-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: main-cache-rust-policy-candidate
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
+          path: ${{ runner.temp }}/main-cache-candidates/rust-policy
+      - name: Verify and promote Rust policy candidate
+        if: steps.rust-policy-cache.outputs.cache-hit != 'true'
+        env:
+          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+        run: |
+          set -euo pipefail
+          python3 python/cli.py ci verify-main-cache-candidate \
+            --candidate-dir "$RUNNER_TEMP/main-cache-candidates/rust-policy" \
+            --artifact-name main-cache-rust-policy-candidate \
+            --cache-class rust-policy \
+            --cache-key '${{ steps.main-cache-keys.outputs.rust-policy }}' \
+            --maximum-bytes 0 \
+            --output-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact" \
+            --producer-job rust-full \
+            --source-sha "$GITHUB_SHA" \
+            --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
+            --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
+          python3 python/cli.py ci promote-rust-policy-candidate \
+            --artifact-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact/policy" \
+            --policy-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy" \
+            --source-sha "$GITHUB_SHA" \
+            --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
+      - name: Save promoted trusted main Rust policy
+        if: success() && steps.rust-policy-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/main-cache-promoted/rust-policy
+          key: ${{ steps.main-cache-keys.outputs.rust-policy }}

@@ -28,7 +28,7 @@ Commands:
   block-issue        Native issue blocked-by dependency mutations
   cleanup            Remove stale larch session directories and pointers
   bgjob              Durable background-job compatibility commands
-  ci-timing          Collect GitHub Actions timing inputs for test rebalancing
+  ci-timing          Collect GitHub Actions timing inputs and resolve trusted source runs
   ci                 Fail-closed Rust CI selection and history helpers
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
   combine-issues     Combine related issues while preserving their dependency graph

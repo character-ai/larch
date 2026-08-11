@@ -1094,6 +1094,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
+    CleanInstallCase::new(
+        "clean-install-ci-timing-merge-group-source",
+        "ci-timing",
+        "merge-group-source",
+    ),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
     CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
     CleanInstallCase::new("clean-install-ci-rust-select", "ci", "rust-select"),

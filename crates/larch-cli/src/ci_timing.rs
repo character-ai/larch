@@ -4,6 +4,7 @@ use clap::{Args, Subcommand};
 use larch_core::{
     CiTimingRunSelection, GitHubRepositoryRef, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS,
     collect_harness_timing, collect_job_timing, collect_pytest_timing,
+    resolve_main_cache_merge_group_source, validate_main_cache_source_sha,
 };
 use serde::Serialize;
 use std::{collections::HashSet, io::Write as _, path::Path, process::ExitCode};
@@ -14,6 +15,8 @@ pub enum CiTimingCommand {
     Harness(HarnessArguments),
     /// Collect real harness-job wall-clock durations from the jobs API.
     Jobs(JobArguments),
+    /// Resolve the exact successful merge-group run that produced a main SHA.
+    MergeGroupSource(MergeGroupSourceArguments),
     /// Collect pytest --durations=0 call rows and their medians.
     Pytest(PytestArguments),
 }
@@ -62,6 +65,16 @@ pub struct JobArguments {
     run_ids: Vec<u64>,
 }
 
+#[derive(Args)]
+pub struct MergeGroupSourceArguments {
+    /// GitHub repository in OWNER/REPO form.
+    #[arg(long = "repo", value_parser = crate::parse_repository)]
+    repository: GitHubRepositoryRef,
+    /// Exact lower-case main commit SHA that must have produced the run.
+    #[arg(long = "source-sha")]
+    source_sha: String,
+}
+
 pub fn run(command: CiTimingCommand) -> ExitCode {
     match run_inner(command) {
         Ok(bytes) => {
@@ -100,6 +113,10 @@ impl CiTimingCommand {
                 Ok(())
             }
             Self::Jobs(arguments) => validate_run_ids(&arguments.run_ids),
+            Self::MergeGroupSource(arguments) => {
+                validate_main_cache_source_sha(&arguments.source_sha)
+                    .map_err(|error| error.to_string())
+            }
             Self::Pytest(arguments) => validate_run_ids(&arguments.source.run_ids),
         }
     }
@@ -141,6 +158,17 @@ async fn run_async(command: CiTimingCommand, working_directory: &Path) -> Result
             .map_err(|error| error.to_string())?;
             warn_skipped("jobs", &report.skipped_run_ids);
             serialize_report(&report)
+        }
+        CiTimingCommand::MergeGroupSource(arguments) => {
+            let run_id = resolve_main_cache_merge_group_source(
+                &service,
+                &arguments.repository,
+                &arguments.source_sha,
+                &cancellation,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            Ok(format!("run-id={run_id}\n").into_bytes())
         }
         CiTimingCommand::Pytest(arguments) => {
             let selection = arguments.source.selection();

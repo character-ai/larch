@@ -1,0 +1,183 @@
+name: Main cache keys
+description: Compute the canonical exact keys for CI reads and trusted main publication.
+
+inputs:
+  cargo-llvm-cov-version:
+    description: Pinned cargo-llvm-cov version included in the coverage target key.
+    required: false
+    default: "0.8.7"
+  cargo-nextest-version:
+    description: Pinned cargo-nextest version included in its tool-cache key.
+    required: false
+    default: "0.9.137"
+  coverage-feature-mode:
+    description: Rust feature mode included in the coverage target key.
+    required: false
+    default: all-features
+  coverage-linker:
+    description: Linker identity included in the coverage target key.
+    required: false
+    default: runner-default
+  coverage-target-cache-schema:
+    description: Schema version for production coverage dependency caches.
+    required: false
+    default: v1
+  coverage-target-key-prefix:
+    description: Prefix for the requested coverage dependency cache space.
+    required: false
+    default: coverage-target-deps
+  coverage-target-triple:
+    description: Rust target triple included in the coverage target key.
+    required: false
+    default: x86_64-unknown-linux-gnu
+  cargo-profile-test-debug:
+    description: Debug setting included in the coverage target key.
+    required: false
+    default: "0"
+  cargo-profile-test-opt-level:
+    description: Test optimization setting included in the coverage target key.
+    required: false
+    default: "0"
+  cargo-incremental:
+    description: Incremental setting included in the coverage target key.
+    required: false
+    default: "0"
+
+outputs:
+  agent-lint:
+    description: Exact agent-lint binary cache key.
+    value: ${{ steps.keys.outputs.agent-lint }}
+  agnix:
+    description: Exact agnix binary cache key.
+    value: ${{ steps.keys.outputs.agnix }}
+  cargo-inputs:
+    description: Exact Cargo registry and Git inputs cache key.
+    value: ${{ steps.keys.outputs.cargo-inputs }}
+  cargo-llvm-cov:
+    description: Exact cargo-llvm-cov binary cache key.
+    value: ${{ steps.keys.outputs.cargo-llvm-cov }}
+  cargo-nextest:
+    description: Exact cargo-nextest binary cache key.
+    value: ${{ steps.keys.outputs.cargo-nextest }}
+  coverage-target:
+    description: Exact coverage dependency cache key.
+    value: ${{ steps.keys.outputs.coverage-target }}
+  gitleaks:
+    description: Exact verified gitleaks cache key.
+    value: ${{ steps.keys.outputs.gitleaks }}
+  pip-agent-linters:
+    description: Exact pip download cache key for agent linters.
+    value: ${{ steps.keys.outputs.pip-agent-linters }}
+  pip-lint:
+    description: Exact pip download cache key for lint tooling.
+    value: ${{ steps.keys.outputs.pip-lint }}
+  pip-python-dev:
+    description: Exact pip download cache key for Python type checking.
+    value: ${{ steps.keys.outputs.pip-python-dev }}
+  pip-python-test:
+    description: Exact pip download cache key for Python tests.
+    value: ${{ steps.keys.outputs.pip-python-test }}
+  pip-shellcheck:
+    description: Exact pip download cache key for the shellcheck wheel.
+    value: ${{ steps.keys.outputs.pip-shellcheck }}
+  pip-test-harnesses:
+    description: Exact pip download cache key for Bash harnesses.
+    value: ${{ steps.keys.outputs.pip-test-harnesses }}
+  pre-commit:
+    description: Exact pre-commit hook environment cache key.
+    value: ${{ steps.keys.outputs.pre-commit }}
+  python-version:
+    description: Shared Python minor version for installed-package cache keys.
+    value: ${{ steps.keys.outputs.python-version }}
+  rust-lint-deps:
+    description: Exact pruned target/debug cache key.
+    value: ${{ steps.keys.outputs.rust-lint-deps }}
+  rust-policy:
+    description: Exact trusted main Rust policy cache key.
+    value: ${{ steps.keys.outputs.rust-policy }}
+  site-python-test:
+    description: Exact installed site-packages cache key for Python tests.
+    value: ${{ steps.keys.outputs.site-python-test }}
+  site-test-harnesses:
+    description: Exact installed site-packages cache key for Bash harnesses.
+    value: ${{ steps.keys.outputs.site-test-harnesses }}
+
+runs:
+  using: composite
+  steps:
+    - id: keys
+      shell: bash
+      env:
+        AGENT_LINT_VERSION: "4.0.3"
+        AGNIX_VERSION: "0.40.0"
+        CARGO_INPUTS_HASH: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+        COVERAGE_TARGET_HASH: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', '.cargo/**') }}
+        GITLEAKS_BINARY_SHA256: "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
+        GITLEAKS_VERSION: "8.18.4"
+        PIP_AGENT_LINTERS_HASH: ${{ hashFiles('.github/workflows/requirements-agent-linters.txt') }}
+        PIP_LINT_HASH: ${{ hashFiles('.github/workflows/requirements-lint.txt') }}
+        PIP_PYTHON_DEV_HASH: ${{ hashFiles('python/requirements-dev.txt') }}
+        PIP_PYTHON_TEST_HASH: ${{ hashFiles('python/requirements-test.txt') }}
+        PIP_SHELLCHECK_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
+        PIP_TEST_HARNESSES_HASH: ${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
+        PRE_COMMIT_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
+        RUST_POLICY_HASH: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+      run: |
+        set -euo pipefail
+        for digest in \
+          "$CARGO_INPUTS_HASH" \
+          "$COVERAGE_TARGET_HASH" \
+          "$PIP_AGENT_LINTERS_HASH" \
+          "$PIP_LINT_HASH" \
+          "$PIP_PYTHON_DEV_HASH" \
+          "$PIP_PYTHON_TEST_HASH" \
+          "$PIP_SHELLCHECK_HASH" \
+          "$PIP_TEST_HARNESSES_HASH" \
+          "$PRE_COMMIT_HASH" \
+          "$RUST_POLICY_HASH"; do
+          case "$digest" in
+            [0-9a-f][0-9a-f]*) ;;
+            *) printf 'invalid cache key digest: %s\n' "$digest" >&2; exit 1 ;;
+          esac
+        done
+        case "$RUNNER_OS:$RUNNER_ARCH" in
+          Linux:X64) ;;
+          *) printf 'unsupported main cache runner: %s:%s\n' "$RUNNER_OS" "$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        case "${{ inputs.cargo-incremental }}:${{ inputs.cargo-profile-test-debug }}:${{ inputs.cargo-profile-test-opt-level }}" in
+          0:0:[0-9]*) ;;
+          *) printf 'invalid coverage profile cache identity\n' >&2; exit 1 ;;
+        esac
+        {
+          printf 'agent-lint=agent-lint-bin-%s-%s\n' "$RUNNER_OS" "$AGENT_LINT_VERSION"
+          printf 'agnix=agnix-bin-%s-%s\n' "$RUNNER_OS" "$AGNIX_VERSION"
+          printf 'cargo-inputs=cargo-inputs-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
+          printf 'cargo-llvm-cov=cargo-llvm-cov-bin-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${{ inputs.cargo-llvm-cov-version }}"
+          printf 'cargo-nextest=cargo-nextest-bin-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${{ inputs.cargo-nextest-version }}"
+          printf 'coverage-target=%s-%s-%s-%s-%s-%s-opt%s-test-debug%s-incremental%s-features%s-linker%s-%s\n' \
+            "${{ inputs.coverage-target-key-prefix }}" \
+            "${{ inputs.coverage-target-cache-schema }}" \
+            "$RUNNER_OS" \
+            "$RUNNER_ARCH" \
+            "${{ inputs.coverage-target-triple }}" \
+            "${{ inputs.cargo-llvm-cov-version }}" \
+            "${{ inputs.cargo-profile-test-opt-level }}" \
+            "${{ inputs.cargo-profile-test-debug }}" \
+            "${{ inputs.cargo-incremental }}" \
+            "${{ inputs.coverage-feature-mode }}" \
+            "${{ inputs.coverage-linker }}" \
+            "$COVERAGE_TARGET_HASH"
+          printf 'gitleaks=gitleaks-release-v2-%s-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$GITLEAKS_VERSION" "$GITLEAKS_BINARY_SHA256"
+          printf 'pip-agent-linters=pip-agent-linters-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_AGENT_LINTERS_HASH"
+          printf 'pip-lint=pip-lint-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_LINT_HASH"
+          printf 'pip-python-dev=pip-python-dev-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_PYTHON_DEV_HASH"
+          printf 'pip-python-test=pip-python-test-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_PYTHON_TEST_HASH"
+          printf 'pip-shellcheck=pip-shellcheck-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_SHELLCHECK_HASH"
+          printf 'pip-test-harnesses=pip-test-harnesses-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_TEST_HARNESSES_HASH"
+          printf 'pre-commit=pre-commit-%s\n' "$PRE_COMMIT_HASH"
+          printf 'python-version=3.11\n'
+          printf 'rust-lint-deps=rust-lint-deps-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
+          printf 'rust-policy=trusted-main-rust-policy-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$RUST_POLICY_HASH"
+          printf 'site-python-test=%s-%s-pip-site-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_PYTHON_TEST_HASH"
+          printf 'site-test-harnesses=ubuntu-24.04-pip-site-py311-%s\n' "$PIP_TEST_HARNESSES_HASH"
+        } >> "$GITHUB_OUTPUT"
