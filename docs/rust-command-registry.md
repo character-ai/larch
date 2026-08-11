@@ -192,6 +192,86 @@ non-empty reason and a receiving umbrella. Discovery is recursive, so a new
 module or nested package initializer fails until the rule records its distinct
 purpose and receiving owner; stale inventory rows fail as the boundary shrinks.
 
+### #7682 terminal completion record
+
+The #8350 audit revalidated the issue-domain boundary on final `main`. This was
+not a source-text-only check:
+
+- `issue-python-free` pins all 96 migrated selectors at Rust ownership with
+  parity, caller cutover, and Python removal complete. The count includes the
+  ten tracking and execution selectors completed by #8346 and #8347.
+- `command-registry` validates registrations, exact migration leaves,
+  production callers, in-process command equivalents, and clean-install
+  fixtures. `larch-runtime-entrypoint` proves those callers enter through the
+  verified `scripts/larch.sh` bootstrap.
+- The recursive retained-module inventory accounts for 20 Python issue
+  modules, plus the structural package initializer. Each module has a
+  reason-bearing receiving umbrella; restored tracking or execution behavior,
+  alias imports, and nested unowned modules fail the lint.
+- `service-ownership` and `issue-mutation-owner` keep the typed GitHub adapter
+  and the fail-closed issue mutation owner unique. The shared mutation gate,
+  bounded pagination, freshness checks, redaction, and exact read-back remain
+  the security contract documented in
+  [`workflow-trust-and-mutations.md`](security/workflow-trust-and-mutations.md).
+- The parity matrix covers issue reads, writes, dependencies, inputs, wire
+  formats, triage, and umbrella commands through a clean-install bootstrap.
+  Focused tracking and execution contract tests cover their in-process
+  replacements. Issue creation, OOS filing, and combination tests cover
+  rollback, interruption, and partial-batch cleanup.
+- The OOS operator guidance now names the Rust owner and distinguishes the
+  retained #7680 parsing helpers. No migrated OOS command uses those helpers as
+  a live implementation or fallback.
+
+The following provenance matrix covers every direct leaf. `R` means #8350
+verified the final shipped GitHub surface retrospectively against #7672 and
+the #7888 credential supersession; it does not claim those inputs were read
+before implementation, and the original closing PR omitted both citations.
+`C` means the corrective PR cited both inputs and #8350 reverified the final
+surface. `A` is the #8350 closeout itself, which read both inputs and cites them
+in its closing PR. `N/A` means the leaf has no production GitHub call.
+
+| Leaf | Shipped surface | Implementation evidence | Provenance |
+| --- | --- | --- | --- |
+| #8163 | Offline issue fixtures and parity harness | PR #8196 | N/A |
+| #8164 | Typed GitHub sub-issue adapter | PR #8205 | R; the leaf body named both inputs |
+| #8165 | Issue wire and identity core | PR #8207 | N/A |
+| #8166 | Fail-closed issue mutation owner | PR #8206 | R |
+| #8167 | Issue query, freshness, and context | PR #8199 | R |
+| #8168 | Issue input and candidate allocation | PR #8239 | R |
+| #8169 | Issue creation, sentinels, and cleanup | PRs #8242 and #8244 | R |
+| #8170 | Dependency and sub-issue commands | PR #8244 title and diff; its stale body said `Fixes #8169`, so GitHub has no closing-PR edge for #8170 | R |
+| #8171 | Plan, named, and untrusted blocks | PR #8245 | R |
+| #8172 | Triage inspect, probe, and apply | PR #8253 | R |
+| #8173 | Umbrella preparation and proposals | PR #8255 | R |
+| #8174 | Umbrella mutations and verification | PR #8259 | R |
+| #8175 | Tracking-issue lifecycle | PR #8260; corrected by PR #8354 | R, then C |
+| #8176 | Execution-issue lifecycle | PR #8262; corrected by PR #8357 | R, then C |
+| #8177 | OOS record and disposition core | PR #8263 | N/A |
+| #8178 | OOS manifests and disposition gate | PR #8265 | N/A |
+| #8179 | OOS filer | PR #8270 | R |
+| #8180 | Dependency audit | PR #8279 | R |
+| #8181 | Issue combination | PR #8304 | R |
+| #8182 | Issue ground-truth and report core | PR #8208 | N/A |
+| #8183 | Issue backlog analysis | PR #8315 | R |
+| #8184 | Bug-sweep prefetch and ledger | PR #8318 | R |
+| #8185 | Bug-sweep runtime and report | PR #8321 | N/A |
+| #8186 | Learn-from-bugs preparation | PR #8322 | R |
+| #8187 | Learn-from-bugs validation and filing dependencies | PR #8332 | R |
+| #8188 | Run-audit scan and mapping | PR #8333 | R |
+| #8189 | Run-audit issue titles, nudges, and closure | PR #8336 | R |
+| #8190 | Mechanical issue-domain closeout lint | PR #8338 | N/A |
+| #8346 | Tracking-issue corrective cutover | PR #8354 | C |
+| #8347 | Execution-issue corrective cutover | PR #8357 | C |
+| #8348 | OOS ownership documentation correction | PR #8372 | N/A; the PR also cited both inputs |
+| #8349 | In-process and nested-module ownership lint | PR #8376 | N/A |
+| #8350 | Terminal metadata, graph, and provenance closeout | Closing PR for #8350 | A |
+
+`complete-umbrella finish` now exposes a specific refusal when a closed direct
+leaf still has an `[IMPLEMENTING]` title. It reads and validates the complete
+native graph before any parent mutation, and accepts only the exact
+`[DONE] [LEAF OF N]` terminal title. The core lifecycle test and the remote
+finish test pin that refusal and prove it occurs before a parent mutation.
+
 ## State transitions
 
 Keep `owner = "python"` and `consumer_cutover = "pending"` while Python owns
