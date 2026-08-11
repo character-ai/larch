@@ -4,7 +4,7 @@ Step 8+ Python ship-driver bgjob launcher. Foreground mode starts or rejoins bgj
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from Step 8+ as a foreground bgjob launcher. Pre-driver orchestration may run guard, initial seeding, and `oos file` first; post-driver continuations invoke only this wrapper.
+`skills/implement/SKILL.md` invokes this wrapper from Step 8+ as a foreground bgjob launcher. Pre-driver orchestration may run guard, initial seeding, and `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` first; post-driver continuations invoke only this wrapper.
 
 ## Stdout and result-env contract
 

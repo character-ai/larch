@@ -410,7 +410,7 @@ def run(repo_root: Path) -> list[str]:
 
         require(skill, "PHASE=checks` and `PR_NUMBER` is empty/absent", "SKILL pre-driver predicate checks phase and empty pr")
         require(skill, "Seeded-but-no-PR state is still pre-driver", "SKILL seeded no-pr retry stays pre-driver")
-        require(skill, "pre-driver retry reruns guard and `oos file`", "SKILL pre-driver retry reruns oos file")
+        require(skill, "pre-driver retry reruns guard and `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file`", "SKILL pre-driver retry reruns oos file")
         require(skill, "On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh`", "SKILL pre-driver continuation on ship")
         forbid(skill, "write-initial-state-keys:begin", "SKILL initial state marker removed")
         forbid(skill, "sys.version_info >= (3, 11)", "SKILL inline python version guard removed")
@@ -842,10 +842,10 @@ def run(repo_root: Path) -> list[str]:
                 "clear the sidecar only after private disposition completes",
                 "Public `/issue` filing is forbidden on this branch.",
                 "Checkpoint stall is expected until private security disposition clears the sidecar.",
-                "OOS issue cap enforcement applies only on the pre-driver `larch oos file` path for non-security OOS",
+                "OOS issue cap enforcement applies only on the pre-driver `scripts/larch.sh oos file` Rust path for non-security OOS",
                 "does not run cap enforcement or public issue batch emission",
                 "python/cli.py implement step-8-oos-checkpoint",
-                "runs `oos disposition-checkpoint`",
+                "runs the Rust `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-checkpoint` command",
                 "emits exactly one `NEXT_ACTION=`",
                 "Its process rc is 0 whenever",
                 "returns non-zero only when no `NEXT_ACTION` is emitted",
@@ -855,11 +855,11 @@ def run(repo_root: Path) -> list[str]:
                 "steps_ran.step9a1=true",
                 "OOS_PENDING=false",
                 "NEXT_ACTION=reship",
-                "with fallback counts only when ndjson is absent",
+                "an absent batch contributes zero",
                 "ship._patch_ship_state_keys",
                 "leaves `OOS_PENDING` unchanged",
                 "writes no stats, and clears no state",
-                "On disposition rc 1, rc 2, 126, 127, or other non-zero rc",
+                "On disposition rc 1, rc 2, rc 3 (private security sidecar pending), 126, 127, or other non-zero rc",
                 "OOS_CHECKPOINT_RC=0",
                 "oos-disposition-checkpoint.stderr.log",
                 "The checkpoint wrapper preserves non-empty child-written",
@@ -873,6 +873,7 @@ def run(repo_root: Path) -> list[str]:
                 "oos issue-cap",
                 "/issue --input-file",
                 "run the `/issue` pipeline",
+                "with fallback counts only when ndjson is absent",
             ]:
                 if needle in router_text:
                     checks.append(f"ship-pr-oos-checkpoint-router.md retains forbidden {needle!r}")
@@ -952,7 +953,7 @@ def run(repo_root: Path) -> list[str]:
             write_final_text = write_final_ref.read_text()
             for needle in [
                 "## Bail-time `steps_ran` invariant",
-                "If the run ends before Step 9a.1 or before `oos file` succeeds",
+                "If the run ends before Step 9a.1 or before `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` succeeds",
                 "explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file",
                 "`scripts/larch.sh final-report write` records explicit `steps_ran.step9a1=false`",
                 "`scripts/larch.sh run-log verify-completeness` treats missing/null `steps_ran` like `jq",
@@ -1021,15 +1022,76 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "**Python driver routing:**", "legacy Python driver routing removed")
         forbid(skill, "MANDATORY: READ ENTIRE FILE on any non-zero active Step 8+ driver exit", "legacy non-zero driver mandatory block removed")
         for needle in [
-            "non-security accepted OOS is filed by the pre-driver `larch oos file` path before `step-8-ship.sh`",
+            "non-security accepted OOS is filed by the pre-driver `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` path before `step-8-ship.sh`",
             "On `NEXT_ACTION=oos-pipeline`, read `$IMPLEMENT_TMPDIR/security-oos-observations.md`",
             "with no `/issue` call",
             "Only checkpoint `NEXT_ACTION=reship` may write run statistics, stamp the manifest, and clear `OOS_PENDING=false`",
             "Do not run prompt-side direct `oos disposition-checkpoint`, compose run statistics, or patch `OOS_PENDING=false`",
-            "after security-sidecar disposition when applicable and before or at the Step 8 OOS checkpoint wrapper on the `oos-pipeline` branch, or after pre-driver `oos file` on the normal path",
+            "after security-sidecar disposition when applicable and before or at the Step 8 OOS checkpoint wrapper on the `oos-pipeline` branch, or after pre-driver `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` on the normal path",
         ]:
             require(skill, needle, "NEVER #14/#15 Python OOS split pin")
-        require("skills/implement/references/oos-pipeline.md", "Do not ask the operator for confirmation before the batch call, and do not use `AskUserQuestion` here. Accepted non-security OOS disposition is automatic for this checkpoint.", "legacy OOS pipeline must not ask confirmation before issue batch")
+        oos_tracking = "skills/implement/references/execution-issues-tracking.md"
+        oos_pipeline = "skills/implement/references/oos-pipeline.md"
+        oos_gate = "skills/implement/scripts/oos-disposition-gate.md"
+        oos_checkpoint = "skills/implement/scripts/oos-disposition-checkpoint.md"
+        oos_test = "skills/implement/scripts/test-oos-disposition-gate.md"
+        for path, needle, label in [
+            ("docs/agents.md", "`/implement` Step 9a.1 is not a consumer", "issue agent excludes Rust OOS filing"),
+            ("docs/skills.md", "`/implement` Step 9a.1 is not an `/issue` caller", "issue catalog excludes Rust OOS filing"),
+            ("docs/workflow-lifecycle.md", "Step 9a.1 runs the Rust-owned `scripts/larch.sh oos file` driver", "workflow lifecycle Rust OOS owner"),
+            ("python/larch/issue/issue_create.py", "retained\n#7680 compatibility helpers", "retained Python issue grammar owner"),
+            (oos_tracking, "crates/larch-core/src/issue/oos_conflict.rs", "OOS conflict Rust core owner"),
+            (oos_tracking, "crates/larch-core/src/issue/oos_batch.rs", "OOS manifest Rust core owner"),
+            (oos_tracking, "receiving umbrella #7680", "retained Python OOS receiving umbrella"),
+            (oos_pipeline, "`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` is the live Rust filing driver", "OOS filing root entrypoint"),
+            (oos_pipeline, "All six OOS commands migrated by #8178 and #8179", "migrated OOS command scope"),
+            (oos_pipeline, "crates/larch-cli/src/oos_file_commands.rs", "OOS filing Rust CLI owner"),
+            (oos_pipeline, "crates/larch-core/src/issue/oos_filing.rs", "OOS filing Rust core owner"),
+            (oos_pipeline, "The process is automatic. Do not ask the operator for confirmation, call `/issue`", "OOS filing stays Rust-owned"),
+            (oos_gate, "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-gate", "OOS gate root entrypoint"),
+            (oos_gate, "crates/larch-core/src/issue/oos_disposition.rs", "OOS disposition Rust core owner"),
+            (oos_checkpoint, "Rust owns `scripts/larch.sh oos disposition-checkpoint`", "OOS checkpoint Rust owner"),
+            (oos_test, "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh", "OOS wrapper override target"),
+            (oos_test, "cargo test --locked --package larch-cli --bin larch oos_commands::tests", "OOS Rust behavioral test command"),
+            ("skills/shared/subskill-invocation.md", "`/design` Step 5b OOS branches that skip `/issue`", "anti-halt example uses live issue caller"),
+            ("skills/shared/subskill-invocation.md", "`/implement` Step 9a.1 is not an `/issue` caller", "stdout example excludes Rust OOS filing"),
+            ("skills/shared/voting-protocol.md", "Rust-owned `scripts/larch.sh oos file` recovers identities", "voting protocol Rust OOS owner"),
+        ]:
+            require(path, needle, label)
+        for path, needle, label in [
+            ("docs/agents.md", "`/implement` Step 9a.1, `/learn-from-bugs --file`", "retired issue-agent OOS consumer"),
+            ("docs/skills.md", "`/design` Step 5b, `/implement` Step 9a.1, `/bug`", "retired issue catalog OOS consumer"),
+            ("docs/workflow-lifecycle.md", "Step 9a.1 additionally invokes `/issue` in batch mode", "retired lifecycle OOS filing owner"),
+            ("python/larch/issue/issue_create.py", "migrates with its own command leaf", "retired Python OOS migration claim"),
+            (oos_tracking, "The Python pre-pass emits", "retired Python OOS conflict pre-pass"),
+            (oos_tracking, "the live implementation is `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/file_oos.py`", "retired Python OOS manifest owner"),
+            (oos_tracking, "Step 9a.1 creates issues via `/issue` batch mode", "retired prompt-side OOS filing owner"),
+            (oos_tracking, "`/issue`'s Phase-2 LLM dep-analysis", "retired OOS dependency fallback"),
+            (oos_tracking, "filed as PUBLIC GitHub issues by `/issue`", "retired OOS publication owner"),
+            (oos_gate, "Python OOS disposition authority", "retired Python OOS disposition owner"),
+            (oos_gate, "python/tests/issue/test_file_oos.py` (`make test-oos-disposition-gate`", "retired Python OOS behavioral test owner"),
+            (oos_checkpoint, "Python `scripts/larch.sh oos disposition-checkpoint`", "retired Python OOS checkpoint owner"),
+            (oos_test, "$CLAUDE_PLUGIN_ROOT/python/cli.py", "retired Python OOS wrapper override"),
+            (oos_pipeline, "the Python path labels filed accepted-OOS issues", "retired Python OOS filing owner"),
+            (oos_pipeline, "Run the `/issue` batch", "retired prompt-side OOS batch"),
+            (oos_pipeline, "Forward `--intra-batch-deps-file`", "retired prompt-side OOS dependency handoff"),
+            (oos_pipeline, "All six production OOS commands", "overbroad OOS command ownership claim"),
+            (
+                "crates/larch-lint/data/wire-artifact-pairing-baseline.toml",
+                "only writer stays in the Python OOS filer",
+                "retired Python run-statistics writer baseline",
+            ),
+            ("skills/shared/subskill-invocation.md", "Step 9a.1 OOS branches that skip `/issue`", "retired anti-halt OOS issue caller"),
+            ("skills/shared/subskill-invocation.md", "the OOS pipeline runs as a checkpoint inside the ship-pr orchestration", "retired issue stdout OOS pointer"),
+            ("skills/shared/voting-protocol.md", "`/implement` Step 9a.1 → `/issue` batch mode", "retired voting OOS filing owner"),
+            ("skills/shared/voting-protocol.md", "creates GitHub issues via `/issue` (batch mode)", "retired voting OOS issue caller"),
+        ]:
+            forbid(path, needle, label)
+        for needle, label in [
+            ("avoids a second `/issue` call", "retired OOS idempotency owner"),
+            ("`/issue` semantic dedup is a nondeterministic backstop", "retired OOS semantic dedup fallback"),
+        ]:
+            forbid(skill, needle, label)
         _check_terminal_references(checks=checks, skill=skill, forbid=forbid)
         forbid(
             skill, "Normal teardown is owned by `step-18.sh --phase finalize`", "SKILL retired Step 18 teardown prose"
@@ -1233,4 +1295,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 393
+LEGACY_ASSERTION_LABEL_COUNT = 392

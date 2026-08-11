@@ -300,7 +300,7 @@ DEPS_RC=0
   --output "$RUN_DIR/intra-batch-deps.tsv" || DEPS_RC=$?
 ```
 
-The helper gives declared proposal dependencies priority, then unions them with shared implementation-file edges from the existing `oos file-conflict-deps` owner. It emits `/issue`'s `<blocker-1based>\t<blocked-1based>` grammar.
+The helper gives declared proposal dependencies priority, then unions them with shared implementation-file edges from `larch_core::issue::oos_conflict`, the Rust owner also used by `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file-conflict-deps`. It emits `/issue`'s `<blocker-1based>\t<blocked-1based>` grammar.
 
 Set `FILING_DEPS_AVAILABLE=true` only when `DEPS_RC=0` and `${RUN_DIR}/intra-batch-deps.tsv` is non-empty. Otherwise set it to `false`, omit `--intra-batch-deps-file`, and keep `/issue`'s LLM dependency pass enabled. Do not pass `--no-dep-llm` in either path.
 

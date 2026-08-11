@@ -599,9 +599,13 @@ Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, t
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 
-Default `1` (positive integer). `/implement` Step 9a.1 uses
-`scripts/larch.sh oos issue-cap` and `python/larch/issue/file_oos.py` to cap the number of
-accepted out-of-scope issues filed in a single run. When the accepted item count
+Default `1` (positive integer). `/implement` Step 9a.1 applies the Rust cap in
+process inside `scripts/larch.sh oos file`; it does not spawn the standalone
+batch verb. `scripts/larch.sh oos issue-cap` exposes the same policy to distinct
+callers. `crates/larch-cli/src/oos_commands.rs` owns that standalone command,
+`crates/larch-cli/src/oos_file_commands.rs` owns the filing driver, and
+`crates/larch-core/src/issue/oos_batch.rs` owns the cap and rollup rules. When
+the accepted item count
 exceeds the cap, the helper keeps the first `cap - 1` items and rolls the
 remaining items into one summary issue; `OOS_ISSUES_PER_RUN_CAP=1` (the default)
 rolls all items into a single summary issue. The summary issue embeds each

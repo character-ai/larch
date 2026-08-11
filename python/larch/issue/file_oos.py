@@ -1,14 +1,11 @@
-"""Post-ship OOS detection and idempotency support.
+"""Retained in-process OOS helpers for Python workflow consumers.
 
-Responsibilities:
-1. Detect accepted, non-security OOS blocks across upstream inputs.
-2. Enforce idempotency via the oos-issues-created.md sentinel.
-3. Classify carve-outs (forked, repo_unavailable, security).
-
-The actual GitHub issue creation and semantic dedup remain with the /issue
-pipeline (LLM) invoked by the orchestrator.  This module prepares the
-to-file set and exposes the sentinel-based idempotency check so the
-orchestrator can avoid re-filing across same-session retries.
+The six OOS commands migrated by #8178 and #8179 are Rust-owned behind
+``scripts/larch.sh``. This module is not a command implementation or fallback.
+Surviving callers use its block parsing/counting and title-normalization helpers, while the retained
+#7681 Step 8 workflow consumes run-id resolution for bookkeeping. The
+issue-domain migration ledger assigns this remaining Python library to
+receiving umbrella #7680.
 """
 
 # pyright: reportUnusedCallResult=false

@@ -9268,7 +9268,7 @@ rust = []
 path = "skills/implement/SKILL.md"
 kind = "skill"
 python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos disposition-checkpoint", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9322,7 +9322,7 @@ rust = ["git rebase-abort", "push rebase"]
 path = "skills/implement/references/execution-issues-tracking.md"
 kind = "skill"
 python = []
-rust = ["issue parse-input", "oos disposition-gate", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest", "run-log append-failure"]
+rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest", "run-log append-failure"]
 
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
@@ -9334,7 +9334,7 @@ rust = []
 path = "skills/implement/references/oos-pipeline.md"
 kind = "skill"
 python = []
-rust = ["oos disposition-checkpoint", "oos file-conflict-deps", "oos issue-cap", "oos materialize-manifest"]
+rust = ["oos file"]
 
 [[callers]]
 path = "skills/implement/references/phantom-probe.md"
@@ -9370,7 +9370,7 @@ rust = ["execution-issues flush", "final-report write"]
 path = "skills/implement/references/ship-pr-oos-checkpoint-router.md"
 kind = "skill"
 python = ["implement step-8-oos-checkpoint"]
-rust = []
+rust = ["oos disposition-checkpoint", "oos file"]
 
 [[callers]]
 path = "skills/implement/references/stall-recovery.md"
@@ -9459,14 +9459,20 @@ rust = ["session resolve-implement-tmpdir"]
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.md"
 kind = "skill"
-python = []
-rust = ["oos disposition-checkpoint", "oos disposition-gate"]
+python = ["implement step-8-oos-checkpoint"]
+rust = ["oos disposition-checkpoint"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.sh"
 kind = "skill"
 python = []
 rust = ["oos disposition-checkpoint"]
+
+[[callers]]
+path = "skills/implement/scripts/oos-disposition-gate.md"
+kind = "skill"
+python = []
+rust = ["oos disposition-gate"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-gate.sh"
@@ -9616,7 +9622,7 @@ rust = []
 path = "skills/implement/scripts/step-8-oos-checkpoint.md"
 kind = "skill"
 python = ["implement step-8-oos-checkpoint"]
-rust = []
+rust = ["oos disposition-checkpoint"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-oos-checkpoint.sh"
@@ -9640,7 +9646,7 @@ rust = []
 path = "skills/implement/scripts/step-8-ship.md"
 kind = "skill"
 python = ["implement clone-tag", "ship pr"]
-rust = ["bgjob adapt"]
+rust = ["bgjob adapt", "oos file"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.sh"
@@ -9682,7 +9688,7 @@ rust = []
 path = "skills/implement/scripts/write-final-report.md"
 kind = "skill"
 python = ["render run-summary"]
-rust = ["audit-runs scan-run", "final-report write", "run-log verify-completeness", "stall-recovery normalize-outcome"]
+rust = ["audit-runs scan-run", "final-report write", "oos file", "run-log verify-completeness", "stall-recovery normalize-outcome"]
 
 [[callers]]
 path = "skills/implement/scripts/write-final-report.sh"
@@ -9700,7 +9706,7 @@ rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-fail
 path = "skills/learn-from-bugs/SKILL.md"
 kind = "skill"
 python = []
-rust = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report"]
+rust = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report", "oos file-conflict-deps"]
 
 [[callers]]
 path = "skills/pause/SKILL.md"
@@ -9880,7 +9886,7 @@ rust = []
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
 python = ["plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review"]
+rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "oos file"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

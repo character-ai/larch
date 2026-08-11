@@ -1,4 +1,4 @@
-"""Tests for file_oos.py."""
+"""Tests for retained ``file_oos`` in-process helpers under #7680."""
 
 from __future__ import annotations
 
@@ -428,7 +428,6 @@ def test_read_kv_file_missing_symlink_follow_and_crlf_strip(tmp_path: Path) -> N
 # ---------------------------------------------------------------------------
 # Disposition gate / checkpoint parity (ported from test-oos-disposition-gate.sh)
 # ---------------------------------------------------------------------------
-
 
 
 
