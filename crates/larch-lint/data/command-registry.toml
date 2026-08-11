@@ -5503,6 +5503,20 @@ migration_issue = 7762
 clean_install_test = "clean-install-push-rebase"
 
 [[commands]]
+domain = "rebalance-tests"
+verb = "run"
+python_module = "rebalance"
+python_function = "main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7685
+migration_issue = 8343
+clean_install_test = "clean-install-rebalance-tests-run"
+
+[[commands]]
 domain = "redact"
 verb = "scrub-log-secrets"
 python_module = "larch.core.redact"
@@ -5898,20 +5912,6 @@ python_removal = "pending"
 planning_issue = 7679
 
 [[commands]]
-domain = "report-tokens"
-verb = "analyze"
-python_module = "larch.report.report_tokens_cli"
-python_function = "main"
-machine_stdout = false
-owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
-planning_issue = 7683
-migration_issue = 8088
-clean_install_test = "clean-install-report-tokens-analyze"
-
-[[commands]]
 domain = "repo"
 verb = "size"
 python_module = "larch_size"
@@ -5924,6 +5924,20 @@ python_removal = "complete"
 planning_issue = 7685
 migration_issue = 8341
 clean_install_test = "clean-install-repo-size"
+
+[[commands]]
+domain = "report-tokens"
+verb = "analyze"
+python_module = "larch.report.report_tokens_cli"
+python_function = "main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7683
+migration_issue = 8088
+clean_install_test = "clean-install-report-tokens-analyze"
 
 [[commands]]
 domain = "research"

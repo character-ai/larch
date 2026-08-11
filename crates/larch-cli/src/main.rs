@@ -69,6 +69,7 @@ mod push_network;
 mod push_rebase;
 mod python_verb;
 mod rebalance_tests;
+mod rebalance_tests_workflow;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -257,7 +258,7 @@ enum Domain {
     /// Token-cost analysis over the synchronized run-log corpus.
     #[command(subcommand, name = "report-tokens")]
     ReportTokens(ReportTokensCommand),
-    /// Pure CI test-rebalance planning and verification decisions.
+    /// CI test-rebalance planning, verification, and checked orchestration.
     #[command(subcommand, name = "rebalance-tests")]
     RebalanceTests(RebalanceTestsCommand),
     /// Session state compatibility commands.

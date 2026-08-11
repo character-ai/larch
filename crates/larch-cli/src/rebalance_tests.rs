@@ -10,6 +10,8 @@ use std::{
 use clap::{Args, Subcommand};
 use larch_core::{plan_json, verify_json};
 
+use crate::rebalance_tests_workflow::RebalanceRunArguments;
+
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Subcommand)]
@@ -18,6 +20,8 @@ pub enum RebalanceTestsCommand {
     Plan(JsonInputArguments),
     /// Validate post-run timing evidence against a pure rebalance plan context.
     Verify(JsonInputArguments),
+    /// Run the checked repository, artifact, pull-request, and verification workflow.
+    Run(RebalanceRunArguments),
 }
 
 #[derive(Args)]
@@ -48,12 +52,17 @@ fn run_inner(command: &RebalanceTestsCommand) -> Result<(Vec<u8>, ExitCode), Str
         RebalanceTestsCommand::Plan(arguments) | RebalanceTestsCommand::Verify(arguments) => {
             read_json_input(arguments.input.as_deref())?
         }
+        RebalanceTestsCommand::Run(arguments) => {
+            return crate::rebalance_tests_workflow::run(arguments)
+                .map(|status| (Vec::new(), status));
+        }
     };
     let source = std::str::from_utf8(&input)
         .map_err(|error| format!("JSON input must be UTF-8: {error}"))?;
     let result = match command {
         RebalanceTestsCommand::Plan(_) => plan_json(source)?,
         RebalanceTestsCommand::Verify(_) => verify_json(source)?,
+        RebalanceTestsCommand::Run(_) => unreachable!("run returns before JSON input is read"),
     };
     let mut output = result.json.into_bytes();
     output.push(b'\n');

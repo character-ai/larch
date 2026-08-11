@@ -1107,6 +1107,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "ci",
         "rust-select-summary",
     ),
+    CleanInstallCase::new("clean-install-rebalance-tests-run", "rebalance-tests", "run"),
     CleanInstallCase::new(
         "clean-install-report-tokens-analyze",
         "report-tokens",

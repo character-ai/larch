@@ -425,11 +425,11 @@ Report larch repository line counts (tracked Bash, Python, and Markdown) and `la
 
 ### `/rebalance-tests`
 
-**Arguments**: `[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS]`
+**Arguments**: `[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-verify-runs N] [--n-python-shards N] [--balance-threshold SECONDS] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS] [--workflow FILE] [--baseline-branch BRANCH] [--dry-run]`
 
 **Source**: [`.claude/skills/rebalance-tests/SKILL.md`](../.claude/skills/rebalance-tests/SKILL.md)
 
-Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings, then create one PR and trigger verification CI. `--kind` selects `harness`, `python`, or `all` (default `all`); `--n-runs` sets how many recent runs to fetch; `--branch-prefix` names the PR branch (default `rebalance-shards`); `--n-python-shards` declares the expected Python shard count. Harness verification fails closed on incomplete same-run evidence, a measured slowest-shard wall-clock or summed-runner regression; `--max-shard-wall-clock` defaults to 300 seconds, and `--experimental-wall-clock-override NOTE` permits only a documented regression experiment, never incomplete evidence. `--compile-affinity TARGET=GROUP:SECONDS` declares a known shared compile context and extra one-time setup (zero preserves co-location only). The Python leg fails closed on zero parseable rows, incomplete shard coverage, or over-threshold spread. Every selected artifact path must be clean in git before any write.
+Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings through `scripts/larch.sh rebalance-tests run`. The command requires an immutable, clean `main`, writes only selected shard artifacts, opens one PR, and verifies exact dispatched CI runs. Harness verification fails closed on incomplete same-run evidence, a measured slowest-shard wall-clock or summed-runner regression. Python verification fails closed on zero parseable rows, incomplete shard coverage, or over-threshold spread. `--dry-run` performs planning without mutation.
 
 ### `/release`
 
