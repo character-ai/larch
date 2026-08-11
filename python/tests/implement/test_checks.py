@@ -5249,6 +5249,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "sha256sum --check --strict larch.sha256" in selector_job
     assert "TRUSTED_POLICY_VALID" in selector_job
     assert "if: steps.proposed-selection.outputs.mode == 'skip'" not in selector_job
+    assert "if: steps.effective-mode.outputs.mode == 'skip'" in selector_job
     assert selector_job.index("Restore trusted main Rust policy binary") < selector_job.index(
         "Select Rust CI mode from the trusted base"
     )
@@ -5343,7 +5344,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "exact key binds",
         "trusted pull-request-base wrapper",
         "without compiling or executing pull-request code",
-        "The skip\nlane repeats the same checks after artifact handoff",
+        "The skip\nlane is the only consumer of an artifact handoff",
         "Skip enforcement is enabled only after",
     ):
         assert required_detail in supply_chain

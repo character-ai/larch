@@ -273,6 +273,25 @@ wrapper. A miss, invalid artifact, or Rust-input change produces a static
 `partial` or `skip` path, or weaken the exact-one-producer assertion in
 `rust-coverage`.
 
+The first live implementation run confirmed that the compiled selector was the
+serialized regression:
+
+| Run | `rust-selection` | Exact policy restore | Selector command | Policy artifact upload | Prelude to `rust-full` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [#8381, initial implementation](https://github.com/character-ai/larch/actions/runs/31462693997/job/93689229788) | 36 s | hit, 3 s | 0.185 s | 6 s | 39 s |
+
+The three regressed controls have a 219-second median selection duration, so
+the initial implementation removed 183 seconds (84%). The immediately prior
+[#8380 run](https://github.com/character-ai/larch/actions/runs/31461751099)
+spent 222 seconds from selection start to `rust-full` start; #8381 spent 39
+seconds, a reduction of 183 seconds (82%). The initial run still uploaded the
+44 MB verified policy handoff on its selected `full` path. The final workflow
+uploads that artifact only for an effective `skip`, its sole consumer, so full
+and partial decisions avoid another measured six seconds of serialized work.
+The same run's `rust-full` lane passed in 272 seconds, then `rust-coverage` and
+`rust-gate` passed; the complete workflow took 350 seconds from trigger through
+the last job.
+
 ## Timing interpretation and rollback
 
 The historical full `rust-coverage` samples above are contextual baselines: the

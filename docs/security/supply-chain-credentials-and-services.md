@@ -185,7 +185,9 @@ SHA shape; and compares the executable's reported version. The selection job
 then supplies that executable only to the trusted pull-request-base wrapper. A
 miss, corruption, Rust-input change, or metadata mismatch produces a static
 `full` selection without compiling or executing pull-request code. The skip
-lane repeats the same checks after artifact handoff.
+lane is the only consumer of an artifact handoff, so selection uploads the
+verified cache files only when `skip` is the effective mode. The skip lane
+repeats the same checks after that handoff.
 
 Skip enforcement is enabled only after its independent pull-request observation
 window records the required live evidence. Cache restoration and verification
