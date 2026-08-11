@@ -181,15 +181,18 @@ Cargo configuration. It has no restore-key fallback.
 Before a pull request may use it, CI checks every expected member is a regular,
 non-symlink file; verifies the executable checksum; matches the Rust-input
 digest; requires `refs/heads/main` provenance; validates the recorded source
-SHA shape; and compares the executable's reported version. The skip lane
-repeats those checks after artifact handoff. A miss, corruption, or metadata
-mismatch is a `full` selection, never a skipped Rust-policy check.
+SHA shape; and compares the executable's reported version. The selection job
+then supplies that executable only to the trusted pull-request-base wrapper. A
+miss, corruption, Rust-input change, or metadata mismatch produces a static
+`full` selection without compiling or executing pull-request code. The skip
+lane repeats the same checks after artifact handoff.
 
 Skip enforcement is enabled only after its independent pull-request observation
 window records the required live evidence. Cache restoration and verification
-do not authorize execution by themselves: an unavailable or invalid trusted
-main artifact leaves the effective mode `full`. Once enabled, the same cache
-checks are required at both the selection and handoff boundaries.
+authorize only the trusted-base selection command and the existing verified
+handoff: an unavailable or invalid trusted main artifact leaves the proposed
+and effective mode `full`. Once enabled, the same cache checks are required at
+both the selection and handoff boundaries.
 
 ### Release provenance and attestations
 

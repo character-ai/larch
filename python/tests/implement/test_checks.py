@@ -5226,12 +5226,12 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "continue-on-error: true" in selector_job
     assert "persist-credentials: false" in selector_job
     assert "selector-base-checkout-unavailable" in selector_job
-    assert "selector-base-command-unavailable" in selector_job
+    assert "trusted-main-policy-unavailable-or-invalid" in selector_job
     assert "selector_history_source=full-history-checkout" in selector_job
     assert "RUST_SELECTION_HISTORY_MILLISECONDS" in selector_job
-    assert "RUST_SELECTION_WORKTREE_MILLISECONDS" in selector_job
     assert "RUST_SELECTION_COMMAND_MILLISECONDS" in selector_job
-    assert "cargo build --locked --package larch-cli --bin larch" in selector_job
+    assert "cargo build --locked --package larch-cli --bin larch" not in selector_job
+    assert 'selector_binary="$RUNNER_TEMP/trusted-main-rust-policy/larch"' in selector_job
     assert '"$selector_root/scripts/larch.sh" ci rust-select' in selector_job
     assert '"$selector_root/scripts/larch.sh" ci rust-select-summary' in selector_job
     assert "PYTHONPATH" not in selector_job
@@ -5248,6 +5248,17 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "'**/*.rs'" not in selector_job
     assert "sha256sum --check --strict larch.sha256" in selector_job
     assert "TRUSTED_POLICY_VALID" in selector_job
+    assert "if: steps.proposed-selection.outputs.mode == 'skip'" not in selector_job
+    assert selector_job.index("Restore trusted main Rust policy binary") < selector_job.index(
+        "Select Rust CI mode from the trusted base"
+    )
+    assert selector_job.index("Verify trusted main Rust policy binary") < selector_job.index(
+        "Select Rust CI mode from the trusted base"
+    )
+    policy_restore = selector_job.split("Restore trusted main Rust policy binary", 1)[1].split(
+        "Verify trusted main Rust policy binary", 1
+    )[0]
+    assert "continue-on-error: true" in policy_restore
     assert "RUST_CI_FORCE_FULL" in selector_job
     assert "full-rust-ci" in selector_job
     assert "RUST_CI_PARTIAL_ENFORCEMENT" in selector_job
@@ -5330,7 +5341,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "Only the trusted\npublisher may save it",
         "exact successful merge-group source",
         "exact key binds",
-        "The skip lane\nrepeats those checks",
+        "trusted pull-request-base wrapper",
+        "without compiling or executing pull-request code",
+        "The skip\nlane repeats the same checks after artifact handoff",
         "Skip enforcement is enabled only after",
     ):
         assert required_detail in supply_chain
