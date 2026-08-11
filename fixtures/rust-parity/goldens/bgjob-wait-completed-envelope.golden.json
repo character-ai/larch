@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "session/bgjob/demo.result.env": {
+      "text": "BGJOB_RC=0\nBGJOB_ELAPSED_S=7\nSTEP=demo\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "BGJOB_STATUS=DONE\nBGJOB_RC=0\nBGJOB_ELAPSED_S=7\nSTEP=demo\n"
+  }
+}

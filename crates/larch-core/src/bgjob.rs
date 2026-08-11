@@ -14,8 +14,9 @@ use std::{
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    DuplicatePolicy, KvDocument, ParseOptions, ProcessIdentityHost, RecordedProcessIdentity,
-    validate_process_identity,
+    DuplicatePolicy, KvDocument, ParseOptions, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity, identity_to_json,
+    read_process_identity, validate_process_identity, validate_process_identity_with_policy,
 };
 
 /// Registry directory below the larch cache root.
@@ -94,6 +95,9 @@ pub struct RegistryEntry {
     pub daemon: RecordedProcessIdentity,
     /// Child identity.
     pub child: RecordedProcessIdentity,
+    /// Whether the child may replace its wrapper command with `exec` while
+    /// retaining its PID, process group, and start time.
+    pub child_allows_exec: bool,
     /// Optional owner identity.
     pub owner: Option<RecordedProcessIdentity>,
     /// Epoch at launch.
@@ -106,6 +110,25 @@ pub struct RegistryEntry {
     pub stderr_log: PathBuf,
     /// Completed result envelope.
     pub result_env: PathBuf,
+}
+
+/// An exclusive, durable claim held while recovering an abandoned registry row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryLease {
+    entry_path: PathBuf,
+    lease_path: PathBuf,
+    claimant: RecordedProcessIdentity,
+}
+
+/// Result of attempting to claim an abandoned registry row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecoveryClaim {
+    /// This process exclusively owns recovery until it releases the lease.
+    Acquired(RecoveryLease),
+    /// Another live cleaner owns recovery.
+    Busy,
+    /// The row disappeared before it could be claimed.
+    Gone,
 }
 
 /// Validated liveness result for a recorded process.
@@ -515,6 +538,10 @@ pub fn write_entry_at(entry: &RegistryEntry, root: Option<&Path>) -> Result<Path
     ];
     rows.extend(identity_rows("DAEMON", Some(&entry.daemon)));
     rows.extend(identity_rows("CHILD", Some(&entry.child)));
+    rows.push((
+        "CHILD_ALLOW_COMMAND_TRANSITION".to_owned(),
+        entry.child_allows_exec.to_string(),
+    ));
     rows.extend(identity_rows("OWNER", entry.owner.as_ref()));
     let text = render_rows(&rows)?;
     let parent = path
@@ -551,6 +578,12 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
         clone_path: resolve_candidate(Path::new(clone_raw)).ok()?,
         daemon,
         child,
+        // Legacy rows predate the explicit marker but were launched through
+        // the same wrapper boundary, so preserve exec-capable recovery for
+        // them. An explicit non-true marker opts into exact command matching.
+        child_allows_exec: rows
+            .get("CHILD_ALLOW_COMMAND_TRANSITION")
+            .is_none_or(|value| value == "true"),
         owner: parse_identity(&rows, "OWNER"),
         start_epoch: rows.get("START_EPOCH")?.parse().ok()?,
         budget_s: rows.get("BUDGET_S")?.parse().ok()?,
@@ -619,10 +652,127 @@ pub fn unlink_entry(path: &Path) {
     let _ = fs::remove_file(path);
 }
 
+/// Claim a registry row for foreground recovery without racing another cleaner.
+///
+/// The lease records the cleaner's full process identity. A later cleaner may
+/// remove the lease only when that identity is absent or mismatched, so a
+/// cancelled foreground `wait` cannot strand recovery forever.
+///
+/// # Errors
+///
+/// Returns an error when the registry row, lease path, or claimant identity is
+/// unsafe or cannot be validated.
+pub fn claim_recovery(
+    host: &dyn ProcessIdentityHost,
+    entry_path: &Path,
+) -> Result<RecoveryClaim, BgjobError> {
+    if fs::symlink_metadata(entry_path).is_err() {
+        return Ok(RecoveryClaim::Gone);
+    }
+    let parent = entry_path
+        .parent()
+        .ok_or_else(|| BgjobError::Invalid("registry path has no parent".to_owned()))?;
+    let parent_metadata =
+        fs::symlink_metadata(parent).map_err(|error| BgjobError::Io(error.to_string()))?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return Err(BgjobError::Invalid(
+            "registry parent is unsafe for recovery claim".to_owned(),
+        ));
+    }
+    let entry_name = entry_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| {
+            Path::new(value)
+                .extension()
+                .is_some_and(|extension| extension == "env")
+        })
+        .ok_or_else(|| BgjobError::Invalid("registry filename is unsafe".to_owned()))?;
+    let lease_path = parent.join(format!(".{entry_name}.recovery"));
+    let claimant = read_process_identity(host, host.current_pid(), "").ok_or_else(|| {
+        BgjobError::Invalid("could not capture recovery claimant identity".to_owned())
+    })?;
+
+    for _ in 0..2 {
+        match write_recovery_lease(&lease_path, &claimant) {
+            Ok(()) => {
+                if read_entry(entry_path).is_none() {
+                    release_recovery_claim(&RecoveryLease {
+                        entry_path: entry_path.to_path_buf(),
+                        lease_path,
+                        claimant,
+                    });
+                    return Ok(RecoveryClaim::Gone);
+                }
+                return Ok(RecoveryClaim::Acquired(RecoveryLease {
+                    entry_path: entry_path.to_path_buf(),
+                    lease_path,
+                    claimant,
+                }));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let Some(existing) = read_recovery_lease(&lease_path) else {
+                    return Err(BgjobError::Invalid(
+                        "recovery lease is malformed or unsafe".to_owned(),
+                    ));
+                };
+                let validation = validate_process_identity(host, &existing);
+                if validation.ok {
+                    return Ok(RecoveryClaim::Busy);
+                }
+                if matches!(
+                    validation.reason.as_str(),
+                    "identity-probe-error" | "identity-probe-timeout"
+                ) {
+                    return Err(BgjobError::Invalid(format!(
+                        "could not validate recovery claimant: {}",
+                        validation.reason
+                    )));
+                }
+                remove_regular_file(&lease_path);
+            }
+            Err(error) => return Err(BgjobError::Io(error.to_string())),
+        }
+    }
+    Ok(RecoveryClaim::Busy)
+}
+
+/// Return the claimed row path for an acquired recovery lease.
+#[must_use]
+pub fn recovery_claim_entry_path(claim: &RecoveryLease) -> &Path {
+    &claim.entry_path
+}
+
+/// Release a recovery claim only when this process still owns the exact lease.
+pub fn release_recovery_claim(claim: &RecoveryLease) {
+    if read_recovery_lease(&claim.lease_path).as_ref() == Some(&claim.claimant) {
+        remove_regular_file(&claim.lease_path);
+    }
+}
+
 /// Validate the recorded child identity against a host process table.
 #[must_use]
 pub fn child_liveness(host: &dyn ProcessIdentityHost, entry: &RegistryEntry) -> LivenessVerdict {
-    liveness(host, &entry.child)
+    let validation =
+        validate_process_identity_with_policy(host, &entry.child, child_identity_policy(entry));
+    LivenessVerdict {
+        live: validation.ok,
+        reason: if validation.ok {
+            "ok".to_owned()
+        } else {
+            validation.reason
+        },
+    }
+}
+
+/// Return the validation policy persisted with a job child identity.
+#[must_use]
+pub const fn child_identity_policy(entry: &RegistryEntry) -> ProcessIdentityValidationPolicy {
+    if entry.child_allows_exec {
+        ProcessIdentityValidationPolicy::AllowCommandTransition
+    } else {
+        ProcessIdentityValidationPolicy::ExactCommand
+    }
 }
 
 /// Validate the recorded daemon identity against a host process table.
@@ -732,6 +882,35 @@ fn liveness(host: &dyn ProcessIdentityHost, identity: &RecordedProcessIdentity) 
         } else {
             validation.reason
         },
+    }
+}
+
+fn write_recovery_lease(path: &Path, claimant: &RecordedProcessIdentity) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(identity_to_json(claimant, None).as_bytes())?;
+    file.sync_all()
+}
+
+fn read_recovery_lease(path: &Path) -> Option<RecordedProcessIdentity> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return None;
+    }
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn remove_regular_file(path: &Path) {
+    if fs::symlink_metadata(path)
+        .is_ok_and(|metadata| !metadata.file_type().is_symlink() && metadata.is_file())
+    {
+        let _ = fs::remove_file(path);
     }
 }
 
@@ -928,14 +1107,15 @@ pub fn epoch_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, RegistryEntry,
-        absolute_path, bgjob_dir, checked_dir, child_liveness, daemon_liveness, default_run_id,
-        ensure_directory, ensure_under, entry_expired, epoch_now, expand_home, has_live_entry_at,
-        identity_rows, iter_entries_at, log_paths, parse_identity, private_atomic_write,
-        read_entry, registry_path, reject_line_value, render_rows, resolve_candidate,
-        resolve_run_id, resolved_directory, result_env_path, startup_env_path, temporary_path,
-        unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
-        validate_parent_chain, validate_run_id, validate_slug, validated_path, write_entry_at,
+        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, RecoveryClaim,
+        RegistryEntry, absolute_path, bgjob_dir, checked_dir, child_liveness, claim_recovery,
+        daemon_liveness, default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now,
+        expand_home, has_live_entry_at, identity_rows, iter_entries_at, log_paths, parse_identity,
+        private_atomic_write, read_entry, registry_path, reject_line_value, release_recovery_claim,
+        render_rows, resolve_candidate, resolve_run_id, resolved_directory, result_env_path,
+        startup_env_path, temporary_path, unlink_entry, validate_initial_merge_rows,
+        validate_merge_result_env, validate_parent_chain, validate_run_id, validate_slug,
+        validated_path, write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
@@ -970,6 +1150,7 @@ mod tests {
             clone_path: env::current_dir().expect("cwd"),
             daemon: identity(11),
             child: identity(12),
+            child_allows_exec: false,
             owner,
             start_epoch: 1,
             budget_s: 30,
@@ -981,6 +1162,8 @@ mod tests {
 
     struct LivenessHost {
         live: bool,
+        current_pid: i32,
+        probe_error_pid: Option<i32>,
     }
 
     impl ProcessIdentityHost for LivenessHost {
@@ -988,7 +1171,10 @@ mod tests {
             self.live.then_some(pid)
         }
 
-        fn probe_ps_identity(&self, _pid: i32) -> IdentityProbeOutput {
+        fn probe_ps_identity(&self, pid: i32) -> IdentityProbeOutput {
+            if self.probe_error_pid == Some(pid) {
+                return IdentityProbeOutput::Error;
+            }
             if self.live {
                 IdentityProbeOutput::Stdout("Fri Jul 3 17:01:02 2026 worker".to_owned())
             } else {
@@ -1023,7 +1209,7 @@ mod tests {
         }
 
         fn current_pid(&self) -> i32 {
-            0
+            self.current_pid
         }
 
         fn parent_pid(&self) -> i32 {
@@ -1118,6 +1304,67 @@ mod tests {
                 .expect("path")
                 .ends_with(format!("demo-step{BGJOB_RESULT_ENV_SUFFIX}"))
         );
+    }
+
+    #[test]
+    fn recovery_claim_is_exclusive_and_releases_only_its_owner() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let entry = entry(&tmpdir, None);
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry, Some(&registry)).expect("registry row");
+        let host = LivenessHost {
+            live: true,
+            current_pid: 77,
+            probe_error_pid: None,
+        };
+
+        let first = match claim_recovery(&host, &path).expect("first claim") {
+            RecoveryClaim::Acquired(claim) => claim,
+            other => panic!("unexpected first claim: {other:?}"),
+        };
+        assert!(matches!(
+            claim_recovery(&host, &path).expect("contending claim"),
+            RecoveryClaim::Busy
+        ));
+        release_recovery_claim(&first);
+        assert!(matches!(
+            claim_recovery(&host, &path).expect("released claim"),
+            RecoveryClaim::Acquired(_)
+        ));
+    }
+
+    #[test]
+    fn recovery_claim_keeps_a_live_lease_when_its_identity_probe_fails() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let entry = entry(&tmpdir, None);
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry, Some(&registry)).expect("registry row");
+        let holder = LivenessHost {
+            live: true,
+            current_pid: 77,
+            probe_error_pid: None,
+        };
+        let claim = match claim_recovery(&holder, &path).expect("claim") {
+            RecoveryClaim::Acquired(claim) => claim,
+            other => panic!("unexpected claim: {other:?}"),
+        };
+        let contender = LivenessHost {
+            live: true,
+            current_pid: 88,
+            probe_error_pid: Some(77),
+        };
+        assert!(claim_recovery(&contender, &path).is_err());
+        assert!(
+            claim.lease_path.exists(),
+            "a probe failure must not reclaim another cleaner's live lease"
+        );
+        release_recovery_claim(&claim);
     }
 
     #[test]
@@ -1248,6 +1495,16 @@ mod tests {
         let entry = entry(&tmpdir, Some(identity(13)));
         let path = write_entry_at(&entry, Some(&registry)).expect("write registry");
         assert_eq!(read_entry(&path), Some(entry));
+        let legacy = fs::read_to_string(&path)
+            .expect("registry text")
+            .replace("CHILD_ALLOW_COMMAND_TRANSITION=false\n", "");
+        fs::write(&path, legacy).expect("legacy registry text");
+        assert!(
+            read_entry(&path)
+                .expect("legacy registry entry")
+                .child_allows_exec,
+            "a markerless legacy row must retain exec-capable recovery"
+        );
         assert!(validate_initial_merge_rows(&[("GOOD".to_owned(), "value".to_owned())]).is_ok());
         assert!(validate_initial_merge_rows(&[("bad".to_owned(), "value".to_owned())]).is_err());
         assert!(
@@ -1297,8 +1554,16 @@ mod tests {
         record.budget_s = 60;
         let path = write_entry_at(&record, Some(&registry)).expect("registry entry");
 
-        let live_host = LivenessHost { live: true };
-        let missing_host = LivenessHost { live: false };
+        let live_host = LivenessHost {
+            live: true,
+            current_pid: 0,
+            probe_error_pid: None,
+        };
+        let missing_host = LivenessHost {
+            live: false,
+            current_pid: 0,
+            probe_error_pid: None,
+        };
         assert!(daemon_liveness(&live_host, &record).live);
         assert!(child_liveness(&live_host, &record).live);
         assert_eq!(child_liveness(&missing_host, &record).reason, "missing-pid");

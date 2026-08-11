@@ -62,10 +62,10 @@ impl Sandbox {
         command
     }
 
-    /// Start a tracked sleeper in its own process group.
+    /// Start a tracked owner or stale-process fixture.
     fn sleeper(&mut self) -> i32 {
-        let child = Command::new("/bin/sh")
-            .args(["-c", "sleep 60"])
+        let child = Command::new("/bin/sleep")
+            .arg("60")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -179,6 +179,21 @@ fn pid_is_live(pid: i32) -> bool {
     nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
 }
 
+fn group_is_live(pgid: i32) -> bool {
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(-pgid), None).is_ok()
+}
+
+fn assert_group_gone(pgid: i32, context: &str) {
+    let deadline = Instant::now() + DEADLINE;
+    while group_is_live(pgid) && Instant::now() < deadline {
+        sleep(POLL);
+    }
+    assert!(
+        !group_is_live(pgid),
+        "{context} left process group {pgid} alive"
+    );
+}
+
 fn epoch_now() -> i64 {
     i64::try_from(
         SystemTime::now()
@@ -209,6 +224,17 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
     assert!(settled.contains("STEP=start-check"), "{settled:?}");
     let log = fs::read_to_string(tmpdir.join("bgjob/start-check.stdout.log")).expect("stdout log");
     assert!(log.contains("hello from child"), "{log:?}");
+    let result = fs::read_to_string(tmpdir.join("bgjob/start-check.result.env"))
+        .expect("completed result envelope");
+    let keys = result
+        .lines()
+        .map(|line| line.split_once('=').expect("result row").0)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keys,
+        ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"],
+        "result envelope key set drifted: {result:?}"
+    );
 
     // A completed job leaves no registry row, so `reap` has nothing to remove.
     sandbox
@@ -248,6 +274,34 @@ fn budget_expiry_reports_timeout_and_kills_the_child_group() {
         !pid_is_live(child_pid),
         "timeout left child {child_pid} alive"
     );
+    assert_group_gone(pgid, "timeout");
+}
+
+#[test]
+fn budget_expiry_kills_a_child_that_execs_a_different_program() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("budget-exec");
+    let stdout = start(
+        &sandbox,
+        "budget-exec",
+        &tmpdir,
+        "1",
+        std::process::id().try_into().expect("pid"),
+        &["/bin/sh", "-c", "exec sleep 60"],
+    );
+    let pgid = started_pgid(&stdout, "budget-exec");
+    let row = registry_row(&sandbox, "budget-exec");
+    let child_pid = read_entry(&row).expect("registry entry").child.pid;
+
+    let settled = wait_until_settled(&sandbox, "budget-exec", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
+    assert!(settled.contains("BGJOB_RC=timeout"), "{settled:?}");
+    assert!(
+        !pid_is_live(child_pid),
+        "timeout left exec child {child_pid} alive"
+    );
+    assert_group_gone(pgid, "timeout after exec");
+    assert!(!row.exists(), "timeout retained the registry row");
 }
 
 #[test]
@@ -261,7 +315,7 @@ fn owner_death_reports_orphaned() {
         &tmpdir,
         "60",
         owner_pid,
-        &["/bin/sh", "-c", "while true; do sleep 1; done"],
+        &["/bin/sh", "-c", "exec sleep 60"],
     );
     assert!(started_pgid(&stdout, "owner-death") > 0);
 
@@ -276,10 +330,11 @@ fn owner_death_reports_orphaned() {
     let settled = wait_until_settled(&sandbox, "owner-death", &tmpdir);
     assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
     assert!(settled.contains("BGJOB_RC=orphaned"), "{settled:?}");
+    assert_group_gone(started_pgid(&stdout, "owner-death"), "owner death");
 }
 
 #[test]
-fn an_externally_killed_daemon_reports_dead() {
+fn an_externally_killed_daemon_recovers_its_child_before_reporting_dead() {
     let sandbox = Sandbox::new();
     let tmpdir = sandbox.session("external-kill");
     let stdout = start(
@@ -309,14 +364,57 @@ fn an_externally_killed_daemon_reports_dead() {
         }
     }
     assert!(settled.contains("BGJOB_STATUS=DEAD"), "{settled:?}");
-    assert!(settled.contains("BGJOB_DIAG="), "{settled:?}");
+    assert!(
+        settled.contains("BGJOB_DIAG=daemon-dead-recovered"),
+        "{settled:?}"
+    );
+    assert!(!pid_is_live(entry.child.pid), "recovery left child alive");
+    assert_group_gone(entry.child.pgid, "external daemon death");
+    assert!(!row.exists(), "recovery retained the registry row");
+    assert!(
+        !tmpdir.join("bgjob/external-kill.result.env").exists(),
+        "recovery left a partial result envelope"
+    );
+}
 
+#[test]
+fn reap_recovers_an_externally_killed_daemons_child_group() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("reap-daemon-dead");
+    let stdout = start(
+        &sandbox,
+        "reap-daemon-dead",
+        &tmpdir,
+        "60",
+        std::process::id().try_into().expect("pid"),
+        &["/bin/sh", "-c", "exec sleep 60"],
+    );
+    assert!(started_pgid(&stdout, "reap-daemon-dead") > 0);
+    let row = registry_row(&sandbox, "reap-daemon-dead");
+    let entry = read_entry(&row).expect("registry entry");
     nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(entry.child.pid),
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
         nix::sys::signal::Signal::SIGKILL,
     )
-    .expect("kill orphaned job child");
-    fs::remove_file(&row).expect("clear fixture row");
+    .expect("kill daemon");
+    let deadline = Instant::now() + DEADLINE;
+    while pid_is_live(entry.daemon.pid) && Instant::now() < deadline {
+        sleep(POLL);
+    }
+    assert!(!pid_is_live(entry.daemon.pid), "daemon did not exit");
+
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=1\n");
+    assert_group_gone(entry.child.pgid, "reap after external daemon death");
+    assert!(!row.exists(), "reap retained the recovered registry row");
+    assert!(
+        !entry.result_env.exists(),
+        "reap recovery left a partial result envelope"
+    );
 }
 
 #[test]
@@ -368,15 +466,17 @@ fn status_reports_a_live_registry_row_and_rejects_unsafe_steps() {
         nix::sys::signal::Signal::SIGKILL,
     )
     .expect("kill daemon");
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(entry.child.pid),
-        nix::sys::signal::Signal::SIGKILL,
-    )
-    .expect("kill job child");
+    let recovered = wait_until_settled(&sandbox, "status-check", &tmpdir);
+    assert!(recovered.contains("BGJOB_STATUS=DEAD"), "{recovered:?}");
+    assert!(
+        !pid_is_live(entry.child.pid),
+        "recovery left status child alive"
+    );
+    assert!(!row.exists(), "recovery retained status registry row");
 }
 
 #[test]
-fn reap_clears_an_expired_row_without_signalling_a_recycled_pid() {
+fn reap_retains_an_expired_row_when_its_child_identity_is_stale() {
     let mut sandbox = Sandbox::new();
     let tmpdir = sandbox.session("reap-recycled");
     let log_dir = tmpdir.join("bgjob");
@@ -396,6 +496,8 @@ fn reap_clears_an_expired_row_without_signalling_a_recycled_pid() {
     };
     let mut stale_child = capture(recycled_pid);
     stale_child.start_time = format!("stale {}", stale_child.start_time);
+    let mut stale_daemon = capture(daemon_pid);
+    stale_daemon.start_time = format!("stale {}", stale_daemon.start_time);
 
     let entry = RegistryEntry {
         step: "reap-recycled".to_owned(),
@@ -403,8 +505,9 @@ fn reap_clears_an_expired_row_without_signalling_a_recycled_pid() {
         tmpdir,
         log_dir: log_dir.clone(),
         clone_path: std::env::current_dir().expect("cwd"),
-        daemon: capture(daemon_pid),
+        daemon: stale_daemon,
         child: stale_child,
+        child_allows_exec: false,
         owner: None,
         start_epoch: epoch_now() - 10,
         budget_s: 1,
@@ -422,12 +525,33 @@ fn reap_clears_an_expired_row_without_signalling_a_recycled_pid() {
         .args(["bgjob", "reap"])
         .assert()
         .success()
-        .stdout("BGJOB_REAPED=1\n");
+        .stdout("BGJOB_REAPED=0\n");
 
-    assert!(!row.exists(), "reap left the expired row behind");
+    assert!(row.exists(), "reap discarded an unrecoverable registry row");
     assert!(
         pid_is_live(recycled_pid),
         "reap signalled the recycled pid {recycled_pid}"
+    );
+    let diagnostic = fs::read_to_string(&entry.stderr_log).expect("teardown diagnostic");
+    assert!(
+        diagnostic.contains("BGJOB_TEARDOWN_REASON=start-time-mismatch"),
+        "reap did not retain a useful stale-identity diagnostic: {diagnostic:?}"
+    );
+
+    fs::write(
+        &entry.result_env,
+        "BGJOB_RC=0\nBGJOB_ELAPSED_S=0\nSTEP=reap-recycled\n",
+    )
+    .expect("completed envelope");
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=0\n");
+    assert!(
+        row.exists(),
+        "reap discarded a completed row without proving its group absent"
     );
 }
 

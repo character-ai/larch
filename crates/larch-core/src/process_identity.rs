@@ -27,6 +27,10 @@ pub const DESIGN_STEP3_MISSING_PID_GRACE: Duration = Duration::from_secs(5);
 pub const PROCESS_IDENTITY_PS_TIMEOUT: Duration = Duration::from_secs(5);
 /// Delay between SIGTERM and SIGKILL escalation.
 pub const TERMINATE_ESCALATION_SLEEP: Duration = Duration::from_secs(2);
+/// Maximum time spent proving a signaled process group is gone.
+pub const TERMINATE_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
+/// Delay between process-group absence probes after signaling.
+pub const TERMINATE_CONFIRM_POLL: Duration = Duration::from_millis(50);
 
 /// Design Step 3 loop identity sidecar basename.
 pub const DESIGN_STEP3_LOOP_IDENTITY_FILE: &str = ".step3-loop-identity.json";
@@ -60,6 +64,17 @@ pub struct ValidationResult {
     pub ok: bool,
     pub reason: String,
     pub current: Option<RecordedProcessIdentity>,
+}
+
+/// Outcome of terminating a persisted process group and proving it is absent.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminationResult {
+    /// Whether the recorded group is proven absent after cleanup.
+    pub terminated: bool,
+    /// Stable success or failure reason.
+    pub reason: String,
+    /// The last identity validation performed while cleaning up.
+    pub validation: ValidationResult,
 }
 
 /// Result of one identity probe attempt.
@@ -100,6 +115,21 @@ pub enum TerminateSignal {
     Kill,
 }
 
+/// Command-signature policy for a persisted process identity.
+///
+/// A freshly captured wrapper normally retains an exact command signature. A
+/// child that deliberately `exec`s keeps its PID, process group, and start
+/// time but necessarily changes that command text; its owning runtime may opt
+/// into the latter policy without relaxing the PID-reuse checks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessIdentityValidationPolicy {
+    /// Require the exact captured command and expected command substring.
+    ExactCommand,
+    /// Permit an in-place command transition while retaining PID, PGID, and
+    /// start-time validation.
+    AllowCommandTransition,
+}
+
 impl TerminateSignal {
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -133,6 +163,15 @@ pub trait ProcessIdentityHost {
     fn pgrep_children(&self, pid: i32) -> Vec<i32>;
     /// Enumerate members of process group `pgid` via `pgrep -g`.
     fn pgrep_group(&self, pgid: i32) -> Vec<i32>;
+    /// Enumerate members of process group `pgid`, returning `None` when the
+    /// probe itself could not establish the answer.
+    ///
+    /// The default keeps existing in-memory hosts simple. Production hosts
+    /// override it so a cleanup path never treats a failed `pgrep` call as
+    /// proof that a process group is absent.
+    fn pgrep_group_checked(&self, pgid: i32) -> Option<Vec<i32>> {
+        Some(self.pgrep_group(pgid))
+    }
     /// Signal one process. Returns whether the signal was delivered.
     fn signal_process(&self, pid: i32, signal: TerminateSignal) -> bool;
     /// Signal one process group. Returns whether the signal was delivered.
@@ -306,6 +345,20 @@ pub fn validate_process_identity(
     host: &dyn ProcessIdentityHost,
     recorded: &RecordedProcessIdentity,
 ) -> ValidationResult {
+    validate_process_identity_with_policy(
+        host,
+        recorded,
+        ProcessIdentityValidationPolicy::ExactCommand,
+    )
+}
+
+/// Validate a recorded identity with an explicit command-transition policy.
+#[must_use]
+pub fn validate_process_identity_with_policy(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+) -> ValidationResult {
     let probe = probe_process_identity(host, recorded.pid, &recorded.expected_signature);
     let Some(current) = probe.identity else {
         return ValidationResult {
@@ -330,22 +383,24 @@ pub fn validate_process_identity(
             current: Some(current),
         };
     }
-    let recorded_command = normalize_command_signature(&recorded.command_signature);
-    let current_command = normalize_command_signature(&current.command_signature);
-    if !recorded_command.is_empty() && current_command != recorded_command {
-        return ValidationResult {
-            ok: false,
-            reason: "command-mismatch".to_owned(),
-            current: Some(current),
-        };
-    }
-    let expected = normalize_command_signature(&recorded.expected_signature);
-    if !expected.is_empty() && !current_command.contains(&expected) {
-        return ValidationResult {
-            ok: false,
-            reason: "expected-command-mismatch".to_owned(),
-            current: Some(current),
-        };
+    if policy == ProcessIdentityValidationPolicy::ExactCommand {
+        let recorded_command = normalize_command_signature(&recorded.command_signature);
+        let current_command = normalize_command_signature(&current.command_signature);
+        if !recorded_command.is_empty() && current_command != recorded_command {
+            return ValidationResult {
+                ok: false,
+                reason: "command-mismatch".to_owned(),
+                current: Some(current),
+            };
+        }
+        let expected = normalize_command_signature(&recorded.expected_signature);
+        if !expected.is_empty() && !current_command.contains(&expected) {
+            return ValidationResult {
+                ok: false,
+                reason: "expected-command-mismatch".to_owned(),
+                current: Some(current),
+            };
+        }
     }
     ValidationResult {
         ok: true,
@@ -376,6 +431,22 @@ pub fn collect_process_group_members(host: &dyn ProcessIdentityHost, pgid: i32) 
         }
     }
     members
+}
+
+/// Collect group members while preserving a failed probe as a fail-closed result.
+#[must_use]
+pub fn collect_process_group_members_checked(
+    host: &dyn ProcessIdentityHost,
+    pgid: i32,
+) -> Option<Vec<i32>> {
+    let mut members = Vec::new();
+    let mut seen = BTreeSet::new();
+    for member in host.pgrep_group_checked(pgid)? {
+        if seen.insert(member) {
+            members.push(member);
+        }
+    }
+    Some(members)
 }
 
 /// Serialize and append one kill-log event after outbound redaction.
@@ -440,25 +511,6 @@ fn log_signal(
     );
 }
 
-fn validated_missing_leader_members(
-    host: &dyn ProcessIdentityHost,
-    recorded: &RecordedProcessIdentity,
-) -> Option<Vec<i32>> {
-    let descendants = collect_process_group_members(host, recorded.pgid);
-    if descendants.is_empty() {
-        return None;
-    }
-    let mut validated_members = Vec::with_capacity(descendants.len());
-    for child in descendants {
-        let child_identity = read_process_identity(host, child, &recorded.expected_signature)?;
-        if child_identity.pgid != recorded.pgid {
-            return None;
-        }
-        validated_members.push(child);
-    }
-    Some(validated_members)
-}
-
 struct SignalRequest<'a> {
     log_path: Option<&'a Path>,
     recorded: &'a RecordedProcessIdentity,
@@ -515,22 +567,42 @@ pub fn terminate_validated_process_group(
     caller: &str,
     reason: &str,
 ) -> ValidationResult {
-    let validation = validate_process_identity(host, recorded);
+    terminate_validated_process_group_with_policy(
+        host,
+        recorded,
+        ProcessIdentityValidationPolicy::ExactCommand,
+        log_path,
+        caller,
+        reason,
+    )
+}
+
+/// Terminate a process group after validation under `policy`.
+///
+/// This records every intended signal before it is sent. Call
+/// [`terminate_validated_process_group_and_confirm`] when a caller must not
+/// release durable ownership until the group is proven absent.
+#[must_use]
+pub fn terminate_validated_process_group_with_policy(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+    log_path: Option<&Path>,
+    caller: &str,
+    reason: &str,
+) -> ValidationResult {
+    let validation = validate_process_identity_with_policy(host, recorded, policy);
     if !validation.ok && validation.reason != "missing-pid" {
         return validation;
     }
-    let current = validation
-        .current
-        .clone()
-        .unwrap_or_else(|| recorded.clone());
-    let descendants = if validation.ok {
-        collect_descendants(host, recorded.pid)
-    } else {
-        let Some(members) = validated_missing_leader_members(host, recorded) else {
-            return validation;
-        };
-        members
-    };
+    if !validation.ok {
+        // Once the persisted group leader is gone, a recycled numeric PGID
+        // cannot be tied safely to this record. Retain the durable state and
+        // let the caller prove absence; never signal an unrelated group.
+        return validation;
+    }
+    let current = validation.current.unwrap_or_else(|| recorded.clone());
+    let descendants = collect_descendants(host, recorded.pid);
     signal_group_and_descendants(
         host,
         &SignalRequest {
@@ -544,22 +616,14 @@ pub fn terminate_validated_process_group(
         },
     );
     host.sleep(TERMINATE_ESCALATION_SLEEP);
-    let validation = validate_process_identity(host, recorded);
+    let validation = validate_process_identity_with_policy(host, recorded, policy);
     if !validation.ok && validation.reason != "missing-pid" {
         return validation;
     }
-    let kill_descendants = if validation.ok {
-        collect_descendants(host, recorded.pid)
-    } else {
-        collect_process_group_members(host, recorded.pgid)
-    };
-    if !validation.ok && kill_descendants.is_empty() {
-        return ValidationResult {
-            ok: true,
-            reason: "ok".to_owned(),
-            current: Some(current),
-        };
+    if !validation.ok {
+        return validation;
     }
+    let kill_descendants = collect_descendants(host, recorded.pid);
     let command = validation
         .current
         .as_ref()
@@ -578,14 +642,91 @@ pub fn terminate_validated_process_group(
             reason,
         },
     );
-    if !validation.ok && validation.reason == "missing-pid" {
-        return ValidationResult {
-            ok: true,
-            reason: "ok".to_owned(),
-            current: Some(current),
+    validation
+}
+
+/// Terminate a process group and prove that no member remains.
+///
+/// A failed identity or process-group probe is not absence. The caller keeps
+/// its durable recovery record in that case so a later owner can retry without
+/// falsely publishing a terminal success envelope.
+#[must_use]
+pub fn terminate_validated_process_group_and_confirm(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+    log_path: Option<&Path>,
+    caller: &str,
+    reason: &str,
+) -> TerminationResult {
+    let initial = terminate_validated_process_group_with_policy(
+        host, recorded, policy, log_path, caller, reason,
+    );
+    if !initial.ok && initial.reason != "missing-pid" {
+        return TerminationResult {
+            terminated: false,
+            reason: initial.reason.clone(),
+            validation: initial,
         };
     }
-    validation
+
+    confirm_process_group_absent(host, recorded, policy)
+}
+
+/// Prove that a persisted process group has no remaining member.
+///
+/// This is separate from signaling so a direct child owner can reap its child
+/// before checking for a zombie process-group leader.
+#[must_use]
+pub fn confirm_process_group_absent(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+) -> TerminationResult {
+    let deadline = host
+        .monotonic_now()
+        .saturating_add(TERMINATE_CONFIRM_TIMEOUT);
+    let mut last = validate_process_identity_with_policy(host, recorded, policy);
+    loop {
+        if last.ok {
+            // The PID still names the validated process, so absence has not
+            // yet been proven.
+        } else if last.reason == "missing-pid" {
+            match collect_process_group_members_checked(host, recorded.pgid) {
+                None => {
+                    return TerminationResult {
+                        terminated: false,
+                        reason: "process-group-probe-error".to_owned(),
+                        validation: last,
+                    };
+                }
+                Some(members) if members.is_empty() => {
+                    return TerminationResult {
+                        terminated: true,
+                        reason: "terminated".to_owned(),
+                        validation: last,
+                    };
+                }
+                Some(_) => {}
+            }
+        } else {
+            return TerminationResult {
+                terminated: false,
+                reason: last.reason.clone(),
+                validation: last,
+            };
+        }
+
+        if host.monotonic_now() >= deadline {
+            return TerminationResult {
+                terminated: false,
+                reason: "process-group-still-live".to_owned(),
+                validation: last,
+            };
+        }
+        host.sleep(TERMINATE_CONFIRM_POLL);
+        last = validate_process_identity_with_policy(host, recorded, policy);
+    }
 }
 
 /// Render an identity record as indented, sorted JSON.
@@ -852,14 +993,15 @@ pub fn teardown_loop_identity(
     if recorded.pid != pid {
         return 0;
     }
-    let validation = terminate_validated_process_group(
+    let termination = terminate_validated_process_group_and_confirm(
         host,
         &recorded,
+        ProcessIdentityValidationPolicy::ExactCommand,
         Some(&tmpdir.join(DESIGN_STEP3_KILL_LOG_FILE)),
         "design-step3-review",
         "step3-trap-cleanup",
     );
-    if validation.ok {
+    if termination.terminated {
         host.remove_file(&sidecar);
     }
     0
@@ -1121,6 +1263,57 @@ mod tests {
     }
 
     #[test]
+    fn exec_policy_keeps_pid_reuse_and_group_validation_fail_closed() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                ps_stdout("sleep 60"),
+                ps_stdout("sleep 60"),
+                ps_stdout("unrelated recycled command"),
+                ps_stdout("unrelated recycled command"),
+            ],
+        );
+        let recorded = recorded();
+        assert_eq!(
+            validate_process_identity(&host, &recorded).reason,
+            "command-mismatch"
+        );
+        assert!(
+            validate_process_identity_with_policy(
+                &host,
+                &recorded,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
+            )
+            .ok
+        );
+
+        let mut stale = recorded.clone();
+        stale.start_time = "Fri Jul 3 17:01:01 2026".to_owned();
+        assert_eq!(
+            validate_process_identity_with_policy(
+                &host,
+                &stale,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
+            )
+            .reason,
+            "start-time-mismatch"
+        );
+
+        host.pgid.insert(123, 456);
+        assert_eq!(
+            validate_process_identity_with_policy(
+                &host,
+                &recorded,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
+            )
+            .reason,
+            "pgid-mismatch"
+        );
+    }
+
+    #[test]
     fn pid_reuse_does_not_signal_mismatched_process() {
         let mut host = FakeHost::default();
         host.pgid.insert(123, 123);
@@ -1213,6 +1406,7 @@ mod tests {
                 IdentityProbeOutput::Missing, // await sees exit
                 matching.clone(),             // teardown pre-signal validate
                 IdentityProbeOutput::Missing, // teardown post-SIGTERM
+                IdentityProbeOutput::Missing, // teardown confirms group absence
                 matching,                     // write_step5_loop_identity
             ],
         );
@@ -1249,6 +1443,36 @@ mod tests {
             0
         );
         assert!(host.is_regular_file(&tmp.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE)));
+    }
+
+    #[test]
+    fn teardown_loop_identity_retains_its_sidecar_until_the_group_is_absent() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        let matching = ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run");
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                matching.clone(), // write_loop_identity
+                matching,         // teardown pre-signal validation
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        host.groups.insert(123, vec![999]);
+        let tmp = PathBuf::from("/tmp/design-loop-retain");
+        assert_eq!(
+            write_loop_identity(&host, tmp.to_str().unwrap(), "123", "plan-review run"),
+            0
+        );
+
+        assert_eq!(
+            teardown_loop_identity(&host, tmp.to_str().unwrap(), "123"),
+            0
+        );
+        assert!(
+            host.is_regular_file(&tmp.join(DESIGN_STEP3_LOOP_IDENTITY_FILE)),
+            "an unproven group must retain the sidecar for a later safe recovery"
+        );
     }
 
     #[test]
@@ -1418,7 +1642,7 @@ mod tests {
     }
 
     #[test]
-    fn terminate_covers_missing_leader_with_validated_members() {
+    fn missing_leader_never_signals_a_recycled_process_group() {
         let mut host = FakeHost::default();
         host.pgid.insert(8, 8);
         host.pgid.insert(80, 8);
@@ -1449,7 +1673,21 @@ mod tests {
             "test",
             "missing-leader",
         );
-        assert!(validation.ok);
+        assert_eq!(validation.reason, "missing-pid");
+        assert!(
+            host.signals.borrow().is_empty(),
+            "a missing leader must not authorize a signal to a recycled PGID"
+        );
+        let termination = terminate_validated_process_group_and_confirm(
+            &host,
+            &recorded,
+            ProcessIdentityValidationPolicy::ExactCommand,
+            None,
+            "test",
+            "missing-leader",
+        );
+        assert!(!termination.terminated);
+        assert_eq!(termination.reason, "process-group-still-live");
     }
 
     #[test]

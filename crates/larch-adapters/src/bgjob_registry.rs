@@ -1,13 +1,16 @@
 //! Read-only background-job registry liveness used by the larch statusline.
 //!
-//! This is the shared Rust reader for the `daemons/*.env` rows the Python
-//! bgjob owner still writes. It answers exactly one question — does an
+//! This is the shared Rust reader for the `daemons/*.env` rows the bgjob
+//! runtime writes. It answers exactly one question — does an
 //! in-budget, live job exist for this clone and run — so the statusline can
 //! keep a long-running step visible without a staleness marker. The bgjob
 //! command leaves extend this module rather than adding a second reader.
 
 use crate::read_kv_raw;
-use larch_core::{ProcessIdentityHost, RecordedProcessIdentity, validate_process_identity};
+use larch_core::{
+    ProcessIdentityHost, ProcessIdentityValidationPolicy, RecordedProcessIdentity,
+    validate_process_identity_with_policy,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -24,15 +27,23 @@ const SLUG_MAX_CHARS: usize = 97;
 /// forced to supply the full process-identity host surface.
 pub trait IdentityLiveness {
     /// Return whether the recorded identity still names the same live process.
-    fn is_live(&self, recorded: &RecordedProcessIdentity) -> bool;
+    fn is_live(
+        &self,
+        recorded: &RecordedProcessIdentity,
+        policy: ProcessIdentityValidationPolicy,
+    ) -> bool;
 }
 
 /// Liveness answered by the shared process-identity validator.
 pub struct HostLiveness<'host>(pub &'host dyn ProcessIdentityHost);
 
 impl IdentityLiveness for HostLiveness<'_> {
-    fn is_live(&self, recorded: &RecordedProcessIdentity) -> bool {
-        validate_process_identity(self.0, recorded).ok
+    fn is_live(
+        &self,
+        recorded: &RecordedProcessIdentity,
+        policy: ProcessIdentityValidationPolicy,
+    ) -> bool {
+        validate_process_identity_with_policy(self.0, recorded, policy).ok
     }
 }
 
@@ -44,6 +55,7 @@ struct RegistryEntry {
     budget_s: f64,
     daemon: RecordedProcessIdentity,
     child: RecordedProcessIdentity,
+    child_allows_exec: bool,
 }
 
 /// Return whether an in-budget, live background job owns `run_id` for a clone.
@@ -75,7 +87,15 @@ pub fn has_live_entry(
             entry.run_id == run_id
                 && now - entry.start_epoch <= entry.budget_s
                 && entry.clone_path == clone_root
-                && (liveness.is_live(&entry.child) || liveness.is_live(&entry.daemon))
+                && (liveness.is_live(
+                    &entry.child,
+                    if entry.child_allows_exec {
+                        ProcessIdentityValidationPolicy::AllowCommandTransition
+                    } else {
+                        ProcessIdentityValidationPolicy::ExactCommand
+                    },
+                ) || liveness
+                    .is_live(&entry.daemon, ProcessIdentityValidationPolicy::ExactCommand))
         })
     })
 }
@@ -101,6 +121,8 @@ fn read_entry(path: &Path) -> Option<RegistryEntry> {
         budget_s: field(&rows, "BUDGET_S")?.parse().ok()?,
         daemon: identity(&rows, "DAEMON")?,
         child: identity(&rows, "CHILD")?,
+        child_allows_exec: field(&rows, "CHILD_ALLOW_COMMAND_TRANSITION")
+            .is_none_or(|value| value == "true"),
     })
 }
 
@@ -160,15 +182,33 @@ fn validated_child_path(raw: &str, root: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{IdentityLiveness, has_live_entry, validate_slug};
-    use larch_core::RecordedProcessIdentity;
-    use std::{fs, path::Path};
+    use larch_core::{ProcessIdentityValidationPolicy, RecordedProcessIdentity};
+    use std::{cell::RefCell, fs, path::Path};
     use tempfile::TempDir;
 
     struct LiveHost(bool);
 
+    #[derive(Default)]
+    struct PolicyHost(RefCell<Vec<ProcessIdentityValidationPolicy>>);
+
     impl IdentityLiveness for LiveHost {
-        fn is_live(&self, _recorded: &RecordedProcessIdentity) -> bool {
+        fn is_live(
+            &self,
+            _recorded: &RecordedProcessIdentity,
+            _policy: larch_core::ProcessIdentityValidationPolicy,
+        ) -> bool {
             self.0
+        }
+    }
+
+    impl IdentityLiveness for PolicyHost {
+        fn is_live(
+            &self,
+            _recorded: &RecordedProcessIdentity,
+            policy: ProcessIdentityValidationPolicy,
+        ) -> bool {
+            self.0.borrow_mut().push(policy);
+            true
         }
     }
 
@@ -264,5 +304,30 @@ mod tests {
         assert_eq!(validate_slug("step-5"), Some("step-5"));
         assert_eq!(validate_slug("-bad"), None);
         assert_eq!(validate_slug(""), None);
+    }
+
+    #[test]
+    fn markerless_rows_keep_the_exec_transition_policy() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let registry = seed(sandbox.path(), "run-1");
+        let clone = fs::canonicalize(sandbox.path().join("clone")).expect("clone");
+        let host = PolicyHost::default();
+
+        assert!(has_live_entry(&registry, &clone, "run-1", &host, 1100.0));
+        assert_eq!(
+            host.0.borrow().as_slice(),
+            [ProcessIdentityValidationPolicy::AllowCommandTransition]
+        );
+
+        let row = registry.join("run-1-step-5.env");
+        let marked = fs::read_to_string(&row).expect("registry row")
+            + "CHILD_ALLOW_COMMAND_TRANSITION=false\n";
+        fs::write(&row, marked).expect("explicit policy marker");
+        host.0.borrow_mut().clear();
+        assert!(has_live_entry(&registry, &clone, "run-1", &host, 1100.0));
+        assert_eq!(
+            host.0.borrow().as_slice(),
+            [ProcessIdentityValidationPolicy::ExactCommand]
+        );
     }
 }

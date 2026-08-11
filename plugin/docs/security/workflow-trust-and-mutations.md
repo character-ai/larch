@@ -317,6 +317,25 @@ detaches the daemon by re-executing the same verified binary in a daemon role,
 and the daemon binds the owner's recorded process identity, never a bare pid, so
 a reused pid never keeps an orphaned job alive (#6604). The daemon terminates a
 timed-out or orphaned child only through validated process-group termination.
+A child may legitimately replace its wrapper through `exec`; that transition
+retains its recorded PID, process group, and start time, which are revalidated
+before signaling. Other persisted identities retain exact command validation.
+Legacy background-job rows use the same transition policy because they predate
+the explicit registry marker.
+If the recorded group leader has disappeared while a numeric group remains,
+larch cannot prove that a recycled group is still its child and retains the
+record instead of signaling it.
+
+When a daemon dies, `wait` and `reap` share an exclusive, process-identity-bound
+recovery lease for its durable registry row. The lease holder validates the
+recorded child group, logs each intended signal, and proves that the full group
+is absent before it removes the row. A signal attempt, bounded child reap, or
+missing leader alone is not proof of teardown. If that proof fails, larch keeps
+the registry state and an actionable teardown diagnostic; it does not publish a
+`BGJOB_RC` result envelope or claim `DONE`. `wait` reports the non-success
+`DEAD` diagnostic instead. This fail-closed retention is an explicit safety
+difference from the retired Python behavior, which could discard the row after
+an unverified timeout or orphan cleanup.
 
 ## Workflow Boundaries
 
