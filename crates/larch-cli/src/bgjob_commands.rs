@@ -1275,11 +1275,15 @@ fn remove_result_residue(path: &Path) -> Result<(), String> {
         }
         Ok(_) => {}
     }
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(one_line(&error)),
-    }
+    fs::remove_file(path)
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(|error| one_line(&error))
 }
 
 fn stderr_tail(entry: &RegistryEntry) -> String {

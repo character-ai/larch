@@ -9,7 +9,8 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    RecordedProcessIdentity, RegistryEntry, read_entry, read_process_identity, write_entry_at,
+    KvDocument, ParseOptions, RecordedProcessIdentity, RegistryEntry, RenderOptions, read_entry,
+    read_process_identity, write_entry_at,
 };
 use std::{
     fs,
@@ -226,9 +227,19 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
     assert!(log.contains("hello from child"), "{log:?}");
     let result = fs::read_to_string(tmpdir.join("bgjob/start-check.result.env"))
         .expect("completed result envelope");
-    let keys = result
-        .lines()
-        .map(|line| line.split_once('=').expect("result row").0)
+    let document =
+        KvDocument::parse(&result, ParseOptions::environment()).expect("result KEY=value envelope");
+    assert_eq!(
+        document
+            .render(RenderOptions::wire())
+            .expect("canonical result envelope"),
+        result,
+        "result envelope has non-canonical bytes: {result:?}"
+    );
+    let keys = document
+        .rows()
+        .iter()
+        .map(larch_core::KvRow::key)
         .collect::<Vec<_>>();
     assert_eq!(
         keys,
