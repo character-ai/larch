@@ -1,4 +1,5 @@
 use super::*;
+use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
 use std::{
     fs,
     path::Path,
@@ -197,6 +198,42 @@ impl GitFixture {
     }
 }
 
+fn workflow_with_github(fixture: &GitFixture, server: &IssueServiceStub) -> ProductionWorkflow {
+    let mut workflow = fixture.workflow();
+    workflow.github = Some(
+        workflow
+            .runtime
+            .block_on(async { OctocrabGitHubService::with_test_base(server.base_url()) }),
+    );
+    workflow
+}
+
+fn start_github_stub(exchanges: Vec<IssueServiceExchange>) -> IssueServiceStub {
+    IssueServiceStub::start(exchanges).expect("start loopback GitHub stub")
+}
+
+fn empty_workflow_runs() -> &'static str {
+    r#"{"workflow_runs":[]}"#
+}
+
+fn successful_workflow_runs(head_sha: &str) -> String {
+    format!(
+        r#"{{"workflow_runs":[{{"id":17,"status":"completed","conclusion":"success","head_sha":"{head_sha}","event":"workflow_dispatch","run_attempt":1}}]}}"#
+    )
+}
+
+fn no_content_exchange() -> IssueServiceExchange {
+    IssueServiceExchange::any(
+        HttpResponseBuilder::new(204)
+            .build()
+            .expect("valid no-content response"),
+    )
+}
+
+fn created_pull_request() -> &'static str {
+    r#"{"number":42,"state":"open","title":"rebalance","head":{"ref":"rebalance-publish"},"base":{"ref":"main"},"draft":false,"merged":false}"#
+}
+
 fn git(root: &Path, arguments: &[&str]) {
     let status = Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture creates typed repository states
         .arg("-C")
@@ -286,6 +323,20 @@ fn changed_plan() -> PreparedPlan {
         }),
         decision: "approved".to_owned(),
     }
+}
+
+fn harness_only_plan() -> PreparedPlan {
+    let mut plan = changed_plan();
+    plan.kind = RebalanceKind::Harness;
+    plan.python = None;
+    plan
+}
+
+fn python_only_plan() -> PreparedPlan {
+    let mut plan = changed_plan();
+    plan.kind = RebalanceKind::Python;
+    plan.harness = None;
+    plan
 }
 
 fn approved_response(plan: &PreparedPlan) -> PlanResponse {
@@ -408,6 +459,123 @@ fn production_workflow_writes_pushes_and_recovers_with_an_isolated_origin() {
         fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
             .expect("read restored assignments"),
         original_assignments
+    );
+}
+
+#[test]
+fn production_workflow_publishes_through_the_typed_github_service() {
+    let fixture = GitFixture::new();
+    let server = start_github_stub(vec![
+        IssueServiceExchange::any_json(200, "[]").expect("valid pull request list"),
+        IssueServiceExchange::any_json(201, created_pull_request())
+            .expect("valid created pull request"),
+    ]);
+    let mut workflow = workflow_with_github(&fixture, &server);
+    let plan = changed_plan();
+    let mut publish_arguments = arguments();
+    publish_arguments.kind = RebalanceKind::All;
+    let artifacts = workflow
+        .write_candidates(&plan)
+        .expect("write candidate artifacts");
+
+    let published = workflow
+        .publish(&publish_arguments, &plan, &artifacts, "rebalance-publish")
+        .expect("create pull request through loopback service");
+
+    assert_eq!(published.number, 42);
+    assert_eq!(published.branch, "rebalance-publish");
+    assert_eq!(fixture.branch(), MAIN);
+    assert!(fixture.remote_branch_exists("rebalance-publish"));
+    workflow
+        .restore_artifacts(&artifacts)
+        .expect("restore fixture artifacts");
+    workflow
+        .remove_created_branch("rebalance-publish")
+        .expect("remove fixture branch");
+    assert_eq!(
+        server
+            .finish()
+            .expect("all typed GitHub requests are consumed")
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn production_workflow_dispatches_and_selects_a_fresh_verification_run() {
+    let fixture = GitFixture::new();
+    let head_sha = "a".repeat(40);
+    let server = start_github_stub(vec![
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid initial workflow list"),
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid dispatch workflow list"),
+        no_content_exchange(),
+        IssueServiceExchange::any_json(200, successful_workflow_runs(&head_sha))
+            .expect("valid completed workflow list"),
+    ]);
+    let workflow = workflow_with_github(&fixture, &server);
+    let repository = GitHubRepositoryRef::new("owner", "repo").expect("fixture repository");
+
+    assert_eq!(
+        workflow.dispatch_and_wait(&repository, "ci.yaml", "rebalance-dispatch", &head_sha, 1,),
+        Ok(vec![17])
+    );
+    assert_eq!(
+        server
+            .finish()
+            .expect("all typed Actions requests are consumed")
+            .len(),
+        4
+    );
+}
+
+#[test]
+fn production_workflow_verification_rejects_an_incomplete_plan_after_dispatch() {
+    let fixture = GitFixture::new();
+    let head_sha = "b".repeat(40);
+    let server = start_github_stub(vec![
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid initial workflow list"),
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid dispatch workflow list"),
+        no_content_exchange(),
+        IssueServiceExchange::any_json(200, successful_workflow_runs(&head_sha))
+            .expect("valid completed workflow list"),
+    ]);
+    let mut workflow = workflow_with_github(&fixture, &server);
+    let repository = GitHubRepositoryRef::new("owner", "repo").expect("fixture repository");
+    let plan = PreparedPlan {
+        kind: RebalanceKind::All,
+        repository,
+        harness: None,
+        python: None,
+        decision: "approved".to_owned(),
+    };
+    let pull_request = PublishedPullRequest {
+        number: 17,
+        url: "https://example.invalid/pull/17".to_owned(),
+        branch: "rebalance-dispatch".to_owned(),
+        head_sha,
+    };
+    let mut verify_arguments = arguments();
+    verify_arguments.kind = RebalanceKind::All;
+
+    let error = workflow
+        .verify(&verify_arguments, &plan, &pull_request)
+        .expect_err("a selected verification leg requires matching evidence");
+    assert!(
+        error.contains("rebalance verification rejected")
+            || error.contains("selected leg")
+            || error.contains("selection does not match supplied legs"),
+        "unexpected verification error: {error}"
+    );
+    assert_eq!(
+        server
+            .finish()
+            .expect("all typed Actions requests are consumed")
+            .len(),
+        4
     );
 }
 
@@ -654,6 +822,152 @@ fn plan_response_rejects_incomplete_selected_legs() {
         }),
         "rebalance plan was rejected: fresh main required"
     );
+}
+
+#[test]
+fn selected_leg_responses_and_pull_request_text_remain_specific() {
+    let repository = GitHubRepositoryRef::new("owner", "repo").expect("fixture repository");
+    let harness_plan = harness_only_plan();
+    let harness_shards = harness_plan
+        .harness
+        .as_ref()
+        .expect("harness plan")
+        .current_shards
+        .clone();
+    let mut harness_response = approved_response(&changed_plan());
+    harness_response.python = None;
+    let harness = harness_response
+        .into_prepared(
+            RebalanceKind::Harness,
+            repository.clone(),
+            Some(harness_shards),
+        )
+        .expect("harness response prepares only its selected leg");
+    let harness_body = pull_request_body(&arguments(), &harness);
+    assert!(harness_body.contains("- Legs: harness"));
+    assert!(harness_body.contains("- Files: Makefile"));
+    assert!(!harness_body.contains("Python nodeids"));
+
+    let mut python_response = approved_response(&changed_plan());
+    python_response.harness = None;
+    let python = python_response
+        .into_prepared(RebalanceKind::Python, repository, None)
+        .expect("python response prepares only its selected leg");
+    let python_body = pull_request_body(&arguments(), &python);
+    assert!(python_body.contains("- Legs: python"));
+    assert!(python_body.contains("- Files: python/shard-assignments.json"));
+    assert!(!python_body.contains("Harness baseline"));
+}
+
+#[test]
+fn single_leg_requests_require_only_the_matching_evidence() {
+    let (harness_timing, jobs_timing, pytest_timing) = timing_reports();
+    let harness_plan = harness_only_plan();
+    let mut harness_arguments = arguments();
+    harness_arguments.kind = RebalanceKind::Harness;
+    let harness_shards = &harness_plan
+        .harness
+        .as_ref()
+        .expect("harness plan")
+        .current_shards;
+
+    let requested: serde_json::Value = serde_json::from_str(
+        &plan_request(
+            &harness_arguments,
+            Some(harness_shards),
+            Some(&harness_timing),
+            Some(&jobs_timing),
+            None,
+            None,
+        )
+        .expect("render harness planning request"),
+    )
+    .expect("parse harness planning request");
+    assert_eq!(requested["selection"], "harness");
+    assert!(requested["python"].is_null());
+    assert!(
+        plan_request(
+            &harness_arguments,
+            Some(harness_shards),
+            None,
+            Some(&jobs_timing),
+            None,
+            None,
+        )
+        .is_err()
+    );
+    assert!(
+        verify_request(
+            &harness_arguments,
+            &harness_plan,
+            &[17],
+            Some(&harness_timing),
+            None,
+            None,
+        )
+        .is_err()
+    );
+
+    let python_plan = python_only_plan();
+    let python_assignments = &python_plan
+        .python
+        .as_ref()
+        .expect("python plan")
+        .assignments;
+    let mut python_arguments = arguments();
+    python_arguments.kind = RebalanceKind::Python;
+    let verified: serde_json::Value = serde_json::from_str(
+        &verify_request(
+            &python_arguments,
+            &python_plan,
+            &[18],
+            None,
+            None,
+            Some(&pytest_timing),
+        )
+        .expect("render python verification request"),
+    )
+    .expect("parse python verification request");
+    assert_eq!(verified["selection"], "python");
+    assert!(verified["harness"].is_null());
+    assert!(
+        plan_request(
+            &python_arguments,
+            None,
+            None,
+            None,
+            Some(python_assignments),
+            None,
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
+    assert!(RebalanceKind::Harness.includes_harness());
+    assert!(!RebalanceKind::Harness.includes_python());
+    assert!(RebalanceKind::Python.includes_python());
+    assert!(!RebalanceKind::Python.includes_harness());
+    assert_eq!(RebalanceKind::Harness.wire(), "harness");
+    assert_eq!(RebalanceKind::Python.wire(), "python");
+    assert_eq!(RebalanceKind::Harness.commit_label(), "harness");
+    assert_eq!(RebalanceKind::Python.commit_label(), "python");
+    assert_eq!(Artifact::Makefile.path(), MAKEFILE);
+    assert_eq!(Artifact::Assignments.path(), ASSIGNMENTS);
+
+    let fixture = GitFixture::new();
+    let mut workflow = fixture.workflow();
+    let mut unchanged = changed_plan();
+    unchanged.harness.as_mut().expect("harness plan").changed = false;
+    unchanged.python.as_mut().expect("python plan").changed = false;
+    assert_eq!(
+        workflow
+            .write_candidates(&unchanged)
+            .expect("unchanged plan writes nothing"),
+        Vec::<Artifact>::new()
+    );
+    assert_eq!(workflow.recover_publish_failure(&[], "unused"), Ok(()));
 }
 
 #[test]
