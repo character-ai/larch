@@ -197,12 +197,17 @@ controls the retention window. Before a sweep it protects directories named by
 the current session environment and by current session pointers, so a live
 session is retained even when its top-level timestamp is old. An unreadable or
 malformed current pointer skips the age-based sweep rather than risking a live
-session. Every target is confined below a canonical temporary root; symlinked
-entries are skipped rather than followed. Cleanup may unlink only a dangling design-session pointer, and
-reaps a stale implement pointer only when it is a regular file. Matching loose
-temporary files do not receive nested-directory activity protection. Deletion
-is permanent and does not redact first. A failed directory activity scan skips
-that directory, while a failed top-level enumeration skips that pass. See
+session. A prior crash can also leave a private, uncommitted setup marker:
+cleanup immediately recovers only a direct, confined non-symlinked directory
+below an approved session root whose recorded setup owner is no longer live.
+Malformed markers, uncertain owner liveness, live setups, and committed
+sessions are retained. Every target is confined below a canonical temporary
+root; symlinked entries are skipped rather than followed. Cleanup may unlink
+only a dangling design-session pointer, and reaps a stale implement pointer
+only when it is a regular file. Matching loose temporary files do not receive
+nested-directory activity protection. Deletion is permanent and does not
+redact first. A failed directory activity scan skips that directory, while a
+failed top-level enumeration skips that pass. See
 [Configuration and Permissions](../configuration-and-permissions.md) for the
 operator setting and [Larch Run Logs](../run-logs.md#retention) for run-log
 retention.

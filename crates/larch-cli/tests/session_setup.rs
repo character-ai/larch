@@ -8,12 +8,20 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Child, Command, Output, Stdio},
     thread,
+    time::{Duration, Instant},
 };
 
+use larch_adapters::UNCOMMITTED_SESSION_SETUP_MARKER;
 use larch_core::{KvDocument, ParseOptions};
 use tempfile::TempDir;
+
+#[cfg(unix)]
+use nix::{
+    sys::signal::{Signal, kill},
+    unistd::Pid,
+};
 
 struct Sandbox {
     _directory: TempDir,
@@ -55,10 +63,17 @@ fn real_temporary_root() -> PathBuf {
 }
 
 fn run_setup(root: &Path, arguments: &[&str], environment: &[(&str, &str)]) -> Output {
+    let mut command = larch_command(root);
+    command.args(["session", "setup"]).args(arguments);
+    for (key, value) in environment {
+        command.env(key, value);
+    }
+    command.output().expect("run session setup")
+}
+
+fn larch_command(root: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_larch"));
     command
-        .args(["session", "setup"])
-        .args(arguments)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
         .env("HOME", root.join("home"))
@@ -69,11 +84,76 @@ fn run_setup(root: &Path, arguments: &[&str], environment: &[(&str, &str)]) -> O
         .env_remove("REPO_ROOT")
         .env_remove("IMPLEMENT_TMPDIR")
         .env_remove("DESIGN_TMPDIR")
-        .env_remove("REVIEW_TMPDIR");
-    for (key, value) in environment {
-        command.env(key, value);
+        .env_remove("REVIEW_TMPDIR")
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION")
+        .env_remove("LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION");
+    command
+}
+
+fn run_cleanup(root: &Path) -> Output {
+    larch_command(root)
+        .args(["cleanup", "run"])
+        .output()
+        .expect("run cleanup")
+}
+
+fn spawn_paused_setup(root: &Path, prefix: &str) -> Child {
+    larch_command(root)
+        .args([
+            "session",
+            "setup",
+            "--prefix",
+            prefix,
+            "--skip-preflight",
+            "--skip-repo-check",
+        ])
+        .env("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION", "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn paused session setup")
+}
+
+fn wait_for_uncommitted_setup(root: &Path, prefix: &str) -> PathBuf {
+    let sessions = root.join("cache/larch/sessions");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(entries) = fs::read_dir(&sessions)
+            && let Some(path) = entries.flatten().map(|entry| entry.path()).find(|path| {
+                path.file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with(prefix))
+                    && path.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file()
+            })
+        {
+            return path;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {prefix} setup to reach its uncommitted window"
+        );
+        thread::sleep(Duration::from_millis(10));
     }
-    command.output().expect("run session setup")
+}
+
+fn assert_no_uncommitted_setup(root: &Path, prefix: &str) {
+    let sessions = root.join("cache/larch/sessions");
+    let has_unpublished_directory = fs::read_dir(sessions)
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry.file_name().to_string_lossy().starts_with(prefix) && entry.path().is_dir()
+            })
+        })
+        .unwrap_or(false);
+    assert!(
+        !has_unpublished_directory,
+        "unpublished {prefix} session survived"
+    );
+}
+
+#[cfg(unix)]
+fn signal_child(child: &Child, signal: Signal) {
+    let process_id = i32::try_from(child.id()).expect("child process ID fits i32");
+    kill(Pid::from_raw(process_id), signal).expect("signal paused setup");
 }
 
 fn output_text(output: &Output) -> (String, String) {
@@ -480,6 +560,106 @@ fn rejected_setup_does_not_create_a_partial_session_directory() {
 }
 
 #[test]
+fn ordinary_post_creation_failure_removes_its_unpublished_session_directory() {
+    let sandbox = Sandbox::new();
+    let output = run_setup(
+        &sandbox.root,
+        &[
+            "--prefix",
+            "post-creation-failure",
+            "--skip-preflight",
+            "--skip-repo-check",
+        ],
+        &[("LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION", "true")],
+    );
+    let (stdout, stderr) = output_text(&output);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout.is_empty());
+    assert_eq!(
+        stderr,
+        "session-setup.sh: test-induced post-creation failure\n"
+    );
+    assert_no_uncommitted_setup(&sandbox.root, "post-creation-failure");
+}
+
+#[cfg(unix)]
+#[test]
+fn sigint_and_sigterm_after_directory_creation_remove_unpublished_sessions() {
+    for (prefix, signal) in [
+        ("cancel-sigint", Signal::SIGINT),
+        ("cancel-sigterm", Signal::SIGTERM),
+    ] {
+        let sandbox = Sandbox::new();
+        let child = spawn_paused_setup(&sandbox.root, prefix);
+        let directory = wait_for_uncommitted_setup(&sandbox.root, prefix);
+        assert!(directory.is_dir());
+        assert!(directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file());
+
+        signal_child(&child, signal);
+        let output = child.wait_with_output().expect("wait for cancelled setup");
+        let (stdout, stderr) = output_text(&output);
+        assert_eq!(output.status.code(), Some(130), "{prefix}: {stderr}");
+        assert!(stdout.is_empty(), "{prefix}: {stdout}");
+        assert_eq!(stderr, "session-setup.sh: setup cancelled\n", "{prefix}");
+        assert!(!directory.exists(), "{prefix}");
+        assert_no_uncommitted_setup(&sandbox.root, prefix);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cleanup_recovers_crashed_uncommitted_setup_without_touching_live_or_committed_siblings() {
+    let sandbox = Sandbox::new();
+    let completed = sandbox.run(&[
+        "--prefix",
+        "committed-sibling",
+        "--skip-preflight",
+        "--skip-repo-check",
+    ]);
+    let (completed_stdout, completed_stderr) = output_text(&completed);
+    assert!(completed.status.success(), "{completed_stderr}");
+    let committed_directory = session_tmpdir(&completed_stdout);
+    assert!(
+        !committed_directory
+            .join(UNCOMMITTED_SESSION_SETUP_MARKER)
+            .exists()
+    );
+
+    let live = spawn_paused_setup(&sandbox.root, "live-sibling");
+    let live_directory = wait_for_uncommitted_setup(&sandbox.root, "live-sibling");
+    let crashed = spawn_paused_setup(&sandbox.root, "crashed-sibling");
+    let crashed_directory = wait_for_uncommitted_setup(&sandbox.root, "crashed-sibling");
+    signal_child(&crashed, Signal::SIGKILL);
+    let crashed_output = crashed.wait_with_output().expect("wait for killed setup");
+    assert!(!crashed_output.status.success());
+    assert!(crashed_directory.is_dir());
+
+    let cleanup = run_cleanup(&sandbox.root);
+    let (cleanup_stdout, cleanup_stderr) = output_text(&cleanup);
+    assert!(cleanup.status.success(), "{cleanup_stderr}");
+    assert!(
+        cleanup_stdout.contains("CACHE_REMOVED=1\n"),
+        "{cleanup_stdout}"
+    );
+    assert!(!crashed_directory.exists());
+    assert!(live_directory.is_dir());
+    assert!(
+        live_directory
+            .join(UNCOMMITTED_SESSION_SETUP_MARKER)
+            .is_file()
+    );
+    assert!(committed_directory.is_dir());
+
+    signal_child(&live, Signal::SIGINT);
+    let live_output = live
+        .wait_with_output()
+        .expect("wait for live setup cancellation");
+    assert_eq!(live_output.status.code(), Some(130));
+    assert!(!live_directory.exists());
+    assert!(committed_directory.is_dir());
+}
+
+#[test]
 fn malformed_caller_env_aborts_before_session_creation() {
     let sandbox = Sandbox::new();
     let caller = sandbox.path("caller.env");
@@ -538,6 +718,9 @@ fn setup_reemits_session_writer_failures_as_redacted_breadcrumbs() {
     let (stdout, stderr) = output_text(&output);
     assert_eq!(output.status.code(), Some(1));
     assert!(stdout.starts_with("SESSION_TMPDIR="));
+    let directory = session_tmpdir(&stdout);
+    assert!(directory.is_dir());
+    assert!(!directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).exists());
     assert_eq!(
         stderr,
         "ERROR=output path not under allowed session root: /etc/larch-session-setup-test.env\n"

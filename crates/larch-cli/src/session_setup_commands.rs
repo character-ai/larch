@@ -10,8 +10,10 @@ use crate::{
     github_repository_resolution, session_env_commands,
 };
 use larch_adapters::{
-    PathSafetyError, PathSafetyErrorKind, SecureTempDir, TemporaryRoot, ensure_directory_chain,
-    path_under, read_kv_raw, write_confined_file, write_session_id,
+    PathSafetyError, PathSafetyErrorKind, SecureTempDir, TemporaryRoot,
+    commit_uncommitted_session_setup, ensure_directory_chain, path_under, read_kv_raw,
+    runtime::{Cancellation, LarchRuntime},
+    write_confined_file, write_session_id, write_uncommitted_session_setup_marker,
 };
 use larch_core::{
     RepositoryRead, allowed_session_roots, binary_on_path, cleanup_cache_sessions_root,
@@ -24,6 +26,8 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     process::ExitCode,
+    thread,
+    time::Duration,
 };
 
 const SETUP_USAGE: &str = concat!(
@@ -57,6 +61,9 @@ const CALLER_ENV_KEYS: &[&str] = &[
     "LARCH_DYNAMIC_ARCHETYPES_MAX",
 ];
 const TMP_FALLBACK: &str = "/tmp";
+const TEST_PAUSE_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION";
+const TEST_FAIL_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION";
+const TEST_PAUSE_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Set up one session and emit its legacy KEY=value envelope.
 pub fn setup(arguments: &[OsString]) -> ExitCode {
@@ -84,7 +91,14 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
         write_session_env: text(parsed.value("--write-session-env")),
         caller_env: text(parsed.value("--caller-env")),
     };
-    match run_setup(&options) {
+    let listener = match SetupSignalListener::install() {
+        Ok(listener) => listener,
+        Err(message) => {
+            eprintln!("session-setup.sh: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match run_setup(&options, listener.cancellation()) {
         Ok(result) => emit_setup(result),
         Err(failure) => {
             print!("{}", failure.stdout);
@@ -132,11 +146,64 @@ struct SetupResult {
     exit_code: u8,
 }
 
-#[derive(Clone, Debug)]
-struct SessionDirectory {
-    path: PathBuf,
+/// A private setup directory before its stdout envelope can be published.
+///
+/// `SecureTempDir` retains cleanup ownership until [`Self::commit`] removes
+/// the durable uncommitted marker. This gives ordinary errors and catchable
+/// shutdown signals one uniform cleanup path.
+struct PendingSessionDirectory {
+    directory: SecureTempDir,
+    root: TemporaryRoot,
     id: String,
     cache_warning: Option<String>,
+}
+
+impl PendingSessionDirectory {
+    fn path(&self) -> &Path {
+        self.directory.path()
+    }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn cache_warning(&self) -> Option<&str> {
+        self.cache_warning.as_deref()
+    }
+
+    fn commit(self, cancellation: &Cancellation) -> Result<(), SetupFailure> {
+        check_setup_cancellation(cancellation)?;
+        write_session_keepalive(self.path(), &self.id);
+        check_setup_cancellation(cancellation)?;
+        let path = self.directory.keep().map_err(|error| SetupFailure {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: format!(
+                "session-setup.sh: failed to persist session temp directory: {error}\n"
+            ),
+        })?;
+        if let Err(failure) = check_setup_cancellation(cancellation) {
+            return Err(cleanup_persisted_pending_session(
+                &self.root, &path, failure,
+            ));
+        }
+        if let Err(error) = commit_uncommitted_session_setup(&self.root, &path) {
+            let failure = SetupFailure {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: format!("session-setup.sh: failed to commit session setup: {error}\n"),
+            };
+            return Err(cleanup_persisted_pending_session(
+                &self.root, &path, failure,
+            ));
+        }
+        if let Err(failure) = check_setup_cancellation(cancellation) {
+            return Err(cleanup_persisted_pending_session(
+                &self.root, &path, failure,
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -148,7 +215,102 @@ struct ReviewerStatus {
     cursor_binary_found: String,
 }
 
-fn run_setup(options: &SetupOptions) -> Result<SetupResult, SetupFailure> {
+/// Process-local shutdown listener for the uncommitted setup window.
+///
+/// The listener is installed before any directory exists and holds the Tokio
+/// runtime that services the signal streams. Once setup reaches its commit
+/// point, normal process completion owns the directory and this listener is
+/// dropped without changing the committed result.
+struct SetupSignalListener {
+    _runtime: LarchRuntime,
+    cancellation: Cancellation,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl SetupSignalListener {
+    fn install() -> Result<Self, String> {
+        let runtime = LarchRuntime::new()
+            .map_err(|error| format!("failed to install setup cancellation listener: {error}"))?;
+        let cancellation = Cancellation::new();
+        let (ready_sender, ready_receiver) = tokio::sync::oneshot::channel();
+        let signal_cancellation = cancellation.clone();
+        let task = runtime.spawn(async move {
+            listen_for_setup_shutdown(&signal_cancellation, ready_sender).await;
+        });
+        let ready = runtime.block_on(async move {
+            ready_receiver
+                .await
+                .map_err(|_error| "setup cancellation listener exited before readiness".to_owned())
+        })?;
+        ready?;
+        Ok(Self {
+            _runtime: runtime,
+            cancellation,
+            task,
+        })
+    }
+
+    const fn cancellation(&self) -> &Cancellation {
+        &self.cancellation
+    }
+}
+
+impl Drop for SetupSignalListener {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn listen_for_setup_shutdown(
+    cancellation: &Cancellation,
+    ready_sender: tokio::sync::oneshot::Sender<Result<(), String>>,
+) {
+    #[cfg(unix)]
+    {
+        let mut interrupt =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
+                Ok(signal) => signal,
+                Err(error) => {
+                    let _ignored = ready_sender.send(Err(error.to_string()));
+                    return;
+                }
+            };
+        let mut terminate =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(signal) => signal,
+                Err(error) => {
+                    let _ignored = ready_sender.send(Err(error.to_string()));
+                    return;
+                }
+            };
+        let _ignored = ready_sender.send(Ok(()));
+        tokio::select! {
+            signal = interrupt.recv() => {
+                if signal.is_none() {
+                    return;
+                }
+            }
+            signal = terminate.recv() => {
+                if signal.is_none() {
+                    return;
+                }
+            }
+        }
+        cancellation.cancel();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ignored = ready_sender.send(Ok(()));
+        if tokio::signal::ctrl_c().await.is_ok() {
+            cancellation.cancel();
+        }
+    }
+}
+
+fn run_setup(
+    options: &SetupOptions,
+    cancellation: &Cancellation,
+) -> Result<SetupResult, SetupFailure> {
     // Caller state is untrusted input. Read and validate it before preflight so
     // a malformed handoff cannot cause a Git mutation before setup refuses.
     let caller = read_caller_env(&options.caller_env).map_err(|message| SetupFailure {
@@ -156,24 +318,30 @@ fn run_setup(options: &SetupOptions) -> Result<SetupResult, SetupFailure> {
         stdout: String::new(),
         stderr: format!("session-setup.sh: {message}\n"),
     })?;
+    check_setup_cancellation(cancellation)?;
     let notices = preflight_notices(options)?;
+    check_setup_cancellation(cancellation)?;
     let session = create_session_directory(&options.prefix)?;
 
-    if let Some(warning) = session.cache_warning {
+    test_setup_after_directory_creation(&session, cancellation)?;
+    check_setup_cancellation(cancellation)?;
+
+    if let Some(warning) = session.cache_warning() {
         // The legacy fallback writes this breadcrumb while creating the
         // directory, before the delayed stdout session envelope.
         eprintln!("{warning}");
     }
     let mut stdout = vec![
-        ("SESSION_TMPDIR".to_owned(), display_path(&session.path)),
-        ("SESSION_ID".to_owned(), session.id),
+        ("SESSION_TMPDIR".to_owned(), display_path(session.path())),
+        ("SESSION_ID".to_owned(), session.id().to_owned()),
         (
             "LARCH_RENDER_CACHE_DIR".to_owned(),
-            display_path(&session.path.join("render-cache")),
+            display_path(&session.path().join("render-cache")),
         ),
     ];
     let mut diagnostics = Vec::new();
-    carry_forward_logs(&caller, &session.path);
+    carry_forward_logs(&caller, session.path());
+    check_setup_cancellation(cancellation)?;
 
     let (repo, repo_unavailable) = if options.skip_repo_check {
         (String::new(), "false".to_owned())
@@ -190,6 +358,7 @@ fn run_setup(options: &SetupOptions) -> Result<SetupResult, SetupFailure> {
         let unavailable = if repo.is_empty() { "true" } else { "false" };
         (repo, unavailable.to_owned())
     };
+    check_setup_cancellation(cancellation)?;
     if !options.skip_repo_check {
         stdout.push(("REPO".to_owned(), repo.clone()));
         stdout.push(("REPO_UNAVAILABLE".to_owned(), repo_unavailable.clone()));
@@ -198,6 +367,7 @@ fn run_setup(options: &SetupOptions) -> Result<SetupResult, SetupFailure> {
     stdout.push(("REPO_ROOT".to_owned(), repo_root.clone()));
 
     let reviewers = append_reviewer_status(options, &caller, &mut stdout, &mut diagnostics);
+    check_setup_cancellation(cancellation)?;
     stdout.push((
         "CLAUDE_BINARY_FOUND".to_owned(),
         reviewers.claude_binary_found.clone(),
@@ -232,13 +402,19 @@ fn run_setup(options: &SetupOptions) -> Result<SetupResult, SetupFailure> {
             }
         }
     };
+    check_setup_cancellation(cancellation)?;
 
-    Ok(SetupResult {
+    let result = SetupResult {
         stdout,
         notices,
         diagnostics,
         exit_code,
-    })
+    };
+    // This is the only setup commit point. A writer failure is deliberately a
+    // published envelope (legacy stdout carries SESSION_TMPDIR despite rc=1),
+    // while every earlier error leaves `session` to remove its private tree.
+    session.commit(cancellation)?;
+    Ok(result)
 }
 
 fn preflight_notices(options: &SetupOptions) -> Result<Vec<String>, SetupFailure> {
@@ -260,33 +436,115 @@ fn preflight_notices(options: &SetupOptions) -> Result<Vec<String>, SetupFailure
     Ok(stale_plugin_notice())
 }
 
-fn create_session_directory(prefix: &str) -> Result<SessionDirectory, SetupFailure> {
-    let (handle, cache_warning) = make_session_tmpdir(prefix).map_err(|message| SetupFailure {
-        exit_code: 1,
-        stdout: String::new(),
-        stderr: format!("session-setup.sh: {message}\n"),
-    })?;
+fn check_setup_cancellation(cancellation: &Cancellation) -> Result<(), SetupFailure> {
+    if cancellation.is_cancelled() {
+        return Err(SetupFailure {
+            exit_code: 130,
+            stdout: String::new(),
+            stderr: "session-setup.sh: setup cancelled\n".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn test_setup_after_directory_creation(
+    _session: &PendingSessionDirectory,
+    cancellation: &Cancellation,
+) -> Result<(), SetupFailure> {
+    if env::var(TEST_FAIL_AFTER_CREATION).as_deref() == Ok("true") {
+        return Err(SetupFailure {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: "session-setup.sh: test-induced post-creation failure\n".to_owned(),
+        });
+    }
+    if env::var(TEST_PAUSE_AFTER_CREATION).as_deref() == Ok("true") {
+        // The uncommitted marker already exists, so the integration harness can
+        // observe this exact lifecycle window without a second public wire file.
+        while !cancellation.is_cancelled() {
+            thread::sleep(TEST_PAUSE_INTERVAL);
+        }
+        return check_setup_cancellation(cancellation);
+    }
+    Ok(())
+}
+
+fn cleanup_persisted_pending_session(
+    root: &TemporaryRoot,
+    path: &Path,
+    mut failure: SetupFailure,
+) -> SetupFailure {
+    let cleanup = root
+        .confine(path, larch_adapters::PathIntent::Cleanup)
+        .map_err(|error| error.to_string())
+        .and_then(|confined| {
+            confined.revalidate().map_err(|error| error.to_string())?;
+            larch_adapters::remove_session_tmpdir(confined.path())
+        });
+    if let Err(error) = cleanup {
+        failure
+            .stderr
+            .push_str("session-setup.sh: failed to clean uncommitted session directory: ");
+        failure.stderr.push_str(&error);
+        failure.stderr.push('\n');
+    }
+    failure
+}
+
+fn create_session_directory(prefix: &str) -> Result<PendingSessionDirectory, SetupFailure> {
+    let (handle, root, cache_warning) =
+        make_session_tmpdir(prefix).map_err(|message| SetupFailure {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: format!("session-setup.sh: {message}\n"),
+        })?;
+    if let Err(error) =
+        write_uncommitted_session_setup_marker(&root, handle.path(), std::process::id())
+    {
+        return Err(cleanup_owned_session_directory(
+            handle,
+            SetupFailure {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: format!(
+                    "session-setup.sh: failed to mark uncommitted session setup: {error}\n"
+                ),
+            },
+        ));
+    }
     let id = match write_session_identity(handle.path()) {
         Ok(id) => id,
         Err(message) => {
-            let _ = handle.close();
-            return Err(SetupFailure {
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: format!("session-setup.sh: {message}\n"),
-            });
+            return Err(cleanup_owned_session_directory(
+                handle,
+                SetupFailure {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: format!("session-setup.sh: {message}\n"),
+                },
+            ));
         }
     };
-    let path = handle.keep().map_err(|error| SetupFailure {
-        exit_code: 1,
-        stdout: String::new(),
-        stderr: format!("session-setup.sh: failed to persist session temp directory: {error}\n"),
-    })?;
-    Ok(SessionDirectory {
-        path,
+    Ok(PendingSessionDirectory {
+        directory: handle,
+        root,
         id,
         cache_warning,
     })
+}
+
+fn cleanup_owned_session_directory(
+    directory: SecureTempDir,
+    mut failure: SetupFailure,
+) -> SetupFailure {
+    if let Err(error) = directory.close() {
+        failure
+            .stderr
+            .push_str("session-setup.sh: failed to clean uncommitted session directory: ");
+        failure.stderr.push_str(&error.to_string());
+        failure.stderr.push('\n');
+    }
+    failure
 }
 
 fn append_reviewer_status(
@@ -385,7 +643,9 @@ fn read_caller_env(path: &str) -> Result<BTreeMap<String, String>, String> {
         })
 }
 
-fn make_session_tmpdir(prefix: &str) -> Result<(SecureTempDir, Option<String>), String> {
+fn make_session_tmpdir(
+    prefix: &str,
+) -> Result<(SecureTempDir, TemporaryRoot, Option<String>), String> {
     let clone_tag = env::current_dir()
         .ok()
         .and_then(|path| {
@@ -399,17 +659,18 @@ fn make_session_tmpdir(prefix: &str) -> Result<(SecureTempDir, Option<String>), 
         env::var_os("HOME").as_deref(),
     );
     match create_session_tmpdir(&cache_root, &template) {
-        Ok(directory) => Ok((directory, None)),
+        Ok((directory, root)) => Ok((directory, root, None)),
         Err(error) if error.kind() == PathSafetyErrorKind::InvalidTempPrefix => {
             Err(format!("failed to create session temp directory: {error}"))
         }
         Err(_cache_error) => {
             let fallback = fs::canonicalize(TMP_FALLBACK)
                 .map_err(|error| format!("failed to create session temp directory: {error}"))?;
-            let directory = create_session_tmpdir(&fallback, &template)
+            let (directory, root) = create_session_tmpdir(&fallback, &template)
                 .map_err(|error| format!("failed to create session temp directory: {error}"))?;
             Ok((
                 directory,
+                root,
                 Some(
                     "session-setup.sh: warning: cache session root unavailable, falling back to /tmp"
                         .to_owned(),
@@ -419,10 +680,14 @@ fn make_session_tmpdir(prefix: &str) -> Result<(SecureTempDir, Option<String>), 
     }
 }
 
-fn create_session_tmpdir(root: &Path, prefix: &str) -> Result<SecureTempDir, PathSafetyError> {
+fn create_session_tmpdir(
+    root: &Path,
+    prefix: &str,
+) -> Result<(SecureTempDir, TemporaryRoot), PathSafetyError> {
     ensure_directory_chain(root)?;
     let root = TemporaryRoot::resolve(Some(root))?;
-    SecureTempDir::create(&root, prefix)
+    let directory = SecureTempDir::create(&root, prefix)?;
+    Ok((directory, root))
 }
 
 fn sanitize_clone_tag(name: &str) -> String {
@@ -447,6 +712,10 @@ fn write_session_identity(tmpdir: &Path) -> Result<String, String> {
     );
     let session_id = write_session_id(&tmpdir.join("session-id"), &roots)
         .map(|outcome| outcome.session_id().to_owned())?;
+    Ok(session_id)
+}
+
+fn write_session_keepalive(tmpdir: &Path, session_id: &str) {
     let clone_path = env::current_dir().unwrap_or_default();
     let keepalive = format!(
         "# larch session identity (hook routing)\nCLONE_PATH={}\nSESSION_ID={session_id}\n",
@@ -468,7 +737,6 @@ fn write_session_identity(tmpdir: &Path) -> Result<String, String> {
             tmpdir.join(".larch-keepalive").display()
         );
     }
-    Ok(session_id)
 }
 
 fn carry_forward_logs(caller: &BTreeMap<String, String>, tmpdir: &Path) {

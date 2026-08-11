@@ -7,8 +7,8 @@
 //! [`crate::file_io`] instead of re-deriving path safety here.
 
 use crate::{
-    parent_directory, read_first_raw_key, safe_output_parent, write_confined_file,
-    writer_target_allowed,
+    PathIntent, TemporaryRoot, atomic_write_utf8, open_confined_read, parent_directory,
+    read_first_raw_key, safe_output_parent, write_confined_file, writer_target_allowed,
 };
 use chrono::{SecondsFormat, Utc};
 use larch_core::{
@@ -18,14 +18,27 @@ use larch_core::{
 use std::{
     ffi::OsStr,
     fs::{self, OpenOptions},
-    io::Write as _,
+    io::{Read as _, Write as _},
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 use uuid::Uuid;
 
+#[cfg(unix)]
+use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+
 /// Basename of the append-only cleanup audit trail written before removal.
 pub const CLEANUP_AUDIT_LOG_NAME: &str = "larch-cleanup-audit.log";
+
+/// Private marker left while `session setup` still owns a new session directory.
+///
+/// A successful setup removes this marker at its commit point. A process killed
+/// before that point leaves the marker behind for the confined cleanup sweep.
+pub const UNCOMMITTED_SESSION_SETUP_MARKER: &str = ".larch-session-setup";
+
+const UNCOMMITTED_SETUP_STATE: &str = "STATE=uncommitted";
+const UNCOMMITTED_SETUP_OWNER_PID_PREFIX: &str = "OWNER_PID=";
+const UNCOMMITTED_SETUP_MARKER_MAX_BYTES: u64 = 256;
 
 /// Whether [`write_session_id`] minted a new identity or kept the existing one.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -211,6 +224,159 @@ pub fn write_session_id(
     Ok(SessionIdOutcome::Written(session_id))
 }
 
+/// Mark a newly-created session directory as owned by an in-flight setup.
+///
+/// The marker is written through the existing confined atomic-write owner. It
+/// is intentionally private and contains only the setup process ID needed by
+/// recovery to avoid deleting a directory whose creator is still running.
+///
+/// # Errors
+///
+/// Returns an error when `directory` is not a direct-or-descendant safe path
+/// below `root`, or when the marker cannot be published atomically.
+pub fn write_uncommitted_session_setup_marker(
+    root: &TemporaryRoot,
+    directory: &Path,
+    owner_pid: u32,
+) -> Result<(), String> {
+    let directory = confined_session_directory(root, directory)?;
+    let marker = root
+        .confine(
+            directory.path().join(UNCOMMITTED_SESSION_SETUP_MARKER),
+            PathIntent::Write,
+        )
+        .map_err(|error| error.to_string())?;
+    let text =
+        format!("{UNCOMMITTED_SETUP_STATE}\n{UNCOMMITTED_SETUP_OWNER_PID_PREFIX}{owner_pid}\n");
+    atomic_write_utf8(&marker, &text, 0o600).map_err(|error| error.to_string())
+}
+
+/// Remove a verified uncommitted marker at `session setup`'s commit point.
+///
+/// # Errors
+///
+/// Returns an error when the marker is absent, unsafe, or cannot be removed.
+pub fn commit_uncommitted_session_setup(
+    root: &TemporaryRoot,
+    directory: &Path,
+) -> Result<(), String> {
+    let directory = confined_session_directory(root, directory)?;
+    let marker = root
+        .confine(
+            directory.path().join(UNCOMMITTED_SESSION_SETUP_MARKER),
+            PathIntent::Cleanup,
+        )
+        .map_err(|error| error.to_string())?;
+    marker.revalidate().map_err(|error| error.to_string())?;
+    fs::remove_file(marker.path()).map_err(|error| error.to_string())
+}
+
+/// Remove stale, uncommitted `session setup` directories directly below `root`.
+///
+/// Recovery is deliberately marker-based rather than age-based: a crash should
+/// be recoverable on the next cleanup pass, while a still-live setup must never
+/// be consumed. Invalid markers, symlinked entries, unsafe roots, and owners
+/// whose liveness cannot be disproven are retained fail-closed.
+#[must_use]
+pub fn recover_uncommitted_session_setups(root: &TemporaryRoot) -> usize {
+    let Ok(entries) = fs::read_dir(root.path()) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let candidate = entry.path();
+        let Some(owner_pid) = uncommitted_setup_owner(root, &candidate) else {
+            continue;
+        };
+        if uncommitted_setup_owner_is_live(owner_pid) {
+            continue;
+        }
+        // Re-read the marker immediately before removal. A setup that raced
+        // from an earlier state toward commit must be retained rather than
+        // deleted using a stale directory observation.
+        if uncommitted_setup_owner(root, &candidate) != Some(owner_pid) {
+            continue;
+        }
+        let Ok(confined) = root.confine(&candidate, PathIntent::Cleanup) else {
+            continue;
+        };
+        if confined.revalidate().is_err() {
+            continue;
+        }
+        if remove_session_tmpdir(confined.path()).is_ok()
+            && fs::symlink_metadata(&candidate).is_err()
+        {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+fn confined_session_directory(
+    root: &TemporaryRoot,
+    directory: &Path,
+) -> Result<crate::ConfinedPath, String> {
+    root.confine(directory, PathIntent::Cleanup)
+        .map_err(|error| error.to_string())
+}
+
+fn uncommitted_setup_owner(root: &TemporaryRoot, directory: &Path) -> Option<u32> {
+    let directory = confined_session_directory(root, directory).ok()?;
+    let marker = root
+        .confine(
+            directory.path().join(UNCOMMITTED_SESSION_SETUP_MARKER),
+            PathIntent::Read,
+        )
+        .ok()?;
+    let marker_file = open_confined_read(&marker).ok()?;
+    if marker_file.metadata().ok()?.len() > UNCOMMITTED_SETUP_MARKER_MAX_BYTES {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    marker_file
+        .take(UNCOMMITTED_SETUP_MARKER_MAX_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if u64::try_from(bytes.len()).ok()? > UNCOMMITTED_SETUP_MARKER_MAX_BYTES {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let mut lines = text.lines();
+    if lines.next()? != UNCOMMITTED_SETUP_STATE {
+        return None;
+    }
+    let owner_pid = lines
+        .next()?
+        .strip_prefix(UNCOMMITTED_SETUP_OWNER_PID_PREFIX)?
+        .parse::<u32>()
+        .ok()
+        .filter(|pid| *pid != 0)?;
+    if lines.next().is_some() {
+        return None;
+    }
+    Some(owner_pid)
+}
+
+#[cfg(unix)]
+fn uncommitted_setup_owner_is_live(owner_pid: u32) -> bool {
+    let Ok(owner_pid) = i32::try_from(owner_pid) else {
+        return true;
+    };
+    match kill(Pid::from_raw(owner_pid), None) {
+        Err(Errno::ESRCH) => false,
+        // A failed liveness probe must not authorize recursive removal. This
+        // also retains a rare PID-reuse ambiguity until a later cleanup pass.
+        _ => true,
+    }
+}
+
+#[cfg(not(unix))]
+fn uncommitted_setup_owner_is_live(_owner_pid: u32) -> bool {
+    // The released executable is currently Unix-only. Keep a conservative
+    // fallback for cross-platform test builds rather than guessing PID state.
+    true
+}
+
 /// Append one invocation record to the cleanup audit trail, best effort.
 ///
 /// A failure to record is never fatal: the audit trail is observability, and
@@ -361,9 +527,12 @@ pub const fn parent_process_id() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImplementTmpdirQuery, SessionIdOutcome, remove_session_tmpdir, resolve_implement_tmpdir,
+        ImplementTmpdirQuery, SessionIdOutcome, commit_uncommitted_session_setup,
+        recover_uncommitted_session_setups, remove_session_tmpdir, resolve_implement_tmpdir,
         split_ancestor_tail, validate_design_tmpdir, write_session_id,
+        write_uncommitted_session_setup_marker,
     };
+    use crate::TemporaryRoot;
     use larch_core::allowed_session_roots;
     use std::{
         ffi::OsStr,
@@ -819,6 +988,44 @@ mod tests {
             "cleanup-tmpdir failed: Cannot call rmtree on a symbolic link"
         );
         assert!(real.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uncommitted_recovery_refuses_a_symlinked_session_target() {
+        let cleanup = tempdir().expect("cleanup root");
+        let outside = tempdir().expect("outside root");
+        let cleanup_root = TemporaryRoot::resolve(Some(cleanup.path())).expect("cleanup root");
+        let outside_root = TemporaryRoot::resolve(Some(outside.path())).expect("outside root");
+        let outside_session = outside_root.path().join("uncommitted");
+        fs::create_dir(&outside_session).expect("outside session");
+        write_uncommitted_session_setup_marker(&outside_root, &outside_session, std::process::id())
+            .expect("outside marker");
+        let link = cleanup_root.path().join("linked-uncommitted");
+        std::os::unix::fs::symlink(&outside_session, &link).expect("session symlink");
+
+        assert_eq!(recover_uncommitted_session_setups(&cleanup_root), 0);
+        assert!(link.is_symlink());
+        assert!(outside_session.is_dir());
+    }
+
+    #[test]
+    fn uncommitted_commit_requires_and_removes_its_marker() {
+        let directory = tempdir().expect("temporary root");
+        let root = TemporaryRoot::resolve(Some(directory.path())).expect("temporary root");
+        let session = root.path().join("uncommitted");
+        fs::create_dir(&session).expect("session directory");
+
+        assert!(commit_uncommitted_session_setup(&root, &session).is_err());
+        write_uncommitted_session_setup_marker(&root, &session, std::process::id())
+            .expect("uncommitted marker");
+        commit_uncommitted_session_setup(&root, &session).expect("commit marker removal");
+
+        assert!(
+            !session
+                .join(super::UNCOMMITTED_SESSION_SETUP_MARKER)
+                .exists()
+        );
     }
 
     #[cfg(unix)]
