@@ -422,6 +422,104 @@ DIRECT = ["scripts/larch.sh", "fixture", "run"]
 }
 
 #[test]
+fn sync_inventories_issue_equivalents_and_preserves_pure_tracking_helpers() {
+    let repository = TempRepo::new();
+    let mut ledger = command_row("python", "pending", "pending", "pending");
+    append_command(
+        &mut ledger,
+        &command_row_for(
+            "tracking-issue",
+            "rename",
+            "larch.issue.tracking_issue",
+            "rename_main",
+            "rust",
+            "complete",
+            "complete",
+            "complete",
+        ),
+    );
+    append_command(
+        &mut ledger,
+        &command_row_for(
+            "execution-issues",
+            "append",
+            "larch.issue.execution_issues",
+            "append_execution_issue_main",
+            "rust",
+            "complete",
+            "complete",
+            "complete",
+        ),
+    );
+    prepare(&repository, &ledger);
+    repository.write(
+        "python/larch/legacy_tracking.py",
+        b"from larch.issue import tracking_issue as tracker\n\nRESULT = tracker.renamed_mutation()\n",
+    );
+    repository.write(
+        "python/larch/legacy_execution_alias.py",
+        b"import larch.issue.execution_issues as legacy\n\nRESULT = legacy.renamed_append()\n",
+    );
+    repository.write(
+        "python/larch/legacy_execution_dynamic.py",
+        b"import importlib\n\nOWNER = importlib.import_module(\"larch.issue.execution_issues\")\n",
+    );
+    repository.write(
+        "python/larch/legacy_execution_from.py",
+        b"from larch.issue.execution_issues import renamed_append as append\n\nRESULT = append()\n",
+    );
+    repository.write(
+        "scripts/legacy_execution_parent.py",
+        b"import larch.issue as issue\n\nOWNER = issue.execution_issues\n",
+    );
+    repository.write(
+        "python/larch/pure_tracking.py",
+        b"from larch.issue.tracking_issue import link_pr_closes as closes\n\nBODY = closes(body=\"PR\", issue_number=7)\n",
+    );
+    repository.write(
+        "python/larch/issue_boundary_prose.py",
+        b"TEXT = \"from larch.issue.execution_issues import renamed_append\"\n# tracking_issue.renamed_mutation()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["command-registry", "sync", "--planning-issue", "7661"])
+        .assert()
+        .success()
+        .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=3\nCALLERS=5\n")
+        .stderr("");
+
+    let ledger = fs::read_to_string(
+        repository
+            .path()
+            .join("crates/larch-lint/data/command-registry.toml"),
+    )
+    .expect("read synced registry");
+    assert!(ledger.contains("path = \"python/larch/legacy_tracking.py\""));
+    assert!(ledger.contains("python = [\"tracking-issue *\"]"));
+    assert!(ledger.contains("path = \"python/larch/legacy_execution_alias.py\""));
+    assert!(ledger.contains("path = \"python/larch/legacy_execution_dynamic.py\""));
+    assert!(ledger.contains("path = \"python/larch/legacy_execution_from.py\""));
+    assert!(ledger.contains("path = \"scripts/legacy_execution_parent.py\""));
+    assert!(ledger.contains("kind = \"script\""));
+    assert!(ledger.contains("python = [\"execution-issues *\"]"));
+    assert!(!ledger.contains("path = \"python/larch/pure_tracking.py\""));
+    assert!(!ledger.contains("path = \"python/larch/issue_boundary_prose.py\""));
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "tracking-issue rename cannot cut over to Rust while legacy callers remain: python/larch/legacy_tracking.py",
+        ))
+        .stdout(predicate::str::contains(
+            "execution-issues append cannot cut over to Rust while legacy callers remain: python/larch/legacy_execution_alias.py, python/larch/legacy_execution_dynamic.py, python/larch/legacy_execution_from.py, scripts/legacy_execution_parent.py",
+        ))
+        .stdout(predicate::str::contains("python/larch/pure_tracking.py").not());
+}
+
+#[test]
 fn python_owned_parity_and_atomic_rust_ownership_are_distinct_states() {
     let python = TempRepo::new();
     prepare(

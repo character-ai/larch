@@ -191,8 +191,12 @@ fn rejects_unowned_retained_issue_module() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
-        "python/larch/issue/new_owner.py",
+        "python/larch/issue/nested/new_owner.py",
         b"def helper() -> None:\n    return None\n",
+    );
+    repository.write(
+        "python/larch/issue/nested/__init__.py",
+        b"\"\"\"Nested issue package.\"\"\"\n",
     );
     repository.commit_all();
 
@@ -201,7 +205,10 @@ fn rejects_unowned_retained_issue_module() {
         .assert()
         .failure()
         .stdout(predicate::str::contains(
-            "python/larch/issue/new_owner.py:1: unowned retained issue-domain Python module; name its receiving umbrella",
+            "python/larch/issue/nested/new_owner.py:1: unowned retained issue-domain Python module; name its receiving umbrella and reason",
+        ))
+        .stdout(predicate::str::contains(
+            "python/larch/issue/nested/__init__.py:1: unowned retained issue-domain Python module; name its receiving umbrella and reason",
         ));
 }
 
@@ -215,7 +222,7 @@ fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
     );
     repository.write(
         "python/larch/state/bootstrap.py",
-        b"def activate() -> None:\n    tracking_issue.rename_with_details()\n\ndef resume() -> None:\n    _invoke_cli(\n        [\"tracking-issue\", \"read\"]\n    )\n",
+        b"from larch.issue import tracking_issue\n\ndef activate() -> None:\n    tracking_issue.rename_with_details()\n\ndef resume() -> None:\n    _invoke_cli(\n        [\"tracking-issue\", \"read\"]\n    )\n",
     );
     repository.commit_all();
 
@@ -224,10 +231,10 @@ fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
         .assert()
         .failure()
         .stdout(predicate::str::contains(
-            "superseded Python tracking GitHub behavior returned",
+            "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
         ))
         .stdout(predicate::str::contains(
-            "production caller bypasses the Rust tracking-issue facade",
+            "python-command-equivalent-still-owned tracking-issue *: python/larch/state/bootstrap.py",
         ))
         .stdout(predicate::str::contains(
             "production caller routes a retired tracking command through python/cli.py",
@@ -260,9 +267,71 @@ fn rejects_restored_execution_issue_module_and_import_callers() {
             "superseded Python execution-issues behavior returned",
         ))
         .stdout(predicate::str::contains(
-            "production caller imports the retired execution-issues owner",
+            "python-command-equivalent-still-owned execution-issues *: python/larch/implement/dispatch.py",
         ))
         .stdout(predicate::str::contains(
             "superseded Bash execution-issues refresh behavior returned",
+        ));
+}
+
+#[test]
+fn rejects_renamed_tracking_behavior_but_allows_pure_helpers_and_handoffs() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/issue/tracking_issue.py",
+        br#"from __future__ import annotations
+
+def link_pr_closes(*, body: str, issue_number: int) -> str:
+    return body + f"\n\nCloses #{issue_number}\n"
+
+def renamed_mutation(*, issue_number: int) -> None:
+    return None
+"#,
+    );
+    repository.write(
+        "python/larch/git/allowed_footer.py",
+        b"from larch.issue.tracking_issue import link_pr_closes as closes\n\nBODY = closes(body=\"PR\", issue_number=7)\n",
+    );
+    repository.write(
+        "python/larch/design/allowed_handoff.py",
+        b"from larch.issue import issue_wire\n\nVALUE = issue_wire.helper()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(
+            predicate::str::contains(
+                "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
+            )
+            .and(predicate::str::contains("python/larch/git/allowed_footer.py").not())
+            .and(predicate::str::contains("python/larch/design/allowed_handoff.py").not()),
+        );
+}
+
+#[test]
+fn rejects_command_behavior_hidden_under_a_pure_tracking_name() {
+    let repository = TempRepo::new();
+    prepare(&repository);
+    repository.write(
+        "python/larch/issue/tracking_issue.py",
+        br#"from __future__ import annotations
+
+def link_pr_closes(*, body: str, issue_number: int) -> str:
+    process = __import__("subprocess")
+    return process.run(["gh", "issue", "edit", str(issue_number)]).stdout or body
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "issue-python-free"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
         ));
 }
