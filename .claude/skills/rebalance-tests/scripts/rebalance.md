@@ -18,7 +18,7 @@ Invoke it through the verified bootstrap:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--kind` | `all` | Selected leg: `harness`, `python`, or `all`. |
-| `--repo` | origin remote | GitHub repository in `owner/name` form. |
+| `--repo` | origin remote | GitHub repository in `owner/name` form; must match `origin`. |
 | `--n-runs` | `5` | Successful baseline CI runs to sample, from 1 through 20. |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch. |
 | `--n-verify-runs` | `3` | Successful verification workflow runs to dispatch. |
@@ -35,8 +35,9 @@ Invoke it through the verified bootstrap:
 
 The command fetches `origin/main`, then requires a clean, unstashed symbolic
 `main` checkout whose `HEAD`, local `main`, and `origin/main` revisions match.
-It reads the selected artifact state, fetches exact successful CI cohorts through
-the typed GitHub Actions service, and supplies those reports to
+It repeats that check immediately before a candidate write. It reads the
+selected artifact state, fetches exact successful CI cohorts through the typed
+GitHub Actions service, and supplies those reports to
 `larch rebalance-tests plan`.
 
 The pure planner rejects stale, skipped, incomplete, or incompatible evidence.

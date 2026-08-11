@@ -113,7 +113,7 @@ issue-mutation owner for authorization and close read-back.
 <!-- github-service-ownership:start -->
 ```text
 operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
-actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing merge-group-source,ci-timing pytest,gh run-logs,gh workflow-path
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing merge-group-source,ci-timing pytest,gh run-logs,gh workflow-path,rebalance-tests run
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
 comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7685	pending	pending	pending	clarify *,issue migration-audit
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	deps *
@@ -128,6 +128,7 @@ issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	
 issues	crates/larch-adapters/src/github_rest.rs	python	#7685	pending	pending	pending	issue migration-audit
 audit-report-issues	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	audit-runs bugs-backlog-nudge,audit-runs close-priors
 audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	audit-runs map-runs,audit-runs preflight,audit-runs resolve-prs
+rebalance-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7685	complete	complete	complete	rebalance-tests run
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7685	pending	pending	pending	clarify label,issue migration-audit
@@ -163,6 +164,8 @@ have Rust parity, consumer cutover, and Python removal complete. No Python
 registration or superseded command implementation remains for them. Their
 callers enter the single larch executable through `scripts/larch.sh`; the
 subcommands use typed Rust adapters rather than GitHub CLI API shell-outs.
+`rebalance-tests run` (#8343) likewise uses the typed Actions and pull-request
+owners for its complete Rust-only workflow.
 
 ## CLI independence and the bootstrap exception
 

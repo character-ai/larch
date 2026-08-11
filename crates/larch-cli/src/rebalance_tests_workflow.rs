@@ -5,16 +5,17 @@ use chrono::Utc;
 use clap::{Args, ValueEnum};
 use larch_adapters::{
     AddRequest, BranchMutationRequest, CheckoutRequest, CommitMessage, CommitRequest, FetchRequest,
-    GitCli, GitCliPolicy, GitPath, GitRef, GitRefspec, GitRemote, GixRepository, PushRequest,
-    RepositoryRoot, RestoreRequest, TokioProcessRunner, atomic_write_utf8,
+    ForceWithLease, GitCli, GitCliPolicy, GitPath, GitRef, GitRefspec, GitRemote, GixRepository,
+    PushRequest, RepositoryRoot, RestoreRequest, TokioProcessRunner, atomic_write_utf8,
     github::{OctocrabGitHubService, PullRequestSpec},
     read_utf8,
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
     CiTimingRunSelection, GitHubActionsService, GitHubMutationOutcome, GitHubRepositoryRef, Head,
-    RepositoryRead, Revision, StatusOptions, WorkflowDispatchRequest, WorkflowRunFilters,
-    collect_harness_timing, collect_job_timing, collect_pytest_timing, plan_json, verify_json,
+    RepositoryRead, Revision, StatusOptions, WorkflowDispatchRequest, WorkflowRun,
+    WorkflowRunFilters, collect_harness_timing, collect_job_timing, collect_pytest_timing,
+    plan_json, verify_json,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -25,6 +26,7 @@ const DEFAULT_WORKFLOW: &str = "ci.yaml";
 const WORKFLOW_POLL: Duration = Duration::from_secs(15);
 const WORKFLOW_WAIT_LIMIT: Duration = Duration::from_secs(30 * 60);
 const WORKFLOW_LIST_LIMIT: usize = 20;
+const WORKFLOW_EVENT: &str = "workflow_dispatch";
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum RebalanceKind {
     Harness,
@@ -135,9 +137,11 @@ struct PublishedPullRequest {
     number: u64,
     url: String,
     branch: String,
+    head_sha: String,
 }
 trait WorkflowPort {
     fn prepare(&mut self, arguments: &RebalanceRunArguments) -> Result<PreparedPlan, String>;
+    fn revalidate_for_write(&mut self) -> Result<(), String>;
     fn write_candidates(&mut self, plan: &PreparedPlan) -> Result<Vec<Artifact>, String>;
     fn publish(
         &mut self,
@@ -185,6 +189,7 @@ fn execute<P: WorkflowPort>(
         );
         return Ok(ExitCode::SUCCESS);
     }
+    services.revalidate_for_write()?;
     let artifacts = services.write_candidates(&plan)?;
     let branch = branch_name(&arguments.branch_prefix);
     let pull_request = match services.publish(arguments, &plan, &artifacts, &branch) {
@@ -262,13 +267,11 @@ impl ProductionWorkflow {
     }
 
     fn repository_for(arguments: &RebalanceRunArguments) -> Result<GitHubRepositoryRef, String> {
-        if let Some(repository) = &arguments.repo {
-            return Ok(repository.clone());
-        }
         let slug = github_repository_resolution::remote_slug("origin")
             .ok_or_else(|| "origin repository could not be resolved".to_owned())?;
-        github_repository_resolution::repository_ref(&slug)
-            .map_err(|()| "origin repository could not be resolved".to_owned())
+        let origin = github_repository_resolution::repository_ref(&slug)
+            .map_err(|()| "origin repository could not be resolved".to_owned())?;
+        selected_repository(arguments.repo.as_ref(), origin)
     }
 
     fn fetch_and_require_immutable_main(&self) -> Result<(), String> {
@@ -466,6 +469,7 @@ impl ProductionWorkflow {
                 CheckoutRequest::Branch {
                     create: false,
                     force: false,
+                    no_track: false,
                     name: GitRef::new(MAIN).map_err(|error| error.to_string())?,
                     start_point: None,
                 },
@@ -491,24 +495,24 @@ impl ProductionWorkflow {
         Ok(())
     }
     fn push_branch(&mut self, branch: &str) -> Result<(), String> {
+        let remote = GitRemote::new("origin").map_err(|error| error.to_string())?;
+        let destination = format!("refs/heads/{branch}");
+        let refspec = GitRefspec::new(format!("refs/heads/{branch}:{destination}"))
+            .map_err(|error| error.to_string())?;
+        let reference = GitRef::new(&destination).map_err(|error| error.to_string())?;
         // A transport error can arrive after the remote accepts this ref.
         self.pushed_branch = Some(branch.to_owned());
         let git = self.git();
         self.runtime
-            .block_on(
-                git.push(
-                    PushRequest {
-                        remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-                        refspec: GitRefspec::new(format!(
-                            "refs/heads/{branch}:refs/heads/{branch}"
-                        ))
-                        .map_err(|error| error.to_string())?,
-                        force_with_lease: None,
-                        set_upstream: true,
-                    },
-                    &self.cancellation,
-                ),
-            )
+            .block_on(git.push(
+                PushRequest {
+                    remote,
+                    refspec,
+                    force_with_lease: Some(ForceWithLease::ExpectingAbsent { reference }),
+                    set_upstream: true,
+                },
+                &self.cancellation,
+            ))
             .map(|_| ())
             .map_err(|error| format!("cannot push rebalance branch: {error}"))
     }
@@ -517,6 +521,7 @@ impl ProductionWorkflow {
         repository: &GitHubRepositoryRef,
         workflow: &str,
         branch: &str,
+        head_sha: &str,
         n_runs: usize,
     ) -> Result<Vec<u64>, String> {
         self.runtime.block_on(async {
@@ -528,6 +533,7 @@ impl ProductionWorkflow {
                     repository,
                     workflow,
                     branch,
+                    head_sha,
                     &self.cancellation,
                 )
                 .await?;
@@ -554,6 +560,7 @@ impl ProductionWorkflow {
                     repository,
                     workflow,
                     branch,
+                    head_sha,
                     &before,
                     &self.cancellation,
                 )
@@ -570,6 +577,10 @@ impl WorkflowPort for ProductionWorkflow {
         self.fetch_and_require_immutable_main()?;
         let repository = Self::repository_for(arguments)?;
         self.collect_plan(arguments, &repository)
+    }
+
+    fn revalidate_for_write(&mut self) -> Result<(), String> {
+        self.fetch_and_require_immutable_main()
     }
 
     fn write_candidates(&mut self, plan: &PreparedPlan) -> Result<Vec<Artifact>, String> {
@@ -645,6 +656,7 @@ impl WorkflowPort for ProductionWorkflow {
                 CheckoutRequest::Branch {
                     create: false,
                     force: false,
+                    no_track: false,
                     name: branch_ref.clone(),
                     start_point: None,
                 },
@@ -682,6 +694,11 @@ impl WorkflowPort for ProductionWorkflow {
             .await
             .map_err(|error| format!("cannot commit rebalance artifacts: {error}"))
         })?;
+        let head_sha = self
+            .repository
+            .resolve_revision(&Revision::new(branch.as_bytes()))
+            .map_err(|error| format!("cannot resolve rebalance branch commit {branch}: {error}"))?
+            .to_hex();
         self.push_branch(branch)?;
         self.checkout_main()?;
         let body = pull_request_body(arguments, plan);
@@ -709,6 +726,7 @@ impl WorkflowPort for ProductionWorkflow {
                 plan.repository.name()
             ),
             branch: branch.to_owned(),
+            head_sha,
         })
     }
 
@@ -717,13 +735,23 @@ impl WorkflowPort for ProductionWorkflow {
         artifacts: &[Artifact],
         branch: &str,
     ) -> Result<(), String> {
-        self.checkout_main()?;
-        self.restore_artifacts(artifacts)?;
-        self.remove_created_branch(branch)?;
+        let mut failures = Vec::new();
+        if let Err(error) = self.checkout_main() {
+            failures.push(error);
+        }
+        if let Err(error) = self.restore_artifacts(artifacts) {
+            failures.push(error);
+        }
+        if let Err(error) = self.remove_created_branch(branch) {
+            failures.push(error);
+        }
         if self.pushed_branch.as_deref() == Some(branch) {
-            return Err(format!(
+            failures.push(format!(
                 "remote branch {branch} may exist after a failed publish; it was retained because the typed Git owner cannot safely prove a remote deletion"
             ));
+        }
+        if !failures.is_empty() {
+            return Err(failures.join("; "));
         }
         Ok(())
     }
@@ -738,6 +766,7 @@ impl WorkflowPort for ProductionWorkflow {
             &plan.repository,
             &arguments.workflow,
             &pull_request.branch,
+            &pull_request.head_sha,
             arguments.n_verify_runs,
         )?;
         let (harness_pair, pytest) = self.runtime.block_on(async {
@@ -806,7 +835,6 @@ impl WorkflowPort for ProductionWorkflow {
         Ok(())
     }
 }
-
 #[derive(Deserialize)]
 struct PlanResponse {
     decision: String,
@@ -870,7 +898,6 @@ impl PlanResponse {
         })
     }
 }
-
 fn plan_request(
     arguments: &RebalanceRunArguments,
     current_harness: Option<&BTreeMap<u32, Vec<String>>>,
@@ -1046,27 +1073,49 @@ fn format_plan_rejection(response: &PlanResponse) -> String {
     }
 }
 
+fn selected_repository(
+    requested: Option<&GitHubRepositoryRef>,
+    origin: GitHubRepositoryRef,
+) -> Result<GitHubRepositoryRef, String> {
+    match requested {
+        Some(repository) if repository != &origin => Err(
+            "--repo must match the origin remote because the rebalance branch is pushed to origin"
+                .to_owned(),
+        ),
+        Some(repository) => Ok(repository.clone()),
+        None => Ok(origin),
+    }
+}
+
 async fn list_workflow_ids(
     service: &dyn GitHubActionsService,
     repository: &GitHubRepositoryRef,
     workflow: &str,
     branch: &str,
+    head_sha: &str,
     cancellation: &Cancellation,
 ) -> Result<Vec<u64>, String> {
     let runs = service
         .list_workflow_runs(
             repository,
-            &WorkflowRunFilters {
-                branch: Some(branch.to_owned()),
-                workflow: Some(workflow.to_owned()),
-                limit: WORKFLOW_LIST_LIMIT,
-                ..WorkflowRunFilters::default()
-            },
+            &verification_run_filters(workflow, branch, head_sha),
             cancellation,
         )
         .await
         .map_err(|error| format!("cannot list verification workflow runs: {error}"))?;
+    validate_verification_runs(&runs, head_sha)?;
     Ok(runs.into_iter().map(|run| run.database_id).collect())
+}
+
+fn verification_run_filters(workflow: &str, branch: &str, head_sha: &str) -> WorkflowRunFilters {
+    WorkflowRunFilters {
+        branch: Some(branch.to_owned()),
+        workflow: Some(workflow.to_owned()),
+        event: Some(WORKFLOW_EVENT.to_owned()),
+        commit: Some(head_sha.to_owned()),
+        limit: WORKFLOW_LIST_LIMIT,
+        ..WorkflowRunFilters::default()
+    }
 }
 
 async fn wait_for_completed_run(
@@ -1074,6 +1123,7 @@ async fn wait_for_completed_run(
     repository: &GitHubRepositoryRef,
     workflow: &str,
     branch: &str,
+    head_sha: &str,
     excluded: &[u64],
     cancellation: &Cancellation,
 ) -> Result<u64, String> {
@@ -1082,35 +1132,58 @@ async fn wait_for_completed_run(
         let runs = service
             .list_workflow_runs(
                 repository,
-                &WorkflowRunFilters {
-                    branch: Some(branch.to_owned()),
-                    workflow: Some(workflow.to_owned()),
-                    limit: WORKFLOW_LIST_LIMIT,
-                    ..WorkflowRunFilters::default()
-                },
+                &verification_run_filters(workflow, branch, head_sha),
                 cancellation,
             )
             .await
             .map_err(|error| format!("cannot wait for verification workflow: {error}"))?;
-        if let Some(run) = runs
-            .into_iter()
-            .filter(|run| !excluded.contains(&run.database_id))
-            .max_by_key(|run| run.database_id)
-            && run.status == "completed"
-        {
-            if run.conclusion.as_deref() == Some("success") {
-                return Ok(run.database_id);
-            }
-            return Err(format!(
-                "verification workflow {} completed with {:?}",
-                run.database_id, run.conclusion
-            ));
+        if let Some(run_id) = select_verification_run(&runs, excluded, head_sha)? {
+            return Ok(run_id);
         }
         if started.elapsed() >= WORKFLOW_WAIT_LIMIT {
             return Err("verification workflow did not complete before its deadline".to_owned());
         }
         tokio::time::sleep(WORKFLOW_POLL).await;
     }
+}
+
+fn select_verification_run(
+    runs: &[WorkflowRun],
+    excluded: &[u64],
+    head_sha: &str,
+) -> Result<Option<u64>, String> {
+    validate_verification_runs(runs, head_sha)?;
+    let candidates = runs
+        .iter()
+        .filter(|run| !excluded.contains(&run.database_id))
+        .collect::<Vec<_>>();
+    let [run] = candidates.as_slice() else {
+        return if candidates.is_empty() {
+            Ok(None)
+        } else {
+            Err("verification workflow selection is ambiguous".to_owned())
+        };
+    };
+    if run.status != "completed" {
+        return Ok(None);
+    }
+    if run.conclusion.as_deref() == Some("success") {
+        Ok(Some(run.database_id))
+    } else {
+        Err(format!(
+            "verification workflow {} completed with {:?}",
+            run.database_id, run.conclusion
+        ))
+    }
+}
+
+fn validate_verification_runs(runs: &[WorkflowRun], head_sha: &str) -> Result<(), String> {
+    runs.iter()
+        .all(|run| run.event == WORKFLOW_EVENT && run.head_sha == head_sha)
+        .then_some(())
+        .ok_or_else(|| {
+            "verification workflow listing did not honor event and head revision filters".to_owned()
+        })
 }
 
 fn parse_run_count(value: &str) -> Result<usize, String> {
@@ -1210,6 +1283,7 @@ mod tests {
     enum Failure {
         Dirty,
         Stale,
+        StaleBeforeWrite,
         Write,
         Publish,
         Verify,
@@ -1252,6 +1326,13 @@ mod tests {
             })
         }
 
+        fn revalidate_for_write(&mut self) -> Result<(), String> {
+            self.events.push("revalidate");
+            matches!(self.failure, Some(Failure::StaleBeforeWrite))
+                .then_some(Err("stale immutable-main evidence".to_owned()))
+                .unwrap_or(Ok(()))
+        }
+
         fn write_candidates(&mut self, _plan: &PreparedPlan) -> Result<Vec<Artifact>, String> {
             self.events.push("write");
             if matches!(self.failure, Some(Failure::Write)) {
@@ -1276,6 +1357,7 @@ mod tests {
                 number: 1,
                 url: "https://example.invalid/pull/1".to_owned(),
                 branch: branch.to_owned(),
+                head_sha: "a".repeat(40),
             })
         }
 
@@ -1320,17 +1402,24 @@ mod tests {
     }
 
     #[test]
-    fn offline_success_fixture_writes_publishes_verifies_and_cleans_up() {
+    fn offline_success_fixture_writes_publishes_and_verifies() {
         let mut fixture = FixtureWorkflow::new(None, false);
         assert_eq!(execute(&mut fixture, &arguments()), Ok(ExitCode::SUCCESS));
-        assert_eq!(fixture.events, ["prepare", "write", "publish", "verify"]);
+        assert_eq!(
+            fixture.events,
+            ["prepare", "revalidate", "write", "publish", "verify"]
+        );
     }
 
     #[test]
-    fn offline_noop_fixture_never_mutates() {
-        let mut fixture = FixtureWorkflow::new(None, true);
-        assert_eq!(execute(&mut fixture, &arguments()), Ok(ExitCode::SUCCESS));
-        assert_eq!(fixture.events, ["prepare"]);
+    fn offline_noop_and_dry_run_fixtures_never_mutate() {
+        for (noop, dry_run) in [(true, false), (false, true)] {
+            let mut arguments = arguments();
+            arguments.dry_run = dry_run;
+            let mut fixture = FixtureWorkflow::new(None, noop);
+            assert_eq!(execute(&mut fixture, &arguments), Ok(ExitCode::SUCCESS));
+            assert_eq!(fixture.events, ["prepare"]);
+        }
     }
 
     #[test]
@@ -1343,10 +1432,20 @@ mod tests {
     }
 
     #[test]
+    fn offline_post_plan_staleness_refuses_before_writes() {
+        let mut fixture = FixtureWorkflow::new(Some(Failure::StaleBeforeWrite), false);
+        assert!(execute(&mut fixture, &arguments()).is_err());
+        assert_eq!(fixture.events, ["prepare", "revalidate"]);
+    }
+
+    #[test]
     fn offline_candidate_write_fixture_rolls_back_before_publish() {
         let mut fixture = FixtureWorkflow::new(Some(Failure::Write), false);
         assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(fixture.events, ["prepare", "write", "write-rollback"]);
+        assert_eq!(
+            fixture.events,
+            ["prepare", "revalidate", "write", "write-rollback"]
+        );
     }
 
     #[test]
@@ -1355,7 +1454,13 @@ mod tests {
         assert!(execute(&mut fixture, &arguments()).is_err());
         assert_eq!(
             fixture.events,
-            ["prepare", "write", "publish", "publish-rollback"]
+            [
+                "prepare",
+                "revalidate",
+                "write",
+                "publish",
+                "publish-rollback"
+            ]
         );
     }
 
@@ -1363,7 +1468,10 @@ mod tests {
     fn offline_verification_failure_fixture_keeps_the_created_pr() {
         let mut fixture = FixtureWorkflow::new(Some(Failure::Verify), false);
         assert!(execute(&mut fixture, &arguments()).is_err());
-        assert_eq!(fixture.events, ["prepare", "write", "publish", "verify"]);
+        assert_eq!(
+            fixture.events,
+            ["prepare", "revalidate", "write", "publish", "verify"]
+        );
     }
 
     #[test]
@@ -1372,6 +1480,62 @@ mod tests {
         assert!(parse_selector("main branch").is_err());
         assert!(parse_compile_affinity("target=group:0\n").is_err());
         assert!(parse_compile_affinity("target=group:0").is_ok());
+    }
+
+    #[test]
+    fn explicit_repository_must_match_origin() {
+        let origin = GitHubRepositoryRef::new("owner", "repo").unwrap();
+        assert_eq!(
+            selected_repository(None, origin.clone()),
+            Ok(origin.clone())
+        );
+        assert_eq!(
+            selected_repository(Some(&origin), origin.clone()),
+            Ok(origin.clone())
+        );
+        assert!(
+            selected_repository(
+                Some(&GitHubRepositoryRef::new("other", "repo").unwrap()),
+                origin
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn verification_run_selection_requires_one_matching_dispatch() {
+        let run = |id: u64, event: &str, head_sha: &str, status: &str| WorkflowRun {
+            database_id: id,
+            status: status.to_owned(),
+            conclusion: Some("success".to_owned()),
+            head_sha: head_sha.to_owned(),
+            event: event.to_owned(),
+            attempt: 1,
+        };
+        let expected = "a";
+        assert_eq!(
+            select_verification_run(
+                &[run(2, WORKFLOW_EVENT, expected, "completed")],
+                &[],
+                expected
+            ),
+            Ok(Some(2))
+        );
+        assert!(
+            select_verification_run(&[run(3, "push", expected, "completed")], &[], expected)
+                .is_err()
+        );
+        assert!(
+            select_verification_run(
+                &[
+                    run(4, WORKFLOW_EVENT, expected, "completed"),
+                    run(5, WORKFLOW_EVENT, expected, "completed")
+                ],
+                &[],
+                expected
+            )
+            .is_err()
+        );
     }
 
     #[test]

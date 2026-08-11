@@ -27,11 +27,11 @@ defaults to `rebalance-shards`.
 
 ## Safety contract
 
-Before collecting timings, the command fetches `origin/main` and requires a
-clean, unstashed symbolic `main` checkout whose `HEAD`, local `main`, and
-`origin/main` revisions match. It then uses the typed GitHub Actions owner to
-collect complete baseline evidence and passes it to the pure Rust planning
-contract.
+Before collecting timings, and again immediately before a candidate write, the
+command fetches `origin/main` and requires a clean, unstashed symbolic `main`
+checkout whose `HEAD`, local `main`, and `origin/main` revisions match. It then
+uses the typed GitHub Actions owner to collect complete baseline evidence and
+passes it to the pure Rust planning contract.
 
 - `harness` preserves the complete same-run harness, bootstrap, and jobs cohort.
   It rejects missing evidence, target inventory drift, modeled wall-clock
@@ -84,7 +84,7 @@ Pass all skill arguments to `rebalance-tests run` unchanged:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--kind` | `all` | Selected leg: `harness`, `python`, or `all` |
-| `--repo` | origin remote | GitHub repository in `owner/name` form |
+| `--repo` | origin remote | GitHub repository in `owner/name` form; must match `origin` |
 | `--n-runs` | `5` | Successful baseline runs to sample, from 1 through 20 |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the new branch |
 | `--n-verify-runs` | `3` | Successful verification runs to dispatch |
