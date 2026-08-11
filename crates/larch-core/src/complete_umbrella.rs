@@ -366,7 +366,10 @@ mod tests {
         );
         assert_eq!(
             validate_complete_umbrella_leaf(
-                &leaf("[IMPLEMENTING] [LEAF OF 5] Task", GitHubIssueState::Closed),
+                &leaf(
+                    &format!("{IMPLEMENTING_PREFIX}[LEAF OF 5] Task"),
+                    GitHubIssueState::Closed,
+                ),
                 5
             ),
             Err("direct leaf #9 is closed without the exact [DONE] lifecycle title".to_owned())
