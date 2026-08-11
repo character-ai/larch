@@ -369,16 +369,17 @@ impl CheckoutRequest {
                 start_point,
             } => {
                 let mut a = Vec::new();
-                if *create {
-                    a.push(OsString::from(if *force { "-B" } else { "-b" }));
-                    if *no_track {
-                        a.push("--no-track".into());
-                    }
-                } else if *no_track {
+                if !*create && *no_track {
                     return Err(err(
                         GitCliInputErrorKind::UnsupportedCombination,
                         "checkout --no-track requires create (-b/-B)",
                     ));
+                }
+                if *no_track {
+                    a.push("--no-track".into());
+                }
+                if *create {
+                    a.push(OsString::from(if *force { "-B" } else { "-b" }));
                 } else if *force {
                     return Err(err(
                         GitCliInputErrorKind::UnsupportedCombination,

@@ -2340,10 +2340,36 @@ fn resolve_repo_root() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bootstrap_next, coder_order_for_tier, normalize_1r_probe_output, read_regular_text,
+        ContinuationFailure, append_force_bypass, bootstrap_next, coder_order_for_tier,
+        emit_failure, normalize_1r_probe_output, phase_coder, read_regular_text,
         strip_plan_provenance_headers,
     };
-    use std::{collections::BTreeMap, fs};
+    use crate::bootstrap_commands::{BootstrapOptions, BootstrapState, InvokeMode};
+    use std::{collections::BTreeMap, fs, process::ExitCode};
+
+    fn test_options() -> BootstrapOptions {
+        BootstrapOptions {
+            mode: InvokeMode::Initial,
+            issue_number: String::new(),
+            forked_target: String::new(),
+            merge_requested: String::new(),
+            draft_requested: String::new(),
+            no_admin_fallback: String::new(),
+            no_logs_commit: String::new(),
+            force_requested: String::new(),
+            difficulty_override: String::new(),
+            upstream_repo: String::new(),
+            run_id: String::new(),
+            preflight_tmpdir: String::new(),
+            caller_env: String::new(),
+            coder_opt: String::new(),
+            non_interactive: String::new(),
+            self_review_requested: String::new(),
+            self_implement_requested: String::new(),
+            skip_codex_probe: false,
+            skip_cursor_probe: false,
+        }
+    }
 
     #[test]
     fn checkpoint_probe_normalizes_malformed_routing_and_keeps_phantom_advisories() {
@@ -2404,6 +2430,90 @@ mod tests {
         );
         assert_eq!(coder_order_for_tier("HARD"), &["codex", "cursor", "claude"]);
         assert_eq!(coder_order_for_tier(""), &["codex", "cursor", "claude"]);
+    }
+
+    #[test]
+    fn explicit_unavailable_coder_records_fallback_evidence() {
+        let temporary = tempfile::tempdir().expect("temporary bootstrap session");
+        let plan = temporary.path().join("plan.txt");
+        let feature = temporary.path().join("feature-description.txt");
+        fs::write(&plan, "plan\n").expect("write plan");
+        fs::write(&feature, "feature\n").expect("write feature");
+        let mut state = BootstrapState {
+            implement_tmpdir: temporary.path().display().to_string(),
+            plan_file: plan.display().to_string(),
+            ..BootstrapState::default()
+        };
+        let mut options = test_options();
+        options.coder_opt = "codex".to_owned();
+
+        phase_coder(&mut state, &options);
+
+        assert_eq!(state.coder, "claude");
+        assert_eq!(state.coder_fallback, "true");
+        assert!(
+            fs::read_to_string(temporary.path().join("codex-unavailable-warning.txt"))
+                .expect("read requested-coder warning")
+                .contains("SELECTED=claude")
+        );
+        assert!(
+            temporary
+                .path()
+                .join("coder-fallback-warning.txt")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn valid_force_bypass_is_consumed_once() {
+        let temporary = tempfile::tempdir().expect("temporary bootstrap session");
+        let preflight = tempfile::tempdir().expect("temporary preflight");
+        fs::write(
+            preflight.path().join("force-bypass.log"),
+            "BYPASS kind=missing-designed-prefix issue=8358\n",
+        )
+        .expect("write force bypass log");
+        let state = BootstrapState {
+            implement_tmpdir: temporary.path().display().to_string(),
+            issue_number_resolved: "8358".to_owned(),
+            ..BootstrapState::default()
+        };
+        let mut options = test_options();
+        options.force_requested = "true".to_owned();
+        options.preflight_tmpdir = preflight.path().display().to_string();
+
+        assert!(append_force_bypass(&state, &options));
+        assert!(
+            temporary
+                .path()
+                .join(".force-bypass-log-consumed")
+                .is_file()
+        );
+        assert!(append_force_bypass(&state, &options));
+    }
+
+    #[test]
+    fn failure_steps_preserve_the_contract_exit_code() {
+        for step in [
+            "session-entry-gate",
+            "session-setup",
+            "get-issue-state",
+            "issue-number-required-for-resume",
+            "copy-plan",
+            "gh-issue-view",
+            "resume-plan-tail-sentinel",
+            "create-branch",
+            "write-session-env",
+            "degraded-both-down-hard-fail",
+            "force-bypass-log",
+            "unknown-step",
+        ] {
+            assert_eq!(
+                emit_failure(&ContinuationFailure::new(step, "detail"), ""),
+                ExitCode::from(2),
+                "step={step}"
+            );
+        }
     }
 
     #[test]

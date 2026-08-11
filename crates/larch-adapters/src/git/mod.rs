@@ -474,7 +474,7 @@ mod tests {
                 name: GitRef::new("topic").unwrap(),
                 start_point: Some(GitRef::new("origin/main").unwrap()),
             },
-            &["checkout", "-b", "--no-track", "topic", "origin/main"],
+            &["checkout", "--no-track", "-b", "topic", "origin/main"],
         );
         check(
             &CleanRequest {
@@ -1481,6 +1481,26 @@ mod tests {
                         no_track: false,
                         name: GitRef::new("topic").unwrap(),
                         start_point: None,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "checkout creates an untracked branch",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["checkout", "--no-track", "-b", "new-topic", "origin/main"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).checkout(
+                    CheckoutRequest::Branch {
+                        create: true,
+                        force: false,
+                        no_track: true,
+                        name: GitRef::new("new-topic").unwrap(),
+                        start_point: Some(GitRef::new("origin/main").unwrap()),
                     },
                     &NeverCancelled,
                 ))
