@@ -1280,6 +1280,9 @@ fn activate_tracking_lease(state: &mut BootstrapState, options: &BootstrapOption
             return Err("tracking-issue rename failed".to_owned());
         }
         activated = true;
+        write_session_file(&state.implement_tmpdir, post_body, "").map_err(|error| {
+            format!("tracking-issue post-admission output preparation failed: {error}")
+        })?;
         let post_body = Path::new(&state.implement_tmpdir).join(post_body);
         let post = run_verified_larch(&[
             OsString::from("tracking-issue"),

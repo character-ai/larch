@@ -8345,7 +8345,7 @@ if [ -n "$bootstrap_session" ]; then
           fi
           shift
         done
-        [ -n "$body_out" ] && [ -f "$bootstrap_session/fixture-issue-body.md" ] || exit 64
+        [ -n "$body_out" ] && [ -f "$body_out" ] && [ -f "$bootstrap_session/fixture-issue-body.md" ] || exit 64
         cp "$bootstrap_session/fixture-issue-body.md" "$body_out"
         exit 0
       fi
