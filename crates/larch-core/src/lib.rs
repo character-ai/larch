@@ -21,6 +21,7 @@ mod issue_mutation;
 mod logging_util;
 mod main_cache;
 mod message_error;
+mod migration_audit;
 mod migration_governance;
 mod object_store;
 mod ordered_json;
@@ -248,6 +249,16 @@ pub use issue_mutation::{
 };
 pub use logging_util::emit_kv;
 pub use main_cache::{resolve_main_cache_merge_group_source, validate_main_cache_source_sha};
+pub use migration_audit::{
+    AggregateFinding, CommandAuditIssue, CommandAuditKey, DependencySnapshot, FindingCategory,
+    IssueAuditEvidence, MIGRATION_AUDIT_COUNT_KEYS, MIGRATION_AUDIT_SCHEMA_VERSION,
+    MigrationAuditDefect, MigrationAuditReport, MigrationAuditRequest, MigrationAuditSnapshot,
+    MigrationIssueSnapshot, PLAN_DEFECT_TOKENS, PlanAuditEvidence, RepositoryAuditFinding,
+    RepositoryFindingSource, RustLineBudgetDeviation, RustLineBudgetDeviationParse,
+    build_command_audit_issue, build_migration_audit_report, parse_rust_line_budget_deviation,
+    render_command_audit_input, render_migration_audit_json, render_migration_audit_table,
+    validate_plan_facets,
+};
 pub use migration_governance::{
     BlockerSnapshotRow, FreshnessVerdict, GovernanceGateVerdict, GovernanceIssueSnapshot,
     LeaseAuditFinding, OwnerAdmissionRequest, OwnerAdmissionVerdict, OwnerBlock, OwnerBlockParse,
