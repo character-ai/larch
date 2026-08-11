@@ -283,6 +283,33 @@ def ls_files(
     result = _ensure_success(_run(runner, argv, cwd=cwd))
     return tuple(line for line in result.stdout.splitlines() if line)
 
+def ls_tree_paths(
+    runner: Runner,
+    revision: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    """List tracked paths at a revision as NUL-delimited output."""
+    return _run(
+        runner,
+        ["git", "ls-tree", "-r", "--name-only", "-z", revision],
+        cwd=cwd,
+    )
+
+def ls_tree_entry(
+    runner: Runner,
+    revision: str,
+    path: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Look up one tree entry at a revision as NUL-delimited output."""
+    return _run(
+        runner,
+        ["git", "ls-tree", "-z", revision, "--", path],
+        cwd=cwd,
+    )
+
 def fetch(
     runner: Runner,
     remote: str,

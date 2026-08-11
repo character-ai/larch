@@ -574,6 +574,26 @@ def test_diff_tree_name_only_invocation() -> None:
     assert "README.md" in result.stdout
 
 
+def test_ls_tree_helpers_build_exact_argv() -> None:
+    paths_argv = ("git", "ls-tree", "-r", "--name-only", "-z", "base-sha")
+    entry_argv = ("git", "ls-tree", "-z", "base-sha", "--", "README.md")
+    runner = StubRunner(
+        {
+            paths_argv: CommandResult(paths_argv, 0, "README.md\0", "", 0.01),
+            entry_argv: CommandResult(
+                entry_argv,
+                0,
+                "100644 blob deadbeef\tREADME.md\0",
+                "",
+                0.01,
+            ),
+        },
+    )
+
+    assert git.ls_tree_paths(runner, "base-sha").stdout == "README.md\0"
+    assert git.ls_tree_entry(runner, "base-sha", "README.md").returncode == 0
+
+
 def test_diff_and_rebase_helpers() -> None:
     runner = StubRunner(
         {

@@ -79,15 +79,31 @@ fn rust_owned_python_fails_on_makefile_caller() {
 }
 
 #[test]
-fn crate_process_passes_with_vendor_and_residual_exceptions() {
+fn crate_process_passes_with_vendor_and_documented_exceptions() {
     let repository = TempRepo::new();
     repository.write(
         "scripts/residual-bash-paths.txt",
-        b"scripts/allowed-gh.sh\n",
+        b"scripts/larch.sh\nscripts/file-failure-report-cross-repo.sh\nskills/combine-issues/scripts/search-implementing-issue.sh\nskills/implement/scripts/step-architectural-guidelines-write-staged.sh\n",
     );
     repository.write(
-        "scripts/allowed-gh.sh",
-        b"#!/usr/bin/env bash\ngh api user\n",
+        "scripts/larch.sh",
+        b"#!/usr/bin/env bash\ngh release verify v1\n",
+    );
+    repository.write(
+        "scripts/file-failure-report-cross-repo.sh",
+        b"#!/usr/bin/env bash\ngh issue create --title report\n",
+    );
+    repository.write(
+        "skills/combine-issues/scripts/search-implementing-issue.sh",
+        b"#!/usr/bin/env bash\ngh issue list --state open\n",
+    );
+    repository.write(
+        "skills/implement/scripts/step-architectural-guidelines-write-staged.sh",
+        b"#!/usr/bin/env bash\ngit rev-parse HEAD\n",
+    );
+    repository.write(
+        ".github/actions/github-auth-config/action.yaml",
+        b"runs:\n  using: composite\n  steps:\n    - run: gh auth status --hostname github.com\n",
     );
     repository.write(
         "scripts/vendor.sh",
@@ -108,6 +124,52 @@ fn crate_process_passes_with_vendor_and_residual_exceptions() {
 }
 
 #[test]
+fn crate_process_does_not_treat_the_residual_manifest_as_a_blanket_waiver() {
+    let repository = TempRepo::new();
+    repository.write(
+        "scripts/residual-bash-paths.txt",
+        b"scripts/unreviewed-gh.sh\n",
+    );
+    repository.write(
+        "scripts/unreviewed-gh.sh",
+        b"#!/usr/bin/env bash\ngh api /user\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-crate-process"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "scripts/unreviewed-gh.sh:2: developer tooling spawns gh; a Rust crate already provides this capability",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn crate_process_rejects_manifest_named_skill_runtime_surface() {
+    let repository = TempRepo::new();
+    repository.write(
+        "scripts/residual-bash-paths.txt",
+        b"skills/design/scripts/runtime-helper.sh\n",
+    );
+    repository.write(
+        "skills/design/scripts/runtime-helper.sh",
+        b"#!/usr/bin/env bash\ngit status --short\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-crate-process"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "skills/design/scripts/runtime-helper.sh:2: developer tooling spawns git; a Rust crate already provides this capability",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
 fn crate_process_fails_on_gcloud_in_makefile() {
     let repository = TempRepo::new();
     repository.write("Makefile", b"auth:\n\tgcloud auth print-access-token\n");
@@ -120,6 +182,144 @@ fn crate_process_fails_on_gcloud_in_makefile() {
         .stdout(predicate::str::contains(
             "Makefile:2: developer tooling spawns gcloud; a Rust crate already provides this capability",
         ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn crate_process_rejects_retained_skill_prompt_and_workflow_git() {
+    let repository = TempRepo::new();
+    repository.write(
+        ".claude/skills/larch-size/SKILL.md",
+        b"Run:\n\n```bash\ngit status --short\n```\n",
+    );
+    repository.write(
+        ".github/workflows/ci.yaml",
+        b"jobs:\n  check:\n    steps:\n      - run: git rev-parse HEAD\n      - run: |\n          gh api /user\n",
+    );
+    repository.write(
+        ".github/actions/unreviewed/action.yaml",
+        b"runs:\n  using: composite\n  steps:\n      - run: gcloud auth print-access-token\n",
+    );
+    repository.write(
+        ".pre-commit-config.yaml",
+        b"repos:\n  - entry: gcloud auth print-access-token\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-crate-process"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            ".claude/skills/larch-size/SKILL.md:4: developer tooling spawns git; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            ".github/workflows/ci.yaml:4: developer tooling spawns git; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            ".github/workflows/ci.yaml:6: developer tooling spawns gh; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            ".pre-commit-config.yaml:2: developer tooling spawns gcloud; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            ".github/actions/unreviewed/action.yaml:4: developer tooling spawns gcloud; a Rust crate already provides this capability",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn crate_process_rejects_python_subprocess_argv() {
+    let repository = TempRepo::new();
+    repository.write(
+        "scripts/developer_tool.py",
+        br#"import subprocess as process
+
+github_argv = ["gh", "api", "/user"]
+git_argv = ["git", "status", "--short"]
+git_command = "git status --short"
+process.run(args=github_argv, check=True)
+process.check_call(git_argv)
+process.run(git_command, shell=True)
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-crate-process"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "scripts/developer_tool.py:6: developer tooling spawns gh; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            "scripts/developer_tool.py:7: developer tooling spawns git; a Rust crate already provides this capability",
+        ))
+        .stdout(predicate::str::contains(
+            "scripts/developer_tool.py:8: developer tooling spawns git; a Rust crate already provides this capability",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn rust_owned_python_rejects_retained_developer_prompt() {
+    let repository = TempRepo::new();
+    write_rust_owned_registry(&repository, "plugin", "read-version");
+    repository.write(
+        ".claude/skills/larch-size/SKILL.md",
+        b"Run `python3 python/cli.py plugin read-version`.\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-rust-owned-python"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            ".claude/skills/larch-size/SKILL.md:1: developer tooling invokes python/cli.py plugin read-version; command registry marks it Rust-owned",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+fn inventory(extra: &str) -> String {
+    format!(
+        "# Git operation inventory\n\n<!-- git-ownership-matrix:start -->\n```text\nsurface\towner\tissue\toperations\n{extra}```\n<!-- git-ownership-matrix:end -->\n"
+    )
+}
+
+#[test]
+fn developer_tooling_closure_rejects_unresolved_7685_inventory_row() {
+    let repository = TempRepo::new();
+    repository.write(
+        "docs/git-operation-inventory.md",
+        inventory("scripts/developer.sh\tlater-domain\t#7685\tstatus\n").as_bytes(),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "docs/git-operation-inventory.md:1: Git-operation inventory still has unresolved later-domain #7685 row: scripts/developer.sh",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_allows_other_later_domain_rows() {
+    let repository = TempRepo::new();
+    repository.write(
+        "docs/git-operation-inventory.md",
+        inventory("python/larch/issue/tool.py\tlater-domain\t#7682\tls-tree\n").as_bytes(),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
         .stderr(predicate::str::is_empty());
 }
 

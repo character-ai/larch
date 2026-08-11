@@ -73,7 +73,7 @@ python/larch/design/design_log_publish_flow.py	later-domain	#7680	dynamic
 python/larch/design/design_step2b.py	later-domain	#7680	dynamic
 python/larch/design/plan_quality.py	later-domain	#7680	apply
 python/larch/git/gh.py	later-domain	#7676	remote
-python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
+python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
 python/larch/git/merge.py	later-domain	#7681	fetch,log,show
 python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
@@ -89,7 +89,6 @@ python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/analyze_bugs.py	later-domain	#7684	diff,fetch,grep,log,merge-base,rev-parse,show
-python/larch/issue/migration_governance.py	later-domain	#7685	ls-tree
 python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic

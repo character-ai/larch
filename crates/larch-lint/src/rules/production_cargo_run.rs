@@ -151,10 +151,7 @@ fn check_python(
     source: &str,
     syntax: &tree_sitter::Tree,
 ) -> Result<Vec<Finding>, LintError> {
-    let callables = subprocess_callables(syntax.root_node(), source);
-    let mut lines = BTreeSet::new();
-    collect_python_calls(syntax.root_node(), source, &callables, &mut lines);
-    lines
+    python_subprocess_call_lines(source, syntax, prohibited_argv)
         .into_iter()
         .map(|line| {
             let number = u32::try_from(line)
@@ -162,6 +159,34 @@ fn check_python(
             Ok(Finding::new(path, number, MESSAGE))
         })
         .collect()
+}
+
+/// Return the source lines of static Python `subprocess` calls whose argv
+/// satisfies `matches`.
+///
+/// The developer-tooling guard reuses this parser so Python process ownership
+/// has one syntax-aware implementation for imports, aliases, argv keywords,
+/// list and tuple argv values, lexical static argv bindings, and shell strings.
+pub(super) fn python_subprocess_call_lines<F>(
+    source: &str,
+    syntax: &tree_sitter::Tree,
+    matches: F,
+) -> BTreeSet<usize>
+where
+    F: Fn(&[String]) -> bool,
+{
+    let callables = subprocess_callables(syntax.root_node(), source);
+    let bindings = python_argv_bindings(syntax.root_node(), source);
+    let mut lines = BTreeSet::new();
+    collect_python_calls(
+        syntax.root_node(),
+        source,
+        &callables,
+        &bindings,
+        &matches,
+        &mut lines,
+    );
+    lines
 }
 
 fn subprocess_callables(root: Node<'_>, source: &str) -> BTreeSet<String> {
@@ -227,21 +252,25 @@ fn collect_python_calls(
     node: Node<'_>,
     source: &str,
     callables: &BTreeSet<String>,
+    bindings: &[PythonArgvBinding],
+    matches: &impl Fn(&[String]) -> bool,
     lines: &mut BTreeSet<usize>,
 ) {
-    if node.kind() == "call" && python_call_is_prohibited(node, source, callables) {
+    if node.kind() == "call" && python_call_matches(node, source, callables, bindings, matches) {
         lines.insert(node.start_position().row + 1);
     }
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_python_calls(child, source, callables, lines);
+        collect_python_calls(child, source, callables, bindings, matches, lines);
     }
 }
 
-fn python_call_is_prohibited(
+fn python_call_matches(
     call: Node<'_>,
     source: &str,
     callables: &BTreeSet<String>,
+    bindings: &[PythonArgvBinding],
+    matches: &impl Fn(&[String]) -> bool,
 ) -> bool {
     let Some(function) = call.child_by_field_name("function") else {
         return false;
@@ -269,17 +298,127 @@ fn python_call_is_prohibited(
         return false;
     };
     if argv.kind() == "string" {
-        let command = python_string_value(argv, source);
-        return parse_bash(&command)
-            .ok()
-            .is_some_and(|tree| {
-                leaf_bash_commands(&tree)
-                    .into_iter()
-                    .any(|node| prohibited_argv(&shell_command_words(node, &command)))
-            });
+        return shell_command_matches(&python_string_value(argv, source), matches);
     }
-    let words = python_argv_words(argv, source);
-    prohibited_argv(&words)
+    if argv.kind() == "identifier" {
+        let name = source.get(argv.byte_range()).unwrap_or("").trim();
+        if let Some(binding) = static_python_argv_binding_words(bindings, name, call) {
+            return match &binding.value {
+                PythonArgvBindingValue::Words(words) => matches(words),
+                PythonArgvBindingValue::ShellCommand(command) => {
+                    shell_command_matches(command, matches)
+                }
+            };
+        }
+    }
+    matches(&python_argv_words(argv, source))
+}
+
+fn shell_command_matches(command: &str, matches: &impl Fn(&[String]) -> bool) -> bool {
+    parse_bash(command).ok().is_some_and(|tree| {
+        leaf_bash_commands(&tree)
+            .into_iter()
+            .any(|node| matches(&shell_command_words(node, command)))
+    })
+}
+
+#[derive(Debug)]
+struct PythonArgvBinding {
+    name: String,
+    scope_start: usize,
+    scope_end: usize,
+    assignment_start: usize,
+    value: PythonArgvBindingValue,
+}
+
+#[derive(Debug)]
+enum PythonArgvBindingValue {
+    Words(Vec<String>),
+    ShellCommand(String),
+}
+
+impl PythonArgvBindingValue {
+    const fn is_empty(&self) -> bool {
+        match self {
+            Self::Words(words) => words.is_empty(),
+            Self::ShellCommand(command) => command.is_empty(),
+        }
+    }
+}
+
+fn python_argv_bindings(root: Node<'_>, source: &str) -> Vec<PythonArgvBinding> {
+    let mut bindings = Vec::new();
+    collect_python_argv_bindings(root, source, &mut bindings);
+    bindings.sort_by_key(|binding| binding.assignment_start);
+    bindings
+}
+
+fn collect_python_argv_bindings(
+    node: Node<'_>,
+    source: &str,
+    bindings: &mut Vec<PythonArgvBinding>,
+) {
+    if node.kind() == "assignment"
+        && let (Some(left), Some(right)) = (
+            node.child_by_field_name("left"),
+            node.child_by_field_name("right"),
+        )
+        && left.kind() == "identifier"
+    {
+        let name = source.get(left.byte_range()).unwrap_or("").trim();
+        let value = python_argv_binding_value(right, source);
+        if !name.is_empty() && !value.is_empty() {
+            let (scope_start, scope_end) = python_lexical_scope(node);
+            bindings.push(PythonArgvBinding {
+                name: name.to_owned(),
+                scope_start,
+                scope_end,
+                assignment_start: node.start_byte(),
+                value,
+            });
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_python_argv_bindings(child, source, bindings);
+    }
+}
+
+fn python_argv_binding_value(node: Node<'_>, source: &str) -> PythonArgvBindingValue {
+    if node.kind() == "string" {
+        PythonArgvBindingValue::ShellCommand(python_string_value(node, source))
+    } else {
+        PythonArgvBindingValue::Words(python_argv_words(node, source))
+    }
+}
+
+fn static_python_argv_binding_words<'bindings>(
+    bindings: &'bindings [PythonArgvBinding],
+    name: &str,
+    call: Node<'_>,
+) -> Option<&'bindings PythonArgvBinding> {
+    let (scope_start, scope_end) = python_lexical_scope(call);
+    bindings
+        .iter()
+        .filter(|binding| {
+            binding.name == name
+                && binding.scope_start == scope_start
+                && binding.scope_end == scope_end
+                && binding.assignment_start < call.start_byte()
+        })
+        .max_by_key(|binding| binding.assignment_start)
+}
+
+fn python_lexical_scope(mut node: Node<'_>) -> (usize, usize) {
+    loop {
+        if matches!(node.kind(), "function_definition" | "class_definition") {
+            return (node.start_byte(), node.end_byte());
+        }
+        let Some(parent) = node.parent() else {
+            return (node.start_byte(), node.end_byte());
+        };
+        node = parent;
+    }
 }
 
 fn python_argv_words(node: Node<'_>, source: &str) -> Vec<String> {
