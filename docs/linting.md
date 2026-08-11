@@ -101,17 +101,34 @@ path is gone. Focused coverage lives in
 ### Developer-tooling migration guards
 
 `larch lint` rules `developer-tooling-rust-owned-python`,
-`developer-tooling-crate-process`, and `retired-disposition-module` watch
-`Makefile`, `.pre-commit-config.yaml`, `.github/workflows/*.{yml,yaml}`, and
-non-test `scripts/*.{sh,py}` for post-cutover drift (#8101):
+`developer-tooling-crate-process`, `developer-tooling-7685-closure`, and
+`retired-disposition-module` watch `Makefile`, `.pre-commit-config.yaml`,
+`.github/workflows/*.{yml,yaml}`, composite `.github/actions/*/action.{yml,yaml}`,
+non-test `scripts/*.{sh,py}`, non-test, non-fixture runtime scripts named by
+`scripts/residual-bash-paths.txt`, and retained developer-only
+`.claude/skills/**/*.{md,sh,py}` for post-cutover drift under issues 8101 and
+8345. `audit-runs` and `release` retain separate migration domains:
 
 - `developer-tooling-rust-owned-python` fails when those surfaces still invoke
   `python/cli.py <domain> <verb>` for a selector the command registry marks
-  Rust-owned.
-- `developer-tooling-crate-process` fails when those surfaces spawn `gcloud` or
-  `gh` outside `scripts/residual-bash-paths.txt`, the approved external products
-  (`claude`, `codex`, `cursor`), and the release-asset workflow's `gh`
-  exception.
+  Rust-owned, including prompt-authored commands.
+- `developer-tooling-crate-process` uses the maintained shell, Markdown, and
+  Python syntax readers to reject static `git`, `gh`, and `gcloud` child
+  processes. Python import aliases, `args=`, static argv bindings, and shell
+  strings are covered; workflow and pre-commit `run`, `entry`, and `entrypoint`
+  values are parsed as shell commands. Approved external products (`claude`,
+  `codex`, `cursor`) remain allowed. The only reviewed boundary exceptions are
+  the release-asset workflow's `gh` upload, manifest-listed `scripts/larch.sh`
+  clean-install bootstrap and `file-failure-report-cross-repo.sh` transport,
+  the CI-only `github-auth-config` credential bootstrap,
+  the retained `search-implementing-issue.sh` compatibility helper, the
+  #7681-owned staged architectural-guideline wrapper,
+  and the manifest-listed Git hook/release probes in
+  `block-submodule-edit.sh`, `check-stale-plugin.sh`, and
+  `sessionstart-health.sh`; the residual-Bash manifest is not a blanket waiver.
+- `developer-tooling-7685-closure` asks the `git-ownership` rule's canonical
+  inventory parser for unresolved `later-domain #7685` rows and fails if any
+  remain. It intentionally does not close or reassign other umbrella rows.
 - `retired-disposition-module` fails when a `retire` disposition row names an
   unregistered lint verb whose derived module (or file-typed `target_surface`)
   still exists.

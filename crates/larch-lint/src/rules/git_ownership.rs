@@ -28,7 +28,7 @@ use super::syn_helpers;
 const NAME: &str = "git-ownership";
 const DESCRIPTION: &str =
     "Validate Git operation inventory, gix ownership, and the closed CLI exception set";
-const INVENTORY_PATH: &str = "docs/git-operation-inventory.md";
+pub(super) const INVENTORY_PATH: &str = "docs/git-operation-inventory.md";
 const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.toml";
 const GIX_OWNER: &str = "crates/larch-adapters/src/git/repository.rs";
 const CLI_OWNER: &str = "crates/larch-adapters/src/git/mod.rs";
@@ -973,6 +973,28 @@ fn check_inventory(repository: &Repository, findings: &mut Vec<Finding>) -> Resu
         }
     }
     Ok(())
+}
+
+/// Return canonical inventory paths that still defer to one later-domain issue.
+///
+/// This deliberately exposes only the parsed query needed by sibling closure
+/// rules. The inventory grammar, validation, and Markdown marker ownership
+/// remain private to this module.
+pub(super) fn unresolved_later_domain_paths(
+    repository: &Repository,
+    issue: u64,
+) -> Result<Vec<String>, LintError> {
+    let path = RepoPath::from_trusted(INVENTORY_PATH);
+    if repository.paths().binary_search(&path).is_err() {
+        return Ok(Vec::new());
+    }
+    let inventory = parse_inventory(&repository.read_utf8(&path)?)?;
+    Ok(inventory
+        .into_iter()
+        .filter_map(|(path, row)| {
+            (row.owner == "later-domain" && row.issue == issue).then_some(path)
+        })
+        .collect())
 }
 
 fn parse_inventory(source: &str) -> Result<BTreeMap<String, InventoryRow>, LintError> {

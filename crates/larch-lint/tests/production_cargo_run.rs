@@ -140,6 +140,45 @@ process.Popen(args=["cargo", "install", "larch-cli"])
 }
 
 #[test]
+fn production_cargo_run_tracks_static_argv_bindings_by_scope_and_order() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/larch/core/bindings.py",
+        br#"import subprocess
+
+argv = ["echo", "safe"]
+subprocess.run(argv)
+
+def stale_binding() -> None:
+    argv = ["cargo", "run"]
+
+def safe_binding() -> None:
+    argv = ["echo", "safe"]
+    subprocess.run(argv)
+
+argv = ["cargo", "run"]
+subprocess.run(argv)
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "production-cargo-run"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(format!(
+            "python/larch/core/bindings.py:14: {MESSAGE}"
+        )))
+        .stdout(
+            predicate::str::contains(format!("python/larch/core/bindings.py:4: {MESSAGE}")).not(),
+        )
+        .stdout(
+            predicate::str::contains(format!("python/larch/core/bindings.py:11: {MESSAGE}")).not(),
+        )
+        .stderr("");
+}
+
+#[test]
 fn production_cargo_run_allows_prose_comments_and_nonruntime_surfaces() {
     let repository = TempRepo::new();
     repository.write(
