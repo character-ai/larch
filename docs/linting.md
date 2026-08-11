@@ -301,6 +301,16 @@ Python consumer tests are `python/tests/test_rebalance_script.py` and
 `crates/larch-cli/tests/test_shards.rs`. Run the targeted Cargo and pytest
 commands before changing the rebalance contract.
 
+`larch rebalance-tests plan` and `larch rebalance-tests verify` provide the
+versioned, pure JSON decision core behind that future workflow. They consume
+already-collected Rust CI-timing reports and reuse the Rust shard packer; their
+decision logic does not inspect or rewrite `Makefile` or
+`python/shard-assignments.json`, make Git or GitHub calls, or dispatch CI. The
+current Python workflow remains the
+orchestration owner until its later atomic cutover. See
+`.claude/skills/rebalance-tests/scripts/rebalance.md` for the exact request and
+result contract.
+
 **Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
 dependency-free Rust `larch-harness-mark` binary in `target/harness-mark`. It
 uses `rustc` directly for its standard-library-only sources, rather than

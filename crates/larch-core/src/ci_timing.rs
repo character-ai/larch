@@ -6,7 +6,7 @@ use crate::{
     github_actions::bounded_workflow_log_archive,
 };
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     io::Read,
@@ -71,7 +71,8 @@ pub enum CiTimingRunSelection {
 }
 
 /// One legacy `LARCH_HARNESS_TIMING` row.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct HarnessTimingRow {
     pub run_id: u64,
     pub shard: u32,
@@ -80,7 +81,8 @@ pub struct HarnessTimingRow {
 }
 
 /// One timer-bootstrap diagnostic paired with a harness target execution.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct HarnessBootstrapRow {
     pub run_id: u64,
     pub shard: u32,
@@ -90,7 +92,8 @@ pub struct HarnessBootstrapRow {
 }
 
 /// One legacy pytest `--durations=0` call row.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PytestTimingRow {
     pub run_id: u64,
     pub shard: u32,
@@ -101,7 +104,8 @@ pub struct PytestTimingRow {
 }
 
 /// One real GitHub Actions harness-job wall-clock row.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct JobTimingRow {
     pub run_id: u64,
     pub shard: u32,
@@ -109,31 +113,35 @@ pub struct JobTimingRow {
 }
 
 /// A harness target median, preserving first-seen ordering.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TargetTiming {
     pub target: String,
     pub seconds: f64,
 }
 
 /// A pytest nodeid median, preserving first-seen ordering.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct NodeidTiming {
     pub nodeid: String,
     pub seconds: f64,
 }
 
 /// A per-shard median.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ShardTiming {
     pub shard: u32,
     pub seconds: f64,
 }
 
 /// Stable machine output for `larch ci-timing harness`.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct HarnessTimingReport {
-    schema_version: u8,
-    kind: &'static str,
+    pub(crate) schema_version: u8,
+    pub(crate) kind: String,
     pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<HarnessTimingRow>,
     pub bootstrap_rows: Vec<HarnessBootstrapRow>,
@@ -144,10 +152,11 @@ pub struct HarnessTimingReport {
 }
 
 /// Stable machine output for `larch ci-timing pytest`.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PytestTimingReport {
-    schema_version: u8,
-    kind: &'static str,
+    pub(crate) schema_version: u8,
+    pub(crate) kind: String,
     pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<PytestTimingRow>,
     pub nodeid_medians: Vec<NodeidTiming>,
@@ -157,10 +166,11 @@ pub struct PytestTimingReport {
 }
 
 /// Stable machine output for `larch ci-timing jobs`.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct JobTimingReport {
-    schema_version: u8,
-    kind: &'static str,
+    pub(crate) schema_version: u8,
+    pub(crate) kind: String,
     pub sampled_run_ids: Vec<u64>,
     pub rows: Vec<JobTimingRow>,
     pub shard_medians: Vec<ShardTiming>,
@@ -710,7 +720,7 @@ fn harness_report(
         .collect();
     HarnessTimingReport {
         schema_version: SCHEMA_VERSION,
-        kind: HARNESS_KIND,
+        kind: HARNESS_KIND.to_owned(),
         sampled_run_ids,
         rows,
         bootstrap_rows,
@@ -743,7 +753,7 @@ fn pytest_report(
     let observed_shard_count = observed_shard_count(&rows);
     PytestTimingReport {
         schema_version: SCHEMA_VERSION,
-        kind: PYTEST_KIND,
+        kind: PYTEST_KIND.to_owned(),
         sampled_run_ids,
         rows,
         nodeid_medians,
@@ -761,7 +771,7 @@ fn job_report(
     let shard_medians = shard_medians(rows.iter().map(|row| (row.shard, row.seconds)));
     JobTimingReport {
         schema_version: SCHEMA_VERSION,
-        kind: JOBS_KIND,
+        kind: JOBS_KIND.to_owned(),
         sampled_run_ids,
         rows,
         shard_medians,

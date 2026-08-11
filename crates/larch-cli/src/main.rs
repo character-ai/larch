@@ -64,6 +64,7 @@ mod progress_commands;
 mod push_network;
 mod push_rebase;
 mod python_verb;
+mod rebalance_tests;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -107,6 +108,7 @@ use ci_timing::CiTimingCommand;
 use complete_umbrella_commands::CompleteUmbrellaCommand;
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
+use rebalance_tests::RebalanceTestsCommand;
 use repo_size_commands::RepoCommand;
 use slack_commands::SlackCommand;
 use test_shards::TestShardCommand;
@@ -247,6 +249,9 @@ enum Domain {
     /// Token-cost analysis over the synchronized run-log corpus.
     #[command(subcommand, name = "report-tokens")]
     ReportTokens(ReportTokensCommand),
+    /// Pure CI test-rebalance planning and verification decisions.
+    #[command(subcommand, name = "rebalance-tests")]
+    RebalanceTests(RebalanceTestsCommand),
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
@@ -1865,6 +1870,7 @@ fn run(
                 report_tokens_commands::analyze(&arguments.arguments)
             }
         }),
+        Domain::RebalanceTests(command) => Ok(rebalance_tests::run(&command)),
         Domain::Session(command) => Ok(run_session(command)),
         Domain::Slack(command) => Ok(slack_commands::run(command)),
         Domain::StallRecovery(arguments) => Ok(stall_recovery_commands::run(&arguments.arguments)),

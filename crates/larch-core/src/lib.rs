@@ -27,6 +27,7 @@ mod plan_scope;
 mod process;
 mod process_identity;
 mod progress;
+mod rebalance_tests;
 mod redaction;
 mod repo_size;
 pub mod report;
@@ -281,6 +282,9 @@ pub use progress::{
     render_statusline_body, resets_active_run, settings_statusline_command, stale_suffix,
     statusline_launcher_text, statusline_payload_directory, truncate_columns,
     validate_progress_run_id,
+};
+pub use rebalance_tests::{
+    REBALANCE_TESTS_SCHEMA_VERSION, RebalanceJsonResult, plan_json, verify_json,
 };
 pub use redaction::{
     RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,

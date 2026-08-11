@@ -115,6 +115,36 @@ cohort exceeds `--max-shard-wall-clock`.
 to continue after a predicted or measured wall-clock regression. It never
 permits a missing, stale, skipped, or incompatible timing cohort.
 
+## Pure Rust decision contract
+
+`larch rebalance-tests plan` and `larch rebalance-tests verify` now expose the
+pure decision core for a later orchestration cutover. They read one UTF-8 JSON
+request from standard input (or `--input PATH`) and write one compact JSON
+result followed by a newline. They do not inspect or mutate shard artifacts,
+start processes, contact GitHub, create branches, or dispatch workflows.
+
+Both request objects use `schema_version: 1`, `kind` (`plan` or `verify`),
+`selection` (`harness`, `python`, or `all`), `options`, `harness`, and `python`.
+Unselected legs are `null`; every object rejects unknown or duplicate keys.
+Nested `ci-timing` inputs use the schema-v2 reports emitted by `larch
+ci-timing harness`, `pytest`, and `jobs`; the shared report types and decision
+core validate them. Planning supplies the expected baseline run IDs, current
+harness shards or Python assignments, and matching timing reports. Verification
+supplies the expected verification run IDs, proposed shard inventory or Python
+shard count, the plan's harness baseline thresholds, and matching post-run
+reports.
+
+`plan` returns `change`, `noop`, `rejected`, or `overridden`. `verify` returns
+`passed`, `rejected`, or `overridden`. A rejected, otherwise-valid decision
+still writes its machine result and exits nonzero. Malformed, stale, skipped, or
+incomplete evidence writes no result and exits nonzero. The experimental note
+can change only a harness modeled or measured regression from rejected to
+overridden; it cannot admit missing evidence or a Python spread failure.
+
+The current Python driver remains the workflow owner for now. It is intentionally
+not switched to these commands by this leaf; the later cutover must preserve its
+artifact, branch, and verification orchestration atomically.
+
 ## Edit in sync
 
 Keep this file aligned with `.claude/skills/rebalance-tests/SKILL.md`,
