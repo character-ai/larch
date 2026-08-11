@@ -63,7 +63,7 @@ Commands:
   repo               Repository-scoped developer commands
   final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
-  rebalance-tests    Pure CI test-rebalance planning and verification decisions
+  rebalance-tests    CI test-rebalance planning, verification, and checked orchestration
   session            Session state compatibility commands
   slack              Slack announcement helpers
   stall-recovery     Stall-recovery state and validation commands

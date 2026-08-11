@@ -237,7 +237,7 @@ Rebalance the harness shards by measured CI timing with the `/rebalance-tests`
 dev skill (`.claude/skills/rebalance-tests/`):
 
 ```bash
-python3 .claude/skills/rebalance-tests/scripts/rebalance.py --kind harness
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rebalance-tests run --kind harness
 ```
 
 Harness mode builds a startup- and affinity-aware cost model before packing the
@@ -258,8 +258,8 @@ cost.
 Verification treats real CI job wall-clock as authoritative: the measured
 slowest shard must not exceed `--max-shard-wall-clock` (default 300s) or the
 input layout's approved threshold, and median summed harness-runner time may
-not regress. The script prints predicted and observed shard tables for all
-verification runs. `--experimental-wall-clock-override NOTE` is limited to a
+not regress. The command verifies the exact dispatched workflow runs.
+`--experimental-wall-clock-override NOTE` is limited to a
 documented experiment with a predicted or measured regression; it never
 bypasses incomplete evidence. To add a single new target, append it to any
 shard, run `make test-harness-shards-coverage` to verify the partition, then
@@ -269,7 +269,7 @@ For Python unit test shards, use the `/rebalance-tests` dev skill
 (`.claude/skills/rebalance-tests/`):
 
 ```bash
-python3 .claude/skills/rebalance-tests/scripts/rebalance.py --kind python
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rebalance-tests run --kind python
 ```
 
 Python mode refreshes the checked-in `python/shard-assignments.json` map from
@@ -303,20 +303,19 @@ not reduced.
 See `.claude/skills/rebalance-tests/SKILL.md` for flags and full workflow
 documentation. Rust fixture and wire-contract tests live in
 `crates/larch-core/src/ci_timing.rs` and `crates/larch-core/src/test_shards.rs`.
-Python consumer tests are `python/tests/test_rebalance_script.py` and
-`python/tests/test_pytest_sharding.py`; the executable boundary is covered by
-`crates/larch-cli/tests/test_shards.rs`. Run the targeted Cargo and pytest
-commands before changing the rebalance contract.
+The orchestration boundary is covered by
+`crates/larch-cli/src/rebalance_tests_workflow.rs` and
+`crates/larch-cli/tests/rebalance_tests_workflow.rs`. Python assignment loading
+remains covered by `python/tests/test_pytest_sharding.py`. Run the targeted
+Cargo and pytest commands before changing the rebalance contract.
 
-`larch rebalance-tests plan` and `larch rebalance-tests verify` provide the
-versioned, pure JSON decision core behind that future workflow. They consume
-already-collected Rust CI-timing reports and reuse the Rust shard packer; their
-decision logic does not inspect or rewrite `Makefile` or
-`python/shard-assignments.json`, make Git or GitHub calls, or dispatch CI. The
-current Python workflow remains the
-orchestration owner until its later atomic cutover. See
-`.claude/skills/rebalance-tests/scripts/rebalance.md` for the exact request and
-result contract.
+`larch rebalance-tests run` owns the checked Git, GitHub Actions, pull request,
+atomic-write, and repository-state workflow. `larch rebalance-tests plan` and
+`larch rebalance-tests verify` remain its versioned pure JSON decision core.
+They consume already-collected Rust CI-timing reports and reuse the Rust shard
+packer. They do not inspect or rewrite `Makefile` or
+`python/shard-assignments.json`, make Git or GitHub calls, or dispatch CI. See
+`.claude/skills/rebalance-tests/scripts/rebalance.md` for the exact contract.
 
 **Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
 dependency-free Rust `larch-harness-mark` binary in `target/harness-mark`. It

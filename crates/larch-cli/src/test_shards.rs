@@ -1,6 +1,7 @@
 //! `larch test-shard` command composition.
 
 use clap::{Args, Subcommand};
+use larch_adapters::{ConfinedPath, atomic_write_utf8, read_utf8};
 use larch_core::{
     TestShardMap, TestShardTiming, pack_test_shards_with_fixed_startup, read_makefile_shards,
     rewrite_makefile_shards,
@@ -152,7 +153,78 @@ fn read_makefile(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| format!("cannot read {}: {error}", path.display()))
 }
 
-fn write_makefile_atomically(path: &Path, contents: &str) -> Result<(), String> {
+pub fn read_makefile_shard_map(path: &ConfinedPath) -> Result<TestShardMap, String> {
+    let source = read_utf8(path).map_err(|error| error.to_string())?;
+    Ok(read_makefile_shards(&source))
+}
+
+pub fn write_makefile_shard_map(
+    source: &ConfinedPath,
+    target: &ConfinedPath,
+    shards: &TestShardMap,
+) -> Result<(), String> {
+    if shards.keys().any(|shard| *shard == 0) {
+        return Err("shard identifiers must be at least 1".to_owned());
+    }
+    let source = read_utf8(source).map_err(|error| error.to_string())?;
+    let rewritten = rewrite_makefile_shards(&source, shards);
+    atomic_write_utf8(target, &rewritten, 0o644).map_err(|error| error.to_string())
+}
+
+/// Prove a rewritten harness map preserves the candidate's partition contract.
+///
+/// The full repository lint owns validation of the rest of the Makefile.  This
+/// narrower check is the mutation-time contract: the rewriter can change only
+/// shard prerequisites, so it must retain the exact target set and the guard
+/// must remain the first prerequisite in exactly one shard.
+pub fn validate_rebalanced_harness_shards(
+    before: &TestShardMap,
+    after: &TestShardMap,
+) -> Result<(), String> {
+    if before.is_empty() || before.len() != after.len() {
+        return Err("harness shard count changed during candidate rewrite".to_owned());
+    }
+    let expected = u32::try_from(before.len())
+        .map_err(|_| "harness shard count exceeds supported range".to_owned())?;
+    if after.keys().copied().ne(1..=expected) {
+        return Err("harness shard identifiers must remain contiguous from 1".to_owned());
+    }
+    let mut before_targets = std::collections::BTreeSet::new();
+    let mut after_targets = std::collections::BTreeSet::new();
+    let mut guard_shards = Vec::new();
+    for targets in before.values() {
+        for target in targets {
+            if target.is_empty() || !before_targets.insert(target) {
+                return Err("current harness shard map has an empty or duplicate target".to_owned());
+            }
+        }
+    }
+    for (shard, targets) in after {
+        for target in targets {
+            if target.is_empty() || !after_targets.insert(target) {
+                return Err(
+                    "candidate harness shard map has an empty or duplicate target".to_owned(),
+                );
+            }
+        }
+        if targets
+            .iter()
+            .any(|target| target == "test-harness-shards-coverage")
+        {
+            guard_shards.push((*shard, targets.first().map(String::as_str)));
+        }
+    }
+    if before_targets != after_targets {
+        return Err("candidate harness shard map changed the target inventory".to_owned());
+    }
+    match guard_shards.as_slice() {
+        [(_shard, Some("test-harness-shards-coverage"))] => Ok(()),
+        [_] => Err("test-harness-shards-coverage must be the first shard prerequisite".to_owned()),
+        _ => Err("test-harness-shards-coverage must occur in exactly one shard".to_owned()),
+    }
+}
+
+pub fn write_makefile_atomically(path: &Path, contents: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -186,6 +258,7 @@ fn write_makefile_atomically(path: &Path, contents: &str) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    use super::validate_rebalanced_harness_shards;
     use super::{parse_nonnegative_seconds, parse_shard_count};
 
     #[test]
@@ -200,5 +273,20 @@ mod tests {
         assert_eq!(parse_nonnegative_seconds("3.5"), Ok(3.5));
         assert!(parse_nonnegative_seconds("-1").is_err());
         assert!(parse_nonnegative_seconds("NaN").is_err());
+    }
+
+    #[test]
+    fn candidate_validator_rejects_a_moved_coverage_guard() {
+        let before = larch_core::TestShardMap::from([
+            (1, vec!["test-harness-shards-coverage".into(), "a".into()]),
+            (2, vec!["b".into()]),
+        ]);
+        let mut after = before.clone();
+        after
+            .get_mut(&1)
+            .expect("first shard exists")
+            .rotate_left(1);
+        assert!(validate_rebalanced_harness_shards(&before, &before).is_ok());
+        assert!(validate_rebalanced_harness_shards(&before, &after).is_err());
     }
 }
