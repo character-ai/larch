@@ -17,6 +17,8 @@ use larch_adapters::UNCOMMITTED_SESSION_SETUP_MARKER;
 use larch_core::{KvDocument, ParseOptions};
 use tempfile::TempDir;
 
+const PUBLICATION_PAUSE_MARKER: &str = ".larch-session-setup-publication-paused";
+
 #[cfg(unix)]
 use nix::{
     sys::signal::{Signal, kill},
@@ -86,7 +88,8 @@ fn larch_command(root: &Path) -> Command {
         .env_remove("DESIGN_TMPDIR")
         .env_remove("REVIEW_TMPDIR")
         .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION")
-        .env_remove("LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION");
+        .env_remove("LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION")
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION");
     command
 }
 
@@ -97,7 +100,7 @@ fn run_cleanup(root: &Path) -> Output {
         .expect("run cleanup")
 }
 
-fn spawn_paused_setup(root: &Path, prefix: &str) -> Child {
+fn spawn_publication_paused_setup(root: &Path, prefix: &str) -> Child {
     larch_command(root)
         .args([
             "session",
@@ -107,14 +110,14 @@ fn spawn_paused_setup(root: &Path, prefix: &str) -> Child {
             "--skip-preflight",
             "--skip-repo-check",
         ])
-        .env("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION", "true")
+        .env("LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION", "true")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn paused session setup")
+        .expect("spawn publication-paused session setup")
 }
 
-fn wait_for_uncommitted_setup(root: &Path, prefix: &str) -> PathBuf {
+fn wait_for_publication_pause(root: &Path, prefix: &str) -> PathBuf {
     let sessions = root.join("cache/larch/sessions");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -123,13 +126,14 @@ fn wait_for_uncommitted_setup(root: &Path, prefix: &str) -> PathBuf {
                 path.file_name()
                     .is_some_and(|name| name.to_string_lossy().starts_with(prefix))
                     && path.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file()
+                    && path.join(PUBLICATION_PAUSE_MARKER).is_file()
             })
         {
             return path;
         }
         assert!(
             Instant::now() < deadline,
-            "timed out waiting for {prefix} setup to reach its uncommitted window"
+            "timed out waiting for {prefix} setup to reach its publication boundary"
         );
         thread::sleep(Duration::from_millis(10));
     }
@@ -584,16 +588,49 @@ fn ordinary_post_creation_failure_removes_its_unpublished_session_directory() {
 
 #[cfg(unix)]
 #[test]
-fn sigint_and_sigterm_after_directory_creation_remove_unpublished_sessions() {
+fn closed_stdout_pipe_fails_without_publishing_or_stranding_a_session() {
+    let sandbox = Sandbox::new();
+    let mut child = larch_command(&sandbox.root)
+        .args([
+            "session",
+            "setup",
+            "--prefix",
+            "closed-stdout",
+            "--skip-preflight",
+            "--skip-repo-check",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn setup with a closed stdout pipe");
+    drop(child.stdout.take());
+
+    let output = child
+        .wait_with_output()
+        .expect("wait for closed stdout setup");
+    let (stdout, stderr) = output_text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.starts_with("session-setup.sh: failed to publish session setup:"),
+        "{stderr}"
+    );
+    assert_no_uncommitted_setup(&sandbox.root, "closed-stdout");
+}
+
+#[cfg(unix)]
+#[test]
+fn sigint_and_sigterm_before_complete_publication_remove_unpublished_sessions() {
     for (prefix, signal) in [
         ("cancel-sigint", Signal::SIGINT),
         ("cancel-sigterm", Signal::SIGTERM),
     ] {
         let sandbox = Sandbox::new();
-        let child = spawn_paused_setup(&sandbox.root, prefix);
-        let directory = wait_for_uncommitted_setup(&sandbox.root, prefix);
+        let child = spawn_publication_paused_setup(&sandbox.root, prefix);
+        let directory = wait_for_publication_pause(&sandbox.root, prefix);
         assert!(directory.is_dir());
         assert!(directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file());
+        assert!(directory.join(PUBLICATION_PAUSE_MARKER).is_file());
 
         signal_child(&child, signal);
         let output = child.wait_with_output().expect("wait for cancelled setup");
@@ -625,10 +662,10 @@ fn cleanup_recovers_crashed_uncommitted_setup_without_touching_live_or_committed
             .exists()
     );
 
-    let live = spawn_paused_setup(&sandbox.root, "live-sibling");
-    let live_directory = wait_for_uncommitted_setup(&sandbox.root, "live-sibling");
-    let crashed = spawn_paused_setup(&sandbox.root, "crashed-sibling");
-    let crashed_directory = wait_for_uncommitted_setup(&sandbox.root, "crashed-sibling");
+    let live = spawn_publication_paused_setup(&sandbox.root, "live-sibling");
+    let live_directory = wait_for_publication_pause(&sandbox.root, "live-sibling");
+    let crashed = spawn_publication_paused_setup(&sandbox.root, "crashed-sibling");
+    let crashed_directory = wait_for_publication_pause(&sandbox.root, "crashed-sibling");
     signal_child(&crashed, Signal::SIGKILL);
     let crashed_output = crashed.wait_with_output().expect("wait for killed setup");
     assert!(!crashed_output.status.success());
