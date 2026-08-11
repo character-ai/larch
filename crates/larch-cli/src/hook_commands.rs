@@ -152,8 +152,9 @@ fn offset_value(value: Option<&Value>) -> String {
 }
 
 fn is_offset(value: &str) -> bool {
-    let digits = value.strip_prefix('-').unwrap_or(value);
-    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+    let bytes = value.as_bytes();
+    let start = usize::from(bytes.first() == Some(&b'-'));
+    bytes.len() > start && bytes[start..].iter().all(u8::is_ascii_digit)
 }
 
 fn now_value() -> Option<String> {
@@ -360,7 +361,7 @@ impl StateDirectory {
             Mode::empty(),
         )
         .map_err(|_| ())?;
-        if file_type(&fstat(&parent).map_err(|_| ())?) != SFlag::S_IFDIR {
+        if entry_kind(&fstat(&parent).map_err(|_| ())?) != SFlag::S_IFDIR {
             return Err(());
         }
         match mkdirat(&parent, STATE_DIR_NAME, STATE_DIRECTORY_MODE) {
@@ -385,8 +386,8 @@ impl StateDirectory {
         let opened = fstat(&self.directory).map_err(|_| ())?;
         let visible =
             fstatat(&self.parent, STATE_DIR_NAME, AtFlags::AT_SYMLINK_NOFOLLOW).map_err(|_| ())?;
-        if file_type(&opened) != SFlag::S_IFDIR
-            || file_type(&visible) != SFlag::S_IFDIR
+        if entry_kind(&opened) != SFlag::S_IFDIR
+            || entry_kind(&visible) != SFlag::S_IFDIR
             || !same_file(&opened, &visible)
         {
             return Err(());
@@ -454,18 +455,19 @@ impl StateDirectory {
 }
 
 #[cfg(unix)]
-const fn file_type(stat: &nix::sys::stat::FileStat) -> SFlag {
-    SFlag::from_bits_truncate(stat.st_mode)
+const fn entry_kind(stat: &nix::sys::stat::FileStat) -> SFlag {
+    let raw_mode = stat.st_mode;
+    SFlag::from_bits_truncate(raw_mode)
 }
 
 #[cfg(unix)]
-const fn same_file(left: &nix::sys::stat::FileStat, right: &nix::sys::stat::FileStat) -> bool {
-    left.st_dev == right.st_dev && left.st_ino == right.st_ino
+fn same_file(left: &nix::sys::stat::FileStat, right: &nix::sys::stat::FileStat) -> bool {
+    (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
 }
 
 #[cfg(unix)]
 fn is_single_link_regular(stat: &nix::sys::stat::FileStat) -> bool {
-    file_type(stat) == SFlag::S_IFREG && stat.st_nlink == 1
+    stat.st_nlink == 1 && entry_kind(stat) == SFlag::S_IFREG
 }
 
 #[cfg(unix)]
@@ -489,11 +491,11 @@ fn read_state_row(state: &StateDirectory, name: &str) -> Result<Option<StateRow>
         Err(Errno::ENOENT) => return Ok(None),
         Err(_) => return Err(()),
     };
-    if file_type(&visible) == SFlag::S_IFLNK {
+    if entry_kind(&visible) == SFlag::S_IFLNK {
         unlinkat(&state.directory, name, UnlinkatFlags::NoRemoveDir).map_err(|_| ())?;
         return Ok(None);
     }
-    if file_type(&visible) != SFlag::S_IFREG {
+    if entry_kind(&visible) != SFlag::S_IFREG {
         return Err(());
     }
     let descriptor = openat(
@@ -505,8 +507,8 @@ fn read_state_row(state: &StateDirectory, name: &str) -> Result<Option<StateRow>
     .map_err(|_| ())?;
     let opened = fstat(&descriptor).map_err(|_| ())?;
     let current = fstatat(&state.directory, name, AtFlags::AT_SYMLINK_NOFOLLOW).map_err(|_| ())?;
-    if file_type(&opened) != SFlag::S_IFREG
-        || file_type(&current) != SFlag::S_IFREG
+    if entry_kind(&opened) != SFlag::S_IFREG
+        || entry_kind(&current) != SFlag::S_IFREG
         || !same_file(&opened, &current)
     {
         return Err(());
@@ -593,7 +595,7 @@ fn create_temp_file(state: &StateDirectory, name: &str) -> Result<(String, Owned
 fn assert_or_unlink_replaceable_destination(state: &StateDirectory, name: &str) -> Result<(), ()> {
     match fstatat(&state.directory, name, AtFlags::AT_SYMLINK_NOFOLLOW) {
         Err(Errno::ENOENT) => Ok(()),
-        Ok(stat) if file_type(&stat) == SFlag::S_IFLNK => {
+        Ok(stat) if entry_kind(&stat) == SFlag::S_IFLNK => {
             unlinkat(&state.directory, name, UnlinkatFlags::NoRemoveDir).map_err(|_| ())
         }
         Ok(stat) if is_single_link_regular(&stat) => Ok(()),
