@@ -7,7 +7,10 @@
 //! cannot erase a live run.
 
 use crate::child_process::run_host_utility;
-use larch_adapters::{PathIntent, TemporaryRoot, progress_state, read_utf8, remove_session_tmpdir};
+use larch_adapters::{
+    PathIntent, TemporaryRoot, progress_state, read_utf8, recover_uncommitted_session_setups,
+    remove_session_tmpdir,
+};
 use larch_core::{
     HostUtilityProgram, KeyPolicy, cleanup_cache_sessions_root, parse_allowlisted_env_line,
 };
@@ -69,12 +72,15 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
             "Warning: a live session pointer could not be validated; skipping age-based cleanup."
         );
     }
-    let cache_removed = sweep_cache_root(&cache_root, retention, &active);
+    let cache_removed =
+        recover_uncommitted_setups(&cache_root) + sweep_cache_root(&cache_root, retention, &active);
     println!("CACHE_REMOVED={cache_removed}");
 
     let tmp_removed = temporary_roots()
         .iter()
-        .map(|root| sweep_temporary_root(root, retention, &active))
+        .map(|root| {
+            recover_uncommitted_setups(root) + sweep_temporary_root(root, retention, &active)
+        })
         .sum::<usize>();
     println!("TMP_REMOVED={tmp_removed}");
 
@@ -156,6 +162,16 @@ fn canonical_directory(path: &Path) -> Option<PathBuf> {
     TemporaryRoot::resolve(Some(&path))
         .ok()
         .map(|root| root.path().to_owned())
+}
+
+fn recover_uncommitted_setups(path: &Path) -> usize {
+    let Some(root) = canonical_directory(path) else {
+        return 0;
+    };
+    let Ok(root) = TemporaryRoot::resolve(Some(&root)) else {
+        return 0;
+    };
+    recover_uncommitted_session_setups(&root)
 }
 
 fn absolute_path(path: &Path) -> Option<PathBuf> {

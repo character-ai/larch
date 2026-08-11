@@ -49,6 +49,18 @@ impl LarchRuntime {
         self.inner.block_on(future)
     }
 
+    /// Spawn one owned asynchronous task on this runtime.
+    ///
+    /// The caller retains the returned handle and is responsible for awaiting
+    /// or aborting it before the surrounding operation completes.
+    pub fn spawn<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.inner.spawn(future)
+    }
+
     /// Build a paused single-thread executor for deterministic tests.
     ///
     /// # Errors
