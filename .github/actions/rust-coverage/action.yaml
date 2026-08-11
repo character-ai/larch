@@ -99,6 +99,7 @@ runs:
         outcomes="cargo-inputs=${{ steps.cargo-inputs-cache.outcome }};cargo-nextest=${{ steps.nextest-cache.outcome }};cargo-llvm-cov=${{ steps.llvm-cov-cache.outcome }};coverage-target=${{ steps.coverage-target-cache.outcome }}"
         case "$outcomes" in
           *failure*) outcome=failure ;;
+          *skipped*) outcome=skipped ;;
           *) outcome=success ;;
         esac
         printf 'cache-restore\t%s\t%s\t%s\n' "$((finished - started))" "$outcome" \
@@ -141,6 +142,18 @@ runs:
             failure)
               restore_outcome=failure
               restored_bytes=unavailable
+              ;;
+            skipped)
+              job_status="${{ job.status }}"
+              case "$job_status" in
+                failure|cancelled)
+                  cache_hit=unavailable
+                  restore_outcome=skipped
+                  restored_bytes=unavailable
+                  ;;
+                *) printf 'unexpected coverage target restore outcome: %s (job status %s)\n' \
+                    "$restore_step_outcome" "$job_status" >&2; exit 1 ;;
+              esac
               ;;
             *) printf 'unexpected coverage target restore outcome: %s\n' "$restore_step_outcome" >&2; exit 1 ;;
           esac
@@ -639,6 +652,14 @@ runs:
           case "$prune_outcome" in
             success) ;;
             failure) ;;
+            skipped)
+              job_status="${{ job.status }}"
+              case "$job_status" in
+                failure|cancelled) ;;
+                *) printf 'unexpected coverage target prune outcome: %s (job status %s)\n' \
+                    "$prune_outcome" "$job_status" >&2; exit 1 ;;
+              esac
+              ;;
             *) printf 'unexpected coverage target prune outcome: %s\n' "$prune_outcome" >&2; exit 1 ;;
           esac
         else

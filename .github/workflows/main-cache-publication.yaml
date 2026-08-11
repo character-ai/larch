@@ -388,46 +388,28 @@ jobs:
     outputs:
       run-id: ${{ steps.source.outputs.run-id }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - name: Configure isolated GitHub CLI credentials
+        id: github-auth
+        uses: ./.github/actions/github-auth-config
+        with:
+          token: ${{ github.token }}
       - name: Resolve the exact successful merge-group producer run
         id: source
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
-            printf 'invalid repository identity\n' >&2
-            exit 1
-          }
-          runs_json="$RUNNER_TEMP/main-cache-merge-group-runs.json"
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yaml/runs?event=merge_group&status=completed&per_page=100" > "$runs_json"
-          run_id="$(jq -er --arg source_sha "$GITHUB_SHA" '
-            [
-              .workflow_runs[]
-              | select(
-                  .event == "merge_group" and
-                  .status == "completed" and
-                  .conclusion == "success" and
-                  .head_sha == $source_sha and
-                  .path == ".github/workflows/ci.yaml"
-                )
-            ]
-            | if length == 1 then .[0].id else error("expected exactly one successful CI merge-group run") end
-          ' "$runs_json")"
-          case "$run_id" in
-            ''|*[!0-9]*) printf 'invalid merge-group run identity\n' >&2; exit 1 ;;
-          esac
-          jobs_json="$RUNNER_TEMP/main-cache-merge-group-jobs.json"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100" > "$jobs_json"
-          jq -e '
-            [
-              .jobs[]
-              | select((.name == "rust-full" or .name == "rust-lint") and .status == "completed" and .conclusion == "success")
-              | .name
-            ]
-            | sort == ["rust-full", "rust-lint"]
-          ' "$jobs_json" >/dev/null
-          printf 'run-id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          cargo run --quiet --locked --package larch-cli -- \
+            ci-timing merge-group-source \
+            --repo "$GITHUB_REPOSITORY" \
+            --source-sha "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
   main-cache-rust-promotion:
     name: main-cache-rust-promotion

@@ -59,15 +59,19 @@ linker choice, Cargo configuration, and schema. It has no broad
 transfer cost remains net-positive.
 
 On a successful merge-group run, an exact miss may stage a candidate artifact.
-The publisher first proves that the newly landed `main` SHA has exactly one
-successful `CI` merge-group run for that SHA and that its `rust-full` and
-`rust-lint` producer jobs succeeded. It then downloads only named artifacts
-from that run. Before a candidate reaches an Actions cache, the publisher
-checks its schema, cache class, canonical key, and key-input digest (the
-SHA-256 of that full canonical key), source SHA, producer job, merge-queue ref,
-artifact name and deterministic payload digest, declared tool versions, maximum
-byte bound, manifest member paths, regular-file shape, checksums, and mode
-metadata; symlinks and unexpected tree entries fail closed.
+The publisher uses `larch ci-timing merge-group-source`, a typed Actions
+operation, to prove that the newly landed `main` SHA has exactly one successful
+`CI` merge-group run for that SHA and that its `rust-full` and `rust-lint`
+producer jobs succeeded. The resolver accepts only a lowercase 40-character
+commit SHA, queries at most 100 completed `ci.yaml` merge-group runs filtered
+to that SHA, fails on missing or ambiguous evidence, and emits only that run's
+numeric identifier. The publisher then downloads only named artifacts from
+that run. Before a candidate reaches an Actions cache, the publisher checks its
+schema, cache class, canonical key, and key-input digest (the SHA-256 of that
+full canonical key), source SHA, producer job, merge-queue ref, artifact name
+and deterministic payload digest, declared tool versions, maximum byte bound,
+manifest member paths, regular-file shape, checksums, and mode metadata;
+symlinks and unexpected tree entries fail closed.
 Cache data is never an artifact-provenance substitute and a cache hit never
 skips correctness checks or artifact handoff.
 
@@ -497,6 +501,14 @@ Rust GitHub service access. GitHub API operations use the authenticated adapter
 directly; `gh api` is never a service fallback, and `gcloud` is never a runtime
 service fallback.
 
+Trusted GitHub Actions workflows that need the typed Rust service use the local
+`github-auth-config` composite action. It accepts `github.token` only to create
+a `0700` temporary `GH_CONFIG_DIR` through `gh auth login` over standard input,
+then unsets token variables and verifies `gh auth status`. The following larch
+process receives only that configuration-directory path, never `GH_TOKEN` or
+`GITHUB_TOKEN`; this CI-only bootstrap does not call `gh api` and is not a
+runtime credential fallback.
+
 Redirects and retries are disabled. Larch sets `User-Agent` and `Accept`.
 Pinned Octocrab supplies one API-version header. Both bases are pinned to
 `https://api.github.com/`. Response-supplied continuations must remain HTTPS on
@@ -773,9 +785,11 @@ startup cost. One timing operation accepts at most 20 runs and retains at most
 100,000 rows, 32 MiB of label text, and 16,384 bytes per target or nodeid.
 Harness input is also capped at 4,096 required targets. `larch ci-timing jobs`
 derives wall-clock durations from typed Actions job records and reports the
-same selected cohort. All three commands use the Actions adapter and the fixed
-GitHub credential boundary above; they do not call `gh api`, accept raw URLs,
-or expose log text in their output.
+same selected cohort. `larch ci-timing merge-group-source` reads bounded
+workflow and job records to resolve only a trusted producer run. All four
+commands use the Actions adapter and the fixed GitHub credential boundary
+above; they do not call `gh api`, accept raw URLs, or expose log text in their
+output.
 
 ## Implementation and Verification Owners
 

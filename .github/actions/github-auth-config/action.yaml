@@ -1,0 +1,30 @@
+name: Configure isolated GitHub CLI authentication
+description: Create a short-lived GitHub CLI configuration for a typed Rust operation.
+
+inputs:
+  token:
+    description: Trusted GitHub Actions token used only to initialize the private CLI configuration.
+    required: true
+
+outputs:
+  config-dir:
+    description: Private GitHub CLI configuration directory for the following typed operation.
+    value: ${{ steps.configure.outputs.config-dir }}
+
+runs:
+  using: composite
+  steps:
+    - id: configure
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        umask 077
+        gh_config_dir="$(mktemp -d "$RUNNER_TEMP/larch-gh.XXXXXX")"
+        printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$gh_config_dir" \
+          gh auth login --hostname github.com --with-token
+        unset GH_TOKEN GITHUB_TOKEN
+        env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$gh_config_dir" \
+          gh auth status --hostname github.com >/dev/null
+        printf 'config-dir=%s\n' "$gh_config_dir" >> "$GITHUB_OUTPUT"

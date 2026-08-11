@@ -153,7 +153,7 @@ enum Domain {
     /// Durable background-job compatibility commands.
     #[command(subcommand)]
     Bgjob(BgjobCommand),
-    /// Collect GitHub Actions timing inputs for test rebalancing.
+    /// Collect GitHub Actions timing inputs and resolve trusted source runs.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
     /// Fail-closed Rust CI selection and history helpers.

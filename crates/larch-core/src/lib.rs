@@ -19,6 +19,7 @@ mod github_auth;
 mod issue;
 mod issue_mutation;
 mod logging_util;
+mod main_cache;
 mod message_error;
 mod object_store;
 mod ordered_json;
@@ -244,6 +245,7 @@ pub use issue_mutation::{
     validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
 };
 pub use logging_util::emit_kv;
+pub use main_cache::{resolve_main_cache_merge_group_source, validate_main_cache_source_sha};
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
 };

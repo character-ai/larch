@@ -3920,6 +3920,12 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     publication = (
         repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
     ).read_text(encoding="utf-8")
+    source_resolver = (
+        repo_root / "crates" / "larch-core" / "src" / "main_cache.rs"
+    ).read_text(encoding="utf-8")
+    github_auth_config = (
+        repo_root / ".github" / "actions" / "github-auth-config" / "action.yaml"
+    ).read_text(encoding="utf-8")
     candidate_helper = (
         repo_root / "python" / "larch" / "implement" / "main_cache_candidate.py"
     ).read_text(encoding="utf-8")
@@ -3959,10 +3965,24 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "actions/cache/save@" not in validation
     assert "cache: pip" not in validation
     assert "main-cache-merge-group-source" in publication
-    assert 'event == "merge_group"' in publication
-    assert '.path == ".github/workflows/ci.yaml"' in publication
-    assert ".head_sha == $source_sha" in publication
-    assert "expected exactly one successful CI merge-group run" in publication
+    assert "ci-timing merge-group-source" in publication
+    assert 'source-sha "$GITHUB_SHA"' in publication
+    assert "uses: ./.github/actions/github-auth-config" in publication
+    assert "GH_TOKEN:" not in publication
+    assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in publication
+    assert "gh api" not in publication
+    assert "resolve_main_cache_merge_group_source" in source_resolver
+    assert "workflow: Some(CI_WORKFLOW.to_owned())" in source_resolver
+    assert "event: Some(MERGE_GROUP.to_owned())" in source_resolver
+    assert "status: Some(COMPLETED.to_owned())" in source_resolver
+    assert "commit: Some(source_sha.to_owned())" in source_resolver
+    assert "expected exactly one successful CI merge-group run" in source_resolver
+    assert "successful merge-group producer is missing required Rust jobs" in source_resolver
+    assert "gh auth login --hostname github.com --with-token" in github_auth_config
+    assert "gh auth status --hostname github.com >/dev/null" in github_auth_config
+    assert 'mktemp -d "$RUNNER_TEMP/larch-gh.XXXXXX"' in github_auth_config
+    assert "unset GH_TOKEN GITHUB_TOKEN" in github_auth_config
+    assert "config-dir=%s" in github_auth_config
     assert "actions/download-artifact@" in publication
     assert "run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}" in publication
     assert "ci verify-main-cache-candidate" in publication
@@ -4004,6 +4024,127 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         assert f"--artifact-name {artifact_name}" in publication
     assert "overwrite: false" in validation
     assert "overwrite: false" in coverage_action
+
+
+def test_coverage_cache_diagnostics_preserve_a_prior_failure(tmp_path: Path) -> None:
+    """Replay skipped cache steps after a prior failure without masking it."""
+    repo_root = Path(__file__).resolve().parents[3]
+    coverage_action = (
+        repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
+    ).read_text(encoding="utf-8")
+
+    def run_diagnostic(
+        start: str, end: str, outcome: str, job_status: str
+    ) -> subprocess.CompletedProcess[str]:
+        script = (
+            coverage_action.split(start, 1)[1]
+            .split(end, 1)[0]
+            .split("run: |\n", 1)[1]
+            .split("\n    - name:", 1)[0]
+        )
+        script = textwrap.dedent(script).replace(
+            "${{ steps.coverage-target-cache.outcome }}", "$DIAGNOSTIC_OUTCOME"
+        )
+        script = script.replace(
+            "${{ steps.coverage-target-cache-prune.outcome }}", "$DIAGNOSTIC_OUTCOME"
+        )
+        script = script.replace(
+            "${{ steps.coverage-target-cache.outputs.cache-hit }}",
+            "$DIAGNOSTIC_CACHE_HIT",
+        )
+        script = script.replace("${{ job.status }}", "$DIAGNOSTIC_JOB_STATUS")
+        environment: dict[str, str] = os.environ.copy()
+        environment.update(
+            {
+                "COVERAGE_TARGET_CACHE_ENABLED": "true",
+                "COVERAGE_TARGET_CACHE_POST_PRUNE_BYTES": "unavailable",
+                "COVERAGE_TARGET_CACHE_RESTORE_STARTED": "0",
+                "COVERAGE_TARGET_CACHE_SAVE_REASON": "not-available",
+                "COVERAGE_TIMING_FILE": str(tmp_path / "coverage-timing.tsv"),
+                "COVERAGE_TARGET_CACHE_INVENTORY": str(
+                    tmp_path / "coverage-inventory.tsv"
+                ),
+                "DIAGNOSTIC_CACHE_HIT": "",
+                "DIAGNOSTIC_JOB_STATUS": job_status,
+                "DIAGNOSTIC_OUTCOME": outcome,
+                "GITHUB_ENV": str(tmp_path / "github-env"),
+            }
+        )
+        return subprocess.run(
+            ["bash", "-c", script],
+            check=False,
+            capture_output=True,
+            env=environment,
+            text=True,
+        )
+
+    for start, end in (
+        (
+            "Record coverage dependency cache restore diagnostics",
+            "Start Rust coverage tool setup timing",
+        ),
+        (
+            "Record coverage dependency cache prune diagnostics",
+            "Upload coverage target cache inventory",
+        ),
+    ):
+        prior_failure = run_diagnostic(start, end, "skipped", "failure")
+        assert prior_failure.returncode == 0, prior_failure.stderr
+
+        unexpected_skip = run_diagnostic(start, end, "skipped", "success")
+        assert unexpected_skip.returncode != 0
+        assert "unexpected coverage target" in unexpected_skip.stderr
+
+
+def test_github_auth_config_keeps_action_token_out_of_typed_operation(tmp_path: Path) -> None:
+    """Execute the credential bootstrap with a fake gh client and inspect its boundary."""
+    repo_root = Path(__file__).resolve().parents[3]
+    action = (
+        repo_root / ".github" / "actions" / "github-auth-config" / "action.yaml"
+    ).read_text(encoding="utf-8")
+    script = textwrap.dedent(action.split("run: |\n", 1)[1])
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        'test -z "${GH_TOKEN:-}"\n'
+        'test -z "${GITHUB_TOKEN:-}"\n'
+        'test -n "${GH_CONFIG_DIR:-}"\n'
+        'test -d "$GH_CONFIG_DIR"\n'
+        'case "$1 $2" in\n'
+        "  'auth login') IFS= read -r token; test \"$token\" = expected-action-token ;;\n"
+        "  'auth status') ;;\n"
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    github_output = tmp_path / "github-output"
+    environment: dict[str, str] = os.environ.copy()
+    environment.update(
+        {
+            "GH_TOKEN": "expected-action-token",
+            "GITHUB_OUTPUT": str(github_output),
+            "GITHUB_TOKEN": "must-not-reach-gh",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "RUNNER_TEMP": str(tmp_path),
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    config_dir = Path(github_output.read_text(encoding="utf-8").strip().removeprefix("config-dir="))
+    assert config_dir.is_dir()
+    assert config_dir.parent == tmp_path
+    assert config_dir.stat().st_mode & 0o077 == 0
 
 
 def test_rust_ci_cache_tool_and_gate_contract() -> None:
@@ -4095,9 +4236,15 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     coverage_target_restore_diagnostics = rust_coverage.split(
         "Record coverage dependency cache restore diagnostics", 1
     )[1].split("Start Rust coverage tool setup timing", 1)[0]
+    cache_restore_timing = rust_coverage.split(
+        "Record Rust coverage cache restore timing", 1
+    )[1].split("Record coverage dependency cache restore diagnostics", 1)[0]
     coverage_target_prune = rust_coverage.split(
         "Prune coverage workspace products before target cache save", 1
     )[1].split("Record coverage dependency cache prune diagnostics", 1)[0]
+    coverage_target_prune_diagnostics = rust_coverage.split(
+        "Record coverage dependency cache prune diagnostics", 1
+    )[1].split("Upload coverage target cache inventory", 1)[0]
     coverage_target_save = rust_coverage.split("Save coverage dependencies", 1)[1].split(
         "Record coverage dependency cache save diagnostics", 1
     )[0]
@@ -4188,6 +4335,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "steps.coverage-target-cache.outputs.cache-hit != 'true'" in coverage_target_save
     assert "steps.coverage-target-cache-prune.outcome == 'success'" in coverage_target_save
     assert "env.COVERAGE_TARGET_CACHE_SAVE_ALLOWED == 'true'" in coverage_target_save
+    assert "skipped)" in coverage_target_prune_diagnostics
+    assert 'job_status="${{ job.status }}"' in coverage_target_prune_diagnostics
+    assert "failure|cancelled" in coverage_target_prune_diagnostics
     assert "coverage-target-cache-restore" in rust_coverage
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
@@ -4202,6 +4352,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'du -sk "$coverage_target_dir"' in coverage_target_restore_diagnostics
     assert 'restored_bytes="$((restored_kib * 1024))"' in coverage_target_restore_diagnostics
     assert "restored_bytes=0" in coverage_target_restore_diagnostics
+    assert "skipped)" in coverage_target_restore_diagnostics
+    assert 'job_status="${{ job.status }}"' in coverage_target_restore_diagnostics
+    assert "failure|cancelled" in coverage_target_restore_diagnostics
+    assert "*skipped*) outcome=skipped" in cache_restore_timing
     assert "rust-coverage-target-cache-inventory" in rust_coverage
     assert rust_coverage.index("Upload Rust coverage report") < rust_coverage.index(
         "Prune coverage workspace products before target cache save"
@@ -4488,7 +4642,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cannot publish" in supply_chain
     assert "coverage compiler-dependency cache" in supply_chain_text
     assert "same exact keys" in supply_chain_text
-    assert "successful `CI` merge-group run" in supply_chain
+    assert "successful `CI` merge-group run" in supply_chain_text
     assert "restore-keys" in supply_chain
     assert "successful `rust-full` merge-group run stages" in supply_chain
     assert "same checksum" in supply_chain

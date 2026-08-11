@@ -1565,6 +1565,20 @@ clean_install_test = "clean-install-ci-timing-jobs"
 
 [[commands]]
 domain = "ci-timing"
+verb = "merge-group-source"
+python_module = "larch.implement.main_cache_candidate"
+python_function = "resolve_main_cache_merge_group_source_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 8362
+migration_issue = 8362
+clean_install_test = "clean-install-ci-timing-merge-group-source"
+
+[[commands]]
+domain = "ci-timing"
 verb = "pytest"
 python_module = "pytest_ci_timing"
 python_function = "fetch_timing_rows"
