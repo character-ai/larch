@@ -165,9 +165,19 @@ caller-env handoff before preflight, so malformed wire input cannot trigger a
 Git mutation. Its session directory is created through the shared
 `TemporaryRoot` and `SecureTempDir` adapters: prefixes cannot escape the
 session root, creation is private where the platform supports it, and the
-directory is revalidated before it becomes durable. The session identity and
-keepalive are confined writes; an identity-write failure closes the owned
-temporary directory rather than leaving a partial session state.
+directory is revalidated before it becomes durable. It retains the confined
+`.larch-session-setup` uncommitted marker and `SecureTempDir` cleanup ownership
+until the complete ordered stdout result envelope has been written and flushed.
+Only that successful publication transfers ownership: setup then writes the
+confined keepalive, persists the directory, and removes the marker. A stdout
+write, short-write, or flush failure, and a catchable `SIGINT` or `SIGTERM`
+before complete publication, closes the private directory instead of leaving a
+caller-visible session state. An uncatchable termination before that boundary
+leaves the confined marker for the next cleanup pass; a late catchable signal
+after the flushed envelope does not retract a session the caller can already
+own. The session identity is a confined pre-publication write, so an
+identity-write failure also closes the owned temporary directory rather than
+leaving a partial committed session state.
 
 Rust-owned `bootstrap invoke` completes its Step 0 continuation in
 `crates/larch-cli/src/implement_bootstrap_continuation.rs`. Continuation-owned

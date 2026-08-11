@@ -23,7 +23,8 @@ use std::{
     collections::BTreeMap,
     env,
     ffi::OsString,
-    fs, io,
+    fs,
+    io::{self, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
     thread,
@@ -63,6 +64,8 @@ const CALLER_ENV_KEYS: &[&str] = &[
 const TMP_FALLBACK: &str = "/tmp";
 const TEST_PAUSE_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION";
 const TEST_FAIL_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION";
+const TEST_PAUSE_BEFORE_PUBLICATION: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION";
+const TEST_PUBLICATION_PAUSE_MARKER: &str = ".larch-session-setup-publication-paused";
 const TEST_PAUSE_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Set up one session and emit its legacy KEY=value envelope.
@@ -99,12 +102,8 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
         }
     };
     match run_setup(&options, listener.cancellation()) {
-        Ok(result) => emit_setup(result),
-        Err(failure) => {
-            print!("{}", failure.stdout);
-            eprint!("{}", failure.stderr);
-            ExitCode::from(failure.exit_code)
-        }
+        Ok(pending) => emit_setup(pending, listener.cancellation()),
+        Err(failure) => emit_setup_failure(failure),
     }
 }
 
@@ -146,11 +145,21 @@ struct SetupResult {
     exit_code: u8,
 }
 
+/// A complete setup result whose session directory remains privately owned.
+///
+/// The caller receives the directory only after [`emit_setup`] writes and
+/// flushes the full legacy stdout envelope. Dropping this value before then
+/// closes the owned temporary directory.
+struct PendingSetup {
+    result: SetupResult,
+    session: PendingSessionDirectory,
+}
+
 /// A private setup directory before its stdout envelope can be published.
 ///
-/// `SecureTempDir` retains cleanup ownership until [`Self::commit`] removes
-/// the durable uncommitted marker. This gives ordinary errors and catchable
-/// shutdown signals one uniform cleanup path.
+/// `SecureTempDir` retains cleanup ownership until the full stdout envelope is
+/// written and flushed. This gives ordinary errors and catchable shutdown
+/// signals one uniform cleanup path.
 struct PendingSessionDirectory {
     directory: SecureTempDir,
     root: TemporaryRoot,
@@ -171,10 +180,19 @@ impl PendingSessionDirectory {
         self.cache_warning.as_deref()
     }
 
-    fn commit(self, cancellation: &Cancellation) -> Result<(), SetupFailure> {
-        check_setup_cancellation(cancellation)?;
+    /// Close an unpublished directory and retain any cleanup diagnostic.
+    fn discard(self, failure: SetupFailure) -> SetupFailure {
+        let Self { directory, .. } = self;
+        cleanup_owned_session_directory(directory, failure)
+    }
+
+    /// Transfer a successfully published session directory to its caller.
+    ///
+    /// This runs only after the entire stdout envelope is flushed. Cancellation
+    /// is deliberately not checked here: after publication, a caller may safely
+    /// use the emitted directory and a late signal must not retract it.
+    fn commit_after_publication(self) -> Result<(), SetupFailure> {
         write_session_keepalive(self.path(), &self.id);
-        check_setup_cancellation(cancellation)?;
         let path = self.directory.keep().map_err(|error| SetupFailure {
             exit_code: 1,
             stdout: String::new(),
@@ -182,11 +200,6 @@ impl PendingSessionDirectory {
                 "session-setup.sh: failed to persist session temp directory: {error}\n"
             ),
         })?;
-        if let Err(failure) = check_setup_cancellation(cancellation) {
-            return Err(cleanup_persisted_pending_session(
-                &self.root, &path, failure,
-            ));
-        }
         let marker_commit = commit_uncommitted_session_setup(&self.root, &path);
         if let Err(error) = marker_commit {
             let failure = SetupFailure {
@@ -194,11 +207,6 @@ impl PendingSessionDirectory {
                 stdout: String::new(),
                 stderr: format!("session-setup.sh: failed to commit session setup: {error}\n"),
             };
-            return Err(cleanup_persisted_pending_session(
-                &self.root, &path, failure,
-            ));
-        }
-        if let Err(failure) = check_setup_cancellation(cancellation) {
             return Err(cleanup_persisted_pending_session(
                 &self.root, &path, failure,
             ));
@@ -219,9 +227,9 @@ struct ReviewerStatus {
 /// Process-local shutdown listener for the uncommitted setup window.
 ///
 /// The listener is installed before any directory exists and holds the Tokio
-/// runtime that services the signal streams. Once setup reaches its commit
-/// point, normal process completion owns the directory and this listener is
-/// dropped without changing the committed result.
+/// runtime that services the signal streams. Once setup flushes its full
+/// envelope and reaches the commit point, normal process completion owns the
+/// directory and this listener is dropped without changing the committed result.
 struct SetupSignalListener {
     _runtime: LarchRuntime,
     cancellation: Cancellation,
@@ -311,7 +319,7 @@ async fn listen_for_setup_shutdown(
 fn run_setup(
     options: &SetupOptions,
     cancellation: &Cancellation,
-) -> Result<SetupResult, SetupFailure> {
+) -> Result<PendingSetup, SetupFailure> {
     // Caller state is untrusted input. Read and validate it before preflight so
     // a malformed handoff cannot cause a Git mutation before setup refuses.
     let caller = read_caller_env(&options.caller_env).map_err(|message| SetupFailure {
@@ -411,11 +419,10 @@ fn run_setup(
         diagnostics,
         exit_code,
     };
-    // This is the only setup commit point. A writer failure is deliberately a
-    // published envelope (legacy stdout carries SESSION_TMPDIR despite rc=1),
-    // while every earlier error leaves `session` to remove its private tree.
-    session.commit(cancellation)?;
-    Ok(result)
+    // A writer failure is deliberately a publishable envelope (legacy stdout
+    // carries SESSION_TMPDIR despite rc=1). The caller takes ownership only
+    // after `emit_setup` writes and flushes that envelope.
+    Ok(PendingSetup { result, session })
 }
 
 fn preflight_notices(options: &SetupOptions) -> Result<Vec<String>, SetupFailure> {
@@ -468,6 +475,35 @@ fn test_setup_after_directory_creation(
         return check_setup_cancellation(cancellation);
     }
     Ok(())
+}
+
+/// Pause immediately before stdout publication for real-process recovery tests.
+///
+/// The private marker lets the integration harness distinguish this boundary
+/// from the earlier post-creation window without creating a public wire file.
+fn test_setup_before_publication(
+    session: &PendingSessionDirectory,
+    cancellation: &Cancellation,
+) -> Result<(), SetupFailure> {
+    check_setup_cancellation(cancellation)?;
+    if env::var(TEST_PAUSE_BEFORE_PUBLICATION).as_deref() != Ok("true") {
+        return Ok(());
+    }
+    write_confined_file(
+        &session.path().join(TEST_PUBLICATION_PAUSE_MARKER),
+        "paused\n",
+        0o600,
+        "session setup publication test marker",
+    )
+    .map_err(|error| SetupFailure {
+        exit_code: 1,
+        stdout: String::new(),
+        stderr: format!("session-setup.sh: failed to pause before publication: {error}\n"),
+    })?;
+    while !cancellation.is_cancelled() {
+        thread::sleep(TEST_PAUSE_INTERVAL);
+    }
+    check_setup_cancellation(cancellation)
 }
 
 fn cleanup_persisted_pending_session(
@@ -617,17 +653,85 @@ fn append_nonempty_reviewer_rows(
     }
 }
 
-fn emit_setup(result: SetupResult) -> ExitCode {
-    for notice in result.notices {
-        println!("{notice}");
+fn emit_setup(pending: PendingSetup, cancellation: &Cancellation) -> ExitCode {
+    let PendingSetup { result, session } = pending;
+    if let Err(failure) = test_setup_before_publication(&session, cancellation) {
+        return emit_setup_failure(session.discard(failure));
     }
-    for (key, value) in result.stdout {
-        println!("{key}={value}");
+    if let Err(failure) = check_setup_cancellation(cancellation) {
+        return emit_setup_failure(session.discard(failure));
+    }
+    let publication = {
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
+        write_setup_envelope(&result, &mut stdout)
+    };
+    if let Err(error) = publication {
+        return emit_setup_failure(session.discard(SetupFailure {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: format!("session-setup.sh: failed to publish session setup: {error}\n"),
+        }));
+    }
+    if let Err(failure) = session.commit_after_publication() {
+        return emit_setup_failure(failure);
     }
     for diagnostic in result.diagnostics {
-        eprintln!("{diagnostic}");
+        write_setup_stderr(&format!("{diagnostic}\n"));
     }
     ExitCode::from(result.exit_code)
+}
+
+/// Write and flush the exact legacy stdout envelope before transferring state.
+fn write_setup_envelope(result: &SetupResult, writer: &mut impl io::Write) -> io::Result<()> {
+    let mut envelope = Vec::new();
+    for notice in &result.notices {
+        envelope.extend_from_slice(notice.as_bytes());
+        envelope.push(b'\n');
+    }
+    for (key, value) in &result.stdout {
+        envelope.extend_from_slice(key.as_bytes());
+        envelope.push(b'=');
+        envelope.extend_from_slice(value.as_bytes());
+        envelope.push(b'\n');
+    }
+    writer.write_all(&envelope)?;
+    writer.flush()
+}
+
+/// Emit a setup failure without panicking when its stdout destination is gone.
+fn emit_setup_failure(failure: SetupFailure) -> ExitCode {
+    let SetupFailure {
+        exit_code,
+        stdout,
+        stderr,
+    } = failure;
+    if !stdout.is_empty() {
+        let publication = {
+            let handle = io::stdout();
+            let mut handle = handle.lock();
+            handle
+                .write_all(stdout.as_bytes())
+                .and_then(|()| handle.flush())
+        };
+        if let Err(error) = publication {
+            write_setup_stderr(&format!(
+                "session-setup.sh: failed to publish setup failure: {error}\n"
+            ));
+        }
+    }
+    if !stderr.is_empty() {
+        write_setup_stderr(&stderr);
+    }
+    ExitCode::from(exit_code)
+}
+
+/// Stderr is diagnostic-only, so an unavailable destination must not panic.
+fn write_setup_stderr(message: &str) {
+    let stderr = io::stderr();
+    let mut stderr = stderr.lock();
+    let _ignored = stderr.write_all(message.as_bytes());
+    let _ignored = stderr.flush();
 }
 
 fn read_caller_env(path: &str) -> Result<BTreeMap<String, String>, String> {
@@ -993,4 +1097,122 @@ fn text(value: Option<&std::ffi::OsStr>) -> String {
     value
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SetupResult, write_setup_envelope};
+    use std::io::{self, Write};
+
+    fn result() -> SetupResult {
+        SetupResult {
+            notices: vec!["NOTICE=before".to_owned()],
+            stdout: vec![
+                ("SESSION_TMPDIR".to_owned(), "/tmp/session".to_owned()),
+                ("SESSION_ID".to_owned(), "session-id".to_owned()),
+            ],
+            diagnostics: Vec::new(),
+            exit_code: 0,
+        }
+    }
+
+    struct WriteFailure;
+
+    impl Write for WriteFailure {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "injected write failure",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct ShortWriteFailure {
+        wrote_prefix: bool,
+    }
+
+    impl Write for ShortWriteFailure {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if self.wrote_prefix {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "injected write failure after a short write",
+                ));
+            }
+            self.wrote_prefix = true;
+            Ok(buffer.len().min(1))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct FlushFailure {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for FlushFailure {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "injected flush failure",
+            ))
+        }
+    }
+
+    #[test]
+    fn setup_envelope_preserves_legacy_bytes_before_flushing() {
+        let mut output = Vec::new();
+
+        write_setup_envelope(&result(), &mut output).expect("write envelope");
+
+        assert_eq!(
+            output,
+            b"NOTICE=before\nSESSION_TMPDIR=/tmp/session\nSESSION_ID=session-id\n"
+        );
+    }
+
+    #[test]
+    fn setup_envelope_propagates_an_injected_write_failure() {
+        let error = write_setup_envelope(&result(), &mut WriteFailure)
+            .expect_err("injected write failure must be controlled");
+
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn setup_envelope_propagates_an_injected_short_write_failure() {
+        let error = write_setup_envelope(
+            &result(),
+            &mut ShortWriteFailure {
+                wrote_prefix: false,
+            },
+        )
+        .expect_err("injected short write failure must be controlled");
+
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn setup_envelope_propagates_an_injected_flush_failure() {
+        let mut writer = FlushFailure { bytes: Vec::new() };
+        let error = write_setup_envelope(&result(), &mut writer)
+            .expect_err("injected flush failure must be controlled");
+
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(
+            writer.bytes,
+            b"NOTICE=before\nSESSION_TMPDIR=/tmp/session\nSESSION_ID=session-id\n"
+        );
+    }
 }
