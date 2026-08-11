@@ -4604,6 +4604,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "github.ref" not in policy_candidate_stage
     assert policy_candidate_stage.count("$GITHUB_EVENT_NAME") == 2
     assert policy_candidate_stage.count("$GITHUB_REF") == 2
+    assert 'mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"' in policy_candidate_stage
+    assert policy_candidate_stage.index(
+        'mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"'
+    ) < policy_candidate_stage.index("ci stage-rust-policy-candidate")
     for candidate_argument in (
         "ci stage-rust-policy-candidate",
         '--artifact-dir "$RUNNER_TEMP/larch-linux-test-binary"',

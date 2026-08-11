@@ -840,6 +840,7 @@ jobs:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"
           python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-rust-policy-candidate \
             --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
             --policy-dir "$RUNNER_TEMP/main-cache-rust-policy/policy" \
