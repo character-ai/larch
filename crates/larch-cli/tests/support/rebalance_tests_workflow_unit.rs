@@ -311,6 +311,7 @@ fn changed_plan() -> PreparedPlan {
                 ),
                 (2, vec!["alpha".to_owned()]),
             ]),
+            predicted_packed_spread: 4.0,
             baseline_slowest_wall_clock: 10.0,
             baseline_runner_seconds: 18.0,
             approved_slowest_wall_clock: 12.0,
@@ -350,6 +351,7 @@ fn approved_response(plan: &PreparedPlan) -> PlanResponse {
                 .expect("harness plan")
                 .proposed_shards
                 .clone(),
+            predicted_proposed: BTreeMap::from([(1, 10.0), (2, 6.0)]),
             baseline_slowest_wall_clock: 10.0,
             baseline_runner_seconds: 18.0,
             approved_slowest_wall_clock: 12.0,
@@ -580,6 +582,77 @@ fn production_workflow_verification_rejects_an_incomplete_plan_after_dispatch() 
 }
 
 #[test]
+fn production_workflow_collects_each_selected_planning_leg_before_rejecting_empty_evidence() {
+    let fixture = GitFixture::new();
+    let server = start_github_stub(vec![
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid empty harness selection"),
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid empty pytest selection"),
+    ]);
+    let workflow = workflow_with_github(&fixture, &server);
+    let repository = GitHubRepositoryRef::new("owner", "repo").expect("fixture repository");
+    let mut planning_arguments = arguments();
+    planning_arguments.kind = RebalanceKind::All;
+
+    let error = workflow
+        .collect_plan(&planning_arguments, &repository)
+        .expect_err("empty selected timing cohorts must be rejected by the Rust plan core");
+    assert!(error.contains("harness.expected_run_ids"), "{error}");
+    assert_eq!(
+        server
+            .finish()
+            .expect("both typed planning selections are consumed")
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn production_workflow_collects_each_selected_verification_leg_before_failing_closed() {
+    let fixture = GitFixture::new();
+    let head_sha = "c".repeat(40);
+    let server = start_github_stub(vec![
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid initial workflow list"),
+        IssueServiceExchange::any_json(200, empty_workflow_runs())
+            .expect("valid dispatch workflow list"),
+        no_content_exchange(),
+        IssueServiceExchange::any_json(200, successful_workflow_runs(&head_sha))
+            .expect("valid completed workflow list"),
+        IssueServiceExchange::any_json(404, "{}").expect("valid harness log failure"),
+        IssueServiceExchange::any_json(404, "{}").expect("valid jobs failure"),
+        IssueServiceExchange::any_json(404, "{}").expect("valid pytest log failure"),
+    ]);
+    let mut workflow = workflow_with_github(&fixture, &server);
+    let mut verify_arguments = arguments();
+    verify_arguments.kind = RebalanceKind::All;
+    let mut plan = changed_plan();
+    plan.harness
+        .as_mut()
+        .expect("harness plan")
+        .approved_slowest_wall_clock = 10.0;
+    let pull_request = PublishedPullRequest {
+        number: 17,
+        url: "https://example.invalid/pull/17".to_owned(),
+        branch: "rebalance-dispatch".to_owned(),
+        head_sha,
+    };
+
+    let error = workflow
+        .verify(&verify_arguments, &plan, &pull_request)
+        .expect_err("missing typed verification evidence must fail closed");
+    assert!(error.contains("harness timing cohort"), "{error}");
+    assert_eq!(
+        server
+            .finish()
+            .expect("all typed verification requests are consumed")
+            .len(),
+        7
+    );
+}
+
+#[test]
 fn immutable_main_validation_rejects_other_branches_and_dirty_files() {
     let fixture = GitFixture::new();
     fixture
@@ -762,8 +835,17 @@ fn pull_request_text_preserves_selected_legs() {
     let body = pull_request_body(&body_arguments, &prepared);
     assert!(body.contains("- Legs: harness, python"));
     assert!(body.contains("- Files: Makefile, python/shard-assignments.json"));
+    assert!(body.contains("- Harness predicted packed spread: 4.0s"));
     assert!(body.contains("- Experimental wall-clock override: experiment-42"));
     assert!(body.ends_with('\n'));
+
+    let mut python_only = prepared.clone();
+    python_only.harness = None;
+    python_only.kind = RebalanceKind::Python;
+    let mut python_arguments = body_arguments.clone();
+    python_arguments.kind = RebalanceKind::Python;
+    let body = pull_request_body(&python_arguments, &python_only);
+    assert!(!body.contains("- Experimental wall-clock override:"));
 }
 
 #[test]
@@ -788,6 +870,7 @@ fn plan_response_rejects_incomplete_selected_legs() {
         violations: Vec::new(),
         harness: Some(PlanHarnessResponse {
             proposed_shards: BTreeMap::new(),
+            predicted_proposed: BTreeMap::new(),
             baseline_slowest_wall_clock: 0.0,
             baseline_runner_seconds: 0.0,
             approved_slowest_wall_clock: 0.0,
@@ -955,6 +1038,11 @@ fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
     assert_eq!(RebalanceKind::Python.commit_label(), "python");
     assert_eq!(Artifact::Makefile.path(), MAKEFILE);
     assert_eq!(Artifact::Assignments.path(), ASSIGNMENTS);
+    assert_eq!(
+        predicted_packed_spread(&BTreeMap::from([(1, 10.0), (2, 6.0)])),
+        4.0
+    );
+    assert_eq!(predicted_packed_spread(&BTreeMap::new()), 0.0);
 
     let fixture = GitFixture::new();
     let mut workflow = fixture.workflow();

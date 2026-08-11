@@ -107,6 +107,7 @@ impl Artifact {
 struct HarnessPlan {
     current_shards: BTreeMap<u32, Vec<String>>,
     proposed_shards: BTreeMap<u32, Vec<String>>,
+    predicted_packed_spread: f64,
     baseline_slowest_wall_clock: f64,
     baseline_runner_seconds: f64,
     approved_slowest_wall_clock: f64,
@@ -847,6 +848,7 @@ struct PlanResponse {
 #[derive(Deserialize)]
 struct PlanHarnessResponse {
     proposed_shards: BTreeMap<u32, Vec<String>>,
+    predicted_proposed: BTreeMap<u32, f64>,
     baseline_slowest_wall_clock: f64,
     baseline_runner_seconds: f64,
     approved_slowest_wall_clock: f64,
@@ -873,6 +875,7 @@ impl PlanResponse {
                     "plan response contained an unexpected harness leg".to_owned()
                 })?,
                 proposed_shards: response.proposed_shards,
+                predicted_packed_spread: predicted_packed_spread(&response.predicted_proposed),
                 baseline_slowest_wall_clock: response.baseline_slowest_wall_clock,
                 baseline_runner_seconds: response.baseline_runner_seconds,
                 approved_slowest_wall_clock: response.approved_slowest_wall_clock,
@@ -1014,6 +1017,18 @@ fn commit_subject(kind: RebalanceKind) -> String {
     format!("chore: rebalance test shards ({})", kind.commit_label())
 }
 
+fn predicted_packed_spread(values: &BTreeMap<u32, f64>) -> f64 {
+    let Some(lowest) = values.values().copied().min_by(f64::total_cmp) else {
+        return 0.0;
+    };
+    values
+        .values()
+        .copied()
+        .max_by(f64::total_cmp)
+        .unwrap_or(lowest)
+        - lowest
+}
+
 fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> String {
     let mut legs = Vec::new();
     let mut files = Vec::new();
@@ -1038,6 +1053,10 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
     ];
     if let Some(harness) = &plan.harness {
         body.push(format!(
+            "- Harness predicted packed spread: {:.1}s",
+            harness.predicted_packed_spread
+        ));
+        body.push(format!(
             "- Harness baseline observed slowest shard: {:.1}s",
             harness.baseline_slowest_wall_clock
         ));
@@ -1049,6 +1068,9 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
             "- Harness approved slowest-shard threshold: {:.1}s",
             harness.approved_slowest_wall_clock
         ));
+        if let Some(note) = &arguments.experimental_wall_clock_override {
+            body.push(format!("- Experimental wall-clock override: {note}"));
+        }
     }
     if let Some(python) = &plan.python {
         body.push(format!(
@@ -1056,9 +1078,6 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
             python.assignments.len(),
             python.shard_count
         ));
-    }
-    if let Some(note) = &arguments.experimental_wall_clock_override {
-        body.push(format!("- Experimental wall-clock override: {note}"));
     }
     body.join("\n") + "\n"
 }
