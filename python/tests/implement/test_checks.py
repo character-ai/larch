@@ -3920,6 +3920,16 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     publication = (
         repo_root / ".github" / "workflows" / "main-cache-publication.yaml"
     ).read_text(encoding="utf-8")
+    rust_probe = publication.split("\n  main-cache-probe:", 1)[1].split(
+        "\n  main-cache-merge-group-source:", 1
+    )[0]
+    rust_promotion_lookup = (
+        publication.split("\n  main-cache-rust-promotion:", 1)[1]
+        .split("\n      - name: Download Cargo inputs candidate", 1)[0]
+    )
+    gitleaks_publisher = publication.split("\n  main-cache-gitleaks:", 1)[1].split(
+        "\n  main-cache-probe:", 1
+    )[0]
     source_resolver = (
         repo_root / "crates" / "larch-core" / "src" / "main_cache.rs"
     ).read_text(encoding="utf-8")
@@ -3986,6 +3996,21 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "actions/download-artifact@" in publication
     assert "run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}" in publication
     assert "ci verify-main-cache-candidate" in publication
+    canonical_rust_cache_paths = (
+        "path: |\n            ~/.cargo/registry\n            ~/.cargo/git",
+        "path: target/debug",
+        "path: ~/.cargo/bin/cargo-nextest",
+        "path: ~/.cargo/bin/cargo-llvm-cov",
+        "path: target/llvm-cov-target",
+        "path: ${{ runner.temp }}/trusted-main-rust-policy",
+    )
+    for lookup_job in (rust_probe, rust_promotion_lookup):
+        for cache_path in canonical_rust_cache_paths:
+            assert cache_path in lookup_job
+    assert "path: ${{ runner.temp }}/main-cache-probe/" not in rust_probe
+    assert "path: ${{ runner.temp }}/main-cache-promoted/" not in rust_promotion_lookup
+    assert "/*\n            !/larch-logs/" in gitleaks_publisher
+    assert "/.github/actions/main-cache-keys/" not in gitleaks_publisher
     for validation_operation in (
         "pre-commit run",
         "pytest",

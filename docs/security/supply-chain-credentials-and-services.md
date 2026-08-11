@@ -33,6 +33,11 @@ owns contributor instructions for dependency changes.
 `.github/main-cache-inventory.json` is the cache-class inventory. Its canonical
 key definitions live in `.github/actions/main-cache-keys/action.yaml`; every
 validation restore and every trusted publication uses those same exact keys.
+Actions cache version identity also binds the declared cache path. Lookup-only
+publisher probes therefore use the exact validation restore paths; temporary
+candidate and promotion paths begin only after a genuine miss. This prevents a
+false publisher miss from requesting an artifact that a cache-hit validation
+run correctly did not stage.
 The `CI` workflow handles pull requests, merge groups, and manual diagnosis.
 It is read-only for production caches. A normal push to `main` runs only
 `.github/workflows/main-cache-publication.yaml`, whose admission job refuses
