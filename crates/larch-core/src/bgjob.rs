@@ -4,14 +4,17 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env, fmt,
     fs::{self, OpenOptions},
-    io::Write as _,
+    io::{Read as _, Write as _},
     path::{Component, Path, PathBuf},
     process,
     sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use sha2::{Digest as _, Sha256};
+
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
 use crate::{
     DuplicatePolicy, KvDocument, ParseOptions, ProcessIdentityHost,
@@ -44,7 +47,108 @@ pub const BGJOB_ELAPSED_KEY: &str = "BGJOB_ELAPSED_S";
 
 const MAX_SLUG_LENGTH: usize = 97;
 const MAX_RUN_ID_LENGTH: usize = 128;
+const RECOVERY_LEASE_MALFORMED_STALE_AFTER: Duration = Duration::from_secs(5);
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// A parsed recovery-lease path state while the claim lock is held.
+enum RecoveryLeaseState {
+    /// No lease is currently published.
+    Missing,
+    /// A complete claimant identity is published.
+    Valid(RecordedProcessIdentity),
+    /// A regular but incomplete or invalid lease, with its publication time.
+    Malformed(SystemTime),
+}
+
+/// Short-lived advisory lock that serializes lease inspection and replacement.
+///
+/// The durable identity lease remains the recovery owner after this lock drops.
+/// The operating system releases this lock if the claimant dies mid-reconciliation.
+struct RecoveryClaimLock {
+    _file: fs::File,
+}
+
+impl RecoveryClaimLock {
+    fn acquire(path: &Path) -> Result<Option<Self>, BgjobError> {
+        reject_unsafe_existing_file(path, "recovery claim lock is unsafe")?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            options.mode(0o600);
+        }
+        let file = options
+            .open(path)
+            .map_err(|error| BgjobError::Io(error.to_string()))?;
+        #[cfg(unix)]
+        {
+            file.set_permissions(fs::Permissions::from_mode(0o600))
+                .map_err(|error| BgjobError::Io(error.to_string()))?;
+        }
+        let _opened =
+            checked_opened_regular_metadata(&file, path, "recovery claim lock is unsafe")?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(Self { _file: file })),
+            Err(fs::TryLockError::WouldBlock) => Ok(None),
+            Err(fs::TryLockError::Error(error)) => Err(BgjobError::Io(error.to_string())),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RecoveryLeaseFaultPhase {
+    TemporaryCreated,
+    PayloadWritten,
+    PayloadSynced,
+}
+
+#[cfg(test)]
+struct RecoveryLeaseFault {
+    thread: std::thread::ThreadId,
+    phase: RecoveryLeaseFaultPhase,
+}
+
+#[cfg(test)]
+static RECOVERY_LEASE_FAULT: std::sync::Mutex<Option<RecoveryLeaseFault>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn set_recovery_lease_fault(phase: RecoveryLeaseFaultPhase) {
+    let mut fault = RECOVERY_LEASE_FAULT
+        .lock()
+        .expect("recovery lease fault lock");
+    *fault = Some(RecoveryLeaseFault {
+        thread: std::thread::current().id(),
+        phase,
+    });
+}
+
+#[cfg(test)]
+fn inject_recovery_lease_fault(phase: RecoveryLeaseFaultPhase) -> std::io::Result<()> {
+    let injected = {
+        let mut fault = RECOVERY_LEASE_FAULT
+            .lock()
+            .expect("recovery lease fault lock");
+        let current = std::thread::current().id();
+        if fault
+            .as_ref()
+            .is_some_and(|pending| pending.thread == current && pending.phase == phase)
+        {
+            *fault = None;
+            true
+        } else {
+            false
+        }
+    };
+    if injected {
+        Err(std::io::Error::other(
+            "injected recovery lease interruption",
+        ))
+    } else {
+        Ok(())
+    }
+}
 
 /// Identity of the session owner that started a background job.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -689,9 +793,13 @@ pub fn claim_recovery(
         })
         .ok_or_else(|| BgjobError::Invalid("registry filename is unsafe".to_owned()))?;
     let lease_path = parent.join(format!(".{entry_name}.recovery"));
+    let lock_path = parent.join(format!(".{entry_name}.recovery.lock"));
     let claimant = read_process_identity(host, host.current_pid(), "").ok_or_else(|| {
         BgjobError::Invalid("could not capture recovery claimant identity".to_owned())
     })?;
+    let Some(_lock) = RecoveryClaimLock::acquire(&lock_path)? else {
+        return Ok(RecoveryClaim::Busy);
+    };
 
     for _ in 0..2 {
         match write_recovery_lease(&lease_path, &claimant) {
@@ -711,25 +819,34 @@ pub fn claim_recovery(
                 }));
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let Some(existing) = read_recovery_lease(&lease_path) else {
-                    return Err(BgjobError::Invalid(
-                        "recovery lease is malformed or unsafe".to_owned(),
+                match inspect_recovery_lease(&lease_path)? {
+                    RecoveryLeaseState::Missing => continue,
+                    RecoveryLeaseState::Valid(existing) => {
+                        let validation = validate_process_identity(host, &existing);
+                        if validation.ok {
+                            return Ok(RecoveryClaim::Busy);
+                        }
+                        if matches!(
+                            validation.reason.as_str(),
+                            "identity-probe-error" | "identity-probe-timeout"
+                        ) {
+                            return Err(BgjobError::Invalid(format!(
+                                "could not validate recovery claimant: {}",
+                                validation.reason
+                            )));
+                        }
+                    }
+                    RecoveryLeaseState::Malformed(modified) => {
+                        if !malformed_recovery_lease_is_stale(modified)? {
+                            return Ok(RecoveryClaim::Busy);
+                        }
+                    }
+                }
+                if !remove_regular_file(&lease_path) {
+                    return Err(BgjobError::Io(
+                        "could not remove stale recovery lease".to_owned(),
                     ));
-                };
-                let validation = validate_process_identity(host, &existing);
-                if validation.ok {
-                    return Ok(RecoveryClaim::Busy);
                 }
-                if matches!(
-                    validation.reason.as_str(),
-                    "identity-probe-error" | "identity-probe-timeout"
-                ) {
-                    return Err(BgjobError::Invalid(format!(
-                        "could not validate recovery claimant: {}",
-                        validation.reason
-                    )));
-                }
-                remove_regular_file(&lease_path);
             }
             Err(error) => return Err(BgjobError::Io(error.to_string())),
         }
@@ -745,8 +862,11 @@ pub fn recovery_claim_entry_path(claim: &RecoveryLease) -> &Path {
 
 /// Release a recovery claim only when this process still owns the exact lease.
 pub fn release_recovery_claim(claim: &RecoveryLease) {
-    if read_recovery_lease(&claim.lease_path).as_ref() == Some(&claim.claimant) {
-        remove_regular_file(&claim.lease_path);
+    if matches!(
+        inspect_recovery_lease(&claim.lease_path),
+        Ok(RecoveryLeaseState::Valid(existing)) if existing == claim.claimant
+    ) {
+        let _removed = remove_regular_file(&claim.lease_path);
     }
 }
 
@@ -886,31 +1006,139 @@ fn liveness(host: &dyn ProcessIdentityHost, identity: &RecordedProcessIdentity) 
 }
 
 fn write_recovery_lease(path: &Path, claimant: &RecordedProcessIdentity) -> std::io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "recovery lease path has no parent",
+        )
+    })?;
+    let temporary =
+        temporary_path(parent, path).map_err(|error| std::io::Error::other(error.to_string()))?;
+    let mut temporary_created = false;
+    let result = (|| {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        temporary_created = true;
+        #[cfg(test)]
+        inject_recovery_lease_fault(RecoveryLeaseFaultPhase::TemporaryCreated)?;
+        file.write_all(identity_to_json(claimant, None).as_bytes())?;
+        #[cfg(test)]
+        inject_recovery_lease_fault(RecoveryLeaseFaultPhase::PayloadWritten)?;
+        file.sync_all()?;
+        #[cfg(test)]
+        inject_recovery_lease_fault(RecoveryLeaseFaultPhase::PayloadSynced)?;
+        drop(file);
+        fs::hard_link(&temporary, path)
+    })();
+    if result.is_err() {
+        if temporary_created {
+            let _removed = fs::remove_file(&temporary);
+        }
+        return result;
+    }
+    // The link is the durable claim; a failed best-effort temporary cleanup
+    // must not make a caller believe its complete final lease was not acquired.
+    let _removed = fs::remove_file(&temporary);
+    Ok(())
+}
+
+fn inspect_recovery_lease(path: &Path) -> Result<RecoveryLeaseState, BgjobError> {
+    reject_unsafe_existing_file(path, "recovery lease is malformed or unsafe")?;
     let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(identity_to_json(claimant, None).as_bytes())?;
-    file.sync_all()
+    options.read(true);
+    let file = match options.open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RecoveryLeaseState::Missing);
+        }
+        Err(error) => return Err(BgjobError::Io(error.to_string())),
+    };
+    let opened =
+        checked_opened_regular_metadata(&file, path, "recovery lease is malformed or unsafe")?;
+    let mut bytes = Vec::new();
+    let mut file = file;
+    file.read_to_end(&mut bytes)
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    serde_json::from_slice(&bytes).map_or_else(
+        |_| {
+            opened
+                .modified()
+                .map(RecoveryLeaseState::Malformed)
+                .map_err(|error| BgjobError::Io(error.to_string()))
+        },
+        |identity| Ok(RecoveryLeaseState::Valid(identity)),
+    )
 }
 
-fn read_recovery_lease(path: &Path) -> Option<RecordedProcessIdentity> {
-    let metadata = fs::symlink_metadata(path).ok()?;
+fn reject_unsafe_existing_file(path: &Path, message: &str) -> Result<(), BgjobError> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            return if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(BgjobError::Io(error.to_string()))
+            };
+        }
+    };
     if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
+        return Err(BgjobError::Invalid(message.to_owned()));
     }
-    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+    Ok(())
 }
 
-fn remove_regular_file(path: &Path) {
-    if fs::symlink_metadata(path)
-        .is_ok_and(|metadata| !metadata.file_type().is_symlink() && metadata.is_file())
-    {
-        let _ = fs::remove_file(path);
+fn checked_opened_regular_metadata(
+    file: &fs::File,
+    path: &Path,
+    message: &str,
+) -> Result<fs::Metadata, BgjobError> {
+    let opened = file
+        .metadata()
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    let visible = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(BgjobError::Invalid(message.to_owned()));
+        }
+        Err(error) => return Err(BgjobError::Io(error.to_string())),
+    };
+    if visible.file_type().is_symlink() || !visible.is_file() || !opened.is_file() {
+        return Err(BgjobError::Invalid(message.to_owned()));
+    }
+    #[cfg(unix)]
+    if opened.dev() != visible.dev() || opened.ino() != visible.ino() {
+        return Err(BgjobError::Invalid(message.to_owned()));
+    }
+    Ok(opened)
+}
+
+fn malformed_recovery_lease_is_stale(modified: SystemTime) -> Result<bool, BgjobError> {
+    SystemTime::now()
+        .duration_since(modified)
+        .map(|age| age >= RECOVERY_LEASE_MALFORMED_STALE_AFTER)
+        .map_err(|_| BgjobError::Invalid("recovery lease timestamp is in the future".to_owned()))
+}
+
+#[cfg(test)]
+fn read_recovery_lease(path: &Path) -> Option<RecordedProcessIdentity> {
+    match inspect_recovery_lease(path) {
+        Ok(RecoveryLeaseState::Valid(identity)) => Some(identity),
+        Ok(RecoveryLeaseState::Missing | RecoveryLeaseState::Malformed(_)) | Err(_) => None,
+    }
+}
+
+fn remove_regular_file(path: &Path) -> bool {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {
+            fs::remove_file(path).is_ok()
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Ok(_) | Err(_) => false,
     }
 }
 
@@ -1107,15 +1335,16 @@ pub fn epoch_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, RecoveryClaim,
+        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError,
+        RECOVERY_LEASE_MALFORMED_STALE_AFTER, RecoveryClaim, RecoveryLeaseFaultPhase,
         RegistryEntry, absolute_path, bgjob_dir, checked_dir, child_liveness, claim_recovery,
         daemon_liveness, default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now,
         expand_home, has_live_entry_at, identity_rows, iter_entries_at, log_paths, parse_identity,
-        private_atomic_write, read_entry, registry_path, reject_line_value, release_recovery_claim,
-        render_rows, resolve_candidate, resolve_run_id, resolved_directory, result_env_path,
-        startup_env_path, temporary_path, unlink_entry, validate_initial_merge_rows,
-        validate_merge_result_env, validate_parent_chain, validate_run_id, validate_slug,
-        validated_path, write_entry_at,
+        private_atomic_write, read_entry, read_recovery_lease, registry_path, reject_line_value,
+        release_recovery_claim, render_rows, resolve_candidate, resolve_run_id, resolved_directory,
+        result_env_path, set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
+        validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
+        validate_run_id, validate_slug, validated_path, write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
@@ -1124,7 +1353,9 @@ mod tests {
         collections::BTreeMap,
         env, fs,
         path::{Path, PathBuf},
-        time::Duration,
+        sync::{Arc, Barrier},
+        thread,
+        time::{Duration, SystemTime},
     };
 
     fn identity(pid: i32) -> RecordedProcessIdentity {
@@ -1263,6 +1494,25 @@ mod tests {
         }
     }
 
+    fn recovery_lease_path(entry_path: &Path) -> PathBuf {
+        let parent = entry_path.parent().expect("registry parent");
+        let entry_name = entry_path
+            .file_name()
+            .expect("registry name")
+            .to_string_lossy();
+        parent.join(format!(".{entry_name}.recovery"))
+    }
+
+    fn age_recovery_lease(path: &Path) {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("recovery lease");
+        let old = SystemTime::now() - RECOVERY_LEASE_MALFORMED_STALE_AFTER - Duration::from_secs(1);
+        file.set_times(fs::FileTimes::new().set_modified(old))
+            .expect("age recovery lease");
+    }
+
     #[test]
     fn session_env_run_ids_win_over_the_tmpdir_fallback() {
         let sandbox = tempfile::tempdir().expect("tempdir");
@@ -1365,6 +1615,190 @@ mod tests {
             "a probe failure must not reclaim another cleaner's live lease"
         );
         release_recovery_claim(&claim);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recovery_claim_rejects_symlinked_lease_and_lock_paths() {
+        use std::os::unix::fs::symlink;
+
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry(&tmpdir, None), Some(&registry)).expect("registry row");
+        let outside = sandbox.path().join("outside");
+        fs::write(&outside, "outside\n").expect("outside target");
+        let host = LivenessHost {
+            live: true,
+            current_pid: 77,
+            probe_error_pid: None,
+        };
+        let lease_path = recovery_lease_path(&path);
+
+        symlink(&outside, &lease_path).expect("lease symlink");
+        assert!(claim_recovery(&host, &path).is_err());
+        fs::remove_file(&lease_path).expect("lease symlink cleanup");
+
+        let lock_path = registry.join(format!(
+            ".{}.recovery.lock",
+            path.file_name()
+                .expect("registry filename")
+                .to_string_lossy()
+        ));
+        fs::remove_file(&lock_path).expect("claim lock cleanup");
+        symlink(&outside, &lock_path).expect("claim lock symlink");
+        assert!(claim_recovery(&host, &path).is_err());
+    }
+
+    #[test]
+    fn interrupted_recovery_lease_publication_leaves_no_blocking_final_path() {
+        for phase in [
+            RecoveryLeaseFaultPhase::TemporaryCreated,
+            RecoveryLeaseFaultPhase::PayloadWritten,
+            RecoveryLeaseFaultPhase::PayloadSynced,
+        ] {
+            let sandbox = tempfile::tempdir().expect("tempdir");
+            let tmpdir = sandbox.path().join("session");
+            fs::create_dir_all(&tmpdir).expect("session");
+            let registry = sandbox.path().join("registry");
+            fs::create_dir_all(&registry).expect("registry");
+            let path =
+                write_entry_at(&entry(&tmpdir, None), Some(&registry)).expect("registry row");
+            let lease_path = recovery_lease_path(&path);
+            let host = LivenessHost {
+                live: true,
+                current_pid: 77,
+                probe_error_pid: None,
+            };
+
+            set_recovery_lease_fault(phase);
+            assert!(claim_recovery(&host, &path).is_err(), "{phase:?}");
+            assert!(
+                !lease_path.exists(),
+                "{phase:?} exposed a partial recovery lease"
+            );
+            let temporary_exists = fs::read_dir(&registry)
+                .expect("registry entries")
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name())
+                .any(|name| name.to_string_lossy().contains(".recovery.tmp."));
+            assert!(
+                !temporary_exists,
+                "{phase:?} retained an interrupted recovery-lease temporary"
+            );
+
+            let claim = match claim_recovery(&host, &path).expect("retry claim") {
+                RecoveryClaim::Acquired(claim) => claim,
+                other => panic!("{phase:?} retry did not acquire: {other:?}"),
+            };
+            assert_eq!(
+                read_recovery_lease(&lease_path),
+                Some(claim.claimant.clone()),
+                "{phase:?} retry did not publish a complete identity"
+            );
+            release_recovery_claim(&claim);
+        }
+    }
+
+    #[test]
+    fn malformed_recovery_lease_waits_for_publication_window_then_reconciles() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry(&tmpdir, None), Some(&registry)).expect("registry row");
+        let lease_path = recovery_lease_path(&path);
+        fs::write(&lease_path, "{\"pid\":").expect("malformed lease");
+        let host = LivenessHost {
+            live: true,
+            current_pid: 77,
+            probe_error_pid: None,
+        };
+
+        assert!(matches!(
+            claim_recovery(&host, &path).expect("fresh malformed lease"),
+            RecoveryClaim::Busy
+        ));
+        assert!(lease_path.exists(), "fresh lease was removed");
+
+        age_recovery_lease(&lease_path);
+        let claim = match claim_recovery(&host, &path).expect("stale malformed lease") {
+            RecoveryClaim::Acquired(claim) => claim,
+            other => panic!("stale malformed lease did not reconcile: {other:?}"),
+        };
+        assert_eq!(
+            read_recovery_lease(&lease_path),
+            Some(claim.claimant.clone())
+        );
+        release_recovery_claim(&claim);
+    }
+
+    #[test]
+    fn concurrent_claimants_reconcile_one_malformed_lease_to_one_live_owner() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry(&tmpdir, None), Some(&registry)).expect("registry row");
+        let lease_path = recovery_lease_path(&path);
+        fs::write(&lease_path, "interrupted publication").expect("malformed lease");
+        age_recovery_lease(&lease_path);
+
+        let barrier = Arc::new(Barrier::new(3));
+        let first_path = path.clone();
+        let first_barrier = Arc::clone(&barrier);
+        let first = thread::spawn(move || {
+            first_barrier.wait();
+            claim_recovery(
+                &LivenessHost {
+                    live: true,
+                    current_pid: 77,
+                    probe_error_pid: None,
+                },
+                &first_path,
+            )
+        });
+        let second_path = path;
+        let second_barrier = Arc::clone(&barrier);
+        let second = thread::spawn(move || {
+            second_barrier.wait();
+            claim_recovery(
+                &LivenessHost {
+                    live: true,
+                    current_pid: 88,
+                    probe_error_pid: None,
+                },
+                &second_path,
+            )
+        });
+        barrier.wait();
+
+        let mut claims = Vec::new();
+        for result in [
+            first.join().expect("first claimant"),
+            second.join().expect("second claimant"),
+        ] {
+            match result.expect("claim result") {
+                RecoveryClaim::Acquired(claim) => claims.push(claim),
+                RecoveryClaim::Busy => {}
+                RecoveryClaim::Gone => panic!("registry row disappeared"),
+            }
+        }
+        assert_eq!(
+            claims.len(),
+            1,
+            "concurrent claimants both acquired recovery"
+        );
+        assert_eq!(
+            read_recovery_lease(&lease_path),
+            Some(claims[0].claimant.clone()),
+            "the winner did not retain its own lease"
+        );
+        release_recovery_claim(&claims.pop().expect("winning claim"));
     }
 
     #[test]

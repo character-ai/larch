@@ -9,8 +9,8 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    KvDocument, ParseOptions, RecordedProcessIdentity, RegistryEntry, RenderOptions, read_entry,
-    read_process_identity, write_entry_at,
+    KvDocument, ParseOptions, RecordedProcessIdentity, RegistryEntry, RenderOptions,
+    identity_to_json, read_entry, read_process_identity, write_entry_at,
 };
 use std::{
     fs,
@@ -174,6 +174,39 @@ fn registry_row(sandbox: &Sandbox, step: &str) -> PathBuf {
         sleep(POLL);
     }
     panic!("no registry row for {step}");
+}
+
+fn recovery_lease_path(row: &Path) -> PathBuf {
+    let parent = row.parent().expect("registry parent");
+    let name = row.file_name().expect("registry name").to_string_lossy();
+    parent.join(format!(".{name}.recovery"))
+}
+
+fn age_recovery_lease(path: &Path) {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("recovery lease");
+    let old = SystemTime::now() - Duration::from_secs(10);
+    file.set_times(fs::FileTimes::new().set_modified(old))
+        .expect("age recovery lease");
+}
+
+fn reap_process(sandbox: &Sandbox) -> Command {
+    let mut command = Command::new(assert_cmd::cargo::cargo_bin("larch"));
+    command
+        .args(["bgjob", "reap"])
+        .env("LARCH_BGJOB_REGISTRY_ROOT", sandbox.registry())
+        .env("LARCH_TEST_BGJOB_OWNER_GRACE_S", "0.2")
+        .env("LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S", "0.1")
+        .env_remove("IMPLEMENT_TMPDIR")
+        .env_remove("LARCH_BGJOB_OWNER_PID")
+        .env_remove("LARCH_CLAUDE_PID")
+        .env_remove("CLAUDE_PID")
+        .env_remove("LARCH_RUN_ID")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
 }
 
 fn pid_is_live(pid: i32) -> bool {
@@ -425,6 +458,184 @@ fn reap_recovers_an_externally_killed_daemons_child_group() {
     assert!(
         !entry.result_env.exists(),
         "reap recovery left a partial result envelope"
+    );
+}
+
+#[test]
+fn reap_retries_a_stale_malformed_recovery_lease_without_stranding_the_child_group() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("reap-malformed-lease");
+    let stdout = start(
+        &sandbox,
+        "reap-malformed-lease",
+        &tmpdir,
+        "60",
+        std::process::id().try_into().expect("pid"),
+        &["/bin/sh", "-c", "exec sleep 60"],
+    );
+    assert!(started_pgid(&stdout, "reap-malformed-lease") > 0);
+    let row = registry_row(&sandbox, "reap-malformed-lease");
+    let entry = read_entry(&row).expect("registry entry");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill daemon");
+    let deadline = Instant::now() + DEADLINE;
+    while pid_is_live(entry.daemon.pid) && Instant::now() < deadline {
+        sleep(POLL);
+    }
+    assert!(!pid_is_live(entry.daemon.pid), "daemon did not exit");
+
+    let lease = recovery_lease_path(&row);
+    fs::write(&lease, "{\"pid\":").expect("malformed recovery lease");
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=0\n");
+    assert!(
+        row.exists(),
+        "fresh malformed lease discarded the registry row"
+    );
+    assert!(
+        pid_is_live(entry.child.pid),
+        "fresh malformed lease killed the child"
+    );
+    assert!(
+        lease.exists(),
+        "fresh malformed lease was not retained for retry"
+    );
+
+    age_recovery_lease(&lease);
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=1\n");
+    assert_group_gone(entry.child.pgid, "stale malformed recovery lease");
+    assert!(!row.exists(), "reap retained the recovered registry row");
+    assert!(
+        !lease.exists(),
+        "reap retained the reconciled recovery lease"
+    );
+}
+
+#[test]
+fn reap_recovers_after_the_live_recovery_claimant_is_killed() {
+    let mut sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("reap-killed-claimant");
+    let stdout = start(
+        &sandbox,
+        "reap-killed-claimant",
+        &tmpdir,
+        "60",
+        std::process::id().try_into().expect("pid"),
+        &["/bin/sh", "-c", "exec sleep 60"],
+    );
+    assert!(started_pgid(&stdout, "reap-killed-claimant") > 0);
+    let row = registry_row(&sandbox, "reap-killed-claimant");
+    let entry = read_entry(&row).expect("registry entry");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill daemon");
+    let deadline = Instant::now() + DEADLINE;
+    while pid_is_live(entry.daemon.pid) && Instant::now() < deadline {
+        sleep(POLL);
+    }
+    assert!(!pid_is_live(entry.daemon.pid), "daemon did not exit");
+
+    let claimant_pid = sandbox.sleeper();
+    let host = SystemProcessIdentityHost::new();
+    let claimant = read_process_identity(&host, claimant_pid, "").expect("claimant identity");
+    let lease = recovery_lease_path(&row);
+    fs::write(&lease, identity_to_json(&claimant, None)).expect("recovery lease");
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=0\n");
+    assert!(
+        row.exists(),
+        "live claimant did not retain the registry row"
+    );
+    assert!(
+        pid_is_live(entry.child.pid),
+        "live claimant allowed child teardown"
+    );
+
+    let claimant_child = sandbox
+        .children
+        .iter_mut()
+        .find(|child| i32::try_from(child.id()).expect("pid") == claimant_pid)
+        .expect("claimant child");
+    claimant_child.kill().expect("kill claimant");
+    claimant_child.wait().expect("reap claimant");
+
+    sandbox
+        .larch()
+        .args(["bgjob", "reap"])
+        .assert()
+        .success()
+        .stdout("BGJOB_REAPED=1\n");
+    assert_group_gone(entry.child.pgid, "killed recovery claimant");
+    assert!(
+        !row.exists(),
+        "reap retained the registry row after claimant death"
+    );
+    assert!(!lease.exists(), "reap retained the dead claimant lease");
+}
+
+#[test]
+fn concurrent_reapers_leave_exactly_one_recovery_owner() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("concurrent-reapers");
+    let stdout = start(
+        &sandbox,
+        "concurrent-reapers",
+        &tmpdir,
+        "60",
+        std::process::id().try_into().expect("pid"),
+        &[
+            "/bin/sh",
+            "-c",
+            "trap '' TERM; while true; do sleep 1; done",
+        ],
+    );
+    assert!(started_pgid(&stdout, "concurrent-reapers") > 0);
+    let row = registry_row(&sandbox, "concurrent-reapers");
+    let entry = read_entry(&row).expect("registry entry");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill daemon");
+    let deadline = Instant::now() + DEADLINE;
+    while pid_is_live(entry.daemon.pid) && Instant::now() < deadline {
+        sleep(POLL);
+    }
+    assert!(!pid_is_live(entry.daemon.pid), "daemon did not exit");
+
+    let first = reap_process(&sandbox).spawn().expect("first reaper");
+    let second = reap_process(&sandbox).spawn().expect("second reaper");
+    let first = first.wait_with_output().expect("first reaper output");
+    let second = second.wait_with_output().expect("second reaper output");
+    assert!(first.status.success(), "first reaper failed: {first:?}");
+    assert!(second.status.success(), "second reaper failed: {second:?}");
+    let reaped = [first.stdout, second.stdout]
+        .into_iter()
+        .filter(|stdout| stdout == b"BGJOB_REAPED=1\n")
+        .count();
+    assert_eq!(reaped, 1, "concurrent reapers did not elect one owner");
+    assert_group_gone(entry.child.pgid, "concurrent recovery");
+    assert!(
+        !row.exists(),
+        "concurrent recovery retained the registry row"
     );
 }
 

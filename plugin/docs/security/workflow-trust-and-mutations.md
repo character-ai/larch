@@ -337,6 +337,21 @@ the registry state and an actionable teardown diagnostic; it does not publish a
 difference from the retired Python behavior, which could discard the row after
 an unverified timeout or orphan cleanup.
 
+Recovery-lease publication writes and syncs the claimant identity in a private
+temporary file before atomically linking it into the final no-replace lease
+path. A short-lived per-row advisory lock serializes inspection, stale-lease
+removal, and publication; the durable identity lease remains the recovery owner
+after that lock drops. The final lease is therefore either absent or a complete,
+parseable identity, never a partially written claimant. A fresh malformed
+regular lease is retained as a possible in-progress legacy publication and
+returns a retryable busy state. Once it passes the bounded staleness window,
+the next `wait` or `reap` reconciles it under the lock and retries acquisition.
+Unsafe paths, unreadable metadata, and unprovable live identities retain the
+registry row and fail closed. If a claimant is cancelled or dies after a valid
+claim, a later waiter validates the dead identity before safely taking recovery
+ownership. If it dies while reconciliation still holds the advisory lock, the
+operating system releases that lock first.
+
 ## Workflow Boundaries
 
 ### CI cache trust
