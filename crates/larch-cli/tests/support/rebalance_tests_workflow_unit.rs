@@ -288,6 +288,35 @@ fn changed_plan() -> PreparedPlan {
     }
 }
 
+fn approved_response(plan: &PreparedPlan) -> PlanResponse {
+    PlanResponse {
+        decision: "approved".to_owned(),
+        violations: Vec::new(),
+        harness: Some(PlanHarnessResponse {
+            proposed_shards: plan
+                .harness
+                .as_ref()
+                .expect("harness plan")
+                .proposed_shards
+                .clone(),
+            baseline_slowest_wall_clock: 10.0,
+            baseline_runner_seconds: 18.0,
+            approved_slowest_wall_clock: 12.0,
+            is_noop: false,
+        }),
+        python: Some(PlanPythonResponse {
+            assignments: plan
+                .python
+                .as_ref()
+                .expect("python plan")
+                .assignments
+                .clone(),
+            shard_count: 2,
+            is_noop: false,
+        }),
+    }
+}
+
 fn timing_reports() -> (
     larch_core::HarnessTimingReport,
     larch_core::JobTimingReport,
@@ -521,7 +550,7 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
 }
 
 #[test]
-fn plan_response_and_pull_request_text_preserve_selected_legs() {
+fn plan_response_prepares_selected_legs() {
     let plan = changed_plan();
     let current_shards = plan
         .harness
@@ -529,33 +558,7 @@ fn plan_response_and_pull_request_text_preserve_selected_legs() {
         .expect("harness plan")
         .current_shards
         .clone();
-    let response = PlanResponse {
-        decision: "approved".to_owned(),
-        violations: Vec::new(),
-        harness: Some(PlanHarnessResponse {
-            proposed_shards: plan
-                .harness
-                .as_ref()
-                .expect("harness plan")
-                .proposed_shards
-                .clone(),
-            baseline_slowest_wall_clock: 10.0,
-            baseline_runner_seconds: 18.0,
-            approved_slowest_wall_clock: 12.0,
-            is_noop: false,
-        }),
-        python: Some(PlanPythonResponse {
-            assignments: plan
-                .python
-                .as_ref()
-                .expect("python plan")
-                .assignments
-                .clone(),
-            shard_count: 2,
-            is_noop: false,
-        }),
-    };
-    let prepared = response
+    let prepared = approved_response(&plan)
         .into_prepared(
             RebalanceKind::All,
             GitHubRepositoryRef::new("owner", "repo").expect("fixture repository"),
@@ -567,7 +570,24 @@ fn plan_response_and_pull_request_text_preserve_selected_legs() {
     noop.harness.as_mut().expect("harness leg").changed = false;
     noop.python.as_mut().expect("python leg").changed = false;
     assert!(noop.is_noop());
+}
 
+#[test]
+fn pull_request_text_preserves_selected_legs() {
+    let plan = changed_plan();
+    let current_shards = plan
+        .harness
+        .as_ref()
+        .expect("harness plan")
+        .current_shards
+        .clone();
+    let prepared = approved_response(&plan)
+        .into_prepared(
+            RebalanceKind::All,
+            GitHubRepositoryRef::new("owner", "repo").expect("fixture repository"),
+            Some(current_shards),
+        )
+        .expect("complete response prepares both legs");
     let mut body_arguments = arguments();
     body_arguments.kind = RebalanceKind::All;
     body_arguments.experimental_wall_clock_override = Some("experiment-42".to_owned());
@@ -576,7 +596,10 @@ fn plan_response_and_pull_request_text_preserve_selected_legs() {
     assert!(body.contains("- Files: Makefile, python/shard-assignments.json"));
     assert!(body.contains("- Experimental wall-clock override: experiment-42"));
     assert!(body.ends_with('\n'));
+}
 
+#[test]
+fn plan_response_rejects_incomplete_selected_legs() {
     let missing = PlanResponse {
         decision: "approved".to_owned(),
         violations: Vec::new(),
@@ -663,7 +686,7 @@ fn workflow_run_helpers_require_a_single_completed_success() {
         Ok(7)
     );
     assert_eq!(
-        select_verification_run(&[successful.clone()], &[7], &head_sha),
+        select_verification_run(std::slice::from_ref(&successful), &[7], &head_sha),
         Ok(None)
     );
     let mut pending = successful.clone();
