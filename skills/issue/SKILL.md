@@ -484,7 +484,7 @@ Plus the per-item `ISSUE_<i>_*` lines accumulated above.
 
 ## Sentinel file (post-success)
 
-A small KV file `/issue` writes to mark a successful run that a parent skill (e.g. `/research`'s `## Filing findings as issues` numbered procedure) reads via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file` to confirm the child completed before continuing. Defense in depth on top of stdout `ISSUES_*` parsing.
+A small KV file `/issue` writes to mark a successful run that a parent skill (e.g. `/research`'s `## Filing findings as issues` numbered procedure) reads via `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file` to confirm the child completed before continuing. Defense in depth on top of stdout `ISSUES_*` parsing.
 
 **Path resolution** (from Step 1):
 - Explicit `--sentinel-file <path>` → `SENTINEL_PATH=<path>`, `SENTINEL_PATH_EXPLICIT=true`. Parent owns lifecycle.

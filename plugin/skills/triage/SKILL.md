@@ -179,7 +179,7 @@ Preserve bug status when a close verdict replaces a bug with follow-ups: derive 
 Parse `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, and every per-issue result key. Then run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$TRIAGE_TMPDIR/issue-completed.sentinel"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "$TRIAGE_TMPDIR/issue-completed.sentinel"
 ```
 
 Require `ISSUES_FAILED=0`, coherent per-issue results, and `VERIFIED=true`. Abort remaining follow-ups when counters or sentinel verification fail. Do not report a follow-up that did not verify.

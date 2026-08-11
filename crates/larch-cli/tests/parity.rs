@@ -46,6 +46,8 @@ impl CleanInstallCase {
             // clean-install token reads as an unknown option there too.
             "clean-install-issue-add-blocked-by"
             | "clean-install-issue-add-sub-issue"
+            | "clean-install-alias-generate"
+            | "clean-install-alias-resolve-target"
             | "clean-install-issue-create-one"
             | "clean-install-issue-fetch-issue-details"
             | "clean-install-issue-parse-input"
@@ -458,6 +460,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-admission-preflight",
         "admission",
         "preflight",
+    ),
+    CleanInstallCase::new("clean-install-alias-generate", "alias", "generate"),
+    CleanInstallCase::new(
+        "clean-install-alias-resolve-target",
+        "alias",
+        "resolve-target",
     ),
     CleanInstallCase::new(
         "clean-install-analyze-bugs-ledger",
@@ -1114,6 +1122,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze",
     ),
     CleanInstallCase::new("clean-install-repo-size", "repo", "size"),
+    CleanInstallCase::new(
+        "clean-install-residual-bash-paths",
+        "residual-bash",
+        "paths",
+    ),
     CleanInstallCase::new("clean-install-final-report-write", "final-report", "write"),
     CleanInstallCase::new(
         "clean-install-final-report-step18b",
@@ -1487,6 +1500,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-upgrade-larch-sparse-dirs",
         "upgrade-larch",
         "sparse-dirs",
+    ),
+    CleanInstallCase::new(
+        "clean-install-verify-skill-called",
+        "verify",
+        "skill-called",
     ),
 ];
 

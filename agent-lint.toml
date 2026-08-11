@@ -630,14 +630,6 @@ exclude = [
   "scripts/test-anti-halt-banners.sh",
   "scripts/test-anti-improvised-wakeup.sh",
   "scripts/test-anti-improvised-wakeup.md",
-  # python/test_alias_skill.py is the regression harness for
-  # python/cli.py alias resolve-target (closes the alias target-routing
-  # rework — adds plugin-repo detection + --private flag). Referenced only
-  # from Makefile (make py-test) and the sibling
-  # python/test_alias_skill.py (excluded under the skill-local-
-  # sibling block below). Same Makefile-only pattern as the other test-*
-  # harnesses above.
-  "python/test_alias_skill.py",
   # scripts/test-triage-structure.sh is the Makefile-only structural harness
   # for skills/triage/SKILL.md. Same dead-script false-positive pattern.
   "scripts/test-triage-structure.sh",
@@ -850,11 +842,6 @@ exclude = [
   "python/test_agents.py",
   "python/test_agents.py",
   "python/session_env.py (session restore-finalize-state)",
-  # python/test_alias_skill.py and python/tests/skills/test_skill_structure.py
-  # are the sibling contracts for the two alias-rework regression harnesses
-  # added alongside python/cli.py alias resolve-target. Same harness-
-  # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
-  "python/test_alias_skill.py",
   "scripts/test-triage-structure.md",
   # python/test_design_*.py files below are pytest harnesses for
   # Makefile-only regression targets after the /design Python migration.

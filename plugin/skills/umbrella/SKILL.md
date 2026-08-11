@@ -86,7 +86,7 @@ Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-fi
 Mechanically require `ISSUES_FAILED=0`, all expected per-item records, and `VERIFIED=true` from:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"
 ```
 
 Persist every successful leaf URL with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella record-resolved` before native graph mutation. Keep each leaf bound to its exact `/issue` per-item result. A deduplicated result is reusable only when final title/body verification matches the recorded leaf; never substitute an unrelated duplicate.
