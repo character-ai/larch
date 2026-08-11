@@ -148,6 +148,18 @@ truncated, or unavailable evidence instead of treating it as empty.
 The stale-lease finding prints the exact operator command already owned by the
 tracking-issue lifecycle. The audit does not run that command.
 
+### Rust admission core boundary
+
+`larch-core` provides the typed, effect-free migration-governance partition for
+blocker parity, receipt freshness, owner admission, and gate formatting. Its
+callers supply immutable issue, dependency, pull-request, and tree snapshots;
+the core has no Git, GitHub, network, filesystem, process, or mutation owner.
+
+This partition does not cut over `issue migration-audit`. It also does not
+claim ownership of `issue governance-gate`, whose retained governance-gate
+boundary belongs to #7681. Command adapters remain responsible for evidence
+collection, validation at transport boundaries, and any future atomic cutover.
+
 ## Workflow handoff
 
 `.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and

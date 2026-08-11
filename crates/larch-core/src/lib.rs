@@ -21,6 +21,7 @@ mod issue_mutation;
 mod logging_util;
 mod main_cache;
 mod message_error;
+mod migration_governance;
 mod object_store;
 mod ordered_json;
 mod outcome;
@@ -247,6 +248,21 @@ pub use issue_mutation::{
 };
 pub use logging_util::emit_kv;
 pub use main_cache::{resolve_main_cache_merge_group_source, validate_main_cache_source_sha};
+pub use migration_governance::{
+    BlockerSnapshotRow, FreshnessVerdict, GovernanceGateVerdict, GovernanceIssueSnapshot,
+    LeaseAuditFinding, OwnerAdmissionRequest, OwnerAdmissionVerdict, OwnerBlock, OwnerBlockParse,
+    OwnerKind, OwnerRow, ParityVerdict, PlanReceipt, REASON_BLOCKER_READ_UNAVAILABLE,
+    REASON_CLOSED_RETAINED, REASON_MISSING_NATIVE, REASON_MISSING_OWNER_BLOCK,
+    REASON_OWNER_SCAN_UNAVAILABLE, REASON_REUSE_SOURCE_UNAVAILABLE, REASON_STALE_BLOCKER_SNAPSHOT,
+    REASON_STALE_OWNER_SNAPSHOT, REASON_STALE_PLAN_BASE_SCOPE, REASON_STALE_PLAN_BODY,
+    REASON_UNDOCUMENTED_NATIVE, ReceiptDefect, ReceiptFreshnessRequest, RepositoryName,
+    RepositoryNameDefect, ScopeFile, ScopeFingerprintDefect, ScopeSnapshot,
+    audit_stale_implementation_leases, compare_blocker_parity, compute_scope_fingerprint,
+    declared_scope_paths, evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal,
+    hash_blocker_rows, hash_owner_rows, hash_plan_block, migration_requires_owner_block,
+    normalize_state, owner_keys_from_rows, parse_native_blocker_refs, parse_owner_block,
+    parse_receipt, render_receipt, upsert_receipt, validate_receipt_freshness,
+};
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
 };
