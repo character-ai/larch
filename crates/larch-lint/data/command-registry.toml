@@ -3578,11 +3578,13 @@ verb = "anti-read-poll"
 python_module = "larch.core.hook_anti_read_poll"
 python_function = "anti_read_poll_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8389
+clean_install_test = "clean-install-hook-anti-read-poll"
 
 [[commands]]
 domain = "implement"
@@ -9032,8 +9034,8 @@ rust = ["session check-live-mutation-auth", "stall-recovery validate-tier-b-publ
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"
 kind = "hook"
-python = ["hook anti-read-poll"]
-rust = []
+python = []
+rust = ["hook anti-read-poll"]
 
 [[callers]]
 path = "scripts/hook-deny-run-in-background.sh"

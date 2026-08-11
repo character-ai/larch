@@ -51,6 +51,7 @@ mod git_commands;
 mod github_repository_resolution;
 mod github_service;
 mod gitleaks;
+mod hook_commands;
 mod html;
 pub(crate) mod implement_bootstrap_continuation;
 mod implement_launcher_commands;
@@ -189,6 +190,9 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// Advisory Claude Code hook commands.
+    #[command(subcommand)]
+    Hook(HookCommand),
     /// GitHub issue reads and issue-body wire helpers.
     #[command(subcommand)]
     Issue(IssueCommand),
@@ -412,6 +416,13 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum HookCommand {
+    /// Warn after repeated identical Read calls without ever blocking the hook.
+    #[command(name = "anti-read-poll", disable_help_flag = true)]
+    AntiReadPoll(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1651,6 +1662,9 @@ fn run(
             issue_dependency_commands::block_issue_remove(&arguments.arguments),
         ),
         Domain::Git(command) => run_git(command).map_err(command_failure),
+        Domain::Hook(HookCommand::AntiReadPoll(arguments)) => {
+            Ok(hook_commands::anti_read_poll(&arguments.arguments))
+        }
         Domain::Issue(command) => Ok(match command {
             IssueCommand::AddBlockedBy(arguments) => {
                 issue_dependency_commands::add_blocked_by(&arguments.arguments)
