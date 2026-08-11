@@ -9,6 +9,12 @@ seed files. The harness compares:
 - every regular file, including binary files and non-UTF-8 output streams;
 - declared UTF-8 side-effect records, such as fake service call logs.
 
+The sole structural exception is the private
+`.home/.cache/larch/sessions/.larch-session-activity.lock` inode. It is an
+advisory `flock` coordination primitive added after the frozen session-writer
+cutover, not a wire artifact or command payload. The harness still rejects a
+symlink at that location.
+
 A mismatch reports only the differing channels and truncates large values.
 It reports mismatched file paths as whole units and names how many paths it
 omitted when the bounded diagnostic fills. Each child has a 30-second default

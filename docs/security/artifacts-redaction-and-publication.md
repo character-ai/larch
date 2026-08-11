@@ -168,16 +168,20 @@ session root, creation is private where the platform supports it, and the
 directory is revalidated before it becomes durable. It retains the confined
 `.larch-session-setup` uncommitted marker and `SecureTempDir` cleanup ownership
 until the complete ordered stdout result envelope has been written and flushed.
-Only that successful publication transfers ownership: setup then writes the
-confined keepalive, persists the directory, and removes the marker. A stdout
-write, short-write, or flush failure, and a catchable `SIGINT` or `SIGTERM`
-before complete publication, closes the private directory instead of leaving a
-caller-visible session state. An uncatchable termination before that boundary
-leaves the confined marker for the next cleanup pass; a late catchable signal
-after the flushed envelope does not retract a session the caller can already
-own. The session identity is a confined pre-publication write, so an
-identity-write failure also closes the owned temporary directory rather than
-leaving a partial committed session state.
+One atomic ownership-transfer decision races cancellation against the actual
+stdout write, flush, and commit boundary. A `SIGINT` or `SIGTERM` that wins
+before transfer returns the controlled cancellation result and closes the
+private directory, even if it arrived while the envelope writer was active. A
+signal after transfer does not retract a session whose complete envelope the
+caller can already own. Setup then writes the confined keepalive, persists the
+directory, and removes the marker. The marker binds `OWNER_PID` to the
+normalized process start time. Recovery retains an unverifiable or matching
+live owner, reclaims a missing or mismatched upgraded owner, and treats a
+legacy PID-only marker as stale only when a newer process start proves PID
+reuse. An uncatchable termination before transfer leaves that confined marker
+for the next cleanup pass. The session identity is a confined pre-publication
+write, so an identity-write failure also closes the owned temporary directory
+rather than leaving a partial committed session state.
 
 Rust-owned `bootstrap invoke` completes its Step 0 continuation in
 `crates/larch-cli/src/implement_bootstrap_continuation.rs`. Continuation-owned
@@ -205,19 +209,26 @@ Rust-owned `cleanup run` removes stale session-cache and temporary entries by
 age and bounded nested-activity checks. `LARCH_CLEANUP_RETENTION_DAYS`
 controls the retention window. Before a sweep it protects directories named by
 the current session environment and by current session pointers, so a live
-session is retained even when its top-level timestamp is old. An unreadable or
-malformed current pointer skips the age-based sweep rather than risking a live
-session. A prior crash can also leave a private, uncommitted setup marker:
-cleanup immediately recovers only a direct, confined non-symlinked directory
-below an approved session root whose recorded setup owner is no longer live.
-Malformed markers, uncertain owner liveness, live setups, and committed
-sessions are retained. Every target is confined below a canonical temporary
-root; symlinked entries are skipped rather than followed. Cleanup may unlink
-only a dangling design-session pointer, and reaps a stale implement pointer
-only when it is a regular file. Matching loose temporary files do not receive
-nested-directory activity protection. Deletion is permanent and does not
-redact first. A failed directory activity scan skips that directory, while a
-failed top-level enumeration skips that pass. See
+session is retained even when its top-level timestamp is old. The authoritative
+PID-keyed pointers remain under `$HOME/.cache/larch/sessions/` even when XDG
+redirects session artifacts. Pointer publication, pointer reaping, and the
+final recursive-removal decision share a confined advisory activity lock. At
+that final decision cleanup re-reads the current pointers and revalidates the
+root, target shape, age, and nested activity while holding the lease; an
+unreadable pointer or unavailable lease skips age-based removal rather than
+risking a concurrent activation or resume. A prior crash can also leave a
+private, uncommitted setup marker: cleanup immediately recovers only a direct,
+confined non-symlinked directory below an approved session root whose recorded
+setup owner is proven stale. Malformed markers, uncertain owner liveness, live
+setups, and committed sessions are retained. Implement-tempdir discovery also
+requires a direct non-symlinked candidate and non-symlinked sentinel and
+keepalive components below a supplied root; it never follows those routing
+files outside the root. Cleanup may unlink only a dangling design-session
+pointer, and reaps a stale implement pointer only when it is a regular file.
+Matching loose temporary files do not receive nested-directory activity
+protection. Deletion is permanent and does not redact first. A failed directory
+activity scan skips that directory, while a failed top-level enumeration skips
+that pass. See
 [Configuration and Permissions](../configuration-and-permissions.md) for the
 operator setting and [Larch Run Logs](../run-logs.md#retention) for run-log
 retention.

@@ -92,6 +92,20 @@ pub fn cleanup_cache_sessions_root(
     base.join("larch").join("sessions")
 }
 
+/// Return the legacy HOME-backed root for PID-keyed current-session pointers.
+///
+/// Unlike durable session directories, these pointers intentionally retain the
+/// historical `$HOME/.cache` location even when `XDG_CACHE_HOME` redirects
+/// session artifact storage. Cleanup and publication must use this one shared
+/// derivation so they synchronize over the same authority.
+#[must_use]
+pub fn session_pointer_root(home: Option<&OsStr>) -> PathBuf {
+    PathBuf::from(home.unwrap_or_else(|| OsStr::new("")))
+        .join(".cache")
+        .join("larch")
+        .join("sessions")
+}
+
 /// Return the roots accepted for implementation session directories.
 #[must_use]
 pub fn implement_session_roots(
@@ -122,7 +136,7 @@ mod tests {
     use super::{
         IMPLEMENT_TMPDIR_TTL_SECONDS, allowed_session_roots, cleanup_cache_sessions_root,
         design_tmpdir_syntax_error, implement_session_roots, implement_tmpdir_ttl,
-        prefers_implement_candidate,
+        prefers_implement_candidate, session_pointer_root,
     };
     use std::{ffi::OsStr, path::PathBuf};
 
@@ -186,6 +200,14 @@ mod tests {
         assert_eq!(
             cleanup_cache_sessions_root(None, Some(OsStr::new(""))),
             PathBuf::from("/tmp/.cache/larch/sessions")
+        );
+        assert_eq!(
+            session_pointer_root(Some(OsStr::new("/home/u"))),
+            PathBuf::from("/home/u/.cache/larch/sessions")
+        );
+        assert_eq!(
+            session_pointer_root(None),
+            PathBuf::from(".cache/larch/sessions")
         );
     }
 

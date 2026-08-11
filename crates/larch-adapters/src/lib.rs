@@ -74,10 +74,11 @@ pub use session_env::{
     resolve_trusted_design_env_source, write_confined_file,
 };
 pub use session_lifecycle::{
-    CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SessionIdOutcome,
+    CLEANUP_AUDIT_LOG_NAME, ImplementTmpdirQuery, SESSION_ACTIVITY_LOCK_NAME, SessionActivityLock,
+    SessionIdOutcome, SessionSetupOwner, SessionSetupOwnerObserver, SessionSetupOwnerProbe,
     UNCOMMITTED_SESSION_SETUP_MARKER, append_cleanup_audit, commit_uncommitted_session_setup,
-    parent_process_id, recover_uncommitted_session_setups, remove_session_tmpdir,
-    resolve_implement_tmpdir, validate_design_tmpdir, write_session_id,
+    lock_session_activity, parent_process_id, recover_uncommitted_session_setups,
+    remove_session_tmpdir, resolve_implement_tmpdir, validate_design_tmpdir, write_session_id,
     write_uncommitted_session_setup_marker,
 };
 pub use vendor_reviewers::{

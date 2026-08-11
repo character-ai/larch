@@ -18,6 +18,12 @@ const UPDATE_GOLDENS_ENV: &str = "LARCH_UPDATE_PARITY_GOLDENS";
 const PLATFORM_TEMP_ROOT: &str = "/tmp";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const DIAGNOSTIC_PATH_LIMIT: usize = 8;
+/// A private `flock` inode used only to serialize session activation and
+/// cleanup. It is neither a wire artifact nor a command payload, and the
+/// frozen Python owner predates it, so black-box parity deliberately excludes
+/// this one implementation-detail file while still rejecting a symlink there.
+const SESSION_ACTIVITY_LOCK_RELATIVE: &str =
+    ".home/.cache/larch/sessions/.larch-session-activity.lock";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
 static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
@@ -428,6 +434,9 @@ fn capture_directory(
         let relative = path
             .strip_prefix(root)
             .map_err(|error| format!("derive sandbox-relative path: {error}"))?;
+        if relative == Path::new(SESSION_ACTIVITY_LOCK_RELATIVE) {
+            continue;
+        }
         let key = path_key(relative)?;
         let bytes = fs::read(&path)
             .map_err(|error| format!("read sandbox file {}: {error}", path.display()))?;
@@ -672,7 +681,32 @@ mod tests {
         Capture, CapturedContent, NormalizationRule, Program, mismatch_diagnostic, normalize_text,
         validate_program,
     };
-    use std::{collections::BTreeMap, path::Path};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+        path::Path,
+    };
+    use tempfile::tempdir;
+
+    #[test]
+    fn capture_tree_excludes_only_the_session_activity_lock_inode() {
+        let directory = tempdir().expect("parity sandbox");
+        let root = directory.path();
+        let lock = root.join(super::SESSION_ACTIVITY_LOCK_RELATIVE);
+        fs::create_dir_all(lock.parent().expect("lock parent")).expect("lock parent");
+        fs::write(&lock, "").expect("lock inode");
+        fs::write(root.join("unrelated.lock"), "kept").expect("ordinary artifact");
+
+        let (files, side_effects) =
+            super::capture_tree(root, &BTreeSet::new()).expect("capture tree");
+
+        assert!(!files.contains_key(super::SESSION_ACTIVITY_LOCK_RELATIVE));
+        assert_eq!(
+            files.get("unrelated.lock"),
+            Some(&super::CapturedContent::Text("kept".to_owned()))
+        );
+        assert!(side_effects.is_empty());
+    }
 
     #[test]
     fn normalization_replaces_only_named_nondeterminism() {

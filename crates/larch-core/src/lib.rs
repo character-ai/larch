@@ -388,6 +388,7 @@ pub use session_state::{
     IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, IMPLEMENT_TMPDIR_TTL_SECONDS,
     allowed_session_roots, cleanup_cache_sessions_root, design_tmpdir_syntax_error,
     implement_session_roots, implement_tmpdir_ttl, prefers_implement_candidate,
+    session_pointer_root,
 };
 pub use shell::shell_quote;
 pub use slack_announce::{

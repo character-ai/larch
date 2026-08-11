@@ -329,6 +329,25 @@ comparison, field equality, or closed parser must handle
 interpolated labels, markers, refs, and identifiers. Do not interpolate
 untrusted data into a regular expression or shell program.
 
+Session setup records its private uncommitted owner as a PID plus normalized
+process start time, not as a bare PID. Cleanup retains any marker whose live
+identity is unverifiable or matches; it may reclaim a legacy PID-only marker
+only when absence or a newer start time proves the original owner is gone.
+The setup writer uses one cancellation-versus-transfer decision after the
+ordered stdout envelope is written and flushed, so a signal before transfer
+cannot become a silent successful commit and a signal after transfer cannot
+retract a published session.
+
+Current session pointers are a separate `$HOME/.cache/larch/sessions/`
+authority even when session artifacts use `XDG_CACHE_HOME`. Pointer publishers,
+pointer reapers, and cleanup's recursive deletion boundary share a confined
+advisory lease. Cleanup re-reads pointer state and revalidates the target while
+holding that lease; a malformed pointer or unavailable lease retains the
+candidate. The lease coordinates larch's cooperating processes and is not a
+same-user authentication boundary. Implement-tempdir routing likewise accepts
+only direct non-symlinked candidates with non-symlinked sentinel and keepalive
+components beneath an approved root.
+
 Rust owns every bgjob command: durable registry records, `bgjob adapt`, and the
 daemon `start`, `wait`, `status`, and `reap` surfaces
 (`crates/larch-core/src/bgjob.rs`, `crates/larch-core/src/bgjob_daemon.rs`,
@@ -657,11 +676,12 @@ URL overrides remain operator-supplied trust inputs.
 Rust-owned `/cleanup` and SessionStart cleanup use fixed roots, name
 allowlists, age gates, bounded nested-activity checks, and symlink rejection.
 The sweep collects session directories named by live environment state and
-current pointers before it considers deletion; those live directories remain
-protected regardless of age. An unreadable current pointer makes the
-age-based sweep fail closed. Retention is not a lock for an unknown or
-unreferenced stale session. Stale private session state can be deleted
-permanently when it passes those gates.
+current pointers before it considers deletion, then re-reads that pointer
+authority under the activity lease immediately before recursive removal; those
+live directories remain protected regardless of age. An unreadable current
+pointer or unavailable lease makes age-based cleanup fail closed. Retention is
+not a lock for an unknown or unreferenced stale session. Stale private session
+state can be deleted permanently when it passes those gates.
 
 SessionStart maintenance hooks are fail-soft and non-blocking. They must not
 turn local paths, logs, or subprocess diagnostics into advisory instructions.

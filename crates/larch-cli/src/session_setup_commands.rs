@@ -10,14 +10,15 @@ use crate::{
     github_repository_resolution, session_env_commands,
 };
 use larch_adapters::{
-    PathSafetyError, PathSafetyErrorKind, SecureTempDir, TemporaryRoot,
-    commit_uncommitted_session_setup, ensure_directory_chain, path_under, read_kv_raw,
+    PathSafetyError, PathSafetyErrorKind, SecureTempDir, SessionSetupOwner,
+    SystemProcessIdentityHost, TemporaryRoot, commit_uncommitted_session_setup,
+    ensure_directory_chain, path_under, read_kv_raw,
     runtime::{Cancellation, LarchRuntime},
     write_confined_file, write_session_id, write_uncommitted_session_setup_marker,
 };
 use larch_core::{
     RepositoryRead, allowed_session_roots, binary_on_path, cleanup_cache_sessions_root,
-    validate_repo_root_value,
+    read_process_identity, validate_repo_root_value,
 };
 use std::{
     collections::BTreeMap,
@@ -27,6 +28,10 @@ use std::{
     io::{self, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
     thread,
     time::Duration,
 };
@@ -66,6 +71,12 @@ const TEST_PAUSE_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CR
 const TEST_FAIL_AFTER_CREATION: &str = "LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION";
 const TEST_PAUSE_BEFORE_PUBLICATION: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION";
 const TEST_PUBLICATION_PAUSE_MARKER: &str = ".larch-session-setup-publication-paused";
+const TEST_PAUSE_DURING_STDOUT_WRITE: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_WRITE";
+const TEST_PAUSE_DURING_STDOUT_FLUSH: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_FLUSH";
+const TEST_STDOUT_WRITE_PAUSE_MARKER: &str = ".larch-session-setup-write-paused";
+const TEST_STDOUT_FLUSH_PAUSE_MARKER: &str = ".larch-session-setup-flush-paused";
+const TEST_PAUSE_AFTER_TRANSFER: &str = "LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_TRANSFER";
+const TEST_TRANSFER_PAUSE_MARKER: &str = ".larch-session-setup-transfer-paused";
 const TEST_PAUSE_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Set up one session and emit its legacy KEY=value envelope.
@@ -94,7 +105,8 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
         write_session_env: text(parsed.value("--write-session-env")),
         caller_env: text(parsed.value("--caller-env")),
     };
-    let listener = match SetupSignalListener::install() {
+    let transfer = SetupTransfer::new();
+    let listener = match SetupSignalListener::install(transfer.clone()) {
         Ok(listener) => listener,
         Err(message) => {
             eprintln!("session-setup.sh: {message}");
@@ -102,7 +114,7 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
         }
     };
     match run_setup(&options, listener.cancellation()) {
-        Ok(pending) => emit_setup(pending, listener.cancellation()),
+        Ok(pending) => emit_setup(pending, listener.cancellation(), &transfer),
         Err(failure) => emit_setup_failure(failure),
     }
 }
@@ -153,6 +165,59 @@ struct SetupResult {
 struct PendingSetup {
     result: SetupResult,
     session: PendingSessionDirectory,
+}
+
+const TRANSFER_PENDING: u8 = 0;
+const TRANSFER_CANCELLED: u8 = 1;
+const TRANSFERRED: u8 = 2;
+
+/// One linearization point for cancellation and session ownership transfer.
+///
+/// Signals race this state transition rather than a best-effort cancellation
+/// check. The winner decides whether the flushed stdout envelope transfers the
+/// directory or its private owner removes it.
+#[derive(Clone)]
+struct SetupTransfer {
+    state: Arc<AtomicU8>,
+}
+
+impl SetupTransfer {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(AtomicU8::new(TRANSFER_PENDING)),
+        }
+    }
+
+    fn cancel(&self) {
+        let _ignored = self.state.compare_exchange(
+            TRANSFER_PENDING,
+            TRANSFER_CANCELLED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.state.load(Ordering::Acquire) == TRANSFER_CANCELLED
+    }
+
+    fn transfer(&self) -> Result<(), SetupFailure> {
+        match self.state.compare_exchange(
+            TRANSFER_PENDING,
+            TRANSFERRED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => Ok(()),
+            Err(TRANSFER_CANCELLED) => Err(cancelled_setup_failure()),
+            Err(_) => Err(SetupFailure {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "session-setup.sh: session ownership transfer was already finalized\n"
+                    .to_owned(),
+            }),
+        }
+    }
 }
 
 /// A private setup directory before its stdout envelope can be published.
@@ -237,14 +302,14 @@ struct SetupSignalListener {
 }
 
 impl SetupSignalListener {
-    fn install() -> Result<Self, String> {
+    fn install(transfer: SetupTransfer) -> Result<Self, String> {
         let runtime = LarchRuntime::new()
             .map_err(|error| format!("failed to install setup cancellation listener: {error}"))?;
         let cancellation = Cancellation::new();
         let (ready_sender, ready_receiver) = tokio::sync::oneshot::channel();
         let signal_cancellation = cancellation.clone();
         let task = runtime.spawn(async move {
-            listen_for_setup_shutdown(&signal_cancellation, ready_sender).await;
+            listen_for_setup_shutdown(&signal_cancellation, &transfer, ready_sender).await;
         });
         let ready = runtime.block_on(async move {
             ready_receiver
@@ -272,6 +337,7 @@ impl Drop for SetupSignalListener {
 
 async fn listen_for_setup_shutdown(
     cancellation: &Cancellation,
+    transfer: &SetupTransfer,
     ready_sender: tokio::sync::oneshot::Sender<Result<(), String>>,
 ) {
     #[cfg(unix)]
@@ -305,12 +371,17 @@ async fn listen_for_setup_shutdown(
                 }
             }
         }
+        // The compare-and-exchange is the cancellation side of the ownership
+        // transfer linearization point. It must win before the broad token is
+        // published so a concurrent emitter cannot observe only the token.
+        transfer.cancel();
         cancellation.cancel();
     }
     #[cfg(not(unix))]
     {
         let _ignored = ready_sender.send(Ok(()));
         if tokio::signal::ctrl_c().await.is_ok() {
+            transfer.cancel();
             cancellation.cancel();
         }
     }
@@ -446,13 +517,17 @@ fn preflight_notices(options: &SetupOptions) -> Result<Vec<String>, SetupFailure
 
 fn check_setup_cancellation(cancellation: &Cancellation) -> Result<(), SetupFailure> {
     if cancellation.is_cancelled() {
-        return Err(SetupFailure {
-            exit_code: 130,
-            stdout: String::new(),
-            stderr: "session-setup.sh: setup cancelled\n".to_owned(),
-        });
+        return Err(cancelled_setup_failure());
     }
     Ok(())
+}
+
+fn cancelled_setup_failure() -> SetupFailure {
+    SetupFailure {
+        exit_code: 130,
+        stdout: String::new(),
+        stderr: "session-setup.sh: setup cancelled\n".to_owned(),
+    }
 }
 
 fn test_setup_after_directory_creation(
@@ -535,9 +610,20 @@ fn create_session_directory(prefix: &str) -> Result<PendingSessionDirectory, Set
             stdout: String::new(),
             stderr: format!("session-setup.sh: {message}\n"),
         })?;
-    if let Err(error) =
-        write_uncommitted_session_setup_marker(&root, handle.path(), std::process::id())
-    {
+    let owner = match setup_owner_identity() {
+        Ok(owner) => owner,
+        Err(message) => {
+            return Err(cleanup_owned_session_directory(
+                handle,
+                SetupFailure {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: format!("session-setup.sh: {message}\n"),
+                },
+            ));
+        }
+    };
+    if let Err(error) = write_uncommitted_session_setup_marker(&root, handle.path(), &owner) {
         return Err(cleanup_owned_session_directory(
             handle,
             SetupFailure {
@@ -568,6 +654,20 @@ fn create_session_directory(prefix: &str) -> Result<PendingSessionDirectory, Set
         id,
         cache_warning,
     })
+}
+
+/// Capture a stable-enough identity for the process that owns an unpublished
+/// setup directory. A marker without a start time would conflate a reused PID
+/// with the original setup owner during crash recovery.
+fn setup_owner_identity() -> Result<SessionSetupOwner, String> {
+    let pid = std::process::id();
+    let process_id = i32::try_from(pid)
+        .map_err(|_error| "failed to record session setup owner: invalid process ID".to_owned())?;
+    let host = SystemProcessIdentityHost::new();
+    let identity = read_process_identity(&host, process_id, "")
+        .ok_or_else(|| "failed to record session setup owner identity".to_owned())?;
+    SessionSetupOwner::new(pid, &identity.start_time)
+        .ok_or_else(|| "failed to record session setup owner identity".to_owned())
 }
 
 fn cleanup_owned_session_directory(
@@ -653,7 +753,11 @@ fn append_nonempty_reviewer_rows(
     }
 }
 
-fn emit_setup(pending: PendingSetup, cancellation: &Cancellation) -> ExitCode {
+fn emit_setup(
+    pending: PendingSetup,
+    cancellation: &Cancellation,
+    transfer: &SetupTransfer,
+) -> ExitCode {
     let PendingSetup { result, session } = pending;
     if let Err(failure) = test_setup_before_publication(&session, cancellation) {
         return emit_setup_failure(session.discard(failure));
@@ -664,8 +768,12 @@ fn emit_setup(pending: PendingSetup, cancellation: &Cancellation) -> ExitCode {
     let publication = {
         let stdout = io::stdout();
         let mut stdout = stdout.lock();
-        write_setup_envelope(&result, &mut stdout)
+        let mut writer = SetupPublicationWriter::new(&mut stdout, &session, cancellation);
+        write_setup_envelope(&result, &mut writer)
     };
+    if transfer.is_cancelled() {
+        return emit_setup_failure(session.discard(cancelled_setup_failure()));
+    }
     if let Err(error) = publication {
         return emit_setup_failure(session.discard(SetupFailure {
             exit_code: 1,
@@ -673,6 +781,10 @@ fn emit_setup(pending: PendingSetup, cancellation: &Cancellation) -> ExitCode {
             stderr: format!("session-setup.sh: failed to publish session setup: {error}\n"),
         }));
     }
+    if let Err(failure) = transfer.transfer() {
+        return emit_setup_failure(session.discard(failure));
+    }
+    test_setup_after_transfer(&session, cancellation);
     if let Err(failure) = session.commit_after_publication() {
         return emit_setup_failure(failure);
     }
@@ -680,6 +792,102 @@ fn emit_setup(pending: PendingSetup, cancellation: &Cancellation) -> ExitCode {
         write_setup_stderr(&format!("{diagnostic}\n"));
     }
     ExitCode::from(result.exit_code)
+}
+
+/// Pause after ownership has transferred so the signal tests can prove a late
+/// signal cannot retract a fully published session. This is test-only and no
+/// fallible work is allowed to turn that transferred state back into cleanup.
+fn test_setup_after_transfer(session: &PendingSessionDirectory, cancellation: &Cancellation) {
+    if env::var(TEST_PAUSE_AFTER_TRANSFER).as_deref() != Ok("true") {
+        return;
+    }
+    let marker = session.path().join(TEST_TRANSFER_PAUSE_MARKER);
+    if write_confined_file(
+        &marker,
+        "paused\n",
+        0o600,
+        "session setup transfer test marker",
+    )
+    .is_err()
+    {
+        return;
+    }
+    while !cancellation.is_cancelled() {
+        thread::sleep(TEST_PAUSE_INTERVAL);
+    }
+}
+
+/// Writer wrapper that exposes deterministic test barriers inside the actual
+/// `Write` and `flush` calls used for stdout publication.
+struct SetupPublicationWriter<'a, W> {
+    inner: &'a mut W,
+    session: &'a PendingSessionDirectory,
+    cancellation: &'a Cancellation,
+    write_barrier_seen: bool,
+    flush_barrier_seen: bool,
+}
+
+impl<'a, W> SetupPublicationWriter<'a, W> {
+    const fn new(
+        inner: &'a mut W,
+        session: &'a PendingSessionDirectory,
+        cancellation: &'a Cancellation,
+    ) -> Self {
+        Self {
+            inner,
+            session,
+            cancellation,
+            write_barrier_seen: false,
+            flush_barrier_seen: false,
+        }
+    }
+
+    fn pause(&self, enabled: &str, marker: &str, boundary: &str) -> io::Result<()> {
+        if env::var(enabled).as_deref() != Ok("true") {
+            return Ok(());
+        }
+        write_confined_file(
+            &self.session.path().join(marker),
+            "paused\n",
+            0o600,
+            "session setup publication test marker",
+        )
+        .map_err(io::Error::other)?;
+        while !self.cancellation.is_cancelled() {
+            thread::sleep(TEST_PAUSE_INTERVAL);
+        }
+        Err(io::Error::other(
+            // `write_all` retries `Interrupted`, which would cross this
+            // deterministic cancellation boundary and publish the envelope.
+            format!("session setup cancelled during stdout {boundary}"),
+        ))
+    }
+}
+
+impl<W: io::Write> io::Write for SetupPublicationWriter<'_, W> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if !self.write_barrier_seen {
+            self.write_barrier_seen = true;
+            self.pause(
+                TEST_PAUSE_DURING_STDOUT_WRITE,
+                TEST_STDOUT_WRITE_PAUSE_MARKER,
+                "write",
+            )?;
+        }
+        self.inner.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.flush_barrier_seen {
+            self.flush_barrier_seen = true;
+            self.pause(
+                TEST_PAUSE_DURING_STDOUT_FLUSH,
+                TEST_STDOUT_FLUSH_PAUSE_MARKER,
+                "flush",
+            )?;
+        }
+        self.inner.flush()
+    }
 }
 
 /// Write and flush the exact legacy stdout envelope before transferring state.

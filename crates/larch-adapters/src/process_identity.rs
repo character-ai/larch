@@ -5,10 +5,12 @@ use crate::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ExternalProcessRunner, ExternalProgram, HostUtilityProgram, IdentityProbeOutput,
-    PROCESS_IDENTITY_PS_TIMEOUT, ProcessErrorKind, ProcessIdentityHost, ProcessRequest,
-    TerminateSignal,
+    ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
+    IdentityProbeOutput, PROCESS_IDENTITY_PS_TIMEOUT, ProcessErrorKind, ProcessIdentityHost,
+    ProcessRequest, TerminateSignal,
 };
+
+const SYSTEM_HOST_UTILITY_PATH: &str = "/usr/bin:/bin";
 use nix::{
     sys::signal::{Signal, kill, killpg},
     unistd::{Pid, getpgid, getppid},
@@ -62,6 +64,19 @@ impl SystemProcessIdentityHost {
             NonZeroUsize::new(1024 * 1024).unwrap_or(NonZeroUsize::MIN),
         )
         .map_err(|_| ProcessErrorKind::Input)?;
+        // `lstart` is persisted in session-setup markers and must remain
+        // parseable when reconciling legacy PID-only markers.
+        // Session setup and parity isolation both scrub `PATH`. Process
+        // identity is a closed host-utility operation, so resolve `ps` only
+        // through the platform system directories rather than weakening
+        // PID-reuse protection when the caller supplies a partial path.
+        let request = if program == HostUtilityProgram::Ps {
+            request
+                .with_environment(ChildEnvironment::LcAll, "C")
+                .with_environment(ChildEnvironment::Path, SYSTEM_HOST_UTILITY_PATH)
+        } else {
+            request
+        };
         let cancellation = Cancellation::new();
         match self
             .runtime
