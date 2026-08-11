@@ -187,7 +187,8 @@ impl PendingSessionDirectory {
                 &self.root, &path, failure,
             ));
         }
-        if let Err(error) = commit_uncommitted_session_setup(&self.root, &path) {
+        let marker_commit = commit_uncommitted_session_setup(&self.root, &path);
+        if let Err(error) = marker_commit {
             let failure = SetupFailure {
                 exit_code: 1,
                 stdout: String::new(),
