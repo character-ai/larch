@@ -1233,6 +1233,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "sync-local-main",
     ),
     CleanInstallCase::new(
+        "clean-install-hook-anti-read-poll",
+        "hook",
+        "anti-read-poll",
+    ),
+    CleanInstallCase::new(
         "clean-install-plugin-read-version",
         "plugin",
         "read-version",

@@ -39,6 +39,7 @@ Commands:
   external-defaults  External tool default readers
   example            Non-production commands that exercise dispatcher wiring
   git                Local Git repository commands
+  hook               Advisory Claude Code hook commands
   issue              GitHub issue reads and issue-body wire helpers
   plan-block         The `larch:plan` issue-body block carrying the `/design` handoff
   status             Inspect the installed larch and external tool health

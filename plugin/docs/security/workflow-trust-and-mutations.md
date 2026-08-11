@@ -162,6 +162,28 @@ confining owner still canonicalizes the write parent, rejects a symlinked parent
 or leaf, and revalidates before replacement, so the exemption widens the accepted
 path spellings and not the set of accepted write destinations.
 
+### Advisory anti-read-poll hook
+
+`hook anti-read-poll` is Rust-owned by
+`crates/larch-cli/src/hook_commands.rs`. Its shipped wrapper only forwards
+stdin to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh hook anti-read-poll`; it does
+not retain a Python fallback or execute `bin/larch` directly. The hook treats
+the JSON event and existing local state as untrusted data. It records only
+fixed-format rows containing hashes of the cwd, session key, and requested
+path, never a raw requested path, and its sole visible output is the fixed
+advisory reminder envelope.
+
+On supported Unix platforms, the owner opens the temporary root and
+`larch-read-poll` state directory with no-follow directory descriptors,
+revalidates directory identity around mutation, accepts only regular state
+leaves, and replaces rows through collision-resistant, mode-0600 temporary
+files and a same-directory atomic rename. It rejects swapped, symlinked,
+non-regular, and multiply linked write entries before replacement. Missing
+Unix primitives, malformed input or rows, local filesystem failures, and brief
+lock contention are advisory failures: the hook emits nothing and exits zero
+rather than blocking a `Read` event. Only the third matching in-window read
+emits the reminder.
+
 ## Mutation Authorization and State Integrity
 
 Every external mutation requires authority from the current workflow step or a
