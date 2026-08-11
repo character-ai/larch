@@ -815,7 +815,7 @@ def load_blocker_snapshot(
 def _tracked_paths_at_sha(
     runner: Runner, *, sha: str, cwd: str
 ) -> frozenset[str]:
-    result = runner.run(["git", "ls-tree", "-r", "--name-only", "-z", sha], cwd=cwd)
+    result = git.ls_tree_paths(runner, sha, cwd=cwd)
     if result.returncode != 0:
         raise ShipError("base-scope-ls-tree-failed")
     raw = result.stdout
@@ -828,7 +828,7 @@ def _tracked_paths_at_sha(
 def _blob_oid_at_sha(
     runner: Runner, *, sha: str, path: str, cwd: str
 ) -> str:
-    result = runner.run(["git", "ls-tree", "-z", sha, "--", path], cwd=cwd)
+    result = git.ls_tree_entry(runner, sha, path, cwd=cwd)
     if result.returncode != 0:
         raise ShipError("base-scope-blob-lookup-failed")
     payload = result.stdout.split("\0", 1)[0].strip()
