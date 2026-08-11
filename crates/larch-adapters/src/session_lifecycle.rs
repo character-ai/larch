@@ -7,25 +7,28 @@
 //! [`crate::file_io`] instead of re-deriving path safety here.
 
 use crate::{
-    PathIntent, TemporaryRoot, atomic_write_utf8, open_confined_read, parent_directory,
-    read_first_raw_key, safe_output_parent, write_confined_file, writer_target_allowed,
+    PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain, open_confined_read,
+    parent_directory, read_utf8, safe_output_parent, write_confined_file, writer_target_allowed,
 };
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use larch_core::{
-    IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, design_tmpdir_syntax_error,
-    prefers_implement_candidate,
+    IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, KvDocument, ParseOptions,
+    design_tmpdir_syntax_error, normalize_command_signature, prefers_implement_candidate,
 };
 use std::{
+    env,
     ffi::OsStr,
     fs::{self, OpenOptions},
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
 
 #[cfg(unix)]
-use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+use nix::fcntl::{Flock, FlockArg};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
 /// Basename of the append-only cleanup audit trail written before removal.
 pub const CLEANUP_AUDIT_LOG_NAME: &str = "larch-cleanup-audit.log";
@@ -36,9 +39,137 @@ pub const CLEANUP_AUDIT_LOG_NAME: &str = "larch-cleanup-audit.log";
 /// before that point leaves the marker behind for the confined cleanup sweep.
 pub const UNCOMMITTED_SESSION_SETUP_MARKER: &str = ".larch-session-setup";
 
+/// Basename of the advisory lock shared by session activation and cleanup.
+pub const SESSION_ACTIVITY_LOCK_NAME: &str = ".larch-session-activity.lock";
+
 const UNCOMMITTED_SETUP_STATE: &str = "STATE=uncommitted";
 const UNCOMMITTED_SETUP_OWNER_PID_PREFIX: &str = "OWNER_PID=";
+const UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX: &str = "OWNER_START_TIME=";
 const UNCOMMITTED_SETUP_MARKER_MAX_BYTES: u64 = 256;
+
+/// Stable identity of a process that owns an unpublished session setup.
+///
+/// The start-time component distinguishes a new process from a recycled PID.
+/// It intentionally excludes a command signature because recovery never signals
+/// this process; it only decides whether the marker's owner is still live.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionSetupOwner {
+    pid: u32,
+    start_time: String,
+}
+
+impl SessionSetupOwner {
+    /// Construct an owner identity from a positive PID and a non-empty `ps`
+    /// start-time value.
+    #[must_use]
+    pub fn new(pid: u32, start_time: &str) -> Option<Self> {
+        let start_time = normalize_command_signature(start_time);
+        (pid != 0 && !start_time.is_empty()).then_some(Self { pid, start_time })
+    }
+
+    /// Return the recorded process identifier.
+    #[must_use]
+    pub const fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    /// Return the normalized process start-time identity.
+    #[must_use]
+    pub fn start_time(&self) -> &str {
+        &self.start_time
+    }
+}
+
+/// Live-state answer for one persisted session-setup owner.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SessionSetupOwnerProbe {
+    /// No process currently owns the recorded PID.
+    Missing,
+    /// A process owns the PID and supplied its normalized start-time identity.
+    Live { start_time: String },
+    /// The platform could not establish liveness safely.
+    Unverifiable,
+}
+
+/// Narrow process-identity seam used by uncommitted-setup recovery.
+pub trait SessionSetupOwnerObserver {
+    /// Probe one process identity without signaling or otherwise mutating it.
+    fn probe(&self, pid: u32) -> SessionSetupOwnerProbe;
+}
+
+/// An exclusive advisory lease over session-pointer publication and removal.
+///
+/// The lease is intentionally held only at the activation/removal boundary, so
+/// slow eligibility scans do not block a concurrent session from becoming live.
+pub struct SessionActivityLock {
+    #[cfg(unix)]
+    _flock: Flock<fs::File>,
+    #[cfg(not(unix))]
+    _file: fs::File,
+}
+
+/// Acquire the session-activity lease below one canonical cache-sessions root.
+///
+/// # Errors
+///
+/// Returns an error when the root or lock path cannot be confined, opened, or
+/// exclusively locked. Callers must fail closed rather than deleting a session
+/// while activation state is unavailable.
+pub fn lock_session_activity(root_path: &Path) -> Result<SessionActivityLock, String> {
+    let root_path = if root_path.is_absolute() {
+        root_path.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|error| format!("resolve relative session activity root: {error}"))?
+            .join(root_path)
+    };
+    ensure_directory_chain(&root_path).map_err(|error| error.to_string())?;
+    let root = TemporaryRoot::resolve(Some(&root_path)).map_err(|error| error.to_string())?;
+    let target = root.path().join(SESSION_ACTIVITY_LOCK_NAME);
+    let confined = root
+        .confine(&target, PathIntent::Write)
+        .map_err(|error| error.to_string())?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+    }
+    let file = options
+        .open(confined.path())
+        .map_err(|error| format!("session activity lock open failed: {error}"))?;
+    let confined = root
+        .confine(&target, PathIntent::Write)
+        .map_err(|error| error.to_string())?;
+    confined.revalidate().map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    let result = {
+        // Change the opened inode rather than resolving the pathname a third
+        // time, so a replacement cannot redirect this privacy mutation.
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("session activity lock permissions failed: {error}"))?;
+        let flock = Flock::lock(file, FlockArg::LockExclusive)
+            .map_err(|(_file, error)| format!("session activity lock failed: {error}"))?;
+        root.revalidate().map_err(|error| error.to_string())?;
+        confined.revalidate().map_err(|error| error.to_string())?;
+        let visible = fs::symlink_metadata(confined.path())
+            .map_err(|error| format!("session activity lock inspect failed: {error}"))?;
+        let opened = flock
+            .metadata()
+            .map_err(|error| format!("session activity lock descriptor inspect failed: {error}"))?;
+        if opened.dev() != visible.dev() || opened.ino() != visible.ino() {
+            Err("session activity lock changed while acquiring lease".to_owned())
+        } else {
+            Ok(SessionActivityLock { _flock: flock })
+        }
+    };
+    #[cfg(not(unix))]
+    let result = {
+        let _ = confined;
+        Ok(SessionActivityLock { _file: file })
+    };
+    result
+}
 
 /// Whether [`write_session_id`] minted a new identity or kept the existing one.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -150,21 +281,40 @@ pub fn resolve_implement_tmpdir(query: &ImplementTmpdirQuery<'_>) -> String {
     let mut best = String::new();
     let mut best_mtime = -1_i64;
     for root in query.roots {
-        let Ok(entries) = fs::read_dir(root) else {
+        if !root.is_absolute() {
+            continue;
+        }
+        let Ok(canonical_root) = fs::canonicalize(root) else {
+            continue;
+        };
+        let Ok(root_guard) = TemporaryRoot::resolve(Some(&canonical_root)) else {
+            continue;
+        };
+        let Ok(entries) = fs::read_dir(root_guard.path()) else {
             continue;
         };
         for entry in entries.flatten() {
-            let candidate = entry.path();
-            if !entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(IMPLEMENT_TMPDIR_PREFIX)
-            {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with(IMPLEMENT_TMPDIR_PREFIX) {
                 continue;
             }
-            let Some(mtime) = implement_candidate_mtime(&candidate, query) else {
+            let Ok(file_type) = entry.file_type() else {
                 continue;
             };
+            if !file_type.is_dir() || file_type.is_symlink() {
+                continue;
+            }
+            let verified_candidate = root_guard.path().join(&name);
+            let Some(mtime) = implement_candidate_mtime(&verified_candidate, query) else {
+                continue;
+            };
+            // Preserve the caller-visible spelling of a platform alias such
+            // as `/var/folders`, but only after proving it still resolves to
+            // the confined entry that supplied the sentinel and keepalive.
+            let candidate = root.join(&name);
+            if fs::canonicalize(&candidate).ok().as_deref() != Some(verified_candidate.as_path()) {
+                continue;
+            }
             let text = candidate.to_string_lossy().into_owned();
             if prefers_implement_candidate(&text, mtime, &best, best_mtime) {
                 best_mtime = mtime;
@@ -227,8 +377,8 @@ pub fn write_session_id(
 /// Mark a newly-created session directory as owned by an in-flight setup.
 ///
 /// The marker is written through the existing confined atomic-write owner. It
-/// is intentionally private and contains only the setup process ID needed by
-/// recovery to avoid deleting a directory whose creator is still running.
+/// is intentionally private and binds the setup PID to its process start time,
+/// so recovery cannot mistake a recycled PID for the original live owner.
 ///
 /// # Errors
 ///
@@ -237,7 +387,7 @@ pub fn write_session_id(
 pub fn write_uncommitted_session_setup_marker(
     root: &TemporaryRoot,
     directory: &Path,
-    owner_pid: u32,
+    owner: &SessionSetupOwner,
 ) -> Result<(), String> {
     let directory = confined_session_directory(root, directory)?;
     let marker = root
@@ -246,8 +396,11 @@ pub fn write_uncommitted_session_setup_marker(
             PathIntent::Write,
         )
         .map_err(|error| error.to_string())?;
-    let text =
-        format!("{UNCOMMITTED_SETUP_STATE}\n{UNCOMMITTED_SETUP_OWNER_PID_PREFIX}{owner_pid}\n");
+    let text = format!(
+        "{UNCOMMITTED_SETUP_STATE}\n{UNCOMMITTED_SETUP_OWNER_PID_PREFIX}{}\n{UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX}{}\n",
+        owner.pid(),
+        owner.start_time()
+    );
     atomic_write_utf8(&marker, &text, 0o600).map_err(|error| error.to_string())
 }
 
@@ -278,7 +431,10 @@ pub fn commit_uncommitted_session_setup(
 /// be consumed. Invalid markers, symlinked entries, unsafe roots, and owners
 /// whose liveness cannot be disproven are retained fail-closed.
 #[must_use]
-pub fn recover_uncommitted_session_setups(root: &TemporaryRoot) -> usize {
+pub fn recover_uncommitted_session_setups(
+    root: &TemporaryRoot,
+    observer: &dyn SessionSetupOwnerObserver,
+) -> usize {
     let Ok(entries) = fs::read_dir(root.path()) else {
         return 0;
     };
@@ -288,7 +444,7 @@ pub fn recover_uncommitted_session_setups(root: &TemporaryRoot) -> usize {
         let Some(owner_pid) = uncommitted_setup_owner(root, &candidate) else {
             continue;
         };
-        if uncommitted_setup_owner_is_live(owner_pid) {
+        if uncommitted_setup_owner_liveness(&owner_pid, observer) != OwnerLiveness::Stale {
             continue;
         }
         // Re-read the marker immediately before removal. A setup that raced
@@ -320,7 +476,26 @@ fn confined_session_directory(
         .map_err(|error| error.to_string())
 }
 
-fn uncommitted_setup_owner(root: &TemporaryRoot, directory: &Path) -> Option<u32> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum UncommittedSetupOwner {
+    Identified(SessionSetupOwner),
+    LegacyPid {
+        pid: u32,
+        marker_modified: SystemTime,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerLiveness {
+    Live,
+    Stale,
+    Unverifiable,
+}
+
+fn uncommitted_setup_owner(
+    root: &TemporaryRoot,
+    directory: &Path,
+) -> Option<UncommittedSetupOwner> {
     let directory = confined_session_directory(root, directory).ok()?;
     let marker = root
         .confine(
@@ -329,7 +504,8 @@ fn uncommitted_setup_owner(root: &TemporaryRoot, directory: &Path) -> Option<u32
         )
         .ok()?;
     let marker_file = open_confined_read(&marker).ok()?;
-    if marker_file.metadata().ok()?.len() > UNCOMMITTED_SETUP_MARKER_MAX_BYTES {
+    let metadata = marker_file.metadata().ok()?;
+    if metadata.len() > UNCOMMITTED_SETUP_MARKER_MAX_BYTES {
         return None;
     }
     let mut bytes = Vec::new();
@@ -351,30 +527,83 @@ fn uncommitted_setup_owner(root: &TemporaryRoot, directory: &Path) -> Option<u32
         .parse::<u32>()
         .ok()
         .filter(|pid| *pid != 0)?;
-    if lines.next().is_some() {
-        return None;
+    match lines.next() {
+        None => Some(UncommittedSetupOwner::LegacyPid {
+            pid: owner_pid,
+            marker_modified: metadata.modified().ok()?,
+        }),
+        Some(line) => {
+            let start_time = line.strip_prefix(UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX)?;
+            if lines.next().is_some() {
+                return None;
+            }
+            SessionSetupOwner::new(owner_pid, start_time).map(UncommittedSetupOwner::Identified)
+        }
     }
-    Some(owner_pid)
 }
 
-#[cfg(unix)]
-fn uncommitted_setup_owner_is_live(owner_pid: u32) -> bool {
-    let Ok(owner_pid) = i32::try_from(owner_pid) else {
-        return true;
+fn uncommitted_setup_owner_liveness(
+    owner: &UncommittedSetupOwner,
+    observer: &dyn SessionSetupOwnerObserver,
+) -> OwnerLiveness {
+    let (pid, expected_start_time, legacy_marker_time) = match owner {
+        UncommittedSetupOwner::Identified(owner) => (owner.pid(), Some(owner.start_time()), None),
+        UncommittedSetupOwner::LegacyPid {
+            pid,
+            marker_modified,
+        } => (*pid, None, Some(*marker_modified)),
     };
-    match kill(Pid::from_raw(owner_pid), None) {
-        Err(Errno::ESRCH) => false,
-        // A failed liveness probe must not authorize recursive removal. This
-        // also retains a rare PID-reuse ambiguity until a later cleanup pass.
-        _ => true,
+    match observer.probe(pid) {
+        SessionSetupOwnerProbe::Missing => OwnerLiveness::Stale,
+        SessionSetupOwnerProbe::Unverifiable => OwnerLiveness::Unverifiable,
+        SessionSetupOwnerProbe::Live { start_time } => {
+            let start_time = normalize_command_signature(&start_time);
+            expected_start_time.map_or_else(
+                || {
+                    if legacy_owner_was_reused(&start_time, legacy_marker_time) {
+                        // A PID-only marker predates the current process. This
+                        // proves the original owner exited before the recycled
+                        // PID appeared.
+                        OwnerLiveness::Stale
+                    } else {
+                        // Existing PID-only markers must retain a potentially
+                        // live setup whenever provenance cannot prove reuse.
+                        OwnerLiveness::Live
+                    }
+                },
+                |expected_start_time| {
+                    if start_time == expected_start_time {
+                        OwnerLiveness::Live
+                    } else {
+                        // The PID exists, but it no longer identifies the
+                        // process that created this setup directory.
+                        OwnerLiveness::Stale
+                    }
+                },
+            )
+        }
     }
 }
 
-#[cfg(not(unix))]
-fn uncommitted_setup_owner_is_live(_owner_pid: u32) -> bool {
-    // The released executable is currently Unix-only. Keep a conservative
-    // fallback for cross-platform test builds rather than guessing PID state.
-    true
+fn legacy_owner_was_reused(start_time: &str, marker_modified: Option<SystemTime>) -> bool {
+    let Some(marker_modified) = marker_modified else {
+        return false;
+    };
+    let Some(marker_seconds) = marker_modified
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+    else {
+        return false;
+    };
+    let Some(started) = NaiveDateTime::parse_from_str(start_time.trim(), "%a %b %e %H:%M:%S %Y")
+        .ok()
+        .and_then(|value| Local.from_local_datetime(&value).single())
+        .map(|value| value.timestamp())
+    else {
+        return false;
+    };
+    started > marker_seconds
 }
 
 /// Append one invocation record to the cleanup audit trail, best effort.
@@ -433,45 +662,83 @@ pub fn remove_session_tmpdir(target: &Path) -> Result<(), String> {
 }
 
 fn implement_candidate_mtime(candidate: &Path, query: &ImplementTmpdirQuery<'_>) -> Option<i64> {
-    if !candidate.is_dir() {
+    let metadata = fs::symlink_metadata(candidate).ok()?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return None;
     }
-    let sentinel = IMPLEMENT_SENTINEL_RELATIVE_PATHS
+    let root = TemporaryRoot::resolve(Some(candidate)).ok()?;
+    if IMPLEMENT_SENTINEL_RELATIVE_PATHS
         .iter()
-        .map(|relative| candidate.join(relative))
-        .find(|path| path.is_file())?;
-    let keepalive = candidate.join(".larch-keepalive");
-    if !keepalive.is_file() {
+        .any(|relative| relative_path_has_symlink(candidate, relative))
+    {
         return None;
     }
-    if read_first_raw_key(&keepalive, "CLONE_PATH").ok()?? != query.hook_cwd {
+    let sentinel_mtime = IMPLEMENT_SENTINEL_RELATIVE_PATHS
+        .iter()
+        .find_map(|relative| {
+            let sentinel = root.confine(relative, PathIntent::Read).ok()?;
+            sentinel.revalidate().ok()?;
+            let file = open_confined_read(&sentinel).ok()?;
+            let metadata = file.metadata().ok()?;
+            i64::try_from(
+                metadata
+                    .modified()
+                    .ok()?
+                    .duration_since(UNIX_EPOCH)
+                    .ok()?
+                    .as_secs(),
+            )
+            .ok()
+        })?;
+    if relative_path_has_symlink(candidate, ".larch-keepalive") {
+        return None;
+    }
+    let keepalive = root.confine(".larch-keepalive", PathIntent::Read).ok()?;
+    if read_confined_first_raw_key(&keepalive, "CLONE_PATH")? != query.hook_cwd {
         return None;
     }
     let session_match = if query.session_id.is_empty() {
         false
     } else {
-        if read_first_raw_key(&keepalive, "SESSION_ID").ok()?? != query.session_id {
+        if read_confined_first_raw_key(&keepalive, "SESSION_ID")? != query.session_id {
             return None;
         }
         true
     };
-    let mtime = i64::try_from(
-        fs::metadata(&sentinel)
-            .ok()?
-            .modified()
-            .ok()?
-            .duration_since(UNIX_EPOCH)
-            .ok()?
-            .as_secs(),
-    )
-    .ok()?;
     if !session_match
         && query.ttl_seconds > 0
-        && (query.now <= 0 || query.now - mtime >= query.ttl_seconds)
+        && (query.now <= 0 || query.now - sentinel_mtime >= query.ttl_seconds)
     {
         return None;
     }
-    Some(mtime)
+    Some(sentinel_mtime)
+}
+
+fn relative_path_has_symlink(base: &Path, relative: &str) -> bool {
+    let mut current = base.to_path_buf();
+    for component in Path::new(relative).components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return true,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+fn read_confined_first_raw_key(path: &crate::ConfinedPath, key: &str) -> Option<String> {
+    path.revalidate().ok()?;
+    let text = read_utf8(path).ok()?;
+    if text.contains('\r') {
+        return None;
+    }
+    let document = KvDocument::parse(&text, ParseOptions::legacy()).ok()?;
+    document
+        .rows()
+        .iter()
+        .find(|row| row.key() == key)
+        .map(|row| row.value().to_owned())
 }
 
 /// Split a candidate into its deepest existing ancestor and the missing tail.
@@ -527,7 +794,8 @@ pub const fn parent_process_id() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImplementTmpdirQuery, SessionIdOutcome, commit_uncommitted_session_setup,
+        ImplementTmpdirQuery, SessionIdOutcome, SessionSetupOwner, SessionSetupOwnerObserver,
+        SessionSetupOwnerProbe, commit_uncommitted_session_setup, lock_session_activity,
         recover_uncommitted_session_setups, remove_session_tmpdir, resolve_implement_tmpdir,
         split_ancestor_tail, validate_design_tmpdir, write_session_id,
         write_uncommitted_session_setup_marker,
@@ -535,12 +803,31 @@ mod tests {
     use crate::TemporaryRoot;
     use larch_core::allowed_session_roots;
     use std::{
+        collections::BTreeMap,
         ffi::OsStr,
         fs,
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
     use tempfile::tempdir;
+
+    #[derive(Default)]
+    struct OwnerObserver {
+        answers: BTreeMap<u32, SessionSetupOwnerProbe>,
+    }
+
+    impl SessionSetupOwnerObserver for OwnerObserver {
+        fn probe(&self, pid: u32) -> SessionSetupOwnerProbe {
+            self.answers
+                .get(&pid)
+                .cloned()
+                .unwrap_or(SessionSetupOwnerProbe::Unverifiable)
+        }
+    }
+
+    fn owner(pid: u32, start_time: &str) -> SessionSetupOwner {
+        SessionSetupOwner::new(pid, start_time).expect("valid setup owner")
+    }
 
     fn now_seconds() -> i64 {
         i64::try_from(
@@ -864,6 +1151,62 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn implement_resolution_rejects_symlinked_candidates_and_components() {
+        let directory = tempdir().expect("fixture root");
+        let outside = tempdir().expect("outside root");
+        let root = directory.path().to_path_buf();
+        let clone = "/clone/path";
+        let keepalive = format!("CLONE_PATH={clone}\nSESSION_ID=S1\n");
+
+        let outside_candidate =
+            seed_implement_session(outside.path(), "claude-implement-outside", clone, "S1");
+        std::os::unix::fs::symlink(
+            &outside_candidate,
+            root.join("claude-implement-direct-link"),
+        )
+        .expect("direct candidate symlink");
+
+        let sentinel_leaf = root.join("claude-implement-sentinel-link");
+        fs::create_dir_all(sentinel_leaf.join("design-export")).expect("sentinel fixture");
+        fs::write(sentinel_leaf.join(".larch-keepalive"), &keepalive).expect("keepalive");
+        let outside_manifest = outside.path().join("manifest.env");
+        fs::write(&outside_manifest, "sentinel\n").expect("outside sentinel");
+        std::os::unix::fs::symlink(
+            &outside_manifest,
+            sentinel_leaf.join("design-export/manifest.env"),
+        )
+        .expect("sentinel symlink");
+
+        let sentinel_parent = root.join("claude-implement-sentinel-parent-link");
+        fs::create_dir(&sentinel_parent).expect("parent sentinel fixture");
+        fs::write(sentinel_parent.join(".larch-keepalive"), &keepalive).expect("keepalive");
+        let outside_export = outside.path().join("design-export");
+        fs::create_dir(&outside_export).expect("outside export");
+        fs::write(outside_export.join("manifest.env"), "sentinel\n").expect("outside manifest");
+        std::os::unix::fs::symlink(&outside_export, sentinel_parent.join("design-export"))
+            .expect("sentinel parent symlink");
+
+        let keepalive_link = root.join("claude-implement-keepalive-link");
+        fs::create_dir_all(keepalive_link.join("design-export")).expect("keepalive fixture");
+        fs::write(
+            keepalive_link.join("design-export/manifest.env"),
+            "sentinel\n",
+        )
+        .expect("sentinel");
+        let outside_keepalive = outside.path().join("keepalive");
+        fs::write(&outside_keepalive, &keepalive).expect("outside keepalive");
+        std::os::unix::fs::symlink(&outside_keepalive, keepalive_link.join(".larch-keepalive"))
+            .expect("keepalive symlink");
+
+        let roots = [root];
+        assert_eq!(
+            resolve_implement_tmpdir(&query(clone, &roots, now_seconds())),
+            ""
+        );
+    }
+
     #[test]
     fn session_id_publication_is_idempotent_and_private() {
         let directory = tempdir().expect("fixture tempdir");
@@ -999,12 +1342,16 @@ mod tests {
         let outside_root = TemporaryRoot::resolve(Some(outside.path())).expect("outside root");
         let outside_session = outside_root.path().join("uncommitted");
         fs::create_dir(&outside_session).expect("outside session");
-        write_uncommitted_session_setup_marker(&outside_root, &outside_session, std::process::id())
+        let setup_owner = owner(std::process::id(), "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&outside_root, &outside_session, &setup_owner)
             .expect("outside marker");
         let link = cleanup_root.path().join("linked-uncommitted");
         std::os::unix::fs::symlink(&outside_session, &link).expect("session symlink");
 
-        assert_eq!(recover_uncommitted_session_setups(&cleanup_root), 0);
+        assert_eq!(
+            recover_uncommitted_session_setups(&cleanup_root, &OwnerObserver::default()),
+            0
+        );
         assert!(link.is_symlink());
         assert!(outside_session.is_dir());
     }
@@ -1017,7 +1364,8 @@ mod tests {
         fs::create_dir(&session).expect("session directory");
 
         assert!(commit_uncommitted_session_setup(&root, &session).is_err());
-        write_uncommitted_session_setup_marker(&root, &session, std::process::id())
+        let setup_owner = owner(std::process::id(), "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&root, &session, &setup_owner)
             .expect("uncommitted marker");
         commit_uncommitted_session_setup(&root, &session).expect("commit marker removal");
 
@@ -1025,6 +1373,120 @@ mod tests {
             !session
                 .join(super::UNCOMMITTED_SESSION_SETUP_MARKER)
                 .exists()
+        );
+    }
+
+    #[test]
+    fn uncommitted_recovery_distinguishes_live_owner_identity_and_legacy_pid_reuse() {
+        let directory = tempdir().expect("temporary root");
+        let root = TemporaryRoot::resolve(Some(directory.path())).expect("temporary root");
+        let live = root.path().join("live");
+        let upgraded_stale = root.path().join("upgraded-stale");
+        let missing = root.path().join("missing");
+        let legacy_reused = root.path().join("legacy-reused");
+        let legacy_unproven = root.path().join("legacy-unproven");
+        let unverifiable = root.path().join("unverifiable");
+        for path in [
+            &live,
+            &upgraded_stale,
+            &missing,
+            &legacy_reused,
+            &legacy_unproven,
+            &unverifiable,
+        ] {
+            fs::create_dir(path).expect("session fixture");
+        }
+
+        let live_owner = owner(41, "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&root, &live, &live_owner).expect("live marker");
+        let stale_owner = owner(42, "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&root, &upgraded_stale, &stale_owner)
+            .expect("upgraded marker");
+        let missing_owner = owner(43, "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&root, &missing, &missing_owner)
+            .expect("missing marker");
+        let unverifiable_owner = owner(45, "Mon Jan  1 00:00:00 2024");
+        write_uncommitted_session_setup_marker(&root, &unverifiable, &unverifiable_owner)
+            .expect("unverifiable marker");
+
+        for path in [&legacy_reused, &legacy_unproven] {
+            let marker = path.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
+            fs::write(&marker, "STATE=uncommitted\nOWNER_PID=44\n").expect("legacy marker");
+        }
+        let reused_marker = legacy_reused.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
+        fs::File::options()
+            .write(true)
+            .open(&reused_marker)
+            .expect("open legacy marker")
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1))
+            .expect("age legacy marker");
+        let unproven_marker = legacy_unproven.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
+        fs::File::options()
+            .write(true)
+            .open(&unproven_marker)
+            .expect("open live legacy marker")
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(4_102_444_800))
+            .expect("future-date live legacy marker");
+
+        let observer = OwnerObserver {
+            answers: BTreeMap::from([
+                (
+                    41,
+                    SessionSetupOwnerProbe::Live {
+                        start_time: "Mon Jan  1 00:00:00 2024".to_owned(),
+                    },
+                ),
+                (
+                    42,
+                    SessionSetupOwnerProbe::Live {
+                        start_time: "Tue Jan  2 00:00:00 2024".to_owned(),
+                    },
+                ),
+                (43, SessionSetupOwnerProbe::Missing),
+                (
+                    44,
+                    SessionSetupOwnerProbe::Live {
+                        start_time: "Tue Aug 11 15:06:20 2026".to_owned(),
+                    },
+                ),
+                (45, SessionSetupOwnerProbe::Unverifiable),
+            ]),
+        };
+
+        assert_eq!(recover_uncommitted_session_setups(&root, &observer), 3);
+        assert!(live.is_dir(), "matching live owner must survive");
+        assert!(
+            !upgraded_stale.exists(),
+            "reused PID identity must be reclaimed"
+        );
+        assert!(!missing.exists(), "missing PID marker must be reclaimed");
+        assert!(
+            !legacy_reused.exists(),
+            "legacy marker must reclaim a proven reused PID"
+        );
+        assert!(
+            legacy_unproven.is_dir(),
+            "legacy marker stays fail-closed without proof of reuse"
+        );
+        assert!(
+            unverifiable.is_dir(),
+            "an unavailable liveness probe must stay fail-closed"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activity_lock_refuses_a_symlinked_lock_inode() {
+        let directory = tempdir().expect("temporary root");
+        let target = directory.path().join("outside-lock");
+        fs::write(&target, "outside").expect("outside lock target");
+        let link = directory.path().join(super::SESSION_ACTIVITY_LOCK_NAME);
+        std::os::unix::fs::symlink(&target, &link).expect("lock symlink");
+
+        assert!(lock_session_activity(directory.path()).is_err());
+        assert_eq!(
+            fs::read_to_string(&target).expect("outside contents"),
+            "outside"
         );
     }
 

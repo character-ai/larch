@@ -8,11 +8,14 @@
 
 use crate::child_process::run_host_utility;
 use larch_adapters::{
-    PathIntent, TemporaryRoot, progress_state, read_utf8, recover_uncommitted_session_setups,
-    remove_session_tmpdir,
+    PathIntent, SessionSetupOwnerObserver, SessionSetupOwnerProbe, SystemProcessIdentityHost,
+    TemporaryRoot, lock_session_activity, progress_state, read_utf8,
+    recover_uncommitted_session_setups, remove_session_tmpdir,
 };
 use larch_core::{
-    HostUtilityProgram, KeyPolicy, cleanup_cache_sessions_root, parse_allowlisted_env_line,
+    HostUtilityProgram, IdentityProbeOutput, KeyPolicy, ProcessIdentityHost,
+    cleanup_cache_sessions_root, parse_allowlisted_env_line, parse_ps_identity,
+    session_pointer_root,
 };
 use std::{
     collections::BTreeSet,
@@ -21,6 +24,7 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     process::ExitCode,
+    thread,
     time::{Duration, SystemTime},
 };
 
@@ -28,6 +32,9 @@ const DEFAULT_RETENTION_DAYS: u64 = 7;
 const SECONDS_PER_DAY: u64 = 86_400;
 const MAX_ACTIVITY_ENTRIES: usize = 10_000;
 const TMP_FALLBACK: &str = "/tmp";
+const TEST_PAUSE_BEFORE_REMOVAL: &str = "LARCH_TEST_CLEANUP_PAUSE_BEFORE_REMOVAL";
+const TEST_REMOVAL_PAUSE_MARKER: &str = ".larch-cleanup-removal-paused";
+const TEST_PAUSE_INTERVAL: Duration = Duration::from_millis(10);
 const TMP_PATTERNS: &[&str] = &[
     "claude-implement-*",
     "claude-fix-issue-*",
@@ -66,27 +73,29 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
     println!("SESSION_COUNT={}", claude_session_count());
 
     let cache_root = cache_sessions_root();
-    let active = active_session_directories(&cache_root);
+    let pointer_root = pointer_sessions_root();
+    let active = active_session_directories(&pointer_root);
     if active.uncertain {
         eprintln!(
             "Warning: a live session pointer could not be validated; skipping age-based cleanup."
         );
     }
-    let cache_removed =
-        recover_uncommitted_setups(&cache_root) + sweep_cache_root(&cache_root, retention, &active);
+    let cache_removed = recover_uncommitted_setups(&cache_root)
+        + sweep_cache_root(&cache_root, &pointer_root, retention, &active);
     println!("CACHE_REMOVED={cache_removed}");
 
     let tmp_removed = temporary_roots()
         .iter()
         .map(|root| {
-            recover_uncommitted_setups(root) + sweep_temporary_root(root, retention, &active)
+            recover_uncommitted_setups(root)
+                + sweep_temporary_root(root, &pointer_root, retention, &active)
         })
         .sum::<usize>();
     println!("TMP_REMOVED={tmp_removed}");
 
-    let links_removed = reap_design_links(&cache_root);
+    let links_removed = reap_design_links(&pointer_root);
     println!("SYMLINKS_REMOVED={links_removed}");
-    let pointers_removed = reap_implement_pointers(&cache_root);
+    let pointers_removed = reap_implement_pointers(&pointer_root);
     println!("IMPLEMENT_POINTERS_REMOVED={pointers_removed}");
 
     let progress_removed = progress_cleanup(retention);
@@ -136,6 +145,10 @@ fn cache_sessions_root() -> PathBuf {
     )
 }
 
+fn pointer_sessions_root() -> PathBuf {
+    session_pointer_root(env::var_os("HOME").as_deref())
+}
+
 fn temporary_roots() -> Vec<PathBuf> {
     if let Some(root) = env::var_os("LARCH_TEST_TMP_ROOT").filter(|value| !value.is_empty()) {
         return canonical_directory(&PathBuf::from(root))
@@ -171,7 +184,41 @@ fn recover_uncommitted_setups(path: &Path) -> usize {
     let Ok(root) = TemporaryRoot::resolve(Some(&root)) else {
         return 0;
     };
-    recover_uncommitted_session_setups(&root)
+    let observer = SystemSetupOwnerObserver {
+        host: SystemProcessIdentityHost::new(),
+    };
+    recover_uncommitted_session_setups(&root, &observer)
+}
+
+/// Production identity observer for uncommitted setup recovery.
+///
+/// Missing PIDs are stale. Any inability to prove a live identity remains
+/// unverifiable so cleanup retains the directory rather than guessing.
+struct SystemSetupOwnerObserver {
+    host: SystemProcessIdentityHost,
+}
+
+impl SessionSetupOwnerObserver for SystemSetupOwnerObserver {
+    fn probe(&self, pid: u32) -> SessionSetupOwnerProbe {
+        let Ok(pid) = i32::try_from(pid) else {
+            return SessionSetupOwnerProbe::Unverifiable;
+        };
+        // Setup recovery needs only a PID/start-time read, not a process-group
+        // lookup. Do not let a failed `getpgid` be mistaken for proof that a
+        // potentially live marker owner vanished.
+        match self.host.probe_ps_identity(pid) {
+            IdentityProbeOutput::Missing => SessionSetupOwnerProbe::Missing,
+            IdentityProbeOutput::Stdout(stdout) => parse_ps_identity(pid, 0, &stdout, "").map_or(
+                SessionSetupOwnerProbe::Unverifiable,
+                |identity| SessionSetupOwnerProbe::Live {
+                    start_time: identity.start_time,
+                },
+            ),
+            IdentityProbeOutput::Timeout | IdentityProbeOutput::Error => {
+                SessionSetupOwnerProbe::Unverifiable
+            }
+        }
+    }
 }
 
 fn absolute_path(path: &Path) -> Option<PathBuf> {
@@ -205,7 +252,7 @@ fn active_session_directories(cache_root: &Path) -> ActiveSessions {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         let path = entry.path();
-        if name.starts_with("current-design-env-") && name.ends_with(".sh") {
+        if is_design_pointer_name(&name) {
             match fs::canonicalize(&path) {
                 Ok(target) => match read_env_key(&target, "DESIGN_TMPDIR")
                     .or_else(|| read_env_key(&target, "SESSION_TMPDIR"))
@@ -226,6 +273,11 @@ fn active_session_directories(cache_root: &Path) -> ActiveSessions {
     active
 }
 
+fn is_design_pointer_name(name: &str) -> bool {
+    name == "current-design-env.sh"
+        || (name.starts_with("current-design-env-") && name.strip_suffix(".sh").is_some())
+}
+
 fn add_active_path(active: &mut BTreeSet<PathBuf>, path: &Path) {
     if let Some(path) = canonical_directory(path) {
         active.insert(path);
@@ -244,13 +296,32 @@ fn read_env_key(path: &Path, key: &str) -> Option<String> {
     })
 }
 
-fn sweep_cache_root(root: &Path, retention: u64, active: &ActiveSessions) -> usize {
-    sweep_root(root, retention, active, |_| true, false, "cache cleanup")
-}
-
-fn sweep_temporary_root(root: &Path, retention: u64, active: &ActiveSessions) -> usize {
+fn sweep_cache_root(
+    root: &Path,
+    pointer_root: &Path,
+    retention: u64,
+    active: &ActiveSessions,
+) -> usize {
     sweep_root(
         root,
+        pointer_root,
+        retention,
+        active,
+        |_| true,
+        false,
+        "cache cleanup",
+    )
+}
+
+fn sweep_temporary_root(
+    root: &Path,
+    pointer_root: &Path,
+    retention: u64,
+    active: &ActiveSessions,
+) -> usize {
+    sweep_root(
+        root,
+        pointer_root,
         retention,
         active,
         matches_temporary_pattern,
@@ -261,6 +332,7 @@ fn sweep_temporary_root(root: &Path, retention: u64, active: &ActiveSessions) ->
 
 fn sweep_root(
     root: &Path,
+    pointer_root: &Path,
     retention: u64,
     active: &ActiveSessions,
     accepted: impl Fn(&str) -> bool,
@@ -292,7 +364,7 @@ fn sweep_root(
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name();
-        if !accepted(&name.to_string_lossy()) || active.directories.contains(&path) {
+        if !accepted(&name.to_string_lossy()) || active_contains(active, &path) {
             continue;
         }
         let Ok(metadata) = fs::symlink_metadata(&path) else {
@@ -310,13 +382,37 @@ fn sweep_root(
         if metadata.is_dir() && has_recent_activity(&path, cutoff).unwrap_or(true) {
             continue;
         }
+        if !test_pause_before_removal(pointer_root) {
+            continue;
+        }
+        let Ok(_activity_lock) = lock_session_activity(pointer_root) else {
+            continue;
+        };
+        let active = active_session_directories(pointer_root);
+        if active.uncertain || active_contains(&active, &path) {
+            continue;
+        }
+        if root_guard.revalidate().is_err() {
+            continue;
+        }
+        let Ok(refreshed_metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if refreshed_metadata.file_type().is_symlink()
+            || !(refreshed_metadata.is_file() || refreshed_metadata.is_dir())
+            || (refreshed_metadata.is_file() && !remove_files)
+            || !older_than(&refreshed_metadata, cutoff)
+            || (refreshed_metadata.is_dir() && has_recent_activity(&path, cutoff).unwrap_or(true))
+        {
+            continue;
+        }
         let Ok(confined) = root_guard.confine(&path, PathIntent::Cleanup) else {
             continue;
         };
         if confined.revalidate().is_err() {
             continue;
         }
-        let removed_this = if metadata.is_dir() {
+        let removed_this = if refreshed_metadata.is_dir() {
             remove_session_tmpdir(confined.path()).is_ok()
         } else {
             fs::remove_file(confined.path()).is_ok()
@@ -326,6 +422,37 @@ fn sweep_root(
         }
     }
     removed
+}
+
+fn active_contains(active: &ActiveSessions, path: &Path) -> bool {
+    if !fs::metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
+        return false;
+    }
+    canonical_directory(path).is_none_or(|path| active.directories.contains(&path))
+}
+
+/// Pause after selecting an eligible directory but before taking the activity
+/// lease. The marker is test-only and lives beside the pointer authority, not
+/// inside the candidate whose age scan must remain stable.
+fn test_pause_before_removal(pointer_root: &Path) -> bool {
+    if env::var(TEST_PAUSE_BEFORE_REMOVAL).as_deref() != Ok("true") {
+        return true;
+    }
+    let marker = pointer_root.join(TEST_REMOVAL_PAUSE_MARKER);
+    if larch_adapters::write_confined_file(
+        &marker,
+        "paused\n",
+        0o600,
+        "cleanup removal test marker",
+    )
+    .is_err()
+    {
+        return false;
+    }
+    while fs::symlink_metadata(&marker).is_ok() {
+        thread::sleep(TEST_PAUSE_INTERVAL);
+    }
+    true
 }
 
 fn cutoff(retention: u64) -> SystemTime {
@@ -396,6 +523,9 @@ fn reap_design_links(cache_root: &Path) -> usize {
     let Some(root) = canonical_directory(cache_root) else {
         return 0;
     };
+    let Ok(_activity_lock) = lock_session_activity(&root) else {
+        return 0;
+    };
     let Ok(root_guard) = TemporaryRoot::resolve(Some(&root)) else {
         return 0;
     };
@@ -407,7 +537,7 @@ fn reap_design_links(cache_root: &Path) -> usize {
         .filter(|entry| {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            name.starts_with("current-design-env-") && name.ends_with(".sh")
+            is_design_pointer_name(&name)
         })
         .filter(|entry| {
             let path = entry.path();
@@ -443,6 +573,9 @@ fn stale_design_link(path: &Path) -> bool {
 
 fn reap_implement_pointers(cache_root: &Path) -> usize {
     let Some(root) = canonical_directory(cache_root) else {
+        return 0;
+    };
+    let Ok(_activity_lock) = lock_session_activity(&root) else {
         return 0;
     };
     let Ok(root_guard) = TemporaryRoot::resolve(Some(&root)) else {
@@ -559,11 +692,14 @@ mod tests {
         age(fresh_child.parent().expect("fresh parent"));
         age(&stale_tmp);
 
-        assert_eq!(sweep_cache_root(&cache, 1, &ActiveSessions::default()), 1);
+        assert_eq!(
+            sweep_cache_root(&cache, &cache, 1, &ActiveSessions::default()),
+            1
+        );
         assert!(!stale_cache.exists());
         assert!(fresh_child.is_file());
         assert_eq!(
-            sweep_temporary_root(&temporary, 1, &ActiveSessions::default()),
+            sweep_temporary_root(&temporary, &cache, 1, &ActiveSessions::default()),
             1
         );
         assert!(!stale_tmp.exists());
@@ -584,8 +720,32 @@ mod tests {
 
         let active = active_session_directories(&cache);
         assert!(active.uncertain);
-        assert_eq!(sweep_cache_root(&cache, 1, &active), 0);
+        assert_eq!(sweep_cache_root(&cache, &cache, 1, &active), 0);
         assert!(stale.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn legacy_design_pointer_keeps_its_live_session_out_of_cleanup() {
+        let root = tempfile::tempdir().expect("cleanup root");
+        let cache = root.path().join("cache");
+        let live = cache.join("live-design-session");
+        fs::create_dir_all(&live).expect("live session");
+        age(&live);
+        let source = cache.join("design.env");
+        fs::write(
+            &source,
+            format!("export DESIGN_TMPDIR={}\n", live.display()),
+        )
+        .expect("design environment");
+        let pointer = cache.join("current-design-env.sh");
+        std::os::unix::fs::symlink(&source, &pointer).expect("legacy design pointer");
+
+        let active = active_session_directories(&cache);
+
+        assert!(!active.uncertain);
+        assert_eq!(sweep_cache_root(&cache, &cache, 1, &active), 0);
+        assert!(live.is_dir());
     }
 
     #[cfg(unix)]

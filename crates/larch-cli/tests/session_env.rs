@@ -18,6 +18,12 @@ const REFERENCE: &str = "fixtures/rust-parity/session_env_reference.py";
 const SESSION: &str = "writer-session";
 /// Argument placeholder each case expands to its own sandbox root.
 const SANDBOX_TOKEN: &str = "%SANDBOX%";
+/// Private coordination inode introduced after the frozen writer cutover.
+///
+/// It carries no command payload or wire state, so byte-for-byte writer parity
+/// intentionally compares the legacy pointers and launchers around it.
+const SESSION_ACTIVITY_LOCK_RELATIVE: &str =
+    ".home/.cache/larch/sessions/.larch-session-activity.lock";
 
 #[derive(Debug, Eq, PartialEq)]
 enum Entry {
@@ -103,6 +109,9 @@ impl Sandbox {
         };
         for child in children.flatten() {
             let path = child.path();
+            if path == self.path(SESSION_ACTIVITY_LOCK_RELATIVE) {
+                continue;
+            }
             let key = self.normalize(&path.to_string_lossy());
             let metadata = fs::symlink_metadata(&path).expect("snapshot metadata");
             if metadata.file_type().is_symlink() {

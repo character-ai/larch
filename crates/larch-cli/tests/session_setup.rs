@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use larch_adapters::UNCOMMITTED_SESSION_SETUP_MARKER;
@@ -18,6 +18,11 @@ use larch_core::{KvDocument, ParseOptions};
 use tempfile::TempDir;
 
 const PUBLICATION_PAUSE_MARKER: &str = ".larch-session-setup-publication-paused";
+const STDOUT_WRITE_PAUSE_MARKER: &str = ".larch-session-setup-write-paused";
+const STDOUT_FLUSH_PAUSE_MARKER: &str = ".larch-session-setup-flush-paused";
+const TRANSFER_PAUSE_MARKER: &str = ".larch-session-setup-transfer-paused";
+const CLEANUP_REMOVAL_PAUSE_MARKER: &str = ".larch-cleanup-removal-paused";
+const POINTER_PUBLICATION_PAUSE_MARKER: &str = ".larch-session-pointer-publication-paused";
 
 #[cfg(unix)]
 use nix::{
@@ -89,7 +94,12 @@ fn larch_command(root: &Path) -> Command {
         .env_remove("REVIEW_TMPDIR")
         .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_CREATION")
         .env_remove("LARCH_TEST_SESSION_SETUP_FAIL_AFTER_CREATION")
-        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION");
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_BEFORE_PUBLICATION")
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_WRITE")
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_FLUSH")
+        .env_remove("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_TRANSFER")
+        .env_remove("LARCH_TEST_CLEANUP_PAUSE_BEFORE_REMOVAL")
+        .env_remove("LARCH_TEST_SESSION_POINTER_PAUSE_BEFORE_PUBLICATION");
     command
 }
 
@@ -117,7 +127,45 @@ fn spawn_publication_paused_setup(root: &Path, prefix: &str) -> Child {
         .expect("spawn publication-paused session setup")
 }
 
+fn spawn_stdout_paused_setup(root: &Path, prefix: &str, pause_variable: &str) -> Child {
+    larch_command(root)
+        .args([
+            "session",
+            "setup",
+            "--prefix",
+            prefix,
+            "--skip-preflight",
+            "--skip-repo-check",
+        ])
+        .env(pause_variable, "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn stdout-paused session setup")
+}
+
+fn spawn_transfer_paused_setup(root: &Path, prefix: &str) -> Child {
+    larch_command(root)
+        .args([
+            "session",
+            "setup",
+            "--prefix",
+            prefix,
+            "--skip-preflight",
+            "--skip-repo-check",
+        ])
+        .env("LARCH_TEST_SESSION_SETUP_PAUSE_AFTER_TRANSFER", "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn transfer-paused session setup")
+}
+
 fn wait_for_publication_pause(root: &Path, prefix: &str) -> PathBuf {
+    wait_for_setup_pause(root, prefix, PUBLICATION_PAUSE_MARKER)
+}
+
+fn wait_for_setup_pause(root: &Path, prefix: &str, marker: &str) -> PathBuf {
     let sessions = root.join("cache/larch/sessions");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -126,7 +174,7 @@ fn wait_for_publication_pause(root: &Path, prefix: &str) -> PathBuf {
                 path.file_name()
                     .is_some_and(|name| name.to_string_lossy().starts_with(prefix))
                     && path.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file()
-                    && path.join(PUBLICATION_PAUSE_MARKER).is_file()
+                    && path.join(marker).is_file()
             })
         {
             return path;
@@ -152,6 +200,28 @@ fn assert_no_uncommitted_setup(root: &Path, prefix: &str) {
         !has_unpublished_directory,
         "unpublished {prefix} session survived"
     );
+}
+
+fn wait_for_path(path: &Path, description: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !path.is_file() {
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {description}: {}",
+            path.display()
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn age_path(path: &Path) {
+    let old = SystemTime::now()
+        .checked_sub(Duration::from_secs(10 * 86_400))
+        .expect("old timestamp");
+    fs::File::open(path)
+        .expect("open stale fixture")
+        .set_times(fs::FileTimes::new().set_modified(old))
+        .expect("age stale fixture");
 }
 
 #[cfg(unix)]
@@ -620,6 +690,29 @@ fn closed_stdout_pipe_fails_without_publishing_or_stranding_a_session() {
 
 #[cfg(unix)]
 #[test]
+fn setup_owner_identity_uses_the_system_ps_path_when_the_caller_path_is_restricted() {
+    let sandbox = Sandbox::new();
+    let restricted_path = sandbox.path("empty-bin");
+    fs::create_dir(&restricted_path).expect("restricted PATH directory");
+    let output = larch_command(&sandbox.root)
+        .args([
+            "session",
+            "setup",
+            "--prefix",
+            "restricted-path",
+            "--skip-preflight",
+            "--skip-repo-check",
+        ])
+        .env("PATH", &restricted_path)
+        .output()
+        .expect("run setup under restricted PATH");
+
+    let (_stdout, stderr) = output_text(&output);
+    assert!(output.status.success(), "{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
 fn sigint_and_sigterm_before_complete_publication_remove_unpublished_sessions() {
     for (prefix, signal) in [
         ("cancel-sigint", Signal::SIGINT),
@@ -640,6 +733,88 @@ fn sigint_and_sigterm_before_complete_publication_remove_unpublished_sessions() 
         assert_eq!(stderr, "session-setup.sh: setup cancelled\n", "{prefix}");
         assert!(!directory.exists(), "{prefix}");
         assert_no_uncommitted_setup(&sandbox.root, prefix);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sigint_and_sigterm_during_stdout_write_or_flush_never_commit_ambiguous_sessions() {
+    for (boundary, pause_variable, marker) in [
+        (
+            "write",
+            "LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_WRITE",
+            STDOUT_WRITE_PAUSE_MARKER,
+        ),
+        (
+            "flush",
+            "LARCH_TEST_SESSION_SETUP_PAUSE_DURING_STDOUT_FLUSH",
+            STDOUT_FLUSH_PAUSE_MARKER,
+        ),
+    ] {
+        for signal in [Signal::SIGINT, Signal::SIGTERM] {
+            let sandbox = Sandbox::new();
+            let prefix = format!("cancel-{boundary}-{signal:?}").to_lowercase();
+            let child = spawn_stdout_paused_setup(&sandbox.root, &prefix, pause_variable);
+            let directory = wait_for_setup_pause(&sandbox.root, &prefix, marker);
+            assert!(directory.is_dir(), "{boundary} {signal:?}");
+            assert!(
+                directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file(),
+                "{boundary} {signal:?}"
+            );
+
+            signal_child(&child, signal);
+            let output = child.wait_with_output().expect("wait for cancelled setup");
+            let (stdout, stderr) = output_text(&output);
+            assert_eq!(
+                output.status.code(),
+                Some(130),
+                "{boundary} {signal:?}: {stderr}"
+            );
+            if boundary == "write" {
+                assert!(stdout.is_empty(), "{boundary} {signal:?}: {stdout}");
+            } else {
+                assert!(
+                    stdout.is_empty() || stdout.starts_with("SESSION_TMPDIR="),
+                    "{boundary} {signal:?}: {stdout}"
+                );
+            }
+            assert_eq!(
+                stderr, "session-setup.sh: setup cancelled\n",
+                "{boundary} {signal:?}"
+            );
+            assert!(!directory.exists(), "{boundary} {signal:?}");
+            assert_no_uncommitted_setup(&sandbox.root, &prefix);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn signal_after_transfer_keeps_the_fully_published_session() {
+    for signal in [Signal::SIGINT, Signal::SIGTERM] {
+        let sandbox = Sandbox::new();
+        let prefix = format!("late-transfer-{signal:?}").to_lowercase();
+        let child = spawn_transfer_paused_setup(&sandbox.root, &prefix);
+        let directory = wait_for_setup_pause(&sandbox.root, &prefix, TRANSFER_PAUSE_MARKER);
+        assert!(directory.is_dir(), "{signal:?}");
+        assert!(
+            directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).is_file(),
+            "{signal:?}"
+        );
+
+        signal_child(&child, signal);
+        let output = child
+            .wait_with_output()
+            .expect("wait for transferred setup");
+        let (stdout, stderr) = output_text(&output);
+        assert!(output.status.success(), "{signal:?}: {stderr}");
+        assert!(
+            stdout.starts_with("SESSION_TMPDIR="),
+            "{signal:?}: {stdout}"
+        );
+        assert!(stderr.is_empty(), "{signal:?}: {stderr}");
+        assert!(directory.is_dir(), "{signal:?}");
+        assert!(!directory.join(UNCOMMITTED_SESSION_SETUP_MARKER).exists());
     }
 }
 
@@ -694,6 +869,116 @@ fn cleanup_recovers_crashed_uncommitted_setup_without_touching_live_or_committed
     assert_eq!(live_output.status.code(), Some(130));
     assert!(!live_directory.exists());
     assert!(committed_directory.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn cleanup_rechecks_current_pointers_after_selection_before_recursive_removal() {
+    let sandbox = Sandbox::new();
+    let cache_sessions = sandbox.path("cache/larch/sessions");
+    let pointer_sessions = sandbox.path("home/.cache/larch/sessions");
+    let candidate = cache_sessions.join("claude-implement-activation-race");
+    fs::create_dir_all(&candidate).expect("stale session directory");
+    fs::create_dir_all(&pointer_sessions).expect("pointer root");
+    age_path(&candidate);
+
+    let cleanup = larch_command(&sandbox.root)
+        .args(["cleanup", "run"])
+        .env("LARCH_CLEANUP_RETENTION_DAYS", "1")
+        .env("LARCH_TEST_CLEANUP_PAUSE_BEFORE_REMOVAL", "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn paused cleanup");
+    let cleanup_marker = pointer_sessions.join(CLEANUP_REMOVAL_PAUSE_MARKER);
+    wait_for_path(&cleanup_marker, "cleanup selection barrier");
+
+    let candidate_text = candidate.to_string_lossy().into_owned();
+    let cwd = sandbox.root.to_string_lossy().into_owned();
+    let activation = larch_command(&sandbox.root)
+        .args([
+            "session",
+            "write-implement-env",
+            "--claude-pid",
+            "4242",
+            "--implement-tmpdir",
+            &candidate_text,
+            "--cwd",
+            &cwd,
+        ])
+        .output()
+        .expect("activate stale session through current pointer");
+    let (_activation_stdout, activation_stderr) = output_text(&activation);
+    assert!(activation.status.success(), "{activation_stderr}");
+    fs::remove_file(&cleanup_marker).expect("release cleanup barrier");
+
+    let cleanup_output = cleanup.wait_with_output().expect("wait for cleanup");
+    let (cleanup_stdout, cleanup_stderr) = output_text(&cleanup_output);
+    assert!(cleanup_output.status.success(), "{cleanup_stderr}");
+    assert!(candidate.is_dir(), "{cleanup_stdout}");
+    assert!(
+        pointer_sessions
+            .join("current-implement-env-4242.sh")
+            .is_file(),
+        "{cleanup_stdout}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn pointer_publication_holds_the_deletion_lease_until_cleanup_can_recheck() {
+    let sandbox = Sandbox::new();
+    let cache_sessions = sandbox.path("cache/larch/sessions");
+    let pointer_sessions = sandbox.path("home/.cache/larch/sessions");
+    let candidate = cache_sessions.join("claude-implement-pointer-race");
+    fs::create_dir_all(&candidate).expect("stale session directory");
+    fs::create_dir_all(&pointer_sessions).expect("pointer root");
+    age_path(&candidate);
+
+    let candidate_text = candidate.to_string_lossy().into_owned();
+    let cwd = sandbox.root.to_string_lossy().into_owned();
+    let activation = larch_command(&sandbox.root)
+        .args([
+            "session",
+            "write-implement-env",
+            "--claude-pid",
+            "4242",
+            "--implement-tmpdir",
+            &candidate_text,
+            "--cwd",
+            &cwd,
+        ])
+        .env(
+            "LARCH_TEST_SESSION_POINTER_PAUSE_BEFORE_PUBLICATION",
+            "true",
+        )
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn paused pointer publication");
+    let pointer_marker = pointer_sessions.join(POINTER_PUBLICATION_PAUSE_MARKER);
+    wait_for_path(&pointer_marker, "pointer publication barrier");
+
+    let cleanup = larch_command(&sandbox.root)
+        .args(["cleanup", "run"])
+        .env("LARCH_CLEANUP_RETENTION_DAYS", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn cleanup behind activity lease");
+    assert!(
+        candidate.is_dir(),
+        "cleanup removed a pointer-pending session"
+    );
+    fs::remove_file(&pointer_marker).expect("release pointer publication barrier");
+
+    let activation_output = activation.wait_with_output().expect("wait for activation");
+    let (_activation_stdout, activation_stderr) = output_text(&activation_output);
+    assert!(activation_output.status.success(), "{activation_stderr}");
+    let cleanup_output = cleanup.wait_with_output().expect("wait for cleanup");
+    let (cleanup_stdout, cleanup_stderr) = output_text(&cleanup_output);
+    assert!(cleanup_output.status.success(), "{cleanup_stderr}");
+    assert!(candidate.is_dir(), "{cleanup_stdout}");
 }
 
 #[test]
