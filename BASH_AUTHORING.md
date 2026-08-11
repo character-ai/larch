@@ -108,4 +108,4 @@ When body content crosses a public boundary and the caller has not already scrub
 
 For the shared residual-Bash policy, see `AGENTS.md`. Unique Bash contracts remain here: contract-bearing hooks define local `hook_emit` functions and keep hook JSON on the contract stream. `sessionstart-health.sh` keeps a direct stdout fallback for stripped PATH environments.
 
-Use `scripts/residual-bash-paths.txt` through `python3 python/cli.py residual-bash paths [--root PATH]` when a linter or CI job needs the residual shell set.
+Use `scripts/residual-bash-paths.txt` through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" residual-bash paths [--root PATH]` when a linter or CI job needs the residual shell set.

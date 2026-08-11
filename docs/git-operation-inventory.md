@@ -34,6 +34,7 @@ crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/developer_tooling_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
@@ -67,8 +68,6 @@ python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base
 python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
 python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,remote,rev-parse,show-ref,status,submodule,worktree
 python/larch/core/redact.py	later-domain	#7686	submodule
-python/larch/core/residual_bash.py	later-domain	#7686	dynamic
-python/larch/core/verify_main.py	later-domain	#7686	log
 python/larch/design/design_log_publish_flow.py	later-domain	#7680	dynamic
 python/larch/design/design_step2b.py	later-domain	#7680	dynamic
 python/larch/design/plan_quality.py	later-domain	#7680	apply

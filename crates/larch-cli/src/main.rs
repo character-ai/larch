@@ -40,6 +40,7 @@ mod collector_commands;
 mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod deps_audit_commands;
+mod developer_tooling_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod execution_issue_commands;
@@ -112,6 +113,7 @@ use agent_commands::AgentCommand;
 use ci_selection::CiCommand;
 use ci_timing::CiTimingCommand;
 use complete_umbrella_commands::CompleteUmbrellaCommand;
+use developer_tooling_commands::{AliasCommand, ResidualBashCommand, VerifyCommand};
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
 use rebalance_tests::RebalanceTestsCommand;
@@ -139,6 +141,9 @@ enum Domain {
     /// Vendor-agent launch and diagnostic commands.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Alias generation and target-resolution helpers.
+    #[command(subcommand)]
+    Alias(AliasCommand),
     /// Issue blocker discovery.
     #[command(subcommand)]
     Blocker(BlockerCommand),
@@ -252,6 +257,9 @@ enum Domain {
     /// Repository-scoped developer commands.
     #[command(subcommand)]
     Repo(RepoCommand),
+    /// List retained Bash paths from the residual manifest.
+    #[command(subcommand, name = "residual-bash")]
+    ResidualBash(ResidualBashCommand),
     /// Terminal `/implement` final-report composition and publication.
     #[command(subcommand, name = "final-report")]
     FinalReport(FinalReportCommand),
@@ -273,6 +281,9 @@ enum Domain {
     /// Pack and rewrite deterministic test-shard assignments.
     #[command(subcommand)]
     TestShard(TestShardCommand),
+    /// Small side-effect verification helpers.
+    #[command(subcommand)]
+    Verify(VerifyCommand),
     /// Timing-ledger marks, records, dumps, and reports.
     #[command(subcommand)]
     Timing(TimingCommand),
@@ -1487,6 +1498,7 @@ fn run(
 ) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
+        Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))
         }
@@ -1894,6 +1906,7 @@ fn run(
         }),
         Domain::Release(command) => run_release(command),
         Domain::Repo(command) => Ok(repo_size_commands::run(command)),
+        Domain::ResidualBash(command) => Ok(developer_tooling_commands::run_residual_bash(command)),
         Domain::FinalReport(command) => Ok(match command {
             FinalReportCommand::Write(arguments) => {
                 final_report_commands::write(&arguments.arguments)
@@ -1912,6 +1925,7 @@ fn run(
         Domain::Slack(command) => Ok(slack_commands::run(command)),
         Domain::StallRecovery(arguments) => Ok(stall_recovery_commands::run(&arguments.arguments)),
         Domain::TestShard(command) => Ok(test_shards::run(command)),
+        Domain::Verify(command) => Ok(developer_tooling_commands::run_verify(command)),
         Domain::Timing(command) => Ok(match command {
             TimingCommand::Mark(arguments) => timing_commands::mark(&arguments.arguments),
             TimingCommand::RecordVendorTask(arguments) => {

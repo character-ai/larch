@@ -287,7 +287,7 @@ test-token-claude-source:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k claude_source
 
 test-verify-skill-called:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_verify_skill.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test developer_tooling_commands -- verify_skill_called
 
 
 test-extinct-notification-stack:

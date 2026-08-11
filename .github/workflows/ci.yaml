@@ -212,7 +212,9 @@ jobs:
         run: |
           set -euo pipefail
           max_parallel="$(nproc 2>/dev/null || echo 1)"
-          python3 python/cli.py residual-bash paths --null-delimited \
+          cargo build --locked --package larch-cli --bin larch
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" residual-bash paths --null-delimited \
             | xargs -0 -r -n 1 -P "$max_parallel" shellcheck -x --exclude=SC2329 --
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs

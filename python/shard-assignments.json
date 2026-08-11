@@ -133,8 +133,6 @@
   "tests/core/test_proc.py::test_run_timeout_captures_partial_output": 15,
   "tests/core/test_proc.py::test_run_timeout_returns_configured_rc": 5,
   "tests/core/test_proc.py::test_run_true_success": 9,
-  "tests/core/test_residual_bash.py::test_cli_newline_and_null_delimited": 8,
-  "tests/core/test_residual_bash.py::test_intersect_git_limits_to_tracked_manifest_rows": 15,
   "tests/debate/test_orchestrator.py::test_autonomous_adjudication_rejects_malformed_success_dispatch": 20,
   "tests/debate/test_orchestrator.py::test_autonomous_adjudication_uses_dispatch_voters_and_writes_local_tally": 13,
   "tests/debate/test_orchestrator.py::test_autonomous_empty_panel_is_both_viable_without_operator_fallback": 3,

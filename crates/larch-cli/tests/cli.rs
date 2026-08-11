@@ -24,6 +24,7 @@ Usage: larch <COMMAND>
 Commands:
   admission          `/implement` entry admission, preflight, and fork bootstrap
   agent              Vendor-agent launch and diagnostic commands
+  alias              Alias generation and target-resolution helpers
   blocker            Issue blocker discovery
   block-issue        Native issue blocked-by dependency mutations
   cleanup            Remove stale larch session directories and pointers
@@ -61,6 +62,7 @@ Commands:
   oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands
   repo               Repository-scoped developer commands
+  residual-bash      List retained Bash paths from the residual manifest
   final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
   rebalance-tests    CI test-rebalance planning, verification, and checked orchestration
@@ -68,6 +70,7 @@ Commands:
   slack              Slack announcement helpers
   stall-recovery     Stall-recovery state and validation commands
   test-shard         Pack and rewrite deterministic test-shard assignments
+  verify             Small side-effect verification helpers
   timing             Timing-ledger marks, records, dumps, and reports
   gh                 GitHub workflow helper commands
   push               Push commands with typed Git network operations

@@ -19,7 +19,7 @@ Create an alias skill that forwards to an existing larch skill with preset flags
 
 **Target directory** is resolved automatically:
 
-- A **git repository is required**: the helper (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target`) anchors all paths at `git rev-parse --show-toplevel` and fail-closes outside a git working tree. Run `git init` first if you want to use `/alias` in a fresh project.
+- A **git repository is required**: the helper (`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" alias resolve-target`) anchors all paths at the typed repository worktree and fail-closes outside a git working tree. Run `git init` first if you want to use `/alias` in a fresh project.
 - Inside a Claude plugin source repo (detected via the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root, matching `validate-args.sh`), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin).
 - In any other git repository (consumer repos with their own larch installation), the alias is generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private skill).
 - `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch when the operator wants a private alias in plugin source). In non-plugin repos `--private` is a no-op.
@@ -38,7 +38,7 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 4. **NEVER assume success on `VERIFIED=false` just because `/implement` returned.** **Why:** `/implement` can return cleanly while writing the file to the wrong path, skipping the generator, or failing silently: the sentinel-file gate is the only authoritative signal.
 5. **NEVER parse `--merge` or `--private` tokens after the first positional argument as flags for `/alias`.** **Why:** both flags have a dual role (consumed by `/alias` when before the first positional; passed through to the alias's preset flags otherwise); conflating the two is a silent footgun.
 6. **NEVER hardcode `.claude/skills/<alias-name>` or `skills/<alias-name>` paths anywhere in Steps 2/3/4: always thread `$TARGET_DIR`.** **Why:** the resolved target directory is the single source of truth (computed once at Step 2 by `alias resolve-target`); a partial edit that re-introduces a hardcoded path in one site (e.g., the `/implement` recipe) but not another (e.g., the verify sentinel) creates a silent path split where `/implement` writes one tree and Step 4 verifies a different tree. Enforced by `make test-alias-structure` (CI).
-7. **NEVER use `eval "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the command's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block.
+7. **NEVER use `eval "$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" alias resolve-target ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the command's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/implement`) returns, IMMEDIATELY continue with this skill's NEXT numbered step: do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message: those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `python/cli.py checks run-relevant` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt; do not load for routine invocations: load only when debugging or adding a child-Skill invocation.
 
@@ -75,25 +75,25 @@ if [[ "$alias_private" == "true" ]]; then
 fi
 
 # Non-eval line-by-line parse with explicit allowlist (per NEVER #7).
-# Do NOT use `eval "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target ...)"`: paths containing spaces / $(...) /
+# Do NOT use `eval "$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" alias resolve-target ...)"`: paths containing spaces / $(...) /
 # backticks would be re-interpreted by the shell.
 REPO_ROOT=""; PLUGIN_REPO=""; TARGET_DIR=""
 while IFS='=' read -r key val; do
   case "$key" in
     REPO_ROOT|PLUGIN_REPO|TARGET_DIR) declare "$key=$val" ;;
   esac
-done < <(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target \
+done < <("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" alias resolve-target \
            --alias-name "<alias-name>" "${PRIVATE_FLAG[@]}")
 
 # Fail-closed if the helper exited with empty values (e.g., not in a git repo).
 # `alias resolve-target` writes its diagnostic to stderr; surface a usable error to the operator.
 if [[ -z "$TARGET_DIR" || -z "$REPO_ROOT" || -z "$PLUGIN_REPO" ]]; then
-  echo "**ERROR: alias resolve-target failed (likely not in a git repository, or git binary missing). Cannot determine target directory for alias '<alias-name>'.**"
+  echo "**ERROR: alias resolve-target failed (likely not in a git repository, or repository access failed). Cannot determine target directory for alias '<alias-name>'.**"
   exit 1
 fi
 ```
 
-The helper's stdout schema and the two-file plugin-detect predicate (`.claude-plugin/plugin.json` AND `skills/implement/SKILL.md`) live in `python/alias_skill.py`. Operators wanting a private alias inside a plugin repo use `--private`.
+The helper's stdout schema and the two-file plugin-detect predicate (`.claude-plugin/plugin.json` AND `skills/implement/SKILL.md`) live in `crates/larch-cli/src/developer_tooling_commands.rs`. Operators wanting a private alias inside a plugin repo use `--private`.
 
 ### Validation table
 
@@ -152,7 +152,7 @@ Add /<alias-name> alias for /<target-skill> <preset-flags>.
 
 Generate the alias skill by running:
   mkdir -p "$TARGET_DIR"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias generate \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" alias generate \
     --name "<alias-name>" \
     --target "<target-skill>" \
     --target-dir "$TARGET_DIR" \
@@ -182,7 +182,7 @@ Only include `--merge` in the args if `alias_merge=true`.
 After `/implement` returns, verify the alias SKILL.md actually landed on disk. The sentinel path uses the `$TARGET_DIR` resolved at Step 2 (no separate `git rev-parse` here: the resolved value is the single source of truth, fail-closed at Step 2 if git failed):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called \
   --sentinel-file "$TARGET_DIR/SKILL.md"
 ```
 

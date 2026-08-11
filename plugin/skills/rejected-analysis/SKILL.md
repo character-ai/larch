@@ -199,7 +199,7 @@ Parse captured stdout for:
 Verify the sentinel:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "<parsed ISSUE_SENTINEL>"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "<parsed ISSUE_SENTINEL>"
 ```
 
 Set retained `ISSUE_VERIFIED=true|false` and `ISSUES_FAILED=<n>` from parsed stdout plus sentinel verification.

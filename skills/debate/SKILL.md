@@ -109,7 +109,7 @@ For issue mode, bind `SOURCE_ISSUE` directly. For free-form mode, invoke `/issue
 Try the bare `issue` skill name, then `larch:issue` only if the first result is `Unknown skill`. Continue immediately after the child returns. Parse only its machine lines. Require `ISSUES_CREATED=1`, `ISSUES_FAILED=0`, one positive `ISSUE_1_NUMBER`, and a matching repository issue URL. Run `verify skill-called --sentinel-file "$DEBATE_TMPDIR/source-issue.sentinel"` and require `VERIFIED=true`. Bind the verified number to `SOURCE_ISSUE`; otherwise enter failure cleanup without debating the partially resolved source.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called \
   --sentinel-file "$DEBATE_TMPDIR/source-issue.sentinel"
 # lint-consecutive-bash: ok free-form verification is conditional before shared source preparation
 ```
@@ -287,7 +287,7 @@ Require exactly one nonempty line beginning with the exact prefix `[PROPOSAL]` f
 Use the same bare-name then `larch:issue` fallback. Continue immediately. Require `ISSUES_CREATED=1`, `ISSUES_FAILED=0`, a positive proposal number, a matching URL, and `verify skill-called ... VERIFIED=true`.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called \
   --sentinel-file "$DEBATE_TMPDIR/proposal-issue.sentinel"
 ```
 

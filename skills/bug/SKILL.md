@@ -194,7 +194,7 @@ Parse `/issue` stdout as machine text. Do not use `eval` or `source`. Extract:
 Then verify the sentinel file:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel"
 ```
 
 Parse `VERIFIED` from stdout.
