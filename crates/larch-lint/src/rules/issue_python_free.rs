@@ -9,7 +9,10 @@ use std::{collections::BTreeSet, path::Path};
 
 use toml::{Value, map::Map};
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{
+    Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
+    command_registry::issue_in_process_python_findings,
+};
 
 use super::python_boundary::{check_python_registry, check_retired_entrypoints};
 
@@ -31,28 +34,6 @@ const EXECUTION_RUNTIME_WRAPPERS: [&str; 4] = [
     "def execution_issues_flush(",
     "def execution_issues_flush_safety_net(",
     "def execution_issues_refresh(",
-];
-const RETIRED_EXECUTION_IMPORTS: [&str; 4] = [
-    "from larch.issue import execution_issues",
-    "from larch.issue.execution_issues import",
-    "larch.issue.execution_issues",
-    "execution_issues.append_execution_issue",
-];
-const RETIRED_TRACKING_CALLS: [&str; 14] = [
-    "tracking_issue.append_comment",
-    "tracking_issue.create_issue",
-    "tracking_issue.initialize_implementation_lease",
-    "tracking_issue.mark_false_positive",
-    "tracking_issue.read(",
-    "tracking_issue.read_sentinel",
-    "tracking_issue.refresh_implementation_lease",
-    "tracking_issue.rename_terminal_with_lease",
-    "tracking_issue.rename_with_details",
-    "tracking_issue.rename(",
-    "tracking_issue.upsert_marker_comment",
-    "tracking_issue.upsert_marker_summary",
-    "tracking_issue.upsert_summary",
-    "tracking_issue.upsert_token_report",
 ];
 const TRACKING_RUNTIME_WRAPPERS: [&str; 9] = [
     "def tracking_issue_append_comment(",
@@ -133,6 +114,7 @@ impl HandoffCommand {
 struct RetainedModule {
     path: &'static str,
     planning_issue: i64,
+    reason: &'static str,
 }
 
 type RegistryTable = Map<String, Value>;
@@ -186,10 +168,11 @@ fn registry_text<'a>(table: &'a RegistryTable, key: &str) -> &'a str {
 }
 
 impl RetainedModule {
-    const fn new(path: &'static str, planning_issue: i64) -> Self {
+    const fn new(path: &'static str, planning_issue: i64, reason: &'static str) -> Self {
         Self {
             path,
             planning_issue,
+            reason,
         }
     }
 }
@@ -320,29 +303,40 @@ const HANDOFF_COMMANDS: [HandoffCommand; 21] = [
     HandoffCommand::new("validate-merged", "write-state", 7684),
 ];
 
-/// The package initializer is structural. Every other top-level issue module
-/// must name the umbrella responsible for its next cutover.
+const RESEARCH_LIBRARY: &str =
+    "issue analysis library retained for the research and analytics umbrella";
+const DESIGN_LIBRARY: &str =
+    "issue wire or payload library retained for the design workflow umbrella";
+const REVIEW_LIBRARY: &str = "OOS library retained for the review pipeline umbrella";
+const IMPLEMENT_LIBRARY: &str =
+    "pure pull-request footer library retained for the implementation workflow umbrella";
+const LINT_LIBRARY: &str =
+    "migration governance library retained for the lint and developer-tooling umbrella";
+
+/// The package initializer is structural. Every other issue module at any
+/// depth must name both its receiving umbrella and its behaviorally distinct
+/// reason for remaining in Python.
 const RETAINED_MODULES: [RetainedModule; 20] = [
-    RetainedModule::new("python/larch/issue/_ground_truth.py", 7684),
-    RetainedModule::new("python/larch/issue/_oos.py", 7684),
-    RetainedModule::new("python/larch/issue/_report.py", 7684),
-    RetainedModule::new("python/larch/issue/_util.py", 7684),
-    RetainedModule::new("python/larch/issue/analyze_bugs.py", 7684),
-    RetainedModule::new("python/larch/issue/file_oos.py", 7680),
-    RetainedModule::new("python/larch/issue/issue_block.py", 7685),
-    RetainedModule::new("python/larch/issue/issue_blocks.py", 7680),
-    RetainedModule::new("python/larch/issue/issue_create.py", 7680),
-    RetainedModule::new("python/larch/issue/issue_mutation.py", 7680),
-    RetainedModule::new("python/larch/issue/issue_wire.py", 7680),
-    RetainedModule::new("python/larch/issue/migration_governance.py", 7685),
-    RetainedModule::new("python/larch/issue/oos.py", 7679),
-    RetainedModule::new("python/larch/issue/oos_disposition.py", 7680),
-    RetainedModule::new("python/larch/issue/oos_priority.py", 7680),
-    RetainedModule::new("python/larch/issue/open_rows.py", 7685),
-    RetainedModule::new("python/larch/issue/rejected_analysis.py", 7684),
-    RetainedModule::new("python/larch/issue/title_match.py", 7680),
-    RetainedModule::new("python/larch/issue/tracking_issue.py", 7681),
-    RetainedModule::new("python/larch/issue/validate_merged.py", 7684),
+    RetainedModule::new("python/larch/issue/_ground_truth.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/_oos.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/_report.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/_util.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/analyze_bugs.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/issue_block.py", 7685, LINT_LIBRARY),
+    RetainedModule::new("python/larch/issue/issue_blocks.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/issue_create.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/issue_mutation.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/migration_governance.py", 7685, LINT_LIBRARY),
+    RetainedModule::new("python/larch/issue/oos.py", 7679, REVIEW_LIBRARY),
+    RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/open_rows.py", 7685, LINT_LIBRARY),
+    RetainedModule::new("python/larch/issue/rejected_analysis.py", 7684, RESEARCH_LIBRARY),
+    RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
+    RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
+    RetainedModule::new("python/larch/issue/validate_merged.py", 7684, RESEARCH_LIBRARY),
 ];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
@@ -397,6 +391,7 @@ impl Rule for IssuePythonFreeRule {
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
+        findings.extend(issue_in_process_python_findings(repository)?);
         check_execution_python_boundary(repository, &mut findings)?;
         check_tracking_python_boundary(repository, &mut findings)?;
         check_retained_modules(repository, &mut findings);
@@ -417,26 +412,6 @@ fn check_execution_python_boundary(
             1,
             "superseded Python execution-issues behavior returned",
         ));
-    }
-    for path in repository.paths() {
-        let relative = path.as_str();
-        if !relative.starts_with("python/larch/")
-            || !Path::new(relative)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-        {
-            continue;
-        }
-        let source = repository.read_utf8(path)?;
-        for token in RETIRED_EXECUTION_IMPORTS {
-            if let Some(offset) = source.find(token) {
-                findings.push(Finding::new(
-                    relative,
-                    line_for_offset(&source, offset),
-                    format!("production caller imports the retired execution-issues owner: {token}"),
-                ));
-            }
-        }
     }
     let facade_path = RepoPath::from_trusted(RUST_RUNTIME_FACADE);
     if repository.paths().binary_search(&facade_path).is_ok() {
@@ -500,23 +475,7 @@ fn check_tracking_python_boundary(
     findings: &mut Vec<Finding>,
 ) -> Result<(), LintError> {
     let tracking_path = RepoPath::from_trusted(TRACKING_PYTHON_MODULE);
-    if repository.paths().binary_search(&tracking_path).is_ok() {
-        let source = repository.read_utf8(&tracking_path)?;
-        for token in [
-            "from larch.git import gh",
-            "from larch.issue import issue_mutation",
-            "gh.",
-            "issue_mutation.",
-        ] {
-            if let Some(offset) = source.find(token) {
-                findings.push(Finding::new(
-                    TRACKING_PYTHON_MODULE,
-                    line_for_offset(&source, offset),
-                    format!("superseded Python tracking GitHub behavior returned: {token}"),
-                ));
-            }
-        }
-    } else {
+    if repository.paths().binary_search(&tracking_path).is_err() {
         findings.push(Finding::new(
             TRACKING_PYTHON_MODULE,
             1,
@@ -534,15 +493,6 @@ fn check_tracking_python_boundary(
             continue;
         }
         let source = repository.read_utf8(path)?;
-        for token in RETIRED_TRACKING_CALLS {
-            if let Some(offset) = source.find(token) {
-                findings.push(Finding::new(
-                    relative,
-                    line_for_offset(&source, offset),
-                    format!("production caller bypasses the Rust tracking-issue facade: {token}"),
-                ));
-            }
-        }
         let compact: String = source
             .chars()
             .filter(|character| !character.is_whitespace())
@@ -740,34 +690,51 @@ fn check_python_entrypoints(
 fn check_retained_modules(repository: &Repository, findings: &mut Vec<Finding>) {
     for path in repository.paths() {
         let relative = path.as_str();
-        if !is_top_level_issue_module(relative) || relative == PYTHON_ISSUE_INIT {
+        if !is_issue_module(relative) || relative == PYTHON_ISSUE_INIT {
             continue;
         }
-        if retained_module_owner(relative).is_none() {
+        if retained_module(relative).is_none() {
             findings.push(Finding::new(
                 relative,
                 1,
-                "unowned retained issue-domain Python module; name its receiving umbrella",
+                "unowned retained issue-domain Python module; name its receiving umbrella and reason",
+            ));
+        }
+    }
+    for module in &RETAINED_MODULES {
+        if module.reason.trim().is_empty() {
+            findings.push(Finding::new(
+                module.path,
+                1,
+                "retained issue-domain Python module has no ownership reason",
+            ));
+        }
+        let path = RepoPath::from_trusted(module.path);
+        if repository.paths().binary_search(&path).is_err() {
+            findings.push(Finding::new(
+                module.path,
+                1,
+                "stale retained issue-domain Python module inventory entry",
             ));
         }
     }
 }
 
-fn is_top_level_issue_module(path: &str) -> bool {
+fn is_issue_module(path: &str) -> bool {
     path.strip_prefix(PYTHON_ISSUE_ROOT)
         .is_some_and(|name| {
             Path::new(name)
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-                && !name.contains('/')
         })
 }
 
+fn retained_module(path: &str) -> Option<&'static RetainedModule> {
+    RETAINED_MODULES.iter().find(|module| module.path == path)
+}
+
 pub(super) fn retained_module_owner(path: &str) -> Option<i64> {
-    RETAINED_MODULES
-        .iter()
-        .find(|module| module.path == path)
-        .map(|module| module.planning_issue)
+    retained_module(path).map(|module| module.planning_issue)
 }
 
 fn registry_finding(message: String) -> Finding {
@@ -798,10 +765,8 @@ mod tests {
         handoffs.dedup();
         assert_eq!(handoffs.len(), handoff_total);
         assert!(RETAINED_MODULES.iter().all(|module| {
-            matches!(
-                module.planning_issue,
-                7679 | 7680 | 7681 | 7684 | 7685
-            )
+            matches!(module.planning_issue, 7679 | 7680 | 7681 | 7684 | 7685)
+                && !module.reason.trim().is_empty()
         }));
     }
 }

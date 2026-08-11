@@ -26,6 +26,35 @@ const HOOKS_PATH: &str = "hooks/hooks.json";
 const SCHEMA_VERSION: u32 = 2;
 const CHIEF_MIGRATION_ISSUE: u64 = 7687;
 const MIGRATION_UMBRELLA_ISSUES: std::ops::RangeInclusive<u64> = 7673..=7687;
+const TRACKING_PURE_FUNCTIONS: [&str; 4] = [
+    "_drop_issue_footer",
+    "link_pr_closes",
+    "link_pr_for_disposition",
+    "link_pr_part_of",
+];
+const TRACKING_PURE_METHODS: [&str; 6] = ["join", "pop", "rstrip", "splitlines", "strip", "split"];
+
+struct IssuePythonBoundary {
+    module: &'static str,
+    selector: &'static str,
+    allowed_functions: &'static [&'static str],
+    module_must_be_absent: bool,
+}
+
+const ISSUE_PYTHON_BOUNDARIES: [IssuePythonBoundary; 2] = [
+    IssuePythonBoundary {
+        module: "larch.issue.execution_issues",
+        selector: "execution-issues *",
+        allowed_functions: &[],
+        module_must_be_absent: true,
+    },
+    IssuePythonBoundary {
+        module: "larch.issue.tracking_issue",
+        selector: "tracking-issue *",
+        allowed_functions: &TRACKING_PURE_FUNCTIONS,
+        module_must_be_absent: false,
+    },
+];
 
 static PYTHON_ROW: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -105,6 +134,34 @@ pub fn python_retirement_findings_for_issues(
     let python_sources = read_python_sources(repository, &source_retirement_records, true)?;
     let mut findings = Vec::new();
     validate_python_retirements(&retirement_checks, &python, &python_sources, &mut findings);
+    Ok(findings)
+}
+
+/// Discover live in-process Python ownership of corrected issue commands.
+///
+/// `issue-python-free` consumes the same facts that feed the command caller
+/// ledger, so its closeout proof cannot drift from caller discovery.
+pub fn issue_in_process_python_findings(
+    repository: &Repository,
+) -> Result<Vec<Finding>, LintError> {
+    let mut findings = Vec::new();
+    for path in repository.paths() {
+        if !is_production_issue_python_path(path.as_str()) {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        if !issue_python_boundary_candidate(path.as_str(), &source) {
+            continue;
+        }
+        for selector in extract_issue_in_process_selectors(path.as_str(), &source)? {
+            findings.push(finding(format!(
+                "python-command-equivalent-still-owned {selector}: {}",
+                path.as_str()
+            )));
+        }
+    }
+    findings.sort();
+    findings.dedup();
     Ok(findings)
 }
 
@@ -858,7 +915,22 @@ fn discover_callers(
             continue;
         };
         let content = repository.read_utf8(path)?;
-        let python = filter_selectors(extract_selectors(&content, "python/cli.py"), known);
+        let mut python = filter_selectors(extract_selectors(&content, "python/cli.py"), known);
+        if is_production_issue_python_path(path.as_str())
+            && issue_python_boundary_candidate(path.as_str(), &content)
+        {
+            let selectors = if let Some(document) = parsed_python.get(path.as_str()) {
+                extract_issue_in_process_selectors_from_document(document)
+            } else {
+                extract_issue_in_process_selectors(path.as_str(), &content)?
+            };
+            for selector in filter_selectors(selectors, known) {
+                if !python.contains(&selector) {
+                    python.push(selector);
+                }
+            }
+            python.sort();
+        }
         let mut rust = if kind == CallerKind::PythonRuntime {
             let selectors =
                 if !content.contains("larch_entrypoint") && !content.contains("scripts/larch.sh") {
@@ -1010,6 +1082,247 @@ struct PythonBindings {
     imported: bool,
 }
 
+fn issue_python_boundary_candidate(path: &str, source: &str) -> bool {
+    ISSUE_PYTHON_BOUNDARIES.iter().any(|boundary| {
+        path == format!("python/{}.py", boundary.module.replace('.', "/"))
+            || source.contains(
+                boundary
+                    .module
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(boundary.module),
+            )
+    })
+}
+
+fn is_production_issue_python_path(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    !name.starts_with("test-")
+        && !path
+            .split('/')
+            .any(|part| matches!(part, "fixtures" | "tests"))
+        && (syntax::is_production_python_path(path)
+            || ["hooks/", "scripts/", "skills/"]
+                .iter()
+                .any(|prefix| path.starts_with(prefix)))
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+}
+
+fn extract_issue_in_process_selectors(path: &str, source: &str) -> Result<Vec<String>, LintError> {
+    let tree = parse_python(path, source)?;
+    let module = path
+        .strip_prefix("python/")
+        .and_then(|value| value.strip_suffix(".py"))
+        .unwrap_or_default()
+        .replace('/', ".")
+        .trim_end_matches(".__init__")
+        .to_owned();
+    let package = if path.ends_with("/__init__.py") {
+        module.clone()
+    } else {
+        module
+            .rsplit_once('.')
+            .map_or_else(String::new, |(parent, _)| parent.to_owned())
+    };
+    Ok(extract_issue_in_process_selectors_from_tree(
+        tree.root_node(),
+        source,
+        &module,
+        &package,
+    ))
+}
+
+fn extract_issue_in_process_selectors_from_document(document: &PythonSource) -> Vec<String> {
+    extract_issue_in_process_selectors_from_tree(
+        document.tree.root_node(),
+        &document.source,
+        &document.module,
+        &document.package,
+    )
+}
+
+fn extract_issue_in_process_selectors_from_tree(
+    root: Node<'_>,
+    source: &str,
+    module: &str,
+    package: &str,
+) -> Vec<String> {
+    ISSUE_PYTHON_BOUNDARIES
+        .iter()
+        .filter(|boundary| {
+            issue_python_boundary_is_violated(root, source, module, package, boundary)
+        })
+        .map(|boundary| boundary.selector.to_owned())
+        .collect()
+}
+
+fn issue_python_boundary_is_violated(
+    root: Node<'_>,
+    source: &str,
+    module: &str,
+    package: &str,
+    boundary: &IssuePythonBoundary,
+) -> bool {
+    if module == boundary.module
+        && (boundary.module_must_be_absent
+            || !retained_tracking_module_is_pure(root, source, boundary.allowed_functions))
+    {
+        return true;
+    }
+
+    let mut aliases = BTreeSet::from([boundary.module.to_owned()]);
+    let mut forbidden_import = false;
+    walk_named(root, &mut |node| match node.kind() {
+        "import_statement" => {
+            let text = node_text(node, source).unwrap_or_default();
+            let mut bindings = PythonBindings::default();
+            inspect_import_statement(text, boundary.module, &mut bindings);
+            aliases.extend(bindings.module_aliases);
+            if boundary.module_must_be_absent && imports_exact_module(text, boundary.module) {
+                forbidden_import = true;
+            }
+        }
+        "import_from_statement" => {
+            let text = node_text(node, source).unwrap_or_default();
+            let mut bindings = PythonBindings::default();
+            inspect_from_import(text, package, boundary.module, "", &mut bindings);
+            aliases.extend(bindings.module_aliases);
+            if boundary_from_import_is_forbidden(text, package, boundary) {
+                forbidden_import = true;
+            }
+        }
+        _ => {}
+    });
+    if forbidden_import {
+        return true;
+    }
+
+    let mut forbidden_reference = false;
+    walk_named(root, &mut |node| {
+        if forbidden_reference {
+            return;
+        }
+        if boundary.module_must_be_absent
+            && node.kind() == "call"
+            && dynamic_import_target(node, source).as_deref() == Some(boundary.module)
+        {
+            forbidden_reference = true;
+            return;
+        }
+        if node.kind() != "attribute"
+            || has_ancestor_kind(node, &["import_statement", "import_from_statement"])
+        {
+            return;
+        }
+        let attribute = compact_node_text(node, source);
+        forbidden_reference = aliases.iter().any(|alias| {
+            (boundary.module_must_be_absent && attribute == *alias)
+                || attribute
+                    .strip_prefix(alias)
+                    .and_then(|suffix| suffix.strip_prefix('.'))
+                    .and_then(|suffix| suffix.split('.').next())
+                    .is_some_and(|function| !boundary.allowed_functions.contains(&function))
+        });
+    });
+    forbidden_reference
+}
+
+fn dynamic_import_target(node: Node<'_>, source: &str) -> Option<String> {
+    let function = node.child_by_field_name("function")?;
+    let function_name = compact_node_text(function, source);
+    if function_name != "__import__" && !function_name.ends_with(".import_module") {
+        return None;
+    }
+    node.child_by_field_name("arguments")
+        .and_then(|arguments| arguments.named_child(0))
+        .and_then(|argument| python_string(argument, source))
+}
+
+fn imports_exact_module(text: &str, target_module: &str) -> bool {
+    text.trim()
+        .strip_prefix("import ")
+        .into_iter()
+        .flat_map(|body| body.split(','))
+        .any(|item| item.split_whitespace().next() == Some(target_module))
+}
+
+fn boundary_from_import_is_forbidden(
+    text: &str,
+    package: &str,
+    boundary: &IssuePythonBoundary,
+) -> bool {
+    let flattened = text.replace(['\n', '\r', '(', ')'], " ");
+    let Some(body) = flattened.trim().strip_prefix("from ") else {
+        return false;
+    };
+    let Some((raw_module, imports)) = body.split_once(" import ") else {
+        return false;
+    };
+    let module = resolve_import_module(package, raw_module.trim());
+    imports.split(',').any(|item| {
+        let name = item.split_whitespace().next().unwrap_or_default();
+        if module == boundary.module {
+            return name == "*" || !boundary.allowed_functions.contains(&name);
+        }
+        boundary.module_must_be_absent && format!("{module}.{name}") == boundary.module
+    })
+}
+
+fn retained_tracking_module_is_pure(
+    root: Node<'_>,
+    source: &str,
+    allowed_functions: &[&str],
+) -> bool {
+    let mut cursor = root.walk();
+    for (index, child) in root.named_children(&mut cursor).enumerate() {
+        if child.kind() == "function_definition"
+            && child
+                .child_by_field_name("name")
+                .and_then(|name| node_text(name, source))
+                .is_some_and(|name| allowed_functions.contains(&name))
+        {
+            continue;
+        }
+        let text = compact_node_text(child, source);
+        if (index == 0 && child.kind() == "expression_statement" && text.starts_with(['\'', '"']))
+            || (matches!(
+                child.kind(),
+                "import_from_statement" | "future_import_statement"
+            ) && text == "from__future__importannotations")
+        {
+            continue;
+        }
+        return false;
+    }
+    let mut body_is_pure = true;
+    walk_named(root, &mut |node| {
+        if matches!(
+            node.kind(),
+            "import_statement" | "import_from_statement" | "future_import_statement"
+        ) && compact_node_text(node, source) != "from__future__importannotations"
+        {
+            body_is_pure = false;
+        }
+        if node.kind() == "call"
+            && let Some(function) = node.child_by_field_name("function")
+        {
+            let allowed = match function.kind() {
+                "identifier" => node_text(function, source)
+                    .is_some_and(|name| allowed_functions.contains(&name)),
+                "attribute" => function
+                    .child_by_field_name("attribute")
+                    .and_then(|name| node_text(name, source))
+                    .is_some_and(|name| TRACKING_PURE_METHODS.contains(&name)),
+                _ => false,
+            };
+            body_is_pure &= allowed;
+        }
+    });
+    body_is_pure
+}
+
 fn parse_python(path: &str, source: &str) -> Result<Tree, LintError> {
     let tree =
         syntax::parse_python(source).map_err(|error| LintError::new(format!("{path}: {error}")))?;
@@ -1049,7 +1362,8 @@ fn read_python_sources(
             && (source.contains("larch_entrypoint") || source.contains("scripts/larch.sh"));
         let source_retirement_candidate =
             source_matches_python_retirement(&module, &source, source_retirement_records);
-        if !runtime_candidate && !source_retirement_candidate {
+        let issue_boundary_candidate = issue_python_boundary_candidate(path_text, &source);
+        if !runtime_candidate && !source_retirement_candidate && !issue_boundary_candidate {
             continue;
         }
         let tree = repository.python_syntax(path)?;

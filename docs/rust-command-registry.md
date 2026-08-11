@@ -48,7 +48,12 @@ The caller ledger inventories `skill`, `hook`, `script`, `ci`, `agent`, and
 `larch.core.repo_roots.larch_entrypoint` resolver are Rust callers because the
 resolver returns the verified `scripts/larch.sh` bootstrap. Syntax-aware
 inspection recognizes resolver and module aliases while ignoring comments and
-unexecuted string literals.
+unexecuted string literals. The same scanner inventories in-process Python
+ownership of corrected issue commands: imports or references to the deleted
+execution module select `execution-issues *`, and non-footer behavior in the
+retained tracking module selects `tracking-issue *`. Module aliases and
+`from` imports cannot hide either caller class. Pure pull-request footer helpers
+remain outside that command-equivalence boundary.
 
 The rule fails for missing or duplicate command rows, stale Python target or
 machine-stdout metadata, invalid status combinations, caller drift, unknown
@@ -182,8 +187,10 @@ the next cutover and does not create a second implementation.
 | #7686 | The final runtime and package retirement sweep owns deletion once no retained consumer remains; it is not an issue-command fallback. |
 
 The rule's retained-module list permits the package initializer and the named
-top-level `python/larch/issue/*.py` libraries only. A new top-level issue module
-fails until this ownership table and the rule identify its receiving umbrella.
+`python/larch/issue/**/*.py` libraries only. Every listed module carries a
+non-empty reason and a receiving umbrella. Discovery is recursive, so a new
+module or nested package initializer fails until the rule records its distinct
+purpose and receiving owner; stale inventory rows fail as the boundary shrinks.
 
 ## State transitions
 
