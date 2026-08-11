@@ -2,7 +2,7 @@
 
 use crate::{
     GitHubActionsError, GitHubActionsErrorKind, GitHubActionsService, GitHubRepositoryRef,
-    ProcessCancellation, WorkflowJob, WorkflowRun, WorkflowRunFilters,
+    ProcessCancellation, ReleaseSourceCommit, WorkflowJob, WorkflowRun, WorkflowRunFilters,
 };
 
 const CI_WORKFLOW: &str = "ci.yaml";
@@ -48,7 +48,7 @@ pub async fn resolve_main_cache_merge_group_source(
 /// Returns a typed input error unless the value is a lowercase 40-character
 /// Git commit identifier.
 pub fn validate_main_cache_source_sha(source_sha: &str) -> Result<(), GitHubActionsError> {
-    if valid_source_sha(source_sha) {
+    if source_sha.len() == 40 && ReleaseSourceCommit::parse(source_sha).is_ok() {
         Ok(())
     } else {
         Err(GitHubActionsError::new(
@@ -109,18 +109,11 @@ fn verify_required_jobs(jobs: &[WorkflowJob]) -> Result<(), GitHubActionsError> 
     ))
 }
 
-fn valid_source_sha(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         COMPLETED, MERGE_GROUP, REQUIRED_JOBS, SUCCESS, select_source_run, source_filters,
-        valid_source_sha, validate_main_cache_source_sha, verify_required_jobs,
+        validate_main_cache_source_sha, verify_required_jobs,
     };
     use crate::{WorkflowJob, WorkflowRun};
 
@@ -187,9 +180,9 @@ mod tests {
             ])
             .is_err()
         );
-        assert!(!valid_source_sha("ABCDEF"));
-        assert!(valid_source_sha(SHA));
         assert!(validate_main_cache_source_sha(SHA).is_ok());
         assert!(validate_main_cache_source_sha("ABCDEF").is_err());
+        assert!(validate_main_cache_source_sha(&SHA.to_uppercase()).is_err());
+        assert!(validate_main_cache_source_sha(&"a".repeat(64)).is_err());
     }
 }
