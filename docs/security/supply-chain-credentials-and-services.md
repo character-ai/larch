@@ -34,10 +34,12 @@ owns contributor instructions for dependency changes.
 key definitions live in `.github/actions/main-cache-keys/action.yaml`; every
 validation restore and every trusted publication uses those same exact keys.
 Actions cache version identity also binds the declared cache path. Lookup-only
-publisher probes therefore use the exact validation restore paths; temporary
-candidate and promotion paths begin only after a genuine miss. This prevents a
-false publisher miss from requesting an artifact that a cache-hit validation
-run correctly did not stage.
+publisher probes and saves therefore use the exact validation restore paths.
+Temporary candidate and verification paths begin only after a genuine miss;
+the publisher materializes the verified payload at its canonical path before
+saving it. This prevents either a false publisher miss from requesting an
+artifact that a cache-hit validation run correctly did not stage or a
+path-distinct save that validation cannot restore.
 The `CI` workflow handles pull requests, merge groups, and manual diagnosis.
 It is read-only for production caches. A normal push to `main` runs only
 `.github/workflows/main-cache-publication.yaml`, whose admission job refuses

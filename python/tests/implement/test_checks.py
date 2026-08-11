@@ -3927,6 +3927,7 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         publication.split("\n  main-cache-rust-promotion:", 1)[1]
         .split("\n      - name: Download Cargo inputs candidate", 1)[0]
     )
+    rust_promotion = publication.split("\n  main-cache-rust-promotion:", 1)[1]
     gitleaks_publisher = publication.split("\n  main-cache-gitleaks:", 1)[1].split(
         "\n  main-cache-probe:", 1
     )[0]
@@ -4007,8 +4008,20 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     for lookup_job in (rust_probe, rust_promotion_lookup):
         for cache_path in canonical_rust_cache_paths:
             assert cache_path in lookup_job
+    for cache_path in canonical_rust_cache_paths:
+        assert rust_promotion.count(cache_path) == 2
     assert "path: ${{ runner.temp }}/main-cache-probe/" not in rust_probe
-    assert "path: ${{ runner.temp }}/main-cache-promoted/" not in rust_promotion_lookup
+    assert "path: ${{ runner.temp }}/main-cache-promoted/" not in rust_promotion
+    for canonical_materialization in (
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/registry" "$HOME/.cargo/registry"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/rust-lint-deps/debug" "$GITHUB_WORKSPACE/target/debug"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-nextest/cargo-nextest" "$HOME/.cargo/bin/cargo-nextest"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov" "$HOME/.cargo/bin/cargo-llvm-cov"',
+        'mv -- "$RUNNER_TEMP/main-cache-promoted/coverage-target/llvm-cov-target" "$GITHUB_WORKSPACE/target/llvm-cov-target"',
+        '--policy-dir "$RUNNER_TEMP/trusted-main-rust-policy"',
+    ):
+        assert canonical_materialization in rust_promotion
     assert "/*\n            !/larch-logs/" in gitleaks_publisher
     assert "/.github/actions/main-cache-keys/" not in gitleaks_publisher
     for validation_operation in (
