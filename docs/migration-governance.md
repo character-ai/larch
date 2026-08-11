@@ -160,6 +160,12 @@ claim ownership of `issue governance-gate`, whose retained governance-gate
 boundary belongs to #7681. Command adapters remain responsible for evidence
 collection, validation at transport boundaries, and any future atomic cutover.
 
+`larch-core::migration_audit` adds the report-only companion core. It accepts
+already-collected issue, dependency, plan, lease, registry, and repository-rule
+evidence; reuses the admission core above; and deterministically renders the
+existing report schema. It owns no collection, command cutover, workflow,
+GitHub, Git, network, filesystem, process, or issue mutation behavior.
+
 ## Workflow handoff
 
 `.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and
