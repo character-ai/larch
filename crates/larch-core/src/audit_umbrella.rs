@@ -1886,7 +1886,7 @@ mod tests {
             prerequisite: AuditDependencyNode::Existing { number: 41 },
         };
         proposal.dependencies = vec![add.clone()];
-        proposal.remove_dependencies = vec![remove.clone()];
+        proposal.remove_dependencies = vec![remove];
         assert!(render_audit_proposal(&proposal).is_ok());
 
         let mut duplicate_add = proposal.clone();
