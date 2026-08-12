@@ -1402,7 +1402,7 @@ mod tests {
             vec!["README.md"]
         );
         assert_eq!(
-            git_path_string(&GitPath::new("README.md".as_bytes())).expect("UTF-8 path"),
+            git_path_string(&GitPath::new(b"README.md")).expect("UTF-8 path"),
             "README.md"
         );
 

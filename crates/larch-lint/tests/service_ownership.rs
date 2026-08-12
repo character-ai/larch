@@ -122,7 +122,7 @@ fn counts_one_live_adapter_owner_and_ignores_test_only_construction() {
     let repository = TempRepo::new();
     repository.write(
         "crates/larch-adapters/src/github/mod.rs",
-        br#"use octocrab::Octocrab;
+        br"use octocrab::Octocrab;
 
 pub fn build() {
     let _ = Octocrab::builder();
@@ -136,7 +136,7 @@ mod tests {
         let _ = Octocrab::builder();
     }
 }
-"#,
+",
     );
     repository.commit_all();
 

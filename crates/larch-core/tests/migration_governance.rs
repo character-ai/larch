@@ -318,6 +318,12 @@ fn migration_evidence_rejects_malformed_receipts_owner_rows_and_scope_identity()
         blockers_sha256: "c".repeat(64),
         owners_sha256: "d".repeat(64),
     };
+    assert_receipt_and_repository_validation(&valid_receipt);
+    assert_owner_block_validation();
+    assert_scope_identity_validation();
+}
+
+fn assert_receipt_and_repository_validation(valid_receipt: &PlanReceipt) {
     assert_eq!(
         render_receipt(&PlanReceipt {
             base_sha: "invalid".to_owned(),
@@ -328,7 +334,7 @@ fn migration_evidence_rejects_malformed_receipts_owner_rows_and_scope_identity()
         "invalid-plan-receipt-fields"
     );
     assert_eq!(
-        upsert_receipt("no plan block\n", &valid_receipt)
+        upsert_receipt("no plan block\n", valid_receipt)
             .expect_err("receipt cannot be attached without a plan")
             .to_string(),
         "plan-block-missing"
@@ -352,7 +358,9 @@ fn migration_evidence_rejects_malformed_receipts_owner_rows_and_scope_identity()
             "invalid-repository-name"
         );
     }
+}
 
+fn assert_owner_block_validation() {
     let malformed = parse_owner_block(
         "<!-- larch:owners:start -->\nCREATE\towner\t../escape\nCOMMAND\tissue\tmigration-audit\nCREATE\towner\tREADME.md\n<!-- larch:owners:end -->",
     );
@@ -380,7 +388,9 @@ fn migration_evidence_rejects_malformed_receipts_owner_rows_and_scope_identity()
         parse_owner_block("<!-- larch:owners:start -->\n<!-- larch:owners:start -->").defects,
         vec!["malformed-owner-block"]
     );
+}
 
+fn assert_scope_identity_validation() {
     assert_eq!(
         plan_scope_declarations("### REWRITTEN: docs/rewrite.md\n### MAY_UPDATE [docs/maybe.md]\n",),
         vec![
@@ -427,6 +437,12 @@ fn migration_evidence_rejects_malformed_receipts_owner_rows_and_scope_identity()
 
 #[test]
 fn migration_governance_fail_closed_branches_remain_explicit_and_fence_aware() {
+    assert_receipt_and_parser_fail_closed();
+    assert_scope_gate_and_freshness_fail_closed();
+    assert_owner_admission_fails_closed_without_complete_evidence();
+}
+
+fn assert_receipt_and_parser_fail_closed() {
     let receipt = PlanReceipt {
         plan_sha256: "a".repeat(64),
         base_sha: "b".repeat(40),
@@ -471,6 +487,9 @@ fn migration_governance_fail_closed_branches_remain_explicit_and_fence_aware() {
     )
     .defects
     .contains(&"invalid-owner-key".to_owned()));
+}
+
+fn assert_scope_gate_and_freshness_fail_closed() {
     assert_eq!(
         declared_scope_paths(
             "### UPDATED: docs/?.md\n### UPDATED: docs/[.md\n",
@@ -516,7 +535,9 @@ fn migration_governance_fail_closed_branches_remain_explicit_and_fence_aware() {
         .reasons,
         vec![REASON_STALE_PLAN_BODY.to_owned()]
     );
+}
 
+fn assert_owner_admission_fails_closed_without_complete_evidence() {
     let migration_plan = plan("Create a new shared adapter.");
     let base_request =
         |body: String, active_issues: Option<Vec<GovernanceIssueSnapshot>>| OwnerAdmissionRequest {

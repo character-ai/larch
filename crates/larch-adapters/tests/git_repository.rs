@@ -522,73 +522,73 @@ fn assert_range_queries(
     include: &ObjectId,
 ) {
     assert_eq!(
-        reader.commit_count_range(&exclude, &include).unwrap(),
-        git_line(&repository, ["rev-list", "--count", "HEAD~1..HEAD"])
+        reader.commit_count_range(exclude, include).unwrap(),
+        git_line(repository, ["rev-list", "--count", "HEAD~1..HEAD"])
             .iter()
             .fold(0_u64, |value, byte| value * 10 + u64::from(byte - b'0'))
     );
     assert_eq!(
-        reader.commit_subjects_range(&exclude, &include).unwrap(),
+        reader.commit_subjects_range(exclude, include).unwrap(),
         vec![b"nested subject".to_vec()]
     );
     assert_eq!(
         reader
-            .commit_messages_range(Some(&exclude), &include)
+            .commit_messages_range(Some(exclude), include)
             .unwrap(),
         vec![b"nested subject\n".to_vec()]
     );
-    assert!(reader.commit_messages_range(None, &include).unwrap().len() > 1);
+    assert!(reader.commit_messages_range(None, include).unwrap().len() > 1);
 }
 
 fn assert_blob_queries(reader: &GixRepository, repository: &GitRepository, include: &ObjectId) {
     assert_eq!(
         reader
-            .blob_at_commit(&include, &GitPath::new("dir/file.txt"))
+            .blob_at_commit(include, &GitPath::new("dir/file.txt"))
             .unwrap(),
         Some(b"nested\n".to_vec())
     );
     assert_eq!(
         reader
-            .blob_id_at_commit(&include, &GitPath::new("dir/file.txt"))
+            .blob_id_at_commit(include, &GitPath::new("dir/file.txt"))
             .unwrap(),
-        Some(git_id(&repository, ["rev-parse", "HEAD:dir/file.txt"]))
+        Some(git_id(repository, ["rev-parse", "HEAD:dir/file.txt"]))
     );
     assert_eq!(
         reader
-            .blob_id_at_commit(&include, &GitPath::new("missing.txt"))
+            .blob_id_at_commit(include, &GitPath::new("missing.txt"))
             .unwrap(),
         None
     );
     assert_eq!(
         reader
-            .blob_id_at_commit(&include, &GitPath::new(""))
+            .blob_id_at_commit(include, &GitPath::new(""))
             .unwrap_err()
             .kind(),
         RepositoryErrorKind::InvalidInput
     );
     assert_eq!(
         reader
-            .blob_id_at_commit(&include, &GitPath::new("dir"))
+            .blob_id_at_commit(include, &GitPath::new("dir"))
             .unwrap_err()
             .kind(),
         RepositoryErrorKind::ObjectType
     );
     assert_eq!(
         reader
-            .blob_at_commit(&include, &GitPath::new("missing.txt"))
+            .blob_at_commit(include, &GitPath::new("missing.txt"))
             .unwrap(),
         None
     );
     assert_eq!(
         reader
-            .blob_at_commit(&include, &GitPath::new(""))
+            .blob_at_commit(include, &GitPath::new(""))
             .unwrap_err()
             .kind(),
         RepositoryErrorKind::InvalidInput
     );
     assert_eq!(
         reader
-            .blob_at_commit(&include, &GitPath::new("dir"))
+            .blob_at_commit(include, &GitPath::new("dir"))
             .unwrap_err()
             .kind(),
         RepositoryErrorKind::ObjectType
@@ -596,17 +596,17 @@ fn assert_blob_queries(reader: &GixRepository, repository: &GitRepository, inclu
 }
 
 fn assert_file_queries(reader: &GixRepository, repository: &GitRepository, include: &ObjectId) {
-    let mut expected_files = git_lines(&repository, ["ls-tree", "-r", "--name-only", "HEAD"])
+    let mut expected_files = git_lines(repository, ["ls-tree", "-r", "--name-only", "HEAD"])
         .into_iter()
         .map(GitPath::new)
         .collect::<Vec<_>>();
-    let mut actual_files = reader.files_at_commit(&include, usize::MAX).unwrap();
+    let mut actual_files = reader.files_at_commit(include, usize::MAX).unwrap();
     expected_files.sort();
     actual_files.sort();
     assert_eq!(actual_files, expected_files);
     assert_eq!(
         reader
-            .files_at_commit(&include, actual_files.len().saturating_sub(1))
+            .files_at_commit(include, actual_files.len().saturating_sub(1))
             .unwrap_err()
             .kind(),
         RepositoryErrorKind::InvalidInput
@@ -619,7 +619,7 @@ fn assert_conflict_stage_queries(conflict: &GitRepository) {
         let spec = format!(":{stage}:tracked.txt");
         assert_eq!(
             conflict_reader.stage_blob(b"tracked.txt", stage).unwrap(),
-            git_bytes(&conflict, ["show", spec.as_str()])
+            git_bytes(conflict, ["show", spec.as_str()])
         );
     }
     assert_eq!(

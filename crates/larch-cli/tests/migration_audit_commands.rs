@@ -7,6 +7,12 @@ fn larch() -> Command {
 
 #[test]
 fn migration_audit_keeps_its_argparse_help_and_validation_contract() {
+    assert_help_contract();
+    assert_argument_error_contract();
+    assert_value_validation_contract();
+}
+
+fn assert_help_contract() {
     larch()
         .args(["issue", "migration-audit", "-h"])
         .assert()
@@ -43,7 +49,9 @@ fn migration_audit_keeps_its_argparse_help_and_validation_contract() {
         .stderr(predicate::str::contains(
             "larch issue migration-audit: error: argument -h/--help: ignored explicit argument 'unexpected'",
         ));
+}
 
+fn assert_argument_error_contract() {
     larch()
         .args([
             "issue",
@@ -139,7 +147,9 @@ fn migration_audit_keeps_its_argparse_help_and_validation_contract() {
         .stderr(predicate::str::contains(
             "larch issue migration-audit: error: unrecognized arguments: --unexpected",
         ));
+}
 
+fn assert_value_validation_contract() {
     larch()
         .args([
             "issue",
