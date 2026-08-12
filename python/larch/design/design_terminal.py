@@ -895,79 +895,6 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 dest.write("STALL_RECOVERY_REPORT_STATUS=fallback-print-required\n")
                 dest.write(f"STALL_RECOVERY_REPORT_FALLBACK_REASON={reason}\n")
 
-        def reason_with_status(reason: str, status: str) -> str:
-            clean = re.sub(r"[^A-Za-z0-9_.:/+-]+", "-", status).strip("-")[:80]
-            return f"{reason}:{clean}" if clean else reason
-
-        def file_issue_after_dedup() -> str:
-            repo = ns.repo
-            if not repo:
-                repo = gh.resolve_repo(proc) or ""
-            fallback_reason = ""
-            if not repo:
-                fallback_reason = "tier-a-current-repo-unresolved"
-            else:
-                helper = (
-                    Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
-                    / "scripts"
-                    / "file-failure-report-cross-repo.sh"
-                )
-                if not helper.is_file():
-                    fallback_reason = "tier-a-file-helper-missing"
-                else:
-                    helper_out = design_tmpdir / "design-failure-tier-a-file.env"
-                    try:
-                        with (
-                            helper_out.open("w", encoding="utf-8") as stdout_handle,
-                            (
-                                design_tmpdir / "design-failure-tier-a-file.stderr.log"
-                            ).open("w", encoding="utf-8") as stderr_handle,
-                        ):
-                            run_rc = subprocess.run(  # lint-subprocess-via-runner: ok tier-a file helper streams stdout/stderr to open sidecar log handles instead of captured pipes
-                                [
-                                    str(helper),
-                                    "--repo",
-                                    repo,
-                                    "--body-file",
-                                    str(body_file),
-                                    "--title",
-                                    "/design terminal failure",
-                                    "--publication-tier",
-                                    "tier-a",
-                                    "--mutation-context",
-                                    str(_ctx or source_env),
-                                    "--run-id",
-                                    str(_run_id),
-                                    "--trusted-root",
-                                    str(design_tmpdir),
-                                ],
-                                stdout=stdout_handle,
-                                stderr=stderr_handle,
-                                check=False,
-                            ).returncode
-                    except OSError:
-                        run_rc = 1
-                    if run_rc != 0:
-                        fallback_reason = "tier-a-file-helper-failed"
-                    else:
-                        file_norm = design_tmpdir / "design-failure-tier-a-file.normalized.env"
-                        if (
-                            _run_stall_rust(
-                                verb="normalize-file-failure-report-env",
-                                argv=[
-                                    *helper_common(),
-                                    "--file-failure-report-env",
-                                    str(helper_out),
-                                ],
-                                stdout_path=file_norm,
-                            )
-                            == 0
-                        ):
-                            append_env_file(file_norm)
-                        else:
-                            fallback_reason = "tier-a-normalize-failed"
-            return fallback_reason
-
         source_env = design_tmpdir / "source-env.sh"
         _ctx = source_env if source_env.is_file() else None
         _run_id = _read_env_value(path=source_env, key="LARCH_RUN_ID", default="")
@@ -975,7 +902,13 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not _authorized:
             append_fallback(f"{config.LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized")
             return
-        dedup_argv = [*helper_common(), "--body-file", str(body_file)]
+        dedup_argv = [
+            *helper_common(),
+            "--body-file",
+            str(body_file),
+            "--create-after-dedup",
+            "true",
+        ]
         if _ctx is not None:
             dedup_argv.extend(["--context-file", str(_ctx)])
         dedup_env = design_tmpdir / "design-failure-tier-a-dedup.env"
@@ -992,10 +925,12 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if status in {"dedup-comment", "dry-run", "fallback-print-required", "filed", "printed"}:
                 append_env_file(dedup_env)
                 return
-            if status in {"no-match", "lookup-failed-open"}:
-                fallback_reason = file_issue_after_dedup()
-            else:
-                fallback_reason = reason_with_status("tier-a-dedup-status-unexpected", status)
+            clean_status = re.sub(r"[^A-Za-z0-9_.:/+-]+", "-", status).strip("-")[:80]
+            fallback_reason = (
+                f"tier-a-dedup-status-unexpected:{clean_status}"
+                if clean_status
+                else "tier-a-dedup-status-unexpected"
+            )
         if fallback_reason:
             append_fallback(fallback_reason)
             return

@@ -2854,8 +2854,9 @@ mod tests {
         let temporary = tempfile::tempdir().expect("tempdir");
         let public = temporary.path().join("public.md");
         let transport = tempfile::NamedTempFile::new_in(temporary.path()).expect("transport file");
-        fs::write(&public, vec![b'x'; (MAX_PUBLIC_FILE_BYTES + 1) as usize])
-            .expect("oversized public fixture");
+        let oversized_len =
+            usize::try_from(MAX_PUBLIC_FILE_BYTES + 1).expect("fixture length fits usize");
+        fs::write(&public, vec![b'x'; oversized_len]).expect("oversized public fixture");
         fs::remove_file(transport.path()).expect("unlink transport file");
 
         assert!(!snapshot_public_file_to_fd(

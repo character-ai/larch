@@ -105,7 +105,21 @@ if [ -n "$public_fd" ]; then
     esac
 fi
 printf '%s\n' "$public_file" >>"${LARCH_STUB_LOG:?}"
-[ -f "$public_file" ] && [ ! -L "$public_file" ] || exit 1
+if [ -n "$public_fd" ]; then
+    python3 - "$public_fd" <<'PY'
+import os
+import stat
+import sys
+
+try:
+    mode = os.fstat(int(sys.argv[1])).st_mode
+except OSError:
+    sys.exit(1)
+sys.exit(0 if stat.S_ISREG(mode) else 1)
+PY
+else
+    [ -f "$public_file" ] && [ ! -L "$public_file" ] || exit 1
+fi
 if [ "$publication_tier" = tier-b ]; then
     [ -f "$corpus_file" ] && [ ! -L "$corpus_file" ] || exit 1
     while IFS= read -r token; do

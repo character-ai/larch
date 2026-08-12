@@ -85,7 +85,7 @@ extract_report_title() {
     title=$(sed -n '1s/^### //p' "$file")
     if [ "$publication" = tier-a ]; then
         title=${title#"[BUG] "}
-        title=${title#"[Bug] "}
+        title=${title#"[Bug] "} # lint-prefix-case-variant: ok legacy title normalization
     fi
     printf '%s\n' "$title"
 }
