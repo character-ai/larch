@@ -19,14 +19,16 @@ use larch_core::{
     BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity, OwnerValidationState,
     ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
     RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_owner_validation,
-    checked_dir, child_liveness, collect_process_group_members_checked,
+    checked_dir, child_liveness, clear_completion_residue, collect_process_group_members_checked,
     confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
-    iter_entries, log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
-    owner_pid_candidate, phase_barrier, private_atomic_write, read_entry, read_for,
-    read_process_identity, registry_path, render_rows, resolve_run_id, result_env_path,
-    result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_with_policy, unlink_entry, validate_run_id, validate_slug,
-    validate_timing_overrides, write_entry,
+    finish_completion_transaction, iter_entries, log_paths, log_tail, merge_rows, ordered_rows,
+    orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
+    prepare_completion_transaction, private_atomic_write, read_entry, read_for,
+    read_merge_result_env, read_process_identity, registry_path, render_rows, resolve_run_id,
+    result_env_path, result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress,
+    startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
+    validate_merge_result_env, validate_run_id, validate_slug, validate_timing_overrides,
+    write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -206,7 +208,8 @@ pub fn reap(arguments: &[OsString]) -> ExitCode {
             continue;
         };
         let daemon = daemon_liveness(&host, &entry);
-        let completed = read_completed_result(&entry.result_env, &entry.step).is_some();
+        let completed =
+            read_completed_result(&entry.tmpdir, &entry.result_env, &entry.step).is_some();
         if completed {
             // A current daemon unlinks its own completed row. When it has
             // already died, recovery verifies the group before either keeping
@@ -502,7 +505,7 @@ fn build_spec(parsed: &StartArguments, owner: OwnerIdentity) -> Result<JobSpec, 
         .collect::<Result<Vec<_>, _>>()?;
     let merge_result_env = match parsed.merge_result_env.as_str() {
         "" => None,
-        raw => Some(checked_merge_env(Path::new(raw))?),
+        raw => Some(validate_merge_result_env(Path::new(raw), &tmpdir)?),
     };
     Ok(JobSpec {
         step,
@@ -516,25 +519,6 @@ fn build_spec(parsed: &StartArguments, owner: OwnerIdentity) -> Result<JobSpec, 
         merge_result_env,
         initial_merge_rows: Vec::new(),
     })
-}
-
-fn checked_merge_env(path: &Path) -> Result<PathBuf, BgjobError> {
-    let is_link = |candidate: &Path| {
-        fs::symlink_metadata(candidate).is_ok_and(|metadata| metadata.file_type().is_symlink())
-    };
-    if is_link(path) {
-        return Err(BgjobError::Invalid(format!(
-            "merge-result-env must not be a symlink: {}",
-            path.display()
-        )));
-    }
-    if path.parent().is_some_and(is_link) {
-        return Err(BgjobError::Invalid(format!(
-            "merge-result-env parent must not be a symlink: {}",
-            path.display()
-        )));
-    }
-    Ok(path.to_path_buf())
 }
 
 /// Return whether the caller asked for usage before the command separator.
@@ -695,11 +679,9 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
     // Capture the persistent worker leader before releasing its private gate.
     let host = SystemProcessIdentityHost::new();
     fs::create_dir_all(&spec.log_dir).map_err(|error| one_line(&error))?;
-    let result = result_env_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
-    if let Some(parent) = result.parent() {
-        fs::create_dir_all(parent).map_err(|error| one_line(&error))?;
-    }
-    let _ = fs::remove_file(&result);
+    let root = bgjob_dir(&spec.tmpdir).map_err(|error| one_line(&error))?;
+    fs::create_dir_all(&root).map_err(|error| one_line(&error))?;
+    clear_completion_residue(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
     let worker_status =
         worker_status_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
     let _ = remove_result_residue(&worker_status);
@@ -1249,38 +1231,25 @@ fn capture_identity(
 }
 
 fn write_result(spec: &JobSpec, rc: &str, elapsed_s: i64) -> Result<(), String> {
-    let result = result_env_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
-    let root = bgjob_dir(&spec.tmpdir).map_err(|error| one_line(&error))?;
-    fs::create_dir_all(&root).map_err(|error| one_line(&error))?;
     let merged = spec
         .merge_result_env
         .as_deref()
-        .map(read_merge_text)
+        .map(|path| read_merge_text(path, &spec.tmpdir))
+        .transpose()?
         .map_or_else(Vec::new, |text| merge_rows(&text));
     let rows = result_rows(&spec.step, rc, elapsed_s, &merged).map_err(|error| one_line(&error))?;
-    private_atomic_write(&result, &render_rows(&rows), &root).map_err(|error| one_line(&error))?;
-    for sentinel in &spec.sentinel_paths {
-        let safe =
-            ensure_under(sentinel, &spec.tmpdir, "sentinel").map_err(|error| one_line(&error))?;
-        private_atomic_write(&safe, "", &spec.tmpdir).map_err(|error| one_line(&error))?;
-    }
-    Ok(())
+    let transaction = prepare_completion_transaction(
+        &spec.tmpdir,
+        &spec.step,
+        &spec.sentinel_paths,
+        &render_rows(&rows),
+    )
+    .map_err(|error| one_line(&error))?;
+    finish_completion_transaction(&transaction).map_err(|error| one_line(&error))
 }
 
-fn read_merge_text(path: &Path) -> String {
-    if fs::symlink_metadata(path)
-        .is_ok_and(|metadata| metadata.file_type().is_symlink() || !metadata.is_file())
-    {
-        return String::new();
-    }
-    let Ok(text) = fs::read_to_string(path) else {
-        return String::new();
-    };
-    if text.contains('\r') {
-        String::new()
-    } else {
-        text
-    }
+fn read_merge_text(path: &Path, tmpdir: &Path) -> Result<String, String> {
+    read_merge_result_env(path, tmpdir).map_err(|error| one_line(&error))
 }
 
 fn append_orphan_diagnostic(spec: &JobSpec, validation: &ValidationResult, failure_count: u32) {
@@ -1317,7 +1286,7 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
         if Instant::now() >= hard_deadline {
             return Err("hard-deadline".to_owned());
         }
-        if let Some(rows) = read_completed_result(&result_path, &step) {
+        if let Some(rows) = read_completed_result(&tmpdir, &result_path, &step) {
             return Ok(done_rows(&rows));
         }
         let (registry, entry) =
@@ -1326,7 +1295,8 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
             // `None` means the daemon published its registry row while the
             // startup marker was being watched, so re-read it next iteration.
             // The sleep keeps that re-read a poll rather than a hot spin.
-            if let Some(output) = missing_registry(&result_path, &registry, parsed, &step, deadline)
+            if let Some(output) =
+                missing_registry(&tmpdir, &result_path, &registry, parsed, &step, deadline)
             {
                 return Ok(output);
             }
@@ -1337,7 +1307,7 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
         if !daemon.live {
             // The daemon writes its result before exiting; re-read once so a
             // completion observed between the two reads is not reported dead.
-            if let Some(rows) = read_completed_result(&result_path, &step) {
+            if let Some(rows) = read_completed_result(&tmpdir, &result_path, &step) {
                 return Ok(done_rows(&rows));
             }
             match recover_abandoned_entry(
@@ -1380,17 +1350,17 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
 }
 
 fn missing_registry(
+    tmpdir: &Path,
     result_path: &Path,
     registry: &Path,
     parsed: &WaitArguments,
     step: &str,
     deadline: Instant,
 ) -> Option<String> {
-    if let Some(rows) = read_completed_result(result_path, step) {
+    if let Some(rows) = read_completed_result(tmpdir, result_path, step) {
         return Some(done_rows(&rows));
     }
-    let tmpdir = PathBuf::from(&parsed.tmpdir);
-    while startup_marker_live(&tmpdir, step) {
+    while startup_marker_live(tmpdir, step) {
         if Instant::now() >= deadline {
             return Some(wait_rows(parsed.max_wait_s));
         }
@@ -1398,7 +1368,7 @@ fn missing_registry(
     }
     // The daemon drops its startup marker only after a durable successor
     // exists, so re-read both before reporting an unrecoverable daemon.
-    if let Some(rows) = read_completed_result(result_path, step) {
+    if let Some(rows) = read_completed_result(tmpdir, result_path, step) {
         return Some(done_rows(&rows));
     }
     if read_entry(registry).is_some() {
@@ -1481,14 +1451,15 @@ fn recovery_diag(reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        MIN_POLL_SLEEP, StartArguments, WaitArguments, checked_merge_env, daemon_arguments,
-        dead_rows, done_rows, finish_start, inherited_owner, one_line, open_verified_log,
-        owner_from_rows, owner_rows, parse_start, parse_wait, poll_sleep, read_completed_result,
-        read_merge_text, read_result, remove_result_residue, wait_rows, write_result,
+        MIN_POLL_SLEEP, StartArguments, WaitArguments, daemon_arguments, dead_rows, done_rows,
+        finish_start, inherited_owner, one_line, open_verified_log, owner_from_rows, owner_rows,
+        parse_start, parse_wait, poll_sleep, read_completed_result, read_merge_text, read_result,
+        remove_result_residue, wait_rows, write_result,
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec,
         OwnerIdentity, ProcessBirthIdentity, RecordedProcessIdentity, ordered_rows, render_rows,
+        validate_merge_result_env,
     };
     use std::{
         ffi::OsString,
@@ -1720,21 +1691,21 @@ mod tests {
         );
         assert!(sandbox.path().join("done.sentinel").is_file());
         assert_eq!(read_result(&result), Some(rows));
-        assert!(read_completed_result(&result, "demo-step").is_some());
+        assert!(read_completed_result(sandbox.path(), &result, "demo-step").is_some());
         assert_eq!(read_result(&sandbox.path().join("bgjob/absent.env")), None);
         fs::write(&result, "BGJOB_RC=0\n").expect("partial result");
         assert!(
-            read_completed_result(&result, "demo-step").is_none(),
+            read_completed_result(sandbox.path(), &result, "demo-step").is_none(),
             "a partial result must not claim a terminal completion"
         );
         remove_result_residue(&result).expect("remove partial result");
         assert!(!result.exists());
 
         fs::write(&merge, "CUSTOM=carriage\r\n").expect("cr merge env");
-        assert_eq!(read_merge_text(&merge), String::new());
+        assert_eq!(read_merge_text(&merge, sandbox.path()), Ok(String::new()));
         assert_eq!(
-            read_merge_text(&sandbox.path().join("absent.env")),
-            String::new()
+            read_merge_text(&sandbox.path().join("absent.env"), sandbox.path()),
+            Ok(String::new())
         );
     }
 
@@ -1758,8 +1729,13 @@ mod tests {
             Duration::from_secs_f64(0.5)
         );
         assert_eq!(
-            checked_merge_env(&sandbox.path().join("merge.env")).expect("plain merge env"),
-            sandbox.path().join("merge.env")
+            validate_merge_result_env(&sandbox.path().join("merge.env"), sandbox.path())
+                .expect("plain merge env"),
+            sandbox
+                .path()
+                .canonicalize()
+                .expect("canonical sandbox")
+                .join("merge.env")
         );
         assert_eq!(
             one_line(&BgjobError::Invalid("two\nlines".to_owned())),
@@ -1778,11 +1754,11 @@ mod tests {
         fs::write(&target, "OUTCOME=continue\n").expect("target");
         let link = sandbox.path().join("merge.env");
         symlink(&target, &link).expect("merge symlink");
-        assert!(checked_merge_env(&link).is_err());
+        assert!(validate_merge_result_env(&link, sandbox.path()).is_err());
 
         let parent_link = sandbox.path().join("parent");
         symlink(outside.path(), &parent_link).expect("parent symlink");
-        assert!(checked_merge_env(&parent_link.join("merge.env")).is_err());
+        assert!(validate_merge_result_env(&parent_link.join("merge.env"), sandbox.path()).is_err());
 
         let log_dir = sandbox.path().join("logs");
         fs::create_dir(&log_dir).expect("log dir");

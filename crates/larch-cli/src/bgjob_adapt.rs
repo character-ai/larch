@@ -17,10 +17,11 @@ use larch_core::{
     BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED,
     BgjobError, JobSpec, KvDocument, LivenessVerdict, MalformedLinePolicy, OwnerIdentity,
     ParseOptions, RecordedProcessIdentity, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
-    cleanup_cache_sessions_root, daemon_liveness, ensure_under, entry_expired, log_paths,
-    parse_allowlisted_env_line, private_atomic_write, read_entry, read_process_identity,
-    registry_path, registry_root, resolve_run_id, result_env_path, shell_quote,
-    validate_initial_merge_rows, validate_merge_result_env, validate_run_id, validate_slug,
+    cleanup_cache_sessions_root, clear_completion_residue, completion_result_is_visible,
+    daemon_liveness, ensure_under, entry_expired, log_paths, parse_allowlisted_env_line,
+    private_atomic_write, read_entry, read_process_identity, registry_path, registry_root,
+    resolve_run_id, result_env_path, shell_quote, validate_initial_merge_rows,
+    validate_merge_result_env, validate_run_id, validate_slug,
 };
 use std::{
     collections::BTreeMap,
@@ -724,6 +725,11 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
         let Some(text) = read_trusted_regular(&result, &root)? else {
             return Ok(None);
         };
+        if !completion_result_is_visible(&self.spec.tmpdir, &self.spec.step, &text)
+            .map_err(|_| DecisionError::token("unsafe-path"))?
+        {
+            return Ok(None);
+        }
         let rows = parse_completed_rows(&text, &self.spec.step);
         Ok(rows.map(|rows| format_done(&rows)))
     }
@@ -923,13 +929,8 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
     }
 
     fn invalidate_completed_result(&self) -> DecisionResult<()> {
-        let root = bgjob_dir(&self.spec.tmpdir).map_err(|_| DecisionError::token("unsafe-path"))?;
-        let path = result_env_path(&self.spec.tmpdir, &self.spec.step)
-            .map_err(|_| DecisionError::token("unsafe-path"))?;
-        match read_trusted_regular(&path, &root)? {
-            Some(_) => unlink_regular_under(&path, &self.spec.tmpdir, "result-clear-failed"),
-            None => Ok(()),
-        }
+        clear_completion_residue(&self.spec.tmpdir, &self.spec.step)
+            .map_err(|_| DecisionError::token("result-clear-failed"))
     }
 
     fn start_fresh(&self) -> DecisionResult<String> {

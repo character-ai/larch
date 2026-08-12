@@ -159,6 +159,20 @@ stable published batches. A publisher may copy a bounded, registered,
 sanitized projection into a published artifact. The raw source remains
 session-private.
 
+Rust-owned background-job completion is a confined transaction, not a result
+file followed by best-effort markers. Before publishing any observable output,
+the daemon privately stages the exact result-envelope bytes and records a
+descriptor with their digest and the complete ordered sentinel set, including
+an explicit zero-sentinel declaration. Readers treat a result as terminal only
+after that descriptor is committed, the digest matches, and every declared
+sentinel is a confined regular non-symlink file. If publication is interrupted,
+recovery first proves the worker group absent, then replays the staged bytes and
+declared set; it never infers a terminal result from a partial file set. Direct
+and adapted merge-result paths must be absolute, below the owning session root,
+and have a regular non-symlink leaf and full parent chain at launch. The daemon
+revalidates and opens the merge envelope without following symlinks when it
+consumes it.
+
 `session setup` is Rust-owned in
 `crates/larch-cli/src/session_setup_commands.rs`. It reads the allowlisted
 caller-env handoff before preflight, so malformed wire input cannot trigger a
