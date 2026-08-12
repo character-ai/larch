@@ -71,6 +71,24 @@ def _replace_manifest_with_empty_object(candidate_dir: Path) -> None:
     _ = candidate_dir.joinpath("manifest.json").write_text("{}\n", encoding="utf-8")
 
 
+def test_candidate_manifest_accepts_reviewed_cargo_metadata_and_remains_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy_maximum_bytes = 4 * 1024 * 1024
+    manifest_path = tmp_path / "manifest.json"
+    padding = "x" * legacy_maximum_bytes
+    _ = manifest_path.write_text(json.dumps({"padding": padding}), encoding="utf-8")
+    manifest_size = manifest_path.stat().st_size
+
+    assert manifest_size > legacy_maximum_bytes
+    assert manifest_size <= candidate._MAX_MANIFEST_BYTES  # pyright: ignore[reportPrivateUsage]  # This is the untrusted-manifest resource boundary.
+    assert candidate._read_manifest(manifest_path) == {"padding": padding}  # pyright: ignore[reportPrivateUsage]  # Exercise the bounded manifest reader directly.
+
+    monkeypatch.setattr(candidate, "_MAX_MANIFEST_BYTES", manifest_size - 1)
+    with pytest.raises(candidate.CandidateError, match="manifest exceeds its size limit"):
+        _ = candidate._read_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]  # Exercise the bounded manifest reader directly.
+
+
 def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: Path) -> None:
     request = _request(tmp_path)
 

@@ -439,6 +439,9 @@ Windows-reserved filename characters. Symlinks, stale source identity,
 unexpected paths, or a missing producer fail closed. The publisher may rewrite
 only Rust-policy provenance,
 and only after that final-SHA verification. A
+candidate manifest is separately bounded at a reviewed 32 MiB so Cargo's
+per-file integrity records remain accepted without giving untrusted artifacts
+an unbounded parser allocation. A
 coverage target cache is dependency-only, bound at a reviewed 1,400,000,000
 bytes, and enabled only after independent end-to-end measurements prove it
 helps. Neither a cache restore nor its diagnostic metadata waives the coverage,

@@ -36,7 +36,10 @@ _MANIFEST_FILENAME: Final = "manifest.json"
 _PAYLOAD_DIRECTORY: Final = "payload"
 _SCHEMA_VERSION: Final = 1
 _HASH_CHUNK_BYTES: Final = 1024 * 1024
-_MAX_MANIFEST_BYTES: Final = 4 * 1024 * 1024
+# Cargo's registry cache produces a manifest above 4 MiB on a clean, full
+# Rust lane. Keep the untrusted-artifact parser bounded while allowing the
+# reviewed registry inventory and its per-file integrity records.
+_MAX_MANIFEST_BYTES: Final = 32 * 1024 * 1024
 _MAX_FILE_MODE: Final = 0o777
 
 
