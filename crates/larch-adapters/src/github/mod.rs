@@ -29,6 +29,7 @@ pub use release::{
 };
 
 use bytes::Bytes;
+use chrono::{DateTime, SecondsFormat, Utc};
 use http::header::{CONTENT_LENGTH, HeaderName};
 use http_body_util::{BodyExt, Limited};
 use larch_core::{
@@ -48,6 +49,11 @@ const API_VERSION_HEADER: &str = "x-github-api-version";
 const API_VERSION: &str = "2022-11-28";
 const ACCEPT_VALUE: &str = "application/vnd.github+json";
 const USER_AGENT_VALUE: &str = "larch";
+
+/// Render a GitHub timestamp in the canonical UTC spelling used for freshness identities.
+pub(crate) fn github_utc_timestamp(value: &DateTime<Utc>) -> String {
+    value.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
 
 /// Failure to construct the hardened GitHub service.
 #[derive(Clone, Debug, Eq, PartialEq)]
