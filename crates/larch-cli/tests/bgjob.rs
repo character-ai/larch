@@ -11,8 +11,8 @@ use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
     ENV_TEST_BGJOB_PHASE_BARRIER_DIR, ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, KvDocument,
     ParseOptions, ProcessBirthIdentity, ProcessIdentityHost, RecordedProcessIdentity,
-    RegistryEntry, RenderOptions, identity_to_json, read_entry, read_process_identity,
-    write_entry_at,
+    RegistryEntry, RenderOptions, collect_process_group_members_checked, identity_to_json,
+    read_entry, read_process_identity, write_entry_at,
 };
 use std::{
     fs,
@@ -258,7 +258,15 @@ fn pid_is_live(pid: i32) -> bool {
 }
 
 fn group_is_live(pgid: i32) -> bool {
-    nix::sys::signal::kill(nix::unistd::Pid::from_raw(-pgid), None).is_ok()
+    let host = SystemProcessIdentityHost::new();
+    if host.get_pgid(pgid) == Some(pgid) && !host.process_is_zombie(pgid) {
+        return true;
+    }
+    // An unavailable group probe is not evidence that the group is gone.
+    collect_process_group_members_checked(&host, pgid).map_or_else(
+        || nix::sys::signal::kill(nix::unistd::Pid::from_raw(-pgid), None).is_ok(),
+        |members| !members.is_empty(),
+    )
 }
 
 fn assert_group_gone(pgid: i32, context: &str) {
@@ -491,7 +499,7 @@ fn an_unacknowledged_start_is_bounded_and_recovers_its_durable_worker() {
             "exec sleep 60",
         ])
         .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
-        .env(ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, "0.2");
+        .env(ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, "2");
     let launcher = launcher.spawn().expect("start launcher");
     wait_for_file(
         &phases.join("before-acknowledgement.reached"),
@@ -608,7 +616,10 @@ fn concurrent_adapters_rejoin_the_one_startup_record_before_acknowledgement() {
     let phases = sandbox.root.path().join("concurrent-adapt-phases");
     fs::create_dir_all(&phases).expect("phase directory");
     fs::write(phases.join("before-acknowledgement.armed"), "").expect("arm barrier");
-    let plugin_root = std::env::current_dir().expect("repository root");
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository root");
     let owner_pid = std::process::id().to_string();
     let mut first = raw_larch(&sandbox);
     first

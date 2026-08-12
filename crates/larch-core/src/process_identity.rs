@@ -272,6 +272,10 @@ pub trait ProcessIdentityHost {
     fn probe_process_birth_identity(&self, _pid: i32) -> ProcessBirthIdentityProbeOutput {
         ProcessBirthIdentityProbeOutput::Unsupported
     }
+    /// Return whether `pid` is an exited, unreaped process that cannot execute or own live work.
+    fn process_is_zombie(&self, _pid: i32) -> bool {
+        false
+    }
     /// Enumerate direct children of `pid` via `pgrep -P`.
     fn pgrep_children(&self, pid: i32) -> Vec<i32>;
     /// Enumerate members of process group `pgid` via `pgrep -g`.
@@ -395,6 +399,12 @@ pub fn probe_process_identity(
             failure_reason,
         };
     }
+    if host.process_is_zombie(process_id) {
+        return ProcessIdentityProbeResult {
+            identity: None,
+            failure_reason,
+        };
+    }
     // Read the kernel identity before looking up `ps`. If the PID is reused
     // while the weaker text fields are being collected, the closing birth
     // probe below makes that mixed snapshot fail instead of persisting the
@@ -419,6 +429,14 @@ pub fn probe_process_identity(
         IdentityProbeOutput::Timeout => failure_reason = String::from("identity-probe-timeout"),
         IdentityProbeOutput::Missing => {}
         IdentityProbeOutput::Stdout(stdout) => {
+            // A Linux zombie retains its PID and PGID until reaped but cannot
+            // own work or safely match an exact command signature.
+            if host.process_is_zombie(process_id) {
+                return ProcessIdentityProbeResult {
+                    identity: None,
+                    failure_reason: "missing-pid".to_owned(),
+                };
+            }
             if let Some(mut identity) =
                 parse_ps_identity(process_id, process_group_id, &stdout, expected_signature)
             {
@@ -621,7 +639,7 @@ pub fn collect_process_group_members(host: &dyn ProcessIdentityHost, pgid: i32) 
     let mut members = Vec::new();
     let mut seen = BTreeSet::new();
     for member in host.pgrep_group(pgid) {
-        if seen.insert(member) {
+        if !host.process_is_zombie(member) && seen.insert(member) {
             members.push(member);
         }
     }
@@ -637,7 +655,7 @@ pub fn collect_process_group_members_checked(
     let mut members = Vec::new();
     let mut seen = BTreeSet::new();
     for member in host.pgrep_group_checked(pgid)? {
-        if seen.insert(member) {
+        if !host.process_is_zombie(member) && seen.insert(member) {
             members.push(member);
         }
     }
@@ -1434,7 +1452,7 @@ mod tests {
     use super::*;
     use std::{
         cell::RefCell,
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::atomic::{AtomicU64, Ordering},
     };
 
@@ -1445,6 +1463,7 @@ mod tests {
         birth: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
         ps_birth_after: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
         birth_after_log: RefCell<Option<(i32, Vec<ProcessBirthIdentityProbeOutput>)>>,
+        zombies: HashSet<i32>,
         children: HashMap<i32, Vec<i32>>,
         groups: HashMap<i32, Vec<i32>>,
         parents: HashMap<i32, i32>,
@@ -1495,6 +1514,9 @@ mod tests {
                 .map_or(ProcessBirthIdentityProbeOutput::Missing, |_| {
                     ProcessBirthIdentityProbeOutput::Identity(fake_birth_identity(pid))
                 })
+        }
+        fn process_is_zombie(&self, pid: i32) -> bool {
+            self.zombies.contains(&pid)
         }
         fn pgrep_children(&self, pid: i32) -> Vec<i32> {
             self.children.get(&pid).cloned().unwrap_or_default()
@@ -1610,6 +1632,28 @@ mod tests {
         assert_eq!(
             validate_process_identity(&host, &bad_command).reason,
             "command-mismatch"
+        );
+    }
+
+    #[test]
+    fn zombie_identity_is_missing_and_not_a_live_group_member() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.groups.insert(123, vec![123]);
+        host.zombies.insert(123);
+
+        assert_eq!(
+            validate_process_identity(&host, &recorded()).reason,
+            "missing-pid"
+        );
+        assert!(collect_process_group_members(&host, 123).is_empty());
+        assert!(
+            confirm_process_group_absent(
+                &host,
+                &recorded(),
+                ProcessIdentityValidationPolicy::ExactCommand,
+            )
+            .terminated
         );
     }
 
@@ -1849,6 +1893,7 @@ mod tests {
         host.ps.borrow_mut().insert(
             123,
             vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
@@ -2120,6 +2165,7 @@ mod tests {
         host.ps.borrow_mut().insert(
             50,
             vec![
+                matching.clone(),
                 matching.clone(),
                 matching.clone(),
                 matching.clone(),

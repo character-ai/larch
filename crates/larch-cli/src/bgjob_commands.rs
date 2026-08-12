@@ -16,14 +16,14 @@ use larch_core::{
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
     OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
     ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
-    bgjob_dir, check_owner_validation, checked_dir, child_liveness, confirm_process_group_absent,
-    daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now, iter_entries, log_paths,
-    log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate,
-    phase_barrier, private_atomic_write, read_entry, read_for, read_process_identity,
-    registry_path, render_rows, resolve_run_id, result_env_path, result_rows,
-    startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_with_policy, unlink_entry, validate_run_id, validate_slug,
-    validate_timing_overrides, write_entry,
+    bgjob_dir, check_owner_validation, checked_dir, child_liveness,
+    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
+    daemon_poll_interval_s, ensure_under, epoch_now, iter_entries, log_paths, log_tail, merge_rows,
+    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
+    private_atomic_write, read_entry, read_for, read_process_identity, registry_path, render_rows,
+    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
+    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
+    validate_run_id, validate_slug, validate_timing_overrides, write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -1081,7 +1081,7 @@ fn wait_for_worker_group() -> Result<(), String> {
         .as_raw();
     let host = SystemProcessIdentityHost::new();
     loop {
-        if let Some(members) = host.pgrep_group_checked(group_id)
+        if let Some(members) = collect_process_group_members_checked(&host, group_id)
             && members.iter().all(|member| *member == pid)
             && host.get_pgid(pid) == Some(group_id)
         {
@@ -1223,6 +1223,8 @@ fn terminate_and_confirm_child(
     if !validation.ok && validation.reason != "missing-pid" {
         return Err(validation.reason);
     }
+    // Reap the direct worker before proving the group absent; Linux otherwise
+    // retains its zombie in the numeric group.
     reap_child(child, CHILD_REAP_TIMEOUT);
     let confirmation = confirm_process_group_absent(host, child_identity, policy);
     if confirmation.terminated {

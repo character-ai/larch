@@ -470,17 +470,19 @@ pub fn startup_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError
 
 /// Stop at a named lifecycle phase when an integration test requests it.
 ///
-/// The hook is deliberately unavailable in optimized builds. Its directory is
-/// an existing, checked private test root; phase names stay slug-validated and
-/// it never follows a marker symlink. A missing release marker fails the
-/// current operation rather than turning a test-only pause into an unbounded
-/// production wait.
+/// The hook is deliberately unavailable in ordinary optimized builds. Coverage
+/// instrumentation also enables it so the same lifecycle tests run under the
+/// release-like CI test profile. Its directory is an existing, checked private
+/// test root; phase names stay slug-validated and it never follows a marker
+/// symlink. A missing release marker fails the current operation rather than
+/// turning a test-only pause into an unbounded production wait.
 ///
 /// # Errors
 ///
 /// Returns an error when a requested debug-test barrier is unsafe or times out.
+#[allow(unexpected_cfgs)] // `cargo llvm-cov` supplies the coverage-only test cfg.
 pub fn phase_barrier(phase: &str) -> Result<(), BgjobError> {
-    if !cfg!(debug_assertions) {
+    if !cfg!(any(debug_assertions, coverage)) {
         return Ok(());
     }
     let Some(raw_root) = env::var_os(ENV_TEST_BGJOB_PHASE_BARRIER_DIR) else {

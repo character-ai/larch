@@ -145,6 +145,18 @@ impl ProcessIdentityHost for SystemProcessIdentityHost {
         }
     }
 
+    fn process_is_zombie(&self, process_id: i32) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            linux_process_state(process_id).is_some_and(|state| state == 'Z')
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = process_id;
+            false
+        }
+    }
+
     fn pgrep_children(&self, process_id: i32) -> Vec<i32> {
         let process_id_text = process_id.to_string();
         let stdout = self
@@ -394,4 +406,15 @@ fn linux_process_birth_identity(process_id: i32) -> ProcessBirthIdentityProbeOut
         return ProcessBirthIdentityProbeOutput::Error;
     }
     ProcessBirthIdentityProbeOutput::Identity(identity)
+}
+
+/// Read Linux `/proc/<pid>/stat` state after its final `) ` delimiter.
+#[cfg(target_os = "linux")]
+fn linux_process_state(process_id: i32) -> Option<char> {
+    if process_id <= 0 {
+        return None;
+    }
+    let stat = fs::read_to_string(format!("/proc/{process_id}/stat")).ok()?;
+    let (_, fields) = stat.rsplit_once(") ")?;
+    fields.chars().next()
 }
