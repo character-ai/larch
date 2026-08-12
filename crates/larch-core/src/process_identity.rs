@@ -760,6 +760,79 @@ fn signal_group_and_descendants(
     validation
 }
 
+/// Capture live non-leader group members before a graceful group signal.
+///
+/// A valid member is a short-lived escalation anchor only: it binds the
+/// numeric process group after the validated leader exits in response to TERM.
+/// It is never used after the terminating call returns, and it is revalidated
+/// immediately before the KILL signal.
+fn capture_group_escalation_anchors(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+) -> Vec<RecordedProcessIdentity> {
+    collect_process_group_members_checked(host, recorded.pgid)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|pid| *pid != recorded.pid)
+        .filter_map(|pid| read_process_identity(host, pid, ""))
+        .filter(|identity| identity.pgid == recorded.pgid)
+        .collect()
+}
+
+/// Revalidate a pre-TERM group member before escalating a now-leaderless
+/// group. A member with the same stable birth identity proves that the PGID
+/// still belongs to the group we just signalled, so the KILL cannot target a
+/// recycled numeric group.
+fn signal_group_from_escalation_anchor(
+    host: &dyn ProcessIdentityHost,
+    anchors: &[RecordedProcessIdentity],
+    log_path: Option<&Path>,
+    caller: &str,
+    reason: &str,
+) -> Option<ValidationResult> {
+    for anchor in anchors {
+        let initial = validate_process_identity_with_policy(
+            host,
+            anchor,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+        );
+        if !initial.ok {
+            continue;
+        }
+        let snapshot = KillTargetSnapshot {
+            pid: anchor.pid,
+            pgid: anchor.pgid,
+            descendants: Vec::new(),
+            command: initial.current.as_ref().map_or_else(
+                || anchor.command_signature.clone(),
+                |current| current.command_signature.clone(),
+            ),
+        };
+        log_signal(
+            host,
+            log_path,
+            TerminateSignal::Kill,
+            &snapshot,
+            caller,
+            reason,
+        );
+        // The log is intentionally before the external effect. A second
+        // validation closes the same logging-to-signal window as the normal
+        // leader path and keeps PID-reuse protection intact.
+        let validation = validate_process_identity_with_policy(
+            host,
+            anchor,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+        );
+        if !validation.ok {
+            continue;
+        }
+        host.signal_group(anchor.pgid, TerminateSignal::Kill);
+        return Some(validation);
+    }
+    None
+}
+
 /// Terminate a process group only when the recorded identity still matches.
 #[must_use]
 pub fn terminate_validated_process_group(
@@ -803,6 +876,11 @@ pub fn terminate_validated_process_group_with_policy(
         // let the caller prove absence; never signal an unrelated group.
         return validation;
     }
+    // Preserve an independently validated member before TERM. A TERM may
+    // correctly make the group leader disappear while a descendant that
+    // ignored TERM remains. The anchor lets the KILL escalation prove that
+    // the numeric PGID still names this exact group instead of stranding it.
+    let escalation_anchors = capture_group_escalation_anchors(host, recorded);
     let descendants = collect_descendants(host, recorded.pid);
     let current = validation.current.unwrap_or_else(|| recorded.clone());
     let validation = signal_group_and_descendants(
@@ -819,9 +897,42 @@ pub fn terminate_validated_process_group_with_policy(
         policy,
     );
     if !validation.ok {
+        // The leader can exit in the narrow log-to-signal revalidation
+        // window. The pre-captured member still ties this numeric group to
+        // the just-validated leader, so use the same two-validation anchor
+        // path rather than leaving a live descendant group unowned.
+        if validation.reason == "missing-pid"
+            && let Some(validation) = signal_group_from_escalation_anchor(
+                host,
+                &escalation_anchors,
+                log_path,
+                caller,
+                reason,
+            )
+        {
+            return validation;
+        }
         return validation;
     }
     host.sleep(TERMINATE_ESCALATION_SLEEP);
+    let leader = validate_process_identity_with_policy(host, recorded, policy);
+    if !leader.ok {
+        if leader.reason == "missing-pid"
+            && let Some(validation) = signal_group_from_escalation_anchor(
+                host,
+                &escalation_anchors,
+                log_path,
+                caller,
+                reason,
+            )
+        {
+            return validation;
+        }
+        // A group whose leader disappeared without a still-validated member
+        // remains durable and retryable rather than being signalled by a bare
+        // potentially recycled PGID.
+        return leader;
+    }
     let kill_descendants = collect_descendants(host, recorded.pid);
     let command = validation
         .current
@@ -1762,6 +1873,58 @@ mod tests {
                 (123, TerminateSignal::Kill, true),
             ]
         );
+    }
+
+    #[test]
+    fn escalation_uses_a_validated_member_when_term_removes_the_group_leader() {
+        let mut host = FakeHost::default();
+        host.pgid.extend([(123, 123), (10, 123)]);
+        host.groups.insert(123, vec![123, 10]);
+        host.children.insert(123, vec![10]);
+        host.children.insert(10, Vec::new());
+        // The leader validates for initial capture and TERM, then exits. The
+        // previously captured member remains in the same group and is checked
+        // again before KILL can use the numeric PGID.
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        host.ps.borrow_mut().insert(
+            10,
+            vec![
+                ps_stdout("sleep 60"),
+                ps_stdout("sleep 60"),
+                ps_stdout("sleep 60"),
+            ],
+        );
+
+        let result = terminate_validated_process_group(
+            &host,
+            &recorded(),
+            Some(Path::new("/tmp/leaderless-escalation.jsonl")),
+            "test",
+            "leaderless",
+        );
+        assert!(result.ok, "{result:?}");
+        assert_eq!(
+            host.signals.borrow().as_slice(),
+            &[
+                (123, TerminateSignal::Term, true),
+                (123, TerminateSignal::Kill, true),
+            ]
+        );
+        let log = host
+            .files
+            .borrow()
+            .get(Path::new("/tmp/leaderless-escalation.jsonl"))
+            .cloned()
+            .unwrap_or_default();
+        assert!(log.contains("\"pid\":10"), "{log:?}");
     }
 
     #[test]

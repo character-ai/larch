@@ -26,6 +26,8 @@ pub const BGJOB_WAIT_MAX_CHUNK_S: i64 = 270;
 pub const BGJOB_WAIT_HARD_DEADLINE_GRACE_S: u64 = 30;
 /// Seconds a startup marker keeps a wait patient before it reports `DEAD`.
 pub const BGJOB_STARTUP_GRACE_S: i64 = 25;
+/// Maximum foreground acknowledgement wait before coordinated startup recovery.
+pub const BGJOB_STARTUP_ACK_TIMEOUT_S: f64 = 25.0;
 /// Seconds an unvalidatable owner keeps its job alive before orphaning.
 pub const BGJOB_OWNER_GRACE_S: f64 = 120.0;
 /// Consecutive owner-validation failures required before the grace clock starts.
@@ -38,6 +40,8 @@ pub const BGJOB_LOG_TAIL_BYTES: usize = 4096;
 pub const ENV_TEST_BGJOB_OWNER_GRACE_S: &str = "LARCH_TEST_BGJOB_OWNER_GRACE_S";
 /// Test-only override for the daemon poll interval.
 pub const ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S: &str = "LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S";
+/// Test-only override for the bounded daemon-start acknowledgement wait.
+pub const ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S: &str = "LARCH_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S";
 /// Explicit session-owner pid supplied by an orchestrator.
 pub const ENV_BGJOB_OWNER_PID: &str = "LARCH_BGJOB_OWNER_PID";
 /// Session-owner pid exported by the larch skill layer.
@@ -135,6 +139,19 @@ pub fn daemon_poll_interval_s() -> Result<f64, BgjobError> {
     )
 }
 
+/// Return the bounded foreground acknowledgement wait for a daemon start.
+///
+/// # Errors
+///
+/// Returns an error for a malformed test override.
+pub fn startup_ack_timeout_s() -> Result<f64, BgjobError> {
+    timing_override_or_default(
+        ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S,
+        BGJOB_STARTUP_ACK_TIMEOUT_S,
+        "bgjob startup acknowledgement timeout",
+    )
+}
+
 /// Reject malformed timing overrides before a daemon detaches.
 ///
 /// # Errors
@@ -143,6 +160,7 @@ pub fn daemon_poll_interval_s() -> Result<f64, BgjobError> {
 pub fn validate_timing_overrides() -> Result<(), BgjobError> {
     let _ = owner_grace_s()?;
     let _ = daemon_poll_interval_s()?;
+    let _ = startup_ack_timeout_s()?;
     Ok(())
 }
 

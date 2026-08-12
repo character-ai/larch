@@ -8,7 +8,8 @@ use std::{
     path::{Component, Path, PathBuf},
     process,
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use sha2::{Digest as _, Sha256};
@@ -34,6 +35,12 @@ pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 pub const BGJOB_INPUT_FP_SUFFIX: &str = ".input-fp";
 /// Environment override for the durable registry root.
 pub const ENV_BGJOB_REGISTRY_ROOT: &str = "LARCH_BGJOB_REGISTRY_ROOT";
+/// Debug-build-only directory used by deterministic bgjob lifecycle tests.
+///
+/// A production release ignores this value. A private `<phase>.armed` marker
+/// selects one test phase; that phase writes its PID to `<phase>.reached` and
+/// waits for the matching `<phase>.release` file.
+pub const ENV_TEST_BGJOB_PHASE_BARRIER_DIR: &str = "LARCH_TEST_BGJOB_PHASE_BARRIER_DIR";
 /// Stable completion status key.
 pub const BGJOB_STATUS_KEY: &str = "BGJOB_STATUS";
 /// Stable started status token.
@@ -48,6 +55,7 @@ pub const BGJOB_ELAPSED_KEY: &str = "BGJOB_ELAPSED_S";
 const MAX_SLUG_LENGTH: usize = 97;
 const MAX_RUN_ID_LENGTH: usize = 128;
 const RECOVERY_LEASE_MALFORMED_STALE_AFTER: Duration = Duration::from_secs(5);
+const TEST_PHASE_BARRIER_TIMEOUT: Duration = Duration::from_secs(30);
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// A parsed recovery-lease path state while the claim lock is held.
@@ -458,6 +466,73 @@ pub fn startup_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError
         &root,
         "startup env",
     )
+}
+
+/// Stop at a named lifecycle phase when an integration test requests it.
+///
+/// The hook is deliberately unavailable in optimized builds. Its directory is
+/// an existing, checked private test root; phase names stay slug-validated and
+/// it never follows a marker symlink. A missing release marker fails the
+/// current operation rather than turning a test-only pause into an unbounded
+/// production wait.
+///
+/// # Errors
+///
+/// Returns an error when a requested debug-test barrier is unsafe or times out.
+pub fn phase_barrier(phase: &str) -> Result<(), BgjobError> {
+    if !cfg!(debug_assertions) {
+        return Ok(());
+    }
+    let Some(raw_root) = env::var_os(ENV_TEST_BGJOB_PHASE_BARRIER_DIR) else {
+        return Ok(());
+    };
+    let phase = validate_slug(phase, "phase barrier")?;
+    let root = checked_dir(Path::new(&raw_root), "phase barrier root", true)?;
+    let armed = ensure_under(&root.join(format!("{phase}.armed")), &root, "phase barrier")?;
+    let reached = ensure_under(
+        &root.join(format!("{phase}.reached")),
+        &root,
+        "phase barrier",
+    )?;
+    let release = ensure_under(
+        &root.join(format!("{phase}.release")),
+        &root,
+        "phase barrier",
+    )?;
+    match fs::symlink_metadata(&armed) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {}
+        Ok(_) => {
+            return Err(BgjobError::Invalid(format!(
+                "phase barrier arm is unsafe: {}",
+                armed.display()
+            )));
+        }
+        Err(error) => return Err(BgjobError::Io(error.to_string())),
+    }
+    private_atomic_write(&reached, &format!("PID={}\n", process::id()), &root)?;
+    let deadline = Instant::now() + TEST_PHASE_BARRIER_TIMEOUT;
+    loop {
+        match fs::symlink_metadata(&release) {
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {
+                return Ok(());
+            }
+            Ok(_) => {
+                return Err(BgjobError::Invalid(format!(
+                    "phase barrier release is unsafe: {}",
+                    release.display()
+                )));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(BgjobError::Io(error.to_string())),
+        }
+        if Instant::now() >= deadline {
+            return Err(BgjobError::Invalid(format!(
+                "phase barrier timed out: {phase}"
+            )));
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 /// Validate a caller-selected merge envelope below the owned tmpdir.
