@@ -59,7 +59,7 @@ lockfile, root and crate manifests, and pinned toolchain. The lint dependency
 cache is a separate `target/debug` entry; `cargo clean --workspace` removes
 workspace products before it can become a candidate. The coverage
 compiler-dependency cache is a separate, versioned `target/llvm-cov-target`
-class with a measured 1,350,000,000-byte dependency-only limit. Its exact key
+class with a reviewed 1,400,000,000-byte dependency-only limit. Its exact key
 also binds target triple, coverage tool, compiler-profile values, feature mode,
 linker choice, Cargo configuration, and schema. It has no broad
 `restore-keys` fallback. Any bound above 2 GiB needs explicit PR evidence that

@@ -18,9 +18,15 @@ from typing import Final, cast
 _CACHE_CLASS_RE: Final = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _CACHE_KEY_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,511}$")
 _ARTIFACT_NAME_RE: Final = re.compile(r"^main-cache-[a-z][a-z0-9-]{0,63}-candidate$")
+# Cargo's registry contains package build metadata and generated source names,
+# so a cache payload cannot use a fragile crate-name filename allowlist. The
+# security boundary is structural instead: every member stays below `payload`,
+# each component is nonempty and not `.` or `..`, and portable path separators,
+# control characters, and Windows-reserved filename characters are refused.
 _MEMBER_PATH_RE: Final = re.compile(
-    r"^payload/(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\.[A-Za-z0-9_.-]+)"
-    r"(?:/(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\.[A-Za-z0-9_.-]+))*$"
+    r"^payload/"
+    r'(?:(?!\.{1,2}(?:/|$))[^/\x00-\x1f\x7f\\:*?"<>|]+)'
+    r'(?:/(?:(?!\.{1,2}(?:/|$))[^/\x00-\x1f\x7f\\:*?"<>|]+))*$'
 )
 _PRODUCER_REF_RE: Final = re.compile(r"^refs/heads/gh-readonly-queue/main/[A-Za-z0-9._/-]+$")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")

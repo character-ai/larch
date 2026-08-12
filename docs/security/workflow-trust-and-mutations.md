@@ -431,10 +431,15 @@ as untrusted input. It requires exactly one successful `CI` merge-group run for
 the final `main` SHA and successful named producer jobs, then verifies the
 candidate manifest, source SHA, canonical key and key-input digest, byte bound,
 regular-file tree, checksums, modes, artifact identity, and declared tool
-versions before saving. Symlinks, stale source identity, unexpected paths, or a missing
-producer fail closed. The publisher may rewrite only Rust-policy provenance,
+versions before saving. Cargo cache payload names may include ordinary package
+build metadata and generated punctuation, but every member must still be below
+the payload root with nonempty components that are neither `.` nor `..`, and
+must exclude path separators, control characters, and portable
+Windows-reserved filename characters. Symlinks, stale source identity,
+unexpected paths, or a missing producer fail closed. The publisher may rewrite
+only Rust-policy provenance,
 and only after that final-SHA verification. A
-coverage target cache is dependency-only, bound at a measured 1,350,000,000
+coverage target cache is dependency-only, bound at a reviewed 1,400,000,000
 bytes, and enabled only after independent end-to-end measurements prove it
 helps. Neither a cache restore nor its diagnostic metadata waives the coverage,
 artifact, executable, repository-policy, or plugin-validation gates.

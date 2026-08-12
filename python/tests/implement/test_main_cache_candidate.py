@@ -110,6 +110,66 @@ def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: 
     assert (output / "llvm-cov-target" / "larch").stat().st_mode & 0o111
 
 
+def test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry"
+    cache_paths = (
+        "cache/index.crates.io-1949cf8c6b5b557f/wasip2-1.0.4+wasi-0.2.12.crate",
+        "index/index.crates.io-1949cf8c6b5b557f/.cache/nu/-a/nu-ansi-term",
+        "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/generated/_impls.rs",
+        "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/Rust Project Developers (#) [@]~",
+    )
+    for relative in cache_paths:
+        path = registry / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text("cache payload\n", encoding="utf-8")
+    git = tmp_path / "git"
+    git.mkdir()
+    request = candidate.CandidateRequest(
+        artifact_name="main-cache-cargo-inputs-candidate",
+        cache_class="cargo-inputs",
+        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        candidate_dir=tmp_path / "candidate",
+        maximum_bytes=1024 * 1024,
+        producer_event="merge_group",
+        producer_job="rust-lint",
+        producer_ref=_PRODUCER_REF,
+        source_sha=_SOURCE_SHA,
+        sources=(
+            candidate.CandidateSource(name="registry", path=registry),
+            candidate.CandidateSource(name="git", path=git),
+        ),
+        tool_versions={"cargo": "cargo test", "rustc": "rustc test"},
+    )
+
+    _ = candidate.stage_candidate(request)
+    output = tmp_path / "promoted"
+    _ = candidate.promote_candidate(
+        candidate_dir=request.candidate_dir,
+        output_dir=output,
+        contract=_contract(request),
+    )
+
+    for relative in cache_paths:
+        assert (output / "registry" / relative).read_text(
+            encoding="utf-8"
+        ) == "cache payload\n"
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "payload/../escape",
+        "payload/registry/../../escape",
+        "payload/registry/control\nname",
+        r"payload/registry\\escape",
+    ],
+)
+def test_candidate_member_paths_retain_structural_confinement(unsafe_path: str) -> None:
+    assert candidate._MEMBER_PATH_RE.fullmatch(unsafe_path) is None  # pyright: ignore[reportPrivateUsage]  # The private regex is the manifest boundary under test.
+
+
 @pytest.mark.parametrize(
     ("mutator", "expected"),
     [
