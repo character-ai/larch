@@ -677,6 +677,9 @@ jobs:
         if: success() && github.event_name == 'merge_group' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          # Cargo creates this directory only after resolving a git dependency,
+          # but the cache contract always includes it alongside the registry.
+          mkdir -p "$HOME/.cargo/git"
           python3 python/cli.py ci stage-main-cache-candidate \
             --artifact-name main-cache-cargo-inputs-candidate \
             --cache-class cargo-inputs \
@@ -785,15 +788,15 @@ jobs:
       COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
       COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"
       # Three comparable warm-cache main samples beat the cache-off control
-      # end to end. The measured dependency-only inventory is 1,349,087,232
-      # bytes, so this reviewed decimal bound leaves 912,768 bytes of
+      # end to end. The expanded dependency-only inventory is 1,369,854,810
+      # bytes, so this reviewed decimal bound leaves 30,145,190 bytes of
       # headroom. The target-cache benchmark dispatch keeps rust-full cache-off
       # as its paired control; every other full lane restores this exact cache.
       COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark && 'false' || 'true' }}
       COVERAGE_TARGET_CACHE_SCHEMA: "v1"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
       COVERAGE_TARGET_CACHE_PUBLICATION: "main-cache-candidate"
-      COVERAGE_TARGET_CACHE_MAX_BYTES: "1350000000"
+      COVERAGE_TARGET_CACHE_MAX_BYTES: "1400000000"
       RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
       RUST_COVERAGE_FEATURE_MODE: "all-features"
       RUST_COVERAGE_LINKER: "runner-default"
@@ -1202,7 +1205,7 @@ jobs:
       COVERAGE_TARGET_CACHE_SCHEMA: "v1"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
       COVERAGE_TARGET_CACHE_PUBLICATION: "main-cache-candidate"
-      COVERAGE_TARGET_CACHE_MAX_BYTES: "1350000000"
+      COVERAGE_TARGET_CACHE_MAX_BYTES: "1400000000"
       RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"
       RUST_COVERAGE_FEATURE_MODE: "all-features"
       RUST_COVERAGE_LINKER: "runner-default"

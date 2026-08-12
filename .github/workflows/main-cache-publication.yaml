@@ -675,7 +675,7 @@ jobs:
             --artifact-name main-cache-coverage-target-candidate \
             --cache-class coverage-target \
             --cache-key '${{ steps.main-cache-keys.outputs.coverage-target }}' \
-            --maximum-bytes 1350000000 \
+            --maximum-bytes 1400000000 \
             --output-dir "$RUNNER_TEMP/main-cache-promoted/coverage-target" \
             --producer-job rust-full \
             --source-sha "$GITHUB_SHA" \
