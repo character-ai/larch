@@ -736,6 +736,7 @@ runs:
       with:
         name: main-cache-cargo-nextest-candidate
         path: ${{ runner.temp }}/main-cache-cargo-nextest-candidate
+        include-hidden-files: true
         if-no-files-found: error
         overwrite: false
     - name: Stage cargo-llvm-cov cache candidate
@@ -762,6 +763,7 @@ runs:
       with:
         name: main-cache-cargo-llvm-cov-candidate
         path: ${{ runner.temp }}/main-cache-cargo-llvm-cov-candidate
+        include-hidden-files: true
         if-no-files-found: error
         overwrite: false
     - name: Stage pruned coverage dependency cache candidate
@@ -794,6 +796,7 @@ runs:
       with:
         name: main-cache-coverage-target-candidate
         path: ${{ runner.temp }}/main-cache-coverage-target-candidate
+        include-hidden-files: true
         if-no-files-found: error
         overwrite: false
     - name: Start Rust coverage cache publication timing

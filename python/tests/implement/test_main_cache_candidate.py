@@ -67,6 +67,10 @@ def _alter_payload_member(candidate_dir: Path) -> None:
     _ = candidate_dir.joinpath("payload", "llvm-cov-target", "larch").write_bytes(b"altered")
 
 
+def _remove_hidden_payload_member(candidate_dir: Path) -> None:
+    candidate_dir.joinpath("payload", "llvm-cov-target", ".fingerprint", "dependency.json").unlink()
+
+
 def _replace_manifest_with_empty_object(candidate_dir: Path) -> None:
     _ = candidate_dir.joinpath("manifest.json").write_text("{}\n", encoding="utf-8")
 
@@ -228,6 +232,7 @@ def test_candidate_member_paths_retain_structural_confinement(unsafe_path: str) 
     ("mutator", "expected"),
     [
         (_alter_payload_member, "members do not match"),
+        (_remove_hidden_payload_member, "members do not match"),
         (_replace_manifest_with_empty_object, "unexpected schema"),
     ],
 )

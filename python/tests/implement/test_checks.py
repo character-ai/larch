@@ -4060,6 +4060,24 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         assert artifact_name in publication
         assert f"--cache-class {cache_class}" in publication
         assert f"--artifact-name {artifact_name}" in publication
+    candidate_uploads = (
+        (validation, "main-cache-cargo-inputs-candidate"),
+        (validation, "main-cache-rust-lint-deps-candidate"),
+        (coverage_action, "main-cache-cargo-nextest-candidate"),
+        (coverage_action, "main-cache-cargo-llvm-cov-candidate"),
+        (coverage_action, "main-cache-coverage-target-candidate"),
+        (validation, "main-cache-rust-policy-candidate"),
+    )
+    assert {artifact_name for _, artifact_name in candidate_uploads} == set(
+        candidate_artifacts.values()
+    )
+    for workflow_surface, artifact_name in candidate_uploads:
+        upload_pattern = (
+            rf"(?m)^\s*name: {re.escape(artifact_name)}\n"
+            rf"\s*path: \$\{{\{{ runner\.temp \}}\}}/{re.escape(artifact_name)}\n"
+            r"\s*include-hidden-files: true$"
+        )
+        assert re.search(upload_pattern, workflow_surface)
     assert "overwrite: false" in validation
     assert "overwrite: false" in coverage_action
 
