@@ -520,7 +520,14 @@ jobs:
           mkdir -p "$HOME/.cargo"
           rm -rf -- "$HOME/.cargo/registry" "$HOME/.cargo/git"
           mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/registry" "$HOME/.cargo/registry"
-          mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"
+          # Artifact transport omits empty directories. A verified candidate may
+          # therefore omit Cargo's optional git cache when it has no entries.
+          if [ -e "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" ]; then
+            test -d "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git"
+            mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"
+          else
+            mkdir -p "$HOME/.cargo/git"
+          fi
       - name: Save verified Cargo inputs
         if: success() && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0

@@ -179,6 +179,47 @@ def test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation(
         ) == "cache payload\n"
 
 
+def test_empty_cargo_git_directory_is_optional_after_artifact_transport(
+    tmp_path: Path,
+) -> None:
+    """Artifact transport may omit an empty cache directory without corruption."""
+    registry = tmp_path / "registry"
+    registry.mkdir()
+    _ = (registry / "index").write_text("registry\n", encoding="utf-8")
+    git = tmp_path / "git"
+    git.mkdir()
+    request = candidate.CandidateRequest(
+        artifact_name="main-cache-cargo-inputs-candidate",
+        cache_class="cargo-inputs",
+        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        candidate_dir=tmp_path / "candidate",
+        maximum_bytes=1024 * 1024,
+        producer_event="merge_group",
+        producer_job="rust-lint",
+        producer_ref=_PRODUCER_REF,
+        source_sha=_SOURCE_SHA,
+        sources=(
+            candidate.CandidateSource(name="registry", path=registry),
+            candidate.CandidateSource(name="git", path=git),
+        ),
+        tool_versions={"cargo": "cargo test", "rustc": "rustc test"},
+    )
+
+    _ = candidate.stage_candidate(request)
+    # actions/upload-artifact preserves regular members but not this empty directory.
+    (request.candidate_dir / "payload" / "git").rmdir()
+
+    output = tmp_path / "promoted"
+    _ = candidate.promote_candidate(
+        candidate_dir=request.candidate_dir,
+        output_dir=output,
+        contract=_contract(request),
+    )
+
+    assert (output / "registry" / "index").read_text(encoding="utf-8") == "registry\n"
+    assert not (output / "git").exists()
+
+
 def test_candidate_members_are_lexically_sorted_across_files_and_directories(
     tmp_path: Path,
 ) -> None:

@@ -677,8 +677,10 @@ jobs:
         if: success() && github.event_name == 'merge_group' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          # Cargo creates this directory only after resolving a git dependency,
-          # but the cache contract always includes it alongside the registry.
+          # Cargo creates this directory only after resolving a git dependency.
+          # Stage it so the cache contract includes it alongside the registry;
+          # the trusted publisher reconstitutes it when artifact transport omits
+          # the empty directory.
           mkdir -p "$HOME/.cargo/git"
           python3 python/cli.py ci stage-main-cache-candidate \
             --artifact-name main-cache-cargo-inputs-candidate \
