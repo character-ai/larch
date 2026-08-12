@@ -30,15 +30,16 @@ use larch_adapters::{
 use larch_core::{
     AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode, AuditGraphState, AuditIssue,
     AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditProposal, AuditProposalDraft,
-    AuditSnapshot, AuditSource, GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService,
-    GitHubTransportPolicy, IssueCreateRequest, MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead,
-    Revision, audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
-    audit_snapshot_sha256, build_audit_proposal, emit_kv, has_umbrella_proposal,
-    mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
-    parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
-    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
-    triage_label_is_security, triage_text_is_security_sensitive, umbrella_leaf_opening,
-    validate_audit_ledger, validate_audit_proposal_binding,
+    AuditSnapshot, AuditSource, DONE_PREFIX, GitHubIssue, GitHubIssueState, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, IssueCreateRequest,
+    MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
+    audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
+    build_audit_proposal, emit_kv, has_umbrella_proposal, mark_audit_graph_in_flight,
+    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
+    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
+    render_audit_snapshot, replace_audit_issue_fingerprints, triage_label_is_security,
+    triage_text_is_security_sensitive, umbrella_leaf_opening, validate_audit_ledger,
+    validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -725,8 +726,8 @@ fn explicit_leaf_references(body: &str) -> BTreeSet<u64> {
 
 fn has_exact_leaf_title(title: &str, umbrella: u64) -> bool {
     let title = title
-        .strip_prefix("[IMPLEMENTING] ")
-        .or_else(|| title.strip_prefix("[DONE] "))
+        .strip_prefix(IMPLEMENTING_PREFIX)
+        .or_else(|| title.strip_prefix(DONE_PREFIX))
         .unwrap_or(title);
     let prefix = audit_leaf_prefix(umbrella);
     title
@@ -737,8 +738,8 @@ fn has_exact_leaf_title(title: &str, umbrella: u64) -> bool {
 fn is_controlling_umbrella(issue: &GitHubIssue) -> bool {
     let title = issue
         .title
-        .strip_prefix("[IMPLEMENTING] ")
-        .or_else(|| issue.title.strip_prefix("[DONE] "))
+        .strip_prefix(IMPLEMENTING_PREFIX)
+        .or_else(|| issue.title.strip_prefix(DONE_PREFIX))
         .unwrap_or(&issue.title);
     title.starts_with("[UMBRELLA] ") || title.starts_with("[CHIEF UMBRELLA] ")
 }
@@ -752,8 +753,8 @@ fn validate_audit_parent(parent: &GitHubIssue) -> Result<(), String> {
     }
     let title = parent
         .title
-        .strip_prefix("[IMPLEMENTING] ")
-        .or_else(|| parent.title.strip_prefix("[DONE] "))
+        .strip_prefix(IMPLEMENTING_PREFIX)
+        .or_else(|| parent.title.strip_prefix(DONE_PREFIX))
         .unwrap_or(&parent.title);
     if !title.starts_with("[UMBRELLA] ")
         || !(has_umbrella_proposal(&parent.body) || is_legacy_managed_umbrella(&parent.body))
@@ -2156,7 +2157,7 @@ mod tests {
             exact_open_leaf_matches(
                 "[LEAF OF 10] Repair the audit gap",
                 "exact corrective scope",
-                &[existing.clone()],
+                std::slice::from_ref(&existing),
             )
             .len(),
             1

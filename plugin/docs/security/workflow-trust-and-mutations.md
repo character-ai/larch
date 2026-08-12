@@ -817,6 +817,14 @@ Parent title mutations and graph writes require explicit operator mode, freshnes
 
 The inline final audit treats its snapshot as untrusted requirements data and keeps Write confined to the larch session scratch root through the token-gated hook. It does not delegate architectural judgment. Security-sensitive findings are not filed publicly. Child failure, malformed output, stale state, graph deadlock, an open orphan blocker, mutation ambiguity, dirty repository state, or failed sync proof terminates the run without advancing another leaf or claiming parent completion.
 
+## Audit umbrella
+
+`/audit-umbrella` is a standalone, inline audit that does not implement leaves or alter umbrella or leaf lifecycle fields. Its Rust owner resolves the repository default branch, fetches a detached immutable worktree, and records a bounded exhaustive GitHub source snapshot. Target validation rejects pull requests, closed or nested umbrellas, ordinary issues, and security-classified umbrellas. Issue text, labels, repository files, ledger JSON, proposal JSON, and command output remain untrusted data.
+
+The Write hook recognizes the `audit-umbrella` token and permits Claude Write calls only under the active session root. The core contract rejects duplicate JSON keys, unconfined or oversized files, malformed hashes, incomplete source coverage, missing evidence, security-sensitive public leaf text, invalid identities, duplicate gap ownership, cycles, and unbound dependency endpoints. Before the first mutation, the owner rechecks the audited default SHA, every source fingerprint, the top-level graph, and authorization. It persists pending/in-flight graph state alongside `pending`, `in_flight`, and resolved leaf identities, so recovery adopts only one exact open title/body match and never heuristic duplicates.
+
+Every accepted create uses the shared redacting issue owner and orphan rollback. Native sub-issue and blocked-by operations use the shared live-mutation gate and relation read-back. Final verification requires the expected direct-child set, every direct leaf as an umbrella blocker, every declared added edge present in the correct direction, every declared removal absent, and no cycle in the persisted graph. A potential vulnerability or secret terminalizes the audit before a public proposal or graph mutation; the finding stays private under `SECURITY.md`.
+
 ## Debate state and local handoff
 
 The `debate` CLI treats its state file, agent output, and persisted session

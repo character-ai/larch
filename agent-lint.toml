@@ -1014,6 +1014,7 @@ reason = "Larch centralizes installation and runtime prerequisites in docs/insta
 [[lint.overrides]]
 files = [
   "skills/alias/SKILL.md",
+  "skills/audit-umbrella/SKILL.md",
   "skills/block-issue/SKILL.md",
   "skills/bug/SKILL.md",
   "skills/combine-issues/SKILL.md",
@@ -1048,6 +1049,7 @@ files = [
   ".claude/skills/audit-runs/SKILL.md",
   ".claude/skills/rebalance-tests/SKILL.md",
   ".claude/skills/release/SKILL.md",
+  "skills/audit-umbrella/SKILL.md",
   "skills/combine-issues/SKILL.md",
   "skills/deps/SKILL.md",
   "skills/design/SKILL.md",
@@ -1105,6 +1107,7 @@ files = [
   "agents/reviewer-structure.md",
   "agents/reviewer-testing.md",
   "skills/alias/SKILL.md",
+  "skills/audit-umbrella/SKILL.md",
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",
   "skills/combine-issues/SKILL.md",
@@ -1163,6 +1166,7 @@ files = [
   ".claude/skills/release/SKILL.md",
   ".claude/skills/validate-merged/SKILL.md",
   "skills/alias/SKILL.md",
+  "skills/audit-umbrella/SKILL.md",
   "skills/block-issue/SKILL.md",
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",
@@ -1201,6 +1205,7 @@ reason = "These lifecycle skills require dynamic Bash operations whose valid arg
 [[lint.overrides]]
 files = [
   "skills/alias/SKILL.md",
+  "skills/audit-umbrella/SKILL.md",
   "skills/block-issue/SKILL.md",
   "skills/bug/SKILL.md",
   "skills/cleanup/SKILL.md",

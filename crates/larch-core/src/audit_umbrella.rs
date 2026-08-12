@@ -1395,11 +1395,10 @@ mod tests {
             dependencies: Vec::new(),
             remove_dependencies: Vec::new(),
         };
-        let proposal = build_audit_proposal(&snapshot, &ledger, &draft).expect("proposal");
-        validate_audit_proposal_binding(&proposal, &snapshot, &ledger).expect("binding");
+        let mut cyclic = build_audit_proposal(&snapshot, &ledger, &draft).expect("proposal");
+        validate_audit_proposal_binding(&cyclic, &snapshot, &ledger).expect("binding");
 
-        let identity = proposal.leaves[0].identity.clone();
-        let mut cyclic = proposal.clone();
+        let identity = cyclic.leaves[0].identity.clone();
         cyclic.dependencies = vec![
             AuditDependency {
                 dependent: AuditDependencyNode::Existing { number: 41 },
