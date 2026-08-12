@@ -41,19 +41,26 @@ jobs:
           set -euo pipefail
           cargo build --locked --release --package larch-cli
           ./target/release/larch --version
-          printf '%s\n' "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+
+      - name: Configure isolated GitHub CLI credentials
+        id: github-auth
+        uses: ./.github/actions/github-auth-config
+        with:
+          token: ${{ github.token }}
 
       - name: Run the aggregate migration audit
         id: audit
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+          LARCH_BINARY: ${{ github.workspace }}/target/release/larch
         shell: bash
         run: |
           set -euo pipefail
           report_path="$RUNNER_TEMP/migration-governance.json"
           summary_path="$RUNNER_TEMP/migration-governance-comment.md"
           set +e
-          python3 python/cli.py issue migration-audit \
+          scripts/larch.sh issue migration-audit \
             --repo character-ai/larch \
             --chief 7687 \
             --output "$report_path" \
@@ -92,7 +99,9 @@ jobs:
       - name: Refresh the Chief report comment
         if: ${{ steps.audit.outputs.report_ready == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+          LARCH_BINARY: ${{ github.workspace }}/target/release/larch
         shell: bash
         run: |
           set -euo pipefail

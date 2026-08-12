@@ -39,19 +39,24 @@ def test_triggers_permissions_and_concurrency_are_narrow() -> None:
 
 
 def test_builds_verified_repository_binary_and_runs_exact_audit() -> None:
-    """The audit uses the lockfile-built lint binary through PATH."""
+    """The audit enters the lockfile-built binary through the verified bootstrap."""
     workflow = _workflow()
     build = _step_body(workflow, "Build and verify larch")
+    auth = _step_body(workflow, "Configure isolated GitHub CLI credentials")
     audit = _step_body(workflow, "Run the aggregate migration audit")
 
     assert "cargo build --locked --release --package larch-cli" in build
     assert "./target/release/larch --version" in build
-    assert '"$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"' in build
+    assert "GITHUB_PATH" not in build
     assert "cargo run" not in audit
-    assert "target/release/larch" not in audit
-    assert "GH_TOKEN: ${{ github.token }}" in audit
+    assert "uses: ./.github/actions/github-auth-config" in auth
+    assert "token: ${{ github.token }}" in auth
+    assert "CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}" in audit
+    assert "LARCH_BINARY: ${{ github.workspace }}/target/release/larch" in audit
+    assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in audit
+    assert "GH_TOKEN:" not in audit
     assert (
-        "python3 python/cli.py issue migration-audit \\\n"
+        "scripts/larch.sh issue migration-audit \\\n"
         "            --repo character-ai/larch \\\n"
         "            --chief 7687"
     ) in audit
@@ -96,6 +101,10 @@ def test_chief_comment_uses_the_stable_renderer_and_exact_marker() -> None:
     assert f"--marker '{MARKER}'" in comment
     assert '--content-file "$RUNNER_TEMP/migration-governance-comment.md"' in comment
     assert "--repo character-ai/larch" in comment
+    assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in comment
+    assert "CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}" in comment
+    assert "LARCH_BINARY: ${{ github.workspace }}/target/release/larch" in comment
+    assert "GH_TOKEN:" not in comment
     assert _workflow().count("tracking-issue upsert-summary") == 1
 
 
@@ -126,6 +135,7 @@ def test_no_other_repository_or_issue_mutation_is_reachable() -> None:
         ("tracking-issue", "upsert-summary"),
     }
     assert actions == {
+        "./.github/actions/github-auth-config",
         "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     }

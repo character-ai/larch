@@ -36,7 +36,7 @@ Use one workflow for registry or caller changes:
    ```
 
 5. For issue-registry parity audits, build schema-v1 JSON with
-   `migration_governance.build_command_audit_issue` and
+   `larch_core::build_command_audit_issue` and
    `render_command_audit_input`, then run:
 
    ```bash
@@ -183,7 +183,7 @@ the next cutover and does not create a second implementation.
 | #7681 | `tracking post-issue` remains an implementation workflow surface. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, `token cost`, `token render-cost-line`, and their analytical issue helpers remain research-owned. |
-| #7685 | `issue migration-audit`, `migration_governance`, and `open_rows` remain lint/developer-tooling owned. |
+| #7685 | `issue migration-audit` is Rust-owned by #8392. The retained Python governance-gate boundary and its `issue_block` and `open_rows` support remain owned by #7681; #7685 retains no Python issue-module ownership. |
 | #7686 | The final runtime and package retirement sweep owns deletion once no retained consumer remains; it is not an issue-command fallback. |
 
 The rule's retained-module list permits the package initializer and the named

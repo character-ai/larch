@@ -137,6 +137,29 @@ pub fn python_retirement_findings_for_issues(
     Ok(findings)
 }
 
+/// Return every command selector the canonical ledger recognizes.
+///
+/// Migration-audit uses this typed projection when it renders command evidence;
+/// keeping the TOML import here prevents a second, subtly different registry
+/// parser at the command boundary.
+///
+/// # Errors
+///
+/// Returns an error when the command registry is unavailable or malformed.
+pub fn command_audit_selectors(
+    repository: &Repository,
+) -> Result<Vec<larch_core::CommandAuditKey>, LintError> {
+    let ledger = read_ledger(repository)?;
+    let commands = command_map(&ledger)?;
+    Ok(commands
+        .keys()
+        .map(|key| larch_core::CommandAuditKey {
+            domain: key.domain.clone(),
+            verb: key.verb.clone(),
+        })
+        .collect())
+}
+
 /// Discover live in-process Python ownership of corrected issue commands.
 ///
 /// `issue-python-free` consumes the same facts that feed the command caller
@@ -445,6 +468,79 @@ pub fn rust_owned_selectors(repository: &Repository) -> Result<BTreeSet<String>,
         .filter(|record| record.owner == Owner::Rust)
         .map(|record| record.key().selector())
         .collect())
+}
+
+/// Prove that one developer-tooling planning umbrella has no remaining
+/// command-level migration debt.
+///
+/// This is deliberately narrower than [`CommandRegistryRule`]'s normal
+/// whole-ledger validation: a closure guard needs an affirmative proof for
+/// every row assigned to one umbrella, including the live Python registry,
+/// Python implementation references, and production caller inventory. Keeping
+/// the parsing and syntax-aware retirement checks here prevents a sibling rule
+/// from growing a second command-registry parser.
+pub fn planning_issue_closure_findings(
+    repository: &Repository,
+    planning_issue: u64,
+) -> Result<Vec<Finding>, LintError> {
+    let ledger = read_ledger(repository)?;
+    let records = ledger
+        .commands
+        .iter()
+        .filter(|record| record.planning_issue == planning_issue)
+        .collect::<Vec<_>>();
+    let mut findings = Vec::new();
+    for record in &records {
+        let selector = record.key().selector();
+        if record.owner != Owner::Rust {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {selector} is not Rust-owned"
+            )));
+        }
+        if record.implementation_parity != Parity::Complete {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {selector} has incomplete implementation parity"
+            )));
+        }
+        if record.consumer_cutover != Completion::Complete {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {selector} has incomplete consumer cutover"
+            )));
+        }
+        if record.python_removal != Completion::Complete {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {selector} has incomplete Python removal"
+            )));
+        }
+        if !record
+            .migration_issue
+            .is_some_and(|issue| issue != 0 && !MIGRATION_UMBRELLA_ISSUES.contains(&issue))
+        {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {selector} lacks an exact non-umbrella migration leaf"
+            )));
+        }
+    }
+
+    let known = ledger.commands.iter().map(CommandRecord::key).collect();
+    let python = read_python_registry(repository)?;
+    let python_sources = read_python_sources(repository, &records, true)?;
+    let retirement_checks = retirement_checks(records.iter().copied());
+    validate_python_retirements(&retirement_checks, &python, &python_sources, &mut findings);
+    let callers = discover_callers(repository, &known, Some(&python_sources))?;
+    let callers = caller_map(&callers)?;
+    for record in &records {
+        let key = record.key();
+        for caller in matching_callers(&key, &callers, Runtime::Python) {
+            findings.push(finding(format!(
+                "planning issue #{planning_issue} command {} retains a Python production caller: {caller}",
+                key.selector()
+            )));
+        }
+    }
+    findings.sort();
+    findings.dedup();
+    Ok(findings)
 }
 
 /// Extract `domain verb` selectors that follow a `python/cli.py` marker.
@@ -2256,16 +2352,28 @@ pub fn audit_migration_issue_commands(
             input_path.display()
         ))
     })?;
-    let input: MigrationIssueAuditInput = serde_json::from_str(&content).map_err(|error| {
-        LintError::new(format!(
-            "{}: invalid migration issue audit JSON: {error}",
-            input_path.display()
-        ))
-    })?;
+    audit_migration_issue_commands_content(repository, &content)
+        .map_err(|error| LintError::new(format!("{}: {error}", input_path.display())))
+}
+
+/// Compare rendered migration-issue command evidence with the ledger.
+///
+/// The in-process migration-audit adapter owns its private snapshot bytes, so
+/// this content entry point avoids reopening a temporary path merely to hand
+/// data between two Rust owners.
+///
+/// # Errors
+///
+/// Returns an error when the supplied audit JSON or command registry is malformed.
+pub fn audit_migration_issue_commands_content(
+    repository: &Repository,
+    content: &str,
+) -> Result<RuleOutput, LintError> {
+    let input: MigrationIssueAuditInput = serde_json::from_str(content)
+        .map_err(|error| LintError::new(format!("invalid migration issue audit JSON: {error}",)))?;
     if input.schema_version != 1 {
         return Err(LintError::new(format!(
-            "{}: unsupported schema_version {}; expected 1",
-            input_path.display(),
+            "unsupported schema_version {}; expected 1",
             input.schema_version
         )));
     }
@@ -2274,10 +2382,7 @@ pub fn audit_migration_issue_commands(
     let mut issues = BTreeMap::new();
     for issue in &input.issues {
         if issue.number == 0 || issues.insert(issue.number, issue).is_some() {
-            return Err(LintError::new(format!(
-                "{}: issue numbers must be positive and unique",
-                input_path.display()
-            )));
+            return Err(LintError::new("issue numbers must be positive and unique"));
         }
         if let Some(command) = &issue.command {
             validate_token("audit command domain", &command.domain)?;
@@ -2289,8 +2394,7 @@ pub fn audit_migration_issue_commands(
             validate_token("plan command verb", &command.verb)?;
             if previous.is_some_and(|value| value >= command) {
                 return Err(LintError::new(format!(
-                    "{}: issue #{} plan_commands must be sorted and unique",
-                    input_path.display(),
+                    "issue #{} plan_commands must be sorted and unique",
                     issue.number
                 )));
             }

@@ -49,19 +49,19 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 ## Migration Governance Aggregate
 
-Run `python3 python/cli.py issue migration-audit --repo owner/name --chief 7687`
+Run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue migration-audit --repo owner/name --chief 7687`
 to compose the migration checks into one stable JSON report and count table. The
-aggregate invokes the installed `larch` executable's `lint` domain for
-command-registry, caller-surface, Python-retirement, clean-install, and
-production-runtime checks. It exits `2` when that executable is unavailable.
-Production Python never runs Cargo or a `target/` executable. See
+Rust aggregate runs the canonical lint owners in process for command-registry,
+caller-surface, Python-retirement, clean-install, and production-runtime
+checks. It exits `2` when required evidence is unavailable. Production callers
+enter only through the verified bootstrap. See
 [Migration Governance Audit](migration-governance.md) for the schema, channels,
 exit codes, and read-only boundary.
 
-Run the focused Python coverage with:
+Run the focused Rust command coverage with:
 
 ```bash
-python3 -m pytest -q python/tests/issue/test_migration_audit.py
+cargo test --locked --package larch-cli --test migration_audit_commands
 ```
 
 ## Usage
@@ -126,9 +126,12 @@ non-test `scripts/*.{sh,py}`, non-test, non-fixture runtime scripts named by
   and the manifest-listed Git hook/release probes in
   `block-submodule-edit.sh`, `check-stale-plugin.sh`, and
   `sessionstart-health.sh`; the residual-Bash manifest is not a blanket waiver.
-- `developer-tooling-7685-closure` asks the `git-ownership` rule's canonical
-  inventory parser for unresolved `later-domain #7685` rows and fails if any
-  remain. It intentionally does not close or reassign other umbrella rows.
+- `developer-tooling-7685-closure` independently checks every #7685
+  command-registry row and its exact leaf, verifies retired Python entrypoints,
+  retained Python module ownership, and production callers are gone, rejects
+  incomplete #7685 GitHub-service ownership, and asks the `git-ownership`
+  rule's canonical inventory parser for unresolved `later-domain #7685` rows.
+  It intentionally does not close or reassign other umbrella rows.
 - `retired-disposition-module` fails when a `retire` disposition row names an
   unregistered lint verb whose derived module (or file-typed `target_surface`)
   still exists.

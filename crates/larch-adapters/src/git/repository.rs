@@ -261,6 +261,45 @@ impl GixRepository {
         Ok(entries.files)
     }
 
+    /// Return the object ID of one regular-file or symlink tree entry at a commit.
+    ///
+    /// This is the identity-only counterpart to [`RepositoryRead::blob_at_commit`].
+    /// Audit receipts need the Git object identity, not blob contents, so callers
+    /// can compare declared scope without materializing untrusted source bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed hash, missing-object, object-type, or tree-read failure.
+    pub fn blob_id_at_commit(
+        &self,
+        commit: &ObjectId,
+        path: &GitPath,
+    ) -> Result<Option<ObjectId>, RepositoryError> {
+        if path.as_bytes().is_empty() || path.as_bytes().contains(&0) {
+            return Err(error(RepositoryErrorKind::InvalidInput));
+        }
+        let repository = self.local()?;
+        let commit = repository
+            .find_commit(gix_id(commit, repository.object_hash())?)
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+        let tree = commit
+            .tree()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let Some(entry) = tree
+            .lookup_entry(path.as_bytes().split(|byte| *byte == b'/'))
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+        else {
+            return Ok(None);
+        };
+        if !entry.mode().is_blob_or_symlink() {
+            return Err(error(RepositoryErrorKind::ObjectType));
+        }
+        entry
+            .object()
+            .map(|object| Some(object_id(object.id.as_ref())))
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))
+    }
+
     /// Return local status for a compatibility command without interpreting diff text.
     ///
     /// This deliberately retains configured filters in the gix traversal: these

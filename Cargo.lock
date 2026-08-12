@@ -3095,6 +3095,7 @@ dependencies = [
  "csv",
  "globset",
  "inventory",
+ "larch-core",
  "predicates",
  "proc-macro2",
  "pulldown-cmark",

@@ -236,6 +236,96 @@ fn check_github_operation_inventory(
     Ok(())
 }
 
+/// Return GitHub-service rows that still leave one planning issue incomplete.
+///
+/// Sibling closure guards consume this bounded projection instead of scanning
+/// Markdown substrings. The matrix markers, header, tab grammar, and phase
+/// columns remain defined by this module's canonical service-inventory owner.
+pub(super) fn unresolved_github_service_operations_for_issue(
+    repository: &Repository,
+    issue: u64,
+) -> Result<Vec<(String, u32)>, LintError> {
+    let inventory_path = RepoPath::from_trusted(GITHUB_INVENTORY);
+    if repository.paths().binary_search(&inventory_path).is_err() {
+        return Err(LintError::new(format!(
+            "{GITHUB_INVENTORY}: required GitHub service ownership matrix is missing"
+        )));
+    }
+    let content = repository.read_utf8(&inventory_path)?;
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines
+        .iter()
+        .position(|line| line.trim() == INVENTORY_START)
+        .ok_or_else(|| {
+            LintError::new(format!(
+                "{GITHUB_INVENTORY}: missing {INVENTORY_START}"
+            ))
+        })?;
+    let relative_end = lines[start + 1..]
+        .iter()
+        .position(|line| line.trim() == INVENTORY_END)
+        .ok_or_else(|| {
+            LintError::new(format!(
+                "{GITHUB_INVENTORY}: missing {INVENTORY_END}"
+            ))
+        })?;
+    let end = start + 1 + relative_end;
+    let mut header_seen = false;
+    let mut unresolved = Vec::new();
+    for (index, raw) in lines[start + 1..end].iter().enumerate() {
+        let line_number = start + index + 2;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with("```") {
+            continue;
+        }
+        if !header_seen {
+            header_seen = true;
+            if line != INVENTORY_HEADER {
+                return Err(LintError::new(format!(
+                    "{GITHUB_INVENTORY}: invalid GitHub service ownership header"
+                )));
+            }
+            continue;
+        }
+        let columns: Vec<&str> = raw.split('\t').collect();
+        if columns.len() != 8 {
+            return Err(LintError::new(format!(
+                "{GITHUB_INVENTORY}:{line_number}: GitHub service ownership row must contain exactly eight tab-separated fields"
+            )));
+        }
+        let planning_issues = columns[3]
+            .split(',')
+            .map(|value| {
+                value.trim().strip_prefix('#').and_then(|value| value.parse::<u64>().ok()).ok_or_else(|| {
+                    LintError::new(format!(
+                        "{GITHUB_INVENTORY}:{line_number}: invalid planning issue reference"
+                    ))
+                })
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if !planning_issues.contains(&issue) {
+            continue;
+        }
+        let complete = (columns[2].trim() == "rust"
+            && columns[4].trim() == "complete"
+            && columns[5].trim() == "complete"
+            && columns[6].trim() == "complete")
+            || (columns[2].trim() == "retired"
+                && columns[4].trim() == "not-applicable"
+                && columns[5].trim() == "complete"
+                && columns[6].trim() == "complete");
+        if !complete {
+            unresolved.push((columns[0].trim().to_owned(), to_u32(line_number)));
+        }
+    }
+    if !header_seen {
+        return Err(LintError::new(format!(
+            "{GITHUB_INVENTORY}: GitHub service ownership matrix is empty"
+        )));
+    }
+    Ok(unresolved)
+}
+
 fn read_ownership_commands(
     repository: &Repository,
 ) -> Result<BTreeMap<String, OwnershipCommand>, LintError> {

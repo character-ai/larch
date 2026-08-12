@@ -10,6 +10,7 @@ use larch_adapters::{
     github::OctocrabGitHubService,
     runtime::{Cancellation, LarchRuntime},
 };
+use larch_core::GitHubTransportPolicy;
 use std::env;
 
 #[cfg(test)]
@@ -60,6 +61,19 @@ impl ServiceFailure {
 pub fn with_github_service<T>(
     operation: impl AsyncFnOnce(&OctocrabGitHubService, &Cancellation) -> Result<T, String>,
 ) -> Result<T, ServiceFailure> {
+    with_github_service_policy(GitHubTransportPolicy::github_com(), operation)
+}
+
+/// Run one operation against a hardened GitHub client using a reviewed
+/// transport policy.
+///
+/// The migration audit is the only current caller that needs its separately
+/// bounded exhaustive-history policy. Credential acquisition and client
+/// construction remain centralized here and in the adapter.
+pub fn with_github_service_policy<T>(
+    policy: GitHubTransportPolicy,
+    operation: impl AsyncFnOnce(&OctocrabGitHubService, &Cancellation) -> Result<T, String>,
+) -> Result<T, ServiceFailure> {
     #[cfg(test)]
     if let Some(factory) = TEST_SERVICE.with(|slot| slot.borrow().clone()) {
         let runtime = LarchRuntime::new().map_err(|error| {
@@ -82,9 +96,14 @@ pub fn with_github_service<T>(
     runtime.block_on(async {
         let runner = TokioProcessRunner::default();
         let cancellation = Cancellation::new();
-        let service = OctocrabGitHubService::from_gh(&runner, &working_directory, &cancellation)
-            .await
-            .map_err(|error| ServiceFailure::Setup(error.to_string()))?;
+        let service = OctocrabGitHubService::from_gh_with_policy(
+            &runner,
+            &working_directory,
+            &cancellation,
+            policy,
+        )
+        .await
+        .map_err(|error| ServiceFailure::Setup(error.to_string()))?;
         operation(&service, &cancellation)
             .await
             .map_err(ServiceFailure::Operation)

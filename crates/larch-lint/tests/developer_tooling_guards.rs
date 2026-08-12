@@ -287,9 +287,56 @@ fn inventory(extra: &str) -> String {
     )
 }
 
+fn service_inventory(rows: &str) -> String {
+    format!(
+        "<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\n{rows}```\n<!-- github-service-ownership:end -->\n"
+    )
+}
+
+fn closure_registry(rows: &str) -> String {
+    format!(
+        "schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7681\n\n{rows}"
+    )
+}
+
+fn closure_command(
+    owner: &str,
+    parity: &str,
+    cutover: &str,
+    removal: &str,
+    migration_issue: Option<u64>,
+) -> String {
+    let migration_issue = migration_issue
+        .map(|issue| format!("migration_issue = {issue}\n"))
+        .unwrap_or_default();
+    format!(
+        "[[commands]]\ndomain = \"issue\"\nverb = \"migration-audit\"\npython_module = \"larch.issue.migration_governance\"\npython_function = \"migration_audit_main\"\nmachine_stdout = true\nowner = \"{owner}\"\nimplementation_parity = \"{parity}\"\nconsumer_cutover = \"{cutover}\"\npython_removal = \"{removal}\"\nplanning_issue = 7685\n{migration_issue}\n"
+    )
+}
+
+fn write_closure_baseline(repository: &TempRepo, registry_rows: &str) {
+    repository.write(
+        "crates/larch-lint/data/command-registry.toml",
+        closure_registry(registry_rows).as_bytes(),
+    );
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
+    );
+    repository.write("hooks/hooks.json", b"{}\n");
+    repository.write(
+        "docs/github-service-inventory.md",
+        service_inventory(
+            "issues\tcrates/larch-adapters/src/github_rest.rs\trust\t#7682\tcomplete\tcomplete\tcomplete\tfixture run\n",
+        )
+        .as_bytes(),
+    );
+}
+
 #[test]
 fn developer_tooling_closure_rejects_unresolved_7685_inventory_row() {
     let repository = TempRepo::new();
+    write_closure_baseline(&repository, "");
     repository.write(
         "docs/git-operation-inventory.md",
         inventory("scripts/developer.sh\tlater-domain\t#7685\tstatus\n").as_bytes(),
@@ -309,9 +356,167 @@ fn developer_tooling_closure_rejects_unresolved_7685_inventory_row() {
 #[test]
 fn developer_tooling_closure_allows_other_later_domain_rows() {
     let repository = TempRepo::new();
+    write_closure_baseline(&repository, "");
     repository.write(
         "docs/git-operation-inventory.md",
         inventory("python/larch/issue/tool.py\tlater-domain\t#7682\tls-tree\n").as_bytes(),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_pending_7685_command_phase() {
+    let repository = TempRepo::new();
+    write_closure_baseline(
+        &repository,
+        &closure_command("python", "pending", "pending", "pending", None),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "planning issue #7685 command issue migration-audit is not Rust-owned",
+        ))
+        .stdout(predicate::str::contains(
+            "planning issue #7685 command issue migration-audit has incomplete implementation parity",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_missing_and_umbrella_migration_leaves() {
+    let repository = TempRepo::new();
+    let missing = closure_command("rust", "complete", "complete", "complete", None);
+    let umbrella = closure_command("rust", "complete", "complete", "complete", Some(7685))
+        .replace("verb = \"migration-audit\"", "verb = \"migration-report\"");
+    write_closure_baseline(&repository, &(missing + &umbrella));
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "planning issue #7685 command issue migration-audit lacks an exact non-umbrella migration leaf",
+        ))
+        .stdout(predicate::str::contains(
+            "planning issue #7685 command issue migration-report lacks an exact non-umbrella migration leaf",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_retained_7685_python_module() {
+    let repository = TempRepo::new();
+    write_closure_baseline(
+        &repository,
+        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
+    );
+    repository.write(
+        "python/larch/issue/migration_governance.py",
+        b"def migration_audit_main(argv: list[str]) -> int:\n    return 0\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-present issue migration-audit: python/larch/issue/migration_governance.py",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_retained_7685_python_registration() {
+    let repository = TempRepo::new();
+    write_closure_baseline(
+        &repository,
+        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
+    );
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"issue\", \"migration-audit\"): (\"larch.issue.migration_governance\", \"migration_audit_main\", True),\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-present issue migration-audit: python/larch/cli.py",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_retained_7685_python_caller() {
+    let repository = TempRepo::new();
+    write_closure_baseline(
+        &repository,
+        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
+    );
+    repository.write(
+        "Makefile",
+        b"audit:\n\tpython3 python/cli.py issue migration-audit\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "planning issue #7685 command issue migration-audit retains a Python production caller: Makefile",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_rejects_pending_7685_service_inventory_row() {
+    let repository = TempRepo::new();
+    write_closure_baseline(&repository, "");
+    repository.write(
+        "docs/github-service-inventory.md",
+        service_inventory(
+            "issues\tcrates/larch-adapters/src/github_rest.rs\tpython\t#7685\tpending\tpending\tpending\tfixture run\n",
+        )
+        .as_bytes(),
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-7685-closure"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "GitHub service inventory still has incomplete #7685 ownership for operation: issues",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn developer_tooling_closure_allows_a_completed_retired_7685_service_row() {
+    let repository = TempRepo::new();
+    write_closure_baseline(&repository, "");
+    repository.write(
+        "docs/github-service-inventory.md",
+        service_inventory(
+            "legacy-issues\tcrates/larch-adapters/src/github_rest.rs\tretired\t#7685\tnot-applicable\tcomplete\tcomplete\tfixture run\n",
+        )
+        .as_bytes(),
     );
     repository.commit_all();
 

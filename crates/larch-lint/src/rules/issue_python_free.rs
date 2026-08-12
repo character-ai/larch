@@ -310,8 +310,8 @@ const DESIGN_LIBRARY: &str =
 const REVIEW_LIBRARY: &str = "OOS library retained for the review pipeline umbrella";
 const IMPLEMENT_LIBRARY: &str =
     "pure pull-request footer library retained for the implementation workflow umbrella";
-const LINT_LIBRARY: &str =
-    "migration governance library retained for the lint and developer-tooling umbrella";
+const GOVERNANCE_GATE_LIBRARY: &str =
+    "migration governance gate support retained for the implementation workflow umbrella";
 
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
@@ -323,16 +323,28 @@ const RETAINED_MODULES: [RetainedModule; 20] = [
     RetainedModule::new("python/larch/issue/_util.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/analyze_bugs.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/issue_block.py", 7685, LINT_LIBRARY),
+    RetainedModule::new(
+        "python/larch/issue/issue_block.py",
+        7681,
+        GOVERNANCE_GATE_LIBRARY,
+    ),
     RetainedModule::new("python/larch/issue/issue_blocks.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_create.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_mutation.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/migration_governance.py", 7685, LINT_LIBRARY),
+    RetainedModule::new(
+        "python/larch/issue/migration_governance.py",
+        7681,
+        GOVERNANCE_GATE_LIBRARY,
+    ),
     RetainedModule::new("python/larch/issue/oos.py", 7679, REVIEW_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/open_rows.py", 7685, LINT_LIBRARY),
+    RetainedModule::new(
+        "python/larch/issue/open_rows.py",
+        7681,
+        GOVERNANCE_GATE_LIBRARY,
+    ),
     RetainedModule::new("python/larch/issue/rejected_analysis.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
@@ -737,13 +749,28 @@ pub(super) fn retained_module_owner(path: &str) -> Option<i64> {
     retained_module(path).map(|module| module.planning_issue)
 }
 
+/// Return all retained issue-module paths assigned to one planning umbrella.
+///
+/// Closure guards use this canonical ownership table instead of inferring a
+/// module's umbrella from its name or imports.
+pub(super) fn retained_module_paths_for_issue(planning_issue: i64) -> Vec<&'static str> {
+    RETAINED_MODULES
+        .iter()
+        .filter(|module| module.planning_issue == planning_issue)
+        .map(|module| module.path)
+        .collect()
+}
+
 fn registry_finding(message: String) -> Finding {
     Finding::new(COMMAND_REGISTRY_PATH, 1, message)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EXPECTED_COMMANDS, HANDOFF_COMMANDS, RETAINED_MODULES};
+    use super::{
+        EXPECTED_COMMANDS, HANDOFF_COMMANDS, RETAINED_MODULES, retained_module_owner,
+        retained_module_paths_for_issue,
+    };
 
     #[test]
     fn pins_unique_selectors_and_owned_retained_modules() {
@@ -768,5 +795,22 @@ mod tests {
             matches!(module.planning_issue, 7679 | 7680 | 7681 | 7684 | 7685)
                 && !module.reason.trim().is_empty()
         }));
+    }
+
+    #[test]
+    fn assigns_the_retained_migration_governance_gate_to_7681() {
+        assert_eq!(
+            retained_module_owner("python/larch/issue/migration_governance.py"),
+            Some(7681)
+        );
+        assert_eq!(
+            retained_module_owner("python/larch/issue/issue_block.py"),
+            Some(7681)
+        );
+        assert_eq!(
+            retained_module_owner("python/larch/issue/open_rows.py"),
+            Some(7681)
+        );
+        assert!(retained_module_paths_for_issue(7685).is_empty());
     }
 }

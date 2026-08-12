@@ -214,10 +214,10 @@ Independent pieces remain independent. A child issue still requires its own
 
 A command-migration leaf uses its canonical `larch:owners` block to carry one
 `COMMAND<TAB><domain><TAB><verb>` row. Its plan names the same selector as
-`<domain> <verb>`. `migration_governance.build_command_audit_issue` reads the
-owner row through `issue_wire.parse_owner_block`, extracts exact registry
-selector mentions from the `larch:plan` block, and emits typed evidence for
-the Rust command-registry audit. The audit requires the selector's
+`<domain> <verb>`. `larch_core::build_command_audit_issue` reads the owner row
+through the shared issue-wire parser, extracts exact registry selector mentions
+from the `larch:plan` block, and emits typed evidence for the Rust
+command-registry audit. The audit requires the selector's
 `migration_issue` to equal the issue number in both directions after rollout.
 
 ## Design Pause Block Format

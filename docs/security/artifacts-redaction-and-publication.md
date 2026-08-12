@@ -189,9 +189,12 @@ session and preflight inputs are opened through canonical, no-follow confined
 paths; symlinked or non-regular routing, plan, sentinel, and lease-evidence
 files are refused rather than followed. Tracking-lease body snapshots are
 removed through the same confinement boundary after verification, including on
-the failure path. The narrow Python `issue governance-gate` machine envelope
-remains a policy consumer only: it validates its caller-supplied repository
-root and body-file boundary before evaluating the canonical governance policy.
+the failure path. The Rust `issue migration-audit` command collects read-only
+evidence through the typed GitHub, Git, filesystem, and lint boundaries and has
+no issue mutation owner. The narrow Python `issue governance-gate` machine
+envelope remains a #7681 policy consumer only: it validates its caller-supplied
+repository root and body-file boundary before evaluating the canonical
+governance policy.
 
 External CLI credentials may enter a child process environment. A live
 `OPENAI_API_KEY` stays out of larch-owned argv and copied config, but same-user

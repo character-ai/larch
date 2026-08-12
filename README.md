@@ -316,7 +316,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2">Bounded local Rust selector: maps changed paths to the smallest safe default-feature Clippy package or target set. It is used by the local pre-commit hook and <code>make rust-check</code>; CI owns exhaustive Rust checks.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/migration-governance.md"><code>python/cli.py issue migration-audit</code></a></td>
+      <td><a href="docs/migration-governance.md"><code>scripts/larch.sh issue migration-audit</code></a></td>
       <td><code>--repo owner/name --chief N [--output FILE] [--table-output stderr|stdout|none]</code></td>
     </tr>
     <tr><td colspan="2">Read-only aggregate for migration plans, blockers, owners, leases, command migration, clean-install coverage, and production runtime escape hatches. Emits stable JSON plus an optional count table.</td></tr>

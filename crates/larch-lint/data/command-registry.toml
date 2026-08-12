@@ -4188,11 +4188,13 @@ verb = "migration-audit"
 python_module = "larch.issue.migration_governance"
 python_function = "migration_audit_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7685
+migration_issue = 8392
+clean_install_test = "clean-install-issue-migration-audit"
 
 [[commands]]
 domain = "issue"
@@ -8282,7 +8284,9 @@ owner = "retired"
 implementation_parity = "not-applicable"
 consumer_cutover = "complete"
 python_removal = "complete"
-planning_issue = 7685
+# #8387 retired this selector after its caller audit found no live consumer.
+# It is provenance for that retirement, not an incomplete #7685 Rust command.
+planning_issue = 8387
 migration_issue = 8387
 
 [[commands]]
@@ -8602,8 +8606,8 @@ rust = []
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"
 kind = "ci"
-python = ["issue migration-audit"]
-rust = ["tracking-issue upsert-summary"]
+python = []
+rust = ["issue migration-audit", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = ".github/workflows/rust-release-assets.yaml"

@@ -523,6 +523,18 @@ fn range_blob_and_conflict_stage_queries_match_git() {
     );
     assert_eq!(
         reader
+            .blob_id_at_commit(&include, &GitPath::new("dir/file.txt"))
+            .unwrap(),
+        Some(git_id(&repository, ["rev-parse", "HEAD:dir/file.txt"]))
+    );
+    assert_eq!(
+        reader
+            .blob_id_at_commit(&include, &GitPath::new("missing.txt"))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        reader
             .blob_at_commit(&include, &GitPath::new("missing.txt"))
             .unwrap(),
         None

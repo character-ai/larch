@@ -12,10 +12,7 @@ import fnmatch
 import hashlib
 import json
 import re
-import shutil
 import sys
-import tempfile
-import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,7 +20,7 @@ from pathlib import Path
 from typing import Final, cast
 
 from larch import io as larch_io
-from larch.core import config, proc, redact, repo_roots
+from larch.core import config, proc, redact
 from larch.core.proc import CommandResult, Runner
 from larch.design import plan_grammar
 from larch.errors import ShipError
@@ -85,30 +82,7 @@ _NEGATED_CREATION_PREFIX_RE: Final = re.compile(
 )
 _IMPLEMENTING_PREFIX: Final = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
 _LEASE_STALE_HOURS: Final = 12
-_REUSE_OWNER_ROW_PARTS: Final = 4
 _REPOSITORY_RE: Final = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
-_LEAF_TITLE_RE: Final = re.compile(r"\[LEAF OF [#]?[1-9][0-9]*\]", re.IGNORECASE)
-_DIRECT_LEAF_OPENING_RE: Final = re.compile(
-    r"^This is a leaf of umbrella #([1-9][0-9]*)\. Read the umbrella in full before acting\.$"
-)
-_FINDING_ISSUE_RE: Final = re.compile(r"\bissue=#([1-9][0-9]*)\b")
-_REGISTRY_PATH: Final = Path("crates/larch-lint/data/command-registry.toml")
-_AUDIT_ISSUE_FIELDS: Final = ("number", "title", "state", "body", "updatedAt")
-_COUNT_KEYS: Final = config.MIGRATION_AUDIT_COUNT_KEYS
-_FINDING_CATEGORY_ORDER: Final = {
-    "invalid_plan": 0,
-    "historical_missing_plan_evidence": 1,
-    "historical_unverified_rust_line_budget": 2,
-    "missing_or_stale_blocker": 3,
-    "owner_admission": 4,
-    "active_owner_conflict": 5,
-    "stale_implementation_lease": 6,
-    "registry_state_violation": 7,
-    "missing_caller_surface": 8,
-    "python_retirement_violation": 9,
-    "clean_install_coverage_gap": 10,
-    "production_runtime_escape_hatch": 11,
-}
 
 RUST_LINE_BUDGET_DEVIATION_HEADING: Final = "## Rust line budget deviation"
 RUST_LINE_BUDGET_SPLIT_DECISION: Final = "retain this leaf as one PR"
@@ -228,36 +202,6 @@ class LeaseAuditFinding:
     cleanup_command: str
 
 
-@dataclass(frozen=True, order=True)
-class CommandAuditKey:
-    """One normalized command selector passed to the Rust registry audit."""
-
-    domain: str
-    verb: str
-
-
-@dataclass(frozen=True)
-class CommandAuditIssue:
-    """Canonical issue evidence for migration-issue command parity."""
-
-    number: int
-    state: str
-    executable_leaf: bool
-    command: CommandAuditKey | None
-    plan_commands: tuple[CommandAuditKey, ...]
-
-
-@dataclass(frozen=True)
-class MigrationIssueSnapshot:
-    """One immutable issue row used by every aggregate check."""
-
-    number: int
-    title: str
-    state: str
-    body: str
-    updated_at: str
-
-
 @dataclass(frozen=True)
 class RustLineBudgetDeviation:
     """Durable over-budget evidence carried inside one issue plan."""
@@ -275,111 +219,6 @@ class RustLineBudgetDeviationParse:
 
     deviation: RustLineBudgetDeviation | None
     defects: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class DependencySnapshot:
-    """One issue's native blocked-by numbers from a single transport read."""
-
-    issue: int
-    blockers: tuple[int, ...]
-
-
-@dataclass(frozen=True)
-class MigrationAuditSnapshot:
-    """Immutable GitHub and repository identity shared across the audit."""
-
-    repository: str
-    chief_issue: int
-    snapshot_timestamp: str
-    head_sha: str
-    open_issues: tuple[MigrationIssueSnapshot, ...]
-    referenced_issues: tuple[MigrationIssueSnapshot, ...]
-    dependencies: tuple[DependencySnapshot, ...]
-    open_pr_branches: frozenset[str]
-    tracked_paths: frozenset[str]
-    closed_issues: tuple[MigrationIssueSnapshot, ...] = ()
-
-
-@dataclass(frozen=True)
-class AggregateFinding:
-    """One stable aggregate finding with bounded, non-secret evidence."""
-
-    category: str
-    reason: str
-    issue: int | None = None
-    cleanup_command: str | None = None
-
-    def sort_key(self) -> tuple[int, int, str, str]:
-        return (
-            _FINDING_CATEGORY_ORDER[self.category],
-            self.issue or 0,
-            self.reason,
-            self.cleanup_command or "",
-        )
-
-    def as_dict(self) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "category": self.category,
-            "issue": self.issue,
-            "reason": self.reason,
-        }
-        if self.cleanup_command is not None:
-            payload["cleanup_command"] = self.cleanup_command
-        return payload
-
-
-@dataclass(frozen=True)
-class IssueAuditEvidence:
-    """Stable per-issue result without title, body, comments, or credentials."""
-
-    number: int
-    plan_valid: bool | None
-    finding_reasons: tuple[str, ...]
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "number": self.number,
-            "plan_valid": self.plan_valid,
-            "finding_reasons": list(self.finding_reasons),
-        }
-
-
-@dataclass(frozen=True)
-class MigrationAuditReport:
-    """Schema-v2 aggregate report."""
-
-    repository: str
-    chief_issue: int
-    snapshot_timestamp: str
-    counts: tuple[tuple[str, int], ...]
-    findings: tuple[AggregateFinding, ...]
-    issues: tuple[IssueAuditEvidence, ...]
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "schema_version": config.MIGRATION_AUDIT_SCHEMA_VERSION,
-            "repository": self.repository,
-            "chief_issue": self.chief_issue,
-            "snapshot_timestamp": self.snapshot_timestamp,
-            "counts": dict(self.counts),
-            "findings": [finding.as_dict() for finding in self.findings],
-            "issues": [issue.as_dict() for issue in self.issues],
-        }
-
-
-@dataclass(frozen=True)
-class MigrationAuditArgs:
-    """Validated command arguments."""
-
-    repository: str
-    chief_issue: int
-    output: Path | None
-    table_output: str
-
-
-class MigrationAuditError(ShipError):
-    """Invocation or required-evidence failure (exit 2)."""
 
 
 @dataclass(frozen=True)
@@ -404,6 +243,10 @@ class GovernanceGateVerdict:
         blocking.extend(self.freshness.reasons)
         blocking.extend(self.owners.reasons)
         return tuple(blocking)
+
+
+class GovernanceGateError(ShipError):
+    """Invalid machine-envelope input for the retained #7681 governance gate."""
 
 
 def _sha256_text(text: str) -> str:
@@ -435,85 +278,6 @@ def parse_native_blocker_refs(*, body: str) -> tuple[int, ...]:
 def parse_owner_rows(*, body: str) -> tuple[str, ...]:
     """Return exact owner rows through the canonical wire parser."""
     return issue_wire.parse_owner_block(body=body).raw_rows
-
-
-def build_command_audit_issue(
-    *,
-    number: int,
-    state: str,
-    executable_leaf: bool,
-    body: str,
-    registry_commands: Sequence[CommandAuditKey],
-) -> CommandAuditIssue:
-    """Build typed Rust audit evidence through canonical issue parsers."""
-    normalized_state = _normalize_state(state)
-    if number <= 0 or normalized_state not in {"open", "closed"}:
-        raise ShipError("invalid-command-audit-issue")
-    parsed_owner = issue_wire.parse_owner_block(body=body)
-    command = (
-        CommandAuditKey(parsed_owner.block.domain, parsed_owner.block.verb)
-        if parsed_owner.block is not None
-        else None
-    )
-    plan_inner, malformed = parse_named_block(body=body, marker="plan")
-    plan_commands: tuple[CommandAuditKey, ...] = ()
-    if not malformed and plan_inner is not None:
-        plan_commands = tuple(
-            sorted(
-                {
-                    selector
-                    for selector in registry_commands
-                    if _plan_mentions_command(plan_inner=plan_inner, selector=selector)
-                }
-            )
-        )
-    return CommandAuditIssue(
-        number=number,
-        state=normalized_state,
-        executable_leaf=executable_leaf,
-        command=command,
-        plan_commands=plan_commands,
-    )
-
-
-def _plan_mentions_command(*, plan_inner: str, selector: CommandAuditKey) -> bool:
-    expression = re.compile(
-        rf"(?<![a-z0-9-]){re.escape(selector.domain)}[ \t]+{re.escape(selector.verb)}(?![a-z0-9-])"
-    )
-    return expression.search(plan_inner) is not None
-
-
-def render_command_audit_input(
-    *, rows: Sequence[CommandAuditIssue], rollout_enabled: bool
-) -> str:
-    """Render stable schema-v1 JSON for ``command-registry audit``."""
-    by_number: dict[int, CommandAuditIssue] = {}
-    for row in rows:
-        if row.number in by_number:
-            raise ShipError("duplicate-command-audit-issue")
-        by_number[row.number] = row
-    payload: dict[str, object] = {
-        "schema_version": 1,
-        "rollout_enabled": rollout_enabled,
-        "issues": [
-            {
-                "number": row.number,
-                "state": row.state,
-                "executable_leaf": row.executable_leaf,
-                "command": (
-                    {"domain": row.command.domain, "verb": row.command.verb}
-                    if row.command is not None
-                    else None
-                ),
-                "plan_commands": [
-                    {"domain": command.domain, "verb": command.verb}
-                    for command in row.plan_commands
-                ],
-            }
-            for row in sorted(by_number.values(), key=lambda item: item.number)
-        ],
-    }
-    return json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
 
 
 def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
@@ -1343,94 +1107,6 @@ def read_issue_body(
     return body if isinstance(body, str) else ""
 
 
-def _positive_issue_number(value: object, *, context: str) -> int:
-    if isinstance(value, bool):
-        raise MigrationAuditError(f"{context}: invalid issue number")
-    if isinstance(value, int) and value > 0:
-        return value
-    if isinstance(value, str) and value.isdigit() and int(value) > 0:
-        return int(value)
-    raise MigrationAuditError(f"{context}: invalid issue number")
-
-
-def _parse_migration_issue(value: object, *, context: str) -> MigrationIssueSnapshot:
-    if not isinstance(value, Mapping):
-        raise MigrationAuditError(f"{context}: issue row is not an object")
-    row = cast("Mapping[str, object]", value)
-    number = _positive_issue_number(row.get("number"), context=context)
-    title = row.get("title")
-    state = row.get("state")
-    body = row.get("body")
-    updated_at = row.get("updatedAt")
-    if not all(isinstance(item, str) for item in (title, state, body, updated_at)):
-        raise MigrationAuditError(f"{context}: issue row omitted required fields")
-    normalized_state = cast("str", state).casefold()
-    if normalized_state not in {"open", "closed"}:
-        raise MigrationAuditError(f"{context}: issue row has invalid state")
-    return MigrationIssueSnapshot(
-        number=number,
-        title=cast("str", title),
-        state=normalized_state,
-        body=cast("str", body),
-        updated_at=cast("str", updated_at),
-    )
-
-
-def _chief_reference_present(*, body: str, chief_issue: int) -> bool:
-    patterns = (
-        rf"Chief[ \t]+umbrella:[ \t]*#{chief_issue}(?![0-9])",
-        rf"#{chief_issue}[ \t]+Chief[ \t]+Umbrella(?![0-9])",
-    )
-    return any(re.search(pattern, body, re.IGNORECASE) is not None for pattern in patterns)
-
-
-def _is_chief_migration_leaf(
-    issue: MigrationIssueSnapshot, *, chief_issue: int
-) -> bool:
-    return (
-        _LEAF_TITLE_RE.search(issue.title) is not None
-        and _chief_reference_present(body=issue.body, chief_issue=chief_issue)
-    )
-
-
-def _direct_parent_umbrella(*, body: str) -> int | None:
-    first = (body or "").splitlines()
-    match = _DIRECT_LEAF_OPENING_RE.fullmatch(first[0]) if first else None
-    return int(match.group(1)) if match is not None else None
-
-
-def _parent_declares_chief(*, body: str, chief_issue: int) -> bool:
-    return _chief_reference_present(body=body, chief_issue=chief_issue) or (
-        re.search(
-            rf"#{chief_issue}(?![0-9])[^\r\n]{{0,160}}\[CHIEF[ \t]+UMBRELLA\]",
-            body,
-            re.IGNORECASE,
-        )
-        is not None
-    )
-
-
-def _is_historical_chief_migration_leaf(
-    issue: MigrationIssueSnapshot,
-    *,
-    issues: Mapping[int, MigrationIssueSnapshot],
-    chief_issue: int,
-) -> bool:
-    if _is_chief_migration_leaf(issue, chief_issue=chief_issue):
-        return True
-    parent_number = _direct_parent_umbrella(body=issue.body)
-    parent = issues.get(parent_number) if parent_number is not None else None
-    return parent is not None and _parent_declares_chief(
-        body=parent.body, chief_issue=chief_issue
-    )
-
-
-def _is_executable_leaf(issue: MigrationIssueSnapshot, *, chief_issue: int) -> bool:
-    return issue.state == "open" and _is_chief_migration_leaf(
-        issue, chief_issue=chief_issue
-    )
-
-
 def parse_rust_line_budget_deviation(
     *, plan_inner: str
 ) -> RustLineBudgetDeviationParse:
@@ -1506,674 +1182,6 @@ def parse_rust_line_budget_deviation(
     )
 
 
-def _dependency_numbers_from_result(
-    result: CommandResult, *, issue: int
-) -> tuple[int, ...]:
-    if result.returncode != 0:
-        raise MigrationAuditError(f"issue #{issue}: blocked-by read failed")
-    try:
-        rows = gh.loads_json_paginated_list(result.stdout)
-    except ShipError as exc:
-        raise MigrationAuditError(
-            f"issue #{issue}: blocked-by read returned invalid JSON"
-        ) from exc
-    numbers: set[int] = set()
-    for row in rows:
-        if not isinstance(row, Mapping):
-            raise MigrationAuditError(f"issue #{issue}: blocked-by row is not an object")
-        number = _positive_issue_number(
-            cast("Mapping[str, object]", row).get("number"),
-            context=f"issue #{issue} blocked-by row",
-        )
-        if number in numbers:
-            raise MigrationAuditError(f"issue #{issue}: duplicate blocked-by row #{number}")
-        numbers.add(number)
-    return tuple(sorted(numbers))
-
-
-def _reuse_source_refs(*, body: str) -> tuple[int, ...]:
-    parsed = issue_wire.parse_owner_block(body=body)
-    refs: set[int] = set()
-    for row in parsed.raw_rows:
-        parts = row.split("\t")
-        if (
-            len(parts) == _REUSE_OWNER_ROW_PARTS
-            and parts[0] == "REUSE"
-            and re.fullmatch(r"#[1-9][0-9]*", parts[2]) is not None
-        ):
-            refs.add(int(parts[2][1:]))
-    return tuple(sorted(refs))
-
-
-def _read_referenced_issue(
-    runner: Runner, *, repository: str, issue: int, cwd: str
-) -> MigrationIssueSnapshot:
-    result = gh.issue_view_field_read(
-        runner, str(issue), ",".join(_AUDIT_ISSUE_FIELDS), repo=repository, cwd=cwd
-    )
-    if result.returncode != 0:
-        raise MigrationAuditError(f"issue #{issue}: required evidence unavailable")
-    try:
-        payload: object = json.loads(result.stdout or "null")
-    except json.JSONDecodeError as exc:
-        raise MigrationAuditError(f"issue #{issue}: required evidence is invalid JSON") from exc
-    return _parse_migration_issue(payload, context=f"issue #{issue}")
-
-
-def _open_issue_rows_for_snapshot(
-    issues: Sequence[MigrationIssueSnapshot],
-) -> tuple[open_rows.OpenIssueRow, ...]:
-    return tuple(
-        open_rows.OpenIssueRow(
-            number=issue.number,
-            title=issue.title,
-            state=issue.state,
-            labels=(),
-            body=issue.body,
-        )
-        for issue in issues
-    )
-
-
-def load_migration_audit_snapshot(
-    runner: Runner,
-    *,
-    repository: str,
-    chief_issue: int,
-    repo_root: Path,
-    now: datetime | None = None,
-) -> MigrationAuditSnapshot:
-    """Fetch each required GitHub and repository evidence row at most once."""
-    cwd = str(repo_root)
-    current = now or datetime.now(UTC)
-    timestamp = current.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        raw_issues = gh.issue_list_read(
-            runner,
-            repo=repository,
-            state="all",
-            fields=_AUDIT_ISSUE_FIELDS,
-            limit=open_rows.ISSUE_LIST_LIMIT,
-            cwd=cwd,
-        )
-    except (OSError, ShipError) as exc:
-        raise MigrationAuditError("issue snapshot unavailable") from exc
-    all_issues = tuple(
-        sorted(
-            (
-                _parse_migration_issue(value, context="issue snapshot")
-                for value in raw_issues
-            ),
-            key=lambda item: item.number,
-        )
-    )
-    if len({issue.number for issue in all_issues}) != len(all_issues):
-        raise MigrationAuditError("issue snapshot contains duplicates")
-    open_issues = tuple(issue for issue in all_issues if issue.state == "open")
-    closed_issues = tuple(issue for issue in all_issues if issue.state == "closed")
-    leaves = tuple(
-        issue
-        for issue in open_issues
-        if _is_executable_leaf(issue, chief_issue=chief_issue)
-    )
-    dependencies: list[DependencySnapshot] = []
-    required_refs: set[int] = set()
-    for leaf in leaves:
-        result = gh.issue_blocked_by_read(
-            runner, str(leaf.number), repo=repository, cwd=cwd
-        )
-        blockers = _dependency_numbers_from_result(result, issue=leaf.number)
-        dependencies.append(DependencySnapshot(issue=leaf.number, blockers=blockers))
-        required_refs.update(blockers)
-        required_refs.update(parse_native_blocker_refs(body=leaf.body))
-        required_refs.update(_reuse_source_refs(body=leaf.body))
-    known_numbers = {issue.number for issue in all_issues}
-    referenced_issues = tuple(
-        _read_referenced_issue(
-            runner, repository=repository, issue=number, cwd=cwd
-        )
-        for number in sorted(required_refs - known_numbers)
-    )
-    open_pr_branches = _open_pr_branches(runner, repo=repository, cwd=cwd)
-    if open_pr_branches is None:
-        raise MigrationAuditError("open pull request snapshot unavailable")
-    try:
-        head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
-        tracked_paths = frozenset(git.ls_files(runner, cwd=cwd))
-    except (OSError, ShipError) as exc:
-        raise MigrationAuditError("repository snapshot unavailable") from exc
-    if _SHA1_HEX_RE.fullmatch(head_sha) is None:
-        raise MigrationAuditError("repository snapshot has invalid HEAD")
-    return MigrationAuditSnapshot(
-        repository=repository,
-        chief_issue=chief_issue,
-        snapshot_timestamp=timestamp,
-        head_sha=head_sha,
-        open_issues=open_issues,
-        referenced_issues=referenced_issues,
-        dependencies=tuple(sorted(dependencies, key=lambda item: item.issue)),
-        open_pr_branches=open_pr_branches,
-        tracked_paths=tracked_paths,
-        closed_issues=closed_issues,
-    )
-
-
-def _issues_by_number(
-    snapshot: MigrationAuditSnapshot,
-) -> dict[int, MigrationIssueSnapshot]:
-    return {
-        issue.number: issue
-        for issue in (
-            *snapshot.open_issues,
-            *snapshot.closed_issues,
-            *snapshot.referenced_issues,
-        )
-    }
-
-
-def _blocker_rows(
-    *,
-    numbers: Sequence[int],
-    issues: Mapping[int, MigrationIssueSnapshot],
-    context: str,
-) -> tuple[BlockerSnapshotRow, ...]:
-    rows: list[BlockerSnapshotRow] = []
-    for number in sorted(set(numbers)):
-        issue = issues.get(number)
-        if issue is None:
-            raise MigrationAuditError(f"{context}: issue #{number} evidence unavailable")
-        rows.append(
-            BlockerSnapshotRow(
-                number=number, state=issue.state, updated_at=issue.updated_at
-            )
-        )
-    return tuple(rows)
-
-
-def _validate_reuse_sources_snapshot(
-    *,
-    block: issue_wire.OwnerBlock,
-    body: str,
-    issues: Mapping[int, MigrationIssueSnapshot],
-) -> tuple[str, ...]:
-    reasons: list[str] = []
-    native_refs = frozenset(parse_native_blocker_refs(body=body))
-    for owner in block.owners:
-        if owner.kind != "REUSE" or owner.source_issue is None:
-            continue
-        source = issues.get(owner.source_issue)
-        if source is None:
-            reasons.append(
-                f"{REASON_REUSE_SOURCE_UNAVAILABLE} owner={owner.owner_key} issue=#{owner.source_issue}"
-            )
-            continue
-        parsed = issue_wire.parse_owner_block(body=source.body)
-        receipt = parse_receipt(body=source.body)
-        creates: set[str] = (
-            {row.owner_key for row in parsed.block.owners if row.kind == "CREATE"}
-            if parsed.block is not None
-            else set()
-        )
-        if not (
-            receipt is not None
-            and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
-            and owner.owner_key in creates
-        ):
-            reasons.append(
-                f"reuse-owner-snapshot-invalid owner={owner.owner_key} issue=#{owner.source_issue}"
-            )
-        if source.state == "open" and owner.source_issue not in native_refs:
-            reasons.append(
-                f"reuse-missing-native-blocker owner={owner.owner_key} issue=#{owner.source_issue}"
-            )
-    return tuple(reasons)
-
-
-def _registry_commands(*, repo_root: Path) -> tuple[CommandAuditKey, ...]:
-    path = repo_root / _REGISTRY_PATH
-    try:
-        text = larch_io.read_trusted_text(path, root=repo_root, reject_cr=True)
-        payload = cast("Mapping[str, object]", tomllib.loads(text))
-    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
-        raise MigrationAuditError("command registry evidence unavailable") from exc
-    raw_commands_value = payload.get("commands")
-    if not isinstance(raw_commands_value, list):
-        raise MigrationAuditError("command registry evidence is malformed")
-    raw_commands = cast("list[object]", raw_commands_value)
-    commands: set[CommandAuditKey] = set()
-    for raw_value in raw_commands:
-        if not isinstance(raw_value, Mapping):
-            raise MigrationAuditError("command registry evidence is malformed")
-        raw = cast("Mapping[str, object]", raw_value)
-        domain = raw.get("domain")
-        verb = raw.get("verb")
-        if not isinstance(domain, str) or not isinstance(verb, str):
-            raise MigrationAuditError("command registry evidence is malformed")
-        commands.add(CommandAuditKey(domain=domain, verb=verb))
-    if len(commands) != len(raw_commands):
-        raise MigrationAuditError("command registry evidence contains duplicates")
-    return tuple(sorted(commands))
-
-
-def _safe_lint_findings(result: CommandResult, *, context: str) -> tuple[str, ...]:
-    if result.returncode == 0:
-        if result.stdout.strip() or result.stderr.strip():
-            raise MigrationAuditError(f"{context}: clean result emitted unexpected output")
-        return ()
-    if result.returncode != 1 or result.stderr.strip():
-        detail = redact.redact_secrets_only(result.stderr or result.stdout).strip()
-        raise MigrationAuditError(f"{context}: required evidence failed: {detail[:500]}")
-    findings: list[str] = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
-            continue
-        safe = redact.redact_secrets_only(line).strip()
-        if "[content truncated" in safe:
-            raise MigrationAuditError(f"{context}: evidence redaction failed")
-        findings.append(safe)
-    if not findings:
-        raise MigrationAuditError(f"{context}: finding exit omitted findings")
-    return tuple(sorted(set(findings)))
-
-
-def _classify_registry_finding(reason: str) -> str:
-    if "clean-install-coverage-missing" in reason:
-        return "clean_install_coverage_gap"
-    if "python-entrypoint-still-" in reason:
-        return "python_retirement_violation"
-    if reason.startswith(("production caller ", "ledger caller ")) or "production caller inventory" in reason:
-        return "missing_caller_surface"
-    return "registry_state_violation"
-
-
-def _finding_issue_number(reason: str) -> int | None:
-    match = _FINDING_ISSUE_RE.search(reason)
-    return int(match.group(1)) if match is not None else None
-
-
-def collect_repository_audit_findings(
-    runner: Runner,
-    *,
-    snapshot: MigrationAuditSnapshot,
-    repo_root: Path,
-) -> tuple[AggregateFinding, ...]:
-    """Invoke the canonical Rust lint owners without Cargo or target paths."""
-    larch_binary = shutil.which("larch")
-    if larch_binary is None:
-        raise MigrationAuditError("required larch executable is unavailable on PATH")
-    root = str(repo_root)
-    registry_result = runner.run(
-        [larch_binary, "lint", "--root", root, "rule", "command-registry"], cwd=root
-    )
-    registry_lines = _safe_lint_findings(registry_result, context="command-registry audit")
-    runtime_result = runner.run(
-        [larch_binary, "lint", "--root", root, "rule", "production-cargo-run"],
-        cwd=root,
-    )
-    runtime_lines = _safe_lint_findings(runtime_result, context="production-runtime audit")
-    commands = _registry_commands(repo_root=repo_root)
-    issue_rows = tuple(
-        build_command_audit_issue(
-            number=issue.number,
-            state=issue.state,
-            executable_leaf=_is_executable_leaf(issue, chief_issue=snapshot.chief_issue),
-            body=issue.body,
-            registry_commands=commands,
-        )
-        for issue in (*snapshot.open_issues, *snapshot.referenced_issues)
-    )
-    audit_input = render_command_audit_input(rows=issue_rows, rollout_enabled=True)
-    system_tmp = Path(tempfile.gettempdir()).resolve()
-    try:
-        with tempfile.TemporaryDirectory(prefix="larch-migration-audit-", dir=system_tmp) as temp_dir:
-            audit_path = Path(temp_dir) / "command-audit.json"
-            larch_io.trusted_atomic_write(audit_path, audit_input, root=temp_dir)
-            issue_result = runner.run(
-                [
-                    larch_binary,
-                    "lint",
-                    "--root",
-                    root,
-                    "command-registry",
-                    "audit",
-                    "--input",
-                    str(audit_path),
-                ],
-                cwd=root,
-            )
-            issue_lines = _safe_lint_findings(
-                issue_result, context="migration-issue command audit"
-            )
-    except OSError as exc:
-        raise MigrationAuditError("command audit temporary evidence failed") from exc
-    findings = [
-        AggregateFinding(
-            category=_classify_registry_finding(reason),
-            reason=reason,
-            issue=_finding_issue_number(reason),
-        )
-        for reason in (*registry_lines, *issue_lines)
-    ]
-    findings.extend(
-        AggregateFinding(category="production_runtime_escape_hatch", reason=reason)
-        for reason in runtime_lines
-    )
-    return tuple(sorted(findings, key=AggregateFinding.sort_key))
-
-
-def _append_owner_findings(
-    *,
-    issue: MigrationIssueSnapshot,
-    issues: Mapping[int, MigrationIssueSnapshot],
-    active_rows: Sequence[open_rows.OpenIssueRow],
-    findings: list[AggregateFinding],
-) -> None:
-    plan_inner, malformed = parse_named_block(body=issue.body, marker="plan")
-    if malformed or plan_inner is None:
-        return
-    parsed = issue_wire.parse_owner_block(body=issue.body)
-    reasons = [f"owner-block-invalid defect={defect}" for defect in parsed.defects]
-    if migration_requires_owner_block(plan_inner=plan_inner) and parsed.block is None:
-        reasons.append(REASON_MISSING_OWNER_BLOCK)
-    if parsed.block is not None:
-        reasons.extend(
-            _validate_reuse_sources_snapshot(
-                block=parsed.block, body=issue.body, issues=issues
-            )
-        )
-        reasons.extend(
-            _active_owner_conflicts(
-                issue=issue.number, block=parsed.block, active_rows=active_rows
-            )
-        )
-    for reason in dict.fromkeys(reasons):
-        category = (
-            "active_owner_conflict"
-            if reason.startswith("active-owner-conflict ")
-            else "owner_admission"
-        )
-        findings.append(AggregateFinding(category=category, reason=reason, issue=issue.number))
-
-
-def _historical_plan_defects(*, issue_body: str) -> tuple[str, ...]:
-    """Validate durable plan shape without applying today's repository paths."""
-    marker_defect = issue_wire.issue_plan_marker_defect(issue_body)
-    if marker_defect is not None:
-        return (marker_defect,)
-    plan_inner, malformed = parse_named_block(body=issue_body, marker="plan")
-    if malformed or plan_inner is None:
-        return ("missing-plan-block",)
-    return plan_grammar.validate_plan_facets(plan_text=plan_inner).defects
-
-
-def _historical_budget_evidence(
-    *, leaves: Sequence[MigrationIssueSnapshot]
-) -> tuple[dict[int, bool], dict[int, tuple[str, ...]], int]:
-    """Report only durable historical evidence; never infer or repair it."""
-    recorded_deviations = 0
-    plan_validity: dict[int, bool] = {}
-    reasons_by_issue: dict[int, tuple[str, ...]] = {}
-    for leaf in leaves:
-        defects = _historical_plan_defects(issue_body=leaf.body)
-        plan_validity[leaf.number] = not defects
-        if defects:
-            reasons_by_issue[leaf.number] = (
-                "historical-plan-evidence-missing defects=" + ",".join(defects),
-            )
-            continue
-        plan_inner, _malformed = parse_named_block(body=leaf.body, marker="plan")
-        assert plan_inner is not None
-        deviation = parse_rust_line_budget_deviation(plan_inner=plan_inner)
-        if deviation.deviation is not None and not deviation.defects:
-            recorded_deviations += 1
-            continue
-        reason = "historical-rust-line-budget-unverified"
-        if deviation.defects:
-            reason += " defects=" + ",".join(deviation.defects)
-        reasons_by_issue[leaf.number] = (reason,)
-    return plan_validity, reasons_by_issue, recorded_deviations
-
-
-def build_migration_audit_report(
-    runner: Runner,
-    *,
-    snapshot: MigrationAuditSnapshot,
-    repo_root: Path,
-    repository_findings: Sequence[AggregateFinding] = (),
-) -> MigrationAuditReport:
-    """Compose M1-M14 results from one immutable snapshot."""
-    issues = _issues_by_number(snapshot)
-    dependencies = {row.issue: row.blockers for row in snapshot.dependencies}
-    leaves = tuple(
-        issue
-        for issue in snapshot.open_issues
-        if _is_executable_leaf(issue, chief_issue=snapshot.chief_issue)
-    )
-    historical_leaves = tuple(
-        issue
-        for issue in snapshot.closed_issues
-        if _is_historical_chief_migration_leaf(
-            issue,
-            issues=issues,
-            chief_issue=snapshot.chief_issue,
-        )
-    )
-    active_rows = _open_issue_rows_for_snapshot(snapshot.open_issues)
-    findings: list[AggregateFinding] = list(repository_findings)
-    plan_validity: dict[int, bool] = {}
-    for leaf in leaves:
-        plan_result = issue_wire.validate_issue_plan(
-            issue_body=leaf.body,
-            repo_root=repo_root,
-            tracked_paths=snapshot.tracked_paths,
-        )
-        plan_validity[leaf.number] = plan_result.ok
-        findings.extend(
-            AggregateFinding(category="invalid_plan", reason=defect, issue=leaf.number)
-            for defect in plan_result.defects
-        )
-        native_numbers = dependencies.get(leaf.number)
-        if native_numbers is None:
-            raise MigrationAuditError(f"issue #{leaf.number}: dependency snapshot unavailable")
-        body_numbers = parse_native_blocker_refs(body=leaf.body)
-        all_numbers = tuple(sorted({*native_numbers, *body_numbers}))
-        all_rows = _blocker_rows(
-            numbers=all_numbers, issues=issues, context=f"issue #{leaf.number}"
-        )
-        by_number = {row.number: row for row in all_rows}
-        native_rows = tuple(by_number[number] for number in native_numbers)
-        body_rows = tuple(by_number[number] for number in body_numbers)
-        parity = compare_blocker_parity(body_rows=body_rows, native_rows=native_rows)
-        freshness = validate_receipt_freshness(
-            runner,
-            body=leaf.body,
-            repo_root=repo_root,
-            blocker_rows=all_rows,
-            head_sha=snapshot.head_sha,
-        )
-        findings.extend(
-            AggregateFinding(
-                category="missing_or_stale_blocker", reason=reason, issue=leaf.number
-            )
-            for reason in (*parity.reasons, *freshness.reasons)
-        )
-        _append_owner_findings(
-            issue=leaf, issues=issues, active_rows=active_rows, findings=findings
-        )
-    historical_plan_validity, historical_reasons, recorded_historical_deviations = (
-        _historical_budget_evidence(
-            leaves=historical_leaves,
-        )
-    )
-    plan_validity.update(historical_plan_validity)
-    lease_findings = audit_stale_implementation_leases_snapshot(
-        repo=snapshot.repository,
-        active_rows=active_rows,
-        open_pr_branches=snapshot.open_pr_branches,
-        now=datetime.strptime(snapshot.snapshot_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=UTC
-        ),
-    )
-    findings.extend(
-        AggregateFinding(
-            category="stale_implementation_lease",
-            reason=finding.token,
-            issue=_finding_issue_number(finding.token),
-            cleanup_command=finding.cleanup_command,
-        )
-        for finding in lease_findings
-    )
-    ordered_findings = tuple(sorted(set(findings), key=AggregateFinding.sort_key))
-    counts: dict[str, int] = dict.fromkeys(_COUNT_KEYS, 0)
-    counts["executable_leaves"] = len(leaves)
-    counts["valid_plans"] = sum(plan_validity[leaf.number] for leaf in leaves)
-    counts["historical_managed_leaves"] = len(historical_leaves)
-    counts["historical_recorded_rust_line_budget_deviations"] = (
-        recorded_historical_deviations
-    )
-    counts["historical_missing_plan_evidence"] = sum(
-        reason.startswith("historical-plan-evidence-missing")
-        for reasons in historical_reasons.values()
-        for reason in reasons
-    )
-    counts["historical_unverified_rust_line_budgets"] = sum(
-        reason.startswith("historical-rust-line-budget-unverified")
-        for reasons in historical_reasons.values()
-        for reason in reasons
-    )
-    category_counts = {
-        "missing_or_stale_blocker": "missing_or_stale_blockers",
-        "active_owner_conflict": "active_owner_conflicts",
-        "stale_implementation_lease": "stale_implementation_leases",
-        "registry_state_violation": "registry_state_violations",
-        "missing_caller_surface": "missing_caller_surfaces",
-        "python_retirement_violation": "python_retirement_violations",
-        "clean_install_coverage_gap": "clean_install_coverage_gaps",
-        "production_runtime_escape_hatch": "production_runtime_escape_hatches",
-    }
-    for finding in ordered_findings:
-        count_key = category_counts.get(finding.category)
-        if count_key is not None:
-            counts[count_key] += 1
-    evidence_numbers = sorted(
-        set(plan_validity)
-        | {finding.issue for finding in ordered_findings if finding.issue is not None}
-    )
-    evidence = tuple(
-        IssueAuditEvidence(
-            number=number,
-            plan_valid=plan_validity.get(number),
-            finding_reasons=(
-                *(finding.reason for finding in ordered_findings if finding.issue == number),
-                *historical_reasons.get(number, ()),
-            ),
-        )
-        for number in evidence_numbers
-    )
-    return MigrationAuditReport(
-        repository=snapshot.repository,
-        chief_issue=snapshot.chief_issue,
-        snapshot_timestamp=snapshot.snapshot_timestamp,
-        counts=tuple((key, counts[key]) for key in _COUNT_KEYS),
-        findings=ordered_findings,
-        issues=evidence,
-    )
-
-
-def render_migration_audit_json(*, report: MigrationAuditReport) -> str:
-    """Render compact deterministic schema-v2 JSON."""
-    return json.dumps(report.as_dict(), sort_keys=True, separators=(",", ":")) + "\n"
-
-
-def render_migration_audit_table(*, report: MigrationAuditReport) -> str:
-    """Render the concise human count table."""
-    labels = {key: key.replace("_", " ") for key in _COUNT_KEYS}
-    width = max(len(label) for label in labels.values())
-    lines = ["Migration governance audit", ""]
-    lines.extend(
-        f"{labels[key].ljust(width)}  {value}" for key, value in report.counts
-    )
-    return "\n".join(lines) + "\n"
-
-
-def _parse_migration_audit_args(argv: Sequence[str]) -> MigrationAuditArgs:
-    parser = argparse.ArgumentParser(prog="larch issue migration-audit")
-    _ = parser.add_argument("--repo", required=True)
-    _ = parser.add_argument("--chief", required=True, type=int)
-    _ = parser.add_argument("--output")
-    _ = parser.add_argument(
-        "--table-output", choices=config.MIGRATION_AUDIT_TABLE_OUTPUTS, default="stderr"
-    )
-    args = parser.parse_args(list(argv))
-    repository = str(args.repo)
-    chief_issue = int(args.chief)
-    raw_output = Path(args.output) if args.output else None
-    output = raw_output.parent.resolve() / raw_output.name if raw_output else None
-    table_output = str(args.table_output)
-    if _REPOSITORY_RE.fullmatch(repository) is None:
-        raise MigrationAuditError("--repo must be exactly owner/name")
-    if chief_issue <= 0:
-        raise MigrationAuditError("--chief must be a positive issue number")
-    if output is None and table_output == "stdout":
-        raise MigrationAuditError(
-            "--table-output stdout requires --output so stdout stays machine-readable"
-        )
-    return MigrationAuditArgs(
-        repository=repository,
-        chief_issue=chief_issue,
-        output=output,
-        table_output=table_output,
-    )
-
-
-def migration_audit_main(argv: list[str]) -> int:
-    """Run the read-only aggregate. Exit 0 clean, 1 findings, or 2 unavailable."""
-    try:
-        args = _parse_migration_audit_args(argv)
-        repo_root = repo_roots.consumer_repo_root(runner=proc)
-        if repo_root is None:
-            raise MigrationAuditError("repository root unavailable")
-        snapshot = load_migration_audit_snapshot(
-            proc,
-            repository=args.repository,
-            chief_issue=args.chief_issue,
-            repo_root=repo_root,
-        )
-        repository_findings = collect_repository_audit_findings(
-            proc, snapshot=snapshot, repo_root=repo_root
-        )
-        report = build_migration_audit_report(
-            proc,
-            snapshot=snapshot,
-            repo_root=repo_root,
-            repository_findings=repository_findings,
-        )
-        if git.rev_parse(proc, "HEAD", cwd=str(repo_root)) != snapshot.head_sha:
-            raise MigrationAuditError("repository changed during audit")
-        rendered = render_migration_audit_json(report=report)
-        if args.output is None:
-            _ = sys.stdout.write(rendered)
-        else:
-            larch_io.atomic_write(
-                path=args.output,
-                text=rendered,
-                create_parent=False,
-                mode=0o600,
-                prefix=f".{args.output.name}.",
-                nofollow=True,
-            )
-        table = render_migration_audit_table(report=report)
-        if args.table_output == "stderr":
-            _ = sys.stderr.write(table)
-        elif args.table_output == "stdout":
-            _ = sys.stdout.write(table)
-        return config.MIGRATION_AUDIT_EXIT_FINDINGS if report.findings else config.EXIT_OK
-    except (ShipError, OSError, ValueError) as exc:
-        detail = redact.redact_secrets_only(str(exc)).replace("\n", " ").strip()
-        print(f"ERROR: migration-audit: {detail[:500]}", file=sys.stderr)
-        return config.MIGRATION_AUDIT_EXIT_UNAVAILABLE
-
-
 def governance_gate_main(argv: list[str]) -> int:
     """Evaluate one existing governance gate for a Rust-owned caller.
 
@@ -2195,11 +1203,11 @@ def governance_gate_main(argv: list[str]) -> int:
         repo_root = Path(str(args.repo_root))
         head_sha = str(args.head_sha)
         if not issue.isdigit() or int(issue) <= 0:
-            raise MigrationAuditError("--issue must be a positive issue number")
+            raise GovernanceGateError("--issue must be a positive issue number")
         if _REPOSITORY_RE.fullmatch(repository) is None:
-            raise MigrationAuditError("--repo must be exactly owner/name")
+            raise GovernanceGateError("--repo must be exactly owner/name")
         if _SHA1_HEX_RE.fullmatch(head_sha) is None:
-            raise MigrationAuditError("--head-sha must be a 40-character hexadecimal SHA")
+            raise GovernanceGateError("--head-sha must be a 40-character hexadecimal SHA")
         repo_root = larch_io.validate_trusted_directory(repo_root)
         body = larch_io.read_trusted_text(body_file, root=body_file.parent)
         verdict = evaluate_governance_gate(
@@ -2211,7 +1219,7 @@ def governance_gate_main(argv: list[str]) -> int:
             cwd=str(repo_root),
             head_sha=head_sha,
         )
-    except (MigrationAuditError, ShipError, OSError, ValueError) as exc:
+    except (GovernanceGateError, ShipError, OSError, ValueError) as exc:
         detail = redact.redact_secrets_only(str(exc)).replace("\n", " ").strip()
         print("GOVERNANCE_OK=false")
         print(f"ERROR: governance-gate: {detail[:500]}", file=sys.stderr)
@@ -2243,20 +1251,12 @@ __all__ = [
     "RECEIPT_STALE_REASONS",
     "RUST_LINE_BUDGET_DEVIATION_HEADING",
     "RUST_LINE_BUDGET_SPLIT_DECISION",
-    "AggregateFinding",
     "BlockerSnapshotRow",
-    "CommandAuditIssue",
-    "CommandAuditKey",
     "CommandResult",
-    "DependencySnapshot",
     "FreshnessVerdict",
+    "GovernanceGateError",
     "GovernanceGateVerdict",
-    "IssueAuditEvidence",
     "LeaseAuditFinding",
-    "MigrationAuditError",
-    "MigrationAuditReport",
-    "MigrationAuditSnapshot",
-    "MigrationIssueSnapshot",
     "OwnerAdmissionVerdict",
     "ParityVerdict",
     "PlanReceipt",
@@ -2264,10 +1264,7 @@ __all__ = [
     "RustLineBudgetDeviationParse",
     "audit_stale_implementation_leases",
     "audit_stale_implementation_leases_snapshot",
-    "build_command_audit_issue",
-    "build_migration_audit_report",
     "build_receipt_for_body",
-    "collect_repository_audit_findings",
     "compare_blocker_parity",
     "compute_base_scope_fingerprint",
     "declared_scope_paths",
@@ -2279,8 +1276,6 @@ __all__ = [
     "hash_owner_rows",
     "hash_plan_block",
     "load_blocker_snapshot",
-    "load_migration_audit_snapshot",
-    "migration_audit_main",
     "migration_requires_owner_block",
     "owner_keys_from_rows",
     "parse_native_blocker_refs",
@@ -2289,9 +1284,6 @@ __all__ = [
     "parse_rust_line_budget_deviation",
     "persist_plan_receipt",
     "read_issue_body",
-    "render_command_audit_input",
-    "render_migration_audit_json",
-    "render_migration_audit_table",
     "render_receipt",
     "strip_adjacent_plan_receipts",
     "strip_plan_receipt_lines",

@@ -779,6 +779,34 @@ impl GitHubTransportPolicy {
         }
     }
 
+    /// Reviewed exhaustive-history policy for the daily migration audit.
+    ///
+    /// The aggregate must account for historical managed leaves, so its issue
+    /// corpus is larger than ordinary interactive command snapshots. This is
+    /// still a fixed, fail-closed transport boundary: it admits at most 100
+    /// pages and 10,000 raw REST rows. Historical issue plans can legitimately
+    /// exceed an interactive issue body's 64 KiB cap, so it raises that one
+    /// field cap to 256 KiB. A full repository corpus can require more than
+    /// the standard interactive aggregate deadline, so it uses a separately
+    /// bounded three-minute deadline while preserving the standard
+    /// per-request, response-byte, nesting, and retry limits.
+    #[must_use]
+    pub const fn migration_audit() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(10),
+            read_timeout: Duration::from_secs(30),
+            write_timeout: Duration::from_secs(30),
+            overall_timeout: Duration::from_secs(180),
+            limits: GitHubResponseLimits {
+                body_bytes: 2 * 1024 * 1024,
+                pages: 100,
+                items: 10_000,
+                string_bytes: 256 * 1024,
+                nesting_depth: 64,
+            },
+        }
+    }
+
     #[must_use]
     pub const fn connect_timeout(self) -> Duration {
         self.connect_timeout
@@ -1450,6 +1478,24 @@ mod tests {
         assert!(policy.limits().items() > 0);
         assert!(policy.limits().string_bytes() > 0);
         assert!(policy.limits().nesting_depth() > 0);
+    }
+
+    #[test]
+    fn migration_audit_policy_is_a_bounded_history_expansion() {
+        let standard = GitHubTransportPolicy::github_com();
+        let audit = GitHubTransportPolicy::migration_audit();
+        assert_eq!(audit.connect_timeout(), standard.connect_timeout());
+        assert_eq!(audit.read_timeout(), standard.read_timeout());
+        assert_eq!(audit.write_timeout(), standard.write_timeout());
+        assert_eq!(audit.overall_timeout(), Duration::from_secs(180));
+        assert_eq!(audit.limits().body_bytes(), standard.limits().body_bytes());
+        assert_eq!(audit.limits().string_bytes(), 256 * 1024);
+        assert_eq!(
+            audit.limits().nesting_depth(),
+            standard.limits().nesting_depth()
+        );
+        assert_eq!(audit.limits().pages(), 100);
+        assert_eq!(audit.limits().items(), 10_000);
     }
 
     #[test]

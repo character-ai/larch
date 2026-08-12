@@ -15,6 +15,7 @@ clap.workspace = true
 csv.workspace = true
 globset.workspace = true
 inventory.workspace = true
+larch-core.workspace = true
 pulldown-cmark.workspace = true
 proc-macro2.workspace = true
 regex.workspace = true
