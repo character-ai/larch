@@ -907,15 +907,6 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if not repo:
                 fallback_reason = "tier-a-current-repo-unresolved"
             else:
-                first = body_file.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
-                title = (
-                    first[0]
-                    .removeprefix("### ")
-                    .removeprefix(f"{title_match.BUG_PREFIX} ")
-                    .removeprefix("[Bug] ")
-                    if first
-                    else "/design terminal failure"
-                )
                 helper = (
                     Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
                     / "scripts"
@@ -940,7 +931,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                                     "--body-file",
                                     str(body_file),
                                     "--title",
-                                    title or "/design terminal failure",
+                                    "/design terminal failure",
                                     "--publication-tier",
                                     "tier-a",
                                     "--mutation-context",

@@ -4197,6 +4197,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     }]
     if helper_calls:
         helper_argv = helper_calls[-1]
+        assert helper_argv[helper_argv.index("--title") + 1] == "/design terminal failure"
         assert helper_argv[helper_argv.index("--mutation-context") + 1] == str(_src_env)
         assert helper_argv[helper_argv.index("--run-id") + 1] == "run-1"
         assert helper_argv[helper_argv.index("--trusted-root") + 1] == str(tmp_path)

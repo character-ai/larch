@@ -341,11 +341,11 @@ former and keeps its bounded concurrency lock under the latter.
 
 Step 18a files public stall reports only for **terminal failures**. It does not file on first detection.
 
-- **Tier A**: unchanged for larch dev clones on non-forked targets. It composes a local issue input, exact-signature dedups in the current repository, and then files through `/larch:issue --input-file ... --no-dedup` only after no exact duplicate is found.
+- **Tier A**: used for larch dev clones on non-forked targets. It composes a local issue input, then the Rust-owned Tier A filing command snapshots, exact-signature deduplicates, and creates from the approved descriptor in the current repository. A lookup failure preserves the prior fail-open-create outcome inside that same descriptor-owning helper.
 - **Tier B**: used for consumer repos and forked runs. It files or comments in the resolved upstream larch repository, so the report is public upstream rather than in the consumer repository.
 - **Operator identity**: GitHub writes use the local `gh` authentication. The author is the operator account available to `gh`, not an identity from the consumer repo.
 - **Public boundary**: Tier B passes only bounded public payloads to the cross-repo helper: allowlisted machine fields, bounded attempts, bounded escalation site/trigger summaries, and bounded root-cause prose. It must not pass raw logs, raw root-cause files, full report bodies, repo paths, branches, run IDs, PR URLs, plan text, issue text, or client state values to the Tier B comment path.
-- **Sensitive-token checks**: Tier B validates create bodies and dedup comments against `stall-recovery-sensitive-corpus.env` plus derived session evidence. Missing validation inputs fail closed to fallback printing.
+- **Sensitive-token checks**: Tier B validates create bodies and dedup comments against `stall-recovery-sensitive-corpus.env` plus derived session evidence. The Rust validator snapshots every Tier A or Tier B approved payload with bounded no-follow reads and identity checks into a fresh helper-owned, unlinked descriptor; marker lookup, title derivation, and GitHub transport use that descriptor through `/dev/fd` rather than reopening a caller path. Missing inputs or a source that changes while it is snapshotted fail closed to fallback printing.
 - **Fallback behavior**: If upstream repo resolution, helper execution, dedup-comment validation, or filing fails, Step 18a writes `stall-recovery-chat-print.md` and reports `fallback-print-required` so the operator can inspect and file manually. Dry runs use the same chat artifact and make no GitHub writes.
 
 ### External Agent Model Configuration

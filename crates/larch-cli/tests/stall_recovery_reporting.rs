@@ -108,7 +108,7 @@ impl Fixture {
             ),
             (
                 "file-failure-report-cross-repo.sh",
-                "#!/bin/sh\nprintf '%s\\n' FILE_FAILURE_REPORT_STATUS=filed FILE_FAILURE_REPORT_URL=https://github.com/character-ai/larch/issues/8066\n",
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CLAUDE_PLUGIN_ROOT/file-helper-arguments.txt\"\nprintf '%s\\n' FILE_FAILURE_REPORT_STATUS=filed FILE_FAILURE_REPORT_URL=https://github.com/character-ai/larch/issues/8066\n",
             ),
         ] {
             let helper = scripts.join(name);
@@ -641,6 +641,8 @@ fn authorized_filing_helpers_use_validated_tier_boundaries() {
         &[
             "--implement-tmpdir".to_owned(),
             fixture.tmpdir.to_string_lossy().into_owned(),
+            "--create-after-dedup".to_owned(),
+            "true".to_owned(),
         ],
     );
     assert!(
@@ -653,4 +655,7 @@ fn authorized_filing_helpers_use_validated_tier_boundaries() {
         text(&fixture.path("stall-recovery-tier-a-dedup.env"))
             .contains("FILE_FAILURE_REPORT_URL=https://github.com/character-ai/larch/issues/8066")
     );
+    let helper_arguments = text(&fixture.project.join("file-helper-arguments.txt"));
+    assert!(helper_arguments.contains("--create-on-lookup-failure"));
+    assert!(!helper_arguments.contains("--dedup-only"));
 }

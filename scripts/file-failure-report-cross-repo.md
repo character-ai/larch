@@ -12,6 +12,17 @@ Refusal emits `FILE_FAILURE_REPORT_STATUS=mutation-refused` and `FILE_FAILURE_RE
 
 Optional structured comment payloads are `--attempts-file`, `--escalation-ledger-file`, and `--root-cause-file`. The helper validates supplied files as regular, readable, non-symlink paths.
 
+Before it reads the marker or performs a GitHub mutation, the helper passes
+each public body and structured comment input through the Rust-owned
+`stall-recovery validate-tier-b-public-file --snapshot-fd` boundary. That
+boundary reads a bounded regular file with no symlink following and verifies
+its identity across the read before it writes a private, unlinked descriptor
+owned by the helper. The helper uses only those descriptors afterward, through
+`/dev/fd`. A source replacement, in-place
+change, symlink substitution, disappearance, or oversize input while the
+snapshot is being made falls back without a GitHub mutation. A later source
+change cannot alter the transport bytes.
+
 ## Signature dedup contract
 
 The body must contain the exact marker:
@@ -20,13 +31,20 @@ The body must contain the exact marker:
 <!-- larch-stall:signature=<64-hex> -->
 ```
 
-The helper fetches all open issues with bodies from `--repo` using `gh api --paginate`, ignores pull requests, and exact-matches the marker client-side.
+The helper fetches all open issues with bodies from `--repo` using `gh api --paginate`, ignores pull requests, and exact-matches the marker from the approved body snapshot client-side.
 
 ## Create and comment behavior
 
 - On a match, the helper posts one `+1 occurrence` comment instead of creating a duplicate.
 - The comment is assembled only from structured payload files. It does not repost the full report body.
-- On no match, non-dedup paths create with `gh issue create -R "$repo" --title "$title" --body-file "$body_file"`.
+- On no match, non-dedup paths create from the approved body descriptor. Its
+  normalized first `###` heading is the authoritative create title, so title
+  and marker come from the same approved bytes.
+- Tier A's `--create-on-lookup-failure` mode retains its historic
+  fail-open-create result if lookup is unavailable, while still creating only
+  from the already approved descriptor.
+- Comments are assembled from approved structured-input descriptors, validated
+  as one approved comment descriptor, and posted from that descriptor.
 - `FILE_FAILURE_REPORT_STATUS=filed` is the create-success token.
 - `FILE_FAILURE_REPORT_URL` may be an issue URL or comment URL depending on status.
 - Issue URL aliases are caller-owned. Callers must not populate issue aliases from comment URLs.

@@ -50,25 +50,89 @@ fi
 [ "${1:-}" = stall-recovery ] && [ "${2:-}" = validate-tier-b-public-file ] || exit 2
 shift 2
 public_file=""
+public_fd=""
 corpus_file=""
+publication_tier="tier-b"
+snapshot_fd=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --public-file) public_file=${2:-}; shift 2 ;;
+        --public-fd) public_fd=${2:-}; shift 2 ;;
         --sensitive-corpus-file) corpus_file=${2:-}; shift 2 ;;
+        --publication-tier) publication_tier=${2:-}; shift 2 ;;
+        --snapshot-fd) snapshot_fd=${2:-}; shift 2 ;;
         --profile|--artifact-prefix|--implement-tmpdir) shift 2 ;;
         *) shift ;;
     esac
 done
+should_mutate_public_file() {
+    local candidate=$1 basename
+    basename=$(basename "$candidate")
+    if [ -n "${LARCH_STUB_MUTATE_BASENAME:-}" ] && [ "$LARCH_STUB_MUTATE_BASENAME" = "$basename" ]; then
+        return 0
+    fi
+    if [ -n "${LARCH_STUB_MUTATE_BASENAME_PREFIX:-}" ]; then
+        case "$basename" in
+            "$LARCH_STUB_MUTATE_BASENAME_PREFIX"*) return 0 ;;
+        esac
+    fi
+    return 1
+}
+mutate_public_file_after_snapshot() {
+    local candidate=$1
+    case "${LARCH_STUB_MUTATE_AFTER_SNAPSHOT:-}" in
+        pathname-replace)
+            printf 'late-public-secret\n' >"$candidate.replacement"
+            mv "$candidate.replacement" "$candidate"
+            ;;
+        append)
+            printf 'late-public-secret\n' >>"$candidate"
+            ;;
+        truncate)
+            : >"$candidate"
+            ;;
+        symlink-substitute)
+            mv "$candidate" "$candidate.original"
+            printf 'late-public-secret\n' >"$candidate.replacement"
+            ln -s "$(basename "$candidate.replacement")" "$candidate"
+            ;;
+    esac
+}
+if [ -n "$public_fd" ]; then
+    case "$public_fd" in
+        3|4|5|6|7|8|9) public_file="/dev/fd/$public_fd" ;;
+        *) exit 1 ;;
+    esac
+fi
 printf '%s\n' "$public_file" >>"${LARCH_STUB_LOG:?}"
 [ -f "$public_file" ] && [ ! -L "$public_file" ] || exit 1
-[ -f "$corpus_file" ] && [ ! -L "$corpus_file" ] || exit 1
-while IFS= read -r token; do
-    [ -n "$token" ] || continue
-    if grep -Fq -- "$token" "$public_file"; then
-        printf '%s\n' 'PUBLIC_FILE_VALID=false'
-        exit 1
+if [ "$publication_tier" = tier-b ]; then
+    [ -f "$corpus_file" ] && [ ! -L "$corpus_file" ] || exit 1
+    while IFS= read -r token; do
+        [ -n "$token" ] || continue
+        if grep -Fq -- "$token" "$public_file"; then
+            printf '%s\n' 'PUBLIC_FILE_VALID=false'
+            exit 1
+        fi
+    done <"$corpus_file"
+fi
+if [ -n "$public_fd" ]; then
+    python3 -c 'import os,sys; os.lseek(int(sys.argv[1]), 0, os.SEEK_SET)' "$public_fd"
+fi
+if [ -n "$snapshot_fd" ]; then
+    case "$snapshot_fd" in
+        3|4|5|6|7|8|9) ;;
+        *) exit 1 ;;
+    esac
+    cat "$public_file" >"/dev/fd/$snapshot_fd"
+    if should_mutate_public_file "$public_file"; then
+        mutate_public_file_after_snapshot "$public_file"
+        [ "${LARCH_STUB_REJECT_AFTER_MUTATION:-}" = true ] && exit 1
     fi
-done <"$corpus_file"
+fi
+if [ -n "$snapshot_fd" ]; then
+    printf 'PUBLIC_FILE_SNAPSHOT_FD=%s\n' "$snapshot_fd"
+fi
 printf '%s\n' 'PUBLIC_FILE_VALID=true'
 STUB
 chmod +x "$HARNESS_PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh" "$HARNESS_PLUGIN_ROOT/scripts/larch.sh"
@@ -164,6 +228,13 @@ if [ "$1" = api ] && [ "${2:-}" = --method ]; then
     exit 0
 fi
 if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    body_file=""
+    previous=""
+    for argument in "$@"; do
+        if [ "$previous" = --body-file ]; then body_file=$argument; fi
+        previous=$argument
+    done
+    [ -n "$body_file" ] && cp "$body_file" "$GH_BODY_CAPTURE"
     if [ "${GH_STUB_CASE:-}" = create-fail ]; then
         echo create failed >&2
         exit 1
@@ -181,7 +252,7 @@ STUB
 run_script() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_BODY_CAPTURE="$dir/create-body.md" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -190,7 +261,7 @@ run_script() {
 run_script_dry() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_BODY_CAPTURE="$dir/create-body.md" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_STUB_LOG="$dir/larch.log" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -200,7 +271,89 @@ dir=$(make_case create)
 GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
 assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "create: status filed"
 assert_eq https://github.com/owner/repo/issues/42 "$(kv FILE_FAILURE_REPORT_URL "$dir/out")" "create: issue URL normalized"
-contains "$dir/gh.log" 'issue create -R owner/repo --title Report title --body-file' "create: uses gh issue create -R with title"
+contains "$dir/gh.log" 'issue create -R owner/repo --title /implement terminal: fixture --body-file' "create: uses the approved report title"
+
+assert_create_snapshot_race() {
+    local tier=$1 mutation=$2 label=$3 expected_title
+    local race_dir
+    race_dir=$(make_case "snapshot-$label")
+    GH_STUB_CASE=create; export GH_STUB_CASE
+    LARCH_STUB_MUTATE_BASENAME=body.md
+    LARCH_STUB_MUTATE_AFTER_SNAPSHOT=$mutation
+    export LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+    run_script "$race_dir" "$race_dir/out" --repo owner/repo --body-file "$race_dir/body.md" --title 'Report title' --publication-tier "$tier"
+    assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$race_dir/out")" "snapshot-$label: status filed"
+    contains "$race_dir/create-body.md" 'Full report body sentinel.' "snapshot-$label: captures approved body"
+    not_contains "$race_dir/create-body.md" 'late-public-secret' "snapshot-$label: never publishes replacement bytes"
+    expected_title='/implement terminal: fixture'
+    if [ "$tier" = tier-b ]; then
+        expected_title='[BUG] /implement terminal: fixture'
+    fi
+    contains "$race_dir/gh.log" "issue create -R owner/repo --title $expected_title --body-file" "snapshot-$label: title stays bound to approved body"
+    unset LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+}
+
+assert_create_snapshot_race tier-a pathname-replace tier-a-pathname-replace
+assert_create_snapshot_race tier-a append tier-a-in-place-append
+assert_create_snapshot_race tier-b pathname-replace tier-b-pathname-replace
+assert_create_snapshot_race tier-b append tier-b-in-place-append
+assert_create_snapshot_race tier-b truncate tier-b-in-place-truncate
+
+assert_snapshot_handoff_refusal() {
+    local mutation=$1 label=$2 refusal_dir
+    refusal_dir=$(make_case "snapshot-refusal-$label")
+    GH_STUB_CASE=create; export GH_STUB_CASE
+    LARCH_STUB_MUTATE_BASENAME=body.md
+    LARCH_STUB_MUTATE_AFTER_SNAPSHOT=$mutation
+    LARCH_STUB_REJECT_AFTER_MUTATION=true
+    export LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT LARCH_STUB_REJECT_AFTER_MUTATION
+    run_script "$refusal_dir" "$refusal_dir/out" --repo owner/repo --body-file "$refusal_dir/body.md" --title 'Report title'
+    assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$refusal_dir/out")" "snapshot-refusal-$label: mutation falls back"
+    assert_eq invalid-body-snapshot "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$refusal_dir/out")" "snapshot-refusal-$label: mutation reason"
+    if [ -f "$refusal_dir/gh.log" ]; then
+        not_contains "$refusal_dir/gh.log" '.*' "snapshot-refusal-$label: skips gh"
+    else
+        pass "snapshot-refusal-$label: skips gh"
+    fi
+    unset LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT LARCH_STUB_REJECT_AFTER_MUTATION
+}
+
+assert_snapshot_handoff_refusal pathname-replace pathname-replace
+assert_snapshot_handoff_refusal append in-place-append
+assert_snapshot_handoff_refusal truncate in-place-truncate
+assert_snapshot_handoff_refusal symlink-substitute symlink-substitute
+
+dir=$(make_case snapshot-tier-b-comment-symlink)
+GH_STUB_CASE=dedup; export GH_STUB_CASE
+LARCH_STUB_MUTATE_BASENAME_PREFIX=.larch-public-comment.
+LARCH_STUB_MUTATE_AFTER_SNAPSHOT=symlink-substitute
+export LARCH_STUB_MUTATE_BASENAME_PREFIX LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "snapshot-tier-b-comment-symlink: status comment"
+contains "$dir/comment.json" 'Bounded root-cause slice.' "snapshot-tier-b-comment-symlink: captures approved comment"
+not_contains "$dir/comment.json" 'late-public-secret' "snapshot-tier-b-comment-symlink: never publishes replacement bytes"
+unset LARCH_STUB_MUTATE_BASENAME_PREFIX LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+
+dir=$(make_case snapshot-tier-b-comment-append)
+GH_STUB_CASE=dedup; export GH_STUB_CASE
+LARCH_STUB_MUTATE_BASENAME_PREFIX=.larch-public-comment.
+LARCH_STUB_MUTATE_AFTER_SNAPSHOT=append
+export LARCH_STUB_MUTATE_BASENAME_PREFIX LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "snapshot-tier-b-comment-append: status comment"
+contains "$dir/comment.json" 'Bounded root-cause slice.' "snapshot-tier-b-comment-append: captures approved comment"
+not_contains "$dir/comment.json" 'late-public-secret' "snapshot-tier-b-comment-append: never publishes appended bytes"
+unset LARCH_STUB_MUTATE_BASENAME_PREFIX LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+
+dir=$(make_case snapshot-marker-lookup)
+GH_STUB_CASE=dedup; export GH_STUB_CASE
+LARCH_STUB_MUTATE_BASENAME=body.md
+LARCH_STUB_MUTATE_AFTER_SNAPSHOT=pathname-replace
+export LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT
+run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "snapshot-marker-lookup: approved marker still deduplicates"
+not_contains "$dir/gh.log" 'issue create' "snapshot-marker-lookup: replacement marker cannot create"
+unset LARCH_STUB_MUTATE_BASENAME LARCH_STUB_MUTATE_AFTER_SNAPSHOT
 
 for refusal_case in missing-context missing-trusted-root invalid-context outside-root ambient-only test-denied; do
     dir=$(make_case "refusal-$refusal_case")
@@ -263,6 +416,12 @@ dir=$(make_case lookup-fail)
 GH_STUB_CASE=lookup-fail; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --dedup-only
 assert_eq lookup-failed-open "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup-only: lookup failure fails open"
 
+dir=$(make_case lookup-fail-create)
+GH_STUB_CASE=lookup-fail; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-a --create-on-lookup-failure
+assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-a: lookup failure creates from approved snapshot"
+contains "$dir/create-body.md" 'Full report body sentinel.' "tier-a: lookup failure captures approved create body"
+contains "$dir/gh.log" 'issue create -R owner/repo' "tier-a: lookup failure reaches create"
+
 missing=$(make_case missing-marker)
 printf 'no marker\n' >"$missing/body.md"
 GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$missing" "$missing/out" --repo owner/repo --body-file "$missing/body.md" --dedup-only
@@ -300,28 +459,28 @@ assert_eq dry-run "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dry-run: status
 if [ ! -e "$dir/gh.log" ]; then pass "dry-run: no gh calls"; else fail "dry-run: no gh calls" "$(cat "$dir/gh.log")"; fi
 
 dir=$(make_case tier-b-accept)
-GH_STUB_CASE=tier-b-accept; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-accept'; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
 assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: bounded public slices accepted"
-contains "$dir/larch.log" "comment.md" "tier-b: validation routes through larch runtime"
+contains "$dir/larch.log" ".larch-public-comment." "tier-b: validation routes through larch runtime"
 
 dir=$(make_case tier-b-unsafe)
 printf '### [BUG] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
-GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-unsafe'; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: raw body comment rejected"
 
 dir=$(make_case tier-b-unsafe-legacy-bug)
 printf '### [Bug] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"  # lint-prefix-case-variant: ok intentional legacy wrong-case heading fixture
-GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-unsafe'; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: legacy [Bug] raw heading rejected"  # lint-prefix-case-variant: ok paired assertion for legacy wrong-case heading fixture
 
 dir=$(make_case tier-b-sensitive)
 printf 'client-secret-token\n' >"$dir/root.md"
-GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-sensitive'; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: sensitive-token rejection reused"
 
 dir=$(make_case tier-b-missing-corpus)
 rm -f "$dir/stall-recovery-sensitive-corpus.env"
-GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-sensitive'; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: missing sensitive corpus falls back"
 assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out")" "tier-b: missing sensitive corpus reports unsafe comment"
 
@@ -335,14 +494,14 @@ chmod +x "$fake_root/scripts/larch.sh"
 mkdir -p "$fake_root/python"
 cp "$SCRIPT_DIR/../python/cli.py" "$fake_root/python/cli.py"
 cp -R "$SCRIPT_DIR/../python/larch" "$fake_root/python/"
-GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE
+GH_STUB_CASE='tier-b-sensitive'; export GH_STUB_CASE
 set +e
 PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$dir/out-validator" 2>"$dir/out-validator.err"
 rc=$?
 set -e
 assert_eq 0 "$rc" "tier-b: missing validator exits 0"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-validator")" "tier-b: missing validator falls back"
-assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-validator")" "tier-b: missing validator reports unsafe comment"
+assert_eq invalid-body-snapshot "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-validator")" "tier-b: missing validator blocks body snapshot"
 
 
 
@@ -356,18 +515,18 @@ contains "$dir/comment.json" '+1 occurrence' "design-prefix: comment includes oc
 dir=$(make_case design-prefix-raw-heading)
 printf '### [BUG] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
 printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
-GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-unsafe'; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-raw")" "design-prefix: raw /design heading rejected"
 
 dir=$(make_case design-prefix-raw-heading-legacy-bug)
 printf '### [Bug] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"  # lint-prefix-case-variant: ok intentional legacy wrong-case heading fixture
 printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
-GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw-legacy" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-unsafe'; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw-legacy" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-raw-legacy")" "design-prefix: legacy [Bug] raw /design heading rejected"  # lint-prefix-case-variant: ok paired assertion for legacy wrong-case heading fixture
 
 dir=$(make_case design-prefix-missing-corpus)
 missing_corpus="$dir/design-failure-sensitive-corpus.env"
-GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-missing" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$missing_corpus" --root-cause-file "$dir/root.md"
+GH_STUB_CASE='tier-b-sensitive'; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-missing" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$missing_corpus" --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-missing")" "design-prefix: missing explicit corpus falls back"
 assert_eq invalid-sensitive-corpus-file "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-design-missing")" "design-prefix: missing explicit corpus reason"
 

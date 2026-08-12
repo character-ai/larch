@@ -5,14 +5,21 @@ use larch_adapters::stall_recovery::{
     AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
     StallRecoveryError, StateMutationError, classify, clear_stall, init_attempts,
     is_larch_dev_clone, normalize_file_failure_report_env, normalize_issue_env, normalize_outcome,
-    record_attempt, record_escalation, seed_terminal_state, terminal_state_is_valid,
-    tier_b_public_file_is_valid,
+    record_attempt, record_escalation, seed_terminal_state, snapshot_public_fd_to_fd,
+    snapshot_public_file_to_fd, terminal_state_is_valid, tier_b_public_file_is_valid,
 };
 use larch_core::{
     IssueNormalization, RepositoryRead, artifact_prefix_valid, implementation_bail_tokens,
     retry_policy, token_valid,
 };
-use std::{collections::BTreeMap, env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
+use std::{
+    collections::BTreeMap,
+    env,
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 const GLOBAL_FLAGS: &[&str] = &[
     "--profile",
     "--artifact-prefix",
@@ -292,12 +299,19 @@ fn dedup_tier_a_report(globals: &Globals, arguments: &[String]) -> ExitCode {
             "--root-cause-file",
             "--context-file",
             "--artifact-prefix",
+            "--create-after-dedup",
         ],
     ) {
         OptionParse::Help => return help("dedup-tier-a-report"),
         OptionParse::Error(message) => return usage_error(&message),
         OptionParse::Values(options) => options,
     };
+    if !matches!(
+        value(&options, "--create-after-dedup"),
+        "" | "true" | "false"
+    ) {
+        return usage_error("--create-after-dedup must be true or false");
+    }
     stall_recovery_reporting::dedup_tier_a_report(globals, &options)
 }
 
@@ -578,18 +592,26 @@ fn validate_public(globals: &Globals, arguments: &[String]) -> ExitCode {
         &[
             "--implement-tmpdir",
             "--public-file",
+            "--public-fd",
             "--tmpdir",
             "--sensitive-corpus-file",
             "--profile",
             "--artifact-prefix",
+            "--publication-tier",
+            "--snapshot-fd",
         ],
     ) {
         OptionParse::Help => return help("validate-tier-b-public-file"),
         OptionParse::Error(message) => return usage_error(&message),
         OptionParse::Values(options) => options,
     };
-    if !options.contains_key("--public-file") {
-        return usage_error("validate-tier-b-public-file: --public-file is required");
+    if !options.contains_key("--public-file") && !options.contains_key("--public-fd") {
+        return usage_error(
+            "validate-tier-b-public-file: --public-file or --public-fd is required",
+        );
+    }
+    if options.contains_key("--public-file") && options.contains_key("--public-fd") {
+        return usage_error("provide only one of --public-file or --public-fd");
     }
     let inherited_tmpdir = options
         .get("--implement-tmpdir")
@@ -603,14 +625,98 @@ fn validate_public(globals: &Globals, arguments: &[String]) -> ExitCode {
     if !artifact_prefix_valid(prefix) {
         return usage_error("--artifact-prefix must be a simple dash token");
     }
-    let valid = !value(&options, "--sensitive-corpus-file").is_empty()
-        && tier_b_public_file_is_valid(
-            &PathBuf::from(tmpdir),
-            &PathBuf::from(value(&options, "--public-file")),
-            &PathBuf::from(value(&options, "--sensitive-corpus-file")),
-            prefix,
-        );
+    let tier = option_or_global(&options, globals, "--publication-tier", "tier-b");
+    if !matches!(tier, "tier-a" | "tier-b") {
+        return usage_error("--publication-tier must be tier-a or tier-b");
+    }
+    let snapshot_fd = match value(&options, "--snapshot-fd") {
+        "" => None,
+        raw => match raw.parse::<i32>() {
+            Ok(fd) => Some(fd),
+            Err(_) => return usage_error("--snapshot-fd must be an integer"),
+        },
+    };
+    let root = PathBuf::from(tmpdir);
+    let public_file = PathBuf::from(value(&options, "--public-file"));
+    let public_fd = match value(&options, "--public-fd") {
+        "" => None,
+        raw => match raw.parse::<i32>() {
+            Ok(fd) => Some(fd),
+            Err(_) => return usage_error("--public-fd must be an integer"),
+        },
+    };
+    let sensitive_corpus = value(&options, "--sensitive-corpus-file");
+    let valid = validate_public_payload(&PublicValidationRequest {
+        tier,
+        root: &root,
+        public_file: &public_file,
+        public_fd,
+        sensitive_corpus,
+        prefix,
+        snapshot_fd,
+    });
     emit_result("PUBLIC_FILE_VALID", valid, 1)
+}
+
+struct PublicValidationRequest<'a> {
+    tier: &'a str,
+    root: &'a Path,
+    public_file: &'a Path,
+    public_fd: Option<i32>,
+    sensitive_corpus: &'a str,
+    prefix: &'a str,
+    snapshot_fd: Option<i32>,
+}
+
+fn validate_public_payload(request: &PublicValidationRequest<'_>) -> bool {
+    match request.tier {
+        "tier-a" => match (request.public_fd, request.snapshot_fd) {
+            (Some(public_fd), Some(snapshot_fd)) => {
+                snapshot_public_fd_to_fd(request.root, public_fd, None, request.prefix, snapshot_fd)
+            }
+            (Some(_) | None, None) => false,
+            (None, Some(fd)) => snapshot_public_file_to_fd(
+                request.root,
+                request.public_file,
+                None,
+                request.prefix,
+                fd,
+            ),
+        },
+        "tier-b" => match (request.public_fd, request.snapshot_fd) {
+            (Some(public_fd), Some(snapshot_fd)) => {
+                !request.sensitive_corpus.is_empty()
+                    && snapshot_public_fd_to_fd(
+                        request.root,
+                        public_fd,
+                        Some(Path::new(request.sensitive_corpus)),
+                        request.prefix,
+                        snapshot_fd,
+                    )
+            }
+            (Some(_), None) => false,
+            (None, Some(fd)) => {
+                !request.sensitive_corpus.is_empty()
+                    && snapshot_public_file_to_fd(
+                        request.root,
+                        request.public_file,
+                        Some(Path::new(request.sensitive_corpus)),
+                        request.prefix,
+                        fd,
+                    )
+            }
+            (None, None) => {
+                !request.sensitive_corpus.is_empty()
+                    && tier_b_public_file_is_valid(
+                        request.root,
+                        request.public_file,
+                        &PathBuf::from(request.sensitive_corpus),
+                        request.prefix,
+                    )
+            }
+        },
+        _ => false,
+    }
 }
 
 fn detect_dev_clone(globals: &Globals, arguments: &[String]) -> ExitCode {
