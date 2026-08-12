@@ -670,7 +670,7 @@ contains that exact merge-group source SHA. Pull requests and manual benchmark
 dispatches therefore use the same restore cache class but cannot publish Cargo
 inputs; none of the coverage lanes caches `target/` as a broad entry.
 
-The coverage dependency cache is enabled with a measured 1,350,000,000-byte
+The coverage dependency cache is enabled with a reviewed 1,400,000,000-byte
 dependency-only bound. Its versioned exact key includes the runner,
 architecture, target triple, toolchain, manifests and lockfile, coverage-tool
 version, selected compiler profile, feature mode, linker, Cargo configuration,

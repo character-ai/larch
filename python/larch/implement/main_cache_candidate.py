@@ -18,9 +18,15 @@ from typing import Final, cast
 _CACHE_CLASS_RE: Final = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _CACHE_KEY_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,511}$")
 _ARTIFACT_NAME_RE: Final = re.compile(r"^main-cache-[a-z][a-z0-9-]{0,63}-candidate$")
+# Cargo's registry contains package build metadata and generated source names,
+# so a cache payload cannot use a fragile crate-name filename allowlist. The
+# security boundary is structural instead: every member stays below `payload`,
+# each component is nonempty and not `.` or `..`, and portable path separators,
+# control characters, and Windows-reserved filename characters are refused.
 _MEMBER_PATH_RE: Final = re.compile(
-    r"^payload/(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\.[A-Za-z0-9_.-]+)"
-    r"(?:/(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\.[A-Za-z0-9_.-]+))*$"
+    r"^payload/"
+    r'(?:(?!\.{1,2}(?:/|$))[^/\x00-\x1f\x7f\\:*?"<>|]+)'
+    r'(?:/(?:(?!\.{1,2}(?:/|$))[^/\x00-\x1f\x7f\\:*?"<>|]+))*$'
 )
 _PRODUCER_REF_RE: Final = re.compile(r"^refs/heads/gh-readonly-queue/main/[A-Za-z0-9._/-]+$")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -30,7 +36,10 @@ _MANIFEST_FILENAME: Final = "manifest.json"
 _PAYLOAD_DIRECTORY: Final = "payload"
 _SCHEMA_VERSION: Final = 1
 _HASH_CHUNK_BYTES: Final = 1024 * 1024
-_MAX_MANIFEST_BYTES: Final = 4 * 1024 * 1024
+# Cargo's registry cache produces a manifest above 4 MiB on a clean, full
+# Rust lane. Keep the untrusted-artifact parser bounded while allowing the
+# reviewed registry inventory and its per-file integrity records.
+_MAX_MANIFEST_BYTES: Final = 32 * 1024 * 1024
 _MAX_FILE_MODE: Final = 0o777
 
 
@@ -444,7 +453,7 @@ def _collect_members(payload: Path) -> tuple[CandidateMember, ...]:
                 size=status.st_size,
             )
         )
-    return tuple(members)
+    return tuple(sorted(members, key=lambda member: member.path))
 
 
 def _walk_regular_files(directory: Path) -> tuple[Path, ...]:

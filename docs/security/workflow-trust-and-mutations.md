@@ -309,34 +309,35 @@ session files directly.
 Destructive cleanup or synchronization validates the exact root and target,
 rechecks mutable identity immediately before acting, and limits deletion to an
 operation-owned allowlist. A persisted PID or process group is signaled only
-after process identity is re-verified. The Rust runtime owns process-identity
-capture, validated process-group termination, and
+after process identity is re-verified. The Rust session and background-job
+runtime owns process-identity capture, validated process-group termination, and
 `session kill-background-processes` (`crates/larch-core/src/process_identity.rs`,
 `crates/larch-adapters/src/process_identity.rs`,
 `crates/larch-cli/src/kill_background.rs`). Rust-owned stall-state clearing
 consumes the Rust bgjob registry and process-identity validation directly.
-Python still owns the shared `process_identity` helpers consumed by the Python
-bgjob runtime and the plan-review / review-and-fix loop-identity commands until
-later #7677 leaves cut those callers over. Rust-owned stall classification also
-consumes the Rust bgjob registry directly. Classification and attempt artifacts
-are published atomically below the validated temporary root, and attempt values
-reject line breaks. Escalation rows are appended under an exclusive lock through
-a non-symlink file descriptor; unsafe detail filenames cannot forge TSV fields,
-and the append repairs a missing terminal newline before writing one complete row.
+Rust-owned stall classification also consumes the Rust bgjob registry directly.
+Classification and attempt artifacts are published atomically below the
+validated temporary root, and attempt values reject line breaks. Escalation rows
+are appended under an exclusive lock through a non-symlink file descriptor;
+unsafe detail filenames cannot forge TSV fields, and the append repairs a
+missing terminal newline before writing one complete row.
 Unsafe canonical or fallback paths fail closed, while a genuine canonical write
 failure may use the existing bounded fallback artifacts. A fixed-string
 comparison, field equality, or closed parser must handle
 interpolated labels, markers, refs, and identifiers. Do not interpolate
 untrusted data into a regular expression or shell program.
 
-Session setup records its private uncommitted owner as a PID plus normalized
-process start time, not as a bare PID. Cleanup retains any marker whose live
-identity is unverifiable or matches; it may reclaim a legacy PID-only marker
-only when absence or a newer start time proves the original owner is gone.
-The setup writer uses one cancellation-versus-transfer decision after the
-ordered stdout envelope is written and flushed, so a signal before transfer
-cannot become a silent successful commit and a signal after transfer cannot
-retract a published session.
+Session setup records its private uncommitted owner as a PID, normalized
+process start time, and the same kernel birth identity used by process cleanup,
+not as a bare PID. Cleanup retains any marker whose live identity is
+unverifiable or matches. Markers written before the birth field, including ones
+with only a PID and start time, are legacy: cleanup may reclaim them only when
+the PID is absent and otherwise retains them rather than treating a
+same-second `lstart` comparison as proof of reuse. The setup writer uses one
+cancellation-versus-transfer decision after the ordered stdout envelope is
+written and flushed, so a signal before transfer cannot become a silent
+successful commit and a signal after transfer cannot retract a published
+session.
 
 Current session pointers are a separate `$HOME/.cache/larch/sessions/`
 authority even when session artifacts use `XDG_CACHE_HOME`. Pointer publishers,
@@ -358,11 +359,30 @@ detaches the daemon by re-executing the same verified binary in a daemon role,
 and the daemon binds the owner's recorded process identity, never a bare pid, so
 a reused pid never keeps an orphaned job alive (#6604). The daemon terminates a
 timed-out or orphaned child only through validated process-group termination.
-A child may legitimately replace its wrapper through `exec`; that transition
-retains its recorded PID, process group, and start time, which are revalidated
-before signaling. Other persisted identities retain exact command validation.
-Legacy background-job rows use the same transition policy because they predate
-the explicit registry marker.
+Each Rust-owned persisted identity records PID, process group, normalized `ps`
+start time, command text, and a kernel birth identity. Darwin uses the `proc_pidinfo`
+BSD-process creation seconds and microseconds; Linux combines its boot UUID
+with `/proc/<pid>/stat` start ticks. Capture brackets the `ps` and
+process-group fields with birth probes and fails closed if either probe is
+unavailable or differs. A child may legitimately replace its wrapper through `exec`; that
+transition retains the recorded kernel birth identity, PID, process group, and
+start time, so `AllowCommandTransition` permits the changed command only after
+those fields all match. Command text alone is never proof of continuity.
+Records that predate the birth field, including registry rows, recovery leases,
+and loop sidecars, remain readable for diagnostics and recovery but cannot
+authorize a live result or a signal. A legacy recovery lease with a live PID
+also remains held until absence proves it stale, rather than admitting an
+overlapping cleaner. Other persisted identities retain exact command validation.
+
+The runtime logs signal intent, then revalidates the full identity immediately
+before each `killpg` call. The platform APIs cannot make comparison and group
+signal one atomic operation, and neither platform exposes a serializable kernel
+handle with unbounded birth precision. A small scheduling or theoretical
+same-tick reuse gap remains; the second check and strongest durable metadata
+narrow it without claiming an absolute guarantee. Cleanup never individually
+signals an enumerated descendant PID, because that PID has no durable identity
+and could have been recycled. A validated group signal reaches members that
+remain in the recorded group.
 If the recorded group leader has disappeared while a numeric group remains,
 larch cannot prove that a recycled group is still its child and retains the
 record instead of signaling it.
@@ -411,10 +431,18 @@ as untrusted input. It requires exactly one successful `CI` merge-group run for
 the final `main` SHA and successful named producer jobs, then verifies the
 candidate manifest, source SHA, canonical key and key-input digest, byte bound,
 regular-file tree, checksums, modes, artifact identity, and declared tool
-versions before saving. Symlinks, stale source identity, unexpected paths, or a missing
-producer fail closed. The publisher may rewrite only Rust-policy provenance,
+versions before saving. Cargo cache payload names may include ordinary package
+build metadata and generated punctuation, but every member must still be below
+the payload root with nonempty components that are neither `.` nor `..`, and
+must exclude path separators, control characters, and portable
+Windows-reserved filename characters. Symlinks, stale source identity,
+unexpected paths, or a missing producer fail closed. The publisher may rewrite
+only Rust-policy provenance,
 and only after that final-SHA verification. A
-coverage target cache is dependency-only, bound at a measured 1,350,000,000
+candidate manifest is separately bounded at a reviewed 32 MiB so Cargo's
+per-file integrity records remain accepted without giving untrusted artifacts
+an unbounded parser allocation. A
+coverage target cache is dependency-only, bound at a reviewed 1,400,000,000
 bytes, and enabled only after independent end-to-end measurements prove it
 helps. Neither a cache restore nor its diagnostic metadata waives the coverage,
 artifact, executable, repository-policy, or plugin-validation gates.

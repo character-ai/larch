@@ -13,9 +13,8 @@ use larch_adapters::{
     recover_uncommitted_session_setups, remove_session_tmpdir,
 };
 use larch_core::{
-    HostUtilityProgram, IdentityProbeOutput, KeyPolicy, ProcessIdentityHost,
-    cleanup_cache_sessions_root, parse_allowlisted_env_line, parse_ps_identity,
-    session_pointer_root,
+    HostUtilityProgram, KeyPolicy, cleanup_cache_sessions_root, parse_allowlisted_env_line,
+    probe_process_identity, session_pointer_root,
 };
 use std::{
     collections::BTreeSet,
@@ -203,20 +202,25 @@ impl SessionSetupOwnerObserver for SystemSetupOwnerObserver {
         let Ok(pid) = i32::try_from(pid) else {
             return SessionSetupOwnerProbe::Unverifiable;
         };
-        // Setup recovery needs only a PID/start-time read, not a process-group
-        // lookup. Do not let a failed `getpgid` be mistaken for proof that a
-        // potentially live marker owner vanished.
-        match self.host.probe_ps_identity(pid) {
-            IdentityProbeOutput::Missing => SessionSetupOwnerProbe::Missing,
-            IdentityProbeOutput::Stdout(stdout) => parse_ps_identity(pid, 0, &stdout, "").map_or(
-                SessionSetupOwnerProbe::Unverifiable,
-                |identity| SessionSetupOwnerProbe::Live {
+        match probe_process_identity(&self.host, pid, "") {
+            larch_core::ProcessIdentityProbeResult {
+                identity: Some(identity),
+                ..
+            } => {
+                let Some(birth_identity) = identity.birth_identity else {
+                    return SessionSetupOwnerProbe::Unverifiable;
+                };
+                SessionSetupOwnerProbe::Live {
                     start_time: identity.start_time,
-                },
-            ),
-            IdentityProbeOutput::Timeout | IdentityProbeOutput::Error => {
-                SessionSetupOwnerProbe::Unverifiable
+                    birth_identity,
+                }
             }
+            larch_core::ProcessIdentityProbeResult { failure_reason, .. }
+                if failure_reason == "missing-pid" =>
+            {
+                SessionSetupOwnerProbe::Missing
+            }
+            larch_core::ProcessIdentityProbeResult { .. } => SessionSetupOwnerProbe::Unverifiable,
         }
     }
 }

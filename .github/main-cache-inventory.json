@@ -150,7 +150,7 @@
       "key_inputs": ["key prefix", "schema", "runner OS", "runner architecture", "target triple", "cargo-llvm-cov version", "test profile", "feature mode", "linker", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml", ".cargo/**"],
       "producer": "main-cache-rust-promotion",
       "validation": "pruned, no-symlink merge-group artifact manifest",
-      "maximum_bytes": 1350000000,
+      "maximum_bytes": 1400000000,
       "publication_event": "trusted-main"
     },
     {

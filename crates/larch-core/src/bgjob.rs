@@ -17,7 +17,7 @@ use sha2::{Digest as _, Sha256};
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
 use crate::{
-    DuplicatePolicy, KvDocument, ParseOptions, ProcessIdentityHost,
+    DuplicatePolicy, KvDocument, ParseOptions, ProcessBirthIdentity, ProcessIdentityHost,
     ProcessIdentityValidationPolicy, RecordedProcessIdentity, identity_to_json,
     read_process_identity, validate_process_identity, validate_process_identity_with_policy,
 };
@@ -828,12 +828,28 @@ pub fn claim_recovery(
                         }
                         if matches!(
                             validation.reason.as_str(),
-                            "identity-probe-error" | "identity-probe-timeout"
+                            "identity-probe-error"
+                                | "identity-probe-timeout"
+                                | "pgid-changed-during-identity-probe"
+                                | "process-birth-identity-probe-error"
+                                | "process-birth-identity-unsupported"
+                                | "process-birth-identity-unstable"
                         ) {
                             return Err(BgjobError::Invalid(format!(
                                 "could not validate recovery claimant: {}",
                                 validation.reason
                             )));
+                        }
+                        if matches!(
+                            validation.reason.as_str(),
+                            "missing-process-birth-identity" | "invalid-process-birth-identity"
+                        ) {
+                            // An older claimant row can prove neither that a
+                            // live PID is its original owner nor that it is a
+                            // recycled process. Retain that lease until the
+                            // PID is absent rather than letting another
+                            // cleaner overlap its recovery mutation.
+                            return Ok(RecoveryClaim::Busy);
                         }
                     }
                     RecoveryLeaseState::Malformed(modified) => {
@@ -1152,6 +1168,13 @@ fn identity_rows(
             (format!("{prefix}_PGID"), identity.pgid.to_string()),
             (format!("{prefix}_START_TIME"), identity.start_time.clone()),
             (
+                format!("{prefix}_BIRTH_IDENTITY"),
+                identity
+                    .birth_identity
+                    .as_ref()
+                    .map_or_else(String::new, ProcessBirthIdentity::wire_value),
+            ),
+            (
                 format!("{prefix}_COMMAND"),
                 identity.command_signature.clone(),
             ),
@@ -1171,6 +1194,9 @@ fn parse_identity(
         pid: rows.get(&format!("{prefix}_PID"))?.parse().ok()?,
         pgid: rows.get(&format!("{prefix}_PGID"))?.parse().ok()?,
         start_time: rows.get(&format!("{prefix}_START_TIME"))?.clone(),
+        birth_identity: rows
+            .get(&format!("{prefix}_BIRTH_IDENTITY"))
+            .and_then(|value| ProcessBirthIdentity::parse_wire_value(value)),
         command_signature: rows.get(&format!("{prefix}_COMMAND"))?.clone(),
         expected_signature: rows
             .get(&format!("{prefix}_EXPECTED"))
@@ -1347,7 +1373,8 @@ mod tests {
         validate_run_id, validate_slug, validated_path, write_entry_at,
     };
     use crate::{
-        IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
+        IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
+        ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
     };
     use std::{
         collections::BTreeMap,
@@ -1363,6 +1390,10 @@ mod tests {
             pid,
             pgid: pid,
             start_time: format!("start-{pid}"),
+            birth_identity: Some(ProcessBirthIdentity::Darwin {
+                seconds: 1,
+                microseconds: u64::try_from(pid).unwrap_or_default(),
+            }),
             command_signature: format!("command-{pid}"),
             expected_signature: String::new(),
         }
@@ -1411,6 +1442,18 @@ mod tests {
             } else {
                 IdentityProbeOutput::Missing
             }
+        }
+
+        fn probe_process_birth_identity(&self, pid: i32) -> ProcessBirthIdentityProbeOutput {
+            self.live
+                .then_some(ProcessBirthIdentity::Darwin {
+                    seconds: 1,
+                    microseconds: u64::try_from(pid).unwrap_or_default(),
+                })
+                .map_or(
+                    ProcessBirthIdentityProbeOutput::Missing,
+                    ProcessBirthIdentityProbeOutput::Identity,
+                )
         }
 
         fn pgrep_children(&self, _pid: i32) -> Vec<i32> {
@@ -1489,6 +1532,10 @@ mod tests {
             pid,
             pgid: pid,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(ProcessBirthIdentity::Darwin {
+                seconds: 1,
+                microseconds: u64::try_from(pid).unwrap_or_default(),
+            }),
             command_signature: "worker".to_owned(),
             expected_signature: String::new(),
         }
@@ -1615,6 +1662,53 @@ mod tests {
             "a probe failure must not reclaim another cleaner's live lease"
         );
         release_recovery_claim(&claim);
+    }
+
+    #[test]
+    fn recovery_claim_keeps_a_live_legacy_lease_without_birth_identity() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let entry = entry(&tmpdir, None);
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let path = write_entry_at(&entry, Some(&registry)).expect("registry row");
+        let holder = LivenessHost {
+            live: true,
+            current_pid: 77,
+            probe_error_pid: None,
+        };
+        let claim = match claim_recovery(&holder, &path).expect("claim") {
+            RecoveryClaim::Acquired(claim) => claim,
+            other => panic!("unexpected claim: {other:?}"),
+        };
+        let mut legacy: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&claim.lease_path).expect("recovery lease"))
+                .expect("recovery lease JSON");
+        legacy
+            .as_object_mut()
+            .expect("recovery lease object")
+            .remove("birth_identity");
+        fs::write(
+            &claim.lease_path,
+            serde_json::to_string(&legacy).expect("legacy recovery lease"),
+        )
+        .expect("write legacy recovery lease");
+
+        let contender = LivenessHost {
+            live: true,
+            current_pid: 88,
+            probe_error_pid: None,
+        };
+        assert!(matches!(
+            claim_recovery(&contender, &path).expect("legacy lease response"),
+            RecoveryClaim::Busy
+        ));
+        assert!(
+            claim.lease_path.exists(),
+            "a live legacy claimant must not be reclaimed from weak identity fields"
+        );
+        fs::remove_file(&claim.lease_path).expect("legacy recovery lease cleanup");
     }
 
     #[cfg(unix)]
@@ -1929,15 +2023,36 @@ mod tests {
         let entry = entry(&tmpdir, Some(identity(13)));
         let path = write_entry_at(&entry, Some(&registry)).expect("write registry");
         assert_eq!(read_entry(&path), Some(entry));
+        assert!(
+            fs::read_to_string(&path)
+                .expect("registry text")
+                .contains("CHILD_BIRTH_IDENTITY=darwin:1:12\n")
+        );
         let legacy = fs::read_to_string(&path)
             .expect("registry text")
-            .replace("CHILD_ALLOW_COMMAND_TRANSITION=false\n", "");
-        fs::write(&path, legacy).expect("legacy registry text");
+            .replace("CHILD_ALLOW_COMMAND_TRANSITION=false\n", "")
+            .lines()
+            .filter(|line| {
+                !line.ends_with("_BIRTH_IDENTITY=darwin:1:11")
+                    && !line.ends_with("_BIRTH_IDENTITY=darwin:1:12")
+                    && !line.ends_with("_BIRTH_IDENTITY=darwin:1:13")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, format!("{legacy}\n")).expect("legacy registry text");
+        let legacy_entry = read_entry(&path).expect("legacy registry entry");
         assert!(
-            read_entry(&path)
-                .expect("legacy registry entry")
-                .child_allows_exec,
+            legacy_entry.child_allows_exec,
             "a markerless legacy row must retain exec-capable recovery"
+        );
+        assert!(legacy_entry.child.birth_identity.is_none());
+        assert!(legacy_entry.daemon.birth_identity.is_none());
+        assert!(
+            legacy_entry
+                .owner
+                .expect("legacy owner")
+                .birth_identity
+                .is_none()
         );
         assert!(validate_initial_merge_rows(&[("GOOD".to_owned(), "value".to_owned())]).is_ok());
         assert!(validate_initial_merge_rows(&[("bad".to_owned(), "value".to_owned())]).is_err());
@@ -2020,10 +2135,22 @@ mod tests {
         assert_eq!(entries, vec![(path, Some(record.clone()))]);
 
         let rows = identity_rows("TEST", Some(&record.daemon));
-        assert_eq!(rows.len(), 5);
+        assert_eq!(rows.len(), 6);
         assert!(identity_rows("TEST", None).is_empty());
         let values = rows.into_iter().collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            values.get("TEST_BIRTH_IDENTITY"),
+            Some(&"darwin:1:11".to_owned())
+        );
         assert_eq!(parse_identity(&values, "TEST"), Some(record.daemon));
+        let mut legacy_values = values;
+        legacy_values.remove("TEST_BIRTH_IDENTITY");
+        assert!(
+            parse_identity(&legacy_values, "TEST")
+                .expect("legacy identity")
+                .birth_identity
+                .is_none()
+        );
         assert_eq!(
             render_rows(&[("ONE".to_owned(), "one".to_owned())]).expect("rendered rows"),
             "ONE=one\n"

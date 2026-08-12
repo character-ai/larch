@@ -2,11 +2,17 @@
 
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    IdentityProbeOutput, KillLogEvent, ProcessIdentityHost, RecordedProcessIdentity,
-    TerminateSignal, append_kill_log, kill_session_background_processes, read_identity_record,
-    read_process_identity, write_identity_record,
+    IdentityProbeOutput, KillLogEvent, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
+    ProcessIdentityHost, ProcessIdentityValidationPolicy, RecordedProcessIdentity, TerminateSignal,
+    append_kill_log, kill_session_background_processes, read_identity_record,
+    read_process_identity, validate_process_identity_with_policy, write_identity_record,
 };
-use std::{fs, process};
+use std::{
+    fs,
+    process::{self, Command},
+    thread,
+    time::{Duration, Instant},
+};
 use tempfile::TempDir;
 
 #[test]
@@ -22,9 +28,91 @@ fn system_host_probes_the_current_process() {
     assert!(host.parent_of(process_id).is_some());
     assert!(!host.list_processes().is_empty());
     assert_eq!(host.current_pid(), process_id);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    assert!(
+        read_process_identity(&host, process_id, "")
+            .and_then(|identity| identity.birth_identity)
+            .is_some(),
+        "supported hosts must expose a kernel process-birth identity"
+    );
     assert!(host.parent_pid() > 0);
     assert!(!host.resolve_path("/tmp").is_empty());
     assert!(!host.signal_process(i32::MAX - 1, TerminateSignal::Term));
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn system_host_probes_a_live_child_process() {
+    let host = SystemProcessIdentityHost::new();
+    let mut child = Command::new("/bin/sleep")
+        .arg("30")
+        .spawn()
+        .expect("sleep child");
+    let process_id = i32::try_from(child.id()).expect("child pid");
+    let identity = read_process_identity(&host, process_id, "");
+    let _ignored = child.kill();
+    let _ignored = child.wait();
+    assert!(
+        identity
+            .and_then(|identity| identity.birth_identity)
+            .is_some(),
+        "supported hosts must expose a kernel process-birth identity for a live child"
+    );
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn system_host_keeps_birth_identity_through_child_exec() {
+    let host = SystemProcessIdentityHost::new();
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "sleep 1; exec sleep 30"])
+        .spawn()
+        .expect("exec child");
+    let process_id = i32::try_from(child.id()).expect("child pid");
+    let recorded = read_process_identity(&host, process_id, "").expect("wrapper identity");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut validation = validate_process_identity_with_policy(
+        &host,
+        &recorded,
+        ProcessIdentityValidationPolicy::AllowCommandTransition,
+    );
+    while !(validation.ok
+        && validation
+            .current
+            .as_ref()
+            .is_some_and(|current| current.command_signature != recorded.command_signature))
+        && Instant::now() < deadline
+    {
+        thread::sleep(Duration::from_millis(50));
+        validation = validate_process_identity_with_policy(
+            &host,
+            &recorded,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+        );
+    }
+    let _ignored = child.kill();
+    let _ignored = child.wait();
+    assert!(
+        validation
+            .current
+            .as_ref()
+            .is_some_and(|current| current.command_signature != recorded.command_signature),
+        "child did not exec before deadline: {validation:?}"
+    );
+    assert!(validation.ok, "exec validation failed: {validation:?}");
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn system_host_marks_a_reaped_child_birth_probe_missing() {
+    let host = SystemProcessIdentityHost::new();
+    let mut child = Command::new("/usr/bin/true").spawn().expect("true child");
+    let process_id = i32::try_from(child.id()).expect("child pid");
+    child.wait().expect("reap true child");
+    assert!(matches!(
+        host.probe_process_birth_identity(process_id),
+        ProcessBirthIdentityProbeOutput::Missing
+    ));
 }
 
 #[test]
@@ -36,6 +124,10 @@ fn system_host_round_trips_identity_and_kill_log() {
         pid: 7,
         pgid: 7,
         start_time: "start".to_owned(),
+        birth_identity: Some(ProcessBirthIdentity::Darwin {
+            seconds: 1,
+            microseconds: 7,
+        }),
         command_signature: "cmd".to_owned(),
         expected_signature: "cmd".to_owned(),
     };

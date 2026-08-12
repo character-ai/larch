@@ -4335,7 +4335,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
         assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
         assert 'RUST_COVERAGE_LINKER: "runner-default"' in coverage_job
-    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "1350000000"' in rust_full_job
+    assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "1400000000"' in rust_full_job
     assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage_benchmark
     assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage_benchmark
     assert "path: target/llvm-cov-target" in coverage_target_restore
@@ -4346,6 +4346,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo-nextest" not in coverage_target_restore
     assert "cargo-llvm-cov" not in coverage_target_restore
     assert "if: env.COVERAGE_TARGET_CACHE_ENABLED == 'true'" in coverage_target_restore
+    cargo_inputs_candidate = rust_lint.split("Stage Cargo inputs cache candidate", 1)[1].split(
+        "Upload Cargo inputs cache candidate", 1
+    )[0]
+    assert 'mkdir -p "$HOME/.cargo/git"' in cargo_inputs_candidate
+    assert '--source "git=$HOME/.cargo/git"' in cargo_inputs_candidate
     assert 'cargo clean --workspace --target-dir "$coverage_target_dir"' in coverage_target_prune
     for run_specific_output in (
         "*.profraw",

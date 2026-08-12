@@ -53,9 +53,100 @@ pub struct RecordedProcessIdentity {
     pub pid: i32,
     pub pgid: i32,
     pub start_time: String,
+    /// Kernel-supplied process birth identity. Records written before this
+    /// field existed deliberately fail closed rather than authorizing a
+    /// signal from only a second-resolution `ps` timestamp.
+    #[serde(default)]
+    pub birth_identity: Option<ProcessBirthIdentity>,
     pub command_signature: String,
     #[serde(default)]
     pub expected_signature: String,
+}
+
+/// Strong, kernel-derived process birth identity that survives `exec`.
+///
+/// The representation is intentionally platform-specific. Darwin exposes a
+/// microsecond creation timestamp through `proc_pidinfo`; Linux combines the
+/// boot UUID with the process's `/proc/<pid>/stat` start tick. Neither value
+/// changes when a process replaces its image with `exec`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "platform", rename_all = "kebab-case")]
+pub enum ProcessBirthIdentity {
+    /// Darwin `proc_bsdinfo` creation timestamp.
+    Darwin {
+        /// Seconds since the Unix epoch.
+        seconds: u64,
+        /// Microseconds within `seconds`.
+        microseconds: u64,
+    },
+    /// Linux boot UUID plus `/proc/<pid>/stat` field 22.
+    Linux {
+        /// UUID for the current kernel boot.
+        boot_id: String,
+        /// Process start clock ticks since boot.
+        start_ticks: u64,
+    },
+}
+
+impl ProcessBirthIdentity {
+    /// Render the single-line durable registry representation.
+    #[must_use]
+    pub fn wire_value(&self) -> String {
+        match self {
+            Self::Darwin {
+                seconds,
+                microseconds,
+            } => format!("darwin:{seconds}:{microseconds}"),
+            Self::Linux {
+                boot_id,
+                start_ticks,
+            } => format!("linux:{boot_id}:{start_ticks}"),
+        }
+    }
+
+    /// Parse a durable registry representation.
+    #[must_use]
+    pub fn parse_wire_value(value: &str) -> Option<Self> {
+        let mut parts = value.split(':');
+        let platform = parts.next()?;
+        let first = parts.next()?;
+        let second = parts.next()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        let identity = match platform {
+            "darwin" => Self::Darwin {
+                seconds: first.parse().ok()?,
+                microseconds: second.parse().ok()?,
+            },
+            "linux" if is_linux_boot_id(first) => Self::Linux {
+                boot_id: first.to_owned(),
+                start_ticks: second.parse().ok()?,
+            },
+            _ => return None,
+        };
+        identity.is_valid().then_some(identity)
+    }
+
+    /// Return whether this value is structurally safe to persist or compare.
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Self::Darwin { microseconds, .. } => *microseconds < 1_000_000,
+            Self::Linux { boot_id, .. } => is_linux_boot_id(boot_id),
+        }
+    }
+}
+
+fn is_linux_boot_id(value: &str) -> bool {
+    value.len() == 36
+        && value.chars().enumerate().all(|(index, character)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                character == '-'
+            } else {
+                character.is_ascii_hexdigit()
+            }
+        })
 }
 
 /// Outcome of comparing a recorded identity against the live process.
@@ -118,9 +209,10 @@ pub enum TerminateSignal {
 /// Command-signature policy for a persisted process identity.
 ///
 /// A freshly captured wrapper normally retains an exact command signature. A
-/// child that deliberately `exec`s keeps its PID, process group, and start
-/// time but necessarily changes that command text; its owning runtime may opt
-/// into the latter policy without relaxing the PID-reuse checks.
+/// child that deliberately `exec`s keeps its PID, process group, start time,
+/// and kernel birth identity but necessarily changes that command text; its
+/// owning runtime may opt into the latter policy without relaxing the
+/// PID-reuse checks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessIdentityValidationPolicy {
     /// Require the exact captured command and expected command substring.
@@ -153,12 +245,33 @@ pub enum IdentityProbeOutput {
     Error,
 }
 
+/// Outcome of a kernel process-birth-identity probe.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProcessBirthIdentityProbeOutput {
+    /// A validated kernel identity for the current process incarnation.
+    Identity(ProcessBirthIdentity),
+    /// The process is gone.
+    Missing,
+    /// The current platform has no supported kernel identity source.
+    Unsupported,
+    /// The host could not safely capture the identity.
+    Error,
+}
+
 /// Injectable host surface for process identity and signaling.
 pub trait ProcessIdentityHost {
     /// Return the process group id for `pid`, or `None` when the pid is gone.
     fn get_pgid(&self, pid: i32) -> Option<i32>;
     /// Run `ps -p <pid> -o lstart= -o command=` and classify the outcome.
     fn probe_ps_identity(&self, pid: i32) -> IdentityProbeOutput;
+    /// Capture a kernel process-birth identity for `pid`.
+    ///
+    /// The default deliberately fails closed for test hosts and unsupported
+    /// platforms. Production hosts must implement a supported source before
+    /// persisted process identities can be captured or signaled.
+    fn probe_process_birth_identity(&self, _pid: i32) -> ProcessBirthIdentityProbeOutput {
+        ProcessBirthIdentityProbeOutput::Unsupported
+    }
     /// Enumerate direct children of `pid` via `pgrep -P`.
     fn pgrep_children(&self, pid: i32) -> Vec<i32>;
     /// Enumerate members of process group `pgid` via `pgrep -g`.
@@ -259,6 +372,7 @@ pub fn parse_ps_identity(
             pid: process_id,
             pgid: process_group_id,
             start_time: normalize_command_signature(&start_parts.join(" ")),
+            birth_identity: None,
             command_signature: normalize_command_signature(&command),
             expected_signature: normalize_command_signature(expected_signature),
         });
@@ -281,6 +395,19 @@ pub fn probe_process_identity(
             failure_reason,
         };
     }
+    // Read the kernel identity before looking up `ps`. If the PID is reused
+    // while the weaker text fields are being collected, the closing birth
+    // probe below makes that mixed snapshot fail instead of persisting the
+    // new process's birth identity alongside the old process's `ps` data.
+    let first_birth_identity = match read_birth_identity(host, process_id) {
+        Ok(identity) => identity,
+        Err(reason) => {
+            return ProcessIdentityProbeResult {
+                identity: None,
+                failure_reason: reason.to_owned(),
+            };
+        }
+    };
     let Some(process_group_id) = host.get_pgid(process_id) else {
         return ProcessIdentityProbeResult {
             identity: None,
@@ -292,19 +419,66 @@ pub fn probe_process_identity(
         IdentityProbeOutput::Timeout => failure_reason = String::from("identity-probe-timeout"),
         IdentityProbeOutput::Missing => {}
         IdentityProbeOutput::Stdout(stdout) => {
-            if let Some(identity) =
+            if let Some(mut identity) =
                 parse_ps_identity(process_id, process_group_id, &stdout, expected_signature)
             {
+                let Some(final_process_group_id) = host.get_pgid(process_id) else {
+                    return ProcessIdentityProbeResult {
+                        identity: None,
+                        failure_reason: "missing-pid".to_owned(),
+                    };
+                };
+                if final_process_group_id != process_group_id {
+                    return ProcessIdentityProbeResult {
+                        identity: None,
+                        failure_reason: "pgid-changed-during-identity-probe".to_owned(),
+                    };
+                }
+                let final_birth_identity = match read_birth_identity(host, process_id) {
+                    Ok(identity) => identity,
+                    Err(reason) => {
+                        return ProcessIdentityProbeResult {
+                            identity: None,
+                            failure_reason: reason.to_owned(),
+                        };
+                    }
+                };
+                if first_birth_identity != final_birth_identity {
+                    return ProcessIdentityProbeResult {
+                        identity: None,
+                        failure_reason: "process-birth-identity-unstable".to_owned(),
+                    };
+                }
+                identity.birth_identity = Some(first_birth_identity);
                 return ProcessIdentityProbeResult {
                     identity: Some(identity),
                     failure_reason: String::new(),
                 };
             }
+            // A successful `ps` invocation that does not conform to its
+            // allowlisted format is not proof that the PID disappeared.
+            // Keep recovery and cleanup fail-closed instead of treating an
+            // unreadable live process as safely absent.
+            failure_reason = String::from("identity-probe-error");
         }
     }
     ProcessIdentityProbeResult {
         identity: None,
         failure_reason,
+    }
+}
+
+fn read_birth_identity(
+    host: &dyn ProcessIdentityHost,
+    process_id: i32,
+) -> Result<ProcessBirthIdentity, &'static str> {
+    match host.probe_process_birth_identity(process_id) {
+        ProcessBirthIdentityProbeOutput::Identity(identity) if identity.is_valid() => Ok(identity),
+        ProcessBirthIdentityProbeOutput::Identity(_) | ProcessBirthIdentityProbeOutput::Error => {
+            Err("process-birth-identity-probe-error")
+        }
+        ProcessBirthIdentityProbeOutput::Missing => Err("missing-pid"),
+        ProcessBirthIdentityProbeOutput::Unsupported => Err("process-birth-identity-unsupported"),
     }
 }
 
@@ -380,6 +554,27 @@ pub fn validate_process_identity_with_policy(
         return ValidationResult {
             ok: false,
             reason: "start-time-mismatch".to_owned(),
+            current: Some(current),
+        };
+    }
+    let Some(recorded_birth_identity) = recorded.birth_identity.as_ref() else {
+        return ValidationResult {
+            ok: false,
+            reason: "missing-process-birth-identity".to_owned(),
+            current: Some(current),
+        };
+    };
+    if !recorded_birth_identity.is_valid() {
+        return ValidationResult {
+            ok: false,
+            reason: "invalid-process-birth-identity".to_owned(),
+            current: Some(current),
+        };
+    }
+    if current.birth_identity.as_ref() != Some(recorded_birth_identity) {
+        return ValidationResult {
+            ok: false,
+            reason: "process-birth-identity-mismatch".to_owned(),
             current: Some(current),
         };
     }
@@ -521,12 +716,26 @@ struct SignalRequest<'a> {
     reason: &'a str,
 }
 
-fn signal_group_and_descendants(host: &dyn ProcessIdentityHost, request: &SignalRequest<'_>) {
+fn signal_group_and_descendants(
+    host: &dyn ProcessIdentityHost,
+    request: &SignalRequest<'_>,
+    policy: ProcessIdentityValidationPolicy,
+) -> ValidationResult {
+    let initial = validate_process_identity_with_policy(host, request.recorded, policy);
+    if !initial.ok {
+        return initial;
+    }
     let snapshot = KillTargetSnapshot {
         pid: request.recorded.pid,
         pgid: request.recorded.pgid,
         descendants: request.descendants.to_vec(),
-        command: request.command.to_owned(),
+        command: initial
+            .current
+            .as_ref()
+            .map_or(request.command, |current| {
+                current.command_signature.as_str()
+            })
+            .to_owned(),
     };
     log_signal(
         host,
@@ -536,26 +745,19 @@ fn signal_group_and_descendants(host: &dyn ProcessIdentityHost, request: &Signal
         request.caller,
         request.reason,
     );
-    host.signal_group(request.recorded.pgid, request.signal);
-    for child in request.descendants {
-        append_kill_log(
-            host,
-            request.log_path,
-            &KillLogEvent {
-                event: "signal".to_owned(),
-                signal: request.signal.name().to_owned(),
-                pid: *child,
-                pgid: request.recorded.pgid,
-                command: String::new(),
-                caller: request.caller.to_owned(),
-                reason: request.reason.to_owned(),
-                descendants: Vec::new(),
-                tmpdir_needle: String::new(),
-                physical_needle: String::new(),
-            },
-        );
-        let _ = host.signal_process(*child, request.signal);
+    // The log records intent before the external effect. Revalidate after
+    // that write so the actual signal follows the strongest available kernel
+    // identity check as closely as the platform's separate validation and
+    // `killpg` APIs permit.
+    let validation = validate_process_identity_with_policy(host, request.recorded, policy);
+    if !validation.ok {
+        return validation;
     }
+    host.signal_group(request.recorded.pgid, request.signal);
+    // Group signaling reaches descendants that remain in the owned group.
+    // Do not separately signal a stale descendant PID: its identity was not
+    // persisted and it could now name an unrelated process.
+    validation
 }
 
 /// Terminate a process group only when the recorded identity still matches.
@@ -601,9 +803,9 @@ pub fn terminate_validated_process_group_with_policy(
         // let the caller prove absence; never signal an unrelated group.
         return validation;
     }
-    let current = validation.current.unwrap_or_else(|| recorded.clone());
     let descendants = collect_descendants(host, recorded.pid);
-    signal_group_and_descendants(
+    let current = validation.current.unwrap_or_else(|| recorded.clone());
+    let validation = signal_group_and_descendants(
         host,
         &SignalRequest {
             log_path,
@@ -614,15 +816,12 @@ pub fn terminate_validated_process_group_with_policy(
             caller,
             reason,
         },
+        policy,
     );
-    host.sleep(TERMINATE_ESCALATION_SLEEP);
-    let validation = validate_process_identity_with_policy(host, recorded, policy);
-    if !validation.ok && validation.reason != "missing-pid" {
-        return validation;
-    }
     if !validation.ok {
         return validation;
     }
+    host.sleep(TERMINATE_ESCALATION_SLEEP);
     let kill_descendants = collect_descendants(host, recorded.pid);
     let command = validation
         .current
@@ -641,8 +840,8 @@ pub fn terminate_validated_process_group_with_policy(
             caller,
             reason,
         },
-    );
-    validation
+        policy,
+    )
 }
 
 /// Terminate a process group and prove that no member remains.
@@ -742,6 +941,12 @@ pub fn identity_to_json(
         "start_time".to_owned(),
         Value::String(recorded.start_time.clone()),
     );
+    if let Some(birth_identity) = recorded.birth_identity.as_ref() {
+        payload.insert(
+            "birth_identity".to_owned(),
+            serde_json::to_value(birth_identity).unwrap_or(Value::Null),
+        );
+    }
     payload.insert(
         "command_signature".to_owned(),
         Value::String(recorded.command_signature.clone()),
@@ -788,6 +993,10 @@ pub fn read_identity_record(
         pid: object.get("pid")?.as_i64()?.try_into().ok()?,
         pgid: object.get("pgid")?.as_i64()?.try_into().ok()?,
         start_time: object.get("start_time")?.as_str()?.to_owned(),
+        birth_identity: object
+            .get("birth_identity")
+            .and_then(|value| serde_json::from_value::<ProcessBirthIdentity>(value.clone()).ok())
+            .filter(ProcessBirthIdentity::is_valid),
         command_signature: object.get("command_signature")?.as_str()?.to_owned(),
         expected_signature: object
             .get("expected_signature")
@@ -1122,6 +1331,9 @@ mod tests {
     struct FakeHost {
         pgid: HashMap<i32, i32>,
         ps: RefCell<HashMap<i32, Vec<IdentityProbeOutput>>>,
+        birth: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
+        ps_birth_after: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
+        birth_after_log: RefCell<Option<(i32, Vec<ProcessBirthIdentityProbeOutput>)>>,
         children: HashMap<i32, Vec<i32>>,
         groups: HashMap<i32, Vec<i32>>,
         parents: HashMap<i32, i32>,
@@ -1133,6 +1345,13 @@ mod tests {
         wall: RefCell<f64>,
         current_pid: i32,
         parent_pid: i32,
+    }
+
+    fn fake_birth_identity(pid: i32) -> ProcessBirthIdentity {
+        ProcessBirthIdentity::Darwin {
+            seconds: 1,
+            microseconds: u64::try_from(pid).unwrap_or_default(),
+        }
     }
 
     impl ProcessIdentityHost for FakeHost {
@@ -1147,7 +1366,24 @@ mod tests {
             if queue.is_empty() {
                 return IdentityProbeOutput::Missing;
             }
-            queue.remove(0)
+            let result = queue.remove(0);
+            if let Some(replacement) = self.ps_birth_after.borrow_mut().remove(&pid) {
+                self.birth.borrow_mut().insert(pid, replacement);
+            }
+            result
+        }
+        fn probe_process_birth_identity(&self, pid: i32) -> ProcessBirthIdentityProbeOutput {
+            let mut birth = self.birth.borrow_mut();
+            if let Some(queue) = birth.get_mut(&pid)
+                && !queue.is_empty()
+            {
+                return queue.remove(0);
+            }
+            self.pgid
+                .get(&pid)
+                .map_or(ProcessBirthIdentityProbeOutput::Missing, |_| {
+                    ProcessBirthIdentityProbeOutput::Identity(fake_birth_identity(pid))
+                })
         }
         fn pgrep_children(&self, pid: i32) -> Vec<i32> {
             self.children.get(&pid).cloned().unwrap_or_default()
@@ -1188,6 +1424,9 @@ mod tests {
         fn append_kill_log_line(&self, path: &Path, line: &str) {
             let mut files = self.files.borrow_mut();
             files.entry(path.to_path_buf()).or_default().push_str(line);
+            if let Some((pid, replacement)) = self.birth_after_log.borrow_mut().take() {
+                self.birth.borrow_mut().insert(pid, replacement);
+            }
         }
         fn write_identity_file(&self, path: &Path, text: &str) -> Result<(), String> {
             self.files
@@ -1219,6 +1458,7 @@ mod tests {
             pid: 123,
             pgid: 123,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(123)),
             command_signature: "/usr/bin/python3 /repo/python/cli.py plan-review run".to_owned(),
             expected_signature: "plan-review run".to_owned(),
         }
@@ -1263,23 +1503,21 @@ mod tests {
     }
 
     #[test]
-    fn exec_policy_keeps_pid_reuse_and_group_validation_fail_closed() {
+    fn exec_policy_requires_a_matching_birth_identity() {
         let mut host = FakeHost::default();
         host.pgid.insert(123, 123);
         host.ps.borrow_mut().insert(
             123,
             vec![
-                ps_stdout("sleep 60"),
-                ps_stdout("sleep 60"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("child after exec"),
+                ps_stdout("unrelated recycled command"),
                 ps_stdout("unrelated recycled command"),
                 ps_stdout("unrelated recycled command"),
             ],
         );
         let recorded = recorded();
-        assert_eq!(
-            validate_process_identity(&host, &recorded).reason,
-            "command-mismatch"
-        );
+        assert_eq!(validate_process_identity(&host, &recorded).reason, "ok");
         assert!(
             validate_process_identity_with_policy(
                 &host,
@@ -1287,6 +1525,32 @@ mod tests {
                 ProcessIdentityValidationPolicy::AllowCommandTransition,
             )
             .ok
+        );
+
+        // All of these fields deliberately collide with the recorded row,
+        // including the second-resolution `lstart` value. Only the kernel
+        // birth identity distinguishes an unrelated PID reuse.
+        host.birth.borrow_mut().insert(
+            123,
+            vec![
+                ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+                    seconds: 2,
+                    microseconds: 123,
+                }),
+                ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+                    seconds: 2,
+                    microseconds: 123,
+                }),
+            ],
+        );
+        assert_eq!(
+            validate_process_identity_with_policy(
+                &host,
+                &recorded,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
+            )
+            .reason,
+            "process-birth-identity-mismatch"
         );
 
         let mut stale = recorded.clone();
@@ -1311,17 +1575,104 @@ mod tests {
             .reason,
             "pgid-mismatch"
         );
+
+        host.pgid.insert(123, 123);
+        host.ps
+            .borrow_mut()
+            .insert(123, vec![ps_stdout("unrelated recycled command")]);
+        host.birth.borrow_mut().insert(
+            123,
+            vec![
+                ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+                    seconds: 2,
+                    microseconds: 123,
+                }),
+                ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+                    seconds: 2,
+                    microseconds: 123,
+                }),
+            ],
+        );
+        let result = terminate_validated_process_group_with_policy(
+            &host,
+            &recorded,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+            None,
+            "test",
+            "same-second-pid-reuse",
+        );
+        assert_eq!(result.reason, "process-birth-identity-mismatch");
+        assert!(
+            host.signals.borrow().is_empty(),
+            "a same-second PID and PGID collision must receive no signal"
+        );
     }
 
     #[test]
-    fn pid_reuse_does_not_signal_mismatched_process() {
+    fn capture_rejects_pid_reuse_while_ps_snapshot_is_collected() {
         let mut host = FakeHost::default();
         host.pgid.insert(123, 123);
-        // First validation (pre-SIGTERM) matches the recorded identity.
-        // After SIGTERM sleep, the same PID has been reused by an unrelated command.
+        host.ps
+            .borrow_mut()
+            .insert(123, vec![ps_stdout("wrapper before reuse")]);
+        let recycled = ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+            seconds: 2,
+            microseconds: 123,
+        });
+        // The old capture order read `ps` first, so both subsequent birth
+        // probes would have seen the recycled process and accepted a mixed
+        // snapshot. The initial birth probe must bracket `ps` instead.
+        host.ps_birth_after
+            .borrow_mut()
+            .insert(123, vec![recycled.clone(), recycled]);
+
+        let probe = probe_process_identity(&host, 123, "wrapper");
+        assert!(probe.identity.is_none());
+        assert_eq!(probe.failure_reason, "process-birth-identity-unstable");
+    }
+
+    #[test]
+    fn legacy_identity_without_birth_proof_never_authorizes_an_exec_signal() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.ps.borrow_mut().insert(
+            123,
+            vec![ps_stdout("child after exec"), ps_stdout("child after exec")],
+        );
+        let mut legacy = recorded();
+        legacy.birth_identity = None;
+        assert_eq!(
+            validate_process_identity_with_policy(
+                &host,
+                &legacy,
+                ProcessIdentityValidationPolicy::AllowCommandTransition,
+            )
+            .reason,
+            "missing-process-birth-identity"
+        );
+        let result = terminate_validated_process_group_with_policy(
+            &host,
+            &legacy,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+            Some(Path::new("/tmp/legacy-identity.jsonl")),
+            "test",
+            "legacy",
+        );
+        assert_eq!(result.reason, "missing-process-birth-identity");
+        assert!(host.signals.borrow().is_empty());
+    }
+
+    #[test]
+    fn pid_reuse_after_log_does_not_signal_a_mismatched_process() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        // The first two validations match the recorded identity. The target
+        // is then replaced after intent is logged but before the kernel group
+        // signal. A revalidation must prevent that signal entirely.
         host.ps.borrow_mut().insert(
             123,
             vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("unrelated recycled command"),
             ],
@@ -1336,13 +1687,47 @@ mod tests {
         );
         assert_eq!(result.reason, "command-mismatch");
         let signals = host.signals.borrow().clone();
-        assert_eq!(signals.len(), 1);
-        assert_eq!(signals[0], (123, TerminateSignal::Term, true));
+        assert!(signals.is_empty());
         assert!(
-            !signals
-                .iter()
-                .any(|(_, signal, _)| *signal == TerminateSignal::Kill),
-            "PID reuse must not escalate to SIGKILL"
+            host.files
+                .borrow()
+                .get(Path::new("/tmp/kill.jsonl"))
+                .is_some_and(|text| text.contains("\"signal\":\"SIGTERM\"")),
+            "the durable log still records the intended, but rejected, signal"
+        );
+    }
+
+    #[test]
+    fn exec_policy_revalidates_birth_identity_after_logging_intent() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("child after exec"),
+                ps_stdout("unrelated recycled command"),
+            ],
+        );
+        host.children.insert(123, Vec::new());
+        let recycled = ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+            seconds: 2,
+            microseconds: 123,
+        });
+        *host.birth_after_log.borrow_mut() = Some((123, vec![recycled.clone(), recycled]));
+
+        let result = terminate_validated_process_group_with_policy(
+            &host,
+            &recorded(),
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+            Some(Path::new("/tmp/exec-after-log.jsonl")),
+            "test",
+            "same-second-pid-reuse",
+        );
+        assert_eq!(result.reason, "process-birth-identity-mismatch");
+        assert!(
+            host.signals.borrow().is_empty(),
+            "an exec-capable row must not signal after its birth identity changes"
         );
     }
 
@@ -1353,6 +1738,9 @@ mod tests {
         host.ps.borrow_mut().insert(
             123,
             vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
             ],
@@ -1367,9 +1755,13 @@ mod tests {
         let text = host.files.borrow().get(&log).cloned().unwrap();
         assert!(text.contains("\"signal\":\"SIGTERM\""));
         let signals = host.signals.borrow().clone();
-        assert!(signals.contains(&(123, TerminateSignal::Term, true)));
-        assert!(signals.contains(&(10, TerminateSignal::Term, false)));
-        assert!(signals.contains(&(11, TerminateSignal::Kill, false)));
+        assert_eq!(
+            signals,
+            vec![
+                (123, TerminateSignal::Term, true),
+                (123, TerminateSignal::Kill, true),
+            ]
+        );
     }
 
     #[test]
@@ -1510,6 +1902,13 @@ mod tests {
             probe_process_identity(&host, 5, "").failure_reason,
             "identity-probe-error"
         );
+        host.ps
+            .borrow_mut()
+            .insert(5, vec![IdentityProbeOutput::Stdout(String::new())]);
+        assert_eq!(
+            probe_process_identity(&host, 5, "").failure_reason,
+            "identity-probe-error"
+        );
         assert!(!result_env_has_step3_status(&host, Path::new("/tmp/x"), 1));
         assert_eq!(await_loop_identity(&host, "relative", "1", "1", false), 1);
         assert_eq!(await_loop_identity(&host, "/tmp/x", "abc", "1", false), 1);
@@ -1526,6 +1925,7 @@ mod tests {
             pid: 7,
             pgid: 7,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(7)),
             command_signature: "loop".to_owned(),
             expected_signature: "loop".to_owned(),
         };
@@ -1556,7 +1956,13 @@ mod tests {
         let matching = ps_stdout("worker cmd");
         host.ps.borrow_mut().insert(
             50,
-            vec![matching.clone(), matching, IdentityProbeOutput::Missing],
+            vec![
+                matching.clone(),
+                matching.clone(),
+                matching.clone(),
+                matching.clone(),
+                matching,
+            ],
         );
         host.ps.borrow_mut().insert(
             51,
@@ -1570,12 +1976,26 @@ mod tests {
             pid: 50,
             pgid: 50,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(50)),
             command_signature: "worker cmd".to_owned(),
             expected_signature: "worker".to_owned(),
         };
         let path = PathBuf::from("/tmp/identity-roundtrip.json");
         write_identity_record(&host, &path, &recorded, None).expect("write");
         assert_eq!(read_identity_record(&host, &path), Some(recorded.clone()));
+        let persisted = host.files.borrow().get(&path).cloned().unwrap_or_default();
+        assert!(persisted.contains("\"birth_identity\""));
+        let mut legacy: Value = serde_json::from_str(&persisted).expect("identity JSON");
+        legacy
+            .as_object_mut()
+            .expect("identity object")
+            .remove("birth_identity");
+        host.files.borrow_mut().insert(
+            path.clone(),
+            serde_json::to_string(&legacy).expect("legacy identity JSON"),
+        );
+        let legacy = read_identity_record(&host, &path).expect("legacy identity record");
+        assert!(legacy.birth_identity.is_none());
         let validation = terminate_validated_process_group(
             &host,
             &recorded,
@@ -1601,6 +2021,7 @@ mod tests {
             pid: 8,
             pgid: 8,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(8)),
             command_signature: "matching command".to_owned(),
             expected_signature: "matching".to_owned(),
         };
@@ -1651,6 +2072,7 @@ mod tests {
             pid: 8,
             pgid: 8,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(8)),
             command_signature: "matching command".to_owned(),
             expected_signature: "matching".to_owned(),
         };
@@ -1698,6 +2120,7 @@ mod tests {
             pid: 8,
             pgid: 8,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(fake_birth_identity(8)),
             command_signature: "matching command".to_owned(),
             expected_signature: "matching".to_owned(),
         };

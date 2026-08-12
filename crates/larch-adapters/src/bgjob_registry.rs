@@ -8,8 +8,8 @@
 
 use crate::read_kv_raw;
 use larch_core::{
-    ProcessIdentityHost, ProcessIdentityValidationPolicy, RecordedProcessIdentity,
-    validate_process_identity_with_policy,
+    ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
+    RecordedProcessIdentity, validate_process_identity_with_policy,
 };
 use std::{
     fs,
@@ -137,6 +137,10 @@ fn identity(rows: &[(String, String)], prefix: &str) -> Option<RecordedProcessId
         pid: field(rows, &format!("{prefix}_PID"))?.parse().ok()?,
         pgid: field(rows, &format!("{prefix}_PGID"))?.parse().ok()?,
         start_time: field(rows, &format!("{prefix}_START_TIME"))?.to_owned(),
+        birth_identity: Some(ProcessBirthIdentity::parse_wire_value(field(
+            rows,
+            &format!("{prefix}_BIRTH_IDENTITY"),
+        )?)?),
         command_signature: field(rows, &format!("{prefix}_COMMAND"))?.to_owned(),
         expected_signature: field(rows, &format!("{prefix}_EXPECTED"))
             .unwrap_or_default()
@@ -226,7 +230,7 @@ mod tests {
         fs::write(tmpdir.join("bgjob/result.env"), "").expect("result");
         let identity = |prefix: &str| {
             format!(
-                "{prefix}_PID=101\n{prefix}_PGID=4242\n{prefix}_START_TIME=Mon Aug  4 10:00:00 2026\n{prefix}_COMMAND=bash daemon\n{prefix}_EXPECTED=\n"
+                "{prefix}_PID=101\n{prefix}_PGID=4242\n{prefix}_START_TIME=Mon Aug  4 10:00:00 2026\n{prefix}_BIRTH_IDENTITY=darwin:1:101\n{prefix}_COMMAND=bash daemon\n{prefix}_EXPECTED=\n"
             )
         };
         let rows = format!(
@@ -304,6 +308,29 @@ mod tests {
         assert_eq!(validate_slug("step-5"), Some("step-5"));
         assert_eq!(validate_slug("-bad"), None);
         assert_eq!(validate_slug(""), None);
+    }
+
+    #[test]
+    fn legacy_rows_without_birth_identity_are_not_live() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let registry = seed(sandbox.path(), "run-1");
+        let clone = fs::canonicalize(sandbox.path().join("clone")).expect("clone");
+        let path = registry.join("run-1-step-5.env");
+        let legacy = fs::read_to_string(&path)
+            .expect("registry row")
+            .lines()
+            .filter(|line| !line.contains("_BIRTH_IDENTITY="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(path, format!("{legacy}\n")).expect("legacy registry row");
+
+        assert!(!has_live_entry(
+            &registry,
+            &clone,
+            "run-1",
+            &LiveHost(true),
+            1100.0
+        ));
     }
 
     #[test]

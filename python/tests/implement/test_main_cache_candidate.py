@@ -71,6 +71,24 @@ def _replace_manifest_with_empty_object(candidate_dir: Path) -> None:
     _ = candidate_dir.joinpath("manifest.json").write_text("{}\n", encoding="utf-8")
 
 
+def test_candidate_manifest_accepts_reviewed_cargo_metadata_and_remains_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy_maximum_bytes = 4 * 1024 * 1024
+    manifest_path = tmp_path / "manifest.json"
+    padding = "x" * legacy_maximum_bytes
+    _ = manifest_path.write_text(json.dumps({"padding": padding}), encoding="utf-8")
+    manifest_size = manifest_path.stat().st_size
+
+    assert manifest_size > legacy_maximum_bytes
+    assert manifest_size <= candidate._MAX_MANIFEST_BYTES  # pyright: ignore[reportPrivateUsage]  # This is the untrusted-manifest resource boundary.
+    assert candidate._read_manifest(manifest_path) == {"padding": padding}  # pyright: ignore[reportPrivateUsage]  # Exercise the bounded manifest reader directly.
+
+    monkeypatch.setattr(candidate, "_MAX_MANIFEST_BYTES", manifest_size - 1)
+    with pytest.raises(candidate.CandidateError, match="manifest exceeds its size limit"):
+        _ = candidate._read_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]  # Exercise the bounded manifest reader directly.
+
+
 def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: Path) -> None:
     request = _request(tmp_path)
 
@@ -108,6 +126,102 @@ def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: 
         encoding="utf-8"
     ) == "dependency\n"
     assert (output / "llvm-cov-target" / "larch").stat().st_mode & 0o111
+
+
+def test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry"
+    cache_paths = (
+        "cache/index.crates.io-1949cf8c6b5b557f/wasip2-1.0.4+wasi-0.2.12.crate",
+        "index/index.crates.io-1949cf8c6b5b557f/.cache/nu/-a/nu-ansi-term",
+        "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/generated/_impls.rs",
+        "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/Rust Project Developers (#) [@]~",
+    )
+    for relative in cache_paths:
+        path = registry / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text("cache payload\n", encoding="utf-8")
+    git = tmp_path / "git"
+    git.mkdir()
+    request = candidate.CandidateRequest(
+        artifact_name="main-cache-cargo-inputs-candidate",
+        cache_class="cargo-inputs",
+        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        candidate_dir=tmp_path / "candidate",
+        maximum_bytes=1024 * 1024,
+        producer_event="merge_group",
+        producer_job="rust-lint",
+        producer_ref=_PRODUCER_REF,
+        source_sha=_SOURCE_SHA,
+        sources=(
+            candidate.CandidateSource(name="registry", path=registry),
+            candidate.CandidateSource(name="git", path=git),
+        ),
+        tool_versions={"cargo": "cargo test", "rustc": "rustc test"},
+    )
+
+    _ = candidate.stage_candidate(request)
+    output = tmp_path / "promoted"
+    _ = candidate.promote_candidate(
+        candidate_dir=request.candidate_dir,
+        output_dir=output,
+        contract=_contract(request),
+    )
+
+    for relative in cache_paths:
+        assert (output / "registry" / relative).read_text(
+            encoding="utf-8"
+        ) == "cache payload\n"
+
+
+def test_candidate_members_are_lexically_sorted_across_files_and_directories(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    nested = source / "async-std" / "docs" / "src"
+    nested.mkdir(parents=True)
+    _ = (source / "async-std" / "docs" / "src" / "concepts.md").write_text(
+        "root documentation\n", encoding="utf-8"
+    )
+    concepts = nested / "concepts"
+    concepts.mkdir()
+    _ = (concepts / "async-read-write.md").write_text("nested documentation\n", encoding="utf-8")
+    request = candidate.CandidateRequest(
+        artifact_name="main-cache-cargo-inputs-candidate",
+        cache_class="cargo-inputs",
+        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        candidate_dir=tmp_path / "candidate",
+        maximum_bytes=1024 * 1024,
+        producer_event="merge_group",
+        producer_job="rust-lint",
+        producer_ref=_PRODUCER_REF,
+        source_sha=_SOURCE_SHA,
+        sources=(candidate.CandidateSource(name="registry", path=source),),
+        tool_versions={"cargo": "cargo test", "rustc": "rustc test"},
+    )
+
+    staged = candidate.stage_candidate(request)
+
+    paths = tuple(member.path for member in staged.members)
+    assert paths == tuple(sorted(paths))
+    assert paths == (
+        "payload/registry/async-std/docs/src/concepts.md",
+        "payload/registry/async-std/docs/src/concepts/async-read-write.md",
+    )
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "payload/../escape",
+        "payload/registry/../../escape",
+        "payload/registry/control\nname",
+        r"payload/registry\\escape",
+    ],
+)
+def test_candidate_member_paths_retain_structural_confinement(unsafe_path: str) -> None:
+    assert candidate._MEMBER_PATH_RE.fullmatch(unsafe_path) is None  # pyright: ignore[reportPrivateUsage]  # The private regex is the manifest boundary under test.
 
 
 @pytest.mark.parametrize(

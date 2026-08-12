@@ -11,16 +11,17 @@ use larch_core::{
     BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD,
     BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT,
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
-    OwnerValidationState, ProcessIdentityHost, ProcessIdentityValidationPolicy,
-    RecordedProcessIdentity, RecoveryClaim, RegistryEntry, ValidationResult, bgjob_dir,
-    check_owner_validation, checked_dir, child_identity_policy, child_liveness, claim_recovery,
-    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
-    iter_entries, log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
-    owner_pid_candidate, private_atomic_write, read_entry, read_for, read_process_identity,
-    recovery_claim_entry_path, release_recovery_claim, render_rows, resolve_run_id,
-    result_env_path, result_rows, startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_and_confirm, terminate_validated_process_group_with_policy,
-    unlink_entry, validate_run_id, validate_slug, validate_timing_overrides, write_entry,
+    OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RecoveryClaim, RegistryEntry,
+    ValidationResult, bgjob_dir, check_owner_validation, checked_dir, child_identity_policy,
+    child_liveness, claim_recovery, confirm_process_group_absent, daemon_liveness,
+    daemon_poll_interval_s, ensure_under, epoch_now, iter_entries, log_paths, log_tail, merge_rows,
+    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, private_atomic_write,
+    read_entry, read_for, read_process_identity, recovery_claim_entry_path, release_recovery_claim,
+    render_rows, resolve_run_id, result_env_path, result_rows, startup_env_path,
+    startup_in_progress, startup_rows, terminate_validated_process_group_and_confirm,
+    terminate_validated_process_group_with_policy, unlink_entry, validate_run_id, validate_slug,
+    validate_timing_overrides, write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -314,6 +315,8 @@ fn owner_from_rows(text: &str) -> Option<RecordedProcessIdentity> {
         pid: value("PID")?.parse().ok()?,
         pgid: value("PGID")?.parse().ok()?,
         start_time: value("START_TIME")?,
+        birth_identity: value("BIRTH_IDENTITY")
+            .and_then(|value| ProcessBirthIdentity::parse_wire_value(&value)),
         command_signature: value("COMMAND")?,
         expected_signature: value("EXPECTED").unwrap_or_default(),
     })
@@ -324,6 +327,13 @@ fn owner_rows(owner: &RecordedProcessIdentity) -> Vec<(String, String)> {
         ("PID".to_owned(), owner.pid.to_string()),
         ("PGID".to_owned(), owner.pgid.to_string()),
         ("START_TIME".to_owned(), owner.start_time.clone()),
+        (
+            "BIRTH_IDENTITY".to_owned(),
+            owner
+                .birth_identity
+                .as_ref()
+                .map_or_else(String::new, ProcessBirthIdentity::wire_value),
+        ),
         ("COMMAND".to_owned(), owner.command_signature.clone()),
         ("EXPECTED".to_owned(), owner.expected_signature.clone()),
     ]
@@ -1330,7 +1340,7 @@ mod tests {
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec,
-        OwnerIdentity, RecordedProcessIdentity, ordered_rows, render_rows,
+        OwnerIdentity, ProcessBirthIdentity, RecordedProcessIdentity, ordered_rows, render_rows,
     };
     use std::{
         ffi::OsString,
@@ -1344,6 +1354,10 @@ mod tests {
             pid: 4321,
             pgid: 4321,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(ProcessBirthIdentity::Darwin {
+                seconds: 1,
+                microseconds: 4321,
+            }),
             command_signature: "claude --resume".to_owned(),
             expected_signature: String::new(),
         }
@@ -1498,9 +1512,14 @@ mod tests {
 
     #[test]
     fn owner_identity_round_trips_through_the_daemon_environment() {
-        assert_eq!(
-            owner_from_rows(&render_rows(&owner_rows(&owner()))),
-            Some(owner())
+        let rows = render_rows(&owner_rows(&owner()));
+        assert!(rows.contains("BIRTH_IDENTITY=darwin:1:4321\n"));
+        assert_eq!(owner_from_rows(&rows), Some(owner()));
+        assert!(
+            owner_from_rows(&rows.replace("BIRTH_IDENTITY=darwin:1:4321\n", ""))
+                .expect("legacy owner")
+                .birth_identity
+                .is_none()
         );
         assert_eq!(owner_from_rows("PID=nope\nPGID=1\n"), None);
         assert_eq!(owner_from_rows("PID=1\n"), None);
