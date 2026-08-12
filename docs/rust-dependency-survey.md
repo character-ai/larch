@@ -19,6 +19,14 @@ uses `assert_cmd`, `predicates`, and `tempfile`. Deferred selections stay out of
 `Cargo.lock` until code uses them. This keeps the foundation minimal and makes
 future dependency additions explicit review points.
 
+## Process-birth identity (issue #8400)
+
+The survey rechecked the Darwin process-information surface on 2026-08-11.
+
+| Need | Candidates | Maintenance, license, and fit check | Selection |
+|------|------------|-------------------------------------|-----------|
+| Darwin process-birth identity stable across `exec` | [`libproc` 0.14.11](https://crates.io/crates/libproc/0.14.11), handwritten `proc_pidinfo` FFI, `ps -o lstart` | `libproc` is maintained, MIT licensed, and exposes the Darwin `proc_bsdinfo` creation seconds and microseconds through a safe Rust API. Handwritten FFI would violate the workspace `unsafe_code` prohibition. `ps` supplies only a second-resolution display timestamp, so it cannot distinguish same-second PID reuse. | Add target-specific `libproc` only to `larch-adapters`. Use `BSDInfo` creation time on Darwin. Linux needs no new crate: its kernel boot UUID plus `/proc/<pid>/stat` start ticks provides the equivalent durable identity. Its build-only bindgen graph retains `itertools` 0.13 and `shlex` 1, so `deny.toml` names those exact reviewed duplicate exceptions. |
+
 ## S3-compatible object storage (issue #8077)
 
 The survey rechecked object-storage metadata on 2026-08-05. The official

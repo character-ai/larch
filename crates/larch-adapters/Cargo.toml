@@ -49,6 +49,9 @@ x509-cert.workspace = true
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libproc.workspace = true
+
 [dev-dependencies]
 aws-smithy-runtime-api.workspace = true
 google-cloud-gax.workspace = true

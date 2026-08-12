@@ -402,7 +402,8 @@ mod tests {
         startup_in_progress, startup_rows, timing_override_or_default,
     };
     use crate::{
-        IdentityProbeOutput, ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
+        IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
+        ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
     };
     use std::{path::Path, time::Duration};
 
@@ -421,6 +422,18 @@ mod tests {
             } else {
                 IdentityProbeOutput::Missing
             }
+        }
+
+        fn probe_process_birth_identity(&self, pid: i32) -> ProcessBirthIdentityProbeOutput {
+            self.live
+                .then_some(ProcessBirthIdentity::Darwin {
+                    seconds: 1,
+                    microseconds: u64::try_from(pid).unwrap_or_default(),
+                })
+                .map_or(
+                    ProcessBirthIdentityProbeOutput::Missing,
+                    ProcessBirthIdentityProbeOutput::Identity,
+                )
         }
 
         fn pgrep_children(&self, _pid: i32) -> Vec<i32> {
@@ -499,6 +512,10 @@ mod tests {
             pid: 4321,
             pgid: 4321,
             start_time: "Fri Jul 3 17:01:02 2026".to_owned(),
+            birth_identity: Some(ProcessBirthIdentity::Darwin {
+                seconds: 1,
+                microseconds: 4321,
+            }),
             command_signature: "owner".to_owned(),
             expected_signature: String::new(),
         }

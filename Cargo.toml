@@ -39,6 +39,7 @@ http-body = { version = "1.0.1", default-features = false }
 http-body-util = { version = "0.1.4", default-features = false }
 indexmap = { version = "2.14.0", default-features = false, features = ["serde", "std"] }
 inventory = { version = "0.3.24", default-features = false }
+libproc = { version = "=0.14.11", default-features = false }
 larch-adapters = { version = "=56.2.2", path = "crates/larch-adapters" }
 larch-core = { version = "=56.2.2", path = "crates/larch-core" }
 larch-harness-mark = { version = "=56.2.2", path = "crates/larch-harness-mark" }

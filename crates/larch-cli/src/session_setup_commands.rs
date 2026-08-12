@@ -657,8 +657,8 @@ fn create_session_directory(prefix: &str) -> Result<PendingSessionDirectory, Set
 }
 
 /// Capture a stable-enough identity for the process that owns an unpublished
-/// setup directory. A marker without a start time would conflate a reused PID
-/// with the original setup owner during crash recovery.
+/// setup directory. A marker without its kernel birth identity would conflate
+/// a same-second reused PID with the original setup owner during crash recovery.
 fn setup_owner_identity() -> Result<SessionSetupOwner, String> {
     let pid = std::process::id();
     let process_id = i32::try_from(pid)
@@ -666,7 +666,10 @@ fn setup_owner_identity() -> Result<SessionSetupOwner, String> {
     let host = SystemProcessIdentityHost::new();
     let identity = read_process_identity(&host, process_id, "")
         .ok_or_else(|| "failed to record session setup owner identity".to_owned())?;
-    SessionSetupOwner::new(pid, &identity.start_time)
+    let birth_identity = identity
+        .birth_identity
+        .ok_or_else(|| "failed to record session setup owner birth identity".to_owned())?;
+    SessionSetupOwner::new(pid, &identity.start_time, birth_identity)
         .ok_or_else(|| "failed to record session setup owner identity".to_owned())
 }
 

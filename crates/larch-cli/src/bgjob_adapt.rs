@@ -780,6 +780,10 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
             identity.pid > 0
                 && identity.pgid > 0
                 && !identity.start_time.is_empty()
+                && identity
+                    .birth_identity
+                    .as_ref()
+                    .is_some_and(larch_core::ProcessBirthIdentity::is_valid)
                 && !identity.command_signature.is_empty()
         };
         if entry.start_epoch <= 0
@@ -1378,7 +1382,7 @@ mod tests {
         unlink_regular_under, valid_owner_pid, validate_design_tmpdir, validate_started_stdout,
         write_stdout,
     };
-    use larch_core::{RecordedProcessIdentity, shell_quote, write_entry_at};
+    use larch_core::{ProcessBirthIdentity, RecordedProcessIdentity, shell_quote, write_entry_at};
     use std::{
         env,
         ffi::OsString,
@@ -1402,6 +1406,10 @@ mod tests {
                 pid,
                 pgid: 303,
                 start_time: format!("start-{pid}"),
+                birth_identity: Some(ProcessBirthIdentity::Darwin {
+                    seconds: 1,
+                    microseconds: u64::try_from(pid).unwrap_or_default(),
+                }),
                 command_signature: "fake-command".to_owned(),
                 expected_signature: String::new(),
             }

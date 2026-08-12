@@ -6,11 +6,14 @@ use crate::{
 };
 use larch_core::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
-    IdentityProbeOutput, PROCESS_IDENTITY_PS_TIMEOUT, ProcessErrorKind, ProcessIdentityHost,
-    ProcessRequest, TerminateSignal,
+    IdentityProbeOutput, PROCESS_IDENTITY_PS_TIMEOUT, ProcessBirthIdentity,
+    ProcessBirthIdentityProbeOutput, ProcessErrorKind, ProcessIdentityHost, ProcessRequest,
+    TerminateSignal,
 };
 
 const SYSTEM_HOST_UTILITY_PATH: &str = "/usr/bin:/bin";
+#[cfg(target_os = "macos")]
+use nix::errno::Errno;
 use nix::{
     sys::signal::{Signal, kill, killpg},
     unistd::{Pid, getpgid, getppid},
@@ -116,8 +119,29 @@ impl ProcessIdentityHost for SystemProcessIdentityHost {
         ) {
             Ok((0, stdout)) => IdentityProbeOutput::Stdout(stdout),
             Err(ProcessErrorKind::TimedOut) => IdentityProbeOutput::Timeout,
-            Err(ProcessErrorKind::Spawn | ProcessErrorKind::Input) => IdentityProbeOutput::Error,
-            Ok(_) | Err(_) => IdentityProbeOutput::Missing,
+            // POSIX `ps` uses status 1 when it finds no matching process.
+            // Every other process-runner failure is unverifiable rather than
+            // proof that the PID is absent.
+            Ok((1, _)) => IdentityProbeOutput::Missing,
+            Ok(_) | Err(_) => IdentityProbeOutput::Error,
+        }
+    }
+
+    fn probe_process_birth_identity(&self, process_id: i32) -> ProcessBirthIdentityProbeOutput {
+        if process_id <= 0 {
+            return ProcessBirthIdentityProbeOutput::Missing;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            darwin_process_birth_identity(process_id)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            linux_process_birth_identity(process_id)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            ProcessBirthIdentityProbeOutput::Unsupported
         }
     }
 
@@ -312,4 +336,62 @@ fn parse_pid_list(stdout: &str) -> Vec<i32> {
         }
     }
     process_ids
+}
+
+#[cfg(target_os = "macos")]
+fn darwin_process_birth_identity(process_id: i32) -> ProcessBirthIdentityProbeOutput {
+    let info = match libproc::proc_pid::pidinfo::<libproc::bsd_info::BSDInfo>(process_id, 0) {
+        Ok(info) => info,
+        // `libproc` exposes an error string rather than errno. Confirm an
+        // absent PID through `getpgid` so a process that died between probes
+        // remains distinct from an unreadable live process and does not turn
+        // normal post-SIGTERM confirmation into a probe failure.
+        Err(_) if matches!(getpgid(Some(Pid::from_raw(process_id))), Err(Errno::ESRCH)) => {
+            return ProcessBirthIdentityProbeOutput::Missing;
+        }
+        Err(_) => return ProcessBirthIdentityProbeOutput::Error,
+    };
+    if info.pbi_pid != u32::try_from(process_id).unwrap_or_default() {
+        return ProcessBirthIdentityProbeOutput::Error;
+    }
+    ProcessBirthIdentityProbeOutput::Identity(ProcessBirthIdentity::Darwin {
+        seconds: info.pbi_start_tvsec,
+        microseconds: info.pbi_start_tvusec,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_birth_identity(process_id: i32) -> ProcessBirthIdentityProbeOutput {
+    let stat_path = format!("/proc/{process_id}/stat");
+    let stat = match fs::read_to_string(stat_path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return ProcessBirthIdentityProbeOutput::Missing;
+        }
+        Err(_) => return ProcessBirthIdentityProbeOutput::Error,
+    };
+    // `comm` is parenthesized and may itself contain whitespace or `)`, so
+    // split from the final delimiter before indexing fields 3 through 22.
+    let Some((_comm, fields)) = stat.rsplit_once(") ") else {
+        return ProcessBirthIdentityProbeOutput::Error;
+    };
+    let Some(start_ticks) = fields
+        .split_whitespace()
+        .nth(19)
+        .and_then(|value| value.parse::<u64>().ok())
+    else {
+        return ProcessBirthIdentityProbeOutput::Error;
+    };
+    let boot_id = match fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+        Ok(value) => value.trim().to_owned(),
+        Err(_) => return ProcessBirthIdentityProbeOutput::Error,
+    };
+    let identity = ProcessBirthIdentity::Linux {
+        boot_id,
+        start_ticks,
+    };
+    if ProcessBirthIdentity::parse_wire_value(&identity.wire_value()).is_none() {
+        return ProcessBirthIdentityProbeOutput::Error;
+    }
+    ProcessBirthIdentityProbeOutput::Identity(identity)
 }

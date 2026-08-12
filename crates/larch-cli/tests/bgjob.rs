@@ -9,8 +9,8 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    KvDocument, ParseOptions, RecordedProcessIdentity, RegistryEntry, RenderOptions,
-    identity_to_json, read_entry, read_process_identity, write_entry_at,
+    KvDocument, ParseOptions, ProcessBirthIdentity, RecordedProcessIdentity, RegistryEntry,
+    RenderOptions, identity_to_json, read_entry, read_process_identity, write_entry_at,
 };
 use std::{
     fs,
@@ -329,13 +329,22 @@ fn budget_expiry_kills_a_child_that_execs_a_different_program() {
         &sandbox,
         "budget-exec",
         &tmpdir,
-        "1",
+        "3",
         std::process::id().try_into().expect("pid"),
-        &["/bin/sh", "-c", "exec sleep 60"],
+        &["/bin/sh", "-c", "sleep 1; exec sleep 60"],
     );
     let pgid = started_pgid(&stdout, "budget-exec");
     let row = registry_row(&sandbox, "budget-exec");
-    let child_pid = read_entry(&row).expect("registry entry").child.pid;
+    let child = read_entry(&row).expect("registry entry").child;
+    assert!(
+        child.birth_identity.is_some(),
+        "missing durable birth identity"
+    );
+    assert!(
+        child.command_signature.contains("/bin/sh"),
+        "the registry did not capture the wrapper before exec: {child:?}"
+    );
+    let child_pid = child.pid;
 
     let settled = wait_until_settled(&sandbox, "budget-exec", &tmpdir);
     assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
@@ -698,7 +707,7 @@ fn status_reports_a_live_registry_row_and_rejects_unsafe_steps() {
 }
 
 #[test]
-fn reap_retains_an_expired_row_when_its_child_identity_is_stale() {
+fn reap_retains_an_expired_row_when_its_child_birth_identity_is_stale() {
     let mut sandbox = Sandbox::new();
     let tmpdir = sandbox.session("reap-recycled");
     let log_dir = tmpdir.join("bgjob");
@@ -717,7 +726,22 @@ fn reap_retains_an_expired_row_when_its_child_identity_is_stale() {
         }
     };
     let mut stale_child = capture(recycled_pid);
-    stale_child.start_time = format!("stale {}", stale_child.start_time);
+    stale_child.birth_identity = Some(match stale_child.birth_identity.expect("birth identity") {
+        ProcessBirthIdentity::Darwin {
+            seconds,
+            microseconds,
+        } => ProcessBirthIdentity::Darwin {
+            seconds,
+            microseconds: (microseconds + 1) % 1_000_000,
+        },
+        ProcessBirthIdentity::Linux {
+            boot_id,
+            start_ticks,
+        } => ProcessBirthIdentity::Linux {
+            boot_id,
+            start_ticks: start_ticks.saturating_add(1),
+        },
+    });
     let mut stale_daemon = capture(daemon_pid);
     stale_daemon.start_time = format!("stale {}", stale_daemon.start_time);
 
@@ -756,7 +780,7 @@ fn reap_retains_an_expired_row_when_its_child_identity_is_stale() {
     );
     let diagnostic = fs::read_to_string(&entry.stderr_log).expect("teardown diagnostic");
     assert!(
-        diagnostic.contains("BGJOB_TEARDOWN_REASON=start-time-mismatch"),
+        diagnostic.contains("BGJOB_TEARDOWN_REASON=process-birth-identity-mismatch"),
         "reap did not retain a useful stale-identity diagnostic: {diagnostic:?}"
     );
 

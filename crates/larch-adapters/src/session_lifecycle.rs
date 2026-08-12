@@ -10,10 +10,11 @@ use crate::{
     PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain, open_confined_read,
     parent_directory, read_utf8, safe_output_parent, write_confined_file, writer_target_allowed,
 };
-use chrono::{Local, NaiveDateTime, SecondsFormat, TimeZone, Utc};
+use chrono::{SecondsFormat, Utc};
 use larch_core::{
     IMPLEMENT_SENTINEL_RELATIVE_PATHS, IMPLEMENT_TMPDIR_PREFIX, KvDocument, ParseOptions,
-    design_tmpdir_syntax_error, normalize_command_signature, prefers_implement_candidate,
+    ProcessBirthIdentity, design_tmpdir_syntax_error, normalize_command_signature,
+    prefers_implement_candidate,
 };
 use std::{
     env,
@@ -21,7 +22,7 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::UNIX_EPOCH,
 };
 use uuid::Uuid;
 
@@ -45,26 +46,33 @@ pub const SESSION_ACTIVITY_LOCK_NAME: &str = ".larch-session-activity.lock";
 const UNCOMMITTED_SETUP_STATE: &str = "STATE=uncommitted";
 const UNCOMMITTED_SETUP_OWNER_PID_PREFIX: &str = "OWNER_PID=";
 const UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX: &str = "OWNER_START_TIME=";
+const UNCOMMITTED_SETUP_OWNER_BIRTH_IDENTITY_PREFIX: &str = "OWNER_BIRTH_IDENTITY=";
 const UNCOMMITTED_SETUP_MARKER_MAX_BYTES: u64 = 256;
 
 /// Stable identity of a process that owns an unpublished session setup.
 ///
-/// The start-time component distinguishes a new process from a recycled PID.
-/// It intentionally excludes a command signature because recovery never signals
-/// this process; it only decides whether the marker's owner is still live.
+/// The kernel birth component distinguishes a new process from a same-second
+/// recycled PID. It intentionally excludes a command signature because
+/// recovery never signals this process; it only decides whether the marker's
+/// owner is still live.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionSetupOwner {
     pid: u32,
     start_time: String,
+    birth_identity: ProcessBirthIdentity,
 }
 
 impl SessionSetupOwner {
     /// Construct an owner identity from a positive PID and a non-empty `ps`
-    /// start-time value.
+    /// start-time value and a valid kernel birth identity.
     #[must_use]
-    pub fn new(pid: u32, start_time: &str) -> Option<Self> {
+    pub fn new(pid: u32, start_time: &str, birth_identity: ProcessBirthIdentity) -> Option<Self> {
         let start_time = normalize_command_signature(start_time);
-        (pid != 0 && !start_time.is_empty()).then_some(Self { pid, start_time })
+        (pid != 0 && !start_time.is_empty() && birth_identity.is_valid()).then_some(Self {
+            pid,
+            start_time,
+            birth_identity,
+        })
     }
 
     /// Return the recorded process identifier.
@@ -78,6 +86,12 @@ impl SessionSetupOwner {
     pub fn start_time(&self) -> &str {
         &self.start_time
     }
+
+    /// Return the kernel birth identity recorded with this owner.
+    #[must_use]
+    pub const fn birth_identity(&self) -> &ProcessBirthIdentity {
+        &self.birth_identity
+    }
 }
 
 /// Live-state answer for one persisted session-setup owner.
@@ -85,8 +99,11 @@ impl SessionSetupOwner {
 pub enum SessionSetupOwnerProbe {
     /// No process currently owns the recorded PID.
     Missing,
-    /// A process owns the PID and supplied its normalized start-time identity.
-    Live { start_time: String },
+    /// A process owns the PID and supplied its normalized identity.
+    Live {
+        start_time: String,
+        birth_identity: ProcessBirthIdentity,
+    },
     /// The platform could not establish liveness safely.
     Unverifiable,
 }
@@ -377,8 +394,9 @@ pub fn write_session_id(
 /// Mark a newly-created session directory as owned by an in-flight setup.
 ///
 /// The marker is written through the existing confined atomic-write owner. It
-/// is intentionally private and binds the setup PID to its process start time,
-/// so recovery cannot mistake a recycled PID for the original live owner.
+/// is intentionally private and binds the setup PID to its process start time
+/// and kernel birth identity, so recovery cannot mistake a same-second
+/// recycled PID for the original live owner.
 ///
 /// # Errors
 ///
@@ -397,9 +415,10 @@ pub fn write_uncommitted_session_setup_marker(
         )
         .map_err(|error| error.to_string())?;
     let text = format!(
-        "{UNCOMMITTED_SETUP_STATE}\n{UNCOMMITTED_SETUP_OWNER_PID_PREFIX}{}\n{UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX}{}\n",
+        "{UNCOMMITTED_SETUP_STATE}\n{UNCOMMITTED_SETUP_OWNER_PID_PREFIX}{}\n{UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX}{}\n{UNCOMMITTED_SETUP_OWNER_BIRTH_IDENTITY_PREFIX}{}\n",
         owner.pid(),
-        owner.start_time()
+        owner.start_time(),
+        owner.birth_identity().wire_value(),
     );
     atomic_write_utf8(&marker, &text, 0o600).map_err(|error| error.to_string())
 }
@@ -479,9 +498,11 @@ fn confined_session_directory(
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum UncommittedSetupOwner {
     Identified(SessionSetupOwner),
-    LegacyPid {
+    /// A marker predating kernel birth identities. It remains recoverable when
+    /// the PID is absent, but a live PID must be retained because lstart alone
+    /// cannot distinguish same-second reuse.
+    Legacy {
         pid: u32,
-        marker_modified: SystemTime,
     },
 }
 
@@ -528,16 +549,22 @@ fn uncommitted_setup_owner(
         .ok()
         .filter(|pid| *pid != 0)?;
     match lines.next() {
-        None => Some(UncommittedSetupOwner::LegacyPid {
-            pid: owner_pid,
-            marker_modified: metadata.modified().ok()?,
-        }),
+        None => Some(UncommittedSetupOwner::Legacy { pid: owner_pid }),
         Some(line) => {
             let start_time = line.strip_prefix(UNCOMMITTED_SETUP_OWNER_START_TIME_PREFIX)?;
+            let Some(line) = lines.next() else {
+                // A marker with a start time but no birth identity is also
+                // legacy: it cannot prove continuity across same-second reuse.
+                return Some(UncommittedSetupOwner::Legacy { pid: owner_pid });
+            };
+            let birth_identity = line
+                .strip_prefix(UNCOMMITTED_SETUP_OWNER_BIRTH_IDENTITY_PREFIX)
+                .and_then(ProcessBirthIdentity::parse_wire_value)?;
             if lines.next().is_some() {
                 return None;
             }
-            SessionSetupOwner::new(owner_pid, start_time).map(UncommittedSetupOwner::Identified)
+            SessionSetupOwner::new(owner_pid, start_time, birth_identity)
+                .map(UncommittedSetupOwner::Identified)
         }
     }
 }
@@ -546,64 +573,30 @@ fn uncommitted_setup_owner_liveness(
     owner: &UncommittedSetupOwner,
     observer: &dyn SessionSetupOwnerObserver,
 ) -> OwnerLiveness {
-    let (pid, expected_start_time, legacy_marker_time) = match owner {
-        UncommittedSetupOwner::Identified(owner) => (owner.pid(), Some(owner.start_time()), None),
-        UncommittedSetupOwner::LegacyPid {
-            pid,
-            marker_modified,
-        } => (*pid, None, Some(*marker_modified)),
+    let pid = match owner {
+        UncommittedSetupOwner::Identified(owner) => owner.pid(),
+        UncommittedSetupOwner::Legacy { pid } => *pid,
     };
     match observer.probe(pid) {
         SessionSetupOwnerProbe::Missing => OwnerLiveness::Stale,
         SessionSetupOwnerProbe::Unverifiable => OwnerLiveness::Unverifiable,
-        SessionSetupOwnerProbe::Live { start_time } => {
-            let start_time = normalize_command_signature(&start_time);
-            expected_start_time.map_or_else(
-                || {
-                    if legacy_owner_was_reused(&start_time, legacy_marker_time) {
-                        // A PID-only marker predates the current process. This
-                        // proves the original owner exited before the recycled
-                        // PID appeared.
-                        OwnerLiveness::Stale
-                    } else {
-                        // Existing PID-only markers must retain a potentially
-                        // live setup whenever provenance cannot prove reuse.
-                        OwnerLiveness::Live
-                    }
-                },
-                |expected_start_time| {
-                    if start_time == expected_start_time {
-                        OwnerLiveness::Live
-                    } else {
-                        // The PID exists, but it no longer identifies the
-                        // process that created this setup directory.
-                        OwnerLiveness::Stale
-                    }
-                },
-            )
-        }
+        SessionSetupOwnerProbe::Live {
+            start_time,
+            birth_identity,
+        } => match owner {
+            UncommittedSetupOwner::Legacy { .. } => OwnerLiveness::Live,
+            UncommittedSetupOwner::Identified(owner) => {
+                let start_time = normalize_command_signature(&start_time);
+                if start_time == owner.start_time() && birth_identity == *owner.birth_identity() {
+                    OwnerLiveness::Live
+                } else {
+                    // A live PID with a mismatched kernel birth identity is a
+                    // different process even when its `ps` lstart collides.
+                    OwnerLiveness::Stale
+                }
+            }
+        },
     }
-}
-
-fn legacy_owner_was_reused(start_time: &str, marker_modified: Option<SystemTime>) -> bool {
-    let Some(marker_modified) = marker_modified else {
-        return false;
-    };
-    let Some(marker_seconds) = marker_modified
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
-    else {
-        return false;
-    };
-    let Some(started) = NaiveDateTime::parse_from_str(start_time.trim(), "%a %b %e %H:%M:%S %Y")
-        .ok()
-        .and_then(|value| Local.from_local_datetime(&value).single())
-        .map(|value| value.timestamp())
-    else {
-        return false;
-    };
-    started > marker_seconds
 }
 
 /// Append one invocation record to the cleanup audit trail, best effort.
@@ -801,7 +794,7 @@ mod tests {
         write_uncommitted_session_setup_marker,
     };
     use crate::TemporaryRoot;
-    use larch_core::allowed_session_roots;
+    use larch_core::{ProcessBirthIdentity, allowed_session_roots};
     use std::{
         collections::BTreeMap,
         ffi::OsStr,
@@ -825,8 +818,15 @@ mod tests {
         }
     }
 
+    fn birth_identity(pid: u32) -> ProcessBirthIdentity {
+        ProcessBirthIdentity::Darwin {
+            seconds: 1,
+            microseconds: u64::from(pid),
+        }
+    }
+
     fn owner(pid: u32, start_time: &str) -> SessionSetupOwner {
-        SessionSetupOwner::new(pid, start_time).expect("valid setup owner")
+        SessionSetupOwner::new(pid, start_time, birth_identity(pid)).expect("valid setup owner")
     }
 
     fn now_seconds() -> i64 {
@@ -1377,7 +1377,7 @@ mod tests {
     }
 
     #[test]
-    fn uncommitted_recovery_distinguishes_live_owner_identity_and_legacy_pid_reuse() {
+    fn uncommitted_recovery_requires_birth_identity_and_retains_live_legacy_markers() {
         let directory = tempdir().expect("temporary root");
         let root = TemporaryRoot::resolve(Some(directory.path())).expect("temporary root");
         let live = root.path().join("live");
@@ -1399,6 +1399,11 @@ mod tests {
 
         let live_owner = owner(41, "Mon Jan  1 00:00:00 2024");
         write_uncommitted_session_setup_marker(&root, &live, &live_owner).expect("live marker");
+        assert!(
+            fs::read_to_string(live.join(super::UNCOMMITTED_SESSION_SETUP_MARKER))
+                .expect("live marker text")
+                .contains("OWNER_BIRTH_IDENTITY=darwin:1:41\n")
+        );
         let stale_owner = owner(42, "Mon Jan  1 00:00:00 2024");
         write_uncommitted_session_setup_marker(&root, &upgraded_stale, &stale_owner)
             .expect("upgraded marker");
@@ -1409,24 +1414,16 @@ mod tests {
         write_uncommitted_session_setup_marker(&root, &unverifiable, &unverifiable_owner)
             .expect("unverifiable marker");
 
-        for path in [&legacy_reused, &legacy_unproven] {
-            let marker = path.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
-            fs::write(&marker, "STATE=uncommitted\nOWNER_PID=44\n").expect("legacy marker");
-        }
-        let reused_marker = legacy_reused.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
-        fs::File::options()
-            .write(true)
-            .open(&reused_marker)
-            .expect("open legacy marker")
-            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1))
-            .expect("age legacy marker");
-        let unproven_marker = legacy_unproven.join(super::UNCOMMITTED_SESSION_SETUP_MARKER);
-        fs::File::options()
-            .write(true)
-            .open(&unproven_marker)
-            .expect("open live legacy marker")
-            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(4_102_444_800))
-            .expect("future-date live legacy marker");
+        fs::write(
+            legacy_reused.join(super::UNCOMMITTED_SESSION_SETUP_MARKER),
+            "STATE=uncommitted\nOWNER_PID=44\nOWNER_START_TIME=Mon Jan  1 00:00:00 2024\n",
+        )
+        .expect("legacy start-time marker");
+        fs::write(
+            legacy_unproven.join(super::UNCOMMITTED_SESSION_SETUP_MARKER),
+            "STATE=uncommitted\nOWNER_PID=44\n",
+        )
+        .expect("legacy PID marker");
 
         let observer = OwnerObserver {
             answers: BTreeMap::from([
@@ -1434,12 +1431,17 @@ mod tests {
                     41,
                     SessionSetupOwnerProbe::Live {
                         start_time: "Mon Jan  1 00:00:00 2024".to_owned(),
+                        birth_identity: birth_identity(41),
                     },
                 ),
                 (
                     42,
                     SessionSetupOwnerProbe::Live {
-                        start_time: "Tue Jan  2 00:00:00 2024".to_owned(),
+                        start_time: "Mon Jan  1 00:00:00 2024".to_owned(),
+                        birth_identity: ProcessBirthIdentity::Darwin {
+                            seconds: 2,
+                            microseconds: 42,
+                        },
                     },
                 ),
                 (43, SessionSetupOwnerProbe::Missing),
@@ -1447,22 +1449,23 @@ mod tests {
                     44,
                     SessionSetupOwnerProbe::Live {
                         start_time: "Tue Aug 11 15:06:20 2026".to_owned(),
+                        birth_identity: birth_identity(44),
                     },
                 ),
                 (45, SessionSetupOwnerProbe::Unverifiable),
             ]),
         };
 
-        assert_eq!(recover_uncommitted_session_setups(&root, &observer), 3);
+        assert_eq!(recover_uncommitted_session_setups(&root, &observer), 2);
         assert!(live.is_dir(), "matching live owner must survive");
         assert!(
             !upgraded_stale.exists(),
-            "reused PID identity must be reclaimed"
+            "a same-second birth-identity mismatch must be reclaimed"
         );
         assert!(!missing.exists(), "missing PID marker must be reclaimed");
         assert!(
-            !legacy_reused.exists(),
-            "legacy marker must reclaim a proven reused PID"
+            legacy_reused.is_dir(),
+            "legacy start-time marker stays fail-closed"
         );
         assert!(
             legacy_unproven.is_dir(),
