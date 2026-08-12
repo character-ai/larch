@@ -75,6 +75,80 @@ fn fetch() {
 }
 
 #[test]
+fn finds_nested_client_imports_and_macro_request_surfaces() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-core/src/nested.rs",
+        br#"use {octocrab, reqwest as Http};
+use hyper::*;
+
+macro_rules! audit_request {
+    () => {
+        tracing::debug!(endpoint = "https://api.github.com/repos", client = octocrab::Octocrab);
+    };
+}
+
+fn request() {
+    audit_request!();
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "service-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/larch-core/src/nested.rs:1: concrete service client `octocrab` is used outside crates/larch-adapters/",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/larch-core/src/nested.rs:1: concrete service client `reqwest` is used outside crates/larch-adapters/",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/larch-core/src/nested.rs:2: concrete service client `hyper` is used outside crates/larch-adapters/",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/larch-core/src/nested.rs:6: concrete service client `octocrab` is used outside crates/larch-adapters/",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/larch-core/src/nested.rs:6: service request host `api.github.com` appears outside crates/larch-adapters/",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn counts_one_live_adapter_owner_and_ignores_test_only_construction() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-adapters/src/github/mod.rs",
+        br"use octocrab::Octocrab;
+
+pub fn build() {
+    let _ = Octocrab::builder();
+}
+
+#[cfg(test)]
+mod tests {
+    use octocrab::Octocrab;
+
+    fn fake() {
+        let _ = Octocrab::builder();
+    }
+}
+",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "service-ownership"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
 fn allows_a_single_owner_adapter_named_by_the_inventories() {
     let repository = TempRepo::new();
     repository.write(
@@ -151,6 +225,81 @@ fn rejects_inventory_omissions_duplicate_rows_and_false_cutover_claims() {
             "unknown command selector `missing command`",
         ))
         .stderr("");
+}
+
+#[test]
+fn rejects_every_untrustworthy_field_in_a_github_service_ownership_row() {
+    let repository = TempRepo::new();
+    let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs").replace(
+        "actions\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
+        "Actions\tnot-an-adapter\tunknown\t#7687\tinvalid\tinvalid\tinvalid\tmissing *",
+    );
+    repository.write("docs/github-service-inventory.md", inventory.as_bytes());
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "service-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "GitHub service operation key is invalid",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service adapter owner `not-an-adapter` is not a tracked adapter path",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service current owner is invalid",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service planning owner must name concrete issues and must not delegate to #7687",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service migration state is invalid",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service ownership row names unknown command selector `missing *`",
+        ))
+        .stdout(predicate::str::contains(
+            "GitHub service ownership row names no production command",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn reports_structurally_incomplete_service_ownership_matrices() {
+    for (contents, message) in [
+        (
+            "GitHub service inventory without a matrix\n",
+            "GitHub service ownership matrix is missing",
+        ),
+        (
+            "<!-- github-service-ownership:start -->\n",
+            "GitHub service ownership matrix is unterminated",
+        ),
+        (
+            "<!-- github-service-ownership:start -->\nwrong header\n<!-- github-service-ownership:end -->\n",
+            "GitHub service ownership matrix has an invalid header",
+        ),
+        (
+            "<!-- github-service-ownership:start -->\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\nshort\n<!-- github-service-ownership:end -->\n",
+            "GitHub service ownership row must contain exactly eight tab-separated fields",
+        ),
+        (
+            "<!-- github-service-ownership:start -->\n<!-- github-service-ownership:end -->\n",
+            "GitHub service ownership matrix is empty",
+        ),
+    ] {
+        let repository = TempRepo::new();
+        repository.write("docs/github-service-inventory.md", contents.as_bytes());
+        repository.commit_all();
+
+        TempRepo::command_from(repository.path())
+            .args(["rule", "service-ownership"])
+            .assert()
+            .code(1)
+            .stdout(predicate::str::contains(message))
+            .stderr("");
+    }
 }
 
 #[test]

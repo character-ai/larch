@@ -1,13 +1,14 @@
 //! Golden fixtures for the pure migration-audit report core.
 
 use larch_core::{
-    CommandAuditKey, DONE_PREFIX, DependencySnapshot, MigrationAuditDefect, MigrationAuditRequest,
-    MigrationAuditSnapshot, MigrationIssueSnapshot, PlanAuditEvidence, PlanReceipt,
-    RepositoryAuditFinding, RepositoryFindingSource, RustLineBudgetDeviation, ScopeFile,
-    ScopeSnapshot, build_command_audit_issue, build_migration_audit_report, compose_named_block,
-    hash_blocker_rows, hash_owner_rows, hash_plan_block, parse_rust_line_budget_deviation,
-    render_command_audit_input, render_migration_audit_json, render_migration_audit_table,
-    upsert_receipt,
+    CommandAuditKey, DONE_PREFIX, DependencySnapshot, ImplementationLease, MigrationAuditDefect,
+    MigrationAuditRequest, MigrationAuditSnapshot, MigrationIssueSnapshot, PlanAuditEvidence,
+    PlanReceipt, RepositoryAuditFinding, RepositoryFindingSource, RustLineBudgetDeviation,
+    ScopeFile, ScopeSnapshot, build_command_audit_issue, build_migration_audit_report,
+    compose_named_block, hash_blocker_rows, hash_owner_rows, hash_plan_block,
+    parse_rust_line_budget_deviation, render_command_audit_input, render_migration_audit_json,
+    render_migration_audit_table, upsert_implementation_lease, upsert_receipt,
+    validate_plan_facets,
 };
 
 const TIME: &str = "2026-07-19T12:00:00Z";
@@ -114,6 +115,13 @@ fn with_plan(plan: &str) -> String {
     format!(
         "Chief umbrella: #7687.\n{}",
         compose_named_block("plan", plan)
+    )
+}
+
+fn valid_request() -> MigrationAuditRequest {
+    request(
+        snapshot(vec![leaf(10)], dependencies(&[10]), vec![]),
+        vec![evidence(10, &[])],
     )
 }
 
@@ -342,5 +350,305 @@ fn malformed_snapshots_and_optional_audit_evidence_fail_closed() {
     assert_eq!(
         render_command_audit_input(&[row], true).unwrap(),
         "{\"issues\":[{\"command\":{\"domain\":\"issue\",\"verb\":\"migration-audit\"},\"executable_leaf\":true,\"number\":10,\"plan_commands\":[{\"domain\":\"issue\",\"verb\":\"migration-audit\"}],\"state\":\"open\"}],\"rollout_enabled\":true,\"schema_version\":1}\n"
+    );
+}
+
+#[test]
+fn audit_input_validation_rejects_each_untrusted_snapshot_boundary() {
+    let mut invalid_chief = valid_request();
+    invalid_chief.snapshot.chief_issue = 0;
+    assert_eq!(
+        build_migration_audit_report(&invalid_chief),
+        Err(MigrationAuditDefect::INVALID_CHIEF_ISSUE)
+    );
+
+    let mut invalid_head = valid_request();
+    invalid_head.snapshot.head_sha = "not-a-git-object".to_owned();
+    assert_eq!(
+        build_migration_audit_report(&invalid_head),
+        Err(MigrationAuditDefect::INVALID_SNAPSHOT_HEAD)
+    );
+
+    let mut invalid_issue = valid_request();
+    invalid_issue.snapshot.open_issues[0].state = "closed".to_owned();
+    assert_eq!(
+        build_migration_audit_report(&invalid_issue),
+        Err(MigrationAuditDefect::INVALID_ISSUE_SNAPSHOT)
+    );
+
+    let mut invalid_plan = valid_request();
+    invalid_plan.plans[0].defects = vec!["not-a-plan-defect".to_owned()];
+    assert_eq!(
+        build_migration_audit_report(&invalid_plan),
+        Err(MigrationAuditDefect::INVALID_PLAN_EVIDENCE)
+    );
+
+    let mut unexpected_plan = valid_request();
+    unexpected_plan.plans[0].issue = 99;
+    assert_eq!(
+        build_migration_audit_report(&unexpected_plan),
+        Err(MigrationAuditDefect::UNEXPECTED_PLAN_EVIDENCE)
+    );
+
+    let mut duplicate_plan = valid_request();
+    duplicate_plan.plans.push(duplicate_plan.plans[0].clone());
+    assert_eq!(
+        build_migration_audit_report(&duplicate_plan),
+        Err(MigrationAuditDefect::DUPLICATE_PLAN_EVIDENCE)
+    );
+
+    let mut missing_plan = valid_request();
+    missing_plan.plans.clear();
+    assert_eq!(
+        build_migration_audit_report(&missing_plan),
+        Err(MigrationAuditDefect::MISSING_PLAN_EVIDENCE)
+    );
+
+    let mut invalid_dependency = valid_request();
+    invalid_dependency.snapshot.dependencies[0].blockers = vec![0];
+    assert_eq!(
+        build_migration_audit_report(&invalid_dependency),
+        Err(MigrationAuditDefect::INVALID_DEPENDENCY_SNAPSHOT)
+    );
+
+    let mut duplicate_dependency = valid_request();
+    duplicate_dependency
+        .snapshot
+        .dependencies
+        .push(duplicate_dependency.snapshot.dependencies[0].clone());
+    assert_eq!(
+        build_migration_audit_report(&duplicate_dependency),
+        Err(MigrationAuditDefect::DUPLICATE_DEPENDENCY_SNAPSHOT)
+    );
+
+    let mut missing_dependency = valid_request();
+    missing_dependency.snapshot.dependencies.clear();
+    assert_eq!(
+        build_migration_audit_report(&missing_dependency),
+        Err(MigrationAuditDefect::MISSING_DEPENDENCY_SNAPSHOT)
+    );
+
+    let mut invalid_finding = valid_request();
+    invalid_finding.repository_findings = vec![RepositoryAuditFinding {
+        source: RepositoryFindingSource::CommandRegistry,
+        reason: "contains\na newline".to_owned(),
+    }];
+    assert_eq!(
+        build_migration_audit_report(&invalid_finding),
+        Err(MigrationAuditDefect::INVALID_REPOSITORY_FINDING)
+    );
+
+    assert_eq!(
+        build_command_audit_issue(&issue(0, "fixture", "open", ""), false, &[],),
+        Err(MigrationAuditDefect::INVALID_COMMAND_AUDIT_ISSUE)
+    );
+    let duplicate = larch_core::CommandAuditIssue {
+        number: 1,
+        state: "open".to_owned(),
+        executable_leaf: false,
+        command: None,
+        plan_commands: Vec::new(),
+    };
+    assert_eq!(
+        render_command_audit_input(&[duplicate.clone(), duplicate], false),
+        Err(MigrationAuditDefect::DUPLICATE_COMMAND_AUDIT_ISSUE)
+    );
+
+    assert_eq!(
+        parse_rust_line_budget_deviation(
+            "## Rust line budget deviation\n\n## Rust line budget deviation\n"
+        )
+        .defects,
+        vec!["multiple-rust-line-budget-deviations"]
+    );
+    assert!(
+        validate_plan_facets("## Files to modify/create\n\n### MAY_UPDATE: generated.md\n")
+            .contains(&"missing-firm-scope".to_owned())
+    );
+}
+
+#[test]
+fn audit_reports_stale_leases_historical_budget_defects_and_ambiguous_evidence() {
+    assert_eq!(
+        MigrationAuditDefect::INVALID_CHIEF_ISSUE.reason(),
+        "invalid-migration-audit-chief"
+    );
+    assert_eq!(
+        MigrationAuditDefect::INVALID_CHIEF_ISSUE.to_string(),
+        "invalid-migration-audit-chief"
+    );
+
+    let stale_lease = upsert_implementation_lease(
+        "",
+        &ImplementationLease {
+            run_id: "run-1".to_owned(),
+            branch: "feature/stale".to_owned(),
+            base: head(),
+            plan: "b".repeat(64),
+            updated_at: "2026-07-18T00:00:00Z".to_owned(),
+        },
+    )
+    .expect("render lease");
+    let active = issue(11, "[IMPLEMENTING] stale", "open", stale_lease);
+    let report = build_migration_audit_report(&request(
+        snapshot(vec![leaf(10), active], dependencies(&[10]), vec![]),
+        vec![evidence(10, &[])],
+    ))
+    .expect("stale lease report");
+    assert!(report.findings.iter().any(|finding| {
+        finding.category == larch_core::FindingCategory::StaleImplementationLease
+            && finding.cleanup_command.is_some()
+    }));
+
+    let malformed_budget = plan().replace(
+        "diff_lines: 10\n",
+        &format!(
+            "## Rust line budget deviation\n\n- Split decision: retain this leaf as one PR\n- Rationale: Fixture.\n- Base SHA: {}\n- Head SHA: {}\n- Added non-generated Rust lines: -1\n\ndiff_lines: 10\n",
+            head(),
+            head(),
+        ),
+    );
+    let historical = closed(12, "Malformed budget", with_plan(&malformed_budget));
+    let report = build_migration_audit_report(&request(
+        snapshot(vec![leaf(10)], dependencies(&[10]), vec![historical]),
+        vec![evidence(10, &[])],
+    ))
+    .expect("historical report");
+    assert!(
+        report.issues.iter().any(|issue| {
+            issue.number == 12
+                && issue.finding_reasons.iter().any(|reason| {
+                    reason.contains("historical-rust-line-budget-unverified defects=")
+                })
+        }),
+        "{:?}",
+        report.issues
+    );
+
+    let malformed_budget = format!(
+        "## Rust line budget deviation\n\n- Split decision: retain this leaf as one PR\n- Rationale: Fixture.\n- Base SHA: {}\n- Head SHA: {}\n- Added non-generated Rust lines: no\n",
+        head(),
+        head(),
+    );
+    assert_eq!(
+        parse_rust_line_budget_deviation(&malformed_budget).defects,
+        vec!["malformed-rust-line-budget-deviation"]
+    );
+
+    let duplicate_leaf = request(
+        snapshot(vec![leaf(10), leaf(10)], dependencies(&[10]), vec![]),
+        vec![evidence(10, &[])],
+    );
+    assert_eq!(
+        build_migration_audit_report(&duplicate_leaf),
+        Err(MigrationAuditDefect::DUPLICATE_ISSUE_SNAPSHOT)
+    );
+    let mut duplicate_blocker = valid_request();
+    duplicate_blocker.snapshot.dependencies[0].blockers = vec![7, 7];
+    assert_eq!(
+        build_migration_audit_report(&duplicate_blocker),
+        Err(MigrationAuditDefect::INVALID_DEPENDENCY_SNAPSHOT)
+    );
+
+    let command_issue = issue(
+        20,
+        "fixture",
+        "open",
+        compose_named_block(
+            "plan",
+            "unissue migration-audit must not count as a command.",
+        ),
+    );
+    assert!(
+        build_command_audit_issue(
+            &command_issue,
+            false,
+            &[CommandAuditKey {
+                domain: "issue".to_owned(),
+                verb: "migration-audit".to_owned(),
+            }],
+        )
+        .expect("command audit issue")
+        .plan_commands
+        .is_empty()
+    );
+}
+
+#[test]
+fn audit_rejects_remaining_untrusted_snapshot_and_budget_forms() {
+    let mut invalid_repository = valid_request();
+    invalid_repository.snapshot.repository = "owner/repo/extra".to_owned();
+    assert_eq!(
+        build_migration_audit_report(&invalid_repository),
+        Err(MigrationAuditDefect::INVALID_REPOSITORY)
+    );
+
+    let mut invalid_timestamp = valid_request();
+    invalid_timestamp.snapshot.snapshot_timestamp = "not-a-timestamp".to_owned();
+    assert_eq!(
+        build_migration_audit_report(&invalid_timestamp),
+        Err(MigrationAuditDefect::INVALID_SNAPSHOT_TIMESTAMP)
+    );
+
+    let mut invalid_referenced_issue = valid_request();
+    invalid_referenced_issue.snapshot.referenced_issues = vec![issue(99, "fixture", "all", "")];
+    assert_eq!(
+        build_migration_audit_report(&invalid_referenced_issue),
+        Err(MigrationAuditDefect::INVALID_ISSUE_SNAPSHOT)
+    );
+
+    let mut misplaced_dependency = valid_request();
+    misplaced_dependency.snapshot.dependencies[0].issue = 99;
+    assert_eq!(
+        build_migration_audit_report(&misplaced_dependency),
+        Err(MigrationAuditDefect::INVALID_DEPENDENCY_SNAPSHOT)
+    );
+
+    let mut missing_referenced_issue = valid_request();
+    missing_referenced_issue.snapshot.open_issues[0]
+        .body
+        .push_str("\nNative blocker: #99\n");
+    missing_referenced_issue.snapshot.dependencies[0].blockers = vec![99];
+    assert_eq!(
+        build_migration_audit_report(&missing_referenced_issue),
+        Err(MigrationAuditDefect::MISSING_REFERENCED_ISSUE)
+    );
+
+    for reason in [String::new(), "\r".to_owned(), "x".repeat(4097)] {
+        let mut invalid_finding = valid_request();
+        invalid_finding.repository_findings = vec![RepositoryAuditFinding {
+            source: RepositoryFindingSource::CommandRegistry,
+            reason,
+        }];
+        assert_eq!(
+            build_migration_audit_report(&invalid_finding),
+            Err(MigrationAuditDefect::INVALID_REPOSITORY_FINDING)
+        );
+    }
+
+    assert_eq!(
+        build_command_audit_issue(&issue(1, "fixture", "unknown", ""), false, &[]),
+        Err(MigrationAuditDefect::INVALID_COMMAND_AUDIT_ISSUE)
+    );
+
+    let overflowing_budget = format!(
+        "## Rust line budget deviation\n\n- Split decision: retain this leaf as one PR\n- Rationale: Fixture.\n- Base SHA: {}\n- Head SHA: {}\n- Added non-generated Rust lines: 18446744073709551616\n",
+        head(),
+        head(),
+    );
+    assert_eq!(
+        parse_rust_line_budget_deviation(&overflowing_budget).defects,
+        vec!["malformed-rust-line-budget-deviation"]
+    );
+
+    let fenced_budget = format!(
+        "## Rust line budget deviation\n\n```text\n- Split decision: split this leaf\n- Added non-generated Rust lines: 1\n```\n- Split decision: retain this leaf as one PR\n- Rationale: Fence contents are not plan evidence.\n- Base SHA: {}\n- Head SHA: {}\n- Added non-generated Rust lines: 1\n",
+        head(),
+        head(),
+    );
+    assert!(
+        parse_rust_line_budget_deviation(&fenced_budget)
+            .deviation
+            .is_some()
     );
 }

@@ -29,7 +29,8 @@ use crate::{
 use super::{larch_runtime_entrypoint::is_production_surface, syn_helpers};
 
 const NAME: &str = "service-ownership";
-const DESCRIPTION: &str = "Confine service clients, request surfaces, and CLIs to the adapter boundary";
+const DESCRIPTION: &str =
+    "Confine service clients, request surfaces, and CLIs to the adapter boundary";
 const SUPPRESSION: &str = "lint-service-ownership";
 
 const ADAPTERS_PREFIX: &str = "crates/larch-adapters/";
@@ -54,7 +55,9 @@ const REQUIRED_OPERATION_GROUPS: [&str; 10] = [
 ];
 
 /// Concrete HTTP and service client crates that only the adapter crate may use.
-const CLIENT_CRATES: [&str; 7] = ["octocrab", "reqwest", "hyper", "ureq", "isahc", "surf", "curl"];
+const CLIENT_CRATES: [&str; 7] = [
+    "octocrab", "reqwest", "hyper", "ureq", "isahc", "surf", "curl",
+];
 /// Service request hosts that must not appear as string literals outside the adapter.
 const SERVICE_HOSTS: [&str; 4] = [
     "api.github.com",
@@ -85,8 +88,7 @@ const DUPLICATE_GITHUB: &str =
 const DUPLICATE_GOOGLE: &str =
     "duplicate concrete Google client owner; google-cloud-auth must be used by one adapter module";
 const GRAPHQL_MESSAGE: &str = "GraphQL document appears outside crates/larch-adapters";
-const GENERIC_GITHUB_CREDENTIAL: &str =
-    "GitHub service must not read caller-supplied GH_TOKEN or GITHUB_TOKEN as a credential fallback";
+const GENERIC_GITHUB_CREDENTIAL: &str = "GitHub service must not read caller-supplied GH_TOKEN or GITHUB_TOKEN as a credential fallback";
 
 static GRAPHQL: LazyLock<Regex> = LazyLock::new(|| {
     // Allow a named operation and a variable or directive preamble before the
@@ -229,11 +231,99 @@ fn check_github_operation_inventory(
             findings.push(Finding::new(
                 GITHUB_INVENTORY,
                 to_u32(start + 1),
-                format!("GitHub service operation `{required}` is missing from the ownership matrix"),
+                format!(
+                    "GitHub service operation `{required}` is missing from the ownership matrix"
+                ),
             ));
         }
     }
     Ok(())
+}
+
+/// Return GitHub-service rows that still leave one planning issue incomplete.
+///
+/// Sibling closure guards consume this bounded projection instead of scanning
+/// Markdown substrings. The matrix markers, header, tab grammar, and phase
+/// columns remain defined by this module's canonical service-inventory owner.
+pub(super) fn unresolved_github_service_operations_for_issue(
+    repository: &Repository,
+    issue: u64,
+) -> Result<Vec<(String, u32)>, LintError> {
+    let inventory_path = RepoPath::from_trusted(GITHUB_INVENTORY);
+    if repository.paths().binary_search(&inventory_path).is_err() {
+        return Err(LintError::new(format!(
+            "{GITHUB_INVENTORY}: required GitHub service ownership matrix is missing"
+        )));
+    }
+    let content = repository.read_utf8(&inventory_path)?;
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines
+        .iter()
+        .position(|line| line.trim() == INVENTORY_START)
+        .ok_or_else(|| LintError::new(format!("{GITHUB_INVENTORY}: missing {INVENTORY_START}")))?;
+    let relative_end = lines[start + 1..]
+        .iter()
+        .position(|line| line.trim() == INVENTORY_END)
+        .ok_or_else(|| LintError::new(format!("{GITHUB_INVENTORY}: missing {INVENTORY_END}")))?;
+    let end = start + 1 + relative_end;
+    let mut header_seen = false;
+    let mut unresolved = Vec::new();
+    for (index, raw) in lines[start + 1..end].iter().enumerate() {
+        let line_number = start + index + 2;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with("```") {
+            continue;
+        }
+        if !header_seen {
+            header_seen = true;
+            if line != INVENTORY_HEADER {
+                return Err(LintError::new(format!(
+                    "{GITHUB_INVENTORY}: invalid GitHub service ownership header"
+                )));
+            }
+            continue;
+        }
+        let columns: Vec<&str> = raw.split('\t').collect();
+        if columns.len() != 8 {
+            return Err(LintError::new(format!(
+                "{GITHUB_INVENTORY}:{line_number}: GitHub service ownership row must contain exactly eight tab-separated fields"
+            )));
+        }
+        let planning_issues = columns[3]
+            .split(',')
+            .map(|value| {
+                value
+                    .trim()
+                    .strip_prefix('#')
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(|| {
+                        LintError::new(format!(
+                            "{GITHUB_INVENTORY}:{line_number}: invalid planning issue reference"
+                        ))
+                    })
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if !planning_issues.contains(&issue) {
+            continue;
+        }
+        let complete = (columns[2].trim() == "rust"
+            && columns[4].trim() == "complete"
+            && columns[5].trim() == "complete"
+            && columns[6].trim() == "complete")
+            || (columns[2].trim() == "retired"
+                && columns[4].trim() == "not-applicable"
+                && columns[5].trim() == "complete"
+                && columns[6].trim() == "complete");
+        if !complete {
+            unresolved.push((columns[0].trim().to_owned(), to_u32(line_number)));
+        }
+    }
+    if !header_seen {
+        return Err(LintError::new(format!(
+            "{GITHUB_INVENTORY}: GitHub service ownership matrix is empty"
+        )));
+    }
+    Ok(unresolved)
 }
 
 fn read_ownership_commands(
@@ -241,9 +331,8 @@ fn read_ownership_commands(
 ) -> Result<BTreeMap<String, OwnershipCommand>, LintError> {
     let path = RepoPath::from_trusted(COMMAND_REGISTRY);
     let content = repository.read_utf8(&path)?;
-    let ledger: OwnershipLedger = toml::from_str(&content).map_err(|error| {
-        LintError::new(format!("{COMMAND_REGISTRY}: invalid TOML: {error}"))
-    })?;
+    let ledger: OwnershipLedger = toml::from_str(&content)
+        .map_err(|error| LintError::new(format!("{COMMAND_REGISTRY}: invalid TOML: {error}")))?;
     Ok(ledger
         .commands
         .into_iter()
@@ -266,8 +355,16 @@ fn validate_operation_row(
     let cutover = columns[5].trim();
     let removal = columns[6].trim();
     let selectors = columns[7].trim();
-    if operation.is_empty() || !operation.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-') {
-        inventory_finding(line_number, "GitHub service operation key is invalid", findings);
+    if operation.is_empty()
+        || !operation
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        inventory_finding(
+            line_number,
+            "GitHub service operation key is invalid",
+            findings,
+        );
     }
     let adapter_path = RepoPath::from_trusted(adapter);
     if !adapter.starts_with(ADAPTERS_PREFIX)
@@ -280,7 +377,11 @@ fn validate_operation_row(
         );
     }
     if !matches!(owner, "python" | "rust" | "retired") {
-        inventory_finding(line_number, "GitHub service current owner is invalid", findings);
+        inventory_finding(
+            line_number,
+            "GitHub service current owner is invalid",
+            findings,
+        );
     }
     let issues: BTreeSet<u64> = planning_issues
         .split(',')
@@ -302,7 +403,11 @@ fn validate_operation_row(
         || !matches!(cutover, "pending" | "complete")
         || !matches!(removal, "pending" | "complete")
     {
-        inventory_finding(line_number, "GitHub service migration state is invalid", findings);
+        inventory_finding(
+            line_number,
+            "GitHub service migration state is invalid",
+            findings,
+        );
     }
     let (commands, unknown_selectors) = expand_inventory_selectors(selectors, ledger);
     for selector in unknown_selectors {
@@ -366,16 +471,8 @@ fn expand_inventory_selectors<'a>(
     (selected.into_values().collect(), unknown)
 }
 
-fn inventory_finding(
-    line_number: usize,
-    message: impl Into<String>,
-    findings: &mut Vec<Finding>,
-) {
-    findings.push(Finding::new(
-        GITHUB_INVENTORY,
-        to_u32(line_number),
-        message,
-    ));
+fn inventory_finding(line_number: usize, message: impl Into<String>, findings: &mut Vec<Finding>) {
+    findings.push(Finding::new(GITHUB_INVENTORY, to_u32(line_number), message));
 }
 
 // ---------------------------------------------------------------------------
@@ -564,7 +661,10 @@ fn check_client_owners(
         if let Some(line) = visitor.google {
             google.push((path.as_str().to_owned(), line));
         }
-        if path.as_str().starts_with("crates/larch-adapters/src/github") {
+        if path
+            .as_str()
+            .starts_with("crates/larch-adapters/src/github")
+        {
             for line in visitor.generic_github_credentials {
                 findings.push(Finding::new(
                     path.as_str(),
@@ -636,7 +736,10 @@ impl<'ast> visit::Visit<'ast> for OwnerVisitor {
         if let Some(line) = octocrab_builder_line(path) {
             let _ = self.octocrab.get_or_insert(line);
         }
-        if path.segments.iter().any(|segment| segment.ident == "google_cloud_auth")
+        if path
+            .segments
+            .iter()
+            .any(|segment| segment.ident == "google_cloud_auth")
             && let Some(segment) = path.segments.first()
         {
             let _ = self
@@ -644,7 +747,10 @@ impl<'ast> visit::Visit<'ast> for OwnerVisitor {
                 .get_or_insert_with(|| segment.ident.span().start().line);
         }
         if path.segments.iter().any(|segment| {
-            matches!(segment.ident.to_string().as_str(), "GH_TOKEN" | "GITHUB_TOKEN")
+            matches!(
+                segment.ident.to_string().as_str(),
+                "GH_TOKEN" | "GITHUB_TOKEN"
+            )
         }) && let Some(segment) = path.segments.last()
         {
             self.generic_github_credentials
@@ -664,7 +770,11 @@ fn octocrab_builder_line(path: &syn::Path) -> Option<usize> {
         .windows(2)
         .any(|pair| pair[0] == "Octocrab" && pair[1] == "builder")
         || idents.iter().any(|ident| ident == "OctocrabBuilder");
-    constructs.then(|| path.segments.first().map_or(0, |segment| segment.ident.span().start().line))
+    constructs.then(|| {
+        path.segments
+            .first()
+            .map_or(0, |segment| segment.ident.span().start().line)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -766,8 +876,13 @@ fn collect_shell_hits(node: Node<'_>, source: &str, hits: &mut Vec<(usize, Strin
                 if program == "env" {
                     let mut cursor = node.walk();
                     for argument in node.children_by_field_name("argument", &mut cursor) {
-                        if let Some(credential) = credential_in_assignment(node_text(argument, source)) {
-                            hits.push((argument.start_position().row, credential_message(&credential)));
+                        if let Some(credential) =
+                            credential_in_assignment(node_text(argument, source))
+                        {
+                            hits.push((
+                                argument.start_position().row,
+                                credential_message(&credential),
+                            ));
                         }
                     }
                 }
@@ -843,7 +958,8 @@ fn bash_fence_blocks(source: &str) -> Vec<(usize, String)> {
             FenceState::Inside { language: Some(language) } if is_bash_language(language)
         ) && !line.is_fence_boundary();
         if executable {
-            let entry = current.get_or_insert_with(|| (line.number().saturating_sub(1), String::new()));
+            let entry =
+                current.get_or_insert_with(|| (line.number().saturating_sub(1), String::new()));
             entry.1.push_str(line.text());
             entry.1.push('\n');
         } else if let Some(block) = current.take() {
@@ -857,7 +973,10 @@ fn bash_fence_blocks(source: &str) -> Vec<(usize, String)> {
 }
 
 fn is_bash_language(language: &str) -> bool {
-    matches!(language.to_ascii_lowercase().as_str(), "bash" | "sh" | "shell")
+    matches!(
+        language.to_ascii_lowercase().as_str(),
+        "bash" | "sh" | "shell"
+    )
 }
 
 fn program_basename(raw: &str) -> String {
@@ -882,7 +1001,62 @@ fn to_u32(line: usize) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{client_crate, is_graphql_document, program_basename};
+    use super::{
+        GITHUB_INVENTORY, INVENTORY_END, INVENTORY_HEADER, INVENTORY_START, client_crate,
+        is_graphql_document, program_basename, unresolved_github_service_operations_for_issue,
+    };
+    use crate::{Git, LintError, Repository};
+    use std::path::{Path, PathBuf};
+
+    struct Fixture {
+        _temporary: tempfile::TempDir,
+        repository: Repository,
+    }
+
+    struct FakeGit {
+        root: PathBuf,
+        stream: Vec<u8>,
+    }
+
+    impl Git for FakeGit {
+        fn repository_root(&self, _cwd: &Path) -> Result<PathBuf, LintError> {
+            Ok(self.root.clone())
+        }
+
+        fn tracked_paths(&self, _root: &Path) -> Result<Vec<u8>, LintError> {
+            Ok(self.stream.clone())
+        }
+    }
+
+    fn repository_with(files: &[(&str, &str)]) -> Fixture {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let mut stream = Vec::new();
+        for (relative, contents) in files {
+            let path = temporary.path().join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("parents");
+            }
+            std::fs::write(&path, contents).expect("write");
+            stream.extend(relative.as_bytes());
+            stream.push(0);
+        }
+        let repository = Repository::discover(
+            &FakeGit {
+                root: temporary.path().to_path_buf(),
+                stream,
+            },
+            temporary.path(),
+        )
+        .expect("repository");
+        Fixture {
+            _temporary: temporary,
+            repository,
+        }
+    }
+
+    fn inventory(rows: &str) -> String {
+        format!("{INVENTORY_START}\n{INVENTORY_HEADER}\n{rows}{INVENTORY_END}\n")
+    }
 
     #[test]
     fn client_crate_matches_concrete_clients_and_google_families() {
@@ -912,7 +1086,9 @@ mod tests {
         ));
         assert!(!is_graphql_document("query {}"));
         assert!(!is_graphql_document("select query from table"));
-        assert!(!is_graphql_document("query the settings {cached} for later reuse"));
+        assert!(!is_graphql_document(
+            "query the settings {cached} for later reuse"
+        ));
     }
 
     #[test]
@@ -920,5 +1096,66 @@ mod tests {
         assert_eq!(program_basename("/usr/bin/gcloud"), "gcloud");
         assert_eq!(program_basename("\"gcloud\""), "gcloud");
         assert_eq!(program_basename("gh"), "gh");
+    }
+
+    #[test]
+    fn planning_issue_service_closure_accepts_complete_rust_and_retired_rows() {
+        let contents = inventory(
+            "issues\tadapter\trust\t#7685\tcomplete\tcomplete\tcomplete\tissue migration-audit\n\
+             legacy\tadapter\tretired\t#7685\tnot-applicable\tcomplete\tcomplete\t-\n\
+             pull-requests\tadapter\trust\t#7687\tpending\tpending\tpending\tissue lifecycle\n",
+        );
+        let fixture = repository_with(&[(GITHUB_INVENTORY, &contents)]);
+
+        assert!(
+            unresolved_github_service_operations_for_issue(&fixture.repository, 7685)
+                .expect("closure proof")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn planning_issue_service_closure_reports_incomplete_matching_rows() {
+        let contents = inventory(
+            "issues\tadapter\tpython\t#7685\tpending\tcomplete\tcomplete\tissue migration-audit\n",
+        );
+        let fixture = repository_with(&[(GITHUB_INVENTORY, &contents)]);
+
+        assert_eq!(
+            unresolved_github_service_operations_for_issue(&fixture.repository, 7685)
+                .expect("closure proof"),
+            vec![("issues".to_owned(), 3)]
+        );
+    }
+
+    #[test]
+    fn planning_issue_service_closure_rejects_untrustworthy_matrix_evidence() {
+        let missing = repository_with(&[]);
+        assert!(
+            unresolved_github_service_operations_for_issue(&missing.repository, 7685)
+                .expect_err("missing inventory must fail closed")
+                .to_string()
+                .contains("required GitHub service ownership matrix is missing")
+        );
+
+        let bad_header = format!("{INVENTORY_START}\nwrong\n{INVENTORY_END}\n");
+        let bad_header = repository_with(&[(GITHUB_INVENTORY, &bad_header)]);
+        assert!(
+            unresolved_github_service_operations_for_issue(&bad_header.repository, 7685)
+                .expect_err("invalid header must fail closed")
+                .to_string()
+                .contains("invalid GitHub service ownership header")
+        );
+
+        let invalid_issue = inventory(
+            "issues\tadapter\trust\t7685\tcomplete\tcomplete\tcomplete\tissue migration-audit\n",
+        );
+        let invalid_issue = repository_with(&[(GITHUB_INVENTORY, &invalid_issue)]);
+        assert!(
+            unresolved_github_service_operations_for_issue(&invalid_issue.repository, 7685)
+                .expect_err("invalid issue reference must fail closed")
+                .to_string()
+                .contains("invalid planning issue reference")
+        );
     }
 }

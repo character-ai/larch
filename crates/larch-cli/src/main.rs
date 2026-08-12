@@ -64,6 +64,7 @@ mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
 mod learn_from_bugs_commands;
+mod migration_audit_commands;
 mod oos_commands;
 mod oos_file_commands;
 mod progress_commands;
@@ -670,6 +671,9 @@ enum IssueCommand {
     /// Emit one issue field as the single `VALUE` row.
     #[command(disable_help_flag = true)]
     Info(RawCompatibilityArguments),
+    /// Read one immutable migration-governance audit snapshot.
+    #[command(name = "migration-audit", disable_help_flag = true)]
+    MigrationAudit(RawCompatibilityArguments),
     /// Insert one bracketed signal marker into an issue title.
     #[command(name = "insert-signal-marker", disable_help_flag = true)]
     InsertSignalMarker(RawCompatibilityArguments),
@@ -1686,6 +1690,9 @@ fn run(
                 issue_input_commands::fetch_issue_details(&arguments.arguments)
             }
             IssueCommand::Info(arguments) => issue_commands::info(&arguments.arguments),
+            IssueCommand::MigrationAudit(arguments) => {
+                migration_audit_commands::run(&arguments.arguments)
+            }
             IssueCommand::InsertSignalMarker(arguments) => {
                 issue_wire_commands::insert_signal_marker_command(&arguments.arguments)
             }

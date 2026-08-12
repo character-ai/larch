@@ -824,6 +824,205 @@ fn clean_install_fixture_table_rejects_duplicate_selectors_and_malformed_rows() 
 }
 
 #[test]
+fn clean_install_fixture_table_rejects_duplicate_ids_and_empty_evidence() {
+    let duplicate_id = TempRepo::new();
+    prepare(
+        &duplicate_id,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    duplicate_id.write(
+        "crates/larch-cli/tests/parity.rs",
+        b"const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[\nCleanInstallCase::new(\"fixture\", \"fixture\", \"run\"),\nCleanInstallCase::new(\"fixture\", \"fixture\", \"other\"),\n];\n",
+    );
+    duplicate_id.commit_all();
+    TempRepo::command_from(duplicate_id.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "duplicate clean-install fixture id fixture",
+        ));
+
+    let empty = TempRepo::new();
+    prepare(
+        &empty,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    empty.write(
+        "crates/larch-cli/tests/parity.rs",
+        b"const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[];\n",
+    );
+    empty.commit_all();
+    TempRepo::command_from(empty.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "clean-install fixture table is empty",
+        ));
+}
+
+#[test]
+fn command_state_validation_rejects_stale_and_non_atomic_owner_transitions() {
+    let stale_metadata = TempRepo::new();
+    prepare(
+        &stale_metadata,
+        &command_row("python", "pending", "pending", "pending")
+            .replace("python_module = \"fixture\"", "python_module = \"stale\""),
+    );
+    stale_metadata.commit_all();
+    TempRepo::command_from(stale_metadata.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run Python target or machine-stdout metadata is stale",
+        ));
+
+    let absent_python = TempRepo::new();
+    prepare(
+        &absent_python,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    absent_python.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"other\", \"run\"): (\"other\", \"main\", False),\n}\n",
+    );
+    absent_python.commit_all();
+    TempRepo::command_from(absent_python.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run is absent from Python but its ownership or removal state is pending",
+        ));
+
+    let invalid_python = TempRepo::new();
+    prepare(
+        &invalid_python,
+        &command_row("python", "complete", "complete", "complete"),
+    );
+    invalid_python.commit_all();
+    TempRepo::command_from(invalid_python.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run has an invalid Python-owned migration state",
+        ));
+
+    let incomplete_rust = TempRepo::new();
+    prepare(
+        &incomplete_rust,
+        &command_row("rust", "pending", "pending", "complete"),
+    );
+    incomplete_rust.commit_all();
+    TempRepo::command_from(incomplete_rust.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run is Rust-owned without completed parity and consumer cutover",
+        ));
+
+    let invalid_retired = TempRepo::new();
+    prepare(
+        &invalid_retired,
+        &command_row("retired", "pending", "pending", "pending"),
+    );
+    invalid_retired.commit_all();
+    TempRepo::command_from(invalid_retired.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run has an invalid retired migration state or live caller",
+        ));
+}
+
+#[test]
+fn command_registry_rejects_incomplete_imported_registry_and_caller_shapes() {
+    let malformed_python = TempRepo::new();
+    prepare(
+        &malformed_python,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    malformed_python.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"bad\", \"shape\"): (\"not accepted\", \"main\", False),\n}\n",
+    );
+    malformed_python.commit_all();
+    TempRepo::command_from(malformed_python.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "parsed 1 of 2 command rows; update the Rust importer for the new source shape",
+        ));
+
+    let empty_python = TempRepo::new();
+    prepare(
+        &empty_python,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    empty_python.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n}\n",
+    );
+    empty_python.commit_all();
+    TempRepo::command_from(empty_python.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("command registry is empty"));
+
+    let missing_metadata = TempRepo::new();
+    prepare(
+        &missing_metadata,
+        &command_row("python", "pending", "pending", "pending")
+            .replace("python_function = \"main\"", "python_function = \"\""),
+    );
+    missing_metadata.commit_all();
+    TempRepo::command_from(missing_metadata.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "fixture run must retain non-empty Python target metadata",
+        ));
+
+    let missing_issue = TempRepo::new();
+    prepare(
+        &missing_issue,
+        &command_row("python", "pending", "pending", "pending")
+            .replace("planning_issue = 7661", "planning_issue = 0"),
+    );
+    missing_issue.commit_all();
+    TempRepo::command_from(missing_issue.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "fixture run has no responsible planning issue",
+        ));
+
+    let duplicate_caller = TempRepo::new();
+    let mut duplicate_caller_ledger = command_row("python", "pending", "pending", "pending");
+    duplicate_caller_ledger.push_str(
+        "\n[[callers]]\npath = \"skills/example/SKILL.md\"\nkind = \"skill\"\npython = []\nrust = []\n\n[[callers]]\npath = \"skills/example/SKILL.md\"\nkind = \"skill\"\npython = []\nrust = []\n",
+    );
+    prepare(&duplicate_caller, &duplicate_caller_ledger);
+    duplicate_caller.commit_all();
+    TempRepo::command_from(duplicate_caller.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "duplicate caller row for skills/example/SKILL.md",
+        ));
+}
+
+#[test]
 fn migration_issue_audit_checks_both_directions_and_plan_mentions() {
     let repository = TempRepo::new();
     repository.commit_all();

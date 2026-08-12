@@ -1,6 +1,6 @@
 # Migration Governance Audit
 
-`python3 python/cli.py issue migration-audit` runs the aggregate migration audit.
+`scripts/larch.sh issue migration-audit` runs the aggregate migration audit.
 It reads GitHub and repository evidence, invokes the canonical repository lint
 owners, and emits one stable report. It never edits an issue, pull request,
 branch, or repository file.
@@ -8,16 +8,21 @@ branch, or repository file.
 ## Usage
 
 ```bash
-python3 python/cli.py issue migration-audit \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue migration-audit \
   --repo owner/name \
   --chief 7687
 ```
 
-The command requires the repository's `larch` executable on `PATH`. It calls
-that executable through the `lint` domain and fails with exit `2` when the
-executable or required GitHub or repository evidence is unavailable.
-Production Python does not build the executable or invoke Cargo or a `target/`
-path.
+The command enters through the verified Rust bootstrap. It gathers evidence
+through the typed GitHub, Git, and filesystem adapters and runs the canonical
+repository lint owners in process. It fails with exit `2` when required GitHub
+or repository evidence is unavailable. Its exhaustive historical issue scan is
+separately bounded to 100 pages and 10,000 raw REST rows, with a 256 KiB
+per-field cap for historical plan bodies and a fixed three-minute aggregate
+deadline; a larger corpus or field refuses rather than silently narrowing the
+report. No production caller invokes a `target/` executable directly or falls
+back to Python behavior; the workflow supplies its freshly built path only to
+the bootstrap, which verifies it before execution.
 
 The active GitHub CLI identity needs read access to issues, issue dependencies,
 and pull requests for `owner/name`. An explicit output file also needs a
@@ -73,8 +78,8 @@ approvals, or deviations.
 
 Reasons come from the existing migration owners. They include plan defects,
 blocker and receipt tokens, owner-admission tokens, stale-lease tokens, and
-canonical `larch lint` diagnostics. The aggregate calls these subcommands
-through the installed executable:
+canonical `larch lint` diagnostics. The Rust command runs these canonical lint
+owners in process:
 
 - `rule command-registry`
 - `command-registry audit`
@@ -155,12 +160,13 @@ blocker parity, receipt freshness, owner admission, and gate formatting. Its
 callers supply immutable issue, dependency, pull-request, and tree snapshots;
 the core has no Git, GitHub, network, filesystem, process, or mutation owner.
 
-This partition does not cut over `issue migration-audit`. It also does not
-claim ownership of `issue governance-gate`, whose retained governance-gate
-boundary belongs to #7681. Command adapters remain responsible for evidence
-collection, validation at transport boundaries, and any future atomic cutover.
+The Rust `issue migration-audit` adapter owns its atomic command cutover and
+evidence collection. It does not claim ownership of `issue governance-gate`,
+whose retained Python governance-gate boundary belongs to #7681. Command
+adapters validate data at transport boundaries before passing immutable
+snapshots to the core.
 
-`larch-core::migration_audit` adds the report-only companion core. It accepts
+`larch-core::migration_audit` is the report-only companion core. It accepts
 already-collected issue, dependency, plan, lease, registry, and repository-rule
 evidence; reuses the admission core above; and deterministically renders the
 existing report schema. It owns no collection, command cutover, workflow,
@@ -170,12 +176,13 @@ GitHub, Git, network, filesystem, process, or issue mutation behavior.
 
 `.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and
 supports `workflow_dispatch`. It checks out the audited commit, loads the
-pinned Rust toolchain, builds the `larch-cli` package from the lockfile,
-verifies the `larch` binary, and adds only that build directory to `PATH`. It
-then runs:
+pinned Rust toolchain, builds the `larch-cli` package from the lockfile, and
+verifies the `larch` binary. It creates the repository's private GitHub CLI
+configuration for the typed client, then selects that binary with
+`LARCH_BINARY` and runs through the verified bootstrap:
 
 ```bash
-python3 python/cli.py issue migration-audit \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue migration-audit \
   --repo character-ai/larch \
   --chief 7687 \
   --output "$RUNNER_TEMP/migration-governance.json" \

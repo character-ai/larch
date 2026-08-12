@@ -174,11 +174,13 @@ Step 0 creates and reads back the run's `larch:implementation-lease` after the b
 
 ## Migration governance aggregate
 
-`python3 python/cli.py issue migration-audit` composes migration admission,
+`scripts/larch.sh issue migration-audit` composes migration admission,
 receipt, blocker, owner, lease, command-registry, retirement, clean-install, and
 runtime checks. It captures one immutable GitHub and repository snapshot, then
 passes that snapshot to every issue check. It emits JSON and a short count table
-without changing GitHub or repository state.
+without changing GitHub or repository state. The Rust adapter gathers its
+snapshot through typed GitHub, Git, filesystem, and in-process lint owners;
+callers enter through the verified bootstrap.
 
 For a `/complete-umbrella` parent that names a Chief umbrella, recon/design
 writes a valid issue-anchored plan before the prepare driver can move a leaf to

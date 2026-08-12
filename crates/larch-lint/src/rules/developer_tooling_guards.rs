@@ -8,6 +8,9 @@
 //! | `python/cli.py` selector scan | local regex, shared extract_selectors | Reuse [`crate::command_registry::python_cli_selectors`]. |
 //! | Shell and prompt argv discovery | line substrings, shared shell/Markdown parsers | Reuse [`crate::syntax::shell_commands`] and [`crate::syntax::markdown_shell_commands`]. |
 //! | Python child-process discovery | local tree walk, production cargo guard | Reuse [`super::production_cargo_run::python_subprocess_call_lines`]. |
+//! | Command closure proof | fresh ledger/parser, command-registry rule | Reuse the syntax-aware closure projection from [`crate::command_registry`]. |
+//! | Retained Python ownership | fresh issue-module scan, issue-python-free rule | Reuse the retained-module ownership projection from [`super::issue_python_free`]. |
+//! | GitHub service closure | fresh Markdown parser, service-ownership rule | Reuse the narrow inventory query from [`super::service_ownership`]. |
 //! | Git inventory closure | fresh Markdown parser, Git ownership rule | Reuse the narrow inventory query from [`super::git_ownership`]. |
 //! | Disposition retire modules | new TSV, shared ledger reader | Read the #8095 disposition TSV; derive `python/larch/lint/lint_<verb>.py` for unregistered `retire` rows. |
 
@@ -18,11 +21,12 @@ use crate::{
     syntax,
 };
 
-use super::{
-    git_ownership,
-    production_cargo_run::{executable_index, python_subprocess_call_lines},
-};
 use super::python_lint_disposition::is_verb_token;
+use super::{
+    git_ownership, issue_python_free,
+    production_cargo_run::{executable_index, python_subprocess_call_lines},
+    service_ownership,
+};
 
 const RUST_OWNED_NAME: &str = "developer-tooling-rust-owned-python";
 const RUST_OWNED_DESCRIPTION: &str =
@@ -32,7 +36,7 @@ const PROCESS_DESCRIPTION: &str =
     "Reject developer-tooling child processes for crate-owned capabilities";
 const INVENTORY_CLOSURE_NAME: &str = "developer-tooling-7685-closure";
 const INVENTORY_CLOSURE_DESCRIPTION: &str =
-    "Reject unresolved Git-operation inventory rows owned by #7685";
+    "Reject incomplete command, GitHub-service, and Git inventory migration evidence for #7685";
 const RETIRED_NAME: &str = "retired-disposition-module";
 const RETIRED_DESCRIPTION: &str =
     "Reject leftover modules for unregistered retire disposition rows";
@@ -52,10 +56,8 @@ const STAGED_GUIDELINES_PATH: &str =
     "skills/implement/scripts/step-architectural-guidelines-write-staged.sh";
 const MAKEFILE_PATH: &str = "Makefile";
 const PRE_COMMIT_PATH: &str = ".pre-commit-config.yaml";
-const OTHER_DOMAIN_SKILL_PREFIXES: [&str; 2] = [
-    ".claude/skills/audit-runs/",
-    ".claude/skills/release/",
-];
+const OTHER_DOMAIN_SKILL_PREFIXES: [&str; 2] =
+    [".claude/skills/audit-runs/", ".claude/skills/release/"];
 
 /// Child-process executables a Rust crate already owns. Vendor products stay
 /// permitted; only explicit, manifest-backed boundary exceptions remain.
@@ -205,18 +207,55 @@ impl Rule for DeveloperTooling7685ClosureRule {
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
-        let findings = git_ownership::unresolved_later_domain_paths(repository, 7685)?
-            .into_iter()
-            .map(|path| {
-                Finding::new(
-                    git_ownership::INVENTORY_PATH,
-                    1,
-                    format!("Git-operation inventory still has unresolved later-domain #7685 row: {path}"),
-                )
-            })
-            .collect();
+        let mut findings = command_registry::planning_issue_closure_findings(repository, 7685)?;
+        findings.extend(retained_module_closure_findings(
+            issue_python_free::retained_module_paths_for_issue(7685),
+            7685,
+        ));
+        findings.extend(
+            service_ownership::unresolved_github_service_operations_for_issue(repository, 7685)?
+                .into_iter()
+                .map(|(operation, line)| {
+                    Finding::new(
+                        "docs/github-service-inventory.md",
+                        line,
+                        format!(
+                            "GitHub service inventory still has incomplete #7685 ownership for operation: {operation}"
+                        ),
+                    )
+                }),
+        );
+        findings.extend(
+            git_ownership::unresolved_later_domain_paths(repository, 7685)?
+                .into_iter()
+                .map(|path| {
+                    Finding::new(
+                        git_ownership::INVENTORY_PATH,
+                        1,
+                        format!("Git-operation inventory still has unresolved later-domain #7685 row: {path}"),
+                    )
+                }),
+        );
+        findings.sort();
+        findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn retained_module_closure_findings(
+    paths: impl IntoIterator<Item = &'static str>,
+    planning_issue: u64,
+) -> Vec<Finding> {
+    paths
+        .into_iter()
+        .map(|path| {
+            Finding::new(
+                path,
+                1,
+                format!("planning issue #{planning_issue} retains Python module ownership"),
+            )
+        })
+        .collect()
 }
 
 impl Rule for RetiredDispositionModuleRule {
@@ -295,10 +334,7 @@ fn is_developer_tooling_surface(path: &str) -> bool {
         return matches!(extension(path), Some("yml" | "yaml"));
     }
     if path.starts_with(".github/actions/") {
-        return matches!(
-            path.rsplit('/').next(),
-            Some("action.yml" | "action.yaml")
-        );
+        return matches!(path.rsplit('/').next(), Some("action.yml" | "action.yaml"));
     }
     if path.starts_with("scripts/") {
         return is_non_test_runtime_script(path);
@@ -405,7 +441,10 @@ fn makefile_process_hits(path: &str, source: &str) -> Result<Vec<ProcessHit>, Li
             continue;
         };
         let recipe = recipe.trim_start_matches(['@', '-', '+']);
-        hits.extend(shell_process_hits(path, syntax::shell_commands(recipe, index)?)?);
+        hits.extend(shell_process_hits(
+            path,
+            syntax::shell_commands(recipe, index)?,
+        )?);
     }
     Ok(hits)
 }
@@ -598,10 +637,20 @@ fn line_u32(path: &str, line: usize) -> Result<u32, LintError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        executable_index, is_developer_tooling_surface, is_manifest_runtime_surface,
-        lint_module_path, looks_like_file, prohibited_program, yaml_shell_blocks,
+        DeveloperTooling7685ClosureRule, executable_index, is_developer_tooling_surface,
+        is_manifest_runtime_surface, lint_module_path, looks_like_file, prohibited_program,
+        retained_module_closure_findings, yaml_shell_blocks,
     };
-    use std::collections::BTreeSet;
+    use crate::{GitCli, Repository, Rule};
+    use std::{collections::BTreeSet, path::PathBuf};
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("workspace root")
+            .to_path_buf()
+    }
 
     #[test]
     fn scopes_developer_tooling_surfaces() {
@@ -612,9 +661,13 @@ mod tests {
             ".github/actions/github-auth-config/action.yaml"
         ));
         assert!(is_developer_tooling_surface("scripts/example.sh"));
-        assert!(is_developer_tooling_surface(".claude/skills/larch-size/SKILL.md"));
+        assert!(is_developer_tooling_surface(
+            ".claude/skills/larch-size/SKILL.md"
+        ));
         assert!(!is_developer_tooling_surface("scripts/test-example.sh"));
-        assert!(!is_developer_tooling_surface(".claude/skills/release/SKILL.md"));
+        assert!(!is_developer_tooling_surface(
+            ".claude/skills/release/SKILL.md"
+        ));
         assert!(!is_developer_tooling_surface("skills/design/SKILL.md"));
         assert!(!is_developer_tooling_surface("python/larch/cli.py"));
 
@@ -671,9 +724,32 @@ mod tests {
         );
         assert!(looks_like_file("python/larch/lint/lint_flat_tests.py"));
         assert!(!looks_like_file("python/larch/lint"));
+        assert_eq!(executable_index(&["sudo".into(), "gh".into()]), Some(1));
+    }
+
+    #[test]
+    fn closure_rejects_a_retained_python_module_owner() {
+        let findings =
+            retained_module_closure_findings(["python/larch/issue/legacy_governance.py"], 7685);
+
+        assert_eq!(findings.len(), 1);
         assert_eq!(
-            executable_index(&["sudo".into(), "gh".into()]),
-            Some(1)
+            findings[0].to_string(),
+            "python/larch/issue/legacy_governance.py:1: planning issue #7685 retains Python module ownership"
+        );
+    }
+
+    #[test]
+    fn closure_rule_proves_all_7685_command_and_service_owners_are_complete() {
+        let root = workspace_root();
+        let repository = Repository::discover(&GitCli, &root).expect("repository");
+
+        assert!(
+            DeveloperTooling7685ClosureRule
+                .check(&repository)
+                .expect("closure proof")
+                .findings()
+                .is_empty()
         );
     }
 }

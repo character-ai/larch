@@ -797,6 +797,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "xml-escape-attr",
     ),
     CleanInstallCase::new("clean-install-issue-list-issues", "issue", "list-issues"),
+    CleanInstallCase::new(
+        "clean-install-issue-migration-audit",
+        "issue",
+        "migration-audit",
+    ),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(

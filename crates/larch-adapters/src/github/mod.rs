@@ -194,13 +194,41 @@ impl OctocrabGitHubService {
         working_directory: &Path,
         cancellation: &dyn ProcessCancellation,
     ) -> Result<Self, GitHubClientError> {
-        let credential = acquire_github_token(runner, working_directory, cancellation).await?;
-        let credential = GitHubCredential::from(credential);
-        Self::from_credential(&credential)
+        Self::from_gh_with_policy(
+            runner,
+            working_directory,
+            cancellation,
+            GitHubTransportPolicy::github_com(),
+        )
+        .await
     }
 
-    fn from_credential(credential: &GitHubCredential) -> Result<Self, GitHubClientError> {
-        let policy = GitHubTransportPolicy::github_com();
+    /// Acquire the sole supported credential and construct a client with one
+    /// reviewed, caller-selected transport policy.
+    ///
+    /// Callers use this only for an explicitly documented exhaustive-history
+    /// read. The client, credential acquisition, redaction, fixed origins, and
+    /// request validation remain owned by this adapter.
+    ///
+    /// # Errors
+    ///
+    /// Fails before network access when `gh` is absent or unauthenticated, its
+    /// output is invalid, or fixed client configuration cannot be constructed.
+    pub async fn from_gh_with_policy<R: ExternalProcessRunner + ?Sized>(
+        runner: &R,
+        working_directory: &Path,
+        cancellation: &dyn ProcessCancellation,
+        policy: GitHubTransportPolicy,
+    ) -> Result<Self, GitHubClientError> {
+        let credential = acquire_github_token(runner, working_directory, cancellation).await?;
+        let credential = GitHubCredential::from(credential);
+        Self::from_credential_with_policy(&credential, policy)
+    }
+
+    fn from_credential_with_policy(
+        credential: &GitHubCredential,
+        policy: GitHubTransportPolicy,
+    ) -> Result<Self, GitHubClientError> {
         let mut redactor = RuntimeRedactor::default();
         let registered = redactor.register_exact_secret(credential.expose().to_owned());
         debug_assert!(registered, "validated GitHub credential must register");
@@ -238,8 +266,11 @@ impl OctocrabGitHubService {
 
     #[cfg(test)]
     pub(crate) fn from_test_token(token: &str) -> Self {
-        Self::from_credential(&GitHubCredential(token.to_owned()))
-            .expect("test token and active runtime must construct the client")
+        Self::from_credential_with_policy(
+            &GitHubCredential(token.to_owned()),
+            GitHubTransportPolicy::github_com(),
+        )
+        .expect("test token and active runtime must construct the client")
     }
 
     #[cfg(test)]
@@ -454,18 +485,20 @@ mod tests {
 
     fn configured_service(runtime: &LarchRuntime) -> OctocrabGitHubService {
         runtime.block_on(async {
-            OctocrabGitHubService::from_credential(&GitHubCredential(
-                "opaque test credential".to_owned(),
-            ))
+            OctocrabGitHubService::from_credential_with_policy(
+                &GitHubCredential("opaque test credential".to_owned()),
+                GitHubTransportPolicy::github_com(),
+            )
             .expect("fixed client should build")
         })
     }
 
     #[test]
     fn client_construction_outside_runtime_fails_without_secret_diagnostics() {
-        let error = OctocrabGitHubService::from_credential(&GitHubCredential(
-            "unusual exact secret".to_owned(),
-        ))
+        let error = OctocrabGitHubService::from_credential_with_policy(
+            &GitHubCredential("unusual exact secret".to_owned()),
+            GitHubTransportPolicy::github_com(),
+        )
         .err()
         .expect("runtime-less construction must fail");
 
@@ -498,6 +531,20 @@ mod tests {
         let limits: GitHubResponseLimits = service.transport_policy().limits();
         assert_eq!(limits.body_bytes(), 2 * 1024 * 1024);
         assert_eq!(limits.pages(), 20);
+    }
+
+    #[test]
+    fn explicit_history_policy_stays_inside_the_typed_client_boundary() {
+        let runtime = LarchRuntime::new().expect("runtime");
+        let service = runtime.block_on(async {
+            OctocrabGitHubService::from_credential_with_policy(
+                &GitHubCredential("opaque audit credential".to_owned()),
+                GitHubTransportPolicy::migration_audit(),
+            )
+            .expect("fixed audit policy should build")
+        });
+        assert_eq!(service.transport_policy().limits().pages(), 100);
+        assert_eq!(service.transport_policy().limits().items(), 10_000);
     }
 
     #[test]
