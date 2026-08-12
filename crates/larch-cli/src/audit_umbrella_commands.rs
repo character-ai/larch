@@ -2051,7 +2051,7 @@ mod tests {
         build_audit_proposal, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
         mark_audit_proposal_complete, record_audit_leaf_resolved, umbrella_leaf_opening,
     };
-    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -2173,20 +2173,29 @@ mod tests {
 
     fn service(exchanges: Vec<IssueServiceExchange>) -> (OctocrabGitHubService, IssueServiceStub) {
         let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
-        let client = octocrab::Octocrab::builder()
-            .personal_token("test-token".to_owned())
-            .base_uri(server.base_url())
-            .expect("stub base URI")
-            .upload_uri(server.base_url())
-            .expect("stub upload URI")
-            .build()
-            .expect("stub client");
-        (OctocrabGitHubService::with_test_client(client), server)
+        let service = OctocrabGitHubService::with_test_base(server.base_url());
+        (service, server)
     }
 
     fn response(status: u16, body: impl AsRef<[u8]>) -> IssueServiceExchange {
         IssueServiceExchange::any_json(status, body.as_ref().to_vec())
             .expect("valid issue service response")
+    }
+
+    fn paginated_response(
+        status: u16,
+        body: impl AsRef<[u8]>,
+        continuation: &str,
+    ) -> IssueServiceExchange {
+        let response = HttpResponseBuilder::new(status)
+            .header("content-type", "application/json")
+            .expect("content type")
+            .header("link", &format!("<{continuation}>; rel=\"next\""))
+            .expect("pagination link")
+            .body(body.as_ref().to_vec())
+            .build()
+            .expect("valid paginated response");
+        IssueServiceExchange::any(response)
     }
 
     fn issue_json(number: u64, id: u64, title: &str, body: &str, state: &str) -> String {
@@ -2210,7 +2219,7 @@ mod tests {
         issue["title"] = json!(title);
         issue["body"] = json!(body);
         issue["state"] = json!(state);
-        issue["url"] = json!(format!("https://api.github.com/repos/o/r/issues/{number}"));
+        issue["url"] = json!(format!("https://example.invalid/repos/o/r/issues/{number}"));
         issue["html_url"] = json!(format!("https://github.com/o/r/issues/{number}"));
         issue["labels"] = json!([]);
         issue["updated_at"] = json!(updated_at);
@@ -2224,7 +2233,7 @@ mod tests {
             "full_name": "o/r",
             "private": false,
             "html_url": "https://github.com/o/r",
-            "url": "https://api.github.com/repos/o/r",
+            "url": "https://example.invalid/repos/o/r",
             "default_branch": default_branch,
         })
         .to_string()
@@ -2793,6 +2802,37 @@ mod tests {
 
         assert_eq!(snapshot, audit_snapshot());
         assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_dependency_pagination_stays_on_the_adapter_loopback_transport() {
+        let (service, server) = service(vec![
+            paginated_response(
+                200,
+                refs(&[(11, 111, "open")]),
+                "/repos/o/r/issues/10/dependencies/blocked_by?page=2",
+            ),
+            response(200, refs(&[(12, 112, "open")])),
+        ]);
+
+        let dependencies = service
+            .list_blocked_by(&Cancellation::new(), "o", "r", 10)
+            .await
+            .expect("loopback pagination");
+        assert_eq!(
+            dependencies
+                .iter()
+                .map(larch_adapters::github::DependencyRef::issue_number)
+                .collect::<Vec<_>>(),
+            [11, 12]
+        );
+
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 2);
+        assert_eq!(
+            requests[1].path,
+            "/repos/o/r/issues/10/dependencies/blocked_by?page=2"
+        );
     }
 
     #[tokio::test]

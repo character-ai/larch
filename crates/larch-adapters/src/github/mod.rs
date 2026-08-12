@@ -146,7 +146,7 @@ pub struct OctocrabGitHubService {
     pub(crate) test_log_redirect_origin: Option<url::Origin>,
     redactor: RuntimeRedactor,
     pub(crate) mutation_lock: Mutex<()>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     test_continuation_base: Option<Url>,
 }
 
@@ -163,7 +163,7 @@ impl OctocrabGitHubService {
             test_log_redirect_origin: None,
             redactor: RuntimeRedactor::default(),
             mutation_lock: Mutex::new(()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             test_continuation_base: None,
         }
     }
@@ -181,7 +181,7 @@ impl OctocrabGitHubService {
             .expect("test upload base URI")
             .build()
             .expect("test client");
-        Self::with_test_client(client)
+        Self::with_test_client(client).with_test_continuation_base(base_url)
     }
 
     /// Acquire the sole supported credential from `gh` and construct one hardened client.
@@ -259,7 +259,7 @@ impl OctocrabGitHubService {
             test_log_redirect_origin: None,
             redactor,
             mutation_lock: Mutex::new(()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             test_continuation_base: None,
         })
     }
@@ -340,7 +340,7 @@ impl OctocrabGitHubService {
         &self.client
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn with_test_continuation_base(mut self, base: &str) -> Self {
         self.test_continuation_base = Some(Url::parse(base).expect("test continuation base"));
         self

@@ -1828,11 +1828,11 @@ impl OctocrabGitHubService {
             let Some(next) = next else {
                 return Ok(issue_refs);
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             {
                 route = self.issue_graph_continuation(&next, feature)?;
             }
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             {
                 route = Self::issue_graph_continuation(&next, feature)?;
             }
@@ -1865,11 +1865,11 @@ impl OctocrabGitHubService {
             let Some(next) = next else {
                 return Ok(comments);
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             {
                 route = self.issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             {
                 route = Self::issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
@@ -1937,7 +1937,7 @@ impl OctocrabGitHubService {
         Ok((value, next))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn issue_graph_continuation(
         &self,
         continuation: &str,
@@ -1959,7 +1959,7 @@ impl OctocrabGitHubService {
             .map_err(|_| GitHubOperationError::Malformed(feature.pagination_link_error_context()))
     }
 
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-support")))]
     fn issue_graph_continuation(
         continuation: &str,
         feature: IssueGraphFeature,
