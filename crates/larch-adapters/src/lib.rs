@@ -53,6 +53,7 @@ pub use filesystem::{
     is_allowed_session_tmpdir, normalize_path, path_strictly_under, path_under,
     resolve_allow_missing, safe_output_parent, writer_target_allowed,
 };
+pub(crate) use filesystem::{PrivateFileLock, lock_private_file};
 pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
     CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,

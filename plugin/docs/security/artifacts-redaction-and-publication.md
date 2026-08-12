@@ -159,6 +159,14 @@ stable published batches. A publisher may copy a bounded, registered,
 sanitized projection into a published artifact. The raw source remains
 session-private.
 
+Stall-recovery pending-clear markers and attempt-ledger companion locks are
+also private session artifacts. A pending marker is transition evidence, not a
+completed-clear signal or a public wire file: classification and outcome readers
+refuse it until the clear transaction verifies and removes it. Neither the
+marker nor a lock may be copied into a report, run-log batch, issue, or PR.
+Their only purpose is to make interrupted local recovery recognizable and to
+preserve every successful private retry record.
+
 Rust-owned background-job completion is a confined transaction, not a result
 file followed by best-effort markers. Before publishing any observable output,
 the daemon privately stages the exact result-envelope bytes and records a

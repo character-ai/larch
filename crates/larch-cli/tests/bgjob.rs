@@ -1133,6 +1133,10 @@ fn clear_stall_retains_a_live_checks_registry_row_when_the_owner_is_gone() {
         fs::read_to_string(tmpdir.join("ship-pr-state.sh")).expect("unchanged stall state"),
         "STALL_TRACKING=true\nSTALL_STEP=3\n"
     );
+    assert!(
+        !tmpdir.join("stall-recovery-clear.transaction.env").exists(),
+        "failed bgjob recovery started a state-clear transaction"
+    );
 
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(entry.daemon.pid),

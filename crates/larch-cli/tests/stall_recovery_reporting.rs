@@ -1,9 +1,10 @@
 //! End-to-end security and contract coverage for Rust-owned stall reporting.
 
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
 };
 
 use larch_adapters::stall_recovery::STALL_RECOVERY_EVIDENCE_NAMES;
@@ -143,6 +144,61 @@ impl Fixture {
             surface.to_owned(),
         ]
     }
+}
+
+#[test]
+fn concurrent_record_attempt_commands_keep_every_distinct_record() {
+    let fixture = Fixture::new();
+    let attempts = fixture.path("stall-recovery-attempts.env");
+    let mut children = Vec::new();
+    for index in 0..16 {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_larch"));
+        command
+            .args(["stall-recovery", "record-attempt", "--implement-tmpdir"])
+            .arg(&fixture.tmpdir)
+            .args([
+                "--attempts-file",
+                attempts.to_str().expect("UTF-8 attempts path"),
+                "--class",
+                "test-failure",
+                "--signature",
+                &format!("signature-{index}"),
+                "--resume-hint",
+                "step2-impl",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        children.push(command.spawn().expect("record-attempt process"));
+    }
+    for child in children {
+        let output = child
+            .wait_with_output()
+            .expect("record-attempt process result");
+        assert!(
+            output.status.success(),
+            "record-attempt failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let text = fs::read_to_string(&attempts).expect("attempt ledger");
+    assert!(text.contains("attempt_count=16\n"));
+    let mut signatures = BTreeSet::new();
+    for number in 1..=16 {
+        let prefix = format!("attempt.{number}.signature=");
+        let signature = text
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .expect("contiguous attempt record");
+        assert!(
+            signatures.insert(signature.to_owned()),
+            "duplicate attempt signature"
+        );
+    }
+    let expected = (0..16)
+        .map(|index| format!("signature-{index}"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(signatures, expected);
 }
 
 fn text(path: &Path) -> String {

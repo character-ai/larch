@@ -456,6 +456,104 @@ impl TemporaryRoot {
     }
 }
 
+/// An exclusive advisory lock over one private confined file.
+///
+/// The descriptor stays open for the guard's lifetime, which keeps both its
+/// advisory lock and its verified inode identity alive.
+pub struct PrivateFileLock {
+    _file: File,
+}
+
+/// Whether private-lock acquisition found an unsafe path or could not lock it.
+#[derive(Debug)]
+pub enum PrivateFileLockError {
+    Unsafe(io::Error),
+    Lock(io::Error),
+}
+
+impl PrivateFileLockError {
+    /// Return whether the error occurred while acquiring the advisory lock.
+    #[must_use]
+    pub const fn is_lock_failure(&self) -> bool {
+        matches!(self, Self::Lock(_))
+    }
+}
+
+impl fmt::Display for PrivateFileLockError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsafe(error) | Self::Lock(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for PrivateFileLockError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Unsafe(error) | Self::Lock(error) => Some(error),
+        }
+    }
+}
+
+/// Open and exclusively lock a private regular file below a temporary root.
+///
+/// The target is confined before and after opening, opened without following a
+/// symlink on Unix, and compared with the visible pathname after locking. This
+/// makes the returned guard suitable for serializing updates whose target file
+/// may be atomically replaced while a caller is waiting.
+pub fn lock_private_file(
+    root: &TemporaryRoot,
+    target: &Path,
+) -> Result<PrivateFileLock, PrivateFileLockError> {
+    let confined = root
+        .confine(target, PathIntent::Write)
+        .map_err(|error| PrivateFileLockError::Unsafe(io::Error::other(error)))?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
+        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+    }
+    let file = options
+        .open(confined.path())
+        .map_err(PrivateFileLockError::Unsafe)?;
+    let confined = root
+        .confine(target, PathIntent::Write)
+        .map_err(|error| PrivateFileLockError::Unsafe(io::Error::other(error)))?;
+    confined
+        .revalidate()
+        .map_err(|error| PrivateFileLockError::Unsafe(io::Error::other(error)))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(PrivateFileLockError::Unsafe)?;
+    }
+    file.lock().map_err(PrivateFileLockError::Lock)?;
+    root.revalidate()
+        .map_err(|error| PrivateFileLockError::Unsafe(io::Error::other(error)))?;
+    confined
+        .revalidate()
+        .map_err(|error| PrivateFileLockError::Unsafe(io::Error::other(error)))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+
+        let visible =
+            fs::symlink_metadata(confined.path()).map_err(PrivateFileLockError::Unsafe)?;
+        let opened = file.metadata().map_err(PrivateFileLockError::Unsafe)?;
+        if !visible.is_file() || opened.dev() != visible.dev() || opened.ino() != visible.ino() {
+            return Err(PrivateFileLockError::Unsafe(io::Error::other(
+                "private file lock changed while acquiring lease",
+            )));
+        }
+    }
+    Ok(PrivateFileLock { _file: file })
+}
+
 /// A normalized path whose containment, type, and symlink policy were checked.
 ///
 /// Validation is a snapshot. Call [`Self::revalidate`] immediately before an

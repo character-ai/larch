@@ -487,26 +487,171 @@ def write_values(path: Path, values: dict[str, object]) -> None:
     path.write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
 
 
+def artifact_path(tmpdir: Path, default_name: str, prefix: str) -> Path:
+    if not prefix or prefix == "stall-recovery":
+        return tmpdir / default_name
+    return tmpdir / f"{prefix}{default_name.removeprefix('stall-recovery')}"
+
+
+def evidence_digest(evidence: str) -> str:
+    return hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
+
+
+def classification_signature(
+    klass: str,
+    hint: str,
+    step: str,
+    phase: str,
+    bail: str,
+    evidence: str,
+    skill: str = "",
+) -> str:
+    prefix = f"profile=generic\nskill={skill}\n" if skill else ""
+    return hashlib.sha256(
+        f"{prefix}class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest(evidence)}\n".encode()
+    ).hexdigest()
+
+
+def abandoned_checks_step(tmpdir: Path) -> str:
+    root = Path(os.environ.get("LARCH_BGJOB_REGISTRY_ROOT", ""))
+    run_id = read_state(tmpdir / "session-env.sh").get("LARCH_RUN_ID", "")
+    if not root.is_dir() or not run_id:
+        return ""
+    for registry_step, stall_step in (
+        ("implement-step3-checks", "3"),
+        ("implement-checks-step5-self-review", "5"),
+        ("implement-step5-self-review", "5"),
+    ):
+        entry = read_state(root / f"{run_id}-{registry_step}.env")
+        if not entry:
+            continue
+        result = Path(entry.get("RESULT_ENV", ""))
+        if not result.is_absolute():
+            result = tmpdir / result
+        if not result.is_file() or result.is_symlink():
+            return stall_step
+    return ""
+
+
+def safe_generic_bail(value: str) -> bool:
+    return value in {
+        "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
+        "failed-judge-panel", "failed-publish-tail", "clarify-hard-halt", "postplan-failed",
+        "publish-failed", "publish-tail-failed", "plan-write-failed", "judge-panel-collapse",
+        "decompose-panel-retry-exhausted", "validator-autofix-exhausted",
+        "validator-autofix-failed", "validator-autofix-unavailable",
+        "validator-autofix-skipped-cycle-cap", "operator-action", "panel-init-failed",
+    }
+
+
+def safe_generic_source(value: str) -> bool:
+    return value in {
+        "split-path", "design-publish", "design-step3-review", "design-step5c", "clarify-loop",
+        "prompt-step", "validator", "postplan", "decompose-panel", "bash", "python",
+        "codex", "cursor", "claude", "ship-pr", "lint-fix-loop", "run-step5-review",
+    }
+
+
+def classify_generic(opts: dict[str, str], tmpdir: Path) -> int:
+    prefix = opts.get("--artifact-prefix", "")
+    state_file = Path(opts.get("--primary-state-file", str(artifact_path(tmpdir, "stall-recovery-terminal-state.env", prefix))))
+    found = read_state(state_file)
+    step, phase = found.get("STALL_STEP", ""), found.get("PHASE", "")
+    bail, exit_code = found.get("BAIL_REASON", ""), found.get("EXIT_CODE", "")
+    source = found.get("SOURCE_SCRIPT", "")
+    evidence = state_file.read_text(encoding="utf-8", errors="replace") if state_file.is_file() else ""
+    current_publish = (
+        found.get("TRIGGER") == "publish-tail-failed"
+        and exit_code == "5"
+        and bool(found.get("PUBLISH_ATTEMPT_ID"))
+        and found.get("PUBLISH_RC_SOURCE") in {"returned", "exception"}
+    )
+    if current_publish and found.get("PLAN_WRITE_OK") == "true":
+        klass, hint, pattern = "recoverable", "resume-post-plan-publish", "design-publish-tail-current-attempt"
+    else:
+        klass, _hint, pattern = classify_text(evidence, bail, step, False, exit_code, False)
+        hint = "none"
+    if prefix == "design-failure":
+        skill = "/design"
+    elif not prefix:
+        skill = "/implement"
+    else:
+        skill = f"/{prefix.split('-', 1)[0]}"
+    signature = classification_signature(klass, hint, step, phase, bail, evidence, skill)
+    attempts = opts.get("--attempts-file", "")
+    if attempts and klass not in {"contract-failure", "unrecoverable"} and read_last(Path(attempts), "attempt_count") != "0":
+        if read_last(Path(attempts), f"attempt.{read_last(Path(attempts), 'attempt_count')}.signature") == signature:
+            klass, pattern = "same-cause-repeat", "same-cause-repeat"
+    values: dict[str, object] = {
+        "FAILURE_CLASS": klass,
+        "FAILURE_SIGNATURE": signature,
+        "RESUME_HINT": hint,
+        "STALL_STEP": safe_step_value(step),
+        "PHASE": safe_phase_value(phase),
+        "STALL_TRACKING": "true",
+        "BAIL_REASON": bail if not bail or safe_generic_bail(bail) else "redacted",
+        "BAIL_REASON_RAW": bail,
+        "FAILURE_DETAIL_LOG": "",
+        "EXIT_CODE": exit_code if re.fullmatch(r"[0-9]+|unknown", exit_code or "") else "unknown",
+        "MATCHED_CLASSIFIER_PATTERN": pattern,
+        "DISPATCHER": source if safe_generic_source(source) else ("unknown" if not source else "redacted"),
+    }
+    if current_publish:
+        for key in (
+            "LATEST_PHASE", "PUBLISH_RC_SOURCE", "PLAN_WRITE_OK", "PUBLISH_OK", "RENAMED",
+            "LOG_PUBLISH_ATTEMPTED", "LOG_PUBLISH_COMPLETED", "PR_URL", "RECOVERY_BRANCH",
+        ):
+            if found.get(key):
+                values[key] = found[key]
+    path = artifact_path(tmpdir, "stall-recovery-classification.env", prefix)
+    write_values(path, values)
+    for key, value in values.items():
+        print(f"{key}={value}")
+    print(f"CLASSIFICATION_FILE={path}")
+    return 0
+
+
 def classify(opts: dict[str, str]) -> int:
     tmpdir = Path(opts.get("--implement-tmpdir", "."))
+    if opts.get("--profile") == "generic":
+        return classify_generic(opts, tmpdir)
     primary = Path(opts.get("--primary-state-file", str(tmpdir / "ship-pr-state.sh")))
     state = read_state(primary) | read_state(tmpdir / "finalize-state.sh") | read_state(tmpdir / "session-env.sh")
     step = opts.get("--stall-step") or state.get("STALL_STEP", "")
     phase = opts.get("--phase") or state.get("PHASE", "")
     bail = opts.get("--bail-reason") or state.get("BAIL_REASON", "") or state.get("IMPLEMENT_BAIL_REASON", "")
     any_stall = any(truthy(value) for value in (opts.get("--in-memory-stall-tracking", ""), read_state(primary).get("STALL_TRACKING", "false"), read_state(tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false"), read_state(tmpdir / "session-env.sh").get("STALL_TRACKING", "false")))
+    abandoned = "" if any_stall else abandoned_checks_step(tmpdir)
+    if abandoned:
+        any_stall = True
+        step = step or abandoned
     evidence = ""
     for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
         path = tmpdir / name
         evidence += "\n" + (path.read_text(encoding="utf-8", errors="replace") if path.is_file() and not path.is_symlink() and path.stat().st_size <= 65_536 else "")
     raw_exit = opts.get("--exit-code") or state.get("EXIT_CODE", "unknown")
-    if not any_stall:
+    lower = f"{bail}\n{evidence}".lower()
+    postmerge = any_stall and phase == "postmerge" and step == "postmerge-flush" and state.get("MERGE_RESULT", "").strip() in _TERMINAL_MERGES
+    postmerge_failure = postmerge and any(token in lower for token in ("redaction-failed", "post-merge-refresh-failed", "manifest-recovery-failed", "commit-failed"))
+    expected_postmerge = postmerge and "preterminal-outcome" in lower and not postmerge_failure
+    if abandoned:
+        klass, hint, pattern = "transient-infra", "checks-commit-route-retry", "checks-leg-abandoned"
+    elif not any_stall:
         klass, hint, pattern = "unrecoverable", "none", "no-stall"
+    elif postmerge_failure:
+        klass, hint, pattern = "unrecoverable", "none", "postmerge-flush-failure"
+    elif expected_postmerge:
+        klass, hint, pattern = "operator-action", "none", "postmerge-flush-expected"
     else:
         klass, _hint, pattern = classify_text(evidence, bail, step, False, raw_exit, True)
         hint = resume_hint(klass, step, phase, pattern)
-    evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
-    signature = hashlib.sha256(f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode()).hexdigest()
+    signature = classification_signature(klass, hint, step, phase, bail, evidence)
+    attempts = opts.get("--attempts-file", "")
+    if not expected_postmerge and attempts and klass not in {"contract-failure", "unrecoverable"}:
+        attempts_path = Path(attempts)
+        count = read_last(attempts_path, "attempt_count")
+        if count.isdigit() and count != "0" and read_last(attempts_path, f"attempt.{count}.signature") == signature:
+            klass, pattern, hint = "same-cause-repeat", "same-cause-repeat", "none"
     safe_bails = {"protected-path-edit-required-out-of-scope", "submodule-edit-required-out-of-scope", "adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope", "ci-fix-exhausted", "manifest-missing"}
     dispatcher = opts.get("--dispatcher") or state.get("DISPATCHER", "") or state.get("CODER_TOOL", "")
     values: dict[str, object] = {

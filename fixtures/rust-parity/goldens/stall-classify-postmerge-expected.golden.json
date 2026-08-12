@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "STALL_TRACKING=true\nSTALL_STEP=postmerge-flush\nPHASE=postmerge\nMERGE_RESULT=merged\nBAIL_REASON=preterminal-outcome\nEXIT_CODE=4\n"
+    },
+    "stall-recovery-classification.env": {
+      "text": "FAILURE_CLASS=operator-action\nFAILURE_SIGNATURE=dba3a880bb5cb4f3150ca040a6b6f72b1016468555b89369066f549a72c7b694\nRESUME_HINT=none\nSTALL_STEP=unknown\nPHASE=postmerge\nSTALL_TRACKING=true\nBAIL_REASON=redacted\nBAIL_REASON_RAW=preterminal-outcome\nFAILURE_DETAIL_LOG=\nEXIT_CODE=4\nMATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected\nDISPATCHER=unknown\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=operator-action\nFAILURE_SIGNATURE=dba3a880bb5cb4f3150ca040a6b6f72b1016468555b89369066f549a72c7b694\nRESUME_HINT=none\nSTALL_STEP=unknown\nPHASE=postmerge\nSTALL_TRACKING=true\nBAIL_REASON=redacted\nBAIL_REASON_RAW=preterminal-outcome\nFAILURE_DETAIL_LOG=\nEXIT_CODE=4\nMATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected\nDISPATCHER=unknown\nCLASSIFICATION_FILE=<SANDBOX>/stall-recovery-classification.env\n"
+  }
+}
