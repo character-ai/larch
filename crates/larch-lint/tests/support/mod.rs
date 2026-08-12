@@ -191,6 +191,17 @@ fn seed_tracked_tree(repository: &TempRepo) {
         "crates/larch-lint/data/command-registry.toml",
         b"schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
     );
+    // The all-rule fixture must carry a structurally valid GitHub matrix: the
+    // #7685 closure guard consumes it fail-closed even when this fixture has
+    // no #7685-owned command.
+    repository.write(
+        "crates/larch-adapters/src/github/mod.rs",
+        b"pub fn fixture_owner() {}\n",
+    );
+    repository.write(
+        "docs/github-service-inventory.md",
+        b"<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\nactions\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nattestations\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\ncomments\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissue-dependencies\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissue-sub-issues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nlabels\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\npull-requests\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nreleases\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nrepository-metadata\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\n```\n<!-- github-service-ownership:end -->\n",
+    );
     repository.write(
         "crates/larch-core/src/report/timing.rs",
         b"pub const TIMING_TASK_KINDS_ALLOWED: [&str; 1] = [\"fixture-kind\"];\n",
