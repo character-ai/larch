@@ -750,6 +750,18 @@ impl GitHubResponseLimits {
     }
 }
 
+/// Scope for the overall deadline of one paginated issue-list operation.
+///
+/// The exhaustive-history exception keeps each page read bounded while its
+/// caller owns a separately bounded aggregate deadline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubIssueListTimeoutScope {
+    /// One overall deadline covers the complete paginated issue list.
+    EntireList,
+    /// Each page read receives the ordinary overall deadline independently.
+    PerPage,
+}
+
 /// Immutable policy shared by every GitHub operation adapter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GitHubTransportPolicy {
@@ -757,6 +769,7 @@ pub struct GitHubTransportPolicy {
     read_timeout: Duration,
     write_timeout: Duration,
     overall_timeout: Duration,
+    issue_list_timeout_scope: GitHubIssueListTimeoutScope,
     limits: GitHubResponseLimits,
 }
 
@@ -769,6 +782,7 @@ impl GitHubTransportPolicy {
             read_timeout: Duration::from_secs(30),
             write_timeout: Duration::from_secs(30),
             overall_timeout: Duration::from_secs(60),
+            issue_list_timeout_scope: GitHubIssueListTimeoutScope::EntireList,
             limits: GitHubResponseLimits {
                 body_bytes: 2 * 1024 * 1024,
                 pages: 20,
@@ -797,6 +811,7 @@ impl GitHubTransportPolicy {
             read_timeout: Duration::from_secs(30),
             write_timeout: Duration::from_secs(30),
             overall_timeout: Duration::from_secs(60),
+            issue_list_timeout_scope: GitHubIssueListTimeoutScope::PerPage,
             limits: GitHubResponseLimits {
                 body_bytes: 2 * 1024 * 1024,
                 pages: 100,
@@ -835,6 +850,12 @@ impl GitHubTransportPolicy {
     #[must_use]
     pub const fn overall_timeout(self) -> Duration {
         self.overall_timeout
+    }
+
+    /// Return whether one issue-list deadline covers the full list or each page.
+    #[must_use]
+    pub const fn issue_list_timeout_scope(self) -> GitHubIssueListTimeoutScope {
+        self.issue_list_timeout_scope
     }
 
     #[must_use]
@@ -1498,6 +1519,14 @@ mod tests {
         assert_eq!(audit.read_timeout(), standard.read_timeout());
         assert_eq!(audit.write_timeout(), standard.write_timeout());
         assert_eq!(audit.overall_timeout(), standard.overall_timeout());
+        assert_eq!(
+            standard.issue_list_timeout_scope(),
+            GitHubIssueListTimeoutScope::EntireList
+        );
+        assert_eq!(
+            audit.issue_list_timeout_scope(),
+            GitHubIssueListTimeoutScope::PerPage
+        );
         assert_eq!(
             GitHubTransportPolicy::migration_audit_aggregate_timeout(),
             Duration::from_secs(180)

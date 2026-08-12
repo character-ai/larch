@@ -18,11 +18,13 @@ through the typed GitHub, Git, and filesystem adapters and runs the canonical
 repository lint owners in process. It fails with exit `2` when required GitHub
 or repository evidence is unavailable. Its exhaustive historical issue scan is
 separately bounded to 100 pages and 10,000 raw REST rows, with a 256 KiB
-per-field cap for historical plan bodies and a fixed three-minute aggregate
-deadline; a larger corpus or field refuses rather than silently narrowing the
-report. No production caller invokes a `target/` executable directly or falls
-back to Python behavior; the workflow supplies its freshly built path only to
-the bootstrap, which verifies it before execution.
+per-field cap for historical plan bodies. Each page read, including its bounded
+retry sequence, keeps the ordinary 60-second deadline; the complete snapshot
+has a fixed three-minute aggregate deadline. A larger corpus, field, or
+deadline overrun refuses rather than silently narrowing the report. No
+production caller invokes a `target/` executable directly or falls back to
+Python behavior; the workflow supplies its freshly built path only to the
+bootstrap, which verifies it before execution.
 
 The active GitHub CLI identity needs read access to issues, issue dependencies,
 and pull requests for `owner/name`. An explicit output file also needs a

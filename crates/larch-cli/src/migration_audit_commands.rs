@@ -10,6 +10,7 @@ use std::{
     env,
     ffi::OsString,
     fs,
+    future::Future,
     io::{self, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
@@ -412,15 +413,25 @@ async fn collect_remote_snapshot_with_deadline(
     chief_issue: u64,
     deadline: Duration,
 ) -> Result<RemoteSnapshot, String> {
-    tokio::time::timeout(
+    collect_with_deadline(
+        cancellation,
         deadline,
         collect_remote_snapshot(service, cancellation, repository, chief_issue),
     )
     .await
-    .unwrap_or_else(|_| {
-        cancellation.cancel();
-        Err("issue snapshot unavailable".to_owned())
-    })
+}
+
+async fn collect_with_deadline<T>(
+    cancellation: &Cancellation,
+    deadline: Duration,
+    operation: impl Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    tokio::time::timeout(deadline, operation)
+        .await
+        .unwrap_or_else(|_| {
+            cancellation.cancel();
+            Err("issue snapshot unavailable".to_owned())
+        })
 }
 
 fn migration_issue(issue: &GitHubIssue, context: &str) -> Result<MigrationIssueSnapshot, String> {
@@ -838,19 +849,19 @@ mod tests {
     };
 
     use super::{
-        TableOutput, collect_plan_evidence, collect_remote_snapshot,
-        collect_remote_snapshot_with_deadline, diagnostic_detail, executable_leaf, git_path_string,
-        is_glob, migration_issue, parse_arguments, path_inside, plan_path_defects,
-        reuse_source_refs, safe_finding, scope_snapshot, tracked_paths, unsafe_filesystem_path,
-        unsafe_plan_path, validate_plan, worktree_root, write_output, write_stderr, write_stdout,
+        TableOutput, collect_plan_evidence, collect_remote_snapshot, collect_with_deadline,
+        diagnostic_detail, executable_leaf, git_path_string, is_glob, migration_issue,
+        parse_arguments, path_inside, plan_path_defects, reuse_source_refs, safe_finding,
+        scope_snapshot, tracked_paths, unsafe_filesystem_path, unsafe_plan_path, validate_plan,
+        worktree_root, write_output, write_stderr, write_stdout,
     };
     use crate::github_service::{with_github_service, with_test_github_service};
-    use larch_adapters::{GixRepository, github::OctocrabGitHubService};
+    use larch_adapters::{GixRepository, github::OctocrabGitHubService, runtime::Cancellation};
     use larch_core::{
         GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitPath, MigrationAuditSnapshot,
         MigrationIssueSnapshot, PlanReceipt, RepositoryRead, compose_named_block, render_receipt,
     };
-    use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
 
     fn fixture_issue(number: u64, title: &str, body: &str) -> Value {
@@ -1189,40 +1200,19 @@ mod tests {
         assert!(requests.iter().all(|request| request.method == "GET"));
     }
 
-    #[test]
-    fn aggregate_snapshot_deadline_is_fail_closed_and_redacted() {
-        let retry_later = HttpResponseBuilder::new(429)
-            .header("content-type", "application/json")
-            .expect("valid content type")
-            .header("retry-after", "1")
-            .expect("valid retry delay")
-            .body("{}")
-            .build()
-            .expect("valid rate-limit response");
-        let server = IssueServiceStub::start([IssueServiceExchange::any(retry_later)])
-            .expect("start loopback service");
-        let service = service_factory(&server);
-        let repository = GitHubRepositoryRef::new("o", "r").expect("valid repository");
+    #[tokio::test(start_paused = true)]
+    async fn aggregate_snapshot_deadline_is_fail_closed() {
+        let cancellation = Cancellation::new();
 
-        let error = with_test_github_service(service, || {
-            with_github_service(async |service, cancellation| {
-                collect_remote_snapshot_with_deadline(
-                    service,
-                    cancellation,
-                    &repository,
-                    7687,
-                    Duration::from_millis(100),
-                )
-                .await
-            })
-            .expect_err("aggregate deadline must reject an incomplete snapshot")
-            .into_detail()
-        });
+        let error = collect_with_deadline(&cancellation, Duration::from_secs(180), async {
+            tokio::time::sleep(Duration::from_secs(181)).await;
+            Ok::<(), String>(())
+        })
+        .await
+        .expect_err("aggregate deadline must reject an incomplete snapshot");
 
         assert_eq!(error, "issue snapshot unavailable");
-        let requests = server.finish().expect("completed loopback request");
-        assert_eq!(requests.len(), 1);
-        assert!(requests.iter().all(|request| request.method == "GET"));
+        assert!(cancellation.is_cancelled());
     }
 
     #[test]
