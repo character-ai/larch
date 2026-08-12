@@ -980,22 +980,18 @@ fn read_confined_regular_text(
 ) -> Result<Option<String>, BgjobError> {
     let path = ensure_under(path, root, message)?;
     validate_parent_chain(&path, root, message)?;
-    match fs::symlink_metadata(&path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(BgjobError::Io(error.to_string())),
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err(BgjobError::Invalid(message.to_owned()));
-        }
-        Ok(_) => {}
-    }
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
-        options.custom_flags(nix::libc::O_NOFOLLOW);
+        options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
     }
     let mut file = match options.open(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        #[cfg(unix)]
+        Err(error) if error.raw_os_error() == Some(nix::libc::ELOOP) => {
+            return Err(BgjobError::Invalid(message.to_owned()));
+        }
         Err(error) => return Err(BgjobError::Io(error.to_string())),
         Ok(file) => file,
     };
@@ -2194,7 +2190,7 @@ mod tests {
         );
 
         let unexpected = sandbox.path().join("unexpected.sentinel");
-        let mut caller_copy = prepared.clone();
+        let mut caller_copy = prepared;
         caller_copy.sentinel_paths.push(unexpected.clone());
         finish_completion_transaction(&caller_copy).expect("finish completion transaction");
         let committed = read_completion_transaction(sandbox.path(), "demo-step")

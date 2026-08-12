@@ -379,7 +379,7 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
 }
 
 #[test]
-fn direct_start_confines_and_revalidates_merge_result_envs() {
+fn direct_start_rejects_unsafe_merge_result_envs_before_launch() {
     let sandbox = Sandbox::new();
     let tmpdir = sandbox.session("direct-merge");
     let owner_pid = std::process::id().to_string();
@@ -392,12 +392,15 @@ fn direct_start_confines_and_revalidates_merge_result_envs() {
     fs::create_dir(&ancestor_target).expect("ancestor target");
     let ancestor_link = tmpdir.join("ancestor-link");
     symlink(&ancestor_target, &ancestor_link).expect("ancestor symlink");
+    let directory_merge = tmpdir.join("directory-merge");
+    fs::create_dir(&directory_merge).expect("directory merge path");
 
     for (case, merge) in [
         ("relative", PathBuf::from("relative.env")),
         ("outside", outside.path().join("outside.env")),
         ("leaf-link", leaf_link),
         ("ancestor-link", ancestor_link.join("merge.env")),
+        ("directory", directory_merge),
     ] {
         let step = format!("direct-{case}");
         let marker = sandbox.root.path().join(format!("{case}.ran"));
@@ -423,7 +426,13 @@ fn direct_start_confines_and_revalidates_merge_result_envs() {
             "{case} merge path launched its child before validation"
         );
     }
+}
 
+#[test]
+fn direct_start_preserves_valid_merge_result_rows() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("direct-merge");
+    let owner_pid = std::process::id().to_string();
     let valid_merge = tmpdir.join("valid-merge.env");
     let started = raw_larch(&sandbox)
         .args(["bgjob", "start", "--step", "direct-valid"])
@@ -473,7 +482,14 @@ fn direct_start_confines_and_revalidates_merge_result_envs() {
         result.ends_with("STEP=direct-valid\nCUSTOM=kept\n"),
         "{result:?}"
     );
+}
 
+#[test]
+fn direct_start_revalidates_raced_merge_result_env() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("direct-merge");
+    let owner_pid = std::process::id().to_string();
+    let outside = tempfile::tempdir().expect("outside directory");
     let raced_merge = tmpdir.join("raced-merge.env");
     let ready = tmpdir.join("merge-ready");
     let release = tmpdir.join("merge-release");

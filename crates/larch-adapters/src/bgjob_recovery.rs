@@ -202,20 +202,16 @@ fn failed(entry: &RegistryEntry, context: &str, reason: String) -> BgjobRecovery
 /// Read a regular, non-symlink bgjob env file into ordered rows.
 #[must_use]
 pub fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
-    let text = read_result_text(path)?;
-    if text.contains('\r') {
-        return Some(Vec::new());
-    }
-    Some(ordered_rows(&text))
-}
-
-fn read_result_text(path: &Path) -> Option<String> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return None;
     }
     let bytes = fs::read(path).ok()?;
-    Some(String::from_utf8_lossy(&bytes).into_owned())
+    let text = String::from_utf8_lossy(&bytes);
+    if text.contains('\r') {
+        return Some(Vec::new());
+    }
+    Some(ordered_rows(&text))
 }
 
 /// Return rows only when `path` is a completed result for `step`.
