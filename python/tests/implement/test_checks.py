@@ -4022,6 +4022,14 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         '--policy-dir "$RUNNER_TEMP/trusted-main-rust-policy"',
     ):
         assert canonical_materialization in rust_promotion
+    assert (
+        'if [ -e "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" ]; then\n'
+        '            test -d "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git"\n'
+        '            mv -- "$RUNNER_TEMP/main-cache-promoted/cargo-inputs/git" "$HOME/.cargo/git"\n'
+        '          else\n'
+        '            mkdir -p "$HOME/.cargo/git"\n'
+        '          fi'
+    ) in rust_promotion
     assert "/*\n            !/larch-logs/" in gitleaks_publisher
     assert "/.github/actions/main-cache-keys/" not in gitleaks_publisher
     for validation_operation in (
