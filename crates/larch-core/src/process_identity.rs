@@ -272,6 +272,10 @@ pub trait ProcessIdentityHost {
     fn probe_process_birth_identity(&self, _pid: i32) -> ProcessBirthIdentityProbeOutput {
         ProcessBirthIdentityProbeOutput::Unsupported
     }
+    /// Return whether `pid` is an exited, unreaped process that cannot execute or own live work.
+    fn process_is_zombie(&self, _pid: i32) -> bool {
+        false
+    }
     /// Enumerate direct children of `pid` via `pgrep -P`.
     fn pgrep_children(&self, pid: i32) -> Vec<i32>;
     /// Enumerate members of process group `pgid` via `pgrep -g`.
@@ -395,6 +399,12 @@ pub fn probe_process_identity(
             failure_reason,
         };
     }
+    if host.process_is_zombie(process_id) {
+        return ProcessIdentityProbeResult {
+            identity: None,
+            failure_reason,
+        };
+    }
     // Read the kernel identity before looking up `ps`. If the PID is reused
     // while the weaker text fields are being collected, the closing birth
     // probe below makes that mixed snapshot fail instead of persisting the
@@ -419,6 +429,14 @@ pub fn probe_process_identity(
         IdentityProbeOutput::Timeout => failure_reason = String::from("identity-probe-timeout"),
         IdentityProbeOutput::Missing => {}
         IdentityProbeOutput::Stdout(stdout) => {
+            // A Linux zombie retains its PID and PGID until reaped but cannot
+            // own work or safely match an exact command signature.
+            if host.process_is_zombie(process_id) {
+                return ProcessIdentityProbeResult {
+                    identity: None,
+                    failure_reason: "missing-pid".to_owned(),
+                };
+            }
             if let Some(mut identity) =
                 parse_ps_identity(process_id, process_group_id, &stdout, expected_signature)
             {
@@ -621,7 +639,7 @@ pub fn collect_process_group_members(host: &dyn ProcessIdentityHost, pgid: i32) 
     let mut members = Vec::new();
     let mut seen = BTreeSet::new();
     for member in host.pgrep_group(pgid) {
-        if seen.insert(member) {
+        if !host.process_is_zombie(member) && seen.insert(member) {
             members.push(member);
         }
     }
@@ -637,7 +655,7 @@ pub fn collect_process_group_members_checked(
     let mut members = Vec::new();
     let mut seen = BTreeSet::new();
     for member in host.pgrep_group_checked(pgid)? {
-        if seen.insert(member) {
+        if !host.process_is_zombie(member) && seen.insert(member) {
             members.push(member);
         }
     }
@@ -760,6 +778,79 @@ fn signal_group_and_descendants(
     validation
 }
 
+/// Capture live non-leader group members before a graceful group signal.
+///
+/// A valid member is a short-lived escalation anchor only: it binds the
+/// numeric process group after the validated leader exits in response to TERM.
+/// It is never used after the terminating call returns, and it is revalidated
+/// immediately before the KILL signal.
+fn capture_group_escalation_anchors(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+) -> Vec<RecordedProcessIdentity> {
+    collect_process_group_members_checked(host, recorded.pgid)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|pid| *pid != recorded.pid)
+        .filter_map(|pid| read_process_identity(host, pid, ""))
+        .filter(|identity| identity.pgid == recorded.pgid)
+        .collect()
+}
+
+/// Revalidate a pre-TERM group member before escalating a now-leaderless
+/// group. A member with the same stable birth identity proves that the PGID
+/// still belongs to the group we just signalled, so the KILL cannot target a
+/// recycled numeric group.
+fn signal_group_from_escalation_anchor(
+    host: &dyn ProcessIdentityHost,
+    anchors: &[RecordedProcessIdentity],
+    log_path: Option<&Path>,
+    caller: &str,
+    reason: &str,
+) -> Option<ValidationResult> {
+    for anchor in anchors {
+        let initial = validate_process_identity_with_policy(
+            host,
+            anchor,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+        );
+        if !initial.ok {
+            continue;
+        }
+        let snapshot = KillTargetSnapshot {
+            pid: anchor.pid,
+            pgid: anchor.pgid,
+            descendants: Vec::new(),
+            command: initial.current.as_ref().map_or_else(
+                || anchor.command_signature.clone(),
+                |current| current.command_signature.clone(),
+            ),
+        };
+        log_signal(
+            host,
+            log_path,
+            TerminateSignal::Kill,
+            &snapshot,
+            caller,
+            reason,
+        );
+        // The log is intentionally before the external effect. A second
+        // validation closes the same logging-to-signal window as the normal
+        // leader path and keeps PID-reuse protection intact.
+        let validation = validate_process_identity_with_policy(
+            host,
+            anchor,
+            ProcessIdentityValidationPolicy::AllowCommandTransition,
+        );
+        if !validation.ok {
+            continue;
+        }
+        host.signal_group(anchor.pgid, TerminateSignal::Kill);
+        return Some(validation);
+    }
+    None
+}
+
 /// Terminate a process group only when the recorded identity still matches.
 #[must_use]
 pub fn terminate_validated_process_group(
@@ -803,6 +894,11 @@ pub fn terminate_validated_process_group_with_policy(
         // let the caller prove absence; never signal an unrelated group.
         return validation;
     }
+    // Preserve an independently validated member before TERM. A TERM may
+    // correctly make the group leader disappear while a descendant that
+    // ignored TERM remains. The anchor lets the KILL escalation prove that
+    // the numeric PGID still names this exact group instead of stranding it.
+    let escalation_anchors = capture_group_escalation_anchors(host, recorded);
     let descendants = collect_descendants(host, recorded.pid);
     let current = validation.current.unwrap_or_else(|| recorded.clone());
     let validation = signal_group_and_descendants(
@@ -819,9 +915,42 @@ pub fn terminate_validated_process_group_with_policy(
         policy,
     );
     if !validation.ok {
+        // The leader can exit in the narrow log-to-signal revalidation
+        // window. The pre-captured member still ties this numeric group to
+        // the just-validated leader, so use the same two-validation anchor
+        // path rather than leaving a live descendant group unowned.
+        if validation.reason == "missing-pid"
+            && let Some(validation) = signal_group_from_escalation_anchor(
+                host,
+                &escalation_anchors,
+                log_path,
+                caller,
+                reason,
+            )
+        {
+            return validation;
+        }
         return validation;
     }
     host.sleep(TERMINATE_ESCALATION_SLEEP);
+    let leader = validate_process_identity_with_policy(host, recorded, policy);
+    if !leader.ok {
+        if leader.reason == "missing-pid"
+            && let Some(validation) = signal_group_from_escalation_anchor(
+                host,
+                &escalation_anchors,
+                log_path,
+                caller,
+                reason,
+            )
+        {
+            return validation;
+        }
+        // A group whose leader disappeared without a still-validated member
+        // remains durable and retryable rather than being signalled by a bare
+        // potentially recycled PGID.
+        return leader;
+    }
     let kill_descendants = collect_descendants(host, recorded.pid);
     let command = validation
         .current
@@ -1323,7 +1452,7 @@ mod tests {
     use super::*;
     use std::{
         cell::RefCell,
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::atomic::{AtomicU64, Ordering},
     };
 
@@ -1334,6 +1463,7 @@ mod tests {
         birth: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
         ps_birth_after: RefCell<HashMap<i32, Vec<ProcessBirthIdentityProbeOutput>>>,
         birth_after_log: RefCell<Option<(i32, Vec<ProcessBirthIdentityProbeOutput>)>>,
+        zombies: HashSet<i32>,
         children: HashMap<i32, Vec<i32>>,
         groups: HashMap<i32, Vec<i32>>,
         parents: HashMap<i32, i32>,
@@ -1384,6 +1514,9 @@ mod tests {
                 .map_or(ProcessBirthIdentityProbeOutput::Missing, |_| {
                     ProcessBirthIdentityProbeOutput::Identity(fake_birth_identity(pid))
                 })
+        }
+        fn process_is_zombie(&self, pid: i32) -> bool {
+            self.zombies.contains(&pid)
         }
         fn pgrep_children(&self, pid: i32) -> Vec<i32> {
             self.children.get(&pid).cloned().unwrap_or_default()
@@ -1499,6 +1632,28 @@ mod tests {
         assert_eq!(
             validate_process_identity(&host, &bad_command).reason,
             "command-mismatch"
+        );
+    }
+
+    #[test]
+    fn zombie_identity_is_missing_and_not_a_live_group_member() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.groups.insert(123, vec![123]);
+        host.zombies.insert(123);
+
+        assert_eq!(
+            validate_process_identity(&host, &recorded()).reason,
+            "missing-pid"
+        );
+        assert!(collect_process_group_members(&host, 123).is_empty());
+        assert!(
+            confirm_process_group_absent(
+                &host,
+                &recorded(),
+                ProcessIdentityValidationPolicy::ExactCommand,
+            )
+            .terminated
         );
     }
 
@@ -1743,6 +1898,7 @@ mod tests {
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
                 ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
             ],
         );
         host.children.insert(123, vec![10, 11]);
@@ -1762,6 +1918,58 @@ mod tests {
                 (123, TerminateSignal::Kill, true),
             ]
         );
+    }
+
+    #[test]
+    fn escalation_uses_a_validated_member_when_term_removes_the_group_leader() {
+        let mut host = FakeHost::default();
+        host.pgid.extend([(123, 123), (10, 123)]);
+        host.groups.insert(123, vec![123, 10]);
+        host.children.insert(123, vec![10]);
+        host.children.insert(10, Vec::new());
+        // The leader validates for initial capture and TERM, then exits. The
+        // previously captured member remains in the same group and is checked
+        // again before KILL can use the numeric PGID.
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                ps_stdout("/usr/bin/python3 /repo/python/cli.py plan-review run"),
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        host.ps.borrow_mut().insert(
+            10,
+            vec![
+                ps_stdout("sleep 60"),
+                ps_stdout("sleep 60"),
+                ps_stdout("sleep 60"),
+            ],
+        );
+
+        let result = terminate_validated_process_group(
+            &host,
+            &recorded(),
+            Some(Path::new("/tmp/leaderless-escalation.jsonl")),
+            "test",
+            "leaderless",
+        );
+        assert!(result.ok, "{result:?}");
+        assert_eq!(
+            host.signals.borrow().as_slice(),
+            &[
+                (123, TerminateSignal::Term, true),
+                (123, TerminateSignal::Kill, true),
+            ]
+        );
+        let log = host
+            .files
+            .borrow()
+            .get(Path::new("/tmp/leaderless-escalation.jsonl"))
+            .cloned()
+            .unwrap_or_default();
+        assert!(log.contains("\"pid\":10"), "{log:?}");
     }
 
     #[test]
@@ -1957,6 +2165,7 @@ mod tests {
         host.ps.borrow_mut().insert(
             50,
             vec![
+                matching.clone(),
                 matching.clone(),
                 matching.clone(),
                 matching.clone(),

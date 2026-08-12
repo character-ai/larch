@@ -6,20 +6,25 @@
 //! foreground reader of that envelope.
 
 use crate::argparse_compat::{split_inline_option, take_option_value, utf8_arguments};
-use larch_adapters::SystemProcessIdentityHost;
+use larch_adapters::{
+    SystemProcessIdentityHost,
+    bgjob_recovery::{
+        BgjobRecoveryOutcome, append_teardown_diagnostic_at, open_verified_log,
+        read_completed_result, read_result, recover_abandoned_entry, remove_result_residue,
+    },
+};
 use larch_core::{
-    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD,
-    BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT,
-    BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
-    OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
-    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RecoveryClaim, RegistryEntry,
-    ValidationResult, bgjob_dir, check_owner_validation, checked_dir, child_identity_policy,
-    child_liveness, claim_recovery, confirm_process_group_absent, daemon_liveness,
-    daemon_poll_interval_s, ensure_under, epoch_now, iter_entries, log_paths, log_tail, merge_rows,
-    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, private_atomic_write,
-    read_entry, read_for, read_process_identity, recovery_claim_entry_path, release_recovery_claim,
-    render_rows, resolve_run_id, result_env_path, result_rows, startup_env_path,
-    startup_in_progress, startup_rows, terminate_validated_process_group_and_confirm,
+    BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
+    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_HARD_DEADLINE_GRACE_S,
+    BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity, OwnerValidationState,
+    ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
+    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_owner_validation,
+    checked_dir, child_liveness, collect_process_group_members_checked,
+    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
+    iter_entries, log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
+    owner_pid_candidate, phase_barrier, private_atomic_write, read_entry, read_for,
+    read_process_identity, registry_path, render_rows, resolve_run_id, result_env_path,
+    result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
     terminate_validated_process_group_with_policy, unlink_entry, validate_run_id, validate_slug,
     validate_timing_overrides, write_entry,
 };
@@ -30,14 +35,11 @@ use nix::{
 use std::{
     env,
     ffi::OsString,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{BufRead as _, BufReader, Write as _},
-    os::unix::{
-        fs::OpenOptionsExt as _,
-        process::{CommandExt as _, ExitStatusExt as _},
-    },
+    os::unix::process::{CommandExt as _, ExitStatusExt as _},
     path::{Path, PathBuf},
-    process::{Child, Command, ExitCode, Stdio},
+    process::{Child, ChildStdin, Command, ExitCode, Stdio},
     thread,
     time::{Duration, Instant},
 };
@@ -46,6 +48,12 @@ use std::{
 const ENV_DAEMON_ROLE: &str = "LARCH_BGJOB_DAEMON_ROLE";
 /// Carries the owner identity the launching process already captured.
 const ENV_DAEMON_OWNER: &str = "LARCH_BGJOB_DAEMON_OWNER";
+/// Marks the worker gated until the daemon publishes its durable registry row.
+const ENV_WORKER_ROLE: &str = "LARCH_BGJOB_WORKER_ROLE";
+/// Owned session directory passed only to the internal worker.
+const ENV_WORKER_TMPDIR: &str = "LARCH_BGJOB_WORKER_TMPDIR";
+/// Stable workflow step passed only to the internal worker.
+const ENV_WORKER_STEP: &str = "LARCH_BGJOB_WORKER_STEP";
 /// Session temporary directory consulted when `--tmpdir` is omitted.
 const ENV_IMPLEMENT_TMPDIR: &str = "IMPLEMENT_TMPDIR";
 const IDENTITY_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -55,6 +63,17 @@ const MIN_POLL_SLEEP: f64 = 0.05;
 const DAEMON_CALLER: &str = "bgjob-daemon";
 const REAP_CALLER: &str = "bgjob-reap";
 const RECOVERY_CALLER: &str = "bgjob-recovery";
+const WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
+const WORKER_GATE: &str = "START\n";
+
+struct SpawnedWorker {
+    child: Child,
+    gate: Option<ChildStdin>,
+}
+
+struct AcknowledgementFailure {
+    reader: Option<std::thread::JoinHandle<()>>,
+}
 
 #[derive(Clone, Debug, Default)]
 struct StartArguments {
@@ -93,6 +112,9 @@ impl Default for WaitArguments {
 /// Launch a detached background job, or run the detached monitor loop.
 #[must_use]
 pub fn start(arguments: &[OsString]) -> ExitCode {
+    if env::var_os(ENV_WORKER_ROLE).is_some() {
+        return worker(arguments);
+    }
     if requests_help(arguments) {
         return help(
             "usage: bgjob start --step STEP [--tmpdir PATH] --budget-s SECONDS [options] -- COMMAND...",
@@ -174,10 +196,13 @@ pub fn reap(arguments: &[OsString]) -> ExitCode {
     }
     let host = SystemProcessIdentityHost::new();
     let mut count = 0_u64;
+    let mut failures = Vec::new();
     for (path, entry) in iter_entries() {
         let Some(entry) = entry else {
-            unlink_entry(&path);
-            count += 1;
+            // A malformed row may be the last durable record for work whose
+            // identity cannot be decoded. Never discard it merely because
+            // this consumer cannot parse it.
+            failures.push("registry-invalid".to_owned());
             continue;
         };
         let daemon = daemon_liveness(&host, &entry);
@@ -189,11 +214,16 @@ pub fn reap(arguments: &[OsString]) -> ExitCode {
             if daemon.live {
                 continue;
             }
-            if matches!(
-                recover_abandoned_entry(&host, &path, &entry, REAP_CALLER, "reap-completed-result",),
-                RecoveryOutcome::Recovered | RecoveryOutcome::Gone
+            match recover_abandoned_entry(
+                &host,
+                &path,
+                &entry,
+                REAP_CALLER,
+                "reap-completed-result",
             ) {
-                count += 1;
+                BgjobRecoveryOutcome::Recovered | BgjobRecoveryOutcome::Gone => count += 1,
+                BgjobRecoveryOutcome::Failed(reason) => failures.push(recovery_diag(&reason)),
+                BgjobRecoveryOutcome::Busy => {}
             }
             continue;
         }
@@ -203,15 +233,28 @@ pub fn reap(arguments: &[OsString]) -> ExitCode {
         if daemon.live {
             continue;
         }
-        if matches!(
-            recover_abandoned_entry(&host, &path, &entry, REAP_CALLER, "reap-daemon-dead"),
-            RecoveryOutcome::Recovered | RecoveryOutcome::Gone
-        ) {
-            count += 1;
+        match recover_abandoned_entry(&host, &path, &entry, REAP_CALLER, "reap-daemon-dead") {
+            BgjobRecoveryOutcome::Recovered | BgjobRecoveryOutcome::Gone => count += 1,
+            BgjobRecoveryOutcome::Failed(reason) => failures.push(recovery_diag(&reason)),
+            BgjobRecoveryOutcome::Busy => {}
         }
     }
-    println!("BGJOB_REAPED={count}");
-    ExitCode::SUCCESS
+    if failures.is_empty() {
+        println!("BGJOB_REAPED={count}");
+        return ExitCode::SUCCESS;
+    }
+    print!(
+        "{}",
+        render_rows(&[
+            ("BGJOB_REAPED".to_owned(), count.to_string()),
+            (
+                "BGJOB_RECOVERY_FAILED".to_owned(),
+                failures.len().to_string()
+            ),
+            ("BGJOB_DIAG".to_owned(), failures.remove(0)),
+        ])
+    );
+    ExitCode::from(2)
 }
 
 /// Launch the detached daemon for `spec` and return its `STARTED` stdout line.
@@ -229,13 +272,18 @@ pub fn spawn_daemon(spec: &JobSpec, extra_env: &[(String, String)]) -> Result<St
     let mut command = Command::new(executable); // lint-subprocess-via-runner: ok the daemon must outlive this process, so it cannot be a runner-owned child
     command
         .args(daemon_arguments(spec))
-        .env(ENV_DAEMON_ROLE, "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     for (key, value) in extra_env {
         command.env(key, value);
     }
+    // Rehydration is job input, never authority to select an internal role.
+    command
+        .env(ENV_DAEMON_ROLE, "1")
+        .env_remove(ENV_WORKER_ROLE)
+        .env_remove(ENV_WORKER_TMPDIR)
+        .env_remove(ENV_WORKER_STEP);
     if let Some(owner) = spec.owner.recorded.as_ref() {
         command.env(ENV_DAEMON_OWNER, render_rows(&owner_rows(owner)));
     } else {
@@ -244,24 +292,101 @@ pub fn spawn_daemon(spec: &JobSpec, extra_env: &[(String, String)]) -> Result<St
     // The daemon inherits this process group so its own `setsid` can succeed;
     // a spawn-time process group would make it a leader and block detachment.
     let mut child = command.spawn().map_err(|error| one_line(&error))?;
-    let Some(pgid) = read_acknowledgement(&mut child) else {
-        return Err("daemon-start-failed".to_owned());
+    let timeout = Duration::from_secs_f64(
+        startup_ack_timeout_s()
+            .map_err(|error| one_line(&error))?
+            .max(0.0),
+    );
+    let pgid = match read_acknowledgement(&mut child, timeout) {
+        Ok(pgid) => pgid,
+        Err(mut failure) => {
+            teardown_unacknowledged_daemon(&mut child, spec, failure.reader.take());
+            return Err("daemon-start-failed".to_owned());
+        }
     };
+    if pgid
+        .parse::<i32>()
+        .ok()
+        .filter(|value| *value > 0)
+        .is_none()
+    {
+        teardown_unacknowledged_daemon(&mut child, spec, None);
+        return Err("daemon-start-failed".to_owned());
+    }
     Ok(format!(
         "{BGJOB_STATUS_KEY}={BGJOB_STATUS_STARTED} STEP={} PGID={pgid}\n",
         spec.step
     ))
 }
 
-fn read_acknowledgement(child: &mut Child) -> Option<String> {
-    let stdout = child.stdout.take()?;
-    let mut line = String::new();
-    let _ = BufReader::new(stdout).read_line(&mut line).ok()?;
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    let [_child_pid, pgid] = parts.as_slice() else {
-        return None;
+fn read_acknowledgement(
+    child: &mut Child,
+    timeout: Duration,
+) -> Result<String, AcknowledgementFailure> {
+    let Some(stdout) = child.stdout.take() else {
+        return Err(AcknowledgementFailure { reader: None });
     };
-    Some((*pgid).to_owned())
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let reader = thread::spawn(move || {
+        let mut line = String::new();
+        let result = BufReader::new(stdout)
+            .read_line(&mut line)
+            .ok()
+            .map(|_| line);
+        let _ = sender.send(result);
+    });
+    let Some(line) = receiver.recv_timeout(timeout).ok().flatten() else {
+        return Err(AcknowledgementFailure {
+            reader: Some(reader),
+        });
+    };
+    if reader.join().is_err() {
+        return Err(AcknowledgementFailure { reader: None });
+    }
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    let [child_pid, pgid] = parts.as_slice() else {
+        return Err(AcknowledgementFailure { reader: None });
+    };
+    if child_pid
+        .parse::<i32>()
+        .ok()
+        .filter(|value| *value > 0)
+        .is_none()
+        || pgid
+            .parse::<i32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .is_none()
+    {
+        return Err(AcknowledgementFailure { reader: None });
+    }
+    Ok((*pgid).to_owned())
+}
+
+fn teardown_unacknowledged_daemon(
+    daemon: &mut Child,
+    spec: &JobSpec,
+    reader: Option<std::thread::JoinHandle<()>>,
+) {
+    let _ = daemon.kill();
+    let _ = daemon.wait();
+    if let Some(reader) = reader {
+        let _ = reader.join();
+    }
+    let Ok(registry) = registry_path(&spec.run_id, &spec.step, None) else {
+        return;
+    };
+    let Some(entry) = read_entry(&registry) else {
+        return;
+    };
+    let host = SystemProcessIdentityHost::new();
+    let _ = recover_abandoned_entry(
+        &host,
+        &registry,
+        &entry,
+        RECOVERY_CALLER,
+        "startup-acknowledgement-failed",
+    );
 }
 
 fn daemon_arguments(spec: &JobSpec) -> Vec<OsString> {
@@ -425,7 +550,7 @@ fn help(usage: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn one_line(error: &impl ToString) -> String {
+fn one_line(error: &(impl ToString + ?Sized)) -> String {
     error.to_string().replace(['\n', '\r'], " ")
 }
 
@@ -567,9 +692,7 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
     // Detach from the launching session so the job outlives its orchestrator
     // shell, exactly as the Python daemon's `setsid` did.
     setsid().map_err(|error| one_line(&error))?;
-    // Build the identity host before the child exists so capture starts as
-    // close to launch as possible: a process that exits first leaves no `ps`
-    // row to bind.
+    // Capture the persistent worker leader before releasing its private gate.
     let host = SystemProcessIdentityHost::new();
     fs::create_dir_all(&spec.log_dir).map_err(|error| one_line(&error))?;
     let result = result_env_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
@@ -577,77 +700,95 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|error| one_line(&error))?;
     }
     let _ = fs::remove_file(&result);
+    let worker_status =
+        worker_status_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
+    let _ = remove_result_residue(&worker_status);
     let stdout_log = spec.log_dir.join(format!("{}.stdout.log", spec.step));
     let stderr_log = spec.log_dir.join(format!("{}.stderr.log", spec.step));
     let stdout_handle =
         open_verified_log(&stdout_log, &spec.log_dir).map_err(|error| one_line(&error))?;
     let stderr_handle =
         open_verified_log(&stderr_log, &spec.log_dir).map_err(|error| one_line(&error))?;
-    let mut child =
+    let mut worker =
         spawn_job(spec, stdout_handle, stderr_handle).map_err(|error| one_line(&error))?;
-    let startup = match acknowledge_start(spec, &child) {
+    if let Err(error) = phase_barrier("after-child-spawn") {
+        // The gate has not opened, so this direct child handle is still the
+        // only process that can own the group. Reap it before reporting the
+        // interrupted pre-registry phase.
+        kill_and_reap(&host, &mut worker.child, None);
+        return Err(one_line(&error));
+    }
+    let (child_identity, registry) =
+        match register_startup(&host, spec, &mut worker.child, &stdout_log, &stderr_log) {
+            Ok(startup) => startup,
+            Err(error) => {
+                // Before a row exists the gate prevents the worker from starting
+                // the requested command. Reap the worker's dedicated group before
+                // reporting a failed launch.
+                kill_and_reap(&host, &mut worker.child, None);
+                return Err(error);
+            }
+        };
+    // Later failures leave this durable row claimable by a waiter or reaper.
+    phase_barrier("after-registry-publication").map_err(|error| one_line(&error))?;
+    let startup = match write_startup_marker(spec, &child_identity, &registry) {
         Ok(startup) => startup,
         Err(error) => {
-            // Before the row exists the daemon still owns this direct child
-            // handle. Clean its dedicated group on an acknowledgement failure
-            // so a cancelled launcher cannot strand an unregistered child.
-            kill_and_reap(&host, &mut child, None);
-            return Err(error);
+            return teardown_registered_startup(
+                &host,
+                spec,
+                &mut worker.child,
+                &child_identity,
+                &registry,
+                None,
+                &one_line(&error),
+            );
         }
     };
-    match register_and_monitor(&host, spec, &mut child, &stdout_log, &stderr_log, &startup) {
+    phase_barrier("after-startup-marker").map_err(|error| one_line(&error))?;
+    if let Err(error) = release_worker(&mut worker) {
+        return teardown_registered_startup(
+            &host,
+            spec,
+            &mut worker.child,
+            &child_identity,
+            &registry,
+            Some(&startup),
+            &error,
+        );
+    }
+    if let Err(error) = acknowledge_start(&worker.child) {
+        return teardown_registered_startup(
+            &host,
+            spec,
+            &mut worker.child,
+            &child_identity,
+            &registry,
+            Some(&startup),
+            &error,
+        );
+    }
+    phase_barrier("after-acknowledgement").map_err(|error| one_line(&error))?;
+    let _ = fs::remove_file(&startup);
+    match monitor(spec, &mut worker.child, &child_identity, &registry, &host) {
         Ok(()) => Ok(()),
         Err(message) => {
-            // An error before a confirmed terminal teardown must not forge a
-            // completed envelope. If registration succeeded its durable row
-            // remains for recovery; otherwise the foreground waiter reports
-            // the non-success dead diagnostic after the startup grace.
-            let _ = fs::remove_file(&startup);
+            // Registration succeeded before the gate opened. A later error
+            // leaves its complete durable row for the shared recovery owner.
             Err(message)
         }
     }
 }
 
-fn register_and_monitor(
+fn register_startup(
     host: &SystemProcessIdentityHost,
     spec: &JobSpec,
     child: &mut Child,
     stdout_log: &Path,
     stderr_log: &Path,
-    startup: &Path,
-) -> Result<(), String> {
+) -> Result<(RecordedProcessIdentity, PathBuf), String> {
     let child_pid = i32::try_from(child.id()).map_err(|error| one_line(&error))?;
-    let expected = spec
-        .command
-        .iter()
-        .take(2)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let Some(child_identity) = capture_identity(host, child_pid, &expected) else {
-        // An exited leader may have left children behind in its group. Publish
-        // its real result only after an independent group probe proves there
-        // is no unowned work; a missing `ps` row alone is not that proof.
-        if let Ok(Some(status)) = child.try_wait() {
-            if host
-                .pgrep_group_checked(child_pid)
-                .is_some_and(|members| members.is_empty())
-            {
-                write_result(spec, &exit_token(status), 0)?;
-                let _ = fs::remove_file(startup);
-                return Ok(());
-            }
-            append_teardown_diagnostic_at(
-                &spec.log_dir,
-                &spec.step,
-                "identity-capture",
-                "child-exited-group-unproven",
-            );
-            return Err(format!(
-                "could not capture process identity for pid {child_pid}: child group remains unproven"
-            ));
-        }
-        kill_and_reap(host, child, None);
+    let Some(child_identity) = capture_identity(host, child_pid, "") else {
         return Err(format!(
             "could not capture process identity for pid {child_pid}"
         ));
@@ -657,6 +798,7 @@ fn register_and_monitor(
         kill_and_reap(host, child, Some(&child_identity));
         return Err("could not capture daemon process identity".to_owned());
     };
+    phase_barrier("after-identity-capture").map_err(|error| one_line(&error))?;
     let entry = RegistryEntry {
         step: spec.step.clone(),
         run_id: spec.run_id.clone(),
@@ -665,7 +807,9 @@ fn register_and_monitor(
         clone_path: env::current_dir().map_err(|error| one_line(&error))?,
         daemon: daemon_identity,
         child: child_identity.clone(),
-        child_allows_exec: true,
+        // The worker itself never execs: it remains the durable group leader
+        // while the requested command and all group descendants run.
+        child_allows_exec: false,
         owner: spec.owner.recorded.clone(),
         start_epoch: epoch_now(),
         budget_s: spec.budget_s,
@@ -680,8 +824,7 @@ fn register_and_monitor(
             return Err(one_line(&failure));
         }
     };
-    let _ = fs::remove_file(startup);
-    monitor(spec, child, &child_identity, &registry, host)
+    Ok((child_identity, registry))
 }
 
 /// Render one finished child's result code the way the Python owner did.
@@ -703,7 +846,7 @@ fn kill_and_reap(
             let validation = terminate_validated_process_group_with_policy(
                 host,
                 identity,
-                ProcessIdentityValidationPolicy::AllowCommandTransition,
+                ProcessIdentityValidationPolicy::ExactCommand,
                 None,
                 DAEMON_CALLER,
                 "startup-failed",
@@ -741,41 +884,221 @@ fn kill_direct_child_group(child: &mut Child) {
     }
 }
 
-fn spawn_job(spec: &JobSpec, stdout: File, stderr: File) -> std::io::Result<Child> {
-    let (program, arguments) = spec
-        .command
-        .split_first()
-        .ok_or_else(|| std::io::Error::other("empty command"))?;
-    let mut command = Command::new(program); // lint-subprocess-via-runner: ok the daemon intentionally owns the long-running job process group
+fn spawn_job(spec: &JobSpec, stdout: File, stderr: File) -> std::io::Result<SpawnedWorker> {
+    let executable = env::current_exe()?;
+    let mut command = Command::new(executable); // lint-subprocess-via-runner: ok the detached worker intentionally owns the long-running job process group
     command
-        .args(arguments)
-        .stdin(Stdio::null())
+        .args(["bgjob", "start"])
+        .args(&spec.command)
+        .stdin(Stdio::piped())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .env_remove(ENV_DAEMON_ROLE)
-        .env_remove(ENV_DAEMON_OWNER);
+        .env_remove(ENV_DAEMON_OWNER)
+        .env(ENV_WORKER_ROLE, "1")
+        .env(ENV_WORKER_TMPDIR, &spec.tmpdir)
+        .env(ENV_WORKER_STEP, &spec.step);
     command.process_group(0);
-    command.spawn()
+    let mut child = command.spawn()?;
+    let gate = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("worker gate unavailable"))?;
+    Ok(SpawnedWorker {
+        child,
+        gate: Some(gate),
+    })
 }
 
-fn acknowledge_start(spec: &JobSpec, child: &Child) -> Result<PathBuf, String> {
+fn release_worker(worker: &mut SpawnedWorker) -> Result<(), String> {
+    let Some(mut gate) = worker.gate.take() else {
+        return Err("worker-gate-unavailable".to_owned());
+    };
+    gate.write_all(WORKER_GATE.as_bytes())
+        .and_then(|()| gate.flush())
+        .map_err(|error| one_line(&error))
+}
+
+fn acknowledge_start(child: &Child) -> Result<(), String> {
     let child_pid = i32::try_from(child.id()).map_err(|error| one_line(&error))?;
     let pgid = getpgid(Some(Pid::from_raw(child_pid))).map_err(|error| one_line(&error))?;
-    let startup = write_startup_marker(spec).map_err(|error| one_line(&error))?;
+    phase_barrier("before-acknowledgement").map_err(|error| one_line(&error))?;
     let mut stdout = std::io::stdout();
     stdout
         .write_all(format!("{child_pid} {pgid}\n").as_bytes())
         .and_then(|()| stdout.flush())
         .map_err(|error| one_line(&error))?;
+    Ok(())
+}
+
+fn write_startup_marker(
+    spec: &JobSpec,
+    child: &RecordedProcessIdentity,
+    registry: &Path,
+) -> Result<PathBuf, BgjobError> {
+    let startup = startup_env_path(&spec.tmpdir, &spec.step)?;
+    let root = bgjob_dir(&spec.tmpdir)?;
+    let mut rows = startup_rows(&spec.step, epoch_now());
+    rows.extend([
+        ("RUN_ID".to_owned(), spec.run_id.clone()),
+        ("STARTUP_PHASE".to_owned(), "registry-published".to_owned()),
+        ("CHILD_PID".to_owned(), child.pid.to_string()),
+        ("CHILD_PGID".to_owned(), child.pgid.to_string()),
+        ("CHILD_START_TIME".to_owned(), child.start_time.clone()),
+        (
+            "CHILD_BIRTH_IDENTITY".to_owned(),
+            child
+                .birth_identity
+                .as_ref()
+                .map_or_else(String::new, larch_core::ProcessBirthIdentity::wire_value),
+        ),
+        ("REGISTRY".to_owned(), registry.display().to_string()),
+    ]);
+    private_atomic_write(&startup, &render_rows(&rows), &root)?;
     Ok(startup)
 }
 
-fn write_startup_marker(spec: &JobSpec) -> Result<PathBuf, BgjobError> {
-    let startup = startup_env_path(&spec.tmpdir, &spec.step)?;
-    let root = bgjob_dir(&spec.tmpdir)?;
-    let rows = startup_rows(&spec.step, epoch_now());
-    private_atomic_write(&startup, &render_rows(&rows), &root)?;
-    Ok(startup)
+fn teardown_registered_startup(
+    host: &SystemProcessIdentityHost,
+    spec: &JobSpec,
+    child: &mut Child,
+    child_identity: &RecordedProcessIdentity,
+    registry: &Path,
+    startup: Option<&Path>,
+    reason: &str,
+) -> Result<(), String> {
+    let teardown = terminate_and_confirm_child(
+        host,
+        child,
+        child_identity,
+        ProcessIdentityValidationPolicy::ExactCommand,
+        &TeardownRequest {
+            log_dir: &spec.log_dir,
+            step: &spec.step,
+            reason: "startup-failed",
+            caller: DAEMON_CALLER,
+        },
+    );
+    match teardown {
+        Ok(()) => {
+            unlink_entry(registry);
+            if let Some(startup) = startup {
+                let _ = fs::remove_file(startup);
+            }
+            Err(reason.to_owned())
+        }
+        Err(teardown_reason) => {
+            append_teardown_diagnostic(spec, "startup-failed", &teardown_reason);
+            Err(reason.to_owned())
+        }
+    }
+}
+
+fn worker(arguments: &[OsString]) -> ExitCode {
+    worker_body(arguments).map_or_else(
+        |_| ExitCode::from(2),
+        |rc| {
+            rc.parse::<u8>()
+                .map_or_else(|_| ExitCode::from(2), ExitCode::from)
+        },
+    )
+}
+
+fn worker_body(arguments: &[OsString]) -> Result<String, String> {
+    let command = utf8_arguments(arguments, "invalid-worker-command").map_err(ToOwned::to_owned)?;
+    let (program, arguments) = command
+        .split_first()
+        .ok_or_else(|| "missing-worker-command".to_owned())?;
+    let tmpdir = PathBuf::from(env::var(ENV_WORKER_TMPDIR).map_err(|_| "missing-worker-tmpdir")?);
+    let step = env::var(ENV_WORKER_STEP).map_err(|_| "missing-worker-step")?;
+    let status_path = worker_status_path(&tmpdir, &step).map_err(|error| one_line(&error))?;
+    let root = bgjob_dir(&tmpdir).map_err(|error| one_line(&error))?;
+
+    // The daemon holds the write end until it has captured this persistent
+    // leader and atomically published the registry row. An EOF means the
+    // daemon died before that point, so the worker exits without launching
+    // application work.
+    let mut gate = String::new();
+    BufReader::new(std::io::stdin())
+        .read_line(&mut gate)
+        .map_err(|error| one_line(&error))?;
+    if gate != WORKER_GATE {
+        return Err("worker-gate-not-released".to_owned());
+    }
+
+    let mut requested = Command::new(program); // lint-subprocess-via-runner: ok the durable worker owns the requested long-running child
+    requested
+        .args(arguments)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .env_remove(ENV_DAEMON_ROLE)
+        .env_remove(ENV_DAEMON_OWNER)
+        .env_remove(ENV_WORKER_ROLE)
+        .env_remove(ENV_WORKER_TMPDIR)
+        .env_remove(ENV_WORKER_STEP);
+    let exit_status = if let Ok(mut child) = requested.spawn() {
+        child.wait().map_err(|error| one_line(&error))?
+    } else {
+        write_worker_status(&status_path, &root, &step, "2")?;
+        return Ok("2".to_owned());
+    };
+    let rc = exit_token(exit_status);
+    wait_for_worker_group()?;
+    write_worker_status(&status_path, &root, &step, &rc)?;
+    Ok(rc)
+}
+
+fn worker_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    Ok(result_env_path(tmpdir, step)?.with_file_name(format!("{step}{WORKER_STATUS_SUFFIX}")))
+}
+
+fn write_worker_status(path: &Path, root: &Path, step: &str, rc: &str) -> Result<(), String> {
+    let rows = [
+        ("WORKER_RC".to_owned(), rc.to_owned()),
+        ("STEP".to_owned(), step.to_owned()),
+    ];
+    private_atomic_write(path, &render_rows(&rows), root).map_err(|error| one_line(&error))
+}
+
+fn wait_for_worker_group() -> Result<(), String> {
+    let pid = i32::try_from(std::process::id()).map_err(|error| one_line(&error))?;
+    let group_id = getpgid(Some(Pid::from_raw(pid)))
+        .map_err(|error| one_line(&error))?
+        .as_raw();
+    let host = SystemProcessIdentityHost::new();
+    loop {
+        if let Some(members) = collect_process_group_members_checked(&host, group_id)
+            && members.iter().all(|member| *member == pid)
+            && host.get_pgid(pid) == Some(group_id)
+        {
+            return Ok(());
+        }
+        // A failed probe is not evidence that descendants are gone. Staying
+        // alive leaves the recorded group leader available to the daemon's
+        // bounded budget/orphan teardown path.
+        thread::sleep(IDENTITY_CAPTURE_SLEEP);
+    }
+}
+
+fn worker_result_token(spec: &JobSpec, status: std::process::ExitStatus) -> String {
+    let Ok(path) = worker_status_path(&spec.tmpdir, &spec.step) else {
+        return exit_token(status);
+    };
+    let Some(rows) = read_result(&path) else {
+        return exit_token(status);
+    };
+    let value = |key: &str| {
+        rows.iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    };
+    let token = match (value("WORKER_RC"), value("STEP")) {
+        (Some(rc), Some(step)) if !rc.is_empty() && step == spec.step => rc.to_owned(),
+        _ => exit_token(status),
+    };
+    let _ = remove_result_residue(&path);
+    token
 }
 
 fn monitor(
@@ -797,7 +1120,10 @@ fn monitor(
     let terminal = loop {
         let now = started.elapsed();
         match child.try_wait() {
-            Ok(Some(status)) => break MonitorTerminal::Exited(exit_token(status)),
+            Ok(Some(status)) => {
+                phase_barrier("after-leader-exit").map_err(|error| one_line(&error))?;
+                break MonitorTerminal::Exited(worker_result_token(spec, status));
+            }
             Ok(None) => {}
             Err(error) => break MonitorTerminal::WaitError(one_line(&error)),
         }
@@ -831,7 +1157,7 @@ fn monitor(
         host,
         child,
         child_identity,
-        ProcessIdentityValidationPolicy::AllowCommandTransition,
+        ProcessIdentityValidationPolicy::ExactCommand,
         &TeardownRequest {
             log_dir: &spec.log_dir,
             step: &spec.step,
@@ -884,6 +1210,8 @@ fn terminate_and_confirm_child(
     if !validation.ok && validation.reason != "missing-pid" {
         return Err(validation.reason);
     }
+    // Reap the direct worker before proving the group absent; Linux otherwise
+    // retains its zombie in the numeric group.
     reap_child(child, CHILD_REAP_TIMEOUT);
     let confirmation = confirm_process_group_absent(host, child_identity, policy);
     if confirmation.terminated {
@@ -968,158 +1296,6 @@ fn append_teardown_diagnostic(spec: &JobSpec, context: &str, reason: &str) {
     append_teardown_diagnostic_at(&spec.log_dir, &spec.step, context, reason);
 }
 
-fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reason: &str) {
-    let stderr_log = log_dir.join(format!("{step}.stderr.log"));
-    let _ = fs::create_dir_all(log_dir);
-    let text = render_rows(&[
-        ("BGJOB_TEARDOWN_CONTEXT".to_owned(), context.to_owned()),
-        ("BGJOB_TEARDOWN_REASON".to_owned(), reason.to_owned()),
-    ]);
-    if let Ok(mut handle) = open_verified_log(&stderr_log, log_dir) {
-        let _ = handle.write_all(text.as_bytes());
-    }
-}
-
-fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
-    let root_metadata =
-        fs::symlink_metadata(root).map_err(|error| BgjobError::Io(error.to_string()))?;
-    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        return Err(BgjobError::Invalid(format!(
-            "log root must be a regular directory: {}",
-            root.display()
-        )));
-    }
-    let verified_root =
-        fs::canonicalize(root).map_err(|error| BgjobError::Io(error.to_string()))?;
-    let verified_path = ensure_under(path, &verified_root, "log file")?;
-    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(BgjobError::Invalid(format!(
-            "log file must not be a symlink: {}",
-            path.display()
-        )));
-    }
-    let mut options = OpenOptions::new();
-    options.append(true).create(true);
-    #[cfg(unix)]
-    {
-        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = options
-        .open(&verified_path)
-        .map_err(|error| BgjobError::Io(error.to_string()))?;
-    let opened = file
-        .metadata()
-        .map_err(|error| BgjobError::Io(error.to_string()))?;
-    if opened.is_file() {
-        Ok(file)
-    } else {
-        Err(BgjobError::Invalid(format!(
-            "log file must be regular: {}",
-            path.display()
-        )))
-    }
-}
-
-enum RecoveryOutcome {
-    Recovered,
-    Busy,
-    Gone,
-    Failed(String),
-}
-
-/// Recover a registry row after its daemon dies.
-///
-/// A foreground waiter and `reap` share this one claim-and-teardown path. The
-/// exclusive lease prevents competing cleaners from racing signals or unlink,
-/// and a failed proof of absence deliberately leaves both the row and its
-/// diagnostic in place for a later retry.
-fn recover_abandoned_entry(
-    host: &SystemProcessIdentityHost,
-    registry: &Path,
-    observed: &RegistryEntry,
-    caller: &str,
-    context: &str,
-) -> RecoveryOutcome {
-    let claim = match claim_recovery(host, registry) {
-        Ok(RecoveryClaim::Acquired(claim)) => claim,
-        Ok(RecoveryClaim::Busy) => return RecoveryOutcome::Busy,
-        Ok(RecoveryClaim::Gone) => return RecoveryOutcome::Gone,
-        Err(error) => {
-            let reason = format!("recovery-claim-{}", one_line(&error));
-            append_teardown_diagnostic_at(&observed.log_dir, &observed.step, context, &reason);
-            return RecoveryOutcome::Failed(reason);
-        }
-    };
-    let Some(entry) = read_entry(recovery_claim_entry_path(&claim)) else {
-        release_recovery_claim(&claim);
-        return RecoveryOutcome::Gone;
-    };
-    if daemon_liveness(host, &entry).live {
-        release_recovery_claim(&claim);
-        return RecoveryOutcome::Busy;
-    }
-    if read_completed_result(&entry.result_env, &entry.step).is_some() {
-        // A completed envelope from a dead daemon is terminal only if its
-        // recorded group is independently absent. This also clears the
-        // daemon's row after a crash between result publication and unlink.
-        let confirmation =
-            confirm_process_group_absent(host, &entry.child, child_identity_policy(&entry));
-        if confirmation.terminated {
-            unlink_entry(recovery_claim_entry_path(&claim));
-            let removed = fs::symlink_metadata(recovery_claim_entry_path(&claim))
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
-            release_recovery_claim(&claim);
-            if removed {
-                return RecoveryOutcome::Gone;
-            }
-            let reason = "registry-unlink-failed".to_owned();
-            append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
-            return RecoveryOutcome::Failed(reason);
-        }
-    }
-    if read_result(&entry.result_env).is_some()
-        && let Err(reason) = remove_result_residue(&entry.result_env)
-    {
-        let reason = format!("partial-result-remove-{reason}");
-        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
-        release_recovery_claim(&claim);
-        return RecoveryOutcome::Failed(reason);
-    }
-    let kill_log = entry.log_dir.join(format!("{}.kill.log.jsonl", entry.step));
-    let termination = terminate_validated_process_group_and_confirm(
-        host,
-        &entry.child,
-        child_identity_policy(&entry),
-        Some(&kill_log),
-        caller,
-        context,
-    );
-    if !termination.terminated {
-        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &termination.reason);
-        release_recovery_claim(&claim);
-        return RecoveryOutcome::Failed(termination.reason);
-    }
-    // Atomic publication means a dead daemon cannot leave a partial final
-    // envelope. Remove any regular residue before dropping the recovery row.
-    if let Err(reason) = remove_result_residue(&entry.result_env) {
-        let reason = format!("partial-result-remove-{reason}");
-        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
-        release_recovery_claim(&claim);
-        return RecoveryOutcome::Failed(reason);
-    }
-    unlink_entry(recovery_claim_entry_path(&claim));
-    let removed = fs::symlink_metadata(recovery_claim_entry_path(&claim))
-        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
-    release_recovery_claim(&claim);
-    if removed {
-        RecoveryOutcome::Recovered
-    } else {
-        let reason = "registry-unlink-failed".to_owned();
-        append_teardown_diagnostic_at(&entry.log_dir, &entry.step, context, &reason);
-        RecoveryOutcome::Failed(reason)
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Foreground wait
 // ---------------------------------------------------------------------------
@@ -1171,21 +1347,22 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
                 RECOVERY_CALLER,
                 "daemon-dead-wait",
             ) {
-                RecoveryOutcome::Recovered => {
+                BgjobRecoveryOutcome::Recovered => {
                     let tail = stderr_tail(&entry);
                     return Ok(dead_rows(&[
                         ("BGJOB_DIAG", "daemon-dead-recovered"),
                         ("STDERR_TAIL", tail.as_str()),
                     ]));
                 }
-                RecoveryOutcome::Failed(reason) => {
+                BgjobRecoveryOutcome::Failed(reason) => {
                     let tail = stderr_tail(&entry);
-                    return Ok(dead_rows(&[
-                        ("BGJOB_DIAG", reason.as_str()),
-                        ("STDERR_TAIL", tail.as_str()),
-                    ]));
+                    return Ok(retryable_recovery_rows(
+                        parsed.max_wait_s,
+                        &recovery_diag(&reason),
+                        &tail,
+                    ));
                 }
-                RecoveryOutcome::Busy | RecoveryOutcome::Gone => {
+                BgjobRecoveryOutcome::Busy | BgjobRecoveryOutcome::Gone => {
                     // Another cleaner may have finished or a normal result
                     // may have appeared. Re-enter through the result read
                     // rather than publishing a terminal state while recovery
@@ -1250,52 +1427,6 @@ fn poll_sleep(poll_interval_s: f64, deadline: Instant) -> Duration {
     Duration::from_secs_f64(poll_interval_s.min(remaining).max(MIN_POLL_SLEEP))
 }
 
-fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
-    }
-    let bytes = fs::read(path).ok()?;
-    let text = String::from_utf8_lossy(&bytes);
-    if text.contains('\r') {
-        return Some(Vec::new());
-    }
-    Some(ordered_rows(&text))
-}
-
-fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
-    let rows = read_result(path)?;
-    let value = |key: &str| {
-        rows.iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value.as_str())
-    };
-    (value(BGJOB_RC_KEY).is_some_and(|value| !value.is_empty())
-        && value(BGJOB_ELAPSED_KEY).is_some_and(|value| !value.is_empty())
-        && value("STEP") == Some(step))
-    .then_some(rows)
-}
-
-fn remove_result_residue(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(one_line(&error)),
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err("unsafe-result-path".to_owned());
-        }
-        Ok(_) => {}
-    }
-    fs::remove_file(path)
-        .or_else(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                Ok(())
-            } else {
-                Err(error)
-            }
-        })
-        .map_err(|error| one_line(&error))
-}
-
 fn stderr_tail(entry: &RegistryEntry) -> String {
     let path = &entry.stderr_log;
     if fs::symlink_metadata(path)
@@ -1328,6 +1459,23 @@ fn wait_rows(max_wait_s: i64) -> String {
         (BGJOB_STATUS_KEY.to_owned(), BGJOB_STATUS_WAIT.to_owned()),
         ("ELAPSED_S".to_owned(), max_wait_s.to_string()),
     ])
+}
+
+/// Report a recovery that still owns a durable row without falsely making it
+/// terminal. Callers repeat their ordinary wait; a later recovery claimant can
+/// either prove the process group absent or publish the normal result.
+fn retryable_recovery_rows(max_wait_s: i64, reason: &str, tail: &str) -> String {
+    render_rows(&[
+        (BGJOB_STATUS_KEY.to_owned(), BGJOB_STATUS_WAIT.to_owned()),
+        ("ELAPSED_S".to_owned(), max_wait_s.to_string()),
+        ("BGJOB_RECOVERY".to_owned(), "retryable".to_owned()),
+        ("BGJOB_DIAG".to_owned(), reason.to_owned()),
+        ("STDERR_TAIL".to_owned(), tail.to_owned()),
+    ])
+}
+
+fn recovery_diag(reason: &str) -> String {
+    larch_core::redact_outbound(&one_line(reason))
 }
 
 #[cfg(test)]

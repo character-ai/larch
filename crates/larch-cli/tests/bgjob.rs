@@ -9,8 +9,10 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::SystemProcessIdentityHost;
 use larch_core::{
-    KvDocument, ParseOptions, ProcessBirthIdentity, RecordedProcessIdentity, RegistryEntry,
-    RenderOptions, identity_to_json, read_entry, read_process_identity, write_entry_at,
+    ENV_TEST_BGJOB_PHASE_BARRIER_DIR, ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, KvDocument,
+    ParseOptions, ProcessBirthIdentity, ProcessIdentityHost, RecordedProcessIdentity,
+    RegistryEntry, RenderOptions, collect_process_group_members_checked, identity_to_json,
+    read_entry, read_process_identity, write_entry_at,
 };
 use std::{
     fs,
@@ -59,7 +61,9 @@ impl Sandbox {
             .env_remove("LARCH_BGJOB_OWNER_PID")
             .env_remove("LARCH_CLAUDE_PID")
             .env_remove("CLAUDE_PID")
-            .env_remove("LARCH_RUN_ID");
+            .env_remove("LARCH_RUN_ID")
+            .env_remove(ENV_TEST_BGJOB_PHASE_BARRIER_DIR)
+            .env_remove(ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S);
         command
     }
 
@@ -75,6 +79,24 @@ impl Sandbox {
         self.children.push(child);
         pid
     }
+}
+
+fn raw_larch(sandbox: &Sandbox) -> Command {
+    let mut command = Command::new(assert_cmd::cargo::cargo_bin("larch"));
+    command
+        .env("LARCH_BGJOB_REGISTRY_ROOT", sandbox.registry())
+        .env("LARCH_TEST_BGJOB_OWNER_GRACE_S", "0.2")
+        .env("LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S", "0.1")
+        .env_remove("IMPLEMENT_TMPDIR")
+        .env_remove("LARCH_BGJOB_OWNER_PID")
+        .env_remove("LARCH_CLAUDE_PID")
+        .env_remove("CLAUDE_PID")
+        .env_remove("LARCH_RUN_ID")
+        .env_remove(ENV_TEST_BGJOB_PHASE_BARRIER_DIR)
+        .env_remove(ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
 }
 
 impl Drop for Sandbox {
@@ -141,6 +163,28 @@ fn wait_once(sandbox: &Sandbox, step: &str, tmpdir: &Path, max_wait_s: &str) -> 
         .stdout
         .clone();
     String::from_utf8(output).expect("utf8 wait stdout")
+}
+
+fn wait_with_run_id(sandbox: &Sandbox, step: &str, tmpdir: &Path, run_id: &str) -> String {
+    let output = sandbox
+        .larch()
+        .args(["bgjob", "wait", "--step", step])
+        .arg("--tmpdir")
+        .arg(tmpdir)
+        .args([
+            "--run-id",
+            run_id,
+            "--max-wait-s",
+            "1",
+            "--poll-interval-s",
+            "0.1",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    String::from_utf8(output).expect("utf8 retryable wait stdout")
 }
 
 /// Poll `bgjob wait` until it stops reporting `WAIT`.
@@ -214,7 +258,15 @@ fn pid_is_live(pid: i32) -> bool {
 }
 
 fn group_is_live(pgid: i32) -> bool {
-    nix::sys::signal::kill(nix::unistd::Pid::from_raw(-pgid), None).is_ok()
+    let host = SystemProcessIdentityHost::new();
+    if host.get_pgid(pgid) == Some(pgid) && !host.process_is_zombie(pgid) {
+        return true;
+    }
+    // An unavailable group probe is not evidence that the group is gone.
+    collect_process_group_members_checked(&host, pgid).map_or_else(
+        || nix::sys::signal::kill(nix::unistd::Pid::from_raw(-pgid), None).is_ok(),
+        |members| !members.is_empty(),
+    )
 }
 
 fn assert_group_gone(pgid: i32, context: &str) {
@@ -226,6 +278,38 @@ fn assert_group_gone(pgid: i32, context: &str) {
         !group_is_live(pgid),
         "{context} left process group {pgid} alive"
     );
+}
+
+fn wait_for_file(path: &Path, context: &str) {
+    let deadline = Instant::now() + DEADLINE;
+    while Instant::now() < deadline {
+        if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file()) {
+            return;
+        }
+        sleep(POLL);
+    }
+    panic!("timed out waiting for {context}: {}", path.display());
+}
+
+fn phase_process_pid(path: &Path) -> i32 {
+    fs::read_to_string(path)
+        .expect("phase barrier payload")
+        .strip_prefix("PID=")
+        .and_then(|text| text.strip_suffix('\n'))
+        .and_then(|text| text.parse().ok())
+        .expect("phase barrier pid")
+}
+
+fn direct_child_pid(parent: i32, context: &str) -> i32 {
+    let deadline = Instant::now() + DEADLINE;
+    let host = SystemProcessIdentityHost::new();
+    while Instant::now() < deadline {
+        if let Some(pid) = host.pgrep_children(parent).into_iter().next() {
+            return pid;
+        }
+        sleep(POLL);
+    }
+    panic!("timed out waiting for {context} child of {parent}");
 }
 
 fn epoch_now() -> i64 {
@@ -341,8 +425,12 @@ fn budget_expiry_kills_a_child_that_execs_a_different_program() {
         "missing durable birth identity"
     );
     assert!(
-        child.command_signature.contains("/bin/sh"),
-        "the registry did not capture the wrapper before exec: {child:?}"
+        child.command_signature.contains("bgjob start"),
+        "the registry did not capture the persistent worker: {child:?}"
+    );
+    assert!(
+        !read_entry(&row).expect("registry entry").child_allows_exec,
+        "the persistent worker must remain an exact identity"
     );
     let child_pid = child.pid;
 
@@ -355,6 +443,298 @@ fn budget_expiry_kills_a_child_that_execs_a_different_program() {
     );
     assert_group_gone(pgid, "timeout after exec");
     assert!(!row.exists(), "timeout retained the registry row");
+}
+
+#[test]
+fn a_target_leader_can_exit_while_a_term_resistant_descendant_remains_owned() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("leaderless-target");
+    let stdout = start(
+        &sandbox,
+        "leaderless-target",
+        &tmpdir,
+        "1",
+        std::process::id().try_into().expect("pid"),
+        &[
+            "/bin/sh",
+            "-c",
+            "(trap '' TERM; while true; do sleep 1; done) & exit 0",
+        ],
+    );
+    let pgid = started_pgid(&stdout, "leaderless-target");
+    let row = registry_row(&sandbox, "leaderless-target");
+    let entry = read_entry(&row).expect("registry entry");
+    assert!(
+        entry.child.command_signature.contains("bgjob start"),
+        "the durable group leader must be the persistent worker: {entry:?}"
+    );
+
+    let settled = wait_until_settled(&sandbox, "leaderless-target", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
+    assert!(settled.contains("BGJOB_RC=timeout"), "{settled:?}");
+    assert_group_gone(pgid, "leaderless target descendant");
+    assert!(!row.exists(), "leaderless target retained the registry row");
+}
+
+#[test]
+fn an_unacknowledged_start_is_bounded_and_recovers_its_durable_worker() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("ack-timeout");
+    let phases = sandbox.root.path().join("ack-timeout-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("before-acknowledgement.armed"), "").expect("arm barrier");
+    let mut launcher = raw_larch(&sandbox);
+    launcher
+        .args(["bgjob", "start", "--step", "ack-timeout"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "60",
+            "--owner-pid",
+            &std::process::id().to_string(),
+            "--",
+            "/bin/sh",
+            "-c",
+            "exec sleep 60",
+        ])
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+        .env(ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, "2");
+    let launcher = launcher.spawn().expect("start launcher");
+    wait_for_file(
+        &phases.join("before-acknowledgement.reached"),
+        "acknowledgement barrier",
+    );
+    let row = registry_row(&sandbox, "ack-timeout");
+    let entry = read_entry(&row).expect("durable registry entry before acknowledgement");
+    let marker =
+        fs::read_to_string(tmpdir.join("bgjob/ack-timeout.startup.env")).expect("startup marker");
+    assert!(
+        marker.contains("STARTUP_PHASE=registry-published\n"),
+        "{marker:?}"
+    );
+    assert!(marker.contains("CHILD_BIRTH_IDENTITY="), "{marker:?}");
+
+    let output = launcher.wait_with_output().expect("bounded launcher exit");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(output.stdout, b"BGJOB_ERROR=daemon-start-failed\n");
+    assert_group_gone(entry.child.pgid, "unacknowledged start");
+    assert!(
+        !row.exists(),
+        "unacknowledged start retained its registry row"
+    );
+    assert!(
+        !tmpdir.join("bgjob/ack-timeout.startup.env").exists(),
+        "unacknowledged start retained its startup marker"
+    );
+}
+
+#[test]
+fn daemon_crashes_at_every_startup_phase_without_stranding_its_worker_group() {
+    for phase in [
+        "after-child-spawn",
+        "after-identity-capture",
+        "after-registry-publication",
+        "after-startup-marker",
+        "before-acknowledgement",
+        "after-acknowledgement",
+    ] {
+        let sandbox = Sandbox::new();
+        let step = format!(
+            "phase-{}",
+            phase.trim_start_matches("after-").replace('-', "")
+        );
+        let tmpdir = sandbox.session(&step);
+        let phases = sandbox.root.path().join("phases");
+        fs::create_dir_all(&phases).expect("phase directory");
+        fs::write(phases.join(format!("{phase}.armed")), "").expect("arm barrier");
+        let mut launcher = raw_larch(&sandbox);
+        launcher
+            .args(["bgjob", "start", "--step", &step])
+            .arg("--tmpdir")
+            .arg(&tmpdir)
+            .args([
+                "--budget-s",
+                "60",
+                "--owner-pid",
+                &std::process::id().to_string(),
+                "--",
+                "/bin/sh",
+                "-c",
+                "exec sleep 60",
+            ])
+            .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases);
+        let launcher = launcher.spawn().expect("start launcher");
+        let reached = phases.join(format!("{phase}.reached"));
+        wait_for_file(&reached, phase);
+        let daemon = phase_process_pid(&reached);
+        let worker = direct_child_pid(daemon, phase);
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(daemon),
+            nix::sys::signal::Signal::SIGKILL,
+        )
+        .expect("kill blocked daemon");
+
+        let output = launcher.wait_with_output().expect("launcher exit");
+        if phase == "after-acknowledgement" {
+            assert!(output.status.success(), "{phase}: {output:?}");
+            assert!(String::from_utf8_lossy(&output.stdout).contains("BGJOB_STATUS=STARTED"));
+            let settled = wait_until_settled(&sandbox, &step, &tmpdir);
+            assert!(
+                settled.contains("BGJOB_STATUS=DEAD"),
+                "{phase}: {settled:?}"
+            );
+        } else {
+            assert_eq!(output.status.code(), Some(2), "{phase}: {output:?}");
+            assert_eq!(output.stdout, b"BGJOB_ERROR=daemon-start-failed\n");
+        }
+        assert_group_gone(worker, phase);
+        assert!(
+            !tmpdir
+                .join("bgjob")
+                .join(format!("{step}.startup.env"))
+                .exists(),
+            "{phase} retained a startup marker"
+        );
+        let retained = fs::read_dir(sandbox.registry())
+            .expect("registry root")
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(&format!("-{step}.env"))
+            });
+        assert!(!retained, "{phase} retained a registry row");
+    }
+}
+
+#[test]
+fn concurrent_adapters_rejoin_the_one_startup_record_before_acknowledgement() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("concurrent-adapt");
+    let phases = sandbox.root.path().join("concurrent-adapt-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("before-acknowledgement.armed"), "").expect("arm barrier");
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository root");
+    let owner_pid = std::process::id().to_string();
+    let mut first = raw_larch(&sandbox);
+    first
+        .args(["bgjob", "adapt", "--step", "concurrent-adapt"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--budget-s", "60", "--owner-pid"])
+        .arg(&owner_pid)
+        .args(["--", "/bin/sh", "-c", "while true; do sleep 1; done"])
+        .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases);
+    let first = first.spawn().expect("first adapter");
+    wait_for_file(
+        &phases.join("before-acknowledgement.reached"),
+        "first adapter acknowledgement barrier",
+    );
+    let row = registry_row(&sandbox, "concurrent-adapt");
+    let mut second = raw_larch(&sandbox);
+    second
+        .args(["bgjob", "adapt", "--step", "concurrent-adapt"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--budget-s", "60", "--owner-pid"])
+        .arg(&owner_pid)
+        .args(["--", "/bin/sh", "-c", "while true; do sleep 1; done"])
+        .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases);
+    let mut second = second.spawn().expect("second adapter");
+    assert!(
+        second.try_wait().expect("second adapter status").is_none(),
+        "the second adapter bypassed the in-flight decision lock"
+    );
+
+    fs::write(phases.join("before-acknowledgement.release"), "").expect("release barrier");
+    let first = first.wait_with_output().expect("first adapter output");
+    let second = second.wait_with_output().expect("second adapter output");
+    assert!(first.status.success(), "{first:?}");
+    assert!(second.status.success(), "{second:?}");
+    let first = String::from_utf8(first.stdout).expect("first stdout");
+    let second = String::from_utf8(second.stdout).expect("second stdout");
+    let first_pgid = started_pgid(&first, "concurrent-adapt");
+    assert_eq!(
+        started_pgid(&second, "concurrent-adapt"),
+        first_pgid,
+        "concurrent adapters started distinct jobs: {first:?} vs {second:?}"
+    );
+
+    let entry = read_entry(&row).expect("one shared registry row");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill shared daemon");
+    let recovered = wait_until_settled(&sandbox, "concurrent-adapt", &tmpdir);
+    assert!(recovered.contains("BGJOB_STATUS=DEAD"), "{recovered:?}");
+    assert_group_gone(first_pgid, "concurrent adapters cleanup");
+    assert!(!row.exists(), "shared adapter row remained after recovery");
+}
+
+#[test]
+fn clear_stall_retains_a_live_checks_registry_row_when_the_owner_is_gone() {
+    let mut sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("clear-stall-live");
+    fs::write(
+        tmpdir.join("ship-pr-state.sh"),
+        "STALL_TRACKING=true\nSTALL_STEP=3\n",
+    )
+    .expect("stall state");
+    let owner_pid = sandbox.sleeper();
+    let output = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "implement-step3-checks"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--budget-s", "60", "--owner-pid"])
+        .arg(owner_pid.to_string())
+        .args(["--", "/bin/sh", "-c", "exec sleep 60"])
+        .env("LARCH_TEST_BGJOB_OWNER_GRACE_S", "60")
+        .output()
+        .expect("checks start");
+    assert!(output.status.success(), "{output:?}");
+    let row = registry_row(&sandbox, "implement-step3-checks");
+    let entry = read_entry(&row).expect("checks registry entry");
+    let owner = sandbox
+        .children
+        .iter_mut()
+        .find(|child| i32::try_from(child.id()).expect("pid") == owner_pid)
+        .expect("owner child");
+    owner.kill().expect("kill owner");
+    owner.wait().expect("reap owner");
+
+    sandbox
+        .larch()
+        .args(["stall-recovery", "--implement-tmpdir"])
+        .arg(&tmpdir)
+        .arg("clear-stall")
+        .assert()
+        .code(1)
+        .stdout("CLEARED=false\n");
+    assert!(
+        row.exists(),
+        "clear-stall stripped a live checks registry row"
+    );
+    assert_eq!(
+        fs::read_to_string(tmpdir.join("ship-pr-state.sh")).expect("unchanged stall state"),
+        "STALL_TRACKING=true\nSTALL_STEP=3\n"
+    );
+
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill checks daemon");
+    let recovered = wait_until_settled(&sandbox, "implement-step3-checks", &tmpdir);
+    assert!(recovered.contains("BGJOB_STATUS=DEAD"), "{recovered:?}");
+    assert_group_gone(entry.child.pgid, "clear-stall checks cleanup");
 }
 
 #[test]
@@ -770,8 +1150,8 @@ fn reap_retains_an_expired_row_when_its_child_birth_identity_is_stale() {
         .larch()
         .args(["bgjob", "reap"])
         .assert()
-        .success()
-        .stdout("BGJOB_REAPED=0\n");
+        .code(2)
+        .stdout(predicates::str::contains("BGJOB_RECOVERY_FAILED=1\n"));
 
     assert!(row.exists(), "reap discarded an unrecoverable registry row");
     assert!(
@@ -783,6 +1163,13 @@ fn reap_retains_an_expired_row_when_its_child_birth_identity_is_stale() {
         diagnostic.contains("BGJOB_TEARDOWN_REASON=process-birth-identity-mismatch"),
         "reap did not retain a useful stale-identity diagnostic: {diagnostic:?}"
     );
+    let waited = wait_with_run_id(&sandbox, "reap-recycled", &entry.tmpdir, "reap-run");
+    assert!(waited.contains("BGJOB_STATUS=WAIT"), "{waited:?}");
+    assert!(waited.contains("BGJOB_RECOVERY=retryable"), "{waited:?}");
+    assert!(
+        !waited.contains("BGJOB_STATUS=DEAD"),
+        "unproven recovery became terminal: {waited:?}"
+    );
 
     fs::write(
         &entry.result_env,
@@ -793,8 +1180,8 @@ fn reap_retains_an_expired_row_when_its_child_birth_identity_is_stale() {
         .larch()
         .args(["bgjob", "reap"])
         .assert()
-        .success()
-        .stdout("BGJOB_REAPED=0\n");
+        .code(2)
+        .stdout(predicates::str::contains("BGJOB_RECOVERY_FAILED=1\n"));
     assert!(
         row.exists(),
         "reap discarded a completed row without proving its group absent"

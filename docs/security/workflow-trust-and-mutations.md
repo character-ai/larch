@@ -359,6 +359,16 @@ detaches the daemon by re-executing the same verified binary in a daemon role,
 and the daemon binds the owner's recorded process identity, never a bare pid, so
 a reused pid never keeps an orphaned job alive (#6604). The daemon terminates a
 timed-out or orphaned child only through validated process-group termination.
+Before it reports `STARTED`, the daemon creates a private-gated persistent worker
+as the process-group leader, captures its and the daemon's identities, and
+atomically publishes the complete registry record. It then writes the
+identity-bearing `registry-published` startup marker, releases the worker gate,
+and acknowledges the launcher. The adapter retains its decision lock through
+that acknowledgement, so another adapter sees the one durable launch rather
+than starting a duplicate. A bounded launcher acknowledgement timeout, closed
+pipe, or malformed acknowledgement kills the daemon and enters the same durable
+recovery path; it either proves the worker group absent or leaves the registry
+record retryable.
 Each Rust-owned persisted identity records PID, process group, normalized `ps`
 start time, command text, and a kernel birth identity. Darwin uses the `proc_pidinfo`
 BSD-process creation seconds and microseconds; Linux combines its boot UUID
@@ -382,10 +392,13 @@ same-tick reuse gap remains; the second check and strongest durable metadata
 narrow it without claiming an absolute guarantee. Cleanup never individually
 signals an enumerated descendant PID, because that PID has no durable identity
 and could have been recycled. A validated group signal reaches members that
-remain in the recorded group.
-If the recorded group leader has disappeared while a numeric group remains,
-larch cannot prove that a recycled group is still its child and retains the
-record instead of signaling it.
+remain in the recorded group. The persistent worker never `exec`s the requested
+command and does not exit until its group is empty, so a requested shell or
+wrapper can exit while its descendants remain owned. During TERM-to-KILL
+escalation, larch captures and revalidates a live non-leader group member before
+using it as a one-call escalation anchor. If neither the leader nor such a
+validated anchor remains, larch retains the record instead of signaling a bare,
+possibly recycled numeric group.
 
 When a daemon dies, `wait` and `reap` share an exclusive, process-identity-bound
 recovery lease for its durable registry row. The lease holder validates the
@@ -393,10 +406,14 @@ recorded child group, logs each intended signal, and proves that the full group
 is absent before it removes the row. A signal attempt, bounded child reap, or
 missing leader alone is not proof of teardown. If that proof fails, larch keeps
 the registry state and an actionable teardown diagnostic; it does not publish a
-`BGJOB_RC` result envelope or claim `DONE`. `wait` reports the non-success
-`DEAD` diagnostic instead. This fail-closed retention is an explicit safety
-difference from the retired Python behavior, which could discard the row after
-an unverified timeout or orphan cleanup.
+`BGJOB_RC` result envelope or claim `DONE`. `wait` reports that condition as a
+retryable `WAIT` with `BGJOB_RECOVERY=retryable`, never terminal `DEAD`; `reap`
+returns a nonzero result with `BGJOB_RECOVERY_FAILED` rather than silently
+reporting zero work. The shared recovery owner is also the only clear-stall
+registry cleaner: `clear-stall` must claim, validate, terminate, and prove
+absence before it clears state or removes a row. This fail-closed retention is
+an explicit safety difference from the retired Python behavior, which could
+discard the row after an unverified timeout or orphan cleanup.
 
 Recovery-lease publication writes and syncs the claimant identity in a private
 temporary file before atomically linking it into the final no-replace lease

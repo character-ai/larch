@@ -24,6 +24,7 @@ pub mod vendor_reviewers;
 
 use larch_core::BuildMetadata;
 
+pub mod bgjob_recovery;
 pub mod bgjob_registry;
 mod file_io;
 mod filesystem;

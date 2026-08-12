@@ -1,4 +1,5 @@
 //! Filesystem, Git, and bgjob effects for Rust-owned stall-recovery commands.
+use crate::bgjob_recovery::{BgjobRecoveryOutcome, recover_abandoned_entry};
 use crate::{
     FileIoErrorKind, GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot,
     atomic_write_bytes_in, atomic_write_utf8_in, ensure_directory_chain, open_confined_read,
@@ -7,14 +8,13 @@ use crate::{
 use chrono::{SecondsFormat, Utc};
 use larch_core::{
     Classification, ClassifyTextInput, CommentPolicy, CrStrip, DuplicatePolicy, FileFailureReport,
-    IssueNormalization, KvDocument, NormalizeOutcomeInput, ParseOptions, RepositoryRead,
-    artifact_prefix_valid, classification_signature, classify_text, daemon_liveness,
-    failure_detail_sidecar_name, first_nonempty, is_terminal_merge_result, kv_text,
-    normalize_file_failure_report, normalize_issue_output, normalize_outcome_values,
+    IssueNormalization, KvDocument, NormalizeOutcomeInput, ParseOptions, RegistryEntry,
+    RepositoryRead, artifact_prefix_valid, classification_signature, classify_text,
+    daemon_liveness, failure_detail_sidecar_name, first_nonempty, is_terminal_merge_result,
+    kv_text, normalize_file_failure_report, normalize_issue_output, normalize_outcome_values,
     public_text_is_sensitive, read_for, resume_hint_for, safe_bail_value, safe_dispatcher_value,
     safe_pattern_value, safe_phase, safe_phase_value, safe_step, safe_step_value, select_kv_bytes,
-    state_value, terminal_state_valid, token_valid, truthy, unlink_entry,
-    validate_process_identity,
+    state_value, terminal_state_valid, token_valid, truthy, validate_process_identity,
 };
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
@@ -509,11 +509,15 @@ fn diagnostic_token(value: &str) -> String {
 pub fn clear_stall(tmpdir: &Path) -> Result<(), StateMutationError> {
     let tmpdir = absolute_path(tmpdir).map_err(|()| StateMutationError::Unsafe)?;
     if !tmpdir.exists() {
-        clear_abandoned_checks_registry(&tmpdir);
+        clear_abandoned_checks_registry(&tmpdir)?;
         return Ok(());
     }
     let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StateMutationError::Unsafe)?;
     let tmpdir = root.path().to_path_buf();
+    // Reconcile checks jobs before clearing any state that names their owner.
+    // A failed proof deliberately leaves both the row and stall state intact
+    // for the next caller instead of losing the last safe identity.
+    clear_abandoned_checks_registry(&tmpdir)?;
     for name in [
         "stall-recovery-classification.env",
         "stall-recovery-issue.env",
@@ -541,7 +545,6 @@ pub fn clear_stall(tmpdir: &Path) -> Result<(), StateMutationError> {
             return Err(StateMutationError::Failed);
         }
     }
-    clear_abandoned_checks_registry(&tmpdir);
     Ok(())
 }
 /// Seed terminal state, returning the legacy `rewrite` or `seed` mode.
@@ -1074,11 +1077,20 @@ fn safe_state_value(
     }
 }
 
-fn clear_abandoned_checks_registry(tmpdir: &Path) {
+fn clear_abandoned_checks_registry(tmpdir: &Path) -> Result<(), StateMutationError> {
     let host = SystemProcessIdentityHost::new();
-    for (path, _) in abandoned_checks_registry_rows(tmpdir, &host) {
-        unlink_entry(&path);
+    for (path, entry, _) in abandoned_checks_registry_rows(tmpdir, &host) {
+        match recover_abandoned_entry(&host, &path, &entry, "stall-clear", "clear-stall") {
+            BgjobRecoveryOutcome::Recovered | BgjobRecoveryOutcome::Gone => {}
+            // A live daemon, concurrent claimant, or failed verification is
+            // not permission to erase a row or clear the state that points to
+            // it. The next clear-stall invocation can retry the same claim.
+            BgjobRecoveryOutcome::Busy | BgjobRecoveryOutcome::Failed(_) => {
+                return Err(StateMutationError::Failed);
+            }
+        }
     }
+    Ok(())
 }
 
 /// Return the first abandoned checks step using the shared Rust bgjob registry.
@@ -1088,13 +1100,13 @@ pub fn abandoned_checks_stall_step(tmpdir: &Path) -> Option<&'static str> {
     abandoned_checks_registry_rows(tmpdir, &host)
         .into_iter()
         .next()
-        .map(|(_, step)| step)
+        .map(|(_, _, step)| step)
 }
 
 fn abandoned_checks_registry_rows(
     tmpdir: &Path,
     host: &SystemProcessIdentityHost,
-) -> Vec<(PathBuf, &'static str)> {
+) -> Vec<(PathBuf, RegistryEntry, &'static str)> {
     let mut abandoned = Vec::new();
     for &(step, stall_step) in CHECKS_BGJOB_STEPS {
         let Ok((path, Some(entry))) = read_for(tmpdir, step, None) else {
@@ -1108,7 +1120,7 @@ fn abandoned_checks_registry_rows(
             .as_ref()
             .is_some_and(|owner| !validate_process_identity(host, owner).ok);
         if !daemon_liveness(host, &entry).live || owner_dead {
-            abandoned.push((path, stall_step));
+            abandoned.push((path, entry, stall_step));
         }
     }
     abandoned
