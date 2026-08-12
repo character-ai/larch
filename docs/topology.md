@@ -24,6 +24,8 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="complete_umbrella.leaf_execution"></a>`complete_umbrella.leaf_execution` | bgjob | serial thin Claude orchestrator with larch skills disabled | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_phases"></a>`complete_umbrella.leaf_phases` | fresh phase contexts | recon/design + implement + adversarial review + ship | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_ship"></a>`complete_umbrella.leaf_ship` | Deterministic leaf ship driver | one umbrella leaf | `python/larch/implement/complete_umbrella_ship.py` |
+| <a id="audit_umbrella.inline_audit"></a>`audit_umbrella.inline_audit` | one inline context | exhaustive evidence ledger and residual-gap partition | `skills/audit-umbrella/SKILL.md` |
+| <a id="audit_umbrella.batch_mutation"></a>`audit_umbrella.batch_mutation` | AuditUmbrellaCommand | immutable snapshot + exact leaf creation + native graph reconciliation + read-back | `crates/larch-cli/src/audit_umbrella_commands.rs` |
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | cli.py | offline panel regression coverage | `python/cli.py` |
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |
 | <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | cli.py | offline prepare annotate close-original coverage | `python/cli.py` |

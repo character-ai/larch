@@ -25,6 +25,7 @@ mod analyze_bugs_commands;
 mod analyze_issues_commands;
 mod argparse_compat;
 mod audit_runs_commands;
+mod audit_umbrella_commands;
 mod bgjob_adapt;
 mod bgjob_commands;
 mod blocker_commands;
@@ -47,6 +48,7 @@ mod execution_issue_commands;
 mod external_agent;
 mod external_defaults_commands;
 pub(crate) mod final_report_commands;
+mod git_command_runtime;
 mod git_commands;
 mod github_repository_resolution;
 mod github_service;
@@ -89,6 +91,7 @@ mod run_log_entry_commands;
 pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 mod runtime_entrypoint;
+mod session_artifact_support;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
@@ -112,6 +115,7 @@ mod voter_dispatch_commands;
 mod waterfall_commands;
 
 use agent_commands::AgentCommand;
+use audit_umbrella_commands::AuditUmbrellaCommand;
 use ci_selection::CiCommand;
 use ci_timing::CiTimingCommand;
 use complete_umbrella_commands::CompleteUmbrellaCommand;
@@ -170,6 +174,9 @@ enum Domain {
     /// Serially complete and audit every direct leaf of one umbrella issue.
     #[command(subcommand)]
     CompleteUmbrella(CompleteUmbrellaCommand),
+    /// Audit one managed umbrella and reconcile its exhaustive corrective batch.
+    #[command(subcommand, name = "audit-umbrella")]
+    AuditUmbrella(AuditUmbrellaCommand),
     /// Combine related issues while preserving their dependency graph.
     #[command(subcommand, name = "combine-issues")]
     CombineIssues(CombineIssuesCommand),
@@ -1547,6 +1554,7 @@ fn run(
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::Ci(command) => Ok(ci_selection::run(command)),
+        Domain::AuditUmbrella(command) => Ok(audit_umbrella_commands::run(command)),
         Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
         Domain::DirtyTree(command) => Ok(match command {
             DirtyTreeCommand::Baseline(arguments) => {

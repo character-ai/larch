@@ -3,6 +3,7 @@
 mod admission;
 mod architectural_guidelines;
 mod attestation;
+mod audit_umbrella;
 mod bgjob;
 mod bgjob_daemon;
 mod ci_timing;
@@ -67,6 +68,22 @@ pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag,
     VerifiedArtifactAttestation, VerifiedReleaseAttestation,
+};
+pub use audit_umbrella::{
+    AUDIT_LEDGER_VERSION, AUDIT_PROPOSAL_VERSION, AUDIT_SNAPSHOT_VERSION, AuditDependency,
+    AuditDependencyNode, AuditGraphState, AuditIssue, AuditIssueFingerprint, AuditLeaf,
+    AuditLeafDraft, AuditLeafState, AuditLedger, AuditLedgerEntry, AuditLedgerSummary,
+    AuditProposal, AuditProposalDraft, AuditSnapshot, AuditSource, AuditSourceItem,
+    AuditUmbrellaRefusal, INVALID_AUDIT_LEDGER, INVALID_AUDIT_PROPOSAL, INVALID_AUDIT_SNAPSHOT,
+    MAX_AUDIT_ARTIFACT_BYTES, MAX_AUDIT_LEAF_BODY_BYTES, MAX_AUDIT_LEAF_TITLE_BYTES,
+    MAX_AUDIT_LEAVES, MAX_AUDIT_REQUIREMENTS, MAX_AUDIT_SOURCES, RequirementStatus,
+    SECURITY_SENSITIVE_AUDIT, STALE_AUDIT_PROPOSAL, audit_issue_fingerprint, audit_leaf_identity,
+    audit_leaf_prefix, audit_ledger_sha256, audit_proposal_existing_numbers, audit_snapshot_sha256,
+    audit_source_items, build_audit_proposal, mark_audit_graph_in_flight,
+    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
+    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_ledger,
+    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
+    validate_audit_ledger, validate_audit_proposal_binding,
 };
 pub use bgjob::{
     BGJOB_ELAPSED_KEY, BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_REGISTRY_DIRNAME,

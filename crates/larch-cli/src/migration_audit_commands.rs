@@ -22,15 +22,14 @@ use larch_adapters::{
     atomic_write_utf8, github::OctocrabGitHubService, runtime::Cancellation,
 };
 use larch_core::{
-    CommandAuditIssue, DependencySnapshot, GitHubIssue, GitHubIssueList, GitHubIssueListMode,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, GitPath,
-    MigrationAuditRequest, MigrationAuditSnapshot, MigrationIssueSnapshot, PlanAuditEvidence,
-    PlanScopeKind, RepositoryAuditFinding, RepositoryFindingSource, RepositoryRead, Revision,
-    SafeText, ScopeFile, ScopeSnapshot, build_command_audit_issue, build_migration_audit_report,
-    declared_scope_paths, issue_plan_marker_defect, parse_named_block, parse_native_blocker_refs,
-    parse_owner_block, parse_receipt, plan_scope_declarations, python_int,
-    render_command_audit_input, render_migration_audit_json, render_migration_audit_table,
-    validate_plan_facets,
+    CommandAuditIssue, DependencySnapshot, GitHubIssue, GitHubIssueState, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, GitPath, MigrationAuditRequest, MigrationAuditSnapshot,
+    MigrationIssueSnapshot, PlanAuditEvidence, PlanScopeKind, RepositoryAuditFinding,
+    RepositoryFindingSource, RepositoryRead, Revision, SafeText, ScopeFile, ScopeSnapshot,
+    build_command_audit_issue, build_migration_audit_report, declared_scope_paths,
+    issue_plan_marker_defect, parse_named_block, parse_native_blocker_refs, parse_owner_block,
+    parse_receipt, plan_scope_declarations, python_int, render_command_audit_input,
+    render_migration_audit_json, render_migration_audit_table, validate_plan_facets,
 };
 use regex::Regex;
 use std::sync::LazyLock;
@@ -40,7 +39,7 @@ use crate::{
         ParsedCommandLine, missing, parse, resolve_option, split_inline_option, usage_error,
     },
     github_repository_resolution::repository_ref,
-    github_service::{ServiceFailure, with_github_service_policy},
+    github_service::{ServiceFailure, list_exhaustive_issues, with_github_service_policy},
 };
 
 const USAGE: &str = "usage: larch issue migration-audit [-h] --repo REPO --chief CHIEF\n                                   [--output OUTPUT]\n                                   [--table-output {stderr,stdout,none}]";
@@ -313,21 +312,11 @@ async fn collect_remote_snapshot(
     repository: &GitHubRepositoryRef,
     chief_issue: u64,
 ) -> Result<RemoteSnapshot, String> {
-    let listed = service
-        .list_issues(
-            &GitHubIssueList {
-                repo: repository.clone(),
-                state: GitHubIssueState::All,
-                labels: Vec::new(),
-                limit: service.transport_policy().limits().items(),
-                mode: GitHubIssueListMode::Exhaustive,
-            },
-            cancellation,
-        )
+    let listed = list_exhaustive_issues(service, cancellation, repository)
         .await
         .map_err(|_| "issue snapshot unavailable".to_owned())?;
     let mut all = BTreeMap::new();
-    for issue in listed.issues {
+    for issue in listed {
         let issue = migration_issue(&issue, "issue snapshot")?;
         if all.insert(issue.number, issue).is_some() {
             return Err("issue snapshot contains duplicates".to_owned());

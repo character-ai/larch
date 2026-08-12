@@ -172,6 +172,12 @@ Migration plans that create or reuse a shared launcher, adapter, registry, resol
 
 Step 0 creates and reads back the run's `larch:implementation-lease` after the branch exists and before it adds `[IMPLEMENTING]`. Existing marker-keyed tracking-summary boundaries refresh only that run's lease. Terminal cleanup updates the lease and title together, which clears active ownership on done and stalled routes. A report-only watchdog emits `stale-implementation-lease issue=#N age_hours=<N>` after 12 hours only when the recorded branch has no open PR. It prints one cleanup command and never edits GitHub state.
 
+## Audit umbrella lifecycle
+
+`/audit-umbrella <umbrella-issue-N>` is a standalone corrective-audit path. It starts a normal run lifecycle, resolves one open top-level managed umbrella, and creates a detached worktree at a freshly fetched default-branch SHA. The caller checkout and branch remain unchanged. The Rust owner snapshots the complete bounded historical leaf corpus, including native children, explicit references, exact leaf-title matches, fixed backlinks, and controlling umbrellas.
+
+The invoking context performs the judgment inline. It must finish a source-item ledger with concrete code and test evidence before it partitions any gaps. A security-sensitive finding terminalizes privately before proposal persistence. Otherwise the typed owner persists the complete batch and graph, checks source and default-branch freshness, records in-flight creates, reconciles only exact title/body matches, attaches new leaves through both native parent relations, applies declared dependency repairs, and proves the final graph by read-back. It does not implement leaves, close issues, or change their titles.
+
 ## Migration governance aggregate
 
 `scripts/larch.sh issue migration-audit` composes migration admission,

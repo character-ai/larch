@@ -32,6 +32,7 @@ Commands:
   ci-timing          Collect GitHub Actions timing inputs and resolve trusted source runs
   ci                 Fail-closed Rust CI selection and history helpers
   complete-umbrella  Serially complete and audit every direct leaf of one umbrella issue
+  audit-umbrella     Audit one managed umbrella and reconcile its exhaustive corrective batch
   combine-issues     Combine related issues while preserving their dependency graph
   dirty-tree         Working-tree checkpoint and scope compatibility commands
   deps               The `/deps` open-issue dependency audit: reads, plan, and one apply

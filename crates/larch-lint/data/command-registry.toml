@@ -9108,6 +9108,12 @@ python = []
 rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by"]
 
 [[callers]]
+path = "skills/audit-umbrella/SKILL.md"
+kind = "skill"
+python = []
+rust = ["gh resolve-repo", "run-log lifecycle-start", "session setup"]
+
+[[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
 python = []

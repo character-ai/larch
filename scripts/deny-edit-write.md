@@ -1,10 +1,10 @@
 # scripts/deny-edit-write.sh — contract
 
-`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/bug`, `/triage`, `/umbrella`, `/complete-umbrella`, and `/debate`. Each consumer passes its skill name as the recognized first argument.
+`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/audit-umbrella`, `/bug`, `/triage`, `/umbrella`, `/complete-umbrella`, and `/debate`. Each consumer passes its skill name as the recognized first argument.
 
 ## Activation gate
 
-Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `bug`, `triage`, `umbrella`, `complete-umbrella`, and `debate`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only.
+Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `audit-umbrella`, `bug`, `triage`, `umbrella`, `complete-umbrella`, and `debate`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only.
 
 A missing activation directory, unreadable directory, stale sentinel, missing token, or unrecognized token is inactive. Inactive hooks exit 0 with empty stdout. There is no any-sentinel fallback, so a stale tokenless registration cannot be re-armed by another skill's fresh sentinel. The hook performs no `$PPID` correlation because production PreToolUse parent PIDs can diverge from orchestrator Bash parent PIDs.
 
