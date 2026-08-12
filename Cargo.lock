@@ -3125,6 +3125,7 @@ dependencies = [
  "chrono",
  "flate2",
  "larch-test-support",
+ "nix",
  "regex",
  "serde",
  "serde_json",

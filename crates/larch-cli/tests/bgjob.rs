@@ -16,6 +16,7 @@ use larch_core::{
 };
 use std::{
     fs,
+    os::unix::fs::symlink,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread::sleep,
@@ -363,6 +364,10 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
         ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"],
         "result envelope key set drifted: {result:?}"
     );
+    let completion = fs::read_to_string(tmpdir.join("bgjob/start-check.completion.env"))
+        .expect("no-sentinel completion descriptor");
+    assert!(completion.contains("STATE=COMMITTED\n"), "{completion:?}");
+    assert!(completion.contains("SENTINEL_COUNT=0\n"), "{completion:?}");
 
     // A completed job leaves no registry row, so `reap` has nothing to remove.
     sandbox
@@ -371,6 +376,408 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
         .assert()
         .success()
         .stdout("BGJOB_REAPED=0\n");
+}
+
+#[test]
+fn direct_start_rejects_unsafe_merge_result_envs_before_launch() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("direct-merge");
+    let owner_pid = std::process::id().to_string();
+    let outside = tempfile::tempdir().expect("outside directory");
+    let leaf_target = outside.path().join("leaf-target.env");
+    fs::write(&leaf_target, "CUSTOM=outside\n").expect("leaf target");
+    let leaf_link = tmpdir.join("leaf-link.env");
+    symlink(&leaf_target, &leaf_link).expect("leaf symlink");
+    let ancestor_target = outside.path().join("ancestor");
+    fs::create_dir(&ancestor_target).expect("ancestor target");
+    let ancestor_link = tmpdir.join("ancestor-link");
+    symlink(&ancestor_target, &ancestor_link).expect("ancestor symlink");
+    let directory_merge = tmpdir.join("directory-merge");
+    fs::create_dir(&directory_merge).expect("directory merge path");
+
+    for (case, merge) in [
+        ("relative", PathBuf::from("relative.env")),
+        ("outside", outside.path().join("outside.env")),
+        ("leaf-link", leaf_link),
+        ("ancestor-link", ancestor_link.join("merge.env")),
+        ("directory", directory_merge),
+    ] {
+        let step = format!("direct-{case}");
+        let marker = sandbox.root.path().join(format!("{case}.ran"));
+        let output = raw_larch(&sandbox)
+            .args(["bgjob", "start", "--step", &step])
+            .arg("--tmpdir")
+            .arg(&tmpdir)
+            .args([
+                "--budget-s",
+                "20",
+                "--owner-pid",
+                &owner_pid,
+                "--merge-result-env",
+            ])
+            .arg(&merge)
+            .args(["--", "/bin/sh", "-c", "touch \"$1\"", "sh"])
+            .arg(&marker)
+            .output()
+            .expect("direct invalid start");
+        assert_eq!(output.status.code(), Some(2), "{case}: {output:?}");
+        assert!(
+            !marker.exists(),
+            "{case} merge path launched its child before validation"
+        );
+    }
+}
+
+#[test]
+fn direct_start_preserves_valid_merge_result_rows() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("direct-merge");
+    let owner_pid = std::process::id().to_string();
+    let valid_merge = tmpdir.join("valid-merge.env");
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "direct-valid"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "20",
+            "--owner-pid",
+            &owner_pid,
+            "--merge-result-env",
+        ])
+        .arg(&valid_merge)
+        .args([
+            "--",
+            "/bin/sh",
+            "-c",
+            "printf 'CUSTOM=kept\\n' > \"$1\"",
+            "sh",
+        ])
+        .arg(&valid_merge)
+        .output()
+        .expect("direct valid start");
+    assert!(started.status.success(), "{started:?}");
+    assert!(
+        started_pgid(
+            &String::from_utf8(started.stdout).expect("valid start stdout"),
+            "direct-valid"
+        ) > 0
+    );
+    let settled = wait_until_settled(&sandbox, "direct-valid", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
+    let result = fs::read_to_string(tmpdir.join("bgjob/direct-valid.result.env"))
+        .expect("valid merged result");
+    let document =
+        KvDocument::parse(&result, ParseOptions::environment()).expect("merged envelope");
+    assert_eq!(
+        document
+            .rows()
+            .iter()
+            .map(larch_core::KvRow::key)
+            .collect::<Vec<_>>(),
+        ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP", "CUSTOM"],
+        "merge row order changed: {result:?}"
+    );
+    assert!(
+        result.ends_with("STEP=direct-valid\nCUSTOM=kept\n"),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn direct_start_revalidates_raced_merge_result_env() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("direct-merge");
+    let owner_pid = std::process::id().to_string();
+    let outside = tempfile::tempdir().expect("outside directory");
+    let raced_merge = tmpdir.join("raced-merge.env");
+    let ready = tmpdir.join("merge-ready");
+    let release = tmpdir.join("merge-release");
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "direct-raced"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "20",
+            "--owner-pid",
+            &owner_pid,
+            "--merge-result-env",
+        ])
+        .arg(&raced_merge)
+        .args([
+            "--",
+            "/bin/sh",
+            "-c",
+            "printf 'CUSTOM=raced\\n' > \"$1\"; : > \"$2\"; while [ ! -f \"$3\" ]; do sleep 0.05; done",
+            "sh",
+        ])
+        .args([&raced_merge, &ready, &release])
+        .output()
+        .expect("direct raced start");
+    assert!(started.status.success(), "{started:?}");
+    wait_for_file(&ready, "merge writer readiness");
+    fs::remove_file(&raced_merge).expect("replace merge leaf");
+    let raced_target = outside.path().join("raced-target.env");
+    fs::write(&raced_target, "CUSTOM=outside\n").expect("raced target");
+    symlink(&raced_target, &raced_merge).expect("replace merge with symlink");
+    fs::write(&release, "").expect("release merge child");
+
+    let settled = wait_until_settled(&sandbox, "direct-raced", &tmpdir);
+    assert!(
+        settled.contains("BGJOB_STATUS=DEAD"),
+        "unsafe merge replacement became terminal: {settled:?}"
+    );
+    assert!(
+        !tmpdir.join("bgjob/direct-raced.result.env").exists(),
+        "unsafe merge replacement published a result"
+    );
+}
+
+#[test]
+fn completion_publication_crashes_recover_to_whole_output_sets() {
+    for (index, phase) in [
+        "before-completion-intent",
+        "after-completion-stage",
+        "after-completion-intent",
+        "before-result-publication",
+        "after-result-publication",
+        "before-sentinel-0-publication",
+        "after-sentinel-0-publication",
+        "before-sentinel-1-publication",
+        "after-sentinel-1-publication",
+        "before-completion-commit",
+        "after-completion-commit",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let sandbox = Sandbox::new();
+        let step = format!("completion-phase-{index}");
+        let tmpdir = sandbox.session(&step);
+        let phases = sandbox.root.path().join("completion-phases");
+        fs::create_dir_all(&phases).expect("phase directory");
+        fs::write(phases.join(format!("{phase}.armed")), "").expect("arm completion phase");
+        let first = tmpdir.join("first.sentinel");
+        let second = tmpdir.join("second.sentinel");
+        let owner_pid = std::process::id().to_string();
+        let started = raw_larch(&sandbox)
+            .args(["bgjob", "start", "--step", &step])
+            .arg("--tmpdir")
+            .arg(&tmpdir)
+            .args(["--budget-s", "20", "--owner-pid", &owner_pid, "--sentinel"])
+            .arg(&first)
+            .arg("--sentinel")
+            .arg(&second)
+            .args(["--", "/bin/sh", "-c", "exit 0"])
+            .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+            .output()
+            .expect("start completion phase job");
+        assert!(started.status.success(), "{phase}: {started:?}");
+        let row = registry_row(&sandbox, &step);
+        let reached = phases.join(format!("{phase}.reached"));
+        wait_for_file(&reached, phase);
+        let daemon = phase_process_pid(&reached);
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(daemon),
+            nix::sys::signal::Signal::SIGKILL,
+        )
+        .expect("kill completion daemon");
+
+        let settled = wait_until_settled(&sandbox, &step, &tmpdir);
+        let result = tmpdir.join("bgjob").join(format!("{step}.result.env"));
+        if matches!(
+            *phase,
+            "before-completion-intent" | "after-completion-stage"
+        ) {
+            assert!(
+                settled.contains("BGJOB_STATUS=DEAD"),
+                "{phase}: {settled:?}"
+            );
+            assert!(!result.exists(), "{phase} leaked a partial result");
+            assert!(!first.exists(), "{phase} leaked the first sentinel");
+            assert!(!second.exists(), "{phase} leaked the second sentinel");
+            assert!(
+                !tmpdir
+                    .join("bgjob")
+                    .join(format!("{step}.completion-stage.env"))
+                    .exists(),
+                "{phase} retained an uncommitted staged result"
+            );
+        } else {
+            assert!(
+                settled.contains("BGJOB_STATUS=DONE"),
+                "{phase}: {settled:?}"
+            );
+            assert!(settled.contains("BGJOB_RC=0"), "{phase}: {settled:?}");
+            let text = fs::read_to_string(&result).expect("recovered result envelope");
+            let document =
+                KvDocument::parse(&text, ParseOptions::environment()).expect("recovered envelope");
+            assert_eq!(
+                document
+                    .rows()
+                    .iter()
+                    .map(larch_core::KvRow::key)
+                    .collect::<Vec<_>>(),
+                ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"],
+                "{phase}: result row order changed: {text:?}"
+            );
+            assert!(first.is_file(), "{phase} omitted the first sentinel");
+            assert!(second.is_file(), "{phase} omitted the second sentinel");
+        }
+        sandbox.larch().args(["bgjob", "reap"]).assert().success();
+        assert!(!row.exists(), "{phase} retained its registry row");
+    }
+}
+
+#[test]
+fn sentinel_publication_failure_retains_a_recoverable_transaction() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("sentinel-retry");
+    let first = tmpdir.join("first.sentinel");
+    let blocked = tmpdir.join("blocked.sentinel");
+    fs::create_dir(&blocked).expect("blocked sentinel directory");
+    let owner_pid = std::process::id().to_string();
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "sentinel-retry"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--budget-s", "20", "--owner-pid", &owner_pid, "--sentinel"])
+        .arg(&first)
+        .arg("--sentinel")
+        .arg(&blocked)
+        .args(["--", "/bin/sh", "-c", "exit 0"])
+        .output()
+        .expect("start blocked sentinel job");
+    assert!(started.status.success(), "{started:?}");
+    let row = registry_row(&sandbox, "sentinel-retry");
+    let deadline = Instant::now() + DEADLINE;
+    let retryable = loop {
+        let output = wait_once(&sandbox, "sentinel-retry", &tmpdir, "1");
+        if output.contains("BGJOB_RECOVERY=retryable") {
+            break output;
+        }
+        assert!(
+            output.contains("BGJOB_STATUS=WAIT"),
+            "sentinel publication became unexpectedly terminal: {output:?}"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "sentinel failure did not become retryable"
+        );
+    };
+    assert!(
+        !retryable.contains("BGJOB_STATUS=DONE"),
+        "partial output became terminal: {retryable:?}"
+    );
+    assert!(
+        tmpdir.join("bgjob/sentinel-retry.result.env").is_file(),
+        "the transaction did not preserve its staged result publication"
+    );
+    assert!(first.is_file(), "the first sentinel was not published");
+    assert!(
+        blocked.is_dir(),
+        "the failing sentinel path was unexpectedly replaced"
+    );
+    assert!(
+        row.exists(),
+        "failed publication discarded durable recovery state"
+    );
+
+    fs::remove_dir(&blocked).expect("unblock sentinel path");
+    let settled = wait_until_settled(&sandbox, "sentinel-retry", &tmpdir);
+    assert!(
+        settled.contains("BGJOB_STATUS=DONE") && settled.contains("BGJOB_RC=0"),
+        "recovery did not converge after the I/O failure cleared: {settled:?}"
+    );
+    assert!(first.is_file(), "recovery lost the first sentinel");
+    assert!(
+        blocked.is_file(),
+        "recovery did not publish the blocked sentinel"
+    );
+    assert!(
+        !row.exists(),
+        "recovery retained its completed registry row"
+    );
+}
+
+#[test]
+fn result_publication_failure_retains_a_recoverable_transaction() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("result-retry");
+    let phases = sandbox.root.path().join("result-retry-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("before-result-publication.armed"), "").expect("arm result barrier");
+    let sentinel = tmpdir.join("done.sentinel");
+    let owner_pid = std::process::id().to_string();
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "result-retry"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--budget-s", "20", "--owner-pid", &owner_pid, "--sentinel"])
+        .arg(&sentinel)
+        .args(["--", "/bin/sh", "-c", "exit 0"])
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+        .output()
+        .expect("start blocked result job");
+    assert!(started.status.success(), "{started:?}");
+    let row = registry_row(&sandbox, "result-retry");
+    wait_for_file(
+        &phases.join("before-result-publication.reached"),
+        "result publication barrier",
+    );
+    let result = tmpdir.join("bgjob/result-retry.result.env");
+    fs::create_dir(&result).expect("block result path with directory");
+    fs::write(phases.join("before-result-publication.release"), "")
+        .expect("release result barrier");
+
+    let deadline = Instant::now() + DEADLINE;
+    let retryable = loop {
+        let output = wait_once(&sandbox, "result-retry", &tmpdir, "1");
+        if output.contains("BGJOB_RECOVERY=retryable") {
+            break output;
+        }
+        assert!(
+            output.contains("BGJOB_STATUS=WAIT"),
+            "result publication became unexpectedly terminal: {output:?}"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "result failure did not become retryable"
+        );
+    };
+    assert!(
+        !retryable.contains("BGJOB_STATUS=DONE"),
+        "failed result publication became terminal: {retryable:?}"
+    );
+    assert!(
+        result.is_dir(),
+        "the blocked result path was unexpectedly replaced"
+    );
+    assert!(
+        !sentinel.exists(),
+        "a sentinel escaped before the result publication succeeded"
+    );
+    assert!(
+        row.exists(),
+        "failed result publication discarded recovery state"
+    );
+
+    fs::remove_dir(&result).expect("unblock result path");
+    let settled = wait_until_settled(&sandbox, "result-retry", &tmpdir);
+    assert!(
+        settled.contains("BGJOB_STATUS=DONE") && settled.contains("BGJOB_RC=0"),
+        "result recovery did not converge: {settled:?}"
+    );
+    assert!(
+        result.is_file(),
+        "recovery did not publish the result envelope"
+    );
+    assert!(sentinel.is_file(), "recovery did not publish its sentinel");
+    assert!(
+        !row.exists(),
+        "recovery retained its completed registry row"
+    );
 }
 
 #[test]

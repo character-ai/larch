@@ -2,8 +2,10 @@
 
 use larch_core::{
     BgjobError, ProcessIdentityHost, RecoveryClaim, RegistryEntry, child_identity_policy,
-    claim_recovery, confirm_process_group_absent, ensure_under, ordered_rows, phase_barrier,
-    read_entry, recovery_claim_entry_path, release_recovery_claim, render_rows, startup_env_path,
+    claim_recovery, clear_completion_residue, completion_result_is_visible,
+    confirm_process_group_absent, ensure_under, finish_completion_transaction, ordered_rows,
+    phase_barrier, read_completion_transaction, read_confined_result_env, read_entry,
+    recovery_claim_entry_path, release_recovery_claim, render_rows, startup_env_path,
     terminate_validated_process_group_and_confirm, unlink_entry,
 };
 use std::{
@@ -54,7 +56,7 @@ pub fn recover_abandoned_entry(
         release_recovery_claim(&claim);
         return BgjobRecoveryOutcome::Busy;
     }
-    if read_completed_result(&entry.result_env, &entry.step).is_some() {
+    if read_completed_result(&entry.tmpdir, &entry.result_env, &entry.step).is_some() {
         // A result is terminal only after group absence is independently proven.
         let confirmation =
             confirm_process_group_absent(host, &entry.child, child_identity_policy(&entry));
@@ -69,34 +71,99 @@ pub fn recover_abandoned_entry(
         release_recovery_claim(&claim);
         return failed(&entry, context, confirmation.reason);
     }
+    match read_completion_transaction(&entry.tmpdir, &entry.step) {
+        Ok(Some(transaction)) => {
+            let kill_log = entry.log_dir.join(format!("{}.kill.log.jsonl", entry.step));
+            let termination = terminate_validated_process_group_and_confirm(
+                host,
+                &entry.child,
+                child_identity_policy(&entry),
+                Some(&kill_log),
+                caller,
+                context,
+            );
+            if !termination.terminated {
+                release_recovery_claim(&claim);
+                return failed(&entry, context, termination.reason);
+            }
+            if let Err(error) = finish_completion_transaction(&transaction) {
+                release_recovery_claim(&claim);
+                return failed(
+                    &entry,
+                    context,
+                    format!("completion-transaction-{}", one_line(&error)),
+                );
+            }
+            if read_completed_result(&entry.tmpdir, &entry.result_env, &entry.step).is_none() {
+                release_recovery_claim(&claim);
+                return failed(
+                    &entry,
+                    context,
+                    "completion-transaction-not-visible".to_owned(),
+                );
+            }
+            if let Err(reason) = remove_startup_marker(&entry) {
+                release_recovery_claim(&claim);
+                return failed(&entry, context, reason);
+            }
+            return unlink_claimed_entry(&claim, &entry, context, true);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            release_recovery_claim(&claim);
+            return failed(
+                &entry,
+                context,
+                format!("completion-descriptor-{}", one_line(&error)),
+            );
+        }
+    }
+    recover_without_completion_transaction(host, &claim, &entry, caller, context)
+}
+
+fn recover_without_completion_transaction(
+    host: &dyn ProcessIdentityHost,
+    claim: &larch_core::RecoveryLease,
+    entry: &RegistryEntry,
+    caller: &str,
+    context: &str,
+) -> BgjobRecoveryOutcome {
+    // Preserve the legacy pre-teardown cleanup for a readable partial result,
+    // but do not let an I/O obstacle at an otherwise uncommitted output path
+    // prevent teardown of an unowned child group. The full residue sweep runs
+    // after absence is proven.
     if read_result(&entry.result_env).is_some()
         && let Err(reason) = remove_result_residue(&entry.result_env)
     {
-        release_recovery_claim(&claim);
-        return failed(&entry, context, format!("partial-result-remove-{reason}"));
+        release_recovery_claim(claim);
+        return failed(entry, context, format!("partial-result-remove-{reason}"));
     }
     let kill_log = entry.log_dir.join(format!("{}.kill.log.jsonl", entry.step));
     let termination = terminate_validated_process_group_and_confirm(
         host,
         &entry.child,
-        child_identity_policy(&entry),
+        child_identity_policy(entry),
         Some(&kill_log),
         caller,
         context,
     );
     if !termination.terminated {
-        release_recovery_claim(&claim);
-        return failed(&entry, context, termination.reason);
+        release_recovery_claim(claim);
+        return failed(entry, context, termination.reason);
     }
-    if let Err(reason) = remove_result_residue(&entry.result_env) {
-        release_recovery_claim(&claim);
-        return failed(&entry, context, format!("partial-result-remove-{reason}"));
+    if let Err(error) = clear_completion_residue(&entry.tmpdir, &entry.step) {
+        release_recovery_claim(claim);
+        return failed(
+            entry,
+            context,
+            format!("partial-result-remove-{}", one_line(&error)),
+        );
     }
-    if let Err(reason) = remove_startup_marker(&entry) {
-        release_recovery_claim(&claim);
-        return failed(&entry, context, reason);
+    if let Err(reason) = remove_startup_marker(entry) {
+        release_recovery_claim(claim);
+        return failed(entry, context, reason);
     }
-    unlink_claimed_entry(&claim, &entry, context, false)
+    unlink_claimed_entry(claim, entry, context, false)
 }
 
 fn remove_startup_marker(entry: &RegistryEntry) -> Result<(), String> {
@@ -149,8 +216,16 @@ pub fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
 
 /// Return rows only when `path` is a completed result for `step`.
 #[must_use]
-pub fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
-    let rows = read_result(path)?;
+pub fn read_completed_result(
+    tmpdir: &Path,
+    path: &Path,
+    step: &str,
+) -> Option<Vec<(String, String)>> {
+    let text = read_confined_result_env(path, tmpdir).ok()??;
+    if text.contains('\r') || !completion_result_is_visible(tmpdir, step, &text).ok()? {
+        return None;
+    }
+    let rows = ordered_rows(&text);
     let value = |key: &str| {
         rows.iter()
             .find(|(candidate, _)| candidate == key)

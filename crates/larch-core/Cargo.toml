@@ -18,6 +18,9 @@ sha2.workspace = true
 toml.workspace = true
 zip.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
 [dev-dependencies]
 larch-test-support.workspace = true
 tempfile.workspace = true

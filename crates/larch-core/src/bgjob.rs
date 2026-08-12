@@ -29,6 +29,10 @@ pub const BGJOB_REGISTRY_DIRNAME: &str = "daemons";
 pub const BGJOB_TMP_SUBDIR: &str = "bgjob";
 /// Completed-result suffix.
 pub const BGJOB_RESULT_ENV_SUFFIX: &str = ".result.env";
+/// Durable completion-transaction descriptor suffix.
+pub const BGJOB_COMPLETION_ENV_SUFFIX: &str = ".completion.env";
+/// Private staged result suffix used while a completion transaction is pending.
+pub const BGJOB_COMPLETION_STAGE_SUFFIX: &str = ".completion-stage.env";
 /// Daemon-startup marker suffix.
 pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 /// Input-fingerprint sidecar suffix.
@@ -51,6 +55,13 @@ pub const BGJOB_STATUS_DONE: &str = "DONE";
 pub const BGJOB_RC_KEY: &str = "BGJOB_RC";
 /// Stable elapsed-seconds key.
 pub const BGJOB_ELAPSED_KEY: &str = "BGJOB_ELAPSED_S";
+
+const COMPLETION_STATE_PREPARED: &str = "PREPARED";
+const COMPLETION_STATE_COMMITTED: &str = "COMMITTED";
+const COMPLETION_STATE_KEY: &str = "STATE";
+const COMPLETION_RESULT_SHA256_KEY: &str = "RESULT_SHA256";
+const COMPLETION_SENTINEL_COUNT_KEY: &str = "SENTINEL_COUNT";
+const COMPLETION_SENTINEL_PREFIX: &str = "SENTINEL_";
 
 const MAX_SLUG_LENGTH: usize = 97;
 const MAX_RUN_ID_LENGTH: usize = 128;
@@ -188,6 +199,41 @@ pub struct JobSpec {
     pub merge_result_env: Option<PathBuf>,
     /// Rows seeded into the merge envelope before launch.
     pub initial_merge_rows: Vec<(String, String)>,
+}
+
+/// The durable state of a background-job completion transaction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompletionTransactionState {
+    /// The exact result bytes and declared sentinel set are durable, but the
+    /// caller must not treat the result as terminal yet.
+    Prepared,
+    /// The result and every declared sentinel have been published.
+    Committed,
+}
+
+/// A confined completion transaction for one background job.
+///
+/// The descriptor remains beside the result after commit so readers that run
+/// after the daemon removes its registry row can still prove the full output
+/// set was published. The staged result remains private session state so a
+/// recovery owner can idempotently finish an interrupted publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompletionTransaction {
+    /// Current durable publication state.
+    pub state: CompletionTransactionState,
+    /// Session root that owns every output.
+    pub tmpdir: PathBuf,
+    /// Stable job step.
+    pub step: String,
+    /// Public-to-the-session completed result envelope.
+    pub result_env: PathBuf,
+    /// Private exact-byte source for publication and recovery.
+    pub staged_result_env: PathBuf,
+    /// Durable transaction descriptor.
+    pub descriptor_env: PathBuf,
+    /// Ordered set of completion sentinels that must exist before commit.
+    pub sentinel_paths: Vec<PathBuf>,
+    result_sha256: String,
 }
 
 /// One durable daemon registry row.
@@ -468,6 +514,301 @@ pub fn startup_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError
     )
 }
 
+/// Return the durable completion-transaction descriptor path for `step`.
+///
+/// # Errors
+///
+/// Returns an error when `tmpdir` or `step` is unsafe.
+pub fn completion_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(tmpdir)?;
+    ensure_under(
+        &root.join(format!("{step}{BGJOB_COMPLETION_ENV_SUFFIX}")),
+        &root,
+        "completion env",
+    )
+}
+
+/// Return the private staged-result path for `step`.
+///
+/// # Errors
+///
+/// Returns an error when `tmpdir` or `step` is unsafe.
+pub fn completion_stage_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(tmpdir)?;
+    ensure_under(
+        &root.join(format!("{step}{BGJOB_COMPLETION_STAGE_SUFFIX}")),
+        &root,
+        "completion stage env",
+    )
+}
+
+/// Persist a completion transaction before publishing any observable output.
+///
+/// The staged result and descriptor are atomically written before the caller
+/// can write the result envelope or a sentinel. Recovery can therefore either
+/// replay this exact byte sequence or leave the job nonterminal.
+///
+/// # Errors
+///
+/// Returns an error when an owned path is unsafe or the intent cannot be
+/// persisted privately.
+pub fn prepare_completion_transaction(
+    tmpdir: &Path,
+    step: &str,
+    sentinels: &[PathBuf],
+    result_text: &str,
+) -> Result<CompletionTransaction, BgjobError> {
+    let tmpdir = checked_dir(tmpdir, "tmpdir", true)?;
+    let root = bgjob_dir(&tmpdir)?;
+    ensure_directory(&root, "bgjob dir")?;
+    let step = validate_slug(step, "step")?;
+    let sentinel_paths = sentinels
+        .iter()
+        .map(|path| ensure_under(path, &tmpdir, "completion sentinel"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let transaction = CompletionTransaction {
+        state: CompletionTransactionState::Prepared,
+        result_env: result_env_path(&tmpdir, &step)?,
+        staged_result_env: completion_stage_env_path(&tmpdir, &step)?,
+        descriptor_env: completion_env_path(&tmpdir, &step)?,
+        tmpdir,
+        step,
+        sentinel_paths,
+        result_sha256: completion_digest(result_text),
+    };
+    phase_barrier("before-completion-intent")?;
+    private_atomic_write(&transaction.staged_result_env, result_text, &root)?;
+    phase_barrier("after-completion-stage")?;
+    private_atomic_write(
+        &transaction.descriptor_env,
+        &render_completion_descriptor(&transaction)?,
+        &root,
+    )?;
+    phase_barrier("after-completion-intent")?;
+    Ok(transaction)
+}
+
+/// Replay the exact output set of a prepared or interrupted transaction.
+///
+/// The operation is idempotent. A prepared descriptor is atomically committed
+/// only after the result and every declared sentinel have been published.
+/// A committed descriptor may be replayed by recovery when same-user damage
+/// removed an output after the commit, but readers remain nonterminal until
+/// the full declared set is present again.
+///
+/// # Errors
+///
+/// Returns an error without committing when a staged result or any output path
+/// cannot be safely read or written.
+pub fn finish_completion_transaction(
+    transaction: &CompletionTransaction,
+) -> Result<(), BgjobError> {
+    let Some(transaction) = read_completion_transaction(&transaction.tmpdir, &transaction.step)?
+    else {
+        return Err(BgjobError::Invalid(
+            "completion transaction descriptor is missing".to_owned(),
+        ));
+    };
+    let root = bgjob_dir(&transaction.tmpdir)?;
+    let staged = read_confined_regular_text(
+        &transaction.staged_result_env,
+        &root,
+        "completion staged result is unsafe",
+    )?
+    .ok_or_else(|| BgjobError::Invalid("completion staged result is missing".to_owned()))?;
+    if completion_digest(&staged) != transaction.result_sha256 {
+        return Err(BgjobError::Invalid(
+            "completion staged result digest mismatch".to_owned(),
+        ));
+    }
+    phase_barrier("before-result-publication")?;
+    private_atomic_write(&transaction.result_env, &staged, &root)?;
+    phase_barrier("after-result-publication")?;
+    for (index, sentinel) in transaction.sentinel_paths.iter().enumerate() {
+        phase_barrier(&format!("before-sentinel-{index}-publication"))?;
+        private_atomic_write(sentinel, "", &transaction.tmpdir)?;
+        phase_barrier(&format!("after-sentinel-{index}-publication"))?;
+    }
+    if transaction.state == CompletionTransactionState::Prepared {
+        let mut committed = transaction;
+        committed.state = CompletionTransactionState::Committed;
+        phase_barrier("before-completion-commit")?;
+        private_atomic_write(
+            &committed.descriptor_env,
+            &render_completion_descriptor(&committed)?,
+            &root,
+        )?;
+        phase_barrier("after-completion-commit")?;
+    }
+    Ok(())
+}
+
+/// Read one completion transaction, if this job uses the committed protocol.
+///
+/// `Ok(None)` denotes a legacy result without a descriptor. A malformed or
+/// unsafe descriptor is an error rather than permission to treat a result as
+/// terminal.
+///
+/// # Errors
+///
+/// Returns an error when the descriptor, its declared outputs, or its owning
+/// paths are malformed or unsafe.
+pub fn read_completion_transaction(
+    tmpdir: &Path,
+    step: &str,
+) -> Result<Option<CompletionTransaction>, BgjobError> {
+    let tmpdir = checked_dir(tmpdir, "tmpdir", true)?;
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(&tmpdir)?;
+    let descriptor_env = completion_env_path(&tmpdir, &step)?;
+    let Some(text) =
+        read_confined_regular_text(&descriptor_env, &root, "completion descriptor is unsafe")?
+    else {
+        return Ok(None);
+    };
+    let rows = parse_completion_descriptor(&text)?;
+    let state = match completion_required(&rows, COMPLETION_STATE_KEY)?.as_str() {
+        COMPLETION_STATE_PREPARED => CompletionTransactionState::Prepared,
+        COMPLETION_STATE_COMMITTED => CompletionTransactionState::Committed,
+        _ => {
+            return Err(BgjobError::Invalid(
+                "completion descriptor has an invalid state".to_owned(),
+            ));
+        }
+    };
+    if completion_required(&rows, "STEP")? != step {
+        return Err(BgjobError::Invalid(
+            "completion descriptor step does not match".to_owned(),
+        ));
+    }
+    let result_sha256 = completion_required(&rows, COMPLETION_RESULT_SHA256_KEY)?;
+    if !valid_completion_digest(&result_sha256) {
+        return Err(BgjobError::Invalid(
+            "completion descriptor has an invalid result digest".to_owned(),
+        ));
+    }
+    let sentinel_count = completion_required(&rows, COMPLETION_SENTINEL_COUNT_KEY)?
+        .parse::<usize>()
+        .map_err(|_| {
+            BgjobError::Invalid("completion descriptor has an invalid sentinel count".to_owned())
+        })?;
+    let expected_keys = 4_usize
+        .checked_add(sentinel_count)
+        .ok_or_else(|| BgjobError::Invalid("completion sentinel count is too large".to_owned()))?;
+    if rows.len() != expected_keys {
+        return Err(BgjobError::Invalid(
+            "completion descriptor has unexpected fields".to_owned(),
+        ));
+    }
+    let sentinel_paths = (0..sentinel_count)
+        .map(|index| {
+            let key = format!("{COMPLETION_SENTINEL_PREFIX}{index}");
+            let raw = completion_required(&rows, &key)?;
+            let path = Path::new(&raw);
+            if !path.is_absolute() {
+                return Err(BgjobError::Invalid(
+                    "completion sentinel must be absolute".to_owned(),
+                ));
+            }
+            ensure_under(path, &tmpdir, "completion sentinel")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(CompletionTransaction {
+        state,
+        result_env: result_env_path(&tmpdir, &step)?,
+        staged_result_env: completion_stage_env_path(&tmpdir, &step)?,
+        descriptor_env,
+        tmpdir,
+        step,
+        sentinel_paths,
+        result_sha256,
+    }))
+}
+
+/// Return whether `result_text` is visible as a terminal result.
+///
+/// Legacy jobs without a completion descriptor retain their existing result
+/// grammar. New jobs require an atomically committed descriptor, a matching
+/// result digest, and every declared regular sentinel.
+///
+/// # Errors
+///
+/// Returns an error when the completion descriptor or a declared output path
+/// is unsafe.
+pub fn completion_result_is_visible(
+    tmpdir: &Path,
+    step: &str,
+    result_text: &str,
+) -> Result<bool, BgjobError> {
+    let Some(transaction) = read_completion_transaction(tmpdir, step)? else {
+        return Ok(true);
+    };
+    if transaction.state != CompletionTransactionState::Committed
+        || completion_digest(result_text) != transaction.result_sha256
+    {
+        return Ok(false);
+    }
+    transaction
+        .sentinel_paths
+        .iter()
+        .try_fold(true, |complete, path| {
+            regular_output_exists(path, &transaction.tmpdir).map(|exists| complete && exists)
+        })
+}
+
+/// Remove result and transaction residue only through the confined bgjob root.
+///
+/// This intentionally leaves declared sentinels alone: callers may share a
+/// sentinel with another state transition, while a missing commit descriptor
+/// already prevents it from granting terminal-result visibility.
+///
+/// # Errors
+///
+/// Returns an error when a residue path is unsafe or cannot be removed.
+pub fn clear_completion_residue(tmpdir: &Path, step: &str) -> Result<(), BgjobError> {
+    let tmpdir = checked_dir(tmpdir, "tmpdir", true)?;
+    let root = bgjob_dir(&tmpdir)?;
+    for path in [
+        result_env_path(&tmpdir, step)?,
+        completion_env_path(&tmpdir, step)?,
+        completion_stage_env_path(&tmpdir, step)?,
+    ] {
+        remove_confined_regular_file(&path, &root, "completion residue is unsafe")?;
+    }
+    Ok(())
+}
+
+/// Safely read one confined background-job result envelope, if present.
+///
+/// # Errors
+///
+/// Returns an error when the envelope or any parent is unsafe.
+pub fn read_confined_result_env(path: &Path, tmpdir: &Path) -> Result<Option<String>, BgjobError> {
+    let root = bgjob_dir(tmpdir)?;
+    read_confined_regular_text(path, &root, "result env is unsafe")
+}
+
+/// Revalidate and read a merge-result envelope at the point of consumption.
+///
+/// # Errors
+///
+/// Returns an error when the envelope is no longer a confined regular file.
+pub fn read_merge_result_env(path: &Path, tmpdir: &Path) -> Result<String, BgjobError> {
+    let path = validate_merge_result_env(path, tmpdir)?;
+    let root = checked_dir(tmpdir, "tmpdir", true)?;
+    // A launch may legitimately reserve a merge path that the child elects
+    // not to populate. Preserve that wire contract, while still revalidating
+    // every existing file at the point of consumption.
+    let text =
+        read_confined_regular_text(&path, &root, "merge result env is unsafe")?.unwrap_or_default();
+    if text.contains('\r') {
+        return Ok(String::new());
+    }
+    Ok(text)
+}
+
 /// Stop at a named lifecycle phase when an integration test requests it.
 ///
 /// The hook is deliberately unavailable in ordinary optimized builds. Coverage
@@ -564,6 +905,127 @@ pub fn validate_merge_result_env(path: &Path, tmpdir: &Path) -> Result<PathBuf, 
     }
     validate_parent_chain(path, &root, "merge result env parent is unsafe")?;
     Ok(resolved)
+}
+
+fn render_completion_descriptor(transaction: &CompletionTransaction) -> Result<String, BgjobError> {
+    let state = match transaction.state {
+        CompletionTransactionState::Prepared => COMPLETION_STATE_PREPARED,
+        CompletionTransactionState::Committed => COMPLETION_STATE_COMMITTED,
+    };
+    let mut rows = vec![
+        (COMPLETION_STATE_KEY.to_owned(), state.to_owned()),
+        ("STEP".to_owned(), transaction.step.clone()),
+        (
+            COMPLETION_RESULT_SHA256_KEY.to_owned(),
+            transaction.result_sha256.clone(),
+        ),
+        (
+            COMPLETION_SENTINEL_COUNT_KEY.to_owned(),
+            transaction.sentinel_paths.len().to_string(),
+        ),
+    ];
+    rows.extend(
+        transaction
+            .sentinel_paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| {
+                (
+                    format!("{COMPLETION_SENTINEL_PREFIX}{index}"),
+                    path.display().to_string(),
+                )
+            }),
+    );
+    render_rows(&rows)
+}
+
+fn parse_completion_descriptor(text: &str) -> Result<BTreeMap<String, String>, BgjobError> {
+    let document = KvDocument::parse(text, ParseOptions::legacy())
+        .map_err(|_| BgjobError::Invalid("completion descriptor is malformed".to_owned()))?;
+    let mut rows = BTreeMap::new();
+    for row in document.rows() {
+        if rows
+            .insert(row.key().to_owned(), row.value().to_owned())
+            .is_some()
+        {
+            return Err(BgjobError::Invalid(
+                "completion descriptor contains duplicate keys".to_owned(),
+            ));
+        }
+    }
+    Ok(rows)
+}
+
+fn completion_required(rows: &BTreeMap<String, String>, key: &str) -> Result<String, BgjobError> {
+    rows.get(key)
+        .cloned()
+        .ok_or_else(|| BgjobError::Invalid(format!("completion descriptor is missing {key}")))
+}
+
+fn completion_digest(text: &str) -> String {
+    format!("{:x}", Sha256::digest(text.as_bytes()))
+}
+
+fn valid_completion_digest(value: &str) -> bool {
+    value.len() == 64
+        && value.bytes().all(|byte| {
+            byte.is_ascii_digit() || (byte.is_ascii_lowercase() && byte.is_ascii_hexdigit())
+        })
+}
+
+fn read_confined_regular_text(
+    path: &Path,
+    root: &Path,
+    message: &str,
+) -> Result<Option<String>, BgjobError> {
+    let path = ensure_under(path, root, message)?;
+    validate_parent_chain(&path, root, message)?;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+    }
+    let mut file = match options.open(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        #[cfg(unix)]
+        Err(error) if error.raw_os_error() == Some(nix::libc::ELOOP) => {
+            return Err(BgjobError::Invalid(message.to_owned()));
+        }
+        Err(error) => return Err(BgjobError::Io(error.to_string())),
+        Ok(file) => file,
+    };
+    let _opened = checked_opened_regular_metadata(&file, &path, message)?;
+    validate_parent_chain(&path, root, message)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| BgjobError::Invalid(message.to_owned()))
+}
+
+fn regular_output_exists(path: &Path, root: &Path) -> Result<bool, BgjobError> {
+    let path = ensure_under(path, root, "completion sentinel")?;
+    validate_parent_chain(&path, root, "completion sentinel is unsafe")?;
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(BgjobError::Io(error.to_string())),
+        Ok(metadata) => Ok(!metadata.file_type().is_symlink() && metadata.is_file()),
+    }
+}
+
+fn remove_confined_regular_file(path: &Path, root: &Path, message: &str) -> Result<(), BgjobError> {
+    let path = ensure_under(path, root, message)?;
+    validate_parent_chain(&path, root, message)?;
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(BgjobError::Io(error.to_string())),
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err(BgjobError::Invalid(message.to_owned()))
+        }
+        Ok(_) => fs::remove_file(&path).map_err(|error| BgjobError::Io(error.to_string())),
+    }
 }
 
 /// Validate unique rows seeded into a merge envelope before child launch.
@@ -749,7 +1211,7 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
     let stdout_log = validated_path(Path::new(rows.get("STDOUT_LOG")?), &log_dir)?;
     let stderr_log = validated_path(Path::new(rows.get("STDERR_LOG")?), &log_dir)?;
     let bgjob_root = bgjob_dir(&tmpdir).ok()?;
-    let result_env = validated_path(Path::new(rows.get("RESULT_ENV")?), &bgjob_root)?;
+    let result_env = validated_result_output_path(Path::new(rows.get("RESULT_ENV")?), &bgjob_root)?;
     let clone_raw = rows.get("CLONE_PATH").map_or(".", String::as_str);
     Some(RegistryEntry {
         step: validate_slug(rows.get("STEP")?, "step").ok()?,
@@ -1313,6 +1775,27 @@ fn validated_path(path: &Path, root: &Path) -> Option<PathBuf> {
     resolved.starts_with(root).then_some(resolved)
 }
 
+/// Validate a confined result-output path while retaining a safe I/O obstacle.
+///
+/// A regular result is the ordinary state. A same-user directory at that
+/// precise leaf cannot be consumed as a result, but keeping the registry row
+/// readable lets recovery retain its prepared transaction and retry after the
+/// obstacle is removed. Symlinks, special files, unsafe parents, and escaped
+/// paths remain invalid registry state.
+fn validated_result_output_path(path: &Path, root: &Path) -> Option<PathBuf> {
+    let resolved = ensure_under(path, root, "result env").ok()?;
+    validate_parent_chain(&resolved, root, "result env parent is unsafe").ok()?;
+    match fs::symlink_metadata(&resolved) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(resolved),
+        Ok(metadata)
+            if !metadata.file_type().is_symlink() && (metadata.is_file() || metadata.is_dir()) =>
+        {
+            Some(resolved)
+        }
+        Ok(_) | Err(_) => None,
+    }
+}
+
 fn ensure_directory(path: &Path, label: &str) -> Result<PathBuf, BgjobError> {
     let absolute = absolute_path(path)?;
     if fs::symlink_metadata(&absolute).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
@@ -1438,14 +1921,16 @@ pub fn epoch_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError,
+        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, CompletionTransactionState,
         RECOVERY_LEASE_MALFORMED_STALE_AFTER, RecoveryClaim, RecoveryLeaseFaultPhase,
         RegistryEntry, absolute_path, bgjob_dir, checked_dir, child_liveness, claim_recovery,
-        daemon_liveness, default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now,
-        expand_home, has_live_entry_at, identity_rows, iter_entries_at, log_paths, parse_identity,
-        private_atomic_write, read_entry, read_recovery_lease, registry_path, reject_line_value,
-        release_recovery_claim, render_rows, resolve_candidate, resolve_run_id, resolved_directory,
-        result_env_path, set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
+        completion_result_is_visible, daemon_liveness, default_run_id, ensure_directory,
+        ensure_under, entry_expired, epoch_now, expand_home, finish_completion_transaction,
+        has_live_entry_at, identity_rows, iter_entries_at, log_paths, parse_identity,
+        prepare_completion_transaction, private_atomic_write, read_completion_transaction,
+        read_entry, read_recovery_lease, registry_path, reject_line_value, release_recovery_claim,
+        render_rows, resolve_candidate, resolve_run_id, resolved_directory, result_env_path,
+        set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
         validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
         validate_run_id, validate_slug, validated_path, write_entry_at,
     };
@@ -1677,6 +2162,77 @@ mod tests {
             result_env_path(sandbox.path(), "demo-step")
                 .expect("path")
                 .ends_with(format!("demo-step{BGJOB_RESULT_ENV_SUFFIX}"))
+        );
+    }
+
+    #[test]
+    fn completion_transaction_hides_partial_outputs_and_replays_exact_bytes() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(sandbox.path().join("bgjob")).expect("bgjob dir");
+        let sentinels = vec![
+            sandbox.path().join("first.sentinel"),
+            sandbox.path().join("second.sentinel"),
+        ];
+        let result = "BGJOB_RC=0\nBGJOB_ELAPSED_S=1\nSTEP=demo-step\nCUSTOM=ordered\n";
+        let prepared =
+            prepare_completion_transaction(sandbox.path(), "demo-step", &sentinels, result)
+                .expect("prepare completion transaction");
+
+        assert_eq!(prepared.state, CompletionTransactionState::Prepared);
+        assert!(
+            !completion_result_is_visible(sandbox.path(), "demo-step", result)
+                .expect("prepared visibility"),
+            "a durable intent must not publish a terminal result"
+        );
+        assert!(
+            !prepared.result_env.exists(),
+            "preparing must not publish the result envelope"
+        );
+
+        let unexpected = sandbox.path().join("unexpected.sentinel");
+        let mut caller_copy = prepared;
+        caller_copy.sentinel_paths.push(unexpected.clone());
+        finish_completion_transaction(&caller_copy).expect("finish completion transaction");
+        let committed = read_completion_transaction(sandbox.path(), "demo-step")
+            .expect("read completion transaction")
+            .expect("completion descriptor");
+        assert_eq!(committed.state, CompletionTransactionState::Committed);
+        assert_eq!(
+            fs::read_to_string(&committed.result_env).expect("result bytes"),
+            result,
+            "publication must preserve the exact result envelope bytes"
+        );
+        assert!(
+            completion_result_is_visible(sandbox.path(), "demo-step", result)
+                .expect("committed visibility")
+        );
+        for sentinel in &sentinels {
+            assert!(
+                sentinel.is_file(),
+                "missing sentinel: {}",
+                sentinel.display()
+            );
+        }
+        assert!(
+            !unexpected.exists(),
+            "publication must use the durable descriptor rather than caller memory"
+        );
+
+        fs::remove_file(&sentinels[1]).expect("remove one sentinel");
+        assert!(
+            !completion_result_is_visible(sandbox.path(), "demo-step", result)
+                .expect("incomplete committed visibility"),
+            "a removed sentinel must revoke terminal visibility"
+        );
+        finish_completion_transaction(&committed).expect("replay committed transaction");
+        assert!(
+            completion_result_is_visible(sandbox.path(), "demo-step", result)
+                .expect("replayed visibility")
+        );
+        assert_eq!(
+            fs::read_to_string(&committed.result_env).expect("replayed result bytes"),
+            result,
+            "recovery must replay the original envelope rather than synthesize one"
         );
     }
 
@@ -2028,6 +2584,35 @@ mod tests {
         symlink(&target, &merge_link).expect("merge link");
         assert!(validate_merge_result_env(&merge_link, sandbox.path()).is_err());
         assert!(private_atomic_write(&merge_link, "OUTCOME=stop\n", sandbox.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn registry_reader_retains_a_confined_result_directory_for_retry_but_rejects_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path().join("session");
+        fs::create_dir_all(&tmpdir).expect("session");
+        let entry = entry(&tmpdir, None);
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let row = write_entry_at(&entry, Some(&registry)).expect("registry row");
+        fs::create_dir(&entry.result_env).expect("result directory obstacle");
+        assert!(
+            read_entry(&row).is_some(),
+            "a confined result I/O obstacle must remain recoverable"
+        );
+
+        fs::remove_dir(&entry.result_env).expect("remove result obstacle");
+        let outside = tempfile::tempdir().expect("outside");
+        let target = outside.path().join("result.env");
+        fs::write(&target, "BGJOB_RC=0\n").expect("symlink target");
+        symlink(&target, &entry.result_env).expect("result symlink");
+        assert!(
+            read_entry(&row).is_none(),
+            "a symlinked result path must invalidate the registry row"
+        );
     }
 
     #[test]
