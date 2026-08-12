@@ -2524,13 +2524,35 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
 
 #[cfg(test)]
 mod tests {
-    use super::python_cli_selectors;
+    use super::{planning_issue_closure_findings, python_cli_selectors};
+    use crate::{GitCli, Repository};
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("workspace root")
+            .to_path_buf()
+    }
 
     #[test]
     fn frozen_generated_headers_are_provenance_not_python_callers() {
         let content = "<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: python3 python/cli.py generate codex-implementer -->\n<!-- AUTO-GENERATED: Regenerate via: python3 python/cli.py generate code-reviewer-agent -->\npython3 python/cli.py generate check\n";
 
         assert_eq!(python_cli_selectors(content), vec!["generate check"]);
+    }
+
+    #[test]
+    fn planning_issue_7685_closure_is_proven_by_the_live_registry_and_callers() {
+        let root = workspace_root();
+        let repository = Repository::discover(&GitCli, &root).expect("repository");
+
+        assert!(
+            planning_issue_closure_findings(&repository, 7685)
+                .expect("closure proof")
+                .is_empty()
+        );
     }
 }
 

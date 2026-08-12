@@ -529,6 +529,62 @@ fn developer_tooling_closure_allows_a_completed_retired_7685_service_row() {
 }
 
 #[test]
+fn developer_tooling_closure_fails_closed_on_malformed_service_matrix_evidence() {
+    for (contents, message) in [
+        (
+            "<!-- github-service-ownership:start -->\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\nissues\n<!-- github-service-ownership:end -->\n",
+            "GitHub service ownership row must contain exactly eight tab-separated fields",
+        ),
+        (
+            "<!-- github-service-ownership:start -->\n<!-- github-service-ownership:end -->\n",
+            "GitHub service ownership matrix is empty",
+        ),
+    ] {
+        let repository = TempRepo::new();
+        write_closure_baseline(&repository, "");
+        repository.write("docs/github-service-inventory.md", contents.as_bytes());
+        repository.commit_all();
+
+        TempRepo::command_from(repository.path())
+            .args(["rule", "developer-tooling-7685-closure"])
+            .assert()
+            .code(2)
+            .stdout(predicate::str::is_empty())
+            .stderr(predicate::str::contains(message));
+    }
+}
+
+#[test]
+fn developer_tooling_closure_requires_a_parseable_python_registry_proof() {
+    for (source, message) in [
+        (
+            "NOT_A_REGISTRY = {}\n",
+            "python/larch/cli.py: missing _REGISTRY declaration",
+        ),
+        (
+            "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n",
+            "python/larch/cli.py: unterminated _REGISTRY declaration",
+        ),
+        (
+            "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
+            "python/larch/cli.py: duplicate command fixture run",
+        ),
+    ] {
+        let repository = TempRepo::new();
+        write_closure_baseline(&repository, "");
+        repository.write("python/larch/cli.py", source.as_bytes());
+        repository.commit_all();
+
+        TempRepo::command_from(repository.path())
+            .args(["rule", "developer-tooling-7685-closure"])
+            .assert()
+            .code(2)
+            .stdout(predicate::str::is_empty())
+            .stderr(predicate::str::contains(message));
+    }
+}
+
+#[test]
 fn retired_module_passes_while_verb_still_registered() {
     let repository = TempRepo::new();
     repository.write(

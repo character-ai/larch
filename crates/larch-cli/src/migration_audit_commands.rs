@@ -828,15 +828,28 @@ fn write_stderr(text: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, sync::Arc, time::Duration};
+    use std::{
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+        process::ExitCode,
+        sync::Arc,
+        time::Duration,
+    };
 
     use super::{
-        TableOutput, collect_remote_snapshot, collect_remote_snapshot_with_deadline,
-        diagnostic_detail, executable_leaf, is_glob, unsafe_plan_path, write_output,
+        TableOutput, collect_plan_evidence, collect_remote_snapshot,
+        collect_remote_snapshot_with_deadline, diagnostic_detail, executable_leaf, git_path_string,
+        is_glob, migration_issue, parse_arguments, path_inside, plan_path_defects,
+        reuse_source_refs, safe_finding, scope_snapshot, tracked_paths, unsafe_filesystem_path,
+        unsafe_plan_path, validate_plan, worktree_root, write_output, write_stderr, write_stdout,
     };
     use crate::github_service::{with_github_service, with_test_github_service};
-    use larch_adapters::github::OctocrabGitHubService;
-    use larch_core::{GitHubRepositoryRef, MigrationIssueSnapshot};
+    use larch_adapters::{GixRepository, github::OctocrabGitHubService};
+    use larch_core::{
+        GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitPath, MigrationAuditSnapshot,
+        MigrationIssueSnapshot, PlanReceipt, RepositoryRead, compose_named_block, render_receipt,
+    };
     use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
 
@@ -857,6 +870,19 @@ mod tests {
     ) -> Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> {
         let base = server.base_url().to_owned();
         Arc::new(move || OctocrabGitHubService::with_test_base(&base))
+    }
+
+    fn valid_plan(path: &str) -> String {
+        format!(
+            "## Closed decisions and ownership\n\n- Fixture audit plan.\n\n## Files to modify/create\n\n### UPDATED: {path}\n\n## Ordered implementation\n\n1. Keep the existing command contract.\n\n## Acceptance\n\n- The fixture report is deterministic.\n\n## Breaking changes and migration\n\nNone.\n\ndiff_lines: 1\n"
+        )
+    }
+
+    fn current_repository() -> (GixRepository, PathBuf) {
+        let cwd = std::env::current_dir().expect("test current directory");
+        let repository = GixRepository::discover(cwd).expect("test runs in a repository");
+        let root = worktree_root(&repository).expect("repository worktree root");
+        (repository, root)
     }
 
     #[test]
@@ -889,6 +915,36 @@ mod tests {
     }
 
     #[test]
+    fn parser_accepts_a_complete_machine_readable_request() {
+        let parsed = parse_arguments(&[
+            OsString::from("--repo=owner/repo"),
+            OsString::from("--chief"),
+            OsString::from("1_000"),
+            OsString::from("--output"),
+            OsString::from("report.json"),
+            OsString::from("--table-output=none"),
+        ])
+        .expect("valid arguments")
+        .expect("not a help request");
+
+        assert_eq!(parsed.repository, "owner/repo");
+        assert_eq!(parsed.chief_issue, 1000);
+        assert_eq!(parsed.output, Some(PathBuf::from("report.json")));
+        assert_eq!(parsed.table_output, TableOutput::None);
+        assert!(
+            parse_arguments(&[
+                OsString::from("--repo"),
+                OsString::from("owner/repo"),
+                OsString::from("--chief"),
+                OsString::from("1"),
+                OsString::from("--table-output"),
+                OsString::from("invalid"),
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
     fn output_write_is_atomic_and_confined_to_an_existing_parent() {
         let directory = tempfile::tempdir().expect("output parent");
         let output = directory.path().join("migration-audit.json");
@@ -899,6 +955,12 @@ mod tests {
             fs::read_to_string(output).expect("published report"),
             "{\"schema\":2}\n"
         );
+    }
+
+    #[test]
+    fn output_helpers_accept_the_rendered_report_text() {
+        write_stdout("migration-audit stdout fixture\n").expect("write stdout");
+        write_stderr("migration-audit stderr fixture\n").expect("write stderr");
     }
 
     #[cfg(unix)]
@@ -1014,6 +1076,97 @@ mod tests {
     }
 
     #[test]
+    fn loopback_snapshot_rejects_duplicate_issue_evidence() {
+        let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+        let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+            200,
+            json!([issue.clone(), issue]).to_string(),
+        )
+        .expect("issue-list exchange")])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let repository = GitHubRepositoryRef::new("o", "r").expect("valid repository");
+
+        let error = with_test_github_service(service, || {
+            with_github_service(async |service, cancellation| {
+                collect_remote_snapshot(service, cancellation, &repository, 7687).await
+            })
+            .expect_err("duplicate issue evidence must be rejected")
+            .into_detail()
+        });
+
+        assert_eq!(error, "issue snapshot contains duplicates");
+        let requests = server.finish().expect("completed loopback request");
+        assert_eq!(requests.len(), 1);
+    }
+
+    #[test]
+    fn loopback_snapshot_reuses_references_already_in_the_issue_listing() {
+        let leaf = fixture_issue(
+            71,
+            "[LEAF OF 7687] fixture",
+            "Chief umbrella: #7687\nNative blockers: #99",
+        );
+        let referenced = fixture_issue(99, "listed reference", "evidence");
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, json!([leaf, referenced]).to_string())
+                .expect("issue-list exchange"),
+            IssueServiceExchange::any_json(200, r#"[{"number":99,"id":199}]"#)
+                .expect("dependency exchange"),
+            IssueServiceExchange::any_json(200, "[]").expect("pull-request exchange"),
+        ])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let repository = GitHubRepositoryRef::new("o", "r").expect("valid repository");
+
+        let snapshot = with_test_github_service(service, || {
+            with_github_service(async |service, cancellation| {
+                collect_remote_snapshot(service, cancellation, &repository, 7687).await
+            })
+            .expect("typed snapshot")
+        });
+
+        assert!(snapshot.referenced_issues.is_empty());
+        let requests = server.finish().expect("completed loopback requests");
+        assert_eq!(requests.len(), 3);
+    }
+
+    #[test]
+    fn loopback_snapshot_rejects_an_empty_open_pull_request_branch() {
+        let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+        let pull_request = json!([{
+            "number": 1,
+            "state": "open",
+            "title": "fixture",
+            "head": { "ref": "" },
+            "base": { "ref": "main" },
+            "draft": false,
+            "merged": false,
+        }]);
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, json!([issue]).to_string())
+                .expect("issue-list exchange"),
+            IssueServiceExchange::any_json(200, pull_request.to_string())
+                .expect("pull-request exchange"),
+        ])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let repository = GitHubRepositoryRef::new("o", "r").expect("valid repository");
+
+        let error = with_test_github_service(service, || {
+            with_github_service(async |service, cancellation| {
+                collect_remote_snapshot(service, cancellation, &repository, 7687).await
+            })
+            .expect_err("empty pull-request branch must be rejected")
+            .into_detail()
+        });
+
+        assert_eq!(error, "open pull request snapshot unavailable");
+        let requests = server.finish().expect("completed loopback requests");
+        assert_eq!(requests.len(), 2);
+    }
+
+    #[test]
     fn loopback_snapshot_redacts_transport_failure() {
         let server = IssueServiceStub::start([
             IssueServiceExchange::any_json(500, "{}").expect("transport failure")
@@ -1070,5 +1223,371 @@ mod tests {
         let requests = server.finish().expect("completed loopback request");
         assert_eq!(requests.len(), 1);
         assert!(requests.iter().all(|request| request.method == "GET"));
+    }
+
+    #[test]
+    fn issue_row_conversion_and_owner_references_fail_closed() {
+        let issue = GitHubIssue {
+            id: 1,
+            number: 71,
+            title: "fixture".to_owned(),
+            body: "body".to_owned(),
+            state: GitHubIssueState::Closed,
+            state_reason: String::new(),
+            url: String::new(),
+            author: String::new(),
+            labels: Vec::new(),
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            is_pull_request: false,
+        };
+        assert_eq!(migration_issue(&issue, "fixture").unwrap().state, "closed");
+        assert_eq!(
+            migration_issue(
+                &GitHubIssue {
+                    is_pull_request: true,
+                    ..issue.clone()
+                },
+                "fixture",
+            )
+            .unwrap_err(),
+            "fixture: issue row is invalid"
+        );
+        assert_eq!(
+            migration_issue(
+                &GitHubIssue {
+                    state: GitHubIssueState::All,
+                    ..issue.clone()
+                },
+                "fixture",
+            )
+            .unwrap_err(),
+            "fixture: issue row has invalid state"
+        );
+        assert_eq!(
+            migration_issue(
+                &GitHubIssue {
+                    updated_at: String::new(),
+                    ..issue
+                },
+                "fixture",
+            )
+            .unwrap_err(),
+            "fixture: issue row omitted required fields"
+        );
+        assert_eq!(
+            reuse_source_refs(
+                "<!-- larch:owners:start -->\nREUSE\tfixture\t#17\tREADME.md\nREUSE\tbad\tnope\tREADME.md\n<!-- larch:owners:end -->"
+            )
+            .into_iter()
+            .collect::<Vec<_>>(),
+            vec![17]
+        );
+    }
+
+    #[test]
+    fn plan_path_validation_handles_files_globs_and_untrusted_filesystem_entries() {
+        let root = tempfile::tempdir().expect("plan root");
+        let root_path = root.path().canonicalize().expect("canonical plan root");
+        let tracked = vec!["existing.md".to_owned(), "nested/kept.rs".to_owned()];
+        fs::create_dir(root_path.join("nested")).expect("nested directory");
+        fs::write(root_path.join("existing-file.md"), "fixture").expect("existing file");
+        fs::write(root_path.join("not-a-directory"), "fixture").expect("regular file");
+        let plan = "### NEW: existing.md\n### NEW: existing-file.md\n### UPDATED: missing.md\n### UPDATED: no-match/*.rs\n### UPDATED: ../outside\n";
+
+        let defects = plan_path_defects(&root_path, plan, &tracked);
+        assert!(defects.contains("existing-new-plan-path"));
+        assert!(defects.contains("missing-updated-plan-path"));
+        assert!(defects.contains("empty-plan-glob"));
+        assert!(defects.contains("unsafe-plan-path"));
+        assert!(unsafe_filesystem_path(
+            &root_path,
+            &root_path.join("not-a-directory/child"),
+            "not-a-directory/child"
+        ));
+        assert!(!unsafe_filesystem_path(
+            &root_path,
+            &root_path.join("nested/child"),
+            "nested/child"
+        ));
+        assert!(!unsafe_filesystem_path(
+            &root_path,
+            &root_path.join("missing/child"),
+            "missing/child"
+        ));
+        assert!(path_inside(&root_path, &root_path));
+        assert!(!path_inside(
+            &root_path,
+            Path::new("/definitely/not/a/larch/root")
+        ));
+        assert!(validate_plan(&root_path, plan, &tracked).contains(&"unsafe-plan-path".to_owned()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plan_path_validation_rejects_symlinks_that_escape_the_repository() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().expect("plan root");
+        let outside = tempfile::tempdir().expect("outside root");
+        symlink(outside.path(), root.path().join("outside")).expect("outside symlink");
+
+        assert!(unsafe_filesystem_path(
+            root.path(),
+            &root.path().join("outside"),
+            "outside"
+        ));
+        assert!(
+            plan_path_defects(
+                root.path(),
+                "### UPDATED: outside/report.md\n",
+                &["outside/report.md".to_owned()]
+            )
+            .contains("unsafe-plan-path")
+        );
+    }
+
+    #[test]
+    fn plan_evidence_uses_the_same_head_snapshot_for_base_and_current_scope() {
+        let (repository, root) = current_repository();
+        let head = repository
+            .resolve_revision(&larch_core::Revision::new("HEAD"))
+            .expect("resolve test head");
+        let plan = valid_plan("README.md");
+        let receipt = render_receipt(&PlanReceipt {
+            plan_sha256: "0".repeat(64),
+            base_sha: head.to_hex(),
+            blockers_sha256: "0".repeat(64),
+            owners_sha256: "0".repeat(64),
+        })
+        .expect("render syntactically valid receipt");
+        let issue = MigrationIssueSnapshot {
+            number: 71,
+            title: "[LEAF OF 7687] fixture".to_owned(),
+            state: "open".to_owned(),
+            body: format!(
+                "Chief umbrella: #7687\n{}{}\n",
+                compose_named_block("plan", &plan),
+                receipt
+            ),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let snapshot = MigrationAuditSnapshot {
+            repository: "owner/repo".to_owned(),
+            chief_issue: 7687,
+            snapshot_timestamp: "2026-01-01T00:00:00Z".to_owned(),
+            head_sha: head.to_hex(),
+            open_issues: vec![issue],
+            referenced_issues: Vec::new(),
+            dependencies: Vec::new(),
+            open_pr_branches: Vec::new(),
+            closed_issues: Vec::new(),
+        };
+        let paths = tracked_paths(&repository).expect("tracked paths");
+        let evidence = collect_plan_evidence(&snapshot, &root, &repository, &paths, &head)
+            .expect("plan evidence");
+
+        assert_eq!(evidence.len(), 1);
+        assert!(evidence[0].defects.is_empty(), "{:?}", evidence[0].defects);
+        assert_eq!(evidence[0].base_scope, evidence[0].head_scope);
+        assert_eq!(
+            scope_snapshot(&repository, &head, &plan)
+                .expect("direct scope snapshot")
+                .files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["README.md"]
+        );
+        assert_eq!(
+            git_path_string(&GitPath::new("README.md".as_bytes())).expect("UTF-8 path"),
+            "README.md"
+        );
+
+        let missing_plan = MigrationAuditSnapshot {
+            open_issues: vec![MigrationIssueSnapshot {
+                number: 72,
+                title: "[LEAF OF 7687] fixture".to_owned(),
+                state: "open".to_owned(),
+                body: "Chief umbrella: #7687".to_owned(),
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            }],
+            ..snapshot.clone()
+        };
+        let missing_plan = collect_plan_evidence(&missing_plan, &root, &repository, &paths, &head)
+            .expect("missing plan evidence");
+        assert_eq!(missing_plan[0].defects, vec!["missing-plan-block"]);
+
+        let no_receipt = MigrationAuditSnapshot {
+            open_issues: vec![MigrationIssueSnapshot {
+                number: 73,
+                title: "[LEAF OF 7687] fixture".to_owned(),
+                state: "open".to_owned(),
+                body: format!(
+                    "Chief umbrella: #7687\n{}",
+                    compose_named_block("plan", &valid_plan("README.md"))
+                ),
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            }],
+            ..snapshot
+        };
+        let no_receipt = collect_plan_evidence(&no_receipt, &root, &repository, &paths, &head)
+            .expect("receipt-free plan evidence");
+        assert_eq!(no_receipt[0].base_scope, None);
+        assert_eq!(no_receipt[0].head_scope, None);
+    }
+
+    #[test]
+    fn audit_runs_end_to_end_through_the_hardened_test_service() {
+        let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, json!([issue]).to_string())
+                .expect("issue-list exchange"),
+            IssueServiceExchange::any_json(200, "[]").expect("pull-request exchange"),
+        ])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let directory = tempfile::tempdir().expect("report directory");
+        let output = directory.path().join("migration-audit.json");
+        let arguments = vec![
+            OsString::from("--repo"),
+            OsString::from("owner/repo"),
+            OsString::from("--chief"),
+            OsString::from("7687"),
+            OsString::from("--output"),
+            output.clone().into_os_string(),
+            OsString::from("--table-output"),
+            OsString::from("none"),
+        ];
+
+        let outcome = with_test_github_service(service, || super::run(&arguments));
+
+        assert_eq!(outcome, ExitCode::SUCCESS);
+        let report: Value = serde_json::from_str(&fs::read_to_string(output).expect("report"))
+            .expect("schema-v2 JSON report");
+        assert_eq!(report["schema_version"], 2);
+        let requests = server.finish().expect("completed loopback requests");
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| request.method == "GET"));
+    }
+
+    #[test]
+    fn audit_preserves_json_and_table_stream_routing_contracts() {
+        for table_output in ["stderr", "stdout"] {
+            let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+            let server = IssueServiceStub::start([
+                IssueServiceExchange::any_json(200, json!([issue]).to_string())
+                    .expect("issue-list exchange"),
+                IssueServiceExchange::any_json(200, "[]").expect("pull-request exchange"),
+            ])
+            .expect("start loopback service");
+            let service = service_factory(&server);
+            let directory = tempfile::tempdir().expect("report directory");
+            let output = directory.path().join("migration-audit.json");
+            let arguments = vec![
+                OsString::from("--repo"),
+                OsString::from("owner/repo"),
+                OsString::from("--chief"),
+                OsString::from("7687"),
+                OsString::from("--output"),
+                output.clone().into_os_string(),
+                OsString::from("--table-output"),
+                OsString::from(table_output),
+            ];
+
+            assert_eq!(
+                with_test_github_service(service, || super::run(&arguments)),
+                ExitCode::SUCCESS
+            );
+            assert!(
+                fs::read_to_string(output)
+                    .expect("machine report")
+                    .contains("\"schema_version\":2")
+            );
+            assert_eq!(
+                server.finish().expect("completed loopback requests").len(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn audit_reports_remote_evidence_failures_without_exposing_transport_details() {
+        let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+        let pull_request = json!([{
+            "number": 1,
+            "state": "open",
+            "title": "fixture",
+            "head": { "ref": "" },
+            "base": { "ref": "main" },
+            "draft": false,
+            "merged": false,
+        }]);
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, json!([issue]).to_string())
+                .expect("issue-list exchange"),
+            IssueServiceExchange::any_json(200, pull_request.to_string())
+                .expect("pull-request exchange"),
+        ])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let arguments = vec![
+            OsString::from("--repo"),
+            OsString::from("owner/repo"),
+            OsString::from("--chief"),
+            OsString::from("7687"),
+            OsString::from("--table-output"),
+            OsString::from("none"),
+        ];
+
+        let outcome = with_test_github_service(service, || super::run(&arguments));
+
+        assert_eq!(outcome, ExitCode::from(2));
+        let requests = server.finish().expect("completed loopback requests");
+        assert_eq!(requests.len(), 2);
+    }
+
+    #[test]
+    fn repository_finding_redaction_rejects_empty_and_truncated_diagnostics() {
+        assert_eq!(
+            safe_finding("well-formed evidence").unwrap(),
+            "well-formed evidence"
+        );
+        assert_eq!(
+            safe_finding("").unwrap_err(),
+            "repository audit: finding exit omitted findings"
+        );
+        assert_eq!(
+            safe_finding("-----BEGIN RSA PRIVATE KEY-----").unwrap_err(),
+            "repository audit: evidence redaction failed"
+        );
+        let (repository, root) = current_repository();
+        let snapshot = MigrationAuditSnapshot {
+            repository: "owner/repo".to_owned(),
+            chief_issue: 7687,
+            snapshot_timestamp: "2026-01-01T00:00:00Z".to_owned(),
+            head_sha: repository
+                .resolve_revision(&larch_core::Revision::new("HEAD"))
+                .expect("resolve head")
+                .to_hex(),
+            open_issues: vec![MigrationIssueSnapshot {
+                number: 71,
+                title: "ordinary issue".to_owned(),
+                state: "open".to_owned(),
+                body: String::new(),
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            }],
+            referenced_issues: Vec::new(),
+            dependencies: Vec::new(),
+            open_pr_branches: Vec::new(),
+            closed_issues: Vec::new(),
+        };
+        assert!(
+            super::collect_repository_findings(&root, &snapshot)
+                .expect("canonical in-process repository audit")
+                .is_empty()
+        );
     }
 }

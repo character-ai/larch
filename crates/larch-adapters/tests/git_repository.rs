@@ -505,6 +505,22 @@ fn range_blob_and_conflict_stage_queries_match_git() {
     let reader = GixRepository::open(repository.root()).unwrap();
     let include = git_id(&repository, ["rev-parse", "HEAD"]);
     let exclude = git_id(&repository, ["rev-parse", "HEAD~1"]);
+    assert_range_queries(&reader, &repository, &exclude, &include);
+    assert_blob_queries(&reader, &repository, &include);
+    assert_file_queries(&reader, &repository, &include);
+
+    let Some(conflict) = fixture(GitFixture::Conflict, GitObjectFormat::Sha1) else {
+        return;
+    };
+    assert_conflict_stage_queries(&conflict);
+}
+
+fn assert_range_queries(
+    reader: &GixRepository,
+    repository: &GitRepository,
+    exclude: &ObjectId,
+    include: &ObjectId,
+) {
     assert_eq!(
         reader.commit_count_range(&exclude, &include).unwrap(),
         git_line(&repository, ["rev-list", "--count", "HEAD~1..HEAD"])
@@ -515,6 +531,16 @@ fn range_blob_and_conflict_stage_queries_match_git() {
         reader.commit_subjects_range(&exclude, &include).unwrap(),
         vec![b"nested subject".to_vec()]
     );
+    assert_eq!(
+        reader
+            .commit_messages_range(Some(&exclude), &include)
+            .unwrap(),
+        vec![b"nested subject\n".to_vec()]
+    );
+    assert!(reader.commit_messages_range(None, &include).unwrap().len() > 1);
+}
+
+fn assert_blob_queries(reader: &GixRepository, repository: &GitRepository, include: &ObjectId) {
     assert_eq!(
         reader
             .blob_at_commit(&include, &GitPath::new("dir/file.txt"))
@@ -532,6 +558,20 @@ fn range_blob_and_conflict_stage_queries_match_git() {
             .blob_id_at_commit(&include, &GitPath::new("missing.txt"))
             .unwrap(),
         None
+    );
+    assert_eq!(
+        reader
+            .blob_id_at_commit(&include, &GitPath::new(""))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidInput
+    );
+    assert_eq!(
+        reader
+            .blob_id_at_commit(&include, &GitPath::new("dir"))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::ObjectType
     );
     assert_eq!(
         reader
@@ -553,6 +593,9 @@ fn range_blob_and_conflict_stage_queries_match_git() {
             .kind(),
         RepositoryErrorKind::ObjectType
     );
+}
+
+fn assert_file_queries(reader: &GixRepository, repository: &GitRepository, include: &ObjectId) {
     let mut expected_files = git_lines(&repository, ["ls-tree", "-r", "--name-only", "HEAD"])
         .into_iter()
         .map(GitPath::new)
@@ -568,10 +611,9 @@ fn range_blob_and_conflict_stage_queries_match_git() {
             .kind(),
         RepositoryErrorKind::InvalidInput
     );
+}
 
-    let Some(conflict) = fixture(GitFixture::Conflict, GitObjectFormat::Sha1) else {
-        return;
-    };
+fn assert_conflict_stage_queries(conflict: &GitRepository) {
     let conflict_reader = GixRepository::open(conflict.root()).unwrap();
     for stage in 1..=3 {
         let spec = format!(":{stage}:tracked.txt");

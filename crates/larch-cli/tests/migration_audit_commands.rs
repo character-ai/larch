@@ -8,6 +8,15 @@ fn larch() -> Command {
 #[test]
 fn migration_audit_keeps_its_argparse_help_and_validation_contract() {
     larch()
+        .args(["issue", "migration-audit", "-h"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "usage: larch issue migration-audit [-h] --repo REPO --chief CHIEF",
+        ))
+        .stderr(predicate::str::is_empty());
+
+    larch()
         .args(["issue", "migration-audit", "--h"])
         .assert()
         .success()
@@ -97,5 +106,52 @@ fn migration_audit_keeps_its_argparse_help_and_validation_contract() {
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::contains(
             "ERROR: migration-audit: --table-output stdout requires --output so stdout stays machine-readable",
+        ));
+
+    larch()
+        .args(["issue", "migration-audit", "--repo"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "larch issue migration-audit: error: argument --repo: expected one argument",
+        ));
+
+    larch()
+        .args(["issue", "migration-audit", "--repo", "owner/repo"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "larch issue migration-audit: error: the following arguments are required: --chief",
+        ));
+
+    larch()
+        .args([
+            "issue",
+            "migration-audit",
+            "--repo",
+            "owner/repo",
+            "--chief",
+            "1",
+            "--unexpected",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "larch issue migration-audit: error: unrecognized arguments: --unexpected",
+        ));
+
+    larch()
+        .args([
+            "issue",
+            "migration-audit",
+            "--repo",
+            "owner/repo",
+            "--chief",
+            "0",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "ERROR: migration-audit: --chief must be a positive issue number",
         ));
 }
