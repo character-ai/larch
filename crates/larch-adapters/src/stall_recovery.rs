@@ -2,8 +2,8 @@
 use crate::bgjob_recovery::{BgjobRecoveryOutcome, recover_abandoned_entry};
 use crate::{
     FileIoErrorKind, GixRepository, PathIntent, SystemProcessIdentityHost, TemporaryRoot,
-    atomic_write_bytes_in, atomic_write_utf8_in, ensure_directory_chain, open_confined_read,
-    resolve_allow_missing,
+    atomic_write_bytes_in, atomic_write_utf8_in, ensure_directory_chain, lock_private_file,
+    open_confined_read, resolve_allow_missing,
 };
 use chrono::{SecondsFormat, Utc};
 use larch_core::{
@@ -21,7 +21,7 @@ use nix::fcntl::{Flock, FlockArg};
 use regex::Regex;
 use sha2::{Digest as _, Sha256};
 #[cfg(unix)]
-use std::os::unix::{fs::OpenOptionsExt as _, fs::PermissionsExt as _};
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::{
     collections::BTreeMap,
     env,
@@ -42,6 +42,43 @@ const CLEAR_UPDATES: &[(&str, &str)] = &[
     ("BAIL_REASON", ""),
     ("IMPLEMENT_BAIL_REASON", ""),
     ("EXIT_CODE", "unknown"),
+];
+const CLEAR_TRANSACTION_FILE: &str = "stall-recovery-clear.transaction.env";
+const CLEAR_TRANSACTION_VERSION: &str = "1";
+const CLEAR_TRANSACTION_STATE: &str = "pending";
+const ATTEMPT_LEDGER_LOCK_FILE: &str = ".stall-recovery-attempts.lock";
+#[derive(Clone, Copy)]
+struct ClearEntry {
+    name: &'static str,
+    marker_key: &'static str,
+    state_layer: bool,
+}
+const CLEAR_ENTRIES: [ClearEntry; 5] = [
+    ClearEntry {
+        name: "ship-pr-state.sh",
+        marker_key: "CLEAR_STALL_SHIP_PR_STATE",
+        state_layer: true,
+    },
+    ClearEntry {
+        name: "finalize-state.sh",
+        marker_key: "CLEAR_STALL_FINALIZE_STATE",
+        state_layer: true,
+    },
+    ClearEntry {
+        name: "session-env.sh",
+        marker_key: "CLEAR_STALL_SESSION_ENV",
+        state_layer: true,
+    },
+    ClearEntry {
+        name: "stall-recovery-classification.env",
+        marker_key: "CLEAR_STALL_CLASSIFICATION",
+        state_layer: false,
+    },
+    ClearEntry {
+        name: "stall-recovery-issue.env",
+        marker_key: "CLEAR_STALL_ISSUE",
+        state_layer: false,
+    },
 ];
 /// Fixed evidence artifacts that contribute sensitive tokens to a stall report.
 pub const STALL_RECOVERY_EVIDENCE_NAMES: &[&str] = &[
@@ -90,6 +127,22 @@ pub enum StateMutationError {
     Failed,
 }
 
+/// Durable clear-stall intent. A pending marker keeps partial atomic updates
+/// distinguishable from a completed clear until the final commit removes it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClearTransaction {
+    present: [bool; CLEAR_ENTRIES.len()],
+}
+
+struct ClearPlan {
+    transaction: ClearTransaction,
+    newly_started: bool,
+}
+
+struct AttemptLedgerLock {
+    _lock: crate::PrivateFileLock,
+}
+
 /// Stable adapter errors mapped to command exit classes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StallRecoveryError {
@@ -115,6 +168,153 @@ pub struct ClassificationRequest {
 #[rustfmt::skip]
 pub struct ClassificationOutput {
     pub values: Vec<(String, String)>, pub file: PathBuf, pub warning: Option<&'static str>,
+}
+
+/// Complete outer decision branches for `/implement` stall classification.
+///
+/// The text classifier has its own data table in `larch_core`; this table keeps
+/// the state-derived branches visible beside the adapter that owns them.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ImplementClassificationBranch {
+    AbandonedChecks,
+    NoStall,
+    PostmergeFailure,
+    ExpectedPostmerge,
+    Text,
+}
+
+#[derive(Clone, Copy)]
+struct ImplementClassificationRule {
+    branch: ImplementClassificationBranch,
+    result: Option<Classification>,
+    final_hint: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ImplementClassificationDecision {
+    abandoned: bool,
+    stalled: bool,
+    postmerge: PostmergeClassification,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PostmergeClassification {
+    None,
+    Failure,
+    Expected,
+}
+
+const IMPLEMENT_CLASSIFICATION_TABLE: &[ImplementClassificationRule] = &[
+    ImplementClassificationRule {
+        branch: ImplementClassificationBranch::AbandonedChecks,
+        result: Some(Classification {
+            failure_class: "transient-infra",
+            resume_hint: "checks-commit-route-retry",
+            pattern: "checks-leg-abandoned",
+        }),
+        final_hint: false,
+    },
+    ImplementClassificationRule {
+        branch: ImplementClassificationBranch::NoStall,
+        result: Some(Classification {
+            failure_class: "unrecoverable",
+            resume_hint: "none",
+            pattern: "no-stall",
+        }),
+        final_hint: false,
+    },
+    ImplementClassificationRule {
+        branch: ImplementClassificationBranch::PostmergeFailure,
+        result: Some(Classification {
+            failure_class: "unrecoverable",
+            resume_hint: "none",
+            pattern: "postmerge-flush-failure",
+        }),
+        final_hint: true,
+    },
+    ImplementClassificationRule {
+        branch: ImplementClassificationBranch::ExpectedPostmerge,
+        result: Some(Classification {
+            failure_class: "operator-action",
+            resume_hint: "none",
+            pattern: "postmerge-flush-expected",
+        }),
+        final_hint: true,
+    },
+    ImplementClassificationRule {
+        branch: ImplementClassificationBranch::Text,
+        result: None,
+        final_hint: false,
+    },
+];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GenericClassificationBranch {
+    CurrentPublish,
+    Text,
+}
+
+#[derive(Clone, Copy)]
+struct GenericClassificationRule {
+    branch: GenericClassificationBranch,
+    result: Option<Classification>,
+}
+
+const GENERIC_CLASSIFICATION_TABLE: &[GenericClassificationRule] = &[
+    GenericClassificationRule {
+        branch: GenericClassificationBranch::CurrentPublish,
+        result: Some(Classification {
+            failure_class: "recoverable",
+            resume_hint: "resume-post-plan-publish",
+            pattern: "design-publish-tail-current-attempt",
+        }),
+    },
+    GenericClassificationRule {
+        branch: GenericClassificationBranch::Text,
+        result: None,
+    },
+];
+
+const fn implement_classification_branch(
+    decision: ImplementClassificationDecision,
+) -> ImplementClassificationBranch {
+    if decision.abandoned {
+        ImplementClassificationBranch::AbandonedChecks
+    } else if !decision.stalled {
+        ImplementClassificationBranch::NoStall
+    } else {
+        match decision.postmerge {
+            PostmergeClassification::Failure => ImplementClassificationBranch::PostmergeFailure,
+            PostmergeClassification::Expected => ImplementClassificationBranch::ExpectedPostmerge,
+            PostmergeClassification::None => ImplementClassificationBranch::Text,
+        }
+    }
+}
+
+fn implement_classification_rule(
+    branch: ImplementClassificationBranch,
+) -> ImplementClassificationRule {
+    IMPLEMENT_CLASSIFICATION_TABLE
+        .iter()
+        .copied()
+        .find(|rule| rule.branch == branch)
+        .expect("outer implement classification table is exhaustive")
+}
+
+const fn generic_classification_branch(current_publish: bool) -> GenericClassificationBranch {
+    if current_publish {
+        GenericClassificationBranch::CurrentPublish
+    } else {
+        GenericClassificationBranch::Text
+    }
+}
+
+fn generic_classification_rule(branch: GenericClassificationBranch) -> GenericClassificationRule {
+    GENERIC_CLASSIFICATION_TABLE
+        .iter()
+        .copied()
+        .find(|rule| rule.branch == branch)
+        .expect("outer generic classification table is exhaustive")
 }
 
 /// Inputs for one escalation ledger append.
@@ -146,6 +346,12 @@ pub fn classify(request: &ClassificationRequest) -> Result<ClassificationOutput,
     if !artifact_prefix_valid(&request.artifact_prefix) { return Err(StallRecoveryError::Usage); }
     let tmpdir = absolute_path(&request.tmpdir).map_err(|()| StallRecoveryError::Unsafe)?; if request.profile == "generic" { if !tmpdir.is_dir() { return Err(StallRecoveryError::Failed); } } else { ensure_directory_chain(&tmpdir).map_err(|_| StallRecoveryError::Failed)?; }
     let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StallRecoveryError::Unsafe)?;
+    match clear_transaction_pending(&root) {
+        Ok(true) => return Err(StallRecoveryError::UnsafeDiagnostic("stall clear transaction pending")),
+        Ok(false) => {}
+        Err(StateMutationError::Unsafe) => return Err(StallRecoveryError::Unsafe),
+        Err(StateMutationError::Failed) => return Err(StallRecoveryError::Failed),
+    }
     if request.profile == "generic" { return classify_generic(&root, request); }
     let primary = request_path(root.path(), &request.primary_state_file, "ship-pr-state.sh");
     if fs::symlink_metadata(&primary).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
@@ -179,20 +385,36 @@ pub fn classify(request: &ClassificationRequest) -> Result<ClassificationOutput,
     let postmerge = any_stall && phase == "postmerge" && step == "postmerge-flush" && terminal_merge;
     let postmerge_failure = postmerge && "redaction-failed post-merge-refresh-failed manifest-recovery-failed commit-failed".split_ascii_whitespace().any(|marker| lower.contains(marker));
     let expected_postmerge = postmerge && lower.contains("preterminal-outcome") && !postmerge_failure;
-    let result = if abandoned.is_some() {
-        classified("transient-infra", "checks-commit-route-retry", "checks-leg-abandoned")
-    } else if !any_stall {
-        classified("unrecoverable", "none", "no-stall")
-    } else if postmerge_failure {
-        classified("unrecoverable", "none", "postmerge-flush-failure")
+    let postmerge = if postmerge_failure {
+        PostmergeClassification::Failure
     } else if expected_postmerge {
-        classified("operator-action", "none", "postmerge-flush-expected")
+        PostmergeClassification::Expected
     } else {
-        classify_text(ClassifyTextInput { text: &evidence, bail: &bail, step: &step, detail_log_valid: detail_valid, exit_code: raw_exit, implement: true })
+        PostmergeClassification::None
     };
-    let hint = if postmerge_failure || expected_postmerge { result.resume_hint } else { resume_hint_for(result.failure_class, &step, &phase, result.pattern) };
+    let branch = implement_classification_branch(ImplementClassificationDecision {
+        abandoned: abandoned.is_some(),
+        stalled: any_stall,
+        postmerge,
+    });
+    let rule = implement_classification_rule(branch);
+    let result = rule.result.unwrap_or_else(|| {
+        classify_text(ClassifyTextInput {
+            text: &evidence,
+            bail: &bail,
+            step: &step,
+            detail_log_valid: detail_valid,
+            exit_code: raw_exit,
+            implement: true,
+        })
+    });
+    let hint = if rule.final_hint {
+        result.resume_hint
+    } else {
+        resume_hint_for(result.failure_class, &step, &phase, result.pattern)
+    };
     let dispatcher = first_nonempty(&[&request.dispatcher, state_value(&state, "DISPATCHER"), state_value(&state, "CODER_TOOL")]);
-    let finish = FinishClassification { result, hint, step: &step, phase: &phase, stalled: any_stall, bail: &bail, detail: &detail_value, exit_code: raw_exit, dispatcher, evidence: &evidence, skill: None, repeat_exempt: expected_postmerge };
+    let finish = FinishClassification { result, hint, step: &step, phase: &phase, stalled: any_stall, bail: &bail, detail: &detail_value, exit_code: raw_exit, dispatcher, evidence: &evidence, skill: None, repeat_exempt: branch == ImplementClassificationBranch::ExpectedPostmerge };
     finish_classification(&root, request, finish, Vec::new(), warning)
 }
 
@@ -212,12 +434,21 @@ fn classify_generic(root: &TemporaryRoot, request: &ClassificationRequest) -> Re
     let current_publish = state_value(&found, "TRIGGER") == "publish-tail-failed" && exit_code == "5"
         && !state_value(&found, "PUBLISH_ATTEMPT_ID").is_empty()
         && matches!(state_value(&found, "PUBLISH_RC_SOURCE"), "returned" | "exception");
-    let result = if current_publish && state_value(&found, "PLAN_WRITE_OK") == "true" {
-        classified("recoverable", "resume-post-plan-publish", "design-publish-tail-current-attempt")
-    } else {
-        let match_result = classify_text(ClassifyTextInput { text: &evidence, bail, step, detail_log_valid: detail_valid, exit_code, implement: false });
+    let branch = generic_classification_branch(
+        current_publish && state_value(&found, "PLAN_WRITE_OK") == "true",
+    );
+    let rule = generic_classification_rule(branch);
+    let result = rule.result.unwrap_or_else(|| {
+        let match_result = classify_text(ClassifyTextInput {
+            text: &evidence,
+            bail,
+            step,
+            detail_log_valid: detail_valid,
+            exit_code,
+            implement: false,
+        });
         classified(match_result.failure_class, "none", match_result.pattern)
-    };
+    });
     let skill = if request.artifact_prefix == "design-failure" {
         "/design".to_owned()
     } else if request.artifact_prefix.is_empty() {
@@ -291,9 +522,12 @@ pub struct AttemptRecord {
 #[rustfmt::skip]
 pub fn init_attempts(tmpdir: &Path, requested: &Path) -> Result<(PathBuf, String), StallRecoveryError> {
     let (root, path) = attempts_path(tmpdir, requested)?;
+    let _lock = lock_attempt_ledger(&root, &path)?;
     if !path.exists() {
         let now = utc_now();
         write_rows(&root, &path, [("version", "1"), ("created_utc", &now), ("attempt_count", "0")])?;
+    } else if !attempt_ledger_syntax_ok(&path)? {
+        return Err(StallRecoveryError::Diagnostic("attempt ledger is malformed"));
     }
     let count = read_state_map(&path).get("attempt_count").cloned().unwrap_or_else(|| "0".to_owned());
     Ok((path, count))
@@ -304,9 +538,14 @@ pub fn init_attempts(tmpdir: &Path, requested: &Path) -> Result<(PathBuf, String
 pub fn record_attempt(request: &AttemptRecord) -> Result<String, StallRecoveryError> {
     if [&request.failure_class, &request.signature, &request.resume_hint, &request.outcome].into_iter().any(|value| value.contains(['\n', '\r'])) { return Err(StallRecoveryError::Diagnostic("attempt value contains newline")); }
     let (root, path) = attempts_path(&request.tmpdir, &request.attempts_file)?;
+    let _lock = lock_attempt_ledger(&root, &path)?;
     let now = utc_now();
     let mut lines = if path.exists() {
-        read_lossy(&path).map_err(|()| StallRecoveryError::Failed)?.lines().map(str::to_owned).collect::<Vec<_>>()
+        let text = read_lossy(&path).map_err(|()| StallRecoveryError::Failed)?;
+        if !state_syntax_ok(&text) {
+            return Err(StallRecoveryError::Diagnostic("attempt ledger is malformed"));
+        }
+        text.lines().map(str::to_owned).collect::<Vec<_>>()
     } else {
         vec!["version=1".to_owned(), format!("created_utc={now}"), "attempt_count=1".to_owned()]
     };
@@ -327,6 +566,9 @@ pub fn record_attempt(request: &AttemptRecord) -> Result<String, StallRecoveryEr
         format!("last_signature={}", request.signature), format!("last_resume_hint={}", request.resume_hint), format!("last_outcome={}", request.outcome),
     ]);
     atomic_write_utf8_in(&root, &path, &(lines.join("\n") + "\n"), true, 0o600).map_err(|_| StallRecoveryError::Failed)?;
+    if !attempt_record_is_visible(&path, &count, request) {
+        return Err(StallRecoveryError::Failed);
+    }
     Ok(count)
 }
 
@@ -335,6 +577,11 @@ pub fn record_attempt(request: &AttemptRecord) -> Result<String, StallRecoveryEr
 pub fn normalize_outcome(tmpdir: &Path, memory_stall: &str) -> Result<Vec<(String, String)>, StallRecoveryError> {
     let tmpdir = absolute_path(tmpdir).map_err(|()| StallRecoveryError::Unsafe)?; if !tmpdir.is_dir() { let empty = BTreeMap::new(); return Ok(normalize_outcome_values(NormalizeOutcomeInput { ship: &empty, finalize: &empty, session: &empty, seed: &empty, classification: &empty, memory_stall, panel_failed: false })); }
     let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StallRecoveryError::Unsafe)?;
+    match clear_transaction_pending(&root) {
+        Ok(true) | Err(StateMutationError::Unsafe) => return Err(StallRecoveryError::Unsafe),
+        Ok(false) => {}
+        Err(StateMutationError::Failed) => return Err(StallRecoveryError::Failed),
+    }
     let ship = read_state_map(&root.path().join("ship-pr-state.sh"));
     let finalize = read_state_map(&root.path().join("finalize-state.sh"));
     let session = read_state_map(&root.path().join("session-env.sh"));
@@ -351,6 +598,11 @@ pub fn normalize_issue_env(tmpdir: &Path, stdout_file: &Path, exit_code: Option<
     let tmpdir = absolute_path(tmpdir).map_err(|()| StallRecoveryError::Unsafe)?;
     let invalid = StallRecoveryError::Diagnostic("--issue-stdout-file outside implement tmpdir");
     if !tmpdir.is_dir() { return Err(invalid); } let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| invalid)?;
+    match clear_transaction_pending(&root) {
+        Ok(true) | Err(StateMutationError::Unsafe) => return Err(StallRecoveryError::Unsafe),
+        Ok(false) => {}
+        Err(StateMutationError::Failed) => return Err(StallRecoveryError::Failed),
+    }
     let stdout_file = validate_local_path(&root, stdout_file, false).map_err(|_| invalid)?;
     if !stdout_file.is_file() {
         return Err(invalid);
@@ -507,6 +759,13 @@ fn diagnostic_token(value: &str) -> String {
 /// # Errors
 /// Returns `Unsafe` for unsafe state and `Failed` when a validated mutation fails.
 pub fn clear_stall(tmpdir: &Path) -> Result<(), StateMutationError> {
+    clear_stall_inner(tmpdir, None)
+}
+
+fn clear_stall_inner(
+    tmpdir: &Path,
+    fault_after_phase: Option<usize>,
+) -> Result<(), StateMutationError> {
     let tmpdir = absolute_path(tmpdir).map_err(|()| StateMutationError::Unsafe)?;
     if !tmpdir.exists() {
         clear_abandoned_checks_registry(&tmpdir)?;
@@ -514,39 +773,240 @@ pub fn clear_stall(tmpdir: &Path) -> Result<(), StateMutationError> {
     }
     let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StateMutationError::Unsafe)?;
     let tmpdir = root.path().to_path_buf();
+    let transaction = read_clear_transaction(&root)?;
+    let plan = preflight_clear(&root, transaction)?;
     // Reconcile checks jobs before clearing any state that names their owner.
     // A failed proof deliberately leaves both the row and stall state intact
     // for the next caller instead of losing the last safe identity.
     clear_abandoned_checks_registry(&tmpdir)?;
-    for name in [
-        "stall-recovery-classification.env",
-        "stall-recovery-issue.env",
-    ] {
-        let _ = fs::remove_file(tmpdir.join(name));
+    if plan.newly_started && !plan.transaction.present.into_iter().any(|present| present) {
+        return Ok(());
     }
-    let mut present = Vec::new();
-    for name in STATE_LAYERS {
-        let path = tmpdir.join(name);
-        match inspect_state(&path) {
-            Ok(Some(text)) if state_syntax_ok(&text) => present.push((path, text)),
-            Ok(Some(_)) | Err(StateMutationError::Unsafe) => {
-                return Err(StateMutationError::Unsafe);
+    if plan.newly_started {
+        write_clear_transaction(&root, plan.transaction)?;
+    }
+    let mut phase = 0;
+    if plan.newly_started {
+        after_clear_phase(&mut phase, fault_after_phase)?;
+    }
+    for (index, entry) in CLEAR_ENTRIES.iter().enumerate() {
+        if !plan.transaction.present[index] {
+            continue;
+        }
+        let path = root.path().join(entry.name);
+        if entry.state_layer {
+            rewrite_clear_state(&root, &path)?;
+        } else if inspect_clear_file(&root, &path)?.is_some() {
+            remove_clear_artifact(&root, &path)?;
+        }
+        after_clear_phase(&mut phase, fault_after_phase)?;
+    }
+    verify_clear_plan(&root, plan.transaction)?;
+    remove_clear_transaction(&root)?;
+    Ok(())
+}
+
+fn after_clear_phase(
+    phase: &mut usize,
+    fault_after_phase: Option<usize>,
+) -> Result<(), StateMutationError> {
+    *phase += 1;
+    if fault_after_phase == Some(*phase) {
+        Err(StateMutationError::Failed)
+    } else {
+        Ok(())
+    }
+}
+
+fn preflight_clear(
+    root: &TemporaryRoot,
+    existing: Option<ClearTransaction>,
+) -> Result<ClearPlan, StateMutationError> {
+    let mut present = [false; CLEAR_ENTRIES.len()];
+    for (index, entry) in CLEAR_ENTRIES.iter().enumerate() {
+        let path = root.path().join(entry.name);
+        let content = inspect_clear_file(root, &path)?;
+        if content.as_ref().is_some_and(|text| !state_syntax_ok(text)) {
+            return Err(StateMutationError::Unsafe);
+        }
+        present[index] = content.is_some();
+        if let Some(transaction) = existing {
+            if !transaction.present[index] && present[index] {
+                return Err(StateMutationError::Failed);
             }
-            Ok(None) => {}
-            Err(StateMutationError::Failed) => return Err(StateMutationError::Failed),
+            if transaction.present[index] && entry.state_layer && !present[index] {
+                return Err(StateMutationError::Failed);
+            }
         }
     }
-    for (path, text) in present {
-        rewrite_state(&root, &path, &text, CLEAR_UPDATES)?;
-        let rewritten = read_lossy(&path).map_err(|()| StateMutationError::Failed)?;
-        if read_last_value(&rewritten, "STALL_TRACKING") != "false"
-            || !read_last_value(&rewritten, "STALL_STEP").is_empty()
+    let transaction = existing.unwrap_or(ClearTransaction { present });
+    Ok(ClearPlan {
+        transaction,
+        newly_started: existing.is_none(),
+    })
+}
+
+fn write_clear_transaction(
+    root: &TemporaryRoot,
+    transaction: ClearTransaction,
+) -> Result<(), StateMutationError> {
+    let path = root.path().join(CLEAR_TRANSACTION_FILE);
+    let mut rows = vec![
+        ("CLEAR_STALL_TRANSACTION_VERSION", CLEAR_TRANSACTION_VERSION),
+        ("CLEAR_STALL_TRANSACTION_STATE", CLEAR_TRANSACTION_STATE),
+    ];
+    for (index, entry) in CLEAR_ENTRIES.iter().enumerate() {
+        rows.push((
+            entry.marker_key,
+            if transaction.present[index] {
+                "present"
+            } else {
+                "absent"
+            },
+        ));
+    }
+    let text = kv_text(&rows).map_err(|_| StateMutationError::Failed)?;
+    atomic_write_utf8_in(root, &path, &text, false, 0o600).map_err(|_| StateMutationError::Failed)
+}
+
+fn read_clear_transaction(
+    root: &TemporaryRoot,
+) -> Result<Option<ClearTransaction>, StateMutationError> {
+    let path = root.path().join(CLEAR_TRANSACTION_FILE);
+    let Some(text) = inspect_clear_file(root, &path)? else {
+        return Ok(None);
+    };
+    if text.is_empty() || text.lines().any(|line| !line.contains('=')) {
+        return Err(StateMutationError::Unsafe);
+    }
+    let document =
+        KvDocument::parse(&text, ParseOptions::legacy()).map_err(|_| StateMutationError::Unsafe)?;
+    let mut values = BTreeMap::new();
+    for row in document.rows() {
+        if values
+            .insert(row.key().to_owned(), row.value().to_owned())
+            .is_some()
         {
+            return Err(StateMutationError::Unsafe);
+        }
+    }
+    if values.len() != CLEAR_ENTRIES.len() + 2
+        || values
+            .get("CLEAR_STALL_TRANSACTION_VERSION")
+            .map(String::as_str)
+            != Some(CLEAR_TRANSACTION_VERSION)
+        || values
+            .get("CLEAR_STALL_TRANSACTION_STATE")
+            .map(String::as_str)
+            != Some(CLEAR_TRANSACTION_STATE)
+    {
+        return Err(StateMutationError::Unsafe);
+    }
+    let mut present = [false; CLEAR_ENTRIES.len()];
+    for (index, entry) in CLEAR_ENTRIES.iter().enumerate() {
+        match values.get(entry.marker_key).map(String::as_str) {
+            Some("present") => present[index] = true,
+            Some("absent") => {}
+            _ => return Err(StateMutationError::Unsafe),
+        }
+    }
+    Ok(Some(ClearTransaction { present }))
+}
+
+fn clear_transaction_pending(root: &TemporaryRoot) -> Result<bool, StateMutationError> {
+    Ok(read_clear_transaction(root)?.is_some())
+}
+
+fn rewrite_clear_state(root: &TemporaryRoot, path: &Path) -> Result<(), StateMutationError> {
+    let Some(text) = inspect_clear_file(root, path)? else {
+        return Err(StateMutationError::Failed);
+    };
+    if !state_syntax_ok(&text) {
+        return Err(StateMutationError::Unsafe);
+    }
+    rewrite_state(root, path, &text, CLEAR_UPDATES)?;
+    let rewritten = read_lossy(path).map_err(|()| StateMutationError::Failed)?;
+    if !clear_state_is_complete(&rewritten) {
+        return Err(StateMutationError::Failed);
+    }
+    Ok(())
+}
+
+fn remove_clear_artifact(root: &TemporaryRoot, path: &Path) -> Result<(), StateMutationError> {
+    let Some(text) = inspect_clear_file(root, path)? else {
+        return Err(StateMutationError::Failed);
+    };
+    if !state_syntax_ok(&text) {
+        return Err(StateMutationError::Unsafe);
+    }
+    let confined = root
+        .confine(path, PathIntent::Write)
+        .map_err(|_| StateMutationError::Unsafe)?;
+    confined
+        .revalidate()
+        .map_err(|_| StateMutationError::Unsafe)?;
+    fs::remove_file(confined.path()).map_err(|_| StateMutationError::Failed)?;
+    sync_clear_parent(confined.path())
+}
+
+fn verify_clear_plan(
+    root: &TemporaryRoot,
+    transaction: ClearTransaction,
+) -> Result<(), StateMutationError> {
+    for (index, entry) in CLEAR_ENTRIES.iter().enumerate() {
+        let path = root.path().join(entry.name);
+        let content = inspect_clear_file(root, &path)?;
+        if !transaction.present[index] {
+            if content.is_some() {
+                return Err(StateMutationError::Failed);
+            }
+            continue;
+        }
+        if entry.state_layer {
+            let Some(text) = content else {
+                return Err(StateMutationError::Failed);
+            };
+            if !clear_state_is_complete(&text) {
+                return Err(StateMutationError::Failed);
+            }
+        } else if content.is_some() {
             return Err(StateMutationError::Failed);
         }
     }
     Ok(())
 }
+
+fn remove_clear_transaction(root: &TemporaryRoot) -> Result<(), StateMutationError> {
+    if read_clear_transaction(root)?.is_none() {
+        return Err(StateMutationError::Failed);
+    }
+    let path = root.path().join(CLEAR_TRANSACTION_FILE);
+    let confined = root
+        .confine(&path, PathIntent::Write)
+        .map_err(|_| StateMutationError::Unsafe)?;
+    confined
+        .revalidate()
+        .map_err(|_| StateMutationError::Unsafe)?;
+    fs::remove_file(confined.path()).map_err(|_| StateMutationError::Failed)?;
+    sync_clear_parent(confined.path())
+}
+
+fn clear_state_is_complete(text: &str) -> bool {
+    state_syntax_ok(text)
+        && read_last_value(text, "STALL_TRACKING") == "false"
+        && read_last_value(text, "STALL_STEP").is_empty()
+        && read_last_value(text, "BAIL_REASON").is_empty()
+        && read_last_value(text, "IMPLEMENT_BAIL_REASON").is_empty()
+        && read_last_value(text, "EXIT_CODE") == "unknown"
+}
+
+fn sync_clear_parent(path: &Path) -> Result<(), StateMutationError> {
+    let parent = path.parent().ok_or(StateMutationError::Failed)?;
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| StateMutationError::Failed)
+}
+
 /// Seed terminal state, returning the legacy `rewrite` or `seed` mode.
 /// # Errors
 /// Returns `Unsafe` for unsafe state and `Failed` when a validated mutation fails.
@@ -556,6 +1016,12 @@ pub fn seed_terminal_state(
     phase: &str,
 ) -> Result<&'static str, StateMutationError> {
     let tmpdir = absolute_path(tmpdir).map_err(|()| StateMutationError::Unsafe)?;
+    if tmpdir.is_dir() {
+        let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StateMutationError::Unsafe)?;
+        if clear_transaction_pending(&root)? {
+            return Err(StateMutationError::Unsafe);
+        }
+    }
     let raw_state = tmpdir.join("ship-pr-state.sh");
     let existing = match inspect_state(&raw_state) {
         Ok(Some(text)) if state_syntax_ok(&text) => Some(text),
@@ -973,6 +1439,20 @@ fn open_failure_detail_log(
     Ok((file, opened.len()))
 }
 
+/// Preflight one fixed clear target through the temporary-root write boundary.
+///
+/// A clear will later replace or remove the target, so read-only inspection is
+/// not sufficient: reject a hard-linked, symlinked, or otherwise unsafe leaf
+/// before the transaction marker makes any destructive phase reachable.
+fn inspect_clear_file(
+    root: &TemporaryRoot,
+    path: &Path,
+) -> Result<Option<String>, StateMutationError> {
+    root.confine(path, PathIntent::Write)
+        .map_err(|_| StateMutationError::Unsafe)?;
+    inspect_state(path)
+}
+
 fn inspect_state(path: &Path) -> Result<Option<String>, StateMutationError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
@@ -1209,6 +1689,57 @@ fn attempts_path(tmpdir: &Path, requested: &Path) -> Result<(TemporaryRoot, Path
     let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StallRecoveryError::Unsafe)?;
     let path = if requested.as_os_str().is_empty() { root.path().join("stall-recovery-attempts.env") } else { validate_attempts_path(&root, requested, true)? };
     Ok((root, path))
+}
+
+fn attempt_lock_path(path: &Path) -> Result<PathBuf, StallRecoveryError> {
+    let Some(parent) = path.parent() else {
+        return Err(StallRecoveryError::Diagnostic(
+            "--attempts-file outside implement tmpdir",
+        ));
+    };
+    Ok(parent.join(ATTEMPT_LEDGER_LOCK_FILE))
+}
+
+/// Serialize read-modify-replace against a stable companion inode.
+///
+/// Locking the ledger itself would not cover a subsequent atomic replacement,
+/// because waiting callers could retain the old inode. The companion remains a
+/// private non-wire file until session cleanup so every caller locks one inode.
+fn lock_attempt_ledger(
+    root: &TemporaryRoot,
+    attempts: &Path,
+) -> Result<AttemptLedgerLock, StallRecoveryError> {
+    let lock_path = attempt_lock_path(attempts)?;
+    let parent = lock_path.parent().ok_or(StallRecoveryError::Diagnostic(
+        "--attempts-file outside implement tmpdir",
+    ))?;
+    root.ensure_directory(parent)
+        .map_err(|_| StallRecoveryError::Unsafe)?;
+    let lock = lock_private_file(root, &lock_path).map_err(|error| {
+        if error.is_lock_failure() {
+            StallRecoveryError::Failed
+        } else {
+            StallRecoveryError::Unsafe
+        }
+    })?;
+    Ok(AttemptLedgerLock { _lock: lock })
+}
+
+fn attempt_ledger_syntax_ok(path: &Path) -> Result<bool, StallRecoveryError> {
+    let text = read_lossy(path).map_err(|()| StallRecoveryError::Failed)?;
+    Ok(state_syntax_ok(&text))
+}
+
+fn attempt_record_is_visible(path: &Path, count: &str, request: &AttemptRecord) -> bool {
+    let Ok(text) = read_lossy(path) else {
+        return false;
+    };
+    state_syntax_ok(&text)
+        && read_last_value(&text, "attempt_count") == count
+        && read_last_value(&text, &format!("attempt.{count}.class")) == request.failure_class
+        && read_last_value(&text, &format!("attempt.{count}.signature")) == request.signature
+        && read_last_value(&text, &format!("attempt.{count}.resume_hint")) == request.resume_hint
+        && read_last_value(&text, &format!("attempt.{count}.outcome")) == request.outcome
 }
 
 #[rustfmt::skip]
@@ -1469,12 +2000,13 @@ fn read_lossy(path: &Path) -> Result<String, ()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
+        AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
         FailureDetailLogError, MAX_DETAIL_FILE_BYTES, MAX_DETAIL_FILE_BYTES_USIZE,
-        StateMutationError, classify, classify_failure_detail_log, clear_stall, is_larch_dev_clone,
-        latest_failure_detail_log_sidecar, materialize_truncated_failure_detail_log,
+        StallRecoveryError, StateMutationError, classify, classify_failure_detail_log, clear_stall,
+        clear_stall_inner, init_attempts, is_larch_dev_clone, latest_failure_detail_log_sidecar,
+        materialize_truncated_failure_detail_log, normalize_outcome,
         read_failure_detail_log_with_sidecar_fallback, read_validated_failure_detail_log,
-        record_escalation, seed_terminal_state, terminal_state_is_valid,
+        record_attempt, record_escalation, seed_terminal_state, terminal_state_is_valid,
     };
     use crate::TemporaryRoot;
     use std::{
@@ -1496,6 +2028,38 @@ mod tests {
             failure_detail_log: PathBuf::new(),
             artifact_prefix: String::new(),
             generic: false,
+        }
+    }
+
+    fn clear_fixture(tmpdir: &Path) {
+        for (index, name) in ["ship-pr-state.sh", "finalize-state.sh", "session-env.sh"]
+            .into_iter()
+            .enumerate()
+        {
+            fs::write(
+                tmpdir.join(name),
+                format!(
+                    "KEEP_{index}=yes\nSTALL_TRACKING=true\nSTALL_STEP=8\nBAIL_REASON=review-required\nIMPLEMENT_BAIL_REASON=review-required\nEXIT_CODE=4\n"
+                ),
+            )
+            .expect("state fixture");
+        }
+        fs::write(
+            tmpdir.join("stall-recovery-classification.env"),
+            "FAILURE_CLASS=test-failure\nRESUME_HINT=step2-impl\n",
+        )
+        .expect("classification fixture");
+        fs::write(
+            tmpdir.join("stall-recovery-issue.env"),
+            "ISSUE_NUMBER=42\nISSUE_URL=https://github.com/o/r/issues/42\n",
+        )
+        .expect("issue fixture");
+    }
+
+    fn classification_request(tmpdir: &Path) -> ClassificationRequest {
+        ClassificationRequest {
+            tmpdir: tmpdir.to_path_buf(),
+            ..ClassificationRequest::default()
         }
     }
 
@@ -1522,10 +2086,308 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let state = temp.path().join("ship-pr-state.sh");
         fs::write(&state, "STALL_TRACKING=true\npartial\n").expect("fixture");
+        let classification = temp.path().join("stall-recovery-classification.env");
+        let issue = temp.path().join("stall-recovery-issue.env");
+        fs::write(&classification, "FAILURE_CLASS=test-failure\n").expect("classification");
+        fs::write(&issue, "ISSUE_NUMBER=42\n").expect("issue");
         assert_eq!(clear_stall(temp.path()), Err(StateMutationError::Unsafe));
         assert_eq!(
             fs::read_to_string(state).expect("unchanged"),
             "STALL_TRACKING=true\npartial\n"
+        );
+        assert_eq!(
+            fs::read_to_string(classification).expect("classification unchanged"),
+            "FAILURE_CLASS=test-failure\n"
+        );
+        assert_eq!(
+            fs::read_to_string(issue).expect("issue unchanged"),
+            "ISSUE_NUMBER=42\n"
+        );
+        assert!(
+            !temp.path().join(super::CLEAR_TRANSACTION_FILE).exists(),
+            "preflight must not publish a transaction marker"
+        );
+    }
+
+    #[test]
+    fn malformed_derived_artifact_fails_before_any_clear_mutation() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        clear_fixture(temp.path());
+        let classification = temp.path().join("stall-recovery-classification.env");
+        fs::write(&classification, "FAILURE_CLASS=test-failure\npartial\n")
+            .expect("malformed classification");
+        let before = [
+            "ship-pr-state.sh",
+            "finalize-state.sh",
+            "session-env.sh",
+            "stall-recovery-classification.env",
+            "stall-recovery-issue.env",
+        ]
+        .into_iter()
+        .map(|name| {
+            (
+                name,
+                fs::read_to_string(temp.path().join(name)).expect("before"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+        assert_eq!(clear_stall(temp.path()), Err(StateMutationError::Unsafe));
+
+        for (name, contents) in before {
+            assert_eq!(
+                fs::read_to_string(temp.path().join(name)).expect("unchanged artifact"),
+                contents,
+                "preflight mutated {name}"
+            );
+        }
+        assert!(!temp.path().join(super::CLEAR_TRANSACTION_FILE).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hardlinked_clear_artifact_fails_during_preflight() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        clear_fixture(temp.path());
+        let classification = temp.path().join("stall-recovery-classification.env");
+        let alias = temp.path().join("classification-alias.env");
+        fs::hard_link(&classification, &alias).expect("hard link fixture");
+        let state = fs::read_to_string(temp.path().join("ship-pr-state.sh")).expect("state");
+
+        assert_eq!(clear_stall(temp.path()), Err(StateMutationError::Unsafe));
+
+        assert_eq!(
+            fs::read_to_string(temp.path().join("ship-pr-state.sh")).expect("state unchanged"),
+            state
+        );
+        assert!(classification.exists());
+        assert_eq!(
+            fs::read_to_string(&alias).expect("hard-link target unchanged"),
+            "FAILURE_CLASS=test-failure\nRESUME_HINT=step2-impl\n"
+        );
+        assert!(!temp.path().join(super::CLEAR_TRANSACTION_FILE).exists());
+    }
+
+    #[test]
+    fn interrupted_clear_phases_stay_pending_then_retry_to_one_completed_state() {
+        const PHASES: usize = super::CLEAR_ENTRIES.len() + 1;
+
+        for phase in 1..=PHASES {
+            let temp = tempfile::tempdir().expect("tempdir");
+            clear_fixture(temp.path());
+
+            assert_eq!(
+                clear_stall_inner(temp.path(), Some(phase)),
+                Err(StateMutationError::Failed),
+                "injected phase {phase}"
+            );
+            assert!(
+                temp.path().join(super::CLEAR_TRANSACTION_FILE).is_file(),
+                "phase {phase} did not leave a recognizable transaction"
+            );
+            assert_eq!(
+                normalize_outcome(temp.path(), "false"),
+                Err(StallRecoveryError::Unsafe),
+                "phase {phase} normalized a partial clear as completed"
+            );
+            assert_eq!(
+                classify(&classification_request(temp.path())),
+                Err(StallRecoveryError::UnsafeDiagnostic(
+                    "stall clear transaction pending"
+                )),
+                "phase {phase} classified a partial clear as completed"
+            );
+            let mut generic = classification_request(temp.path());
+            generic.profile = "generic".to_owned();
+            assert_eq!(
+                classify(&generic),
+                Err(StallRecoveryError::UnsafeDiagnostic(
+                    "stall clear transaction pending"
+                )),
+                "phase {phase} let generic classification bypass its pending marker"
+            );
+            assert_eq!(
+                seed_terminal_state(temp.path(), "8", "ci-initial"),
+                Err(StateMutationError::Unsafe),
+                "phase {phase} allowed a state writer through its pending marker"
+            );
+
+            clear_stall(temp.path()).expect("retry clear");
+            assert!(
+                !temp.path().join(super::CLEAR_TRANSACTION_FILE).exists(),
+                "successful retry retained its transaction marker"
+            );
+            for (index, name) in ["ship-pr-state.sh", "finalize-state.sh", "session-env.sh"]
+                .into_iter()
+                .enumerate()
+            {
+                let state = fs::read_to_string(temp.path().join(name)).expect("cleared state");
+                assert!(state.contains(&format!("KEEP_{index}=yes\n")));
+                assert_eq!(super::read_last_value(&state, "STALL_TRACKING"), "false");
+                assert!(super::read_last_value(&state, "STALL_STEP").is_empty());
+                assert!(super::read_last_value(&state, "BAIL_REASON").is_empty());
+                assert!(super::read_last_value(&state, "IMPLEMENT_BAIL_REASON").is_empty());
+                assert_eq!(super::read_last_value(&state, "EXIT_CODE"), "unknown");
+            }
+            assert!(
+                !temp
+                    .path()
+                    .join("stall-recovery-classification.env")
+                    .exists()
+            );
+            assert!(!temp.path().join("stall-recovery-issue.env").exists());
+        }
+    }
+
+    #[test]
+    fn concurrent_attempt_records_receive_contiguous_distinct_numbers() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().to_path_buf();
+        let attempts = root.join("stall-recovery-attempts.env");
+        let handles: [_; 32] = std::array::from_fn(|index| {
+            let tmpdir = root.clone();
+            let attempts_file = attempts.clone();
+            thread::spawn(move || {
+                record_attempt(&AttemptRecord {
+                    tmpdir,
+                    attempts_file,
+                    failure_class: "test-failure".to_owned(),
+                    signature: format!("signature-{index}"),
+                    resume_hint: "step2-impl".to_owned(),
+                    outcome: "failed".to_owned(),
+                })
+            })
+        });
+        let mut counts = handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .expect("writer thread")
+                    .expect("serialized append")
+                    .parse::<usize>()
+                    .expect("numeric attempt count")
+            })
+            .collect::<Vec<_>>();
+        counts.sort_unstable();
+        assert_eq!(counts, (1..=32).collect::<Vec<_>>());
+
+        let text = fs::read_to_string(&attempts).expect("attempt ledger");
+        assert!(
+            super::state_syntax_ok(&text),
+            "ledger must remain parseable"
+        );
+        assert_eq!(super::read_last_value(&text, "attempt_count"), "32");
+        for number in 1..=32 {
+            assert!(
+                !super::read_last_value(&text, &format!("attempt.{number}.signature")).is_empty(),
+                "missing recorded attempt {number}"
+            );
+        }
+        assert_eq!(
+            init_attempts(temp.path(), &attempts)
+                .expect("readback after concurrent writes")
+                .1,
+            "32"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            assert_eq!(
+                fs::metadata(&attempts)
+                    .expect("ledger mode")
+                    .permissions()
+                    .mode()
+                    & 0o077,
+                0
+            );
+            assert_eq!(
+                fs::metadata(temp.path().join(super::ATTEMPT_LEDGER_LOCK_FILE))
+                    .expect("stable lock mode")
+                    .permissions()
+                    .mode()
+                    & 0o077,
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn outer_classifier_tables_list_every_branch_once() {
+        let implement = super::IMPLEMENT_CLASSIFICATION_TABLE
+            .iter()
+            .map(|rule| rule.branch)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            implement,
+            vec![
+                super::ImplementClassificationBranch::AbandonedChecks,
+                super::ImplementClassificationBranch::NoStall,
+                super::ImplementClassificationBranch::PostmergeFailure,
+                super::ImplementClassificationBranch::ExpectedPostmerge,
+                super::ImplementClassificationBranch::Text,
+            ]
+        );
+        assert_eq!(
+            super::implement_classification_branch(super::ImplementClassificationDecision {
+                abandoned: true,
+                stalled: false,
+                postmerge: super::PostmergeClassification::None,
+            }),
+            super::ImplementClassificationBranch::AbandonedChecks
+        );
+        assert_eq!(
+            super::implement_classification_branch(super::ImplementClassificationDecision {
+                abandoned: false,
+                stalled: false,
+                postmerge: super::PostmergeClassification::None,
+            }),
+            super::ImplementClassificationBranch::NoStall
+        );
+        assert_eq!(
+            super::implement_classification_branch(super::ImplementClassificationDecision {
+                abandoned: false,
+                stalled: true,
+                postmerge: super::PostmergeClassification::Failure,
+            }),
+            super::ImplementClassificationBranch::PostmergeFailure
+        );
+        assert_eq!(
+            super::implement_classification_branch(super::ImplementClassificationDecision {
+                abandoned: false,
+                stalled: true,
+                postmerge: super::PostmergeClassification::Expected,
+            }),
+            super::ImplementClassificationBranch::ExpectedPostmerge
+        );
+        assert_eq!(
+            super::implement_classification_branch(super::ImplementClassificationDecision {
+                abandoned: false,
+                stalled: true,
+                postmerge: super::PostmergeClassification::None,
+            }),
+            super::ImplementClassificationBranch::Text
+        );
+
+        let generic = super::GENERIC_CLASSIFICATION_TABLE
+            .iter()
+            .map(|rule| rule.branch)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            generic,
+            vec![
+                super::GenericClassificationBranch::CurrentPublish,
+                super::GenericClassificationBranch::Text,
+            ]
+        );
+        assert_eq!(
+            super::generic_classification_branch(true),
+            super::GenericClassificationBranch::CurrentPublish
+        );
+        assert_eq!(
+            super::generic_classification_branch(false),
+            super::GenericClassificationBranch::Text
         );
     }
 

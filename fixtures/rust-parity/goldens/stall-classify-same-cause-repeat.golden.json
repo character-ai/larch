@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "STALL_TRACKING=true\nSTALL_STEP=2\nPHASE=implementation\nBAIL_REASON=manifest-missing\nDETAIL=pytest failed\n"
+    },
+    "stall-recovery-attempts.env": {
+      "text": "version=1\nattempt_count=1\nattempt.1.signature=8dbffb4b3b2ca6235a138773299358b72f8d75f46f1380895e82f222aa53f049\n"
+    },
+    "stall-recovery-classification.env": {
+      "text": "FAILURE_CLASS=same-cause-repeat\nFAILURE_SIGNATURE=8dbffb4b3b2ca6235a138773299358b72f8d75f46f1380895e82f222aa53f049\nRESUME_HINT=none\nSTALL_STEP=2\nPHASE=implementation\nSTALL_TRACKING=true\nBAIL_REASON=manifest-missing\nBAIL_REASON_RAW=manifest-missing\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=same-cause-repeat\nDISPATCHER=unknown\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=same-cause-repeat\nFAILURE_SIGNATURE=8dbffb4b3b2ca6235a138773299358b72f8d75f46f1380895e82f222aa53f049\nRESUME_HINT=none\nSTALL_STEP=2\nPHASE=implementation\nSTALL_TRACKING=true\nBAIL_REASON=manifest-missing\nBAIL_REASON_RAW=manifest-missing\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=same-cause-repeat\nDISPATCHER=unknown\nCLASSIFICATION_FILE=<SANDBOX>/stall-recovery-classification.env\n"
+  }
+}

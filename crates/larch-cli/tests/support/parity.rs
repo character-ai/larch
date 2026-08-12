@@ -24,6 +24,11 @@ const DIAGNOSTIC_PATH_LIMIT: usize = 8;
 /// this one implementation-detail file while still rejecting a symlink there.
 const SESSION_ACTIVITY_LOCK_RELATIVE: &str =
     ".home/.cache/larch/sessions/.larch-session-activity.lock";
+/// A private, stable `flock` inode that serializes replacement of the
+/// stall-recovery attempt ledger. It has no wire meaning and is deliberately
+/// excluded from Python-era parity captures, while ordinary lock files remain
+/// observable.
+const STALL_RECOVERY_ATTEMPT_LOCK_NAME: &str = ".stall-recovery-attempts.lock";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
 static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
@@ -434,7 +439,11 @@ fn capture_directory(
         let relative = path
             .strip_prefix(root)
             .map_err(|error| format!("derive sandbox-relative path: {error}"))?;
-        if relative == Path::new(SESSION_ACTIVITY_LOCK_RELATIVE) {
+        if relative == Path::new(SESSION_ACTIVITY_LOCK_RELATIVE)
+            || relative
+                .file_name()
+                .is_some_and(|name| name == STALL_RECOVERY_ATTEMPT_LOCK_NAME)
+        {
             continue;
         }
         let key = path_key(relative)?;
@@ -689,18 +698,28 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn capture_tree_excludes_only_the_session_activity_lock_inode() {
+    fn capture_tree_excludes_only_named_private_lock_inodes() {
         let directory = tempdir().expect("parity sandbox");
         let root = directory.path();
         let lock = root.join(super::SESSION_ACTIVITY_LOCK_RELATIVE);
         fs::create_dir_all(lock.parent().expect("lock parent")).expect("lock parent");
         fs::write(&lock, "").expect("lock inode");
+        fs::write(root.join(super::STALL_RECOVERY_ATTEMPT_LOCK_NAME), "")
+            .expect("attempt lock inode");
+        let nested = root
+            .join("nested")
+            .join(super::STALL_RECOVERY_ATTEMPT_LOCK_NAME);
+        fs::create_dir_all(nested.parent().expect("nested lock parent"))
+            .expect("nested lock parent");
+        fs::write(&nested, "").expect("nested attempt lock inode");
         fs::write(root.join("unrelated.lock"), "kept").expect("ordinary artifact");
 
         let (files, side_effects) =
             super::capture_tree(root, &BTreeSet::new()).expect("capture tree");
 
         assert!(!files.contains_key(super::SESSION_ACTIVITY_LOCK_RELATIVE));
+        assert!(!files.contains_key(super::STALL_RECOVERY_ATTEMPT_LOCK_NAME));
+        assert!(!files.contains_key("nested/.stall-recovery-attempts.lock"));
         assert_eq!(
             files.get("unrelated.lock"),
             Some(&super::CapturedContent::Text("kept".to_owned()))

@@ -316,11 +316,27 @@ runtime owns process-identity capture, validated process-group termination, and
 `crates/larch-cli/src/kill_background.rs`). Rust-owned stall-state clearing
 consumes the Rust bgjob registry and process-identity validation directly.
 Rust-owned stall classification also consumes the Rust bgjob registry directly.
+Before a stall clear removes or rewrites anything, it preflights every fixed
+state layer and derived classification or issue artifact below the validated
+temporary root, and it completes the required abandoned-bgjob recovery proof.
+It then publishes a private, versioned pending-clear marker. The marker records
+which fixed files existed at the start; classification and outcome normalization
+refuse to treat the session as cleared while it remains. Each state-layer write
+preserves unrelated keys and has a read-back check. The marker is removed only
+after every intended state change and artifact removal verifies. An interruption
+therefore leaves a recognizable pending transaction: a retry requires each
+expected state layer to remain confined and parseable, treats an already-removed
+derived artifact as a completed phase, and converges without deleting unrelated
+state keys.
+
 Classification and attempt artifacts are published atomically below the
-validated temporary root, and attempt values reject line breaks. Escalation rows
-are appended under an exclusive lock through a non-symlink file descriptor;
-unsafe detail filenames cannot forge TSV fields, and the append repairs a
-missing terminal newline before writing one complete row.
+validated temporary root, and attempt values reject line breaks. Attempt-ledger
+read-modify-replace operations hold a stable private companion lock rather than
+locking the inode that atomic replacement swaps out; every successful append is
+read back before its count is returned. Escalation rows are appended under an
+exclusive lock through a non-symlink file descriptor; unsafe detail filenames
+cannot forge TSV fields, and the append repairs a missing terminal newline
+before writing one complete row.
 Unsafe canonical or fallback paths fail closed, while a genuine canonical write
 failure may use the existing bounded fallback artifacts. A fixed-string
 comparison, field equality, or closed parser must handle

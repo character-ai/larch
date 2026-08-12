@@ -7,8 +7,9 @@
 //! [`crate::file_io`] instead of re-deriving path safety here.
 
 use crate::{
-    PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain, open_confined_read,
-    parent_directory, read_utf8, safe_output_parent, write_confined_file, writer_target_allowed,
+    PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain, lock_private_file,
+    open_confined_read, parent_directory, read_utf8, safe_output_parent, write_confined_file,
+    writer_target_allowed,
 };
 use chrono::{SecondsFormat, Utc};
 use larch_core::{
@@ -25,11 +26,6 @@ use std::{
     time::UNIX_EPOCH,
 };
 use uuid::Uuid;
-
-#[cfg(unix)]
-use nix::fcntl::{Flock, FlockArg};
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
 /// Basename of the append-only cleanup audit trail written before removal.
 pub const CLEANUP_AUDIT_LOG_NAME: &str = "larch-cleanup-audit.log";
@@ -119,10 +115,7 @@ pub trait SessionSetupOwnerObserver {
 /// The lease is intentionally held only at the activation/removal boundary, so
 /// slow eligibility scans do not block a concurrent session from becoming live.
 pub struct SessionActivityLock {
-    #[cfg(unix)]
-    _flock: Flock<fs::File>,
-    #[cfg(not(unix))]
-    _file: fs::File,
+    _lock: crate::PrivateFileLock,
 }
 
 /// Acquire the session-activity lease below one canonical cache-sessions root.
@@ -143,49 +136,9 @@ pub fn lock_session_activity(root_path: &Path) -> Result<SessionActivityLock, St
     ensure_directory_chain(&root_path).map_err(|error| error.to_string())?;
     let root = TemporaryRoot::resolve(Some(&root_path)).map_err(|error| error.to_string())?;
     let target = root.path().join(SESSION_ACTIVITY_LOCK_NAME);
-    let confined = root
-        .confine(&target, PathIntent::Write)
-        .map_err(|error| error.to_string())?;
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(unix)]
-    {
-        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = options
-        .open(confined.path())
-        .map_err(|error| format!("session activity lock open failed: {error}"))?;
-    let confined = root
-        .confine(&target, PathIntent::Write)
-        .map_err(|error| error.to_string())?;
-    confined.revalidate().map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    let result = {
-        // Change the opened inode rather than resolving the pathname a third
-        // time, so a replacement cannot redirect this privacy mutation.
-        file.set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|error| format!("session activity lock permissions failed: {error}"))?;
-        let flock = Flock::lock(file, FlockArg::LockExclusive)
-            .map_err(|(_file, error)| format!("session activity lock failed: {error}"))?;
-        root.revalidate().map_err(|error| error.to_string())?;
-        confined.revalidate().map_err(|error| error.to_string())?;
-        let visible = fs::symlink_metadata(confined.path())
-            .map_err(|error| format!("session activity lock inspect failed: {error}"))?;
-        let opened = flock
-            .metadata()
-            .map_err(|error| format!("session activity lock descriptor inspect failed: {error}"))?;
-        if opened.dev() != visible.dev() || opened.ino() != visible.ino() {
-            Err("session activity lock changed while acquiring lease".to_owned())
-        } else {
-            Ok(SessionActivityLock { _flock: flock })
-        }
-    };
-    #[cfg(not(unix))]
-    let result = {
-        let _ = confined;
-        Ok(SessionActivityLock { _file: file })
-    };
-    result
+    let lock = lock_private_file(&root, &target)
+        .map_err(|error| format!("session activity lock failed: {error}"))?;
+    Ok(SessionActivityLock { _lock: lock })
 }
 
 /// Whether [`write_session_id`] minted a new identity or kept the existing one.

@@ -1907,6 +1907,21 @@ const STALL_TERMINAL_ARGS: &[&str] = &[
     "--primary-state-file",
     "{sandbox}/terminal.env",
 ];
+const STALL_GENERIC_CURRENT: &str = "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=approved\nSTALL_STEP=publish\nPHASE=publish\nSITE=design-publish\nTRIGGER=publish-tail-failed\nBAIL_REASON=failed-publish-tail\nEXIT_CODE=5\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=design-publish\nPUBLISH_ATTEMPT_ID=attempt-123\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\nLATEST_PHASE=publish\n";
+const STALL_GENERIC_FALLBACK: &str = "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=approved\nSTALL_STEP=step2b\nPHASE=postplan\nSITE=gate-b\nTRIGGER=failed\nBAIL_REASON=operator-action\nEXIT_CODE=4\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=split-path\n";
+const STALL_GENERIC_ARGS: &[&str] = &[
+    "--implement-tmpdir",
+    "{sandbox}",
+    "--primary-state-file",
+    "{sandbox}/terminal.env",
+    "--profile",
+    "generic",
+    "--artifact-prefix",
+    "design-failure",
+];
+const STALL_ABANDONED_REGISTRY: &str = "STEP=implement-step3-checks\nRUN_ID=parity-run\nTMPDIR=.\nLOG_DIR=.\nCLONE_PATH=.\nSTART_EPOCH=0\nBUDGET_S=600\nSTDOUT_LOG=dead.stdout.log\nSTDERR_LOG=dead.stderr.log\nRESULT_ENV=bgjob/dead.result.env\nDAEMON_PID=999999\nDAEMON_PGID=999999\nDAEMON_START_TIME=dead\nDAEMON_BIRTH_IDENTITY=\nDAEMON_COMMAND=dead\nDAEMON_EXPECTED=\nCHILD_PID=999998\nCHILD_PGID=999998\nCHILD_START_TIME=dead\nCHILD_BIRTH_IDENTITY=\nCHILD_COMMAND=dead\nCHILD_EXPECTED=\nCHILD_ALLOW_COMMAND_TRANSITION=true\n";
+const STALL_ABANDONED_ENVIRONMENT: &[(&str, &str)] =
+    &[("LARCH_BGJOB_REGISTRY_ROOT", "{sandbox}/registry")];
 const STALL_PUBLIC_ARGS: &[&str] = &[
     "--implement-tmpdir",
     "{sandbox}",
@@ -2114,6 +2129,16 @@ const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
     )
     .with_environment(STALL_DRY_RUN_ENVIRONMENT),
     StallRecoveryFixture::new("stall-classify-checks-signal", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env", "--bail-reason", "checks-child-failed", "--stall-step", "3", "--exit-code", "-15"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nPHASE=checks\n")]),
+    StallRecoveryFixture::new("stall-classify-no-stall", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env"], &[]),
+    StallRecoveryFixture::new("stall-classify-abandoned-checks", "classify", &["--implement-tmpdir", "{sandbox}"], &[("session-env.sh", "LARCH_RUN_ID=parity-run\n"), ("bgjob/.keep", ""), ("registry/parity-run-implement-step3-checks.env", STALL_ABANDONED_REGISTRY)])
+        .with_environment(STALL_ABANDONED_ENVIRONMENT),
+    StallRecoveryFixture::new("stall-classify-ordinary-text", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nSTALL_STEP=2\nPHASE=implementation\nBAIL_REASON=manifest-missing\nDETAIL=pytest failed\n")]),
+    StallRecoveryFixture::new("stall-classify-postmerge-failure", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nSTALL_STEP=postmerge-flush\nPHASE=postmerge\nMERGE_RESULT=merged\nBAIL_REASON=redaction-failed\nEXIT_CODE=4\n")]),
+    StallRecoveryFixture::new("stall-classify-postmerge-expected", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nSTALL_STEP=postmerge-flush\nPHASE=postmerge\nMERGE_RESULT=merged\nBAIL_REASON=preterminal-outcome\nEXIT_CODE=4\n")]),
+    StallRecoveryFixture::new("stall-classify-resume-hint", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/missing-attempts.env"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nSTALL_STEP=2\nPHASE=implementation\nBAIL_REASON=manifest-missing\n")]),
+    StallRecoveryFixture::new("stall-classify-same-cause-repeat", "classify", &["--implement-tmpdir", "{sandbox}", "--attempts-file", "{sandbox}/stall-recovery-attempts.env"], &[("ship-pr-state.sh", "STALL_TRACKING=true\nSTALL_STEP=2\nPHASE=implementation\nBAIL_REASON=manifest-missing\nDETAIL=pytest failed\n"), ("stall-recovery-attempts.env", "version=1\nattempt_count=1\nattempt.1.signature=8dbffb4b3b2ca6235a138773299358b72f8d75f46f1380895e82f222aa53f049\n")]),
+    StallRecoveryFixture::new("stall-classify-generic-current-publish", "classify", STALL_GENERIC_ARGS, &[("terminal.env", STALL_GENERIC_CURRENT)]),
+    StallRecoveryFixture::new("stall-classify-generic-fallback", "classify", STALL_GENERIC_ARGS, &[("terminal.env", STALL_GENERIC_FALLBACK)]),
     StallRecoveryFixture::new("stall-init-attempts", "init-attempts", &["--implement-tmpdir", "{sandbox}"], &[]),
     StallRecoveryFixture::new("stall-record-attempt", "record-attempt", &["--implement-tmpdir", "{sandbox}", "--class", "test-failure", "--signature", "sig-1", "--resume-hint", "step2-impl"], &[("stall-recovery-attempts.env", "version=1\r\ncreated_utc=2026-01-01T00:00:00+00:00\r\n")]),
     StallRecoveryFixture::new("stall-retry-policy", "retry-policy", &["--class", "transient-infra"], &[]),
@@ -2125,7 +2150,7 @@ const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
 
 #[test]
 #[rustfmt::skip]
-fn every_classifier_branch_matches_the_frozen_python_table() {
+fn every_text_classifier_branch_matches_the_frozen_python_table() {
     let python = find_executable("python3");
     let fixture = fixture_directory().join("stall_recovery_reference.py");
     for line in include_str!("../../../fixtures/rust-parity/stall-classifier-cases.tsv").lines().skip(1) {
@@ -2145,7 +2170,7 @@ fn every_classifier_branch_matches_the_frozen_python_table() {
 }
 
 #[test]
-fn stall_recovery_commands_have_reviewed_parity() {
+fn stall_recovery_commands_and_outer_classifier_branches_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
     let python = find_executable("python3");
     let python_fixture = fixture_directory.join("stall_recovery_reference.py");

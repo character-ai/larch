@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design-failure-classification.env": {
+      "text": "FAILURE_CLASS=recoverable\nFAILURE_SIGNATURE=6b09fc47c112ac3e5ad927b2303279d54f6c5ab092aa1744cb6e89ecfdaf557b\nRESUME_HINT=resume-post-plan-publish\nSTALL_STEP=publish\nPHASE=publish\nSTALL_TRACKING=true\nBAIL_REASON=failed-publish-tail\nBAIL_REASON_RAW=failed-publish-tail\nFAILURE_DETAIL_LOG=\nEXIT_CODE=5\nMATCHED_CLASSIFIER_PATTERN=design-publish-tail-current-attempt\nDISPATCHER=design-publish\nLATEST_PHASE=publish\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\n"
+    },
+    "terminal.env": {
+      "text": "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=approved\nSTALL_STEP=publish\nPHASE=publish\nSITE=design-publish\nTRIGGER=publish-tail-failed\nBAIL_REASON=failed-publish-tail\nEXIT_CODE=5\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=design-publish\nPUBLISH_ATTEMPT_ID=attempt-123\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\nLATEST_PHASE=publish\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=recoverable\nFAILURE_SIGNATURE=6b09fc47c112ac3e5ad927b2303279d54f6c5ab092aa1744cb6e89ecfdaf557b\nRESUME_HINT=resume-post-plan-publish\nSTALL_STEP=publish\nPHASE=publish\nSTALL_TRACKING=true\nBAIL_REASON=failed-publish-tail\nBAIL_REASON_RAW=failed-publish-tail\nFAILURE_DETAIL_LOG=\nEXIT_CODE=5\nMATCHED_CLASSIFIER_PATTERN=design-publish-tail-current-attempt\nDISPATCHER=design-publish\nLATEST_PHASE=publish\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\nCLASSIFICATION_FILE=<SANDBOX>/design-failure-classification.env\n"
+  }
+}

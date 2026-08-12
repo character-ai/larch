@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "ship-pr-state.sh": {
+      "text": "STALL_TRACKING=true\nSTALL_STEP=2\nPHASE=implementation\nBAIL_REASON=manifest-missing\n"
+    },
+    "stall-recovery-classification.env": {
+      "text": "FAILURE_CLASS=dispatch-failure\nFAILURE_SIGNATURE=b303e3393a672f7a039269c16daa18649076abe9c20b9df199de25b67baf225e\nRESUME_HINT=step2-impl\nSTALL_STEP=2\nPHASE=implementation\nSTALL_TRACKING=true\nBAIL_REASON=manifest-missing\nBAIL_REASON_RAW=manifest-missing\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=dispatch-bail-token\nDISPATCHER=unknown\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=dispatch-failure\nFAILURE_SIGNATURE=b303e3393a672f7a039269c16daa18649076abe9c20b9df199de25b67baf225e\nRESUME_HINT=step2-impl\nSTALL_STEP=2\nPHASE=implementation\nSTALL_TRACKING=true\nBAIL_REASON=manifest-missing\nBAIL_REASON_RAW=manifest-missing\nFAILURE_DETAIL_LOG=\nEXIT_CODE=unknown\nMATCHED_CLASSIFIER_PATTERN=dispatch-bail-token\nDISPATCHER=unknown\nCLASSIFICATION_FILE=<SANDBOX>/stall-recovery-classification.env\n"
+  }
+}

@@ -12,6 +12,7 @@ The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
 - terminal sentinel: `stall-recovery-terminal-report.env`
 - escalation-success sentinel: `stall-recovery-escalation-success.env`
 - classification state: `stall-recovery-classification.env`
+- pending clear transaction: `stall-recovery-clear.transaction.env` (private and present only while recovery is incomplete)
 - prompt-state sensitive supplement: `stall-recovery-sensitive-corpus.env`
 - issue input artifact: `stall-recovery-issue-input.md`
 - chat-print artifact: `stall-recovery-chat-print.md`
@@ -43,11 +44,11 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 ## Subcommands
 
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>` initializes retry history.
-- `classify --implement-tmpdir <path> ...` emits sanitized KVs and writes `stall-recovery-classification.env`. Only the shared marker in raw `BAIL_REASON` maps to `contract-failure` / `none` / `migration-governance-block`; evidence cannot trigger it.
-- `record-attempt ...` appends retry attempt history.
+- `classify --implement-tmpdir <path> ...` emits sanitized KVs and writes `stall-recovery-classification.env`. It refuses a pending clear transaction rather than publishing a classification from mixed state. Only the shared marker in raw `BAIL_REASON` maps to `contract-failure` / `none` / `migration-governance-block`; evidence cannot trigger it.
+- `record-attempt ...` appends retry attempt history under a stable private companion lock, so atomic ledger replacement preserves every successful concurrent append. It refuses a malformed existing ledger rather than rewriting it.
 - `retry-policy --class <class>` emits the retry-cap table projection. Retry caps are part of the public recovery policy.
 - `record-escalation --implement-tmpdir <path> --site <token> --trigger <token> --step <token> --phase <token> [--dispatcher <token>] [--exit-code <n>] [--failure-detail-log <path>]` appends one canonical ledger row. The canonical ledger path is always `stall-recovery-escalation-ledger.tsv`. `--failure-detail-log` is optional evidence and never blocks ledger recording. Structural detail-log misses are skipped with `detail_log_skipped=failure-detail-log-*` on the ledger row while escalation still succeeds. Oversize detail logs are truncated to the optional-evidence cap and attached through a tmpdir-local sidecar when materialization succeeds; truncation failure still succeeds with `detail_log_skipped=failure-detail-log-truncate-failed`. `hard_fail` and `Tool Failure: record-escalation` are reserved for token validation failures, unsafe ledger, fallback, or marker paths, and total recording failure when canonical append fails and fallback or marker evidence cannot be written. Token-validation failures name the failing kind and a sanitized value in both stderr and the Tool Failure `reason` field (`token-validation-failed kind=<kind> value=<sanitized>`). Canonical-ledger append failure alone is not a Tool Failure when fallback evidence is written successfully; it returns `0` and emits `ESCALATION_FALLBACK_WRITTEN=true`. Append failures can still write fallback evidence or the record-failure marker.
-- `normalize-outcome --implement-tmpdir <path>` is the shared final-outcome API used by `write-final-report.sh` and Step 18a.5. It emits `IMPLEMENT_NORMALIZED_OUTCOME=<token>`, `IMPLEMENT_OUTCOME_SUCCEEDED=true|false`, stall-tracking layer diagnostics, and the state fields used in the decision.
+- `normalize-outcome --implement-tmpdir <path>` is the shared final-outcome API used by `write-final-report.sh` and Step 18a.5. It refuses a pending clear transaction and otherwise emits `IMPLEMENT_NORMALIZED_OUTCOME=<token>`, `IMPLEMENT_OUTCOME_SUCCEEDED=true|false`, stall-tracking layer diagnostics, and the state fields used in the decision.
 - `compose-report --report-kind terminal-failure|escalation-success --surface issue-input|chat-print ...` is the single public report-rendering API. It writes Tier A issue input or Tier B chat-print output and emits normalized report env fields.
 - `dedup-tier-a-report --implement-tmpdir <path>` runs the normalized Tier A exact-signature dedup pre-pass against the same current repository that `/larch:issue` will use.
 - `normalize-file-failure-report-env ...` maps cross-repo helper `FILE_FAILURE_REPORT_*` output to canonical `STALL_RECOVERY_REPORT_*` output.
@@ -56,7 +57,7 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
 - `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles through the Rust runtime.
 
-`clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
+`clear-stall` preflights every durable stall layer plus `stall-recovery-classification.env` and `stall-recovery-issue.env` before any destructive mutation. It also finishes required abandoned-bgjob recovery before publishing a private pending transaction marker. The marker records the start inventory, remains through every atomic state rewrite and derived-artifact removal, and is removed only after read-back verifies the completed clear. An interrupted clear therefore remains recognizable to `classify` and `normalize-outcome`; retry resumes its incomplete phases, preserves unrelated state keys, and emits `CLEARED=true` only after all expected layers have `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 
 `bug-body`, `bug-comment`, and `issue-input-file` are retired report surfaces.
 

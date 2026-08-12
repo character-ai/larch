@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design-failure-classification.env": {
+      "text": "FAILURE_CLASS=unrecoverable\nFAILURE_SIGNATURE=3ba300e7d0560d15d00cf6ec4c2b97844c91845b687136f2e7517c2f66f8c2d1\nRESUME_HINT=none\nSTALL_STEP=step2b\nPHASE=postplan\nSTALL_TRACKING=true\nBAIL_REASON=operator-action\nBAIL_REASON_RAW=operator-action\nFAILURE_DETAIL_LOG=\nEXIT_CODE=4\nMATCHED_CLASSIFIER_PATTERN=fallback\nDISPATCHER=split-path\n"
+    },
+    "terminal.env": {
+      "text": "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=approved\nSTALL_STEP=step2b\nPHASE=postplan\nSITE=gate-b\nTRIGGER=failed\nBAIL_REASON=operator-action\nEXIT_CODE=4\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=split-path\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FAILURE_CLASS=unrecoverable\nFAILURE_SIGNATURE=3ba300e7d0560d15d00cf6ec4c2b97844c91845b687136f2e7517c2f66f8c2d1\nRESUME_HINT=none\nSTALL_STEP=step2b\nPHASE=postplan\nSTALL_TRACKING=true\nBAIL_REASON=operator-action\nBAIL_REASON_RAW=operator-action\nFAILURE_DETAIL_LOG=\nEXIT_CODE=4\nMATCHED_CLASSIFIER_PATTERN=fallback\nDISPATCHER=split-path\nCLASSIFICATION_FILE=<SANDBOX>/design-failure-classification.env\n"
+  }
+}
