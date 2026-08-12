@@ -3,11 +3,11 @@
 use crate::github::{GitHubCompletionError, OctocrabGitHubService, octocrab_status};
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult, GitHubIssueScan,
-    GitHubIssueSearch, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome,
-    GitHubListStop, GitHubOperationError, GitHubOperationErrorKind, GitHubRepository,
-    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, ProcessCancellation,
-    resolve_issue_list,
+    GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult,
+    GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
+    GitHubLabelCreate, GitHubListOutcome, GitHubListStop, GitHubOperationError,
+    GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef, GitHubService,
+    GitHubTransportPolicy, ProcessCancellation, resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::Serialize;
@@ -72,7 +72,7 @@ impl GitHubService for OctocrabGitHubService {
         cancellation: &'a dyn ProcessCancellation,
     ) -> GitHubFuture<'a, GitHubIssueListResult> {
         Box::pin(async move {
-            self.guarded(cancellation, async {
+            let operation = async {
                 validate_repo(&request.repo)?;
                 validate_limit(request.limit, self.policy)?;
                 for label in &request.labels {
@@ -84,7 +84,7 @@ impl GitHubService for OctocrabGitHubService {
                     GitHubIssueState::All => params::State::All,
                 };
                 let first = self
-                    .read_with_retry(cancellation, RateBucket::Core, || async {
+                    .read_issue_page(cancellation, RateBucket::Core, || async {
                         self.client
                             .issues(request.repo.owner(), request.repo.name())
                             .list()
@@ -104,8 +104,8 @@ impl GitHubService for OctocrabGitHubService {
                     cancellation,
                 )
                 .await
-            })
-            .await
+            };
+            self.guard_issue_list(cancellation, operation).await
         })
     }
 
@@ -126,7 +126,7 @@ impl GitHubService for OctocrabGitHubService {
                     request.repo.name()
                 );
                 let first = self
-                    .read_with_retry(cancellation, RateBucket::Search, || async {
+                    .read_issue_page(cancellation, RateBucket::Search, || async {
                         self.client
                             .search()
                             .issues_and_pull_requests(&query)
@@ -509,6 +509,46 @@ impl OctocrabGitHubService {
         }
     }
 
+    /// Apply the policy-selected deadline around an issue-list scan.
+    ///
+    /// Ordinary lists share one 60-second operation deadline. The migration
+    /// audit is the documented exhaustive-history exception: each page read is
+    /// individually guarded below, while its CLI owner enforces the bounded
+    /// three-minute aggregate snapshot deadline.
+    async fn guard_issue_list<T, F>(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        operation: F,
+    ) -> Result<T, GitHubOperationError>
+    where
+        F: Future<Output = Result<T, GitHubOperationError>> + Send,
+        T: Send,
+    {
+        match self.policy.issue_list_timeout_scope() {
+            GitHubIssueListTimeoutScope::EntireList => self.guarded(cancellation, operation).await,
+            GitHubIssueListTimeoutScope::PerPage => operation.await,
+        }
+    }
+
+    /// Fetch one issue-list page with its retries inside the ordinary deadline.
+    async fn read_issue_page<T, F, Fut>(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        rate_bucket: RateBucket,
+        operation: F,
+    ) -> Result<T, GitHubOperationError>
+    where
+        F: FnMut() -> Fut + Send,
+        Fut: Future<Output = octocrab::Result<T>> + Send,
+        T: Send,
+    {
+        self.guarded(
+            cancellation,
+            self.read_with_retry(cancellation, rate_bucket, operation),
+        )
+        .await
+    }
+
     async fn read_with_retry<T, F, Fut>(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -516,8 +556,9 @@ impl OctocrabGitHubService {
         mut operation: F,
     ) -> Result<T, GitHubOperationError>
     where
-        F: FnMut() -> Fut,
-        Fut: Future<Output = octocrab::Result<T>>,
+        F: FnMut() -> Fut + Send,
+        Fut: Future<Output = octocrab::Result<T>> + Send,
+        T: Send,
     {
         for attempt in 0..READ_ATTEMPTS {
             if cancellation.is_cancelled() {
@@ -637,7 +678,7 @@ impl OctocrabGitHubService {
             }
             validate_next(&next.to_string())?;
             page = self
-                .read_with_retry(cancellation, rate_bucket, || {
+                .read_issue_page(cancellation, rate_bucket, || {
                     self.client.get(next.to_string(), None::<&()>)
                 })
                 .await?;
@@ -1109,6 +1150,20 @@ mod tests {
         (OctocrabGitHubService::with_test_client(client), server)
     }
 
+    fn service_with_policy(policy: GitHubTransportPolicy) -> OctocrabGitHubService {
+        let client = octocrab::Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri("http://127.0.0.1:1/")
+            .expect("test base URI")
+            .upload_uri("http://127.0.0.1:1/")
+            .expect("test upload URI")
+            .build()
+            .expect("test client");
+        let mut service = OctocrabGitHubService::with_test_client(client);
+        service.policy = policy;
+        service
+    }
+
     fn comment_json() -> Value {
         let issue = serde_json::to_value(issue_model()).expect("serialize issue fixture");
         json!({
@@ -1384,5 +1439,71 @@ mod tests {
         assert_eq!(result.raw_rows_scanned, 2);
         assert!(!result.truncated);
         server.join().expect("stub completed");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn migration_audit_issue_list_allows_per_page_timeouts_within_aggregate_deadline() {
+        let service = service_with_policy(GitHubTransportPolicy::migration_audit());
+        let cancellation = Cancellation::new();
+        let started = tokio::time::Instant::now();
+
+        let result = tokio::time::timeout(Duration::from_secs(180), async {
+            service
+                .guard_issue_list(&cancellation, async {
+                    for _ in 0..2 {
+                        service
+                            .read_issue_page(&cancellation, RateBucket::Core, || async {
+                                tokio::time::sleep(Duration::from_secs(31)).await;
+                                Ok::<(), octocrab::Error>(())
+                            })
+                            .await?;
+                    }
+                    Ok::<(), GitHubOperationError>(())
+                })
+                .await
+        })
+        .await;
+
+        assert_eq!(result, Ok(Ok(())));
+        assert_eq!(
+            tokio::time::Instant::now().duration_since(started),
+            Duration::from_secs(62)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn migration_audit_issue_page_keeps_the_ordinary_deadline() {
+        let service = service_with_policy(GitHubTransportPolicy::migration_audit());
+        let cancellation = Cancellation::new();
+
+        let error = service
+            .guard_issue_list(&cancellation, async {
+                service
+                    .read_issue_page(&cancellation, RateBucket::Core, || async {
+                        tokio::time::sleep(Duration::from_secs(61)).await;
+                        Ok::<(), octocrab::Error>(())
+                    })
+                    .await
+            })
+            .await
+            .expect_err("one slow page must fail before the aggregate deadline");
+
+        assert_eq!(error.kind(), GitHubOperationErrorKind::DeadlineExceeded);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ordinary_issue_list_keeps_one_overall_deadline() {
+        let service = service_with_policy(GitHubTransportPolicy::github_com());
+        let cancellation = Cancellation::new();
+
+        let error = service
+            .guard_issue_list(&cancellation, async {
+                tokio::time::sleep(Duration::from_secs(61)).await;
+                Ok::<(), GitHubOperationError>(())
+            })
+            .await
+            .expect_err("ordinary issue list must retain its overall deadline");
+
+        assert_eq!(error.kind(), GitHubOperationErrorKind::DeadlineExceeded);
     }
 }

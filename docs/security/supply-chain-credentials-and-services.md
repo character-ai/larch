@@ -546,10 +546,12 @@ GitHub credential variables.
 The read-only migration-governance aggregate is the documented
 exhaustive-history exception: its dedicated typed client policy admits at most
 100 pages and 10,000 raw issue-list rows, with a 256 KiB per-field limit for
-historical plan bodies and a fixed three-minute aggregate deadline. It retains
-the standard per-request, response-byte, nesting, and retry limits, and refuses
-a larger corpus or field rather than silently dropping historical managed
-leaves; ordinary GitHub operations retain the smaller general transport bound.
+historical plan bodies and a fixed three-minute aggregate deadline. Each page
+read, including its bounded retry sequence, retains the ordinary 60-second
+deadline. It retains the standard response-byte and nesting limits, and refuses
+a larger corpus, field, or deadline overrun rather than silently dropping
+historical managed leaves; ordinary GitHub operations retain the smaller general
+transport bound.
 
 Repository, issue, comment, label, and search responses are untrusted data. The
 Rust operation adapter converts Octocrab models immediately into larch-owned
