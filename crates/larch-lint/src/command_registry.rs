@@ -148,12 +148,12 @@ pub fn python_retirement_findings_for_issues(
 /// Returns an error when the command registry is unavailable or malformed.
 pub fn command_audit_selectors(
     repository: &Repository,
-) -> Result<Vec<larch_core::CommandAuditKey>, LintError> {
+) -> Result<Vec<CommandAuditSelector>, LintError> {
     let ledger = read_ledger(repository)?;
     let commands = command_map(&ledger)?;
     Ok(commands
         .keys()
-        .map(|key| larch_core::CommandAuditKey {
+        .map(|key| CommandAuditSelector {
             domain: key.domain.clone(),
             verb: key.verb.clone(),
         })
@@ -186,6 +186,12 @@ pub fn issue_in_process_python_findings(
     findings.sort();
     findings.dedup();
     Ok(findings)
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CommandAuditSelector {
+    pub domain: String,
+    pub verb: String,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]

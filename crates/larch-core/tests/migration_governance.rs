@@ -3,13 +3,14 @@
 use chrono::{TimeZone, Utc};
 use larch_core::{
     BlockerSnapshotRow, FreshnessVerdict, GovernanceIssueSnapshot, ImplementationLease,
-    OwnerAdmissionRequest, OwnerAdmissionVerdict, ParityVerdict, PlanReceipt,
-    REASON_MISSING_NATIVE, REASON_STALE_BLOCKER_SNAPSHOT, REASON_STALE_OWNER_SNAPSHOT,
-    REASON_STALE_PLAN_BASE_SCOPE, REASON_STALE_PLAN_BODY, ReceiptFreshnessRequest, RepositoryName,
-    ScopeFile, ScopeSnapshot, compare_blocker_parity, compose_named_block, declared_scope_paths,
-    evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal, hash_blocker_rows,
-    hash_owner_rows, hash_plan_block, migration_requires_owner_block, parse_native_blocker_refs,
-    parse_owner_block, parse_receipt, upsert_implementation_lease, upsert_receipt,
+    OwnerAdmissionRequest, OwnerAdmissionVerdict, ParityVerdict, PlanReceipt, PlanScopeDeclaration,
+    PlanScopeKind, REASON_MISSING_NATIVE, REASON_STALE_BLOCKER_SNAPSHOT,
+    REASON_STALE_OWNER_SNAPSHOT, REASON_STALE_PLAN_BASE_SCOPE, REASON_STALE_PLAN_BODY,
+    ReceiptFreshnessRequest, RepositoryName, ScopeFile, ScopeSnapshot, compare_blocker_parity,
+    compose_named_block, declared_scope_paths, evaluate_governance_gate, evaluate_owner_admission,
+    format_gate_refusal, hash_blocker_rows, hash_owner_rows, hash_plan_block,
+    migration_requires_owner_block, parse_native_blocker_refs, parse_owner_block, parse_receipt,
+    plan_scope_declarations, upsert_implementation_lease, upsert_receipt,
     validate_receipt_freshness,
 };
 
@@ -83,6 +84,21 @@ fn blockers_receipts_and_scope_paths_match_python_fixtures() {
             ],
         ),
         vec!["docs/a.md", "docs/b.md", "docs/c.md", "docs/d.txt"]
+    );
+    assert_eq!(
+        plan_scope_declarations(
+            "### UPDATED: `docs/a b.md` (generated)\n### NEW: docs/*.txt\n```markdown\n### REWRITTEN: ignored.md\n```\n",
+        ),
+        vec![
+            PlanScopeDeclaration {
+                kind: PlanScopeKind::Updated,
+                path: "docs/a b.md".to_owned(),
+            },
+            PlanScopeDeclaration {
+                kind: PlanScopeKind::New,
+                path: "docs/*.txt".to_owned(),
+            },
+        ]
     );
 }
 #[test]

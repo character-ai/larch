@@ -787,16 +787,16 @@ impl GitHubTransportPolicy {
     /// pages and 10,000 raw REST rows. Historical issue plans can legitimately
     /// exceed an interactive issue body's 64 KiB cap, so it raises that one
     /// field cap to 256 KiB. A full repository corpus can require more than
-    /// the standard interactive aggregate deadline, so it uses a separately
-    /// bounded three-minute deadline while preserving the standard
-    /// per-request, response-byte, nesting, and retry limits.
+    /// the standard interactive aggregate deadline, so callers pair this
+    /// policy with [`Self::migration_audit_aggregate_timeout`] while preserving
+    /// the standard per-request, response-byte, nesting, and retry limits.
     #[must_use]
     pub const fn migration_audit() -> Self {
         Self {
             connect_timeout: Duration::from_secs(10),
             read_timeout: Duration::from_secs(30),
             write_timeout: Duration::from_secs(30),
-            overall_timeout: Duration::from_secs(180),
+            overall_timeout: Duration::from_secs(60),
             limits: GitHubResponseLimits {
                 body_bytes: 2 * 1024 * 1024,
                 pages: 100,
@@ -805,6 +805,16 @@ impl GitHubTransportPolicy {
                 nesting_depth: 64,
             },
         }
+    }
+
+    /// Fixed deadline for one complete migration-audit snapshot.
+    ///
+    /// This is intentionally separate from the client's per-operation timeout:
+    /// a slow individual request keeps the ordinary 60-second bound, while the
+    /// complete exhaustive-history read may consume up to three minutes.
+    #[must_use]
+    pub const fn migration_audit_aggregate_timeout() -> Duration {
+        Duration::from_secs(180)
     }
 
     #[must_use]
@@ -1487,7 +1497,11 @@ mod tests {
         assert_eq!(audit.connect_timeout(), standard.connect_timeout());
         assert_eq!(audit.read_timeout(), standard.read_timeout());
         assert_eq!(audit.write_timeout(), standard.write_timeout());
-        assert_eq!(audit.overall_timeout(), Duration::from_secs(180));
+        assert_eq!(audit.overall_timeout(), standard.overall_timeout());
+        assert_eq!(
+            GitHubTransportPolicy::migration_audit_aggregate_timeout(),
+            Duration::from_secs(180)
+        );
         assert_eq!(audit.limits().body_bytes(), standard.limits().body_bytes());
         assert_eq!(audit.limits().string_bytes(), 256 * 1024);
         assert_eq!(

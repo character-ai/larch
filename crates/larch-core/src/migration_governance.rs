@@ -65,7 +65,7 @@ static CREATION_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static PLAN_HEADING_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^(?:##|###)[ \t]+(?:NEW|UPDATED|REWRITTEN|MAY_UPDATE)(?:[ \t]*:[ \t]*(.+?)|[ \t]+\[([^]\r\n]+)\][ \t]*:?)[ \t]*$",
+        r"^(?:##|###)[ \t]+(?P<kind>NEW|UPDATED|REWRITTEN|MAY_UPDATE)(?:[ \t]*:[ \t]*(?P<colon>.+?)|[ \t]+\[(?P<bracket>[^]\r\n]+)\][ \t]*:?)[ \t]*$",
     )
     .expect("plan heading expression is valid")
 });
@@ -164,6 +164,18 @@ impl std::error::Error for ReceiptDefect {}
 pub struct ScopeFile {
     pub path: String,
     pub object_id: String,
+}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum PlanScopeKind {
+    New,
+    Updated,
+    Rewritten,
+    MayUpdate,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanScopeDeclaration {
+    pub kind: PlanScopeKind,
+    pub path: String,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScopeFingerprintDefect {
@@ -507,23 +519,43 @@ pub fn owner_keys_from_rows(rows: &[String]) -> Vec<String> {
         .into_iter()
         .collect()
 }
+/// Parse the fence-aware file declarations from an issue plan.
+///
+/// This intentionally retains unsafe paths so the effect boundary can reject
+/// symlink and filesystem escapes with the same diagnostic contract.
 #[must_use]
-pub fn declared_scope_paths(plan_inner: &str, tracked_paths: &[String]) -> Vec<String> {
+pub fn plan_scope_declarations(plan_inner: &str) -> Vec<PlanScopeDeclaration> {
     let lines = split_text_lines(plan_inner);
     let fenced = balanced_fence_line_indices(&lines);
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !fenced.contains(index))
+        .filter_map(|(_, line)| {
+            let captures = PLAN_HEADING_RE.captures(line)?;
+            let kind = match captures.name("kind")?.as_str() {
+                "NEW" => PlanScopeKind::New,
+                "UPDATED" => PlanScopeKind::Updated,
+                "REWRITTEN" => PlanScopeKind::Rewritten,
+                "MAY_UPDATE" => PlanScopeKind::MayUpdate,
+                _ => return None,
+            };
+            let raw_path = captures
+                .name("colon")
+                .or_else(|| captures.name("bracket"))
+                .map_or("", |capture| capture.as_str());
+            Some(PlanScopeDeclaration {
+                kind,
+                path: heading_path_token(raw_path),
+            })
+        })
+        .collect()
+}
+#[must_use]
+pub fn declared_scope_paths(plan_inner: &str, tracked_paths: &[String]) -> Vec<String> {
     let mut paths = BTreeSet::new();
-    for (index, line) in lines.iter().enumerate() {
-        if fenced.contains(&index) {
-            continue;
-        }
-        let Some(captures) = PLAN_HEADING_RE.captures(line) else {
-            continue;
-        };
-        let path = captures
-            .get(1)
-            .or_else(|| captures.get(2))
-            .map_or("", |item| item.as_str());
-        let token = heading_path_token(path);
+    for declaration in plan_scope_declarations(plan_inner) {
+        let token = declaration.path;
         if unsafe_path(&token) {
             continue;
         }

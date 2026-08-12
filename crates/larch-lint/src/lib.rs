@@ -22,7 +22,7 @@ mod rules {
 pub use cli::run_cli_with_io;
 pub use cli::{GitleaksArguments, GitleaksMode, LintArguments, LintDispatch, run_cli};
 pub use command_registry::{
-    audit_migration_issue_commands, audit_migration_issue_commands_content,
+    CommandAuditSelector, audit_migration_issue_commands, audit_migration_issue_commands_content,
     command_audit_selectors, render_command_progress, sync_command_registry,
 };
 pub use metadata::{

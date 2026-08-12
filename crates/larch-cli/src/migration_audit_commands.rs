@@ -25,11 +25,12 @@ use larch_core::{
     CommandAuditIssue, DependencySnapshot, GitHubIssue, GitHubIssueList, GitHubIssueListMode,
     GitHubIssueState, GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, GitPath,
     MigrationAuditRequest, MigrationAuditSnapshot, MigrationIssueSnapshot, PlanAuditEvidence,
-    RepositoryAuditFinding, RepositoryFindingSource, RepositoryRead, Revision, SafeText, ScopeFile,
-    ScopeSnapshot, build_command_audit_issue, build_migration_audit_report, declared_scope_paths,
-    issue_plan_marker_defect, parse_named_block, parse_native_blocker_refs, parse_owner_block,
-    parse_receipt, python_int, render_command_audit_input, render_migration_audit_json,
-    render_migration_audit_table, validate_plan_facets,
+    PlanScopeKind, RepositoryAuditFinding, RepositoryFindingSource, RepositoryRead, Revision,
+    SafeText, ScopeFile, ScopeSnapshot, build_command_audit_issue, build_migration_audit_report,
+    declared_scope_paths, issue_plan_marker_defect, parse_named_block, parse_native_blocker_refs,
+    parse_owner_block, parse_receipt, plan_scope_declarations, python_int,
+    render_command_audit_input, render_migration_audit_json, render_migration_audit_table,
+    validate_plan_facets,
 };
 use regex::Regex;
 use std::sync::LazyLock;
@@ -61,13 +62,6 @@ static CHIEF_REVERSED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"#([1-9][0-9]*)[ \t]+chief[ \t]+umbrella")
         .expect("chief reversed expression is valid")
 });
-static PLAN_HEADING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"^(?:##|###)[ \t]+(?P<kind>NEW|UPDATED|REWRITTEN|MAY_UPDATE)(?:[ \t]*:[ \t]*(?P<colon>.+?)|[ \t]+\[(?P<bracket>[^]\r\n]+)\][ \t]*:?)[ \t]*$",
-    )
-    .expect("plan heading expression is valid")
-});
-
 #[derive(Debug)]
 struct Arguments {
     repository: String,
@@ -268,7 +262,7 @@ fn run_audit(arguments: &Arguments) -> Result<bool, String> {
             cancellation,
             &github_repository,
             arguments.chief_issue,
-            transport_policy.overall_timeout(),
+            GitHubTransportPolicy::migration_audit_aggregate_timeout(),
         )
         .await
     })
@@ -547,7 +541,13 @@ fn collect_repository_findings(
     let registry_findings = lint_rule_findings(&repository, "command-registry")?;
     let runtime_findings = lint_rule_findings(&repository, "production-cargo-run")?;
     let selectors = larch_lint::command_audit_selectors(&repository)
-        .map_err(|_| "command registry evidence unavailable".to_owned())?;
+        .map_err(|_| "command registry evidence unavailable".to_owned())?
+        .into_iter()
+        .map(|selector| larch_core::CommandAuditKey {
+            domain: selector.domain,
+            verb: selector.verb,
+        })
+        .collect::<Vec<_>>();
     let rows = snapshot
         .open_issues
         .iter()
@@ -633,24 +633,9 @@ fn validate_plan(repo_root: &Path, plan: &str, tracked_paths: &[String]) -> Vec<
 
 fn plan_path_defects(repo_root: &Path, plan: &str, tracked_paths: &[String]) -> BTreeSet<String> {
     let mut defects = BTreeSet::new();
-    let lines = plan
-        .split('\n')
-        .map(|line| line.trim_end_matches('\r'))
-        .collect::<Vec<_>>();
-    let fenced = larch_core::balanced_fence_line_indices(&lines);
     let tracked = tracked_paths.iter().cloned().collect::<BTreeSet<_>>();
-    for (index, line) in lines.iter().enumerate() {
-        if fenced.contains(&index) {
-            continue;
-        }
-        let Some(captures) = PLAN_HEADING_RE.captures(line) else {
-            continue;
-        };
-        let raw_path = captures
-            .name("colon")
-            .or_else(|| captures.name("bracket"))
-            .map_or("", |capture| capture.as_str());
-        let path = heading_path_token(raw_path);
+    for declaration in plan_scope_declarations(plan) {
+        let path = declaration.path;
         if unsafe_plan_path(&path) {
             let _ = defects.insert("unsafe-plan-path".to_owned());
             continue;
@@ -660,8 +645,7 @@ fn plan_path_defects(repo_root: &Path, plan: &str, tracked_paths: &[String]) -> 
             let _ = defects.insert("unsafe-plan-path".to_owned());
             continue;
         }
-        let kind = captures.name("kind").map_or("", |capture| capture.as_str());
-        if kind == "NEW" {
+        if declaration.kind == PlanScopeKind::New {
             if tracked.contains(&path) || leaf.exists() {
                 let _ = defects.insert("existing-new-plan-path".to_owned());
             }
@@ -675,23 +659,6 @@ fn plan_path_defects(repo_root: &Path, plan: &str, tracked_paths: &[String]) -> 
         }
     }
     defects
-}
-
-fn heading_path_token(raw: &str) -> String {
-    let raw = raw.trim();
-    if let Some(start) = raw.find('`')
-        && let Some(end) = raw[start + 1..].find('`')
-    {
-        return raw[start + 1..start + 1 + end].trim().to_owned();
-    }
-    raw.split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .split('(')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_owned()
 }
 
 fn unsafe_plan_path(path: &str) -> bool {
@@ -865,8 +832,7 @@ mod tests {
 
     use super::{
         TableOutput, collect_remote_snapshot, collect_remote_snapshot_with_deadline,
-        diagnostic_detail, executable_leaf, heading_path_token, is_glob, unsafe_plan_path,
-        write_output,
+        diagnostic_detail, executable_leaf, is_glob, unsafe_plan_path, write_output,
     };
     use crate::github_service::{with_github_service, with_test_github_service};
     use larch_adapters::github::OctocrabGitHubService;
@@ -895,14 +861,6 @@ mod tests {
 
     #[test]
     fn scope_path_tokens_follow_the_legacy_heading_rule() {
-        assert_eq!(
-            heading_path_token("`docs/a b.md` (generated)"),
-            "docs/a b.md"
-        );
-        assert_eq!(
-            heading_path_token("src/main.rs (entrypoint)"),
-            "src/main.rs"
-        );
         assert!(unsafe_plan_path("../outside"));
         assert!(unsafe_plan_path("~/outside"));
         assert!(is_glob("crates/**/*.rs"));
