@@ -129,7 +129,7 @@ umbrella that owns their remaining consumers:
 | `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176 and completed by corrective leaf #8347, which removed the retained Python mutation and caller paths. |
 | `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Live callers are the `/implement` prompts, the implementer agent base, `review-and-fix`, and the cross-repo failure-report script. |
 | `render reviewer`, `specialist`, `voter`, `findings-view`, `plan-review` | 5 | #7679 | Review-panel and voting prompt renderers, named by #8091 as staying with the review umbrella. |
-| `render lane-status` | 1 | #7678 | Vendor lane orchestration. |
+| `render lane-status` | 1 | #7679 | Shares the review-rendering owner with the other review-panel renderers. |
 | `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #7681 | Step 2 dispatch and PR line counts. |

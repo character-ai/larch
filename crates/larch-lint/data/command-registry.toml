@@ -5845,7 +5845,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7678
+planning_issue = 7679
 
 [[commands]]
 domain = "render"
