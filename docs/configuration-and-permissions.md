@@ -28,6 +28,7 @@ named domain issue cuts them over atomically.
 
 ```json
 "Skill(alias)",
+"Skill(audit-umbrella)",
 "Skill(block-issue)",
 "Skill(bug)",
 "Skill(cleanup)",
@@ -39,6 +40,7 @@ named domain issue cuts them over atomically.
 "Skill(implement)",
 "Skill(issue)",
 "Skill(larch:alias)",
+"Skill(larch:audit-umbrella)",
 "Skill(larch:block-issue)",
 "Skill(larch:bug)",
 "Skill(larch:cleanup)",
@@ -68,6 +70,8 @@ Strict-permissions consumers invoking `/rejected-analysis` also need `Skill(issu
 Strict-permissions consumers invoking `/debate` need `Skill(issue)` and `Skill(larch:issue)` for free-form source creation and proposal filing. They must also expose the Agent and `SendMessage` tool surfaces for the persistent Claude seat. Missing `SendMessage` is a pre-title hard failure, not a fresh-agent fallback.
 
 Strict-permissions consumers invoking `/complete-umbrella` also need `Skill(issue)` and `Skill(larch:issue)` for audit-gap filing. Its leaf subprocess uses the fixed Claude CLI tool list `Bash,Read,Edit,Write,Glob,Grep,Agent`; slash commands are disabled, so no child Skill permission is used. `Agent` is available only to the leaf orchestrator for four serial phase contexts and to the ship phase for a conditional CI fixer. The top-level skill does not call it. The original `workflow-write` profile remains unchanged without `Agent`.
+
+`/audit-umbrella` has no child Skill invocation. It needs its own paired Skill entries plus `Bash`, `Read`, `Write`, `Grep`, and `Glob` permission surfaces. Its Write hook permits scratch artifacts only below the temporary session root while it is active.
 
 Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, all `larch:`-prefixed entries sort **before** `Skill(research)` and `Skill(review)` (whose first letters are `r` and `r`). Sort the whole block with `sort -u` to verify if you extend it. This section reflects currently-documented Claude Code behavior; consult the upstream docs above if matching semantics change in a future release.
 

@@ -10,7 +10,10 @@ use larch_adapters::{
     github::OctocrabGitHubService,
     runtime::{Cancellation, LarchRuntime},
 };
-use larch_core::GitHubTransportPolicy;
+use larch_core::{
+    GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueState, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy,
+};
 use std::env;
 
 #[cfg(test)]
@@ -49,6 +52,37 @@ impl ServiceFailure {
         match self {
             Self::Setup(detail) | Self::Operation(detail) => detail,
         }
+    }
+}
+
+/// List the complete issue history admitted by the service's transport policy.
+///
+/// # Errors
+///
+/// Returns an error when GitHub rejects the list request or the bounded
+/// transport cannot provide a complete history.
+pub async fn list_exhaustive_issues(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+) -> Result<Vec<GitHubIssue>, String> {
+    let listed = service
+        .list_issues(
+            &GitHubIssueList {
+                repo: repository.clone(),
+                state: GitHubIssueState::All,
+                labels: Vec::new(),
+                limit: service.transport_policy().limits().items(),
+                mode: GitHubIssueListMode::Exhaustive,
+            },
+            cancellation,
+        )
+        .await
+        .map_err(|_error| "exhaustive issue history is unavailable".to_owned())?;
+    if listed.truncated {
+        Err("exhaustive issue history was truncated".to_owned())
+    } else {
+        Ok(listed.issues)
     }
 }
 

@@ -74,6 +74,38 @@ impl GitPath {
     }
 }
 
+/// An absolute path already confined by the caller for a linked worktree.
+///
+/// Unlike a repository-relative [`GitPath`], `git worktree` deliberately
+/// creates and removes a directory outside the caller's worktree.  This type
+/// keeps that narrow exception explicit; callers must establish ownership and
+/// containment before constructing it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorktreePath(OsString);
+
+impl WorktreePath {
+    /// # Errors
+    /// Rejects relative, option-like, empty, or NUL-containing paths.
+    pub fn new(value: impl Into<OsString>) -> Result<Self, GitCliInputError> {
+        let value = value.into();
+        reject_empty(&value, "worktree path")?;
+        reject_nul(&value, "worktree path")?;
+        reject_option_like(&value, "worktree path")?;
+        if !std::path::Path::new(&value).is_absolute() {
+            return Err(GitCliInputError::new(
+                GitCliInputErrorKind::AbsolutePath,
+                "worktree path must be absolute",
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    #[must_use]
+    pub fn as_os_str(&self) -> &OsStr {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GitRef(OsString);
 

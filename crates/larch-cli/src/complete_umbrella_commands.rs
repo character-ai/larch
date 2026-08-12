@@ -1,42 +1,42 @@
 //! Rust composition root for `/complete-umbrella`.
 
+#[cfg(test)]
+use crate::session_artifact_support::confine_session_path;
 use crate::{
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
+    session_artifact_support::{
+        canonical_directory, read_expected_file, temporary_root, write_private_file,
+    },
 };
 use clap::{Args, Subcommand};
+#[cfg(test)]
+use larch_adapters::PathIntent;
 use larch_adapters::{
-    ConfinedPath, PathIntent, TemporaryRoot, TokioProcessRunner, atomic_write_utf8,
+    TemporaryRoot, TokioProcessRunner,
     github::{
         DependencyEdge, IssueMutationOwner, LiveMutationRequest, SubIssueEdge,
         check_live_mutation_auth,
     },
-    is_allowed_session_tmpdir, normalize_path, open_confined_read,
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
     DONE_PREFIX, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
     GitHubIssueState, GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
-    IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram,
-    allowed_session_roots, build_claude_argv, complete_umbrella_child_prompt,
-    complete_umbrella_done_title, complete_umbrella_start_title, emit_kv, has_umbrella_proposal,
-    parse_claude_envelope, redact, redact_issue_mutation_request, select_complete_umbrella_leaf,
-    umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
-    validate_complete_umbrella_parent,
+    IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
+    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
+    emit_kv, has_umbrella_proposal, parse_claude_envelope, redact, redact_issue_mutation_request,
+    select_complete_umbrella_leaf, umbrella_leaf_opening, umbrella_leaf_prefix,
+    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
-    collections::BTreeSet,
-    env,
-    ffi::OsString,
-    fs,
-    io::Read as _,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-    process::ExitCode,
+    collections::BTreeSet, env, ffi::OsString, num::NonZeroUsize, path::PathBuf, process::ExitCode,
     time::Duration,
 };
+#[cfg(test)]
+use std::{fs, path::Path};
 
 const MAX_DIRECT_LEAVES: usize = 100;
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
@@ -977,71 +977,6 @@ fn parse_repository(value: &str) -> Result<GitHubRepositoryRef, String> {
     repository_ref(value).map_err(|()| "--repository must use valid OWNER/REPO form".to_owned())
 }
 
-fn canonical_directory(path: &Path, option: &str) -> Result<PathBuf, String> {
-    let canonical = fs::canonicalize(path).map_err(|_| format!("{option} must exist"))?;
-    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
-    if metadata.file_type().is_symlink() || !canonical.is_dir() {
-        return Err(format!("{option} must be a non-symlink directory"));
-    }
-    Ok(canonical)
-}
-
-fn temporary_root(path: &Path, option: &str) -> Result<TemporaryRoot, String> {
-    if !path.is_absolute() {
-        return Err(format!("{option} must be absolute"));
-    }
-    let root = TemporaryRoot::resolve(Some(path)).map_err(|error| format!("{option}: {error}"))?;
-    let allowed = allowed_session_roots(
-        env::var_os("XDG_CACHE_HOME").as_deref(),
-        env::var_os("HOME").as_deref(),
-    );
-    if !is_allowed_session_tmpdir(root.path(), &allowed) {
-        return Err(format!("{option} must be below an allowed session root"));
-    }
-    Ok(root)
-}
-
-fn confine_session_path(
-    path: &Path,
-    supplied_root: &Path,
-    root: &TemporaryRoot,
-    intent: PathIntent,
-    option: &str,
-) -> Result<ConfinedPath, String> {
-    if !path.is_absolute() || !supplied_root.is_absolute() {
-        return Err(format!("{option} must be absolute"));
-    }
-    let supplied_root = normalize_path(supplied_root).map_err(|error| error.to_string())?;
-    let path = normalize_path(path).map_err(|error| error.to_string())?;
-    let relative = path
-        .strip_prefix(&supplied_root)
-        .map_err(|_| format!("{option} escapes its trusted root"))?;
-    if relative.as_os_str().is_empty() {
-        return Err(format!("{option} must name a file below its trusted root"));
-    }
-    root.confine(relative, intent)
-        .map_err(|error| format!("{option}: {error}"))
-}
-
-fn read_expected_file(
-    path: &Path,
-    supplied_root: &Path,
-    root: &TemporaryRoot,
-    option: &str,
-    limit: u64,
-) -> Result<String, String> {
-    let confined = confine_session_path(path, supplied_root, root, PathIntent::Read, option)?;
-    let file = open_confined_read(&confined).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
-    file.take(limit.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > limit {
-        return Err(format!("{option} exceeds its byte limit"));
-    }
-    String::from_utf8(bytes).map_err(|_| format!("{option} must be valid UTF-8"))
-}
-
 fn write_audit_snapshot(arguments: &NextArguments, graph: &GraphState) -> Result<(), String> {
     let snapshot = AuditSnapshot {
         repository: arguments.repository.clone(),
@@ -1108,16 +1043,6 @@ fn write_child_result(
         if success { "true" } else { "false" }
     );
     write_private_file(&arguments.result_env, &text, &arguments.output_root, root)
-}
-
-fn write_private_file(
-    path: &Path,
-    text: &str,
-    supplied_root: &Path,
-    root: &TemporaryRoot,
-) -> Result<(), String> {
-    let confined = confine_session_path(path, supplied_root, root, PathIntent::Write, "output")?;
-    atomic_write_utf8(&confined, text, 0o600).map_err(|error| error.to_string())
 }
 
 fn join_numbers(numbers: &[u64]) -> String {

@@ -11,7 +11,7 @@ use larch_adapters::{
 };
 use larch_core::{ObjectId, ReleaseTag, RepositoryRead, SafeText};
 
-use crate::github_repository_resolution;
+use crate::{git_command_runtime::GitCommandRuntime, github_repository_resolution};
 
 pub struct ProductionReleaseServices {
     pub(crate) runtime: LarchRuntime,
@@ -26,13 +26,21 @@ impl ProductionReleaseServices {
     pub fn new() -> Result<Self, String> {
         let cwd = env::current_dir().map_err(|error| error.to_string())?;
         let repository = GixRepository::discover(&cwd).map_err(|error| error.to_string())?;
-        let git_policy = GitCliPolicy::new(cwd.clone()).map_err(|error| error.to_string())?;
-        let runtime = LarchRuntime::new().map_err(|error| error.to_string())?;
-        let cancellation = Cancellation::new();
-        let runner = TokioProcessRunner::default();
-        let github = runtime
-            .block_on(OctocrabGitHubService::from_gh(&runner, &cwd, &cancellation))
+        let git = GitCommandRuntime::for_repository(&cwd)?;
+        let github = git
+            .runtime
+            .block_on(OctocrabGitHubService::from_gh(
+                &git.runner,
+                &cwd,
+                &git.cancellation,
+            ))
             .map_err(|error| error.to_string())?;
+        let GitCommandRuntime {
+            runtime,
+            cancellation,
+            policy: git_policy,
+            runner,
+        } = git;
         Ok(Self {
             runtime,
             cancellation,

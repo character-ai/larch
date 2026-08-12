@@ -33,6 +33,7 @@ pub use ops::{
 pub use repository::{GixRepository, unified_blob_diff};
 pub use validate::{
     GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl,
+    WorktreePath,
 };
 
 use ops::GitOperation;
@@ -525,10 +526,11 @@ mod tests {
         check(
             &WorktreeRequest::Add {
                 branch: Some(GitRef::new("linked").unwrap()),
-                path: GitPath::new("linked-worktree").unwrap(),
+                detach: false,
+                path: WorktreePath::new("/tmp/linked-worktree").unwrap(),
                 start_point: None,
             },
-            &["worktree", "add", "-b", "linked", "linked-worktree"],
+            &["worktree", "add", "-b", "linked", "/tmp/linked-worktree"],
         );
         check(
             &InitRequest {
@@ -738,6 +740,18 @@ mod tests {
         assert!(GitPath::new("/abs").is_err());
         assert!(GitPath::new("..").is_err());
         assert!(GitPath::new("./ok").is_ok());
+        assert!(WorktreePath::new("relative-worktree").is_err());
+        assert!(WorktreePath::new("/tmp/audit-worktree").is_ok());
+        assert!(
+            WorktreeRequest::Add {
+                branch: Some(GitRef::new("topic").unwrap()),
+                detach: true,
+                path: WorktreePath::new("/tmp/audit-worktree").unwrap(),
+                start_point: None,
+            }
+            .arguments()
+            .is_err()
+        );
         assert!(GitRef::new(OsString::from_vec(vec![0xff])).is_err());
         assert!(GitRef::new("bad ref").is_err());
         assert!(GitRef::new("a@{u}").is_err());
@@ -1063,17 +1077,18 @@ mod tests {
         assert_argv(
             &WorktreeRequest::Add {
                 branch: None,
-                path: GitPath::new("wt").unwrap(),
+                detach: true,
+                path: WorktreePath::new("/tmp/wt").unwrap(),
                 start_point: Some(GitRef::new("HEAD").unwrap()),
             },
-            &["worktree", "add", "wt", "HEAD"],
+            &["worktree", "add", "--detach", "/tmp/wt", "HEAD"],
         );
         assert_argv(
             &WorktreeRequest::Remove {
                 force: true,
-                path: GitPath::new("wt").unwrap(),
+                path: WorktreePath::new("/tmp/wt").unwrap(),
             },
-            &["worktree", "remove", "--force", "wt"],
+            &["worktree", "remove", "--force", "/tmp/wt"],
         );
         assert_argv(
             &InitRequest {

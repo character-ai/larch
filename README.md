@@ -14,7 +14,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/umbrella`, `/complete-umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/umbrella`, `/complete-umbrella`, `/audit-umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
@@ -114,6 +114,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><code>&lt;umbrella-issue-N&gt;</code></td>
     </tr>
     <tr><td colspan="2">Implement every direct leaf of one managed umbrella serially. Each turn fetches the live graph, selects the smallest-numbered unblocked open leaf, and launches a thin child on the same Claude model with larch skills disabled. That child runs fresh recon/design, implement, adversarial-review, and ship contexts in sequence. A standalone driver handles PR, five-minute CI, merge-queue submission or direct admin merge, issue lifecycle, and branch cleanup; an extra fixer context runs only after failed CI. A failed child hard-stops the run. After all leaves close, the invoking agent audits the combined result, files and attaches exact new leaves for concrete gaps, and repeats until it can mark the parent <code>[DONE]</code> and close it.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#audit-umbrella"><code>/audit-umbrella</code></a></td>
+      <td><code>&lt;umbrella-issue-N&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Audit one open top-level managed umbrella at a fresh detached default-branch snapshot. It builds a complete evidence ledger inline, persists the full corrective batch before mutation, files only exact new leaves, reconciles native sub-issue and blocked-by relations, and reads the final graph back. It never implements leaves, closes, or retitles the umbrella.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>

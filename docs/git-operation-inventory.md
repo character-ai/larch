@@ -29,12 +29,14 @@ skills/implement/prompts/cursor-implementer.md	later-domain	#7681	commit
 crates/larch-adapters/src/git/mod.rs	git-cli	#7671	closed-cli-owner
 crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
 crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/audit_umbrella_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/developer_tooling_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/git_command_runtime.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read

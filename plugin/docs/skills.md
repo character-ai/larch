@@ -34,6 +34,7 @@ permissions or hooks only to silence the compatibility warning.
 ## Public skills
 
 - [`/alias`](#alias)
+- [`/audit-umbrella`](#audit-umbrella)
 - [`/block-issue`](#block-issue)
 - [`/bug`](#bug)
 - [`/cleanup`](#cleanup)
@@ -115,6 +116,14 @@ Reduce open issue count by merging related open issues into combined ones (closi
 Serially implement and merge every direct leaf of one existing managed umbrella. Before each turn, the Rust owner fetches the direct sub-issue graph and fresh native blocked-by edges, rejects an open parent blocker that is not a direct leaf, then selects the smallest-numbered unblocked open leaf. One durable bgjob launches a thin orchestrator on the current Claude model with a fixed issue-number-only prompt, explicit tools, `dontAsk`, and slash commands disabled. The orchestrator reads no repository files. It awaits four fresh Agent contexts in order: recon/design, implement, adversarial review, and ship. Large handoffs stay in the session tmpdir. The deterministic ship driver polls CI every five minutes and launches a nested fixer only after failed checks. A non-zero child, malformed completion envelope, failed remote lifecycle check, dirty tree, non-main checkout, stale main, graph deadlock, or open orphan blocker stops the entire run.
 
 After all direct leaves close with exact `[DONE] [LEAF OF N]` titles, the invoking agent audits their combined implementation against the umbrella and every leaf on current `origin/main`. This audit stays inline because cross-leaf context is necessary to detect integration gaps. A concrete gap becomes one new exact leaf through `/issue`; a read-only preflight validates its confined caller-owned files before filing, and the attachment owner compares the live title and body with those files before adding and reading back both native graph relations. Selection and audit then repeat. Only a passing audit permits the freshness-checked parent title transition to `[DONE]` and a completed close.
+
+### `/audit-umbrella`
+
+**Arguments**: `<umbrella-issue-N>`
+
+**Source**: [`skills/audit-umbrella/SKILL.md`](../skills/audit-umbrella/SKILL.md)
+
+Audit an open, top-level managed umbrella without implementing leaves or changing its lifecycle. The typed Rust owner snapshots exhaustive issue history and a detached default-branch commit, validates a complete line-level requirements ledger, and persists a bounded corrective proposal before creating anything. The inline audit reads every selected source and current code, docs, and tests. It files or reuses only exact `[LEAF OF N]` issues, restores only exact in-flight creations, attaches every leaf through native sub-issue and umbrella-blocked-by relations, applies only declared prerequisite repairs, and reads the final graph back. A stale default branch, source, graph, malformed artifact, cycle, security-sensitive finding, or unproven mutation stops without a public batch.
 
 ### `/debate`
 

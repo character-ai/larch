@@ -1743,11 +1743,9 @@ impl OctocrabGitHubService {
         let Some(expected_updated_at) = edge.expected_updated_at else {
             return Ok(None);
         };
-        if !is_rfc3339_timestamp(expected_updated_at) {
-            return Err(GitHubOperationError::Malformed(
-                "expected dependency updated_at",
-            ));
-        }
+        let expected_updated_at = normalize_utc_rfc3339_timestamp(expected_updated_at).ok_or(
+            GitHubOperationError::Malformed("expected dependency updated_at"),
+        )?;
         let target = self.dependency_target(cancellation, edge).await?;
         if target.updated_at != expected_updated_at {
             return Err(GitHubOperationError::StaleDependencyTarget);
@@ -1830,11 +1828,11 @@ impl OctocrabGitHubService {
             let Some(next) = next else {
                 return Ok(issue_refs);
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             {
                 route = self.issue_graph_continuation(&next, feature)?;
             }
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             {
                 route = Self::issue_graph_continuation(&next, feature)?;
             }
@@ -1867,11 +1865,11 @@ impl OctocrabGitHubService {
             let Some(next) = next else {
                 return Ok(comments);
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             {
                 route = self.issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             {
                 route = Self::issue_graph_continuation(&next, IssueGraphFeature::Dependency)?;
             }
@@ -1939,7 +1937,7 @@ impl OctocrabGitHubService {
         Ok((value, next))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn issue_graph_continuation(
         &self,
         continuation: &str,
@@ -1961,7 +1959,7 @@ impl OctocrabGitHubService {
             .map_err(|_| GitHubOperationError::Malformed(feature.pagination_link_error_context()))
     }
 
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-support")))]
     fn issue_graph_continuation(
         continuation: &str,
         feature: IssueGraphFeature,
@@ -2283,11 +2281,12 @@ fn parse_dependency_target(
 ) -> Result<DependencyTarget, GitHubOperationError> {
     let object = as_object(value)?;
     let updated_at = required_str(object, "updated_at", limits, "dependency target updated_at")?;
-    if !is_rfc3339_timestamp(&updated_at) {
-        return Err(GitHubOperationError::Malformed(
-            "dependency target updated_at",
-        ));
-    }
+    // `GitHubIssue` uses Chrono's canonical `+00:00` rendering while raw
+    // GitHub REST responses conventionally use `Z`. Normalize the raw target
+    // before comparing it to the freshness value carried by the typed issue.
+    let updated_at = normalize_utc_rfc3339_timestamp(&updated_at).ok_or(
+        GitHubOperationError::Malformed("dependency target updated_at"),
+    )?;
     let state = required_str(object, "state", limits, "dependency target state")?;
     let title = required_str(object, "title", limits, "dependency target title")?;
     let body = object
@@ -2413,8 +2412,15 @@ fn without_triage_block(body: &str) -> Option<String> {
     }
 }
 
-fn is_rfc3339_timestamp(value: &str) -> bool {
-    !value.is_empty() && value.ends_with('Z') && DateTime::parse_from_rfc3339(value).is_ok()
+fn normalize_utc_rfc3339_timestamp(value: &str) -> Option<String> {
+    if value.is_empty() {
+        return None;
+    }
+    let timestamp = DateTime::parse_from_rfc3339(value).ok()?;
+    if timestamp.offset().local_minus_utc() != 0 {
+        return None;
+    }
+    Some(timestamp.to_rfc3339())
 }
 
 fn parse_pull_request(
@@ -3279,9 +3285,9 @@ mod tests {
             "body": "body",
             "labels": [{"name": "bug"}],
         });
-        assert!(!target_has_protected_lifecycle_state(
-            &parse_dependency_target(&target, limits()).expect("valid target")
-        ));
+        let parsed = parse_dependency_target(&target, limits()).expect("valid target");
+        assert_eq!(parsed.updated_at, "2026-07-12T10:00:00+00:00");
+        assert!(!target_has_protected_lifecycle_state(&parsed));
         assert!(target_has_protected_lifecycle_state(&DependencyTarget {
             updated_at: String::from("2026-07-12T10:00:00Z"),
             state: String::from("open"),
@@ -3292,6 +3298,18 @@ mod tests {
         assert_eq!(
             parse_dependency_target(&json!({"updated_at": "nope"}), limits())
                 .expect_err("malformed target fails closed"),
+            GitHubOperationError::Malformed("dependency target updated_at")
+        );
+        assert_eq!(
+            parse_dependency_target(
+                &json!({
+                    "updated_at": "2026-07-12T11:00:00+01:00",
+                    "state": "open",
+                    "title": "target",
+                }),
+                limits(),
+            )
+            .expect_err("non-UTC target timestamp fails closed"),
             GitHubOperationError::Malformed("dependency target updated_at")
         );
 
@@ -4600,7 +4618,7 @@ mod service_tests {
             .await
             .expect("verified triage mutation");
         assert_eq!(receipt.outcome(), DependencyMutation::Applied);
-        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01Z"));
+        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01+00:00"));
         server.join().expect("stub completed");
     }
 

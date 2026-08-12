@@ -9,7 +9,7 @@ use larch_core::GitCliOperation;
 
 use super::{
     GitCliInputError, GitCliInputErrorKind, GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec,
-    GitRemote, GitToken, GitUrl,
+    GitRemote, GitToken, GitUrl, WorktreePath,
 };
 
 pub(super) trait GitOperation {
@@ -628,12 +628,14 @@ git_op!(BranchMutationRequest, BranchMutation);
 pub enum WorktreeRequest {
     Add {
         branch: Option<GitRef>,
-        path: GitPath,
+        /// Request a detached checkout instead of a branch-associated worktree.
+        detach: bool,
+        path: WorktreePath,
         start_point: Option<GitRef>,
     },
     Remove {
         force: bool,
-        path: GitPath,
+        path: WorktreePath,
     },
 }
 impl WorktreeRequest {
@@ -641,10 +643,20 @@ impl WorktreeRequest {
         Ok(match self {
             Self::Add {
                 branch,
+                detach,
                 path,
                 start_point,
             } => {
                 let mut a = vec!["add".into()];
+                if *detach {
+                    if branch.is_some() {
+                        return Err(err(
+                            GitCliInputErrorKind::UnsupportedCombination,
+                            "detached worktree cannot create a branch",
+                        ));
+                    }
+                    a.push("--detach".into());
+                }
                 if let Some(branch) = branch {
                     a.push("-b".into());
                     a.push(branch.as_os_str().into());
