@@ -2073,7 +2073,7 @@ mod tests {
             comments: 0,
             created_at: "2026-08-01T00:00:00Z".to_owned(),
             closed_at: String::new(),
-            updated_at: "2026-08-11T00:00:00+00:00".to_owned(),
+            updated_at: "2026-08-11T00:00:00Z".to_owned(),
             is_pull_request: false,
         }
     }

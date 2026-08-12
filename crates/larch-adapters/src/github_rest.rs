@@ -1,6 +1,8 @@
 //! Bounded repository, issue, comment, label, and search operations.
 
-use crate::github::{GitHubCompletionError, OctocrabGitHubService, octocrab_status};
+use crate::github::{
+    GitHubCompletionError, OctocrabGitHubService, github_utc_timestamp, octocrab_status,
+};
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueCreate,
     GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult,
@@ -912,12 +914,13 @@ fn issue_from_model(
         author: value.user.login,
         labels,
         comments: value.comments,
-        created_at: value.created_at.to_rfc3339(),
+        created_at: github_utc_timestamp(&value.created_at),
         closed_at: value
             .closed_at
-            .map(|closed_at| closed_at.to_rfc3339())
+            .as_ref()
+            .map(github_utc_timestamp)
             .unwrap_or_default(),
-        updated_at: value.updated_at.to_rfc3339(),
+        updated_at: github_utc_timestamp(&value.updated_at),
         is_pull_request: value.pull_request.is_some(),
     })
 }
@@ -937,8 +940,8 @@ fn comment_from_model(
         body,
         url,
         author: value.user.login,
-        created_at: value.created_at.to_rfc3339(),
-        updated_at: value.updated_at.unwrap_or(value.created_at).to_rfc3339(),
+        created_at: github_utc_timestamp(&value.created_at),
+        updated_at: github_utc_timestamp(value.updated_at.as_ref().unwrap_or(&value.created_at)),
     })
 }
 
@@ -1282,6 +1285,25 @@ mod tests {
         assert_eq!(issue.labels[0].name, "bug");
         assert_eq!(issue.comments, 3);
         assert!(!issue.is_pull_request);
+    }
+
+    #[test]
+    fn rest_issue_and_comment_timestamps_use_github_utc_spelling() {
+        let policy = GitHubTransportPolicy::github_com();
+        let mut closed_issue =
+            serde_json::to_value(issue_model()).expect("serialize issue fixture");
+        closed_issue["state"] = json!("closed");
+        closed_issue["closed_at"] = json!("2026-07-18T02:00:00Z");
+        let closed_issue = serde_json::from_value(closed_issue).expect("closed issue fixture");
+        let issue = issue_from_model(closed_issue, policy).expect("fixture converts");
+        let comment = serde_json::from_value(comment_json()).expect("comment fixture");
+        let comment = comment_from_model(comment, policy).expect("fixture converts");
+
+        assert_eq!(issue.created_at, "2026-07-18T00:00:00Z");
+        assert_eq!(issue.updated_at, "2026-07-18T01:00:00Z");
+        assert_eq!(issue.closed_at, "2026-07-18T02:00:00Z");
+        assert_eq!(comment.created_at, "2026-07-18T00:00:00Z");
+        assert_eq!(comment.updated_at, "2026-07-18T01:00:00Z");
     }
 
     #[tokio::test]

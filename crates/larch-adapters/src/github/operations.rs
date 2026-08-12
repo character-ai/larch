@@ -9,9 +9,9 @@
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
-    check_live_mutation_auth, collect_bounded_response, octocrab_status,
+    check_live_mutation_auth, collect_bounded_response, github_utc_timestamp, octocrab_status,
 };
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use http::header::LINK;
 use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
@@ -2281,9 +2281,8 @@ fn parse_dependency_target(
 ) -> Result<DependencyTarget, GitHubOperationError> {
     let object = as_object(value)?;
     let updated_at = required_str(object, "updated_at", limits, "dependency target updated_at")?;
-    // `GitHubIssue` uses Chrono's canonical `+00:00` rendering while raw
-    // GitHub REST responses conventionally use `Z`. Normalize the raw target
-    // before comparing it to the freshness value carried by the typed issue.
+    // Normalize both REST timestamps and typed issue snapshots to GitHub's
+    // canonical UTC spelling before the freshness comparison.
     let updated_at = normalize_utc_rfc3339_timestamp(&updated_at).ok_or(
         GitHubOperationError::Malformed("dependency target updated_at"),
     )?;
@@ -2420,7 +2419,7 @@ fn normalize_utc_rfc3339_timestamp(value: &str) -> Option<String> {
     if timestamp.offset().local_minus_utc() != 0 {
         return None;
     }
-    Some(timestamp.to_rfc3339())
+    Some(github_utc_timestamp(&timestamp.with_timezone(&Utc)))
 }
 
 fn parse_pull_request(
@@ -3286,7 +3285,16 @@ mod tests {
             "labels": [{"name": "bug"}],
         });
         let parsed = parse_dependency_target(&target, limits()).expect("valid target");
-        assert_eq!(parsed.updated_at, "2026-07-12T10:00:00+00:00");
+        assert_eq!(parsed.updated_at, "2026-07-12T10:00:00Z");
+        let offset_target = json!({
+            "updated_at": "2026-07-12T10:00:00+00:00",
+            "state": "open",
+            "title": "Regular issue",
+            "body": "body",
+            "labels": [{"name": "bug"}],
+        });
+        let offset = parse_dependency_target(&offset_target, limits()).expect("valid UTC target");
+        assert_eq!(offset.updated_at, parsed.updated_at);
         assert!(!target_has_protected_lifecycle_state(&parsed));
         assert!(target_has_protected_lifecycle_state(&DependencyTarget {
             updated_at: String::from("2026-07-12T10:00:00Z"),
@@ -4618,7 +4626,7 @@ mod service_tests {
             .await
             .expect("verified triage mutation");
         assert_eq!(receipt.outcome(), DependencyMutation::Applied);
-        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01+00:00"));
+        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01Z"));
         server.join().expect("stub completed");
     }
 
