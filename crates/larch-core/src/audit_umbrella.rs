@@ -9,6 +9,7 @@ use crate::{
     OrderedJson,
     issue::{triage_text_is_security_sensitive, umbrella_leaf_opening_text},
 };
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1213,12 +1214,9 @@ fn valid_branch(value: &str) -> bool {
 }
 
 fn valid_timestamp(value: &str) -> bool {
-    value.len() >= 20
-        && value.ends_with('Z')
-        && !value.contains(['\r', '\n'])
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'-' | b':' | b'T' | b'.' | b'Z'))
+    !value.contains(['\r', '\n'])
+        && DateTime::parse_from_rfc3339(value)
+            .is_ok_and(|timestamp| timestamp.offset().local_minus_utc() == 0)
 }
 
 fn valid_source_id(value: &str) -> bool {
@@ -1521,6 +1519,432 @@ mod tests {
         assert_eq!(
             render_audit_snapshot(&control_as_leaf),
             Err(INVALID_AUDIT_SNAPSHOT)
+        );
+    }
+
+    fn leaf_body(snapshot: &AuditSnapshot) -> String {
+        format!(
+            "{}\n\n## Program context\n\nEvidence at {}.\n\n## Problem\n\nA durable audit gap remains.\n\n## Scope\n\n1. Repair the audited behavior.\n\n## Acceptance\n\n- The audit gap is covered.\n",
+            umbrella_leaf_opening_text(&snapshot.umbrella.number.to_string()),
+            snapshot.audited_sha,
+        )
+    }
+
+    fn gap_draft(snapshot: &AuditSnapshot, ledger: &AuditLedger) -> AuditProposalDraft {
+        AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: vec![AuditLeafDraft {
+                title: format!(
+                    "[LEAF OF {}] Repair the exhaustive audit gap",
+                    snapshot.umbrella.number
+                ),
+                body: leaf_body(snapshot),
+                gap_ids: ledger
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.status == RequirementStatus::Gap)
+                    .map(|entry| entry.id.clone())
+                    .collect(),
+            }],
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn audit_artifacts_round_trip_and_reject_ambiguous_or_oversized_json() {
+        let snapshot = snapshot();
+        let snapshot_text = render_audit_snapshot(&snapshot).expect("render snapshot");
+        assert_eq!(parse_audit_snapshot(&snapshot_text), Ok(snapshot.clone()));
+        assert_eq!(audit_snapshot_sha256(&snapshot).len(), 64);
+        assert_eq!(
+            parse_audit_snapshot(r#"{"version":1,"version":1}"#),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let ledger = ledger(&snapshot);
+        let ledger_text = render_audit_ledger(&ledger).expect("render ledger");
+        assert_eq!(parse_audit_ledger(&ledger_text), Ok(ledger.clone()));
+        assert_eq!(audit_ledger_sha256(&ledger).len(), 64);
+        assert_eq!(
+            parse_audit_ledger(r#"{"version":1,"version":1}"#),
+            Err(INVALID_AUDIT_LEDGER)
+        );
+
+        let proposal = build_audit_proposal(&snapshot, &ledger, &gap_draft(&snapshot, &ledger))
+            .expect("build proposal");
+        let proposal_text = render_audit_proposal(&proposal).expect("render proposal");
+        assert_eq!(parse_audit_proposal(&proposal_text), Ok(proposal));
+        assert_eq!(
+            parse_audit_proposal(r#"{"version":1,"version":1}"#),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let oversized = " ".repeat(MAX_AUDIT_ARTIFACT_BYTES + 1);
+        assert_eq!(
+            parse_audit_snapshot(&oversized),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+        assert_eq!(parse_audit_ledger(&oversized), Err(INVALID_AUDIT_LEDGER));
+        assert_eq!(
+            parse_audit_proposal(&oversized),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+    }
+
+    #[test]
+    fn ledger_classification_requires_evidence_and_tracks_every_status() {
+        let snapshot = snapshot();
+        let mut classified = ledger(&snapshot);
+        for (index, entry) in classified.entries.iter_mut().enumerate() {
+            match index % 4 {
+                0 => entry.status = RequirementStatus::Satisfied,
+                1 => {
+                    entry.status = RequirementStatus::Gap;
+                    entry.test_evidence.clear();
+                }
+                2 => {
+                    entry.status = RequirementStatus::NotApplicable;
+                    entry.code_evidence.clear();
+                    entry.test_evidence.clear();
+                    entry.reason = "The source item does not define runtime behavior.".to_owned();
+                }
+                _ => {
+                    entry.status = RequirementStatus::Blocked;
+                    entry.code_evidence.clear();
+                    entry.test_evidence.clear();
+                    entry.reason = "The required upstream evidence is unavailable.".to_owned();
+                }
+            }
+        }
+
+        let summary = validate_audit_ledger(&snapshot, &classified).expect("valid ledger");
+        assert_eq!(summary.total, classified.entries.len());
+        assert_eq!(
+            summary.satisfied + summary.gaps + summary.not_applicable + summary.blocked,
+            summary.total
+        );
+        assert!(summary.satisfied > 0);
+        assert!(summary.gaps > 0);
+        assert!(summary.not_applicable > 0);
+        assert!(summary.blocked > 0);
+
+        let mut satisfied_with_reason = classified.clone();
+        satisfied_with_reason.entries[0].reason = "must remain empty".to_owned();
+        assert_eq!(
+            validate_audit_ledger(&snapshot, &satisfied_with_reason),
+            Err(INVALID_AUDIT_LEDGER)
+        );
+
+        let mut gap_without_evidence = classified.clone();
+        gap_without_evidence.entries[1].code_evidence.clear();
+        assert_eq!(
+            validate_audit_ledger(&snapshot, &gap_without_evidence),
+            Err(INVALID_AUDIT_LEDGER)
+        );
+
+        let mut not_applicable_with_evidence = classified.clone();
+        not_applicable_with_evidence.entries[2]
+            .code_evidence
+            .push("src/lib.rs:1".to_owned());
+        assert_eq!(
+            validate_audit_ledger(&snapshot, &not_applicable_with_evidence),
+            Err(INVALID_AUDIT_LEDGER)
+        );
+
+        let mut blocked_without_reason = classified.clone();
+        blocked_without_reason.entries[3].reason.clear();
+        assert_eq!(
+            validate_audit_ledger(&snapshot, &blocked_without_reason),
+            Err(INVALID_AUDIT_LEDGER)
+        );
+
+        let mut sensitive = classified;
+        sensitive.entries[0].requirement = "An RCE is present in the parser".to_owned();
+        assert_eq!(
+            validate_audit_ledger(&snapshot, &sensitive),
+            Err(SECURITY_SENSITIVE_AUDIT)
+        );
+    }
+
+    #[test]
+    fn snapshot_shape_rejects_invalid_metadata_and_leaf_provenance() {
+        let valid = snapshot();
+        assert!(render_audit_snapshot(&valid).is_ok());
+
+        let mut invalid_version = valid.clone();
+        invalid_version.version = 0;
+        assert_eq!(
+            render_audit_snapshot(&invalid_version),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut invalid_repository = valid.clone();
+        invalid_repository.repository = "owner/not a repository".to_owned();
+        assert_eq!(
+            render_audit_snapshot(&invalid_repository),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut invalid_branch = valid.clone();
+        invalid_branch.default_branch = "main..backup".to_owned();
+        assert_eq!(
+            render_audit_snapshot(&invalid_branch),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut invalid_sha = valid.clone();
+        invalid_sha.audited_sha = "A".repeat(40);
+        assert_eq!(
+            render_audit_snapshot(&invalid_sha),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut missing_umbrella = valid.clone();
+        missing_umbrella.sources.remove(0);
+        assert_eq!(
+            render_audit_snapshot(&missing_umbrella),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut unsorted_roles = valid.clone();
+        unsorted_roles.sources[1].roles = vec!["title".to_owned(), "native".to_owned()];
+        assert_eq!(
+            render_audit_snapshot(&unsorted_roles),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut duplicate_source = valid.clone();
+        duplicate_source.sources[2].id = "leaf:41".to_owned();
+        assert_eq!(
+            render_audit_snapshot(&duplicate_source),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut duplicate_history = valid.clone();
+        duplicate_history.historical_leaf_numbers = vec![41, 41];
+        assert_eq!(
+            render_audit_snapshot(&duplicate_history),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+
+        let mut mismatched_umbrella = valid;
+        mismatched_umbrella.sources[0].issue.title = "different".to_owned();
+        assert_eq!(
+            render_audit_snapshot(&mismatched_umbrella),
+            Err(INVALID_AUDIT_SNAPSHOT)
+        );
+    }
+
+    #[test]
+    fn leaf_drafts_reject_unbound_or_unsafe_public_content() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let valid = gap_draft(&snapshot, &ledger).leaves.remove(0);
+        assert_eq!(
+            validate_leaf_draft(&valid, snapshot.umbrella.number),
+            Ok(())
+        );
+
+        let mut wrong_title = valid.clone();
+        wrong_title.title = "Repair the audit gap".to_owned();
+        assert_eq!(
+            validate_leaf_draft(&wrong_title, snapshot.umbrella.number),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut missing_opening = valid.clone();
+        missing_opening.body =
+            missing_opening
+                .body
+                .replacen("This is a leaf", "This audit concerns", 1);
+        assert_eq!(
+            validate_leaf_draft(&missing_opening, snapshot.umbrella.number),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut missing_scope_item = valid.clone();
+        missing_scope_item.body = missing_scope_item.body.replace("1. Repair", "- Repair");
+        assert_eq!(
+            validate_leaf_draft(&missing_scope_item, snapshot.umbrella.number),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut protected_marker = valid.clone();
+        protected_marker.body.push_str("\n<!-- larch:plan v1 -->\n");
+        assert_eq!(
+            validate_leaf_draft(&protected_marker, snapshot.umbrella.number),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut duplicate_gaps = valid.clone();
+        duplicate_gaps
+            .gap_ids
+            .push(duplicate_gaps.gap_ids[0].clone());
+        assert_eq!(
+            validate_leaf_draft(&duplicate_gaps, snapshot.umbrella.number),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut sensitive = valid;
+        sensitive
+            .body
+            .push_str("\nRCE details must remain private.\n");
+        assert_eq!(
+            validate_leaf_draft(&sensitive, snapshot.umbrella.number),
+            Err(SECURITY_SENSITIVE_AUDIT)
+        );
+    }
+
+    #[test]
+    fn proposal_lifecycle_stays_resumable_and_bound_to_its_inputs() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let mut proposal = build_audit_proposal(&snapshot, &ledger, &gap_draft(&snapshot, &ledger))
+            .expect("proposal");
+        let identity = proposal.leaves[0].identity.clone();
+
+        assert_eq!(
+            mark_audit_leaf_in_flight(&mut proposal, "not-a-leaf"),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+        assert_eq!(
+            record_audit_leaf_resolved(
+                &mut proposal,
+                &identity,
+                43,
+                143,
+                "https://github.com/o/r/issues/43",
+            ),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+        assert_eq!(
+            mark_audit_graph_in_flight(&mut proposal),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        assert_eq!(
+            mark_audit_leaf_in_flight(&mut proposal, &identity),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+        assert_eq!(
+            record_audit_leaf_resolved(&mut proposal, &identity, 0, 143, "url"),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+        record_audit_leaf_resolved(
+            &mut proposal,
+            &identity,
+            43,
+            143,
+            "https://github.com/o/r/issues/43",
+        )
+        .expect("resolved");
+        assert_eq!(
+            audit_proposal_existing_numbers(&proposal),
+            BTreeSet::from([40, 41, 42, 43])
+        );
+
+        mark_audit_graph_in_flight(&mut proposal).expect("graph in flight");
+        mark_audit_proposal_complete(&mut proposal).expect("complete");
+        assert!(proposal.complete);
+        assert_eq!(proposal.graph_state, AuditGraphState::Verified);
+        assert_eq!(
+            mark_audit_proposal_complete(&mut proposal),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut stale = proposal.clone();
+        stale.repository = "different/repository".to_owned();
+        assert_eq!(
+            validate_audit_proposal_binding(&stale, &snapshot, &ledger),
+            Err(STALE_AUDIT_PROPOSAL)
+        );
+
+        let mut invalid_fingerprints = proposal.clone();
+        assert_eq!(
+            replace_audit_issue_fingerprints(&mut invalid_fingerprints, Vec::new()),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+    }
+
+    #[test]
+    fn dependency_batches_accept_bound_nodes_and_reject_conflicts() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let mut proposal = build_audit_proposal(&snapshot, &ledger, &gap_draft(&snapshot, &ledger))
+            .expect("proposal");
+        let identity = proposal.leaves[0].identity.clone();
+        let add = AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 41 },
+            prerequisite: AuditDependencyNode::New {
+                identity: identity.clone(),
+            },
+        };
+        let remove = AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 42 },
+            prerequisite: AuditDependencyNode::Existing { number: 41 },
+        };
+        proposal.dependencies = vec![add.clone()];
+        proposal.remove_dependencies = vec![remove.clone()];
+        assert!(render_audit_proposal(&proposal).is_ok());
+
+        let mut duplicate_add = proposal.clone();
+        duplicate_add.dependencies.push(add);
+        assert_eq!(
+            render_audit_proposal(&duplicate_add),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut conflicting_remove = proposal.clone();
+        conflicting_remove.remove_dependencies = vec![AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 41 },
+            prerequisite: AuditDependencyNode::New { identity },
+        }];
+        assert_eq!(
+            render_audit_proposal(&conflicting_remove),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+
+        let mut unknown_node = proposal;
+        unknown_node.dependencies = vec![AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 41 },
+            prerequisite: AuditDependencyNode::New {
+                identity: "0".repeat(64),
+            },
+        }];
+        assert_eq!(
+            render_audit_proposal(&unknown_node),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+    }
+
+    #[test]
+    fn bounded_identifier_helpers_only_admit_the_persisted_contract() {
+        assert!(valid_repository("owner/repository-name_1"));
+        assert!(!valid_repository("owner/repo/extra"));
+        assert!(valid_branch("release/2026.08"));
+        assert!(!valid_branch("-main"));
+        assert!(valid_timestamp("2026-08-11T12:00:00.000Z"));
+        assert!(valid_timestamp("2026-08-11T12:00:00+00:00"));
+        assert!(!valid_timestamp("2026-08-11T12:00:00+01:00"));
+        assert!(!valid_timestamp("2026-99-11T12:00:00Z"));
+        assert!(!valid_timestamp("not-a-timestamp"));
+        assert!(valid_source_id("leaf:41"));
+        assert!(!valid_source_id("leaf:0"));
+        assert!(valid_identifier("R-1.part_2"));
+        assert!(!valid_identifier("R 1"));
+        assert!(valid_text("one\nline", 32));
+        assert!(!valid_text("", 32));
+        assert!(valid_optional_text("", 32));
+        assert!(valid_single_line("one line", 32));
+        assert!(!valid_single_line("one\nline", 32));
+        assert!(evidence_valid(&["src/lib.rs:1".to_owned()]));
+        assert!(!evidence_valid(&["bad\nvalue".to_owned()]));
+        assert_eq!(normalized_numbers(&[3, 1, 3, 2]), vec![1, 2, 3]);
+        assert_eq!(
+            normalized_strings(&["b".to_owned(), "a".to_owned(), "b".to_owned()]),
+            vec!["a", "b"]
         );
     }
 }

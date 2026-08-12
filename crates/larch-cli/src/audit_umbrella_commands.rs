@@ -2028,16 +2028,36 @@ fn run_worktree_request(repo_root: &Path, request: WorktreeRequest) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::{
-        SnapshotSelection, audit_issue, build_snapshot, exact_open_leaf_matches,
-        explicit_leaf_references, has_exact_leaf_title, issue_references, parse_umbrella_argument,
-        paths_overlap, reconcile_open_duplicate_leaves, validate_audit_parent,
+        ApplyArguments, ApplyContext, AuditUmbrellaCommand, LeafIdentityArguments, ParseArguments,
+        PersistProposalArguments, RemoveWorktreeArguments, SnapshotArguments, SnapshotSelection,
+        ValidateLedgerArguments, apply_remote, audit_issue, build_snapshot,
+        collect_snapshot_remote, exact_open_leaf_matches, explicit_leaf_references, fingerprints,
+        has_exact_leaf_title, historical_direct_leaf_numbers, is_controlling_umbrella,
+        is_legacy_managed_umbrella, issue_references, native_leaf_numbers, number_graph_has_cycle,
+        operator_authorization, parse_proposal_draft, parse_repository, parse_umbrella_argument,
+        paths_overlap, persist_refreshed_proposal, prepare_remote_apply, proposal_node_map,
+        reconcile_audit_leaves, reconcile_leaf_relationships, reconcile_open_duplicate_leaves,
+        require_issue, require_operator, resolve_node, run, temporary_root, validate_audit_parent,
+        verify_expected_fingerprints, verify_final_graph, verify_snapshot_source_content,
+        verify_snapshot_sources_fresh,
     };
+    use larch_adapters::{github::OctocrabGitHubService, runtime::Cancellation};
     use larch_core::{
-        AUDIT_PROPOSAL_VERSION, AuditGraphState, AuditIssue, AuditLeaf, AuditLeafState,
-        AuditProposal, GitHubIssue, GitHubIssueState, GitHubLabel, GitHubRepositoryRef,
-        audit_issue_fingerprint, audit_leaf_identity,
+        AUDIT_LEDGER_VERSION, AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode,
+        AuditGraphState, AuditIssue, AuditLeaf, AuditLeafDraft, AuditLeafState, AuditLedger,
+        AuditLedgerEntry, AuditProposal, AuditProposalDraft, AuditSnapshot, GitHubIssue,
+        GitHubIssueState, GitHubLabel, GitHubRepositoryRef, RequirementStatus,
+        audit_issue_fingerprint, audit_leaf_identity, audit_snapshot_sha256, audit_source_items,
+        build_audit_proposal, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
+        mark_audit_proposal_complete, record_audit_leaf_resolved, umbrella_leaf_opening,
     };
-    use std::{collections::BTreeSet, path::Path};
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::{Path, PathBuf},
+        process::ExitCode,
+    };
 
     fn issue(number: u64, title: &str, body: &str, state: GitHubIssueState) -> GitHubIssue {
         GitHubIssue {
@@ -2053,7 +2073,7 @@ mod tests {
             comments: 0,
             created_at: "2026-08-01T00:00:00Z".to_owned(),
             closed_at: String::new(),
-            updated_at: "2026-08-11T00:00:00Z".to_owned(),
+            updated_at: "2026-08-11T00:00:00+00:00".to_owned(),
             is_pull_request: false,
         }
     }
@@ -2093,6 +2113,243 @@ mod tests {
             graph_state: AuditGraphState::Pending,
             complete: false,
         }
+    }
+
+    fn audit_snapshot() -> AuditSnapshot {
+        let parent = issue(
+            10,
+            "[UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- #11\n\nRead #12 for program context.\n",
+            GitHubIssueState::Open,
+        );
+        let mut issues = BTreeMap::new();
+        let _ = issues.insert(parent.number, parent.clone());
+        let _ = issues.insert(
+            11,
+            issue(
+                11,
+                "[LEAF OF 10] Existing leaf",
+                &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+                GitHubIssueState::Open,
+            ),
+        );
+        let _ = issues.insert(
+            12,
+            issue(
+                12,
+                "[CHIEF UMBRELLA] Program context",
+                "## Program requirements\n\n- Preserve the contract.\n",
+                GitHubIssueState::Open,
+            ),
+        );
+        let repository = GitHubRepositoryRef::new("o", "r").expect("repository");
+        let direct = BTreeSet::from([11]);
+        let explicit = explicit_leaf_references(&parent.body);
+        let referenced = issue_references(&parent.body);
+        build_snapshot(SnapshotSelection {
+            repository: &repository,
+            default_branch: "main",
+            audited_sha: &"a".repeat(40),
+            parent: &parent,
+            issues: &issues,
+            direct_numbers: &direct,
+            explicit_numbers: &explicit,
+            referenced_numbers: &referenced,
+        })
+        .expect("audit snapshot")
+    }
+
+    fn current_snapshot_sources(snapshot: &AuditSnapshot) -> BTreeMap<u64, AuditIssue> {
+        snapshot
+            .sources
+            .iter()
+            .map(|source| (source.issue.number, source.issue.clone()))
+            .collect()
+    }
+
+    fn repository() -> GitHubRepositoryRef {
+        GitHubRepositoryRef::new("o", "r").expect("repository")
+    }
+
+    fn service(exchanges: Vec<IssueServiceExchange>) -> (OctocrabGitHubService, IssueServiceStub) {
+        let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
+        let client = octocrab::Octocrab::builder()
+            .personal_token("test-token".to_owned())
+            .base_uri(server.base_url())
+            .expect("stub base URI")
+            .upload_uri(server.base_url())
+            .expect("stub upload URI")
+            .build()
+            .expect("stub client");
+        (OctocrabGitHubService::with_test_client(client), server)
+    }
+
+    fn response(status: u16, body: impl AsRef<[u8]>) -> IssueServiceExchange {
+        IssueServiceExchange::any_json(status, body.as_ref().to_vec())
+            .expect("valid issue service response")
+    }
+
+    fn issue_json(number: u64, id: u64, title: &str, body: &str, state: &str) -> String {
+        issue_json_at(number, id, title, body, state, "2026-08-11T00:00:00Z")
+    }
+
+    fn issue_json_at(
+        number: u64,
+        id: u64,
+        title: &str,
+        body: &str,
+        state: &str,
+        updated_at: &str,
+    ) -> String {
+        let mut issue: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        issue["id"] = json!(id);
+        issue["number"] = json!(number);
+        issue["title"] = json!(title);
+        issue["body"] = json!(body);
+        issue["state"] = json!(state);
+        issue["url"] = json!(format!("https://api.github.com/repos/o/r/issues/{number}"));
+        issue["html_url"] = json!(format!("https://github.com/o/r/issues/{number}"));
+        issue["labels"] = json!([]);
+        issue["updated_at"] = json!(updated_at);
+        issue.to_string()
+    }
+
+    fn repository_json(default_branch: &str) -> String {
+        json!({
+            "id": 1,
+            "name": "r",
+            "full_name": "o/r",
+            "private": false,
+            "html_url": "https://github.com/o/r",
+            "url": "https://api.github.com/repos/o/r",
+            "default_branch": default_branch,
+        })
+        .to_string()
+    }
+
+    fn refs(values: &[(u64, u64, &str)]) -> String {
+        Value::Array(
+            values
+                .iter()
+                .map(|(number, id, state)| json!({ "number": number, "id": id, "state": state }))
+                .collect(),
+        )
+        .to_string()
+    }
+
+    fn remote_parent() -> String {
+        issue_json(
+            10,
+            110,
+            "[UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- #11\n\nRead #12 for program context.\n",
+            "open",
+        )
+    }
+
+    fn remote_leaf() -> String {
+        remote_leaf_at("2026-08-11T00:00:00Z")
+    }
+
+    fn remote_leaf_at(updated_at: &str) -> String {
+        issue_json_at(
+            11,
+            111,
+            "[LEAF OF 10] Existing leaf",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+            "open",
+            updated_at,
+        )
+    }
+
+    fn remote_control() -> String {
+        issue_json(
+            12,
+            112,
+            "[CHIEF UMBRELLA] Program context",
+            "## Program requirements\n\n- Preserve the contract.\n",
+            "open",
+        )
+    }
+
+    fn snapshot_exchanges(parent: &str, leaf: &str, control: &str) -> Vec<IssueServiceExchange> {
+        vec![
+            response(200, repository_json("main")),
+            response(200, parent),
+            response(404, "{}"),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, format!("[{parent},{leaf},{control}]")),
+        ]
+    }
+
+    fn gap_ledger(snapshot: &AuditSnapshot) -> AuditLedger {
+        AuditLedger {
+            version: AUDIT_LEDGER_VERSION,
+            snapshot_sha256: audit_snapshot_sha256(snapshot),
+            entries: audit_source_items(snapshot)
+                .into_iter()
+                .enumerate()
+                .map(|(index, item)| AuditLedgerEntry {
+                    id: format!("R-{:04}", index + 1),
+                    source_id: item.id,
+                    requirement: "Account for the immutable source item".to_owned(),
+                    status: RequirementStatus::Gap,
+                    code_evidence: vec!["src/lib.rs:1".to_owned()],
+                    test_evidence: vec!["tests/audit.rs:1".to_owned()],
+                    reason: String::new(),
+                })
+                .collect(),
+        }
+    }
+
+    fn satisfied_ledger(snapshot: &AuditSnapshot) -> AuditLedger {
+        let mut ledger = gap_ledger(snapshot);
+        for entry in &mut ledger.entries {
+            entry.status = RequirementStatus::Satisfied;
+        }
+        ledger
+    }
+
+    fn gap_proposal(snapshot: &AuditSnapshot, ledger: &AuditLedger) -> AuditProposal {
+        let body = format!(
+            "{}\n\n## Program context\n\nEvidence at {}.\n\n## Problem\n\nA gap remains.\n\n## Scope\n\n1. Repair the audited boundary.\n\n## Acceptance\n\n- The audit gap is covered.\n",
+            umbrella_leaf_opening(snapshot.umbrella.number),
+            snapshot.audited_sha,
+        );
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: vec![AuditLeafDraft {
+                title: format!(
+                    "[LEAF OF {}] Repair the audit gap",
+                    snapshot.umbrella.number
+                ),
+                body,
+                gap_ids: ledger
+                    .entries
+                    .iter()
+                    .map(|entry| entry.id.clone())
+                    .collect(),
+            }],
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        };
+        build_audit_proposal(snapshot, ledger, &draft).expect("gap proposal")
+    }
+
+    fn complete_proposal(snapshot: &AuditSnapshot, ledger: &AuditLedger) -> AuditProposal {
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: Vec::new(),
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        };
+        let mut proposal = build_audit_proposal(snapshot, ledger, &draft).expect("proposal");
+        mark_audit_graph_in_flight(&mut proposal).expect("graph in flight");
+        mark_audit_proposal_complete(&mut proposal).expect("complete proposal");
+        proposal
     }
 
     #[test]
@@ -2293,5 +2550,731 @@ mod tests {
         assert!(parse_umbrella_argument("72 extra").is_err());
         assert!(parse_umbrella_argument("#0").is_err());
         assert!(parse_umbrella_argument("#-72").is_err());
+    }
+
+    #[test]
+    fn command_dispatch_rejects_each_untrusted_input_before_remote_work() {
+        assert_eq!(
+            run(AuditUmbrellaCommand::Parse(ParseArguments {
+                arguments: "not-an-issue".to_owned(),
+            })),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::LeafIdentity(LeafIdentityArguments {
+                root: PathBuf::from("relative"),
+                title: PathBuf::from("title"),
+                body: PathBuf::from("body"),
+            })),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::Snapshot(SnapshotArguments {
+                repository: "o/r".to_owned(),
+                issue: 0,
+                repo_root: PathBuf::from("missing"),
+                output_root: PathBuf::from("relative"),
+                output: PathBuf::from("snapshot.json"),
+                worktree: PathBuf::from("worktree"),
+            })),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::ValidateLedger(
+                ValidateLedgerArguments {
+                    root: PathBuf::from("relative"),
+                    snapshot: PathBuf::from("snapshot.json"),
+                    ledger: PathBuf::from("ledger.json"),
+                }
+            )),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::PersistProposal(
+                PersistProposalArguments {
+                    repository: "not/a/valid/repository".to_owned(),
+                    root: PathBuf::from("relative"),
+                    snapshot: PathBuf::from("snapshot.json"),
+                    ledger: PathBuf::from("ledger.json"),
+                    proposal_input: PathBuf::from("draft.json"),
+                    proposal: PathBuf::from("proposal.json"),
+                }
+            )),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::Apply(ApplyArguments {
+                repository: "o/r".to_owned(),
+                repo_root: PathBuf::from("missing"),
+                root: PathBuf::from("relative"),
+                snapshot: PathBuf::from("snapshot.json"),
+                ledger: PathBuf::from("ledger.json"),
+                proposal: PathBuf::from("proposal.json"),
+                operator_invoked: false,
+            })),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run(AuditUmbrellaCommand::RemoveWorktree(
+                RemoveWorktreeArguments {
+                    repo_root: PathBuf::from("missing"),
+                    root: PathBuf::from("relative"),
+                    worktree: PathBuf::from("worktree"),
+                }
+            )),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn managed_parent_and_source_helpers_fail_closed() {
+        let managed = issue(
+            10,
+            "[IMPLEMENTING] [UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->",
+            GitHubIssueState::Open,
+        );
+        assert!(validate_audit_parent(&managed).is_ok());
+        assert!(is_controlling_umbrella(&managed));
+        assert!(is_controlling_umbrella(&issue(
+            12,
+            "[DONE] [CHIEF UMBRELLA] Program",
+            "context",
+            GitHubIssueState::Open,
+        )));
+        assert!(is_legacy_managed_umbrella("## Leaf issues\n\n- #11\n"));
+        assert!(!is_legacy_managed_umbrella("## Context\n\n- #11\n"));
+
+        let mut closed = managed.clone();
+        closed.state = GitHubIssueState::Closed;
+        assert!(validate_audit_parent(&closed).is_err());
+        let mut pull_request = managed.clone();
+        pull_request.is_pull_request = true;
+        assert!(validate_audit_parent(&pull_request).is_err());
+        let sensitive = issue(
+            10,
+            "[UMBRELLA] Vulnerability audit",
+            "<!-- larch:umbrella-proposal v1 -->",
+            GitHubIssueState::Open,
+        );
+        assert!(validate_audit_parent(&sensitive).is_err());
+
+        assert!(parse_repository("owner/repository").is_ok());
+        assert!(parse_repository("owner/repository/extra").is_err());
+        assert!(require_issue(1, "--issue").is_ok());
+        assert!(require_issue(0, "--issue").is_err());
+        assert!(require_operator(true).is_ok());
+        assert!(require_operator(false).is_err());
+        let mut unconstrained = managed;
+        unconstrained.state = GitHubIssueState::All;
+        assert!(audit_issue(&unconstrained).is_err());
+    }
+
+    #[test]
+    fn persisted_snapshot_helpers_detect_freshness_and_content_changes() {
+        let snapshot = audit_snapshot();
+        let current = current_snapshot_sources(&snapshot);
+        assert!(verify_snapshot_sources_fresh(&snapshot, &current).is_ok());
+        assert!(verify_snapshot_source_content(&snapshot, &current).is_ok());
+        assert_eq!(native_leaf_numbers(&snapshot), BTreeSet::from([11]));
+        assert_eq!(
+            historical_direct_leaf_numbers(&snapshot),
+            BTreeSet::from([11])
+        );
+
+        let mut missing = current.clone();
+        let _ = missing.remove(&11);
+        assert!(verify_snapshot_sources_fresh(&snapshot, &missing).is_err());
+        assert!(verify_snapshot_source_content(&snapshot, &missing).is_err());
+
+        let mut changed = current.clone();
+        changed
+            .get_mut(&11)
+            .expect("source")
+            .title
+            .push_str(" changed");
+        assert!(verify_snapshot_sources_fresh(&snapshot, &changed).is_err());
+        assert!(verify_snapshot_source_content(&snapshot, &changed).is_err());
+
+        let mut proposal = pending_proposal(
+            "[LEAF OF 10] Repair the audit gap",
+            &format!("{}\n\nScope.\n", umbrella_leaf_opening(10)),
+        );
+        proposal.expected_issues = fingerprints(&current);
+        assert!(verify_expected_fingerprints(&proposal, &current).is_ok());
+        assert!(verify_expected_fingerprints(&proposal, &changed).is_err());
+    }
+
+    #[test]
+    fn proposal_graph_helpers_require_resolved_unique_nodes() {
+        let body = format!("{}\n\nScope.\n", umbrella_leaf_opening(10));
+        let mut proposal = pending_proposal("[LEAF OF 10] Repair the audit gap", &body);
+        assert!(proposal_node_map(&proposal).is_err());
+        proposal.leaves[0].state = AuditLeafState::Resolved;
+        proposal.leaves[0].number = 13;
+        proposal.leaves[0].issue_id = 113;
+        proposal.leaves[0].url = "https://github.com/o/r/issues/13".to_owned();
+        let nodes = proposal_node_map(&proposal).expect("resolved nodes");
+        assert_eq!(
+            resolve_node(
+                &nodes,
+                &larch_core::AuditDependencyNode::Existing { number: 10 }
+            ),
+            Ok((10, 110))
+        );
+        assert_eq!(
+            resolve_node(
+                &nodes,
+                &larch_core::AuditDependencyNode::New {
+                    identity: proposal.leaves[0].identity.clone(),
+                },
+            ),
+            Ok((13, 113))
+        );
+        assert!(
+            resolve_node(
+                &nodes,
+                &larch_core::AuditDependencyNode::Existing { number: 999 }
+            )
+            .is_err()
+        );
+
+        let mut duplicate = proposal.clone();
+        duplicate
+            .expected_issues
+            .push(duplicate.expected_issues[0].clone());
+        assert!(proposal_node_map(&duplicate).is_err());
+
+        let acyclic = BTreeMap::from([
+            (1, BTreeSet::from([2])),
+            (2, BTreeSet::from([3])),
+            (3, BTreeSet::new()),
+        ]);
+        assert!(!number_graph_has_cycle(&acyclic));
+        let cyclic = BTreeMap::from([(1, BTreeSet::from([2])), (2, BTreeSet::from([1]))]);
+        assert!(number_graph_has_cycle(&cyclic));
+    }
+
+    #[test]
+    fn proposal_draft_parser_rejects_duplicate_and_malformed_json() {
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: vec![AuditLeafDraft {
+                title: "[LEAF OF 10] Repair the audit gap".to_owned(),
+                body: format!("{}\n\nScope.\n", umbrella_leaf_opening(10)),
+                gap_ids: vec!["R-1".to_owned()],
+            }],
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        };
+        let text = serde_json::to_string(&draft).expect("serialize draft");
+        assert_eq!(parse_proposal_draft(&text), Ok(draft));
+        assert!(parse_proposal_draft(r#"{"version":1,"version":1}"#).is_err());
+        assert!(parse_proposal_draft("not json").is_err());
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_discovery_reads_the_complete_audit_history() {
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(snapshot_exchanges(&parent, &leaf, &control));
+        let cancellation = Cancellation::new();
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &cancellation,
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("remote snapshot");
+
+        assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_fetches_required_sources_missing_from_history() {
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let exchanges = vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(404, "{}"),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, format!("[{parent}]")),
+            response(200, &leaf),
+            response(200, &control),
+        ];
+        let (service, server) = service(exchanges);
+        let cancellation = Cancellation::new();
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &cancellation,
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("missing sources read individually");
+
+        assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_stops_when_the_default_branch_changes() {
+        let (service, server) = service(vec![response(200, repository_json("release"))]);
+        let cancellation = Cancellation::new();
+        assert!(
+            collect_snapshot_remote(
+                &service,
+                &cancellation,
+                &repository(),
+                10,
+                "main",
+                &"a".repeat(40),
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn remote_preparation_rechecks_the_snapshot_before_a_pending_batch() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let proposal = gap_proposal(&snapshot, &ledger);
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let mut exchanges = snapshot_exchanges(&parent, &leaf, &control);
+        exchanges.extend([
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(404, "{}"),
+            response(200, refs(&[(11, 111, "open")])),
+        ]);
+        let (service, server) = service(exchanges);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        let current = prepare_remote_apply(&context, &proposal)
+            .await
+            .expect("fresh remote proposal");
+        assert_eq!(current, current_snapshot_sources(&snapshot));
+        assert_eq!(server.finish().expect("stub completed").len(), 11);
+    }
+
+    #[tokio::test]
+    async fn remote_preparation_resumes_an_inflight_graph_with_content_checks() {
+        let snapshot = audit_snapshot();
+        let ledger = satisfied_ledger(&snapshot);
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: Vec::new(),
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        };
+        let mut proposal = build_audit_proposal(&snapshot, &ledger, &draft).expect("proposal");
+        mark_audit_graph_in_flight(&mut proposal).expect("graph in flight");
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(404, "{}"),
+            response(200, refs(&[(11, 111, "open")])),
+        ]);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        assert!(prepare_remote_apply(&context, &proposal).await.is_ok());
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_leaf_reconciliation_creates_and_proves_exactly_one_leaf() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let created = issue_json(
+            13,
+            113,
+            &proposal.leaves[0].title,
+            &proposal.leaves[0].body,
+            "open",
+        );
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, "[]"),
+            response(201, &created),
+            response(200, &created),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &created),
+        ]);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        reconcile_audit_leaves(&context, &mut proposal)
+            .await
+            .expect("leaf creation");
+        assert_eq!(proposal.leaves[0].state, AuditLeafState::Resolved);
+        assert_eq!(proposal.leaves[0].number, 13);
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 7);
+        assert!(requests.iter().any(|request| {
+            request.method == "POST"
+                && request.path.ends_with("/repos/o/r/issues")
+                && String::from_utf8_lossy(&request.body.bytes)
+                    .contains("[LEAF OF 10] Repair the audit gap")
+        }));
+    }
+
+    #[tokio::test]
+    async fn remote_leaf_reconciliation_resumes_a_prior_inflight_creation() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        let created = issue_json(
+            13,
+            113,
+            &proposal.leaves[0].title,
+            &proposal.leaves[0].body,
+            "open",
+        );
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, format!("[{created}]")),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &created),
+        ]);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        reconcile_audit_leaves(&context, &mut proposal)
+            .await
+            .expect("in-flight leaf read-back");
+        assert_eq!(proposal.leaves[0].state, AuditLeafState::Resolved);
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_final_verification_proves_the_completed_native_graph() {
+        let snapshot = audit_snapshot();
+        let ledger = satisfied_ledger(&snapshot);
+        let proposal = complete_proposal(&snapshot, &ledger);
+        let parent = remote_parent();
+        let (service, server) = service(vec![
+            response(200, &parent),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, "[]"),
+            response(200, "[]"),
+            response(200, "[]"),
+        ]);
+        let cancellation = Cancellation::new();
+        let repository = repository();
+
+        verify_final_graph(
+            &service,
+            &cancellation,
+            &repository,
+            &snapshot,
+            &proposal,
+            &current_snapshot_sources(&snapshot),
+        )
+        .await
+        .expect("final graph");
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_apply_reconciles_an_idempotent_historical_leaf_graph() {
+        let snapshot = audit_snapshot();
+        let ledger = satisfied_ledger(&snapshot);
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: Vec::new(),
+            dependencies: Vec::new(),
+            remove_dependencies: Vec::new(),
+        };
+        let mut proposal = build_audit_proposal(&snapshot, &ledger, &draft).expect("proposal");
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let direct = refs(&[(11, 111, "open")]);
+        let mut exchanges = snapshot_exchanges(&parent, &leaf, &control);
+        exchanges.extend([
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(404, "{}"),
+            response(200, &direct),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(404, "{}"),
+            response(200, &direct),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(404, "{}"),
+            response(200, &direct),
+            response(200, &direct),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &parent),
+            response(200, &direct),
+            response(200, &direct),
+            response(200, "[]"),
+            response(200, "[]"),
+            response(200, "[]"),
+        ]);
+        let (service, server) = service(exchanges);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        apply_remote(&context, &mut proposal)
+            .await
+            .expect("idempotent graph reconciliation");
+        assert!(proposal.complete);
+        assert_eq!(proposal.graph_state, AuditGraphState::Verified);
+        assert!(proposal_path.is_file());
+        assert_eq!(server.finish().expect("stub completed").len(), 35);
+    }
+
+    #[allow(clippy::too_many_lines)] // One ordered exchange sequence proves the graph's remote mutation and read-back.
+    #[tokio::test]
+    async fn remote_relationship_reconciliation_proves_new_leaf_dependencies() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        record_audit_leaf_resolved(
+            &mut proposal,
+            &identity,
+            13,
+            113,
+            "https://github.com/o/r/issues/13",
+        )
+        .expect("resolved");
+        proposal.dependencies = vec![AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 11 },
+            prerequisite: AuditDependencyNode::New {
+                identity: identity.clone(),
+            },
+        }];
+
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let updated_leaf = remote_leaf_at("2026-08-11T00:01:00Z");
+        let control = remote_control();
+        let created = issue_json(
+            13,
+            113,
+            &proposal.leaves[0].title,
+            &proposal.leaves[0].body,
+            "open",
+        );
+        let direct = refs(&[(11, 111, "open"), (13, 113, "open")]);
+        let parent_blockers = refs(&[(11, 111, "open"), (13, 113, "open")]);
+        let dependency_blocker = refs(&[(13, 113, "open")]);
+        let parent_ref = json!({ "number": 10, "id": 110, "state": "open" }).to_string();
+        let exchanges = vec![
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &created),
+            response(404, "{}"),
+            response(200, &direct),
+            response(200, &parent_blockers),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &created),
+            response(200, &parent_ref),
+            response(200, &direct),
+            response(200, &parent_blockers),
+            response(200, &parent),
+            response(200, &leaf),
+            response(200, &control),
+            response(200, &created),
+            response(200, &leaf),
+            response(200, &leaf),
+            response(200, "[]"),
+            response(200, "[]"),
+            response(200, &leaf),
+            response(200, "[]"),
+            response(201, "{}"),
+            response(200, &dependency_blocker),
+            response(200, &updated_leaf),
+            response(200, &parent),
+            response(200, &updated_leaf),
+            response(200, &control),
+            response(200, &created),
+            response(200, &parent),
+            response(200, &created),
+            response(200, &parent_ref),
+            response(200, &direct),
+            response(200, &parent_blockers),
+            response(200, &dependency_blocker),
+            response(200, "[]"),
+            response(200, "[]"),
+            response(200, &dependency_blocker),
+            response(200, "[]"),
+            response(200, "[]"),
+        ];
+        let (service, server) = service(exchanges);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        reconcile_leaf_relationships(&context, &mut proposal)
+            .await
+            .expect("relationship reconciliation");
+        let current = persist_refreshed_proposal(&context, &mut proposal)
+            .await
+            .expect("refresh mutated fingerprints");
+        verify_final_graph(
+            &service,
+            &cancellation,
+            &repository,
+            &snapshot,
+            &proposal,
+            &current,
+        )
+        .await
+        .expect("new leaf graph read-back");
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 42);
+        let dependency_writes = requests
+            .iter()
+            .filter(|request| request.method == "POST")
+            .count();
+        assert_eq!(dependency_writes, 1);
+        assert!(requests.iter().any(|request| {
+            request.method == "POST"
+                && request
+                    .path
+                    .ends_with("/repos/o/r/issues/11/dependencies/blocked_by")
+                && String::from_utf8_lossy(&request.body.bytes).contains("\"issue_id\":113")
+        }));
     }
 }
