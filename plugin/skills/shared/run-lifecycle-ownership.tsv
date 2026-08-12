@@ -3,3 +3,4 @@ skill	start_owner	terminal_owner	no_archive_exception
 design	python/larch/design/design_step0.py	python/larch/design/design_log_publish_flow.py	-
 implement	python/larch/implement/dispatch_bootstrap.py	python/larch/implement/dispatch_step18.py	no-logs-commit
 review	skills/review/SKILL.md	skills/review/SKILL.md	-
+audit-umbrella	skills/audit-umbrella/SKILL.md	skills/audit-umbrella/SKILL.md	-
