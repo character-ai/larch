@@ -79,6 +79,9 @@ full canonical key), source SHA, producer job, merge-queue ref, artifact name
 and deterministic payload digest, declared tool versions, maximum byte bound,
 manifest member paths, regular-file shape, checksums, and mode metadata;
 symlinks and unexpected tree entries fail closed.
+Candidate artifact uploads explicitly retain hidden files: the manifest binds
+every regular payload member, including dot-prefixed Cargo cache entries, so a
+transport that silently omits one cannot publish a partial cache payload.
 Cache data is never an artifact-provenance substitute and a cache hit never
 skips correctness checks or artifact handoff.
 

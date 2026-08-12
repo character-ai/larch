@@ -700,6 +700,7 @@ jobs:
         with:
           name: main-cache-cargo-inputs-candidate
           path: ${{ runner.temp }}/main-cache-cargo-inputs-candidate
+          include-hidden-files: true
           if-no-files-found: error
           overwrite: false
       - name: Stage Rust lint dependency cache candidate
@@ -725,6 +726,7 @@ jobs:
         with:
           name: main-cache-rust-lint-deps-candidate
           path: ${{ runner.temp }}/main-cache-rust-lint-deps-candidate
+          include-hidden-files: true
           if-no-files-found: error
           overwrite: false
 
@@ -865,6 +867,7 @@ jobs:
         with:
           name: main-cache-rust-policy-candidate
           path: ${{ runner.temp }}/main-cache-rust-policy-candidate
+          include-hidden-files: true
           if-no-files-found: error
           overwrite: false
 
