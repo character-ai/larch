@@ -25,7 +25,7 @@ use std::{
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::{Command, ExitCode, Output},
 };
 
 pub type Options = BTreeMap<String, String>;
@@ -443,29 +443,21 @@ pub fn dedup_tier_a_report(globals: &Options, options: &Options) -> ExitCode {
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=current-repo-unresolved");
         return ExitCode::SUCCESS;
     };
-    let output = Command::new(helper) // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
-        .args([
-            OsString::from("--repo"),
-            OsString::from(repo),
-            OsString::from("--body-file"),
-            body.as_os_str().to_owned(),
-            OsString::from("--dedup-only"),
-            OsString::from("--publication-tier"),
-            OsString::from("tier-a"),
-            OsString::from("--attempts-file"),
-            attempts.as_os_str().to_owned(),
-            OsString::from("--escalation-ledger-file"),
-            escalation.as_os_str().to_owned(),
-            OsString::from("--root-cause-file"),
-            root_cause.as_os_str().to_owned(),
-            OsString::from("--mutation-context"),
-            context.as_os_str().to_owned(),
-            OsString::from("--run-id"),
-            OsString::from(run_id),
-            OsString::from("--trusted-root"),
-            root.path().as_os_str().to_owned(),
-        ])
-        .output();
+    let request = TierAHelperRequest {
+        helper: &helper,
+        repo: &repo,
+        body: &body,
+        attempts: &attempts,
+        escalation: &escalation,
+        root_cause: &root_cause,
+        context: &context,
+        run_id: &run_id,
+        trusted_root: root.path(),
+        create_after_dedup: options
+            .get("--create-after-dedup")
+            .is_some_and(|value| value == "true"),
+    };
+    let output = invoke_tier_a_helper(&request);
     let Ok(output) = output else {
         println!("STALL_RECOVERY_REPORT_STATUS=lookup-failed-open");
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=helper-failed");
@@ -478,6 +470,56 @@ pub fn dedup_tier_a_report(globals: &Options, options: &Options) -> ExitCode {
     }
     emit_normalized_file_failure_env(&stdout);
     ExitCode::SUCCESS
+}
+
+struct TierAHelperRequest<'a> {
+    helper: &'a Path,
+    repo: &'a str,
+    body: &'a Path,
+    attempts: &'a Path,
+    escalation: &'a Path,
+    root_cause: &'a Path,
+    context: &'a Path,
+    run_id: &'a str,
+    trusted_root: &'a Path,
+    create_after_dedup: bool,
+}
+
+fn invoke_tier_a_helper(request: &TierAHelperRequest<'_>) -> std::io::Result<Output> {
+    let mut command = Command::new(request.helper); // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
+    command.args([
+        OsString::from("--repo"),
+        OsString::from(request.repo),
+        OsString::from("--body-file"),
+        request.body.as_os_str().to_owned(),
+        OsString::from("--publication-tier"),
+        OsString::from("tier-a"),
+        OsString::from("--attempts-file"),
+        request.attempts.as_os_str().to_owned(),
+        OsString::from("--escalation-ledger-file"),
+        request.escalation.as_os_str().to_owned(),
+        OsString::from("--root-cause-file"),
+        request.root_cause.as_os_str().to_owned(),
+        OsString::from("--mutation-context"),
+        request.context.as_os_str().to_owned(),
+        OsString::from("--run-id"),
+        OsString::from(request.run_id),
+        OsString::from("--trusted-root"),
+        request.trusted_root.as_os_str().to_owned(),
+    ]);
+    if request.create_after_dedup {
+        // Keep lookup's historical fail-open-create behavior inside the same
+        // descriptor-owning helper. The helper derives the actual title from
+        // its approved body snapshot, never from this placeholder.
+        command.args([
+            "--title",
+            "/implement terminal failure",
+            "--create-on-lookup-failure",
+        ]);
+    } else {
+        command.arg("--dedup-only");
+    }
+    command.output()
 }
 
 fn ensure_dedup_slices(

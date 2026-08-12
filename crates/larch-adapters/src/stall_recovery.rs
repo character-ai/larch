@@ -12,16 +12,17 @@ use larch_core::{
     RepositoryRead, artifact_prefix_valid, classification_signature, classify_text,
     daemon_liveness, failure_detail_sidecar_name, first_nonempty, is_terminal_merge_result,
     kv_text, normalize_file_failure_report, normalize_issue_output, normalize_outcome_values,
-    public_text_is_sensitive, read_for, resume_hint_for, safe_bail_value, safe_dispatcher_value,
-    safe_pattern_value, safe_phase, safe_phase_value, safe_step, safe_step_value, select_kv_bytes,
-    state_value, terminal_state_valid, token_valid, truthy, validate_process_identity,
+    public_text_is_sensitive, read_for, redact, resume_hint_for, safe_bail_value,
+    safe_dispatcher_value, safe_pattern_value, safe_phase, safe_phase_value, safe_step,
+    safe_step_value, select_kv_bytes, state_value, terminal_state_valid, token_valid, truthy,
+    validate_process_identity,
 };
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
 use regex::Regex;
 use sha2::{Digest as _, Sha256};
 #[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::{
     collections::BTreeMap,
     env,
@@ -1107,43 +1108,367 @@ pub fn tier_b_public_file_is_valid(
     sensitive_corpus: &Path,
     artifact_prefix: &str,
 ) -> bool {
-    if !tmpdir.is_absolute()
-        || !public_file.is_absolute()
-        || !sensitive_corpus.is_absolute()
-        || !artifact_prefix_valid(artifact_prefix)
-        || !regular_nonsymlink(public_file, Some(MAX_PUBLIC_FILE_BYTES))
-    {
+    if !tmpdir.is_absolute() || !public_file.is_absolute() || !sensitive_corpus.is_absolute() {
         return false;
     }
     let Ok(root) = TemporaryRoot::resolve(Some(tmpdir)) else {
         return false;
     };
-    let Some(sensitive_corpus) = canonical_root_spelling(&root, tmpdir, sensitive_corpus) else {
+    let Some(public_file) = canonical_root_spelling(&root, tmpdir, public_file) else {
         return false;
     };
-    if !safe_regular_file(&root, &sensitive_corpus, None) {
+    tier_b_public_file_snapshot(&root, &public_file, sensitive_corpus, artifact_prefix).is_some()
+}
+
+/// Snapshot one approved public artifact into a caller-owned unlinked Unix file.
+///
+/// The caller keeps the descriptor open across its transport command. That
+/// binds the outbound read to this exact validated inode without reopening a
+/// mutable pathname after validation.
+#[cfg(unix)]
+#[must_use]
+pub fn snapshot_public_file_to_fd(
+    source_tmpdir: &Path,
+    public_file: &Path,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+    snapshot_fd: i32,
+) -> bool {
+    let Some((payload, corpus)) = approved_public_file_payload(
+        source_tmpdir,
+        public_file,
+        sensitive_corpus,
+        artifact_prefix,
+    ) else {
+        return false;
+    };
+    write_public_snapshot_fd(snapshot_fd, &payload, corpus.as_deref())
+}
+
+/// Revalidate a caller-owned unlinked public descriptor and stage it into a
+/// second inherited descriptor for transport.
+///
+/// This supports a Tier A body snapshot feeding Tier B corpus validation while
+/// keeping marker and title parsing bound to the original immutable descriptor.
+#[cfg(unix)]
+#[must_use]
+pub fn snapshot_public_fd_to_fd(
+    source_tmpdir: &Path,
+    public_fd: i32,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+    snapshot_fd: i32,
+) -> bool {
+    if public_fd == snapshot_fd {
         return false;
     }
-    let effective = root.path().join(format!(
+    let Some((payload, corpus)) =
+        approved_public_fd_payload(source_tmpdir, public_fd, sensitive_corpus, artifact_prefix)
+    else {
+        return false;
+    };
+    write_public_snapshot_fd(snapshot_fd, &payload, corpus.as_deref())
+}
+
+/// Non-Unix callers cannot safely hand an inherited unlinked descriptor to the
+/// shell transport helper.
+#[cfg(not(unix))]
+#[must_use]
+pub fn snapshot_public_file_to_fd(
+    _source_tmpdir: &Path,
+    _public_file: &Path,
+    _sensitive_corpus: Option<&Path>,
+    _artifact_prefix: &str,
+    _snapshot_fd: i32,
+) -> bool {
+    false
+}
+
+/// Non-Unix callers cannot safely hand an inherited unlinked descriptor to the
+/// shell transport helper.
+#[cfg(not(unix))]
+#[must_use]
+pub fn snapshot_public_fd_to_fd(
+    _source_tmpdir: &Path,
+    _public_fd: i32,
+    _sensitive_corpus: Option<&Path>,
+    _artifact_prefix: &str,
+    _snapshot_fd: i32,
+) -> bool {
+    false
+}
+
+fn approved_public_file_payload(
+    source_tmpdir: &Path,
+    public_file: &Path,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+) -> Option<(String, Option<String>)> {
+    if !source_tmpdir.is_absolute()
+        || !public_file.is_absolute()
+        || !artifact_prefix_valid(artifact_prefix)
+    {
+        return None;
+    }
+    let source_root = TemporaryRoot::resolve(Some(source_tmpdir)).ok()?;
+    let public_file = canonical_root_spelling(&source_root, source_tmpdir, public_file)?;
+    sensitive_corpus.map_or_else(
+        || tier_a_public_file_snapshot(&source_root, &public_file).map(|payload| (payload, None)),
+        |corpus| {
+            tier_b_public_file_snapshot(&source_root, &public_file, corpus, artifact_prefix)
+                .map(|(payload, corpus)| (payload, Some(corpus)))
+        },
+    )
+}
+
+#[cfg(unix)]
+fn approved_public_fd_payload(
+    source_tmpdir: &Path,
+    public_fd: i32,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+) -> Option<(String, Option<String>)> {
+    if !source_tmpdir.is_absolute() || !artifact_prefix_valid(artifact_prefix) {
+        return None;
+    }
+    let source_root = TemporaryRoot::resolve(Some(source_tmpdir)).ok()?;
+    let payload = read_public_snapshot_fd(public_fd)?;
+    match sensitive_corpus {
+        None => public_snapshot_is_safe(&payload, None).then_some((payload, None)),
+        Some(sensitive_corpus) => tier_b_public_fd_snapshot(
+            &source_root,
+            source_tmpdir,
+            &payload,
+            sensitive_corpus,
+            artifact_prefix,
+        )
+        .map(|corpus| (payload, Some(corpus))),
+    }
+}
+
+#[cfg(unix)]
+fn write_public_snapshot_fd(snapshot_fd: i32, payload: &str, corpus: Option<&str>) -> bool {
+    let Some(mut file) = open_public_snapshot_fd(snapshot_fd) else {
+        return false;
+    };
+    let Ok(metadata) = file.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() || metadata.nlink() != 0 {
+        return false;
+    }
+    if file
+        .set_permissions(fs::Permissions::from_mode(0o600))
+        .is_err()
+        || file.set_len(0).is_err()
+        || file.seek(SeekFrom::Start(0)).is_err()
+        || file.write_all(payload.as_bytes()).is_err()
+        || file.flush().is_err()
+        || file.sync_all().is_err()
+        || file.seek(SeekFrom::Start(0)).is_err()
+    {
+        return false;
+    }
+    let Ok(before_read) = file.metadata() else {
+        return false;
+    };
+    if !before_read.is_file()
+        || before_read.nlink() != 0
+        || before_read.len() != u64::try_from(payload.len()).unwrap_or(u64::MAX)
+    {
+        return false;
+    }
+    let mut bytes = Vec::with_capacity(payload.len());
+    if Read::by_ref(&mut file)
+        .take(MAX_PUBLIC_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+    {
+        return false;
+    }
+    let Ok(after_read) = file.metadata() else {
+        return false;
+    };
+    if !same_public_file_snapshot(&before_read, &after_read) || after_read.nlink() != 0 {
+        return false;
+    }
+    let approved = String::from_utf8(bytes)
+        .is_ok_and(|written| written == payload && public_snapshot_is_safe(&written, corpus));
+    let _ = file.seek(SeekFrom::Start(0));
+    approved
+}
+
+#[cfg(unix)]
+fn tier_b_public_fd_snapshot(
+    root: &TemporaryRoot,
+    tmpdir: &Path,
+    payload: &str,
+    sensitive_corpus: &Path,
+    artifact_prefix: &str,
+) -> Option<String> {
+    if !sensitive_corpus.is_absolute() {
+        return None;
+    }
+    let sensitive_corpus = canonical_root_spelling(root, tmpdir, sensitive_corpus)?;
+    if !safe_regular_file(root, &sensitive_corpus, None) {
+        return None;
+    }
+    let corpus = build_effective_sensitive_corpus(root, &sensitive_corpus, artifact_prefix)?;
+    if !public_snapshot_is_safe(payload, Some(&corpus)) {
+        return None;
+    }
+    let effective = effective_public_corpus_path(root, artifact_prefix);
+    let _ = fs::remove_file(effective);
+    Some(corpus)
+}
+
+#[cfg(unix)]
+fn read_public_snapshot_fd(snapshot_fd: i32) -> Option<String> {
+    let mut file = open_public_snapshot_fd(snapshot_fd)?;
+    let before = file.metadata().ok()?;
+    if !before.is_file() || before.nlink() != 0 || before.len() > MAX_PUBLIC_FILE_BYTES {
+        return None;
+    }
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut bytes = Vec::with_capacity(usize::try_from(before.len()).ok()?);
+    Read::by_ref(&mut file)
+        .take(MAX_PUBLIC_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let after = file.metadata().ok()?;
+    if !same_public_file_snapshot(&before, &after)
+        || after.nlink() != 0
+        || u64::try_from(bytes.len()).ok() != Some(before.len())
+    {
+        return None;
+    }
+    file.seek(SeekFrom::Start(0)).ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+#[cfg(unix)]
+fn open_public_snapshot_fd(snapshot_fd: i32) -> Option<File> {
+    (snapshot_fd >= 3)
+        .then(|| PathBuf::from(format!("/dev/fd/{snapshot_fd}")))
+        .and_then(|path| OpenOptions::new().read(true).write(true).open(path).ok())
+}
+
+fn tier_a_public_file_snapshot(root: &TemporaryRoot, public_file: &Path) -> Option<String> {
+    let payload = bounded_public_file_snapshot(root, public_file)?;
+    public_snapshot_is_safe(&payload, None).then_some(payload)
+}
+
+fn tier_b_public_file_snapshot(
+    root: &TemporaryRoot,
+    public_file: &Path,
+    sensitive_corpus: &Path,
+    artifact_prefix: &str,
+) -> Option<(String, String)> {
+    if !public_file.is_absolute()
+        || !sensitive_corpus.is_absolute()
+        || !artifact_prefix_valid(artifact_prefix)
+    {
+        return None;
+    }
+    let sensitive_corpus = canonical_root_spelling(root, root.path(), sensitive_corpus)?;
+    if !safe_regular_file(root, &sensitive_corpus, None) {
+        return None;
+    }
+    let corpus = build_effective_sensitive_corpus(root, &sensitive_corpus, artifact_prefix)?;
+    let payload = bounded_public_file_snapshot(root, public_file)?;
+    if !public_snapshot_is_safe(&payload, Some(&corpus)) {
+        return None;
+    }
+    let effective = effective_public_corpus_path(root, artifact_prefix);
+    let _ = fs::remove_file(effective);
+    Some((payload, corpus))
+}
+
+fn build_effective_sensitive_corpus(
+    root: &TemporaryRoot,
+    sensitive_corpus: &Path,
+    artifact_prefix: &str,
+) -> Option<String> {
+    let effective = effective_public_corpus_path(root, artifact_prefix);
+    let corpus = build_sensitive_corpus(root, sensitive_corpus, artifact_prefix);
+    atomic_write_utf8_in(root, &effective, &corpus, false, 0o600).ok()?;
+    Some(corpus)
+}
+
+fn effective_public_corpus_path(root: &TemporaryRoot, artifact_prefix: &str) -> PathBuf {
+    root.path().join(format!(
         "{}-sensitive-corpus.public.effective",
         if artifact_prefix.is_empty() {
             "stall-recovery"
         } else {
             artifact_prefix
         }
-    ));
-    let corpus = build_sensitive_corpus(&root, &sensitive_corpus, artifact_prefix);
-    if atomic_write_utf8_in(&root, &effective, &corpus, false, 0o600).is_err() {
-        return false;
+    ))
+}
+
+fn public_snapshot_is_safe(payload: &str, corpus: Option<&str>) -> bool {
+    redact(payload).findings().is_empty()
+        && corpus.is_none_or(|corpus| !public_text_is_sensitive(corpus, payload))
+}
+
+fn bounded_public_file_snapshot(root: &TemporaryRoot, path: &Path) -> Option<String> {
+    bounded_public_file_snapshot_after_open(root, path, |_| {})
+}
+
+fn bounded_public_file_snapshot_after_open(
+    root: &TemporaryRoot,
+    path: &Path,
+    after_open: impl FnOnce(&Path),
+) -> Option<String> {
+    let confined = root.confine(path, PathIntent::Read).ok()?;
+    confined.revalidate().ok()?;
+    let before = fs::symlink_metadata(confined.path()).ok()?;
+    if before.file_type().is_symlink() || !before.is_file() || before.len() > MAX_PUBLIC_FILE_BYTES
+    {
+        return None;
     }
-    let sensitive = read_lossy(public_file)
-        .ok()
-        .is_none_or(|candidate| public_text_is_sensitive(&corpus, &candidate));
-    if sensitive {
-        return false;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::libc::O_NOFOLLOW);
+    let mut file = options.open(confined.path()).ok()?;
+    let opened = file.metadata().ok()?;
+    if confined.revalidate().is_err() || !same_public_file_snapshot(&before, &opened) {
+        return None;
     }
-    let _ = fs::remove_file(effective);
-    true
+    after_open(confined.path());
+    let capacity = usize::try_from(before.len()).ok()?;
+    let mut bytes = Vec::with_capacity(capacity);
+    Read::by_ref(&mut file)
+        .take(MAX_PUBLIC_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let opened_after = file.metadata().ok()?;
+    let visible_after = fs::symlink_metadata(confined.path()).ok()?;
+    if confined.revalidate().is_err()
+        || !same_public_file_snapshot(&before, &opened_after)
+        || !same_public_file_snapshot(&before, &visible_after)
+        || u64::try_from(bytes.len()).ok() != Some(before.len())
+    {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
+}
+
+#[cfg(unix)]
+fn same_public_file_snapshot(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(not(unix))]
+fn same_public_file_snapshot(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.len() == after.len() && before.modified().ok() == after.modified().ok()
 }
 
 /// Detect whether the active repository is a non-forked larch development clone.
@@ -1999,6 +2324,8 @@ fn read_lossy(path: &Path) -> Result<String, ()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::MAX_PUBLIC_FILE_BYTES;
     use super::{
         AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
         FailureDetailLogError, MAX_DETAIL_FILE_BYTES, MAX_DETAIL_FILE_BYTES_USIZE,
@@ -2006,11 +2333,15 @@ mod tests {
         clear_stall_inner, init_attempts, is_larch_dev_clone, latest_failure_detail_log_sidecar,
         materialize_truncated_failure_detail_log, normalize_outcome,
         read_failure_detail_log_with_sidecar_fallback, read_validated_failure_detail_log,
-        record_attempt, record_escalation, seed_terminal_state, terminal_state_is_valid,
+        record_attempt, record_escalation, seed_terminal_state, snapshot_public_fd_to_fd,
+        snapshot_public_file_to_fd, terminal_state_is_valid,
     };
     use crate::TemporaryRoot;
+    #[cfg(unix)]
+    use std::os::fd::AsRawFd as _;
     use std::{
         fs,
+        io::{Read as _, Seek as _, SeekFrom, Write as _},
         path::{Path, PathBuf},
         thread,
     };
@@ -2415,6 +2746,219 @@ mod tests {
         fs::write(state.join("finalize-state.sh"), "FORKED_TARGET=true\n").expect("finalize state");
 
         assert!(!is_larch_dev_clone(&state, Some(&project)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_keeps_the_approved_tier_b_bytes_after_source_mutation() {
+        let source = tempfile::tempdir().expect("source tempdir");
+        let transport = tempfile::NamedTempFile::new_in(source.path()).expect("transport file");
+        let public = source.path().join("public.md");
+        let corpus = source.path().join("stall-recovery-sensitive-corpus.env");
+        fs::write(&public, "approved report\n").expect("public fixture");
+        fs::write(&corpus, "late-public-secret\n").expect("corpus fixture");
+        fs::remove_file(transport.path()).expect("unlink transport file");
+
+        assert!(snapshot_public_file_to_fd(
+            source.path(),
+            &public,
+            Some(&corpus),
+            "",
+            transport.as_raw_fd(),
+        ));
+        fs::write(&public, "late-public-secret\n").expect("mutated source");
+
+        let mut captured = transport
+            .as_file()
+            .try_clone()
+            .expect("transport duplicate");
+        captured.seek(SeekFrom::Start(0)).expect("rewind transport");
+        let mut captured_text = String::new();
+        captured
+            .read_to_string(&mut captured_text)
+            .expect("read transport");
+        assert_eq!(captured_text, "approved report\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_transport_fd_keeps_the_approved_tier_b_bytes() {
+        let source = tempfile::tempdir().expect("source tempdir");
+        let stage = tempfile::NamedTempFile::new_in(source.path()).expect("stage file");
+        let transport = tempfile::NamedTempFile::new_in(source.path()).expect("transport file");
+        let public = source.path().join("public.md");
+        let corpus = source.path().join("stall-recovery-sensitive-corpus.env");
+        fs::write(&public, "approved report\n").expect("public fixture");
+        fs::write(&corpus, "late-public-secret\n").expect("corpus fixture");
+        fs::remove_file(stage.path()).expect("unlink stage file");
+        fs::remove_file(transport.path()).expect("unlink transport file");
+
+        assert!(snapshot_public_file_to_fd(
+            source.path(),
+            &public,
+            None,
+            "",
+            stage.as_raw_fd(),
+        ));
+        assert!(!snapshot_public_fd_to_fd(
+            source.path(),
+            stage.as_raw_fd(),
+            None,
+            "",
+            stage.as_raw_fd(),
+        ));
+        assert!(snapshot_public_fd_to_fd(
+            source.path(),
+            stage.as_raw_fd(),
+            Some(&corpus),
+            "",
+            transport.as_raw_fd(),
+        ));
+        fs::write(&public, "late-public-secret\n").expect("mutated source");
+
+        let mut captured = transport
+            .as_file()
+            .try_clone()
+            .expect("transport duplicate");
+        captured.seek(SeekFrom::Start(0)).expect("rewind transport");
+        let mut captured_text = String::new();
+        captured
+            .read_to_string(&mut captured_text)
+            .expect("read transport");
+        assert_eq!(captured_text, "approved report\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_refuses_a_source_symlink() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let target = temporary.path().join("target.md");
+        let public = temporary.path().join("public.md");
+        let transport = tempfile::NamedTempFile::new_in(temporary.path()).expect("transport file");
+        fs::write(&target, "approved report\n").expect("target fixture");
+        std::os::unix::fs::symlink(&target, &public).expect("source symlink");
+        fs::remove_file(transport.path()).expect("unlink transport file");
+
+        assert!(!snapshot_public_file_to_fd(
+            temporary.path(),
+            &public,
+            None,
+            "",
+            transport.as_raw_fd(),
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_refuses_an_oversized_source() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let public = temporary.path().join("public.md");
+        let transport = tempfile::NamedTempFile::new_in(temporary.path()).expect("transport file");
+        let oversized_len =
+            usize::try_from(MAX_PUBLIC_FILE_BYTES + 1).expect("fixture length fits usize");
+        fs::write(&public, vec![b'x'; oversized_len]).expect("oversized public fixture");
+        fs::remove_file(transport.path()).expect("unlink transport file");
+
+        assert!(!snapshot_public_file_to_fd(
+            temporary.path(),
+            &public,
+            None,
+            "",
+            transport.as_raw_fd(),
+        ));
+    }
+
+    #[test]
+    fn public_snapshot_refuses_growth_after_open() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temporary.path())).expect("snapshot root");
+        let public = root.path().join("public.md");
+        fs::write(&public, "approved report\n").expect("public fixture");
+
+        assert!(
+            super::bounded_public_file_snapshot_after_open(&root, &public, |path| {
+                fs::OpenOptions::new()
+                    .append(true)
+                    .open(path)
+                    .expect("append source")
+                    .write_all(b"late-public-secret\n")
+                    .expect("grow source");
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn public_snapshot_refuses_truncation_after_open() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temporary.path())).expect("snapshot root");
+        let public = root.path().join("public.md");
+        fs::write(&public, "approved report\n").expect("public fixture");
+
+        assert!(
+            super::bounded_public_file_snapshot_after_open(&root, &public, |path| {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(path)
+                    .expect("open source")
+                    .set_len(0)
+                    .expect("truncate source");
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn public_snapshot_refuses_removal_after_open() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temporary.path())).expect("snapshot root");
+        let public = root.path().join("public.md");
+        fs::write(&public, "approved report\n").expect("public fixture");
+
+        assert!(
+            super::bounded_public_file_snapshot_after_open(&root, &public, |path| {
+                fs::remove_file(path).expect("remove source");
+            })
+            .is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_refuses_pathname_replacement_after_open() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temporary.path())).expect("snapshot root");
+        let public = root.path().join("public.md");
+        let replacement = root.path().join("replacement.md");
+        fs::write(&public, "approved report\n").expect("public fixture");
+        fs::write(&replacement, "late-public-secret\n").expect("replacement fixture");
+
+        assert!(
+            super::bounded_public_file_snapshot_after_open(&root, &public, |path| {
+                fs::rename(&replacement, path).expect("replace source");
+            })
+            .is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_snapshot_refuses_symlink_substitution_after_open() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = TemporaryRoot::resolve(Some(temporary.path())).expect("snapshot root");
+        let public = root.path().join("public.md");
+        let original = root.path().join("public.original");
+        let replacement = root.path().join("replacement.md");
+        fs::write(&public, "approved report\n").expect("public fixture");
+        fs::write(&replacement, "late-public-secret\n").expect("replacement fixture");
+
+        assert!(
+            super::bounded_public_file_snapshot_after_open(&root, &public, |path| {
+                fs::rename(path, &original).expect("move source");
+                std::os::unix::fs::symlink(&replacement, path).expect("replace with symlink");
+            })
+            .is_none()
+        );
     }
 
     #[test]

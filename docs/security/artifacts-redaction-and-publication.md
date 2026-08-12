@@ -575,10 +575,19 @@ public fields. The Rust-owned
 `stall-recovery validate-tier-b-public-file` command rebuilds the effective
 sensitive corpus under the validated session root and rejects oversized,
 symlinked, path-bearing, remote-bearing, or corpus-matching public text. The
-cross-repository helper reaches it only through `scripts/larch.sh`. A missing
-validator, sensitive corpus, repository resolver, network result, or valid
-created URL falls back to a sanitized local report for manual filing. It never
-falls back to the raw evidence.
+cross-repository helper reaches it only through `scripts/larch.sh`. Before
+deduplication, issue creation, or duplicate-comment publication, the helper
+asks that Rust owner for a bounded no-follow snapshot. The owner checks file
+identity before, during, and after the read, then writes a private, unlinked
+descriptor owned by the helper. Marker lookup, the create title, and the
+GitHub transport consume that descriptor through `/dev/fd` rather than
+reopening the caller-provided pathname. A source that changes while it is
+snapshotted, or is missing, oversized,
+non-regular, or symlinked, fails closed before any GitHub mutation. Later
+source changes cannot alter the approved transport bytes. A missing validator,
+sensitive corpus, repository resolver, network result, or valid created URL
+falls back to a sanitized local
+report for manual filing. It never falls back to the raw evidence.
 
 The Rust-owned `stall-recovery compose-report`, `chat-print`,
 `dedup-tier-a-report`, and `populate-sensitive-corpus` commands keep their

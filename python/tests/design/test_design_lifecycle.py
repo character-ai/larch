@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import TextIO, cast
+from typing import cast
 from types import SimpleNamespace
 
 import pytest
@@ -4067,18 +4067,18 @@ def test_failure_report_escalation_malformed_rows_skip(
 @pytest.mark.parametrize(
     "case",
     [
-        (1, "", 0, 0, "tier-a-dedup-helper-failed"),
-        (0, "unexpected-status", 0, 0, "tier-a-dedup-status-unexpected:unexpected-status"),
-        (0, "no-match", 1, 0, "tier-a-file-helper-failed"),
-        (0, "no-match", 0, 1, "tier-a-normalize-failed"),
+        (1, "", "tier-a-dedup-helper-failed"),
+        (0, "unexpected-status", "tier-a-dedup-status-unexpected:unexpected-status"),
+        (0, "no-match", "tier-a-dedup-status-unexpected:no-match"),
+        (0, "lookup-failed-open", "tier-a-dedup-status-unexpected:lookup-failed-open"),
     ],
 )
-def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
+def test_failure_report_escalation_tier_a_filing_uses_one_rust_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    case: tuple[int, str, int, int, str],
+    case: tuple[int, str, str],
 ) -> None:
-    dedup_rc, dedup_status, file_rc, normalize_rc, expected_reason = case
+    dedup_rc, dedup_status, expected_reason = case
     ledger = tmp_path / "design-failure-escalation-ledger.tsv"
     ledger.write_text(
         "utc=2026-01-01T00:00:00Z\t"
@@ -4104,30 +4104,18 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     _src_env.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     auth_calls: list[dict[str, object]] = []
-    helper_calls: list[list[str]] = []
 
     def allow_mutation(**kwargs: object) -> tuple[bool, str]:
         auth_calls.append(kwargs)
         return True, "session"
 
     monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
+    def no_python_helper(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Tier A must not fall back to Python helper filing")
 
-    def fake_run(
-        args: Sequence[str],
-        *,
-        stdout: TextIO | None = None,
-        **_kwargs: object,
-    ) -> subprocess.CompletedProcess[Sequence[str]]:
-        helper_calls.append(list(args))
-        if stdout is not None:
-            stdout.write(
-                "FILE_FAILURE_REPORT_STATUS=filed\n"
-                "FILE_FAILURE_REPORT_URL=https://github.com/example/repo/issues/1\n"
-            )
-        return subprocess.CompletedProcess(args=args, returncode=file_rc)
-
-    monkeypatch.setattr(design_terminal.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_terminal.subprocess, "run", no_python_helper)
     real_run_stall_rust: Callable[..., int] = design_terminal._run_stall_rust  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+    dedup_calls: list[list[str]] = []
 
     def fake_stall_rust(
         *,
@@ -4138,14 +4126,6 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     ) -> int:
         if verb == "init-attempts":
             return 0
-        if verb == "normalize-file-failure-report-env":
-            if normalize_rc == 0 and stdout_path is not None:
-                stdout_path.write_text(
-                    "STALL_RECOVERY_REPORT_STATUS=filed\n"
-                    "STALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
-                    encoding="utf-8",
-                )
-            return normalize_rc
         if verb == "compose-report":
             output = Path(argv[argv.index("--output-file") + 1])
             output.write_text("### [BUG] Tier A escalation\n\nBody.\n", encoding="utf-8")
@@ -4156,6 +4136,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
                 )
             return 0
         if verb == "dedup-tier-a-report":
+            dedup_calls.append(list(argv))
             if stdout_path is not None:
                 stdout_path.write_text(
                     f"STALL_RECOVERY_REPORT_STATUS={dedup_status}\n",
@@ -4195,11 +4176,9 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         "run_id": "run-1",
         "trusted_root": tmp_path,
     }]
-    if helper_calls:
-        helper_argv = helper_calls[-1]
-        assert helper_argv[helper_argv.index("--mutation-context") + 1] == str(_src_env)
-        assert helper_argv[helper_argv.index("--run-id") + 1] == "run-1"
-        assert helper_argv[helper_argv.index("--trusted-root") + 1] == str(tmp_path)
+    assert dedup_calls
+    dedup_argv = dedup_calls[-1]
+    assert dedup_argv[dedup_argv.index("--create-after-dedup") + 1] == "true"
 
 
 def test_failure_report_failed_judge_panel_terminal_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
