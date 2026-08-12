@@ -175,6 +175,42 @@ def test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation(
         ) == "cache payload\n"
 
 
+def test_candidate_members_are_lexically_sorted_across_files_and_directories(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    nested = source / "async-std" / "docs" / "src"
+    nested.mkdir(parents=True)
+    _ = (source / "async-std" / "docs" / "src" / "concepts.md").write_text(
+        "root documentation\n", encoding="utf-8"
+    )
+    concepts = nested / "concepts"
+    concepts.mkdir()
+    _ = (concepts / "async-read-write.md").write_text("nested documentation\n", encoding="utf-8")
+    request = candidate.CandidateRequest(
+        artifact_name="main-cache-cargo-inputs-candidate",
+        cache_class="cargo-inputs",
+        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        candidate_dir=tmp_path / "candidate",
+        maximum_bytes=1024 * 1024,
+        producer_event="merge_group",
+        producer_job="rust-lint",
+        producer_ref=_PRODUCER_REF,
+        source_sha=_SOURCE_SHA,
+        sources=(candidate.CandidateSource(name="registry", path=source),),
+        tool_versions={"cargo": "cargo test", "rustc": "rustc test"},
+    )
+
+    staged = candidate.stage_candidate(request)
+
+    paths = tuple(member.path for member in staged.members)
+    assert paths == tuple(sorted(paths))
+    assert paths == (
+        "payload/registry/async-std/docs/src/concepts.md",
+        "payload/registry/async-std/docs/src/concepts/async-read-write.md",
+    )
+
+
 @pytest.mark.parametrize(
     "unsafe_path",
     [

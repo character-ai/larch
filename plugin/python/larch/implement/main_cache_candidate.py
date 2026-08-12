@@ -453,7 +453,7 @@ def _collect_members(payload: Path) -> tuple[CandidateMember, ...]:
                 size=status.st_size,
             )
         )
-    return tuple(members)
+    return tuple(sorted(members, key=lambda member: member.path))
 
 
 def _walk_regular_files(directory: Path) -> tuple[Path, ...]:
