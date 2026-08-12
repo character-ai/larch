@@ -1,9 +1,4 @@
-//! Shared durable background-job recovery.
-//!
-//! Every consumer that finds an abandoned background-job registry row uses this
-//! module.  Keeping the claim, validated teardown, result-residue cleanup, and
-//! unlink proof together prevents a secondary cleaner from discarding the last
-//! durable identity while a process group may still be live.
+//! Shared durable background-job recovery for abandoned registry rows.
 
 use larch_core::{
     BgjobError, ProcessIdentityHost, RecoveryClaim, RegistryEntry, child_identity_policy,
@@ -33,12 +28,7 @@ pub enum BgjobRecoveryOutcome {
     Failed(String),
 }
 
-/// Claim and recover a registry row whose normal daemon may have died.
-///
-/// The caller must pass the row it observed only for an initial diagnostic.
-/// After claiming, this function rereads the durable entry before it makes any
-/// recovery decision.  That prevents a stale caller from tearing down a newer
-/// launch for the same run and step.
+/// Claim and recover a row, rereading it after the claim before any teardown.
 #[must_use]
 pub fn recover_abandoned_entry(
     host: &dyn ProcessIdentityHost,
@@ -65,9 +55,7 @@ pub fn recover_abandoned_entry(
         return BgjobRecoveryOutcome::Busy;
     }
     if read_completed_result(&entry.result_env, &entry.step).is_some() {
-        // A result from a dead daemon is terminal only after the group is
-        // independently absent.  This also converges a crash between result
-        // publication and registry unlink.
+        // A result is terminal only after group absence is independently proven.
         let confirmation =
             confirm_process_group_absent(host, &entry.child, child_identity_policy(&entry));
         if confirmation.terminated {
@@ -77,9 +65,7 @@ pub fn recover_abandoned_entry(
             }
             return unlink_claimed_entry(&claim, &entry, context, true);
         }
-        // A valid result cannot authorize removal of either itself or the
-        // registry row while a process group may still exist. Retain both for
-        // a later claimant that can prove absence.
+        // Retain result and row until a later claimant can prove absence.
         release_recovery_claim(&claim);
         return failed(&entry, context, confirmation.reason);
     }
@@ -102,8 +88,6 @@ pub fn recover_abandoned_entry(
         release_recovery_claim(&claim);
         return failed(&entry, context, termination.reason);
     }
-    // A dead daemon must not leave an incomplete result that could later be
-    // mistaken for a completed one.
     if let Err(reason) = remove_result_residue(&entry.result_env) {
         release_recovery_claim(&claim);
         return failed(&entry, context, format!("partial-result-remove-{reason}"));
@@ -148,7 +132,9 @@ fn failed(entry: &RegistryEntry, context: &str, reason: String) -> BgjobRecovery
     BgjobRecoveryOutcome::Failed(reason)
 }
 
-fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
+/// Read a regular, non-symlink bgjob env file into ordered rows.
+#[must_use]
+pub fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return None;
@@ -161,7 +147,9 @@ fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
     Some(ordered_rows(&text))
 }
 
-fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
+/// Return rows only when `path` is a completed result for `step`.
+#[must_use]
+pub fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
     let rows = read_result(path)?;
     let value = |key: &str| {
         rows.iter()
@@ -174,7 +162,11 @@ fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)
     .then_some(rows)
 }
 
-fn remove_result_residue(path: &Path) -> Result<(), String> {
+/// Remove a regular result residue without following a symlink.
+///
+/// # Errors
+/// Returns an error if the path cannot be safely removed.
+pub fn remove_result_residue(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(one_line(&error)),
@@ -194,8 +186,10 @@ fn remove_result_residue(path: &Path) -> Result<(), String> {
         .map_err(|error| one_line(&error))
 }
 
-fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reason: &str) {
+/// Append a durable teardown diagnostic to one bgjob stderr log.
+pub fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reason: &str) {
     let stderr_log = log_dir.join(format!("{step}.stderr.log"));
+    let _ = fs::create_dir_all(log_dir);
     let text = render_rows(&[
         ("BGJOB_TEARDOWN_CONTEXT".to_owned(), context.to_owned()),
         ("BGJOB_TEARDOWN_REASON".to_owned(), reason.to_owned()),
@@ -205,7 +199,11 @@ fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reas
     }
 }
 
-fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
+/// Open a regular log beneath `root` without following a symlink.
+///
+/// # Errors
+/// Returns an error when the path or root cannot be verified.
+pub fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
     let root_metadata =
         fs::symlink_metadata(root).map_err(|error| BgjobError::Io(error.to_string()))?;
     if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {

@@ -8,22 +8,25 @@
 use crate::argparse_compat::{split_inline_option, take_option_value, utf8_arguments};
 use larch_adapters::{
     SystemProcessIdentityHost,
-    bgjob_recovery::{BgjobRecoveryOutcome, recover_abandoned_entry},
+    bgjob_recovery::{
+        BgjobRecoveryOutcome, append_teardown_diagnostic_at, open_verified_log,
+        read_completed_result, read_result, recover_abandoned_entry, remove_result_residue,
+    },
 };
 use larch_core::{
-    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD,
-    BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT,
-    BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
-    OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
-    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
-    bgjob_dir, check_owner_validation, checked_dir, child_liveness,
-    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
-    daemon_poll_interval_s, ensure_under, epoch_now, iter_entries, log_paths, log_tail, merge_rows,
-    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
-    private_atomic_write, read_entry, read_for, read_process_identity, registry_path, render_rows,
-    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
-    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
-    validate_run_id, validate_slug, validate_timing_overrides, write_entry,
+    BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
+    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_HARD_DEADLINE_GRACE_S,
+    BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity, OwnerValidationState,
+    ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
+    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_owner_validation,
+    checked_dir, child_liveness, collect_process_group_members_checked,
+    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
+    iter_entries, log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
+    owner_pid_candidate, phase_barrier, private_atomic_write, read_entry, read_for,
+    read_process_identity, registry_path, render_rows, resolve_run_id, result_env_path,
+    result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
+    terminate_validated_process_group_with_policy, unlink_entry, validate_run_id, validate_slug,
+    validate_timing_overrides, write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -32,12 +35,9 @@ use nix::{
 use std::{
     env,
     ffi::OsString,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{BufRead as _, BufReader, Write as _},
-    os::unix::{
-        fs::OpenOptionsExt as _,
-        process::{CommandExt as _, ExitStatusExt as _},
-    },
+    os::unix::process::{CommandExt as _, ExitStatusExt as _},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, ExitCode, Stdio},
     thread,
@@ -48,8 +48,7 @@ use std::{
 const ENV_DAEMON_ROLE: &str = "LARCH_BGJOB_DAEMON_ROLE";
 /// Carries the owner identity the launching process already captured.
 const ENV_DAEMON_OWNER: &str = "LARCH_BGJOB_DAEMON_OWNER";
-/// Marks the persistent group-leading worker that starts the requested command
-/// only after the daemon has published its durable registry row.
+/// Marks the worker gated until the daemon publishes its durable registry row.
 const ENV_WORKER_ROLE: &str = "LARCH_BGJOB_WORKER_ROLE";
 /// Owned session directory passed only to the internal worker.
 const ENV_WORKER_TMPDIR: &str = "LARCH_BGJOB_WORKER_TMPDIR";
@@ -279,8 +278,7 @@ pub fn spawn_daemon(spec: &JobSpec, extra_env: &[(String, String)]) -> Result<St
     for (key, value) in extra_env {
         command.env(key, value);
     }
-    // Session rehydration is an input to the requested job, never authority
-    // to select an internal runtime role for this re-executed process.
+    // Rehydration is job input, never authority to select an internal role.
     command
         .env(ENV_DAEMON_ROLE, "1")
         .env_remove(ENV_WORKER_ROLE)
@@ -694,10 +692,7 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
     // Detach from the launching session so the job outlives its orchestrator
     // shell, exactly as the Python daemon's `setsid` did.
     setsid().map_err(|error| one_line(&error))?;
-    // Build the identity host before the worker exists so capture starts as
-    // close to launch as possible. The worker is a persistent group leader:
-    // it cannot start the requested command until the daemon releases its
-    // private gate after registry publication.
+    // Capture the persistent worker leader before releasing its private gate.
     let host = SystemProcessIdentityHost::new();
     fs::create_dir_all(&spec.log_dir).map_err(|error| one_line(&error))?;
     let result = result_env_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
@@ -734,9 +729,7 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
                 return Err(error);
             }
         };
-    // From this point onward every failure leaves a complete durable row. The
-    // launcher or a later waiter can claim that row instead of relying on a
-    // transient child handle after a daemon crash.
+    // Later failures leave this durable row claimable by a waiter or reaper.
     phase_barrier("after-registry-publication").map_err(|error| one_line(&error))?;
     let startup = match write_startup_marker(spec, &child_identity, &registry) {
         Ok(startup) => startup,
@@ -893,7 +886,7 @@ fn kill_direct_child_group(child: &mut Child) {
 
 fn spawn_job(spec: &JobSpec, stdout: File, stderr: File) -> std::io::Result<SpawnedWorker> {
     let executable = env::current_exe()?;
-    let mut command = Command::new(executable); // lint-subprocess-via-runner: the detached worker intentionally owns the long-running job process group
+    let mut command = Command::new(executable); // lint-subprocess-via-runner: ok the detached worker intentionally owns the long-running job process group
     command
         .args(["bgjob", "start"])
         .args(&spec.command)
@@ -1033,7 +1026,7 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
         return Err("worker-gate-not-released".to_owned());
     }
 
-    let mut requested = Command::new(program); // lint-subprocess-via-runner: the durable worker owns the requested long-running child
+    let mut requested = Command::new(program); // lint-subprocess-via-runner: ok the durable worker owns the requested long-running child
     requested
         .args(arguments)
         .stdin(Stdio::null())
@@ -1309,58 +1302,6 @@ fn append_teardown_diagnostic(spec: &JobSpec, context: &str, reason: &str) {
     append_teardown_diagnostic_at(&spec.log_dir, &spec.step, context, reason);
 }
 
-fn append_teardown_diagnostic_at(log_dir: &Path, step: &str, context: &str, reason: &str) {
-    let stderr_log = log_dir.join(format!("{step}.stderr.log"));
-    let _ = fs::create_dir_all(log_dir);
-    let text = render_rows(&[
-        ("BGJOB_TEARDOWN_CONTEXT".to_owned(), context.to_owned()),
-        ("BGJOB_TEARDOWN_REASON".to_owned(), reason.to_owned()),
-    ]);
-    if let Ok(mut handle) = open_verified_log(&stderr_log, log_dir) {
-        let _ = handle.write_all(text.as_bytes());
-    }
-}
-
-fn open_verified_log(path: &Path, root: &Path) -> Result<File, BgjobError> {
-    let root_metadata =
-        fs::symlink_metadata(root).map_err(|error| BgjobError::Io(error.to_string()))?;
-    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        return Err(BgjobError::Invalid(format!(
-            "log root must be a regular directory: {}",
-            root.display()
-        )));
-    }
-    let verified_root =
-        fs::canonicalize(root).map_err(|error| BgjobError::Io(error.to_string()))?;
-    let verified_path = ensure_under(path, &verified_root, "log file")?;
-    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(BgjobError::Invalid(format!(
-            "log file must not be a symlink: {}",
-            path.display()
-        )));
-    }
-    let mut options = OpenOptions::new();
-    options.append(true).create(true);
-    #[cfg(unix)]
-    {
-        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = options
-        .open(&verified_path)
-        .map_err(|error| BgjobError::Io(error.to_string()))?;
-    let opened = file
-        .metadata()
-        .map_err(|error| BgjobError::Io(error.to_string()))?;
-    if opened.is_file() {
-        Ok(file)
-    } else {
-        Err(BgjobError::Invalid(format!(
-            "log file must be regular: {}",
-            path.display()
-        )))
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Foreground wait
 // ---------------------------------------------------------------------------
@@ -1490,52 +1431,6 @@ fn poll_sleep(poll_interval_s: f64, deadline: Instant) -> Duration {
         .saturating_duration_since(Instant::now())
         .as_secs_f64();
     Duration::from_secs_f64(poll_interval_s.min(remaining).max(MIN_POLL_SLEEP))
-}
-
-fn read_result(path: &Path) -> Option<Vec<(String, String)>> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
-    }
-    let bytes = fs::read(path).ok()?;
-    let text = String::from_utf8_lossy(&bytes);
-    if text.contains('\r') {
-        return Some(Vec::new());
-    }
-    Some(ordered_rows(&text))
-}
-
-fn read_completed_result(path: &Path, step: &str) -> Option<Vec<(String, String)>> {
-    let rows = read_result(path)?;
-    let value = |key: &str| {
-        rows.iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value.as_str())
-    };
-    (value(BGJOB_RC_KEY).is_some_and(|value| !value.is_empty())
-        && value(BGJOB_ELAPSED_KEY).is_some_and(|value| !value.is_empty())
-        && value("STEP") == Some(step))
-    .then_some(rows)
-}
-
-fn remove_result_residue(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(one_line(&error)),
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err("unsafe-result-path".to_owned());
-        }
-        Ok(_) => {}
-    }
-    fs::remove_file(path)
-        .or_else(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                Ok(())
-            } else {
-                Err(error)
-            }
-        })
-        .map_err(|error| one_line(&error))
 }
 
 fn stderr_tail(entry: &RegistryEntry) -> String {
