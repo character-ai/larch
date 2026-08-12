@@ -1050,13 +1050,7 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
 }
 
 fn worker_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
-    let step = validate_slug(step, "step")?;
-    let root = bgjob_dir(tmpdir)?;
-    ensure_under(
-        &root.join(format!("{step}{WORKER_STATUS_SUFFIX}")),
-        &root,
-        "worker status",
-    )
+    Ok(result_env_path(tmpdir, step)?.with_file_name(format!("{step}{WORKER_STATUS_SUFFIX}")))
 }
 
 fn write_worker_status(path: &Path, root: &Path, step: &str, rc: &str) -> Result<(), String> {
