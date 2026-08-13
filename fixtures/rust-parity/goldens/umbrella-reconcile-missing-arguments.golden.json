@@ -7,7 +7,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": ""
+    "text": "Usage: umbrella reconcile-in-flight --proposal PATH --identity SHA256 --candidates PATH\n"
   },
   "stdout": {
     "text": "UMBRELLA_FAILED=true\nREASON=usage\n"

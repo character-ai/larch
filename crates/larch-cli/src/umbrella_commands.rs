@@ -67,11 +67,43 @@ const EXIT_REFUSED: u8 = 2;
 /// Mode bits a published record and snapshot carry.
 const RECORD_MODE: u32 = 0o600;
 
+const PREPARE_USAGE: &str = "Usage: umbrella prepare --repo OWNER/REPO --issue N --output PATH [--managed-partition true|false]";
+const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord.";
+const MARK_IN_FLIGHT_USAGE: &str =
+    "Usage: umbrella mark-in-flight --proposal PATH --identity SHA256";
+const RECORD_RESOLVED_USAGE: &str = "Usage: umbrella record-resolved --proposal PATH --identity SHA256 --number N --url URL [--issue-id ID]";
+const RECONCILE_IN_FLIGHT_USAGE: &str =
+    "Usage: umbrella reconcile-in-flight --proposal PATH --identity SHA256 --candidates PATH";
+const MUTATE_USAGE: &str = "Usage: umbrella mutate --repo OWNER/REPO --issue N --title TITLE --body-file PATH [--managed-partition true|false] [--adopted-umbrella true|false]";
+const VERIFY_USAGE: &str = "Usage: umbrella verify --proposal PATH --leaves PATH [--sentinel-file PATH --sentinel-root PATH --prepared-input PATH --prepared-deps PATH]";
+const VERIFY_COMPLETION_USAGE: &str = "Usage: umbrella verify-completion --repo OWNER/REPO --issue N --sentinel-file PATH --sentinel-root PATH --prepared-input PATH --prepared-deps PATH";
+
 /// Publish the refusal contract two rows at a time and report its exit code.
 fn refuse(reason: &str) -> ExitCode {
     emit_kv("UMBRELLA_FAILED", "true");
     emit_kv("REASON", reason);
     ExitCode::from(EXIT_REFUSED)
+}
+
+/// Print the owning verb's usage whenever the stable refusal reason is usage.
+fn refuse_with_usage(reason: &str, usage: &str) -> ExitCode {
+    if reason == "usage" {
+        eprintln!("{usage}");
+    }
+    refuse(reason)
+}
+
+/// Honor the raw-parser help spelling before interpreting the remaining line.
+fn help_requested(arguments: &[OsString], usage: &str) -> Option<ExitCode> {
+    if arguments
+        .iter()
+        .any(|argument| matches!(argument.to_str(), Some("-h" | "--help")))
+    {
+        eprintln!("{usage}");
+        Some(ExitCode::SUCCESS)
+    } else {
+        None
+    }
 }
 
 /// Read one strict `--flag value` command line, as the Python readers did.
@@ -312,17 +344,20 @@ async fn read_issue(
 
 /// Validate one source issue and publish its bounded snapshot.
 pub fn prepare(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, PREPARE_USAGE) {
+        return exit_code;
+    }
     let Some(values) = parse_values(
         arguments,
         &["--repo", "--issue", "--output", "--managed-partition"],
     ) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", PREPARE_USAGE);
     };
     if !has_required(&values, &["--repo", "--issue", "--output"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", PREPARE_USAGE);
     }
     let Some(managed) = managed_partition(&values) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", PREPARE_USAGE);
     };
     match prepare_with(
         &LiveSnapshotSource,
@@ -336,7 +371,7 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
             emit_kv("UPDATED_AT", &updated_at);
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, PREPARE_USAGE),
     }
 }
 
@@ -368,6 +403,9 @@ fn prepare_with(
 
 /// Publish the durable record, from a drafted record or a parent partition.
 pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, PERSIST_PROPOSAL_USAGE) {
+        return exit_code;
+    }
     let prepared_flags = [
         "--snapshot",
         "--prepared-root",
@@ -382,11 +420,11 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
     let mut permitted = vec!["--proposal"];
     permitted.extend_from_slice(&prepared_flags);
     let Some(values) = parse_values(arguments, &permitted) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
     };
     if values.contains_key("--proposal") {
         if values.len() != 2 || !values.contains_key("--output") {
-            return refuse("usage");
+            return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
         }
         return match load_record(&values["--proposal"])
             .and_then(|record| persist_record(&values["--output"], &record))
@@ -395,11 +433,11 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
                 emit_kv("PROPOSAL_PERSISTED", "true");
                 ExitCode::SUCCESS
             }
-            Err(reason) => refuse(reason),
+            Err(reason) => refuse_with_usage(reason, PERSIST_PROPOSAL_USAGE),
         };
     }
     if values.len() != prepared_flags.len() {
-        return refuse("usage");
+        return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
     }
     match persist_prepared_proposal(&values) {
         Ok(leaves) => {
@@ -407,7 +445,7 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
             emit_kv("LEAF_COUNT", &leaves.to_string());
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, PERSIST_PROPOSAL_USAGE),
     }
 }
 
@@ -539,11 +577,14 @@ fn read_prepared_snapshot(
 
 /// Record that one named leaf was handed to `/issue`.
 pub fn mark_in_flight(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, MARK_IN_FLIGHT_USAGE) {
+        return exit_code;
+    }
     let Some(values) = parse_values(arguments, &["--proposal", "--identity"]) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", MARK_IN_FLIGHT_USAGE);
     };
     if !has_required(&values, &["--proposal", "--identity"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", MARK_IN_FLIGHT_USAGE);
     }
     let outcome = load_record(&values["--proposal"]).and_then(|record| {
         let updated = mark_leaf_in_flight(&record, &values["--identity"])
@@ -555,12 +596,15 @@ pub fn mark_in_flight(arguments: &[OsString]) -> ExitCode {
             emit_kv("IN_FLIGHT_PERSISTED", "true");
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, MARK_IN_FLIGHT_USAGE),
     }
 }
 
 /// Bind one named leaf to the remote issue `/issue` created for it.
 pub fn record_resolved(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, RECORD_RESOLVED_USAGE) {
+        return exit_code;
+    }
     let Some(values) = parse_values(
         arguments,
         &[
@@ -571,10 +615,10 @@ pub fn record_resolved(arguments: &[OsString]) -> ExitCode {
             "--issue-id",
         ],
     ) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", RECORD_RESOLVED_USAGE);
     };
     if !has_required(&values, &["--proposal", "--identity", "--number", "--url"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", RECORD_RESOLVED_USAGE);
     }
     let resolved = ResolvedLeaf {
         identity: values["--identity"].clone(),
@@ -590,7 +634,7 @@ pub fn record_resolved(arguments: &[OsString]) -> ExitCode {
             emit_kv("RESOLVED_PERSISTED", "true");
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, RECORD_RESOLVED_USAGE),
     }
 }
 
@@ -612,12 +656,15 @@ fn resolve_into(path: &str, resolved: &ResolvedLeaf) -> Result<(), &'static str>
 
 /// Bind one in-flight leaf to the single remote issue that carries it.
 pub fn reconcile_in_flight_command(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, RECONCILE_IN_FLIGHT_USAGE) {
+        return exit_code;
+    }
     let Some(values) = parse_values(arguments, &["--proposal", "--identity", "--candidates"])
     else {
-        return refuse("usage");
+        return refuse_with_usage("usage", RECONCILE_IN_FLIGHT_USAGE);
     };
     if !has_required(&values, &["--proposal", "--identity", "--candidates"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", RECONCILE_IN_FLIGHT_USAGE);
     }
     match reconcile(
         &values["--proposal"],
@@ -630,7 +677,7 @@ pub fn reconcile_in_flight_command(arguments: &[OsString]) -> ExitCode {
             emit_kv("ISSUE_URL", &resolved.url);
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, RECONCILE_IN_FLIGHT_USAGE),
     }
 }
 
@@ -759,6 +806,9 @@ impl<'values> CompletionPaths<'values> {
 
 /// Convert the source issue into its final `[UMBRELLA]` title and body.
 pub fn mutate(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, MUTATE_USAGE) {
+        return exit_code;
+    }
     let Some(values) = parse_values(
         arguments,
         &[
@@ -770,19 +820,19 @@ pub fn mutate(arguments: &[OsString]) -> ExitCode {
             "--adopted-umbrella",
         ],
     ) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", MUTATE_USAGE);
     };
     if !has_required(&values, &["--repo", "--issue", "--title", "--body-file"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", MUTATE_USAGE);
     }
     let Some(managed) = managed_partition(&values) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", MUTATE_USAGE);
     };
     let Some(adopted) = adopted_umbrella(&values) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", MUTATE_USAGE);
     };
     let Some(mode) = UmbrellaMutationMode::from_flags(managed, adopted) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", MUTATE_USAGE);
     };
     match mutate_with(
         &LiveUmbrellaMutation,
@@ -796,7 +846,7 @@ pub fn mutate(arguments: &[OsString]) -> ExitCode {
             emit_kv("UMBRELLA_MUTATED", "true");
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, MUTATE_USAGE),
     }
 }
 
@@ -945,17 +995,20 @@ async fn finalize_umbrella(
 
 /// Prove the recorded graph landed, then publish the completion sentinel.
 pub fn verify(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, VERIFY_USAGE) {
+        return exit_code;
+    }
     let mut permitted = vec!["--proposal", "--leaves"];
     permitted.extend_from_slice(&CompletionPaths::FLAGS);
     let Some(values) = parse_values(arguments, &permitted) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", VERIFY_USAGE);
     };
     if !has_required(&values, &["--proposal", "--leaves"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", VERIFY_USAGE);
     }
     let completion = match CompletionPaths::read(&values) {
         Ok(completion) => completion,
-        Err(reason) => return refuse(reason),
+        Err(reason) => return refuse_with_usage(reason, VERIFY_USAGE),
     };
     match verify_graph(
         &values["--proposal"],
@@ -966,7 +1019,7 @@ pub fn verify(arguments: &[OsString]) -> ExitCode {
             emit_kv("GRAPH_VERIFIED", "true");
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, VERIFY_USAGE),
     }
 }
 
@@ -1040,16 +1093,19 @@ fn row_number(value: Option<&Value>) -> String {
 
 /// Prove one child's completion sentinel against the parent's own partition.
 pub fn verify_completion(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit_code) = help_requested(arguments, VERIFY_COMPLETION_USAGE) {
+        return exit_code;
+    }
     let mut permitted = vec!["--repo", "--issue"];
     permitted.extend_from_slice(&CompletionPaths::FLAGS);
     let Some(values) = parse_values(arguments, &permitted) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", VERIFY_COMPLETION_USAGE);
     };
     let Ok(Some(paths)) = CompletionPaths::read(&values) else {
-        return refuse("usage");
+        return refuse_with_usage("usage", VERIFY_COMPLETION_USAGE);
     };
     if !has_required(&values, &["--repo", "--issue"]) {
-        return refuse("usage");
+        return refuse_with_usage("usage", VERIFY_COMPLETION_USAGE);
     }
     match check_completion(&values["--repo"], &values["--issue"], &paths) {
         Ok(()) => {
@@ -1057,7 +1113,7 @@ pub fn verify_completion(arguments: &[OsString]) -> ExitCode {
             emit_kv("UMBRELLA_NUMBER", &values["--issue"]);
             ExitCode::SUCCESS
         }
-        Err(reason) => refuse(reason),
+        Err(reason) => refuse_with_usage(reason, VERIFY_COMPLETION_USAGE),
     }
 }
 

@@ -93,14 +93,6 @@ impl CleanInstallCase {
             | "clean-install-triage-apply"
             | "clean-install-triage-inspect"
             | "clean-install-triage-probe"
-            | "clean-install-umbrella-mark-in-flight"
-            | "clean-install-umbrella-mutate"
-            | "clean-install-umbrella-persist-proposal"
-            | "clean-install-umbrella-prepare"
-            | "clean-install-umbrella-reconcile-in-flight"
-            | "clean-install-umbrella-record-resolved"
-            | "clean-install-umbrella-verify"
-            | "clean-install-umbrella-verify-completion"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr"
             // Neither final-report verb declares a `--help` action either, so
@@ -145,6 +137,8 @@ impl CleanInstallCase {
             | "clean-install-generate-reviewer-code-robustness-agent"
             | "clean-install-generate-reviewer-plan-fidelity-agent"
             | "clean-install-generate-reviewer-security-structure-tests-agent" => 2,
+            // Every umbrella verb owns a real help action, so the default
+            // clean-install `--help` probe succeeds.
             _ => 0,
         }
     }

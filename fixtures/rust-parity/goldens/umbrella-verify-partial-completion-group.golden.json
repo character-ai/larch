@@ -16,7 +16,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": ""
+    "text": "Usage: umbrella verify --proposal PATH --leaves PATH [--sentinel-file PATH --sentinel-root PATH --prepared-input PATH --prepared-deps PATH]\n"
   },
   "stdout": {
     "text": "UMBRELLA_FAILED=true\nREASON=usage\n"
